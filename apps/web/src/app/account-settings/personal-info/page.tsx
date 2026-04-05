@@ -7,7 +7,16 @@ import AuthGuard from "@/components/auth/auth-guard";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
+import {
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
+import { getCachedDefaultPhoneDial } from "@/lib/user-default-phone-dial";
 import { getSupabaseClient } from "@/lib/supabase/client";
 
 interface PersonalInfoData {
@@ -75,8 +84,15 @@ const PersonalInfo: React.FC = () => {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [sumsubAvailable, setSumsubAvailable] = useState(false);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [defaultCountryCode, setDefaultCountryCode] = useState<string>("+27");
+  const [defaultCountryCode, setDefaultCountryCode] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const d = getCachedDefaultPhoneDial();
+      if (d) return d;
+    }
+    return "+27";
+  });
   const [defaultCountry, setDefaultCountry] = useState<string>("South Africa");
   const [languages] = useState<string[]>(['English']);
   const [_selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -93,10 +109,11 @@ const PersonalInfo: React.FC = () => {
       try {
         setIsLoading(true);
         
-        // Load countries list and platform settings in parallel
-        const [countriesResponse, settingsResponse] = await Promise.all([
+        // Load countries, platform settings, and verification status in parallel
+        const [countriesResponse, settingsResponse, verificationResponse] = await Promise.all([
           fetch("/api/public/countries"),
-          fetch("/api/public/platform-settings")
+          fetch("/api/public/platform-settings"),
+          fetch("/api/me/verification"),
         ]);
         
         let loadedCountries: Country[] = [];
@@ -106,10 +123,16 @@ const PersonalInfo: React.FC = () => {
           setCountries(loadedCountries);
         }
         
+        if (verificationResponse.ok) {
+          const verData = await verificationResponse.json();
+          setSumsubAvailable(verData?.data?.sumsub_available ?? false);
+        }
+
         if (settingsResponse.ok) {
           const settingsData = await settingsResponse.json();
           // Try to get default country from settings, fallback to South Africa
-          const defaultCountryCodeFromSettings = settingsData.data?.default_country_code || "+27";
+          const defaultCountryCodeFromSettings =
+            settingsData.data?.default_country_code || getCachedDefaultPhoneDial() || "+27";
           setDefaultCountryCode(defaultCountryCodeFromSettings);
           
           // Find country name from code
@@ -379,12 +402,13 @@ const PersonalInfo: React.FC = () => {
 
   const handleSendPhoneOtp = async (e164: string) => {
     if (!e164 || !e164.startsWith("+")) return;
+    const normalized = normalizeSupabaseAuthPhone(e164);
     setIsSendingPhoneOtp(true);
     try {
       const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.updateUser({ phone: e164 });
+      const { error } = await supabase.auth.updateUser({ phone: normalized });
       if (error) throw error;
-      setPendingPhoneE164(e164);
+      setPendingPhoneE164(normalized);
       setPhoneStep('enter_otp');
       setPhoneOtpCode('');
       toast.success("Verification code sent to your phone.");
@@ -397,20 +421,22 @@ const PersonalInfo: React.FC = () => {
   };
 
   const handleVerifyPhoneOtp = async (otp: string) => {
-    if (!otp.trim() || !pendingPhoneE164) return;
+    const token = normalizeSupabaseSmsOtpToken(otp);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
     setIsSaving(true);
     try {
       const supabase = getSupabaseClient();
+      const phone = normalizeSupabaseAuthPhone(pendingPhoneE164);
       const { error } = await supabase.auth.verifyOtp({
-        phone: pendingPhoneE164,
-        token: otp.trim(),
+        phone,
+        token,
         type: "phone_change",
       });
       if (error) throw error;
       const response = await fetch("/api/me/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: pendingPhoneE164 }),
+        body: JSON.stringify({ phone }),
       });
       if (!response.ok) {
         const err = await response.json();
@@ -467,11 +493,13 @@ const PersonalInfo: React.FC = () => {
             label="Email address"
             value={personalInfo.email}
             onEdit={() => openModal('email')}
+            editLabel="Change email"
           />
           <InfoItem
             label="Phone number"
             value={personalInfo.phone}
             onEdit={() => openModal('phone')}
+            editLabel="Change phone"
           />
           <InfoItem
             label="Government ID"
@@ -529,6 +557,7 @@ const PersonalInfo: React.FC = () => {
           onSendPhoneOtp={handleSendPhoneOtp}
           onVerifyPhoneOtp={handleVerifyPhoneOtp}
           isSendingPhoneOtp={isSendingPhoneOtp}
+          sumsubAvailable={sumsubAvailable}
         />
       )}
       </div>
@@ -536,7 +565,7 @@ const PersonalInfo: React.FC = () => {
   );
 };
 
-const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void }> = ({ label, value, onEdit, onAdd }) => (
+const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; onAdd?: () => void; editLabel?: string }> = ({ label, value, onEdit, onAdd, editLabel = "Edit" }) => (
   <div className="mb-4 md:mb-6 pb-4 md:pb-6 border-b border-gray-200">
     <div className="flex justify-between items-center mb-1 md:mb-2">
       <span className="font-medium text-sm md:text-base text-gray-900">{label}</span>
@@ -545,7 +574,7 @@ const InfoItem: React.FC<{ label: string; value: string; onEdit?: () => void; on
           className="text-sm md:text-base text-[#FF0077] hover:text-[#D60565] underline font-medium transition-colors active:opacity-70" 
           onClick={onEdit}
         >
-          Edit
+          {editLabel}
         </button>
       )}
       {onAdd && (
@@ -587,6 +616,8 @@ interface ModalProps {
   onSendPhoneOtp?: (e164: string) => void | Promise<void>;
   onVerifyPhoneOtp?: (otp: string) => void | Promise<void>;
   isSendingPhoneOtp?: boolean;
+  /** Whether SumSub automated verification is available — shows an "Verify instantly" CTA */
+  sumsubAvailable?: boolean;
 }
 
 const Modal: React.FC<ModalProps> = ({
@@ -607,7 +638,28 @@ const Modal: React.FC<ModalProps> = ({
   onSendPhoneOtp,
   onVerifyPhoneOtp,
   isSendingPhoneOtp = false,
+  sumsubAvailable = false,
 }) => {
+  const [sumsubLaunching, setSumsubLaunching] = React.useState(false);
+
+  const launchSumsub = React.useCallback(async () => {
+    setSumsubLaunching(true);
+    try {
+      const res = await fetch("/api/me/verification/sumsub/token");
+      const json = await res.json();
+      const token = json?.data?.access_token;
+      const refresh_token = json?.data?.refresh_token;
+      if (!token) {
+        return; // fallback: user stays on manual form
+      }
+      const hash = `token=${encodeURIComponent(token)}${refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""}`;
+      window.open(`/account-settings/verification/embed#${hash}`, "_blank", "noopener");
+    } catch {
+      // silently fall through to manual upload
+    } finally {
+      setSumsubLaunching(false);
+    }
+  }, []);
   // Initialize form data with existing values
   const getInitialFormData = () => {
     if (!initialData) return {};
@@ -735,20 +787,24 @@ const Modal: React.FC<ModalProps> = ({
         <form onSubmit={handleSubmit}>
           {content.type === "phone" && phoneStep === "enter_otp" ? (
             <div className="mb-6">
-              <p className="text-sm text-gray-600 mb-2">
-                We sent a 6-digit code to <span className="font-medium text-gray-900">{pendingPhoneE164}</span>
+              <p className="text-sm text-gray-700 mb-1 font-medium">Enter verification code</p>
+              <p className="mb-4 text-sm leading-relaxed text-gray-600">
+                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
+                <span className="font-semibold text-gray-900">{pendingPhoneE164}</span> (valid about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
               </p>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
+              <OtpDigitInput
+                length={SUPABASE_AUTH_OTP_LENGTH}
                 value={phoneOtpCode}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
-                  setPhoneOtpCode?.(v);
+                onChange={(v) => setPhoneOtpCode?.(v)}
+                onComplete={(code) => {
+                  if (!isSaving && isCompleteSupabaseSmsOtp(code)) void onVerifyPhoneOtp?.(code);
                 }}
-                className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] text-center text-lg tracking-widest font-mono"
+                disabled={isSaving}
+                autoFocus
+                label="Phone verification code"
+                className="mb-3"
               />
               <button
                 type="button"
@@ -770,8 +826,11 @@ const Modal: React.FC<ModalProps> = ({
                 onChange={(v) => setFormData((prev) => ({ ...prev, phoneFull: v }))}
                 placeholder="e.g. 82 123 4567"
               />
-              <p className="text-xs text-gray-500 mt-2">
-                We&apos;ll send a verification code to this number. Your number will only update after you verify.
+              <p className="mt-2 text-xs leading-relaxed text-gray-500">
+                We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid for about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Your number only
+                updates after you verify.
               </p>
             </div>
           ) : (
@@ -782,6 +841,28 @@ const Modal: React.FC<ModalProps> = ({
               </label>
               {field.type === 'file' ? (
                 <div>
+                  {/* SumSub automated option — shown when available */}
+                  {content.type === 'governmentId' && sumsubAvailable && (
+                    <div className="mb-4 p-4 bg-pink-50 border border-pink-200 rounded-lg">
+                      <p className="text-sm font-medium text-gray-800 mb-2">Verify instantly</p>
+                      <p className="text-xs text-gray-600 mb-3">
+                        Use our automated ID check — takes about 2 minutes. Opens in a new tab.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={launchSumsub}
+                        disabled={sumsubLaunching}
+                        className="w-full py-2 px-4 bg-[#FF0077] text-white text-sm font-medium rounded-md hover:bg-[#e6006b] disabled:opacity-60"
+                      >
+                        {sumsubLaunching ? "Opening…" : "Verify instantly →"}
+                      </button>
+                      <div className="flex items-center gap-2 mt-4 mb-1">
+                        <hr className="flex-1 border-gray-300" />
+                        <span className="text-xs text-gray-400">or upload manually below</span>
+                        <hr className="flex-1 border-gray-300" />
+                      </div>
+                    </div>
+                  )}
                   <input
                     type="file"
                     id={field.name}
@@ -789,7 +870,7 @@ const Modal: React.FC<ModalProps> = ({
                     accept={field.accept || "image/*,.pdf"}
                     className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#FF0077] focus:border-transparent"
                     onChange={handleFileChange}
-                    required={content.type === 'governmentId'}
+                    required={content.type === 'governmentId' && !sumsubAvailable}
                   />
                   {filePreview && (
                     <div className="mt-2 relative w-full h-48">
@@ -857,8 +938,8 @@ const Modal: React.FC<ModalProps> = ({
             ) : content.type === "phone" && phoneStep === "enter_otp" ? (
               <button
                 type="button"
-                disabled={phoneOtpCode.length < 4 || isSaving}
-                onClick={() => onVerifyPhoneOtp?.(String(phoneOtpCode))}
+                disabled={!isCompleteSupabaseSmsOtp(phoneOtpCode) || isSaving}
+                onClick={() => onVerifyPhoneOtp?.(normalizeSupabaseSmsOtpToken(phoneOtpCode))}
                 className="px-4 py-2 bg-black text-white rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? "Verifying…" : "Verify and save"}

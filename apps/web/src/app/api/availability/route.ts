@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
-import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
+import { SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
+import {
+  loadAvailabilityConstraints,
+  parseSyntheticProviderStaffId,
+} from "@/lib/availability/load-constraints";
+import { getProviderIdForUser, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
 
 /**
  * GET /api/availability
@@ -12,7 +15,7 @@ import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
  * Uses loadAvailabilityConstraints + calculateAvailableSlots (same pipeline as
  * portal/me reschedule). For duration, pass total blocked minutes (e.g. sum of
  * service durations + buffers) so slots match the book flow.
- * Query params: staffId, date, mode, duration, travelBuffer, avoidGaps
+ * Query params: staffId, date, mode, duration, travelBuffer, avoidGaps, excludeHoldId
  */
 export async function GET(request: NextRequest) {
   try {
@@ -23,6 +26,7 @@ export async function GET(request: NextRequest) {
     const duration = parseInt(searchParams.get("duration") || "60");
     const travelBuffer = parseInt(searchParams.get("travelBuffer") || "0");
     const avoidGaps = searchParams.get("avoidGaps") === "true";
+    const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
 
     if (!date) {
       return successResponse({ date, slots: [] });
@@ -49,13 +53,27 @@ export async function GET(request: NextRequest) {
       // Auth is optional — swallow errors and continue as public
     }
 
-    // Load constraints (staff shifts, time blocks, existing bookings)
-    const constraints = await loadAvailabilityConstraints(supabase, staffId, date);
-
-    // If work hours are enabled but no staff shifts, return empty
-    if (constraints.workHoursEnabled && constraints.staffShifts.length === 0) {
-      return successResponse({ date, slots: [] });
+    let providerIdForSettings: string | undefined;
+    const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
+    if (syntheticProviderId) {
+      providerIdForSettings = syntheticProviderId;
+    } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
+      const { data: staffRow } = await supabase
+        .from("provider_staff")
+        .select("provider_id")
+        .eq("id", staffId)
+        .maybeSingle();
+      providerIdForSettings = staffRow?.provider_id ?? undefined;
     }
+
+    // Uses service role when configured so customers see shifts + all bookings on this staff (RLS would hide them).
+    const constraints = await loadAvailabilityConstraints(
+      supabase,
+      staffId,
+      date,
+      providerIdForSettings,
+      { excludeHoldId }
+    );
 
     // Calculate available slots
     const slots = calculateAvailableSlots(

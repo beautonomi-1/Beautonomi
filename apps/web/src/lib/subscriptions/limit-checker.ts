@@ -1,4 +1,5 @@
-import { getSupabaseServer } from '@/lib/supabase/server';
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { formatProviderPortalLimitMessage } from "./subscription-limit-messages";
 
 export interface LimitCheckResult {
   canProceed: boolean;
@@ -156,16 +157,9 @@ export async function getProviderUsageSummary(providerId: string) {
 }
 
 /**
- * Format limit error message for API responses
+ * Format limit error for **provider portal** API responses (staff, messages, etc.).
+ * @param actionLabel — e.g. "Plan" for staff limits, "Subscription" for messaging.
  */
-export function formatLimitError(limitCheck: LimitCheckResult): string {
-  if (limitCheck.isUnlimited) {
-    return limitCheck.reason;
-  }
-  
-  if (!limitCheck.canProceed) {
-    return `${limitCheck.reason} Current plan: ${limitCheck.planName}. Please upgrade to continue.`;
-  }
-  
-  return limitCheck.reason;
+export function formatLimitError(limitCheck: LimitCheckResult, actionLabel = "Subscription"): string {
+  return formatProviderPortalLimitMessage(limitCheck, actionLabel);
 }

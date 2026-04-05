@@ -34,6 +34,13 @@ type NotificationsResponse = {
   total_unread?: number;
 };
 
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
 const DROPDOWN_LIMIT = 10;
 const MAX_HEIGHT = 400;
 
@@ -161,7 +168,7 @@ export function NotificationsDropdown({ visible, onClose, onSeeAll }: Notificati
                           ) : null}
                           {n.timestamp && (
                             <Text style={twStyle("mt-1.5 text-xs text-gray-400")}>
-                              {new Date(n.timestamp).toLocaleString()}
+                              {formatDateTimeSafe(n.timestamp)}
                             </Text>
                           )}
                         </View>

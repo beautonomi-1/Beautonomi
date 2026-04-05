@@ -11,15 +11,20 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface PlatformFeesSettings {
   platform_service_fee_type: "percentage" | "fixed";
   platform_service_fee_percentage: number;
   platform_service_fee_fixed: number;
   show_service_fee_to_customer: boolean;
+  cash_enabled_on_platform: boolean;
 }
 
 export default function PlatformFeesPage() {
+  const { bundle } = useConfigBundle();
+  const currencyCode = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [settings, setSettings] = useState<PlatformFeesSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -42,7 +47,10 @@ export default function PlatformFeesPage() {
       const response = await fetcher.get<{ data: PlatformFeesSettings }>(
         "/api/admin/platform-fees"
       );
-      setSettings(response.data);
+      setSettings({
+        ...response.data,
+        cash_enabled_on_platform: response.data.cash_enabled_on_platform === true,
+      });
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -136,6 +144,26 @@ export default function PlatformFeesPage() {
             />
           </div>
 
+          <div className="flex items-center justify-between border-b pb-4">
+            <div>
+              <Label htmlFor="cash_enabled_on_platform" className="text-sm sm:text-base">
+                Enable Cash / Pay-on-Delivery On-Platform
+              </Label>
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
+                When disabled, customers can only use online card, wallet, or gift-card routes for platform-managed checkout.
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              id="cash_enabled_on_platform"
+              checked={settings.cash_enabled_on_platform}
+              onChange={(e) =>
+                updateSettings({ cash_enabled_on_platform: e.target.checked })
+              }
+              className="w-5 h-5"
+            />
+          </div>
+
           <div>
             <Label htmlFor="platform_service_fee_type" className="text-sm sm:text-base">
               Service Fee Type *
@@ -203,7 +231,7 @@ export default function PlatformFeesPage() {
                   }
                   className="flex-1"
                 />
-                <span className="text-xs sm:text-sm text-gray-600">ZAR</span>
+                <span className="text-xs sm:text-sm text-gray-600">{currencyCode}</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
                 Fixed amount charged to customers per booking (e.g., R10 per booking)

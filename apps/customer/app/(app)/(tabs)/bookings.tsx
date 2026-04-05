@@ -2,10 +2,10 @@ import { useState, useCallback } from "react";
 import {
   View,
   Text,
-  FlatList,
   RefreshControl,
   TouchableOpacity,
 } from "react-native";
+import { FlashList } from "@shopify/flash-list";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -19,10 +19,18 @@ import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 
-type TabType = "upcoming" | "past" | "cancelled";
+type BookingsTabType = "upcoming" | "past" | "cancelled";
+
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
 
 function formatDate(s: string) {
-  return new Date(s).toLocaleDateString("en-US", {
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -31,7 +39,9 @@ function formatDate(s: string) {
 }
 
 function formatTime(s: string) {
-  return new Date(s).toLocaleTimeString("en-US", {
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -43,6 +53,49 @@ const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
   pending: { bg: "#FEF9C3", text: "#A16207" },
   cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
 };
+
+/** Empty list per tab — matches web account-settings bookings behavior; search = provider discovery (parity with web `/search`). */
+function EmptyBookingsTab({ tab }: { tab: BookingsTabType }) {
+  const goSearch = () => router.push("/(app)/(tabs)/search");
+  const primary =
+    tab === "upcoming"
+      ? {
+          title: "No appointments scheduled...yet!",
+          body: "Unveil your radiance. It's time to pamper yourself with our expert care.",
+          cta: "Start Searching",
+        }
+      : tab === "past"
+        ? {
+            title: "No past appointments yet",
+            body: "Completed visits will appear here once you've attended them.",
+            cta: "Find providers",
+          }
+        : {
+            title: "No cancelled bookings",
+            body: "When you cancel an appointment, it will show in this list.",
+            cta: "Find providers",
+          };
+
+  return (
+    <View style={{ paddingVertical: 48, alignItems: "center", paddingHorizontal: 16 }}>
+      <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8, textAlign: "center" }}>
+        {primary.title}
+      </Text>
+      <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
+        {primary.body}
+      </Text>
+      <TouchableOpacity
+        onPress={goSearch}
+        style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
+        accessibilityRole="button"
+        accessibilityLabel={tab === "upcoming" ? "Start searching for providers" : "Find providers to book"}
+        accessibilityHint="Opens search to find providers and book"
+      >
+        <Text style={{ color: Colors.white, fontWeight: "600" }}>{primary.cta}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => void }) {
   const name =
@@ -108,10 +161,10 @@ export default function BookingsScreen() {
   useScreenTracking("Bookings");
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
-  const [tab, setTab] = useState<TabType>("upcoming");
+  const [tab, setTab] = useState<BookingsTabType>("upcoming");
   const { data: bookings, loading, refreshing, error, refetch } = useBookings(tab);
 
-  const tabs: { key: TabType; label: string }[] = [
+  const tabs: { key: BookingsTabType; label: string }[] = [
     { key: "upcoming", label: "Upcoming" },
     { key: "past", label: "Past" },
     { key: "cancelled", label: "Cancelled" },
@@ -202,11 +255,10 @@ export default function BookingsScreen() {
           <BookingCardSkeleton />
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={bookings}
           keyExtractor={keyExtractor}
           renderItem={renderItem}
-          style={contentWrapperStyle}
           contentContainerStyle={{
             paddingHorizontal: contentPadding,
             paddingTop: contentPadding,
@@ -234,23 +286,7 @@ export default function BookingsScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <View style={{ paddingVertical: 48, alignItems: "center" }}>
-              <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>
-                No appointments scheduled...yet!
-              </Text>
-              <Text style={{ color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
-                Unveil your radiance. It&apos;s time to pamper yourself with our expert care.
-              </Text>
-              <TouchableOpacity
-                onPress={() => router.push("/(app)/(tabs)/home")}
-                style={{ backgroundColor: Colors.primary, paddingHorizontal: 32, paddingVertical: 16, borderRadius: 12 }}
-                accessibilityRole="button"
-                accessibilityLabel="Start searching for providers"
-                accessibilityHint="Navigate to the home screen to find providers"
-              >
-                <Text style={{ color: Colors.white, fontWeight: "600" }}>Start Searching</Text>
-              </TouchableOpacity>
-            </View>
+            <EmptyBookingsTab tab={tab} />
           }
         />
       )}

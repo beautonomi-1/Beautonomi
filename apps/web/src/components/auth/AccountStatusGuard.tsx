@@ -47,7 +47,9 @@ export default function AccountStatusGuard({ children }: { children: React.React
           }
 
           if (status?.is_deactivated) {
-            if (status.deactivated_by === "user") {
+            const canSelfReactivate =
+              status.deactivated_by === "user" || status.deactivated_by === "inactive_retention";
+            if (canSelfReactivate) {
               try {
                 const reactivateRes = await fetch("/api/me/reactivate-account", {
                   method: "POST",

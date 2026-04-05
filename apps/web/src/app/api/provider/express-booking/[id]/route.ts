@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkExpressBookingFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 import { z } from "zod";
 
 const updateExpressLinkSchema = z.object({
@@ -14,6 +15,7 @@ const updateExpressLinkSchema = z.object({
   expires_at: z.string().datetime().optional().nullable(),
   max_uses: z.number().int().positive().optional().nullable(),
   is_active: z.boolean().optional(),
+  prefill: z.unknown().optional(),
 });
 
 /**
@@ -59,6 +61,10 @@ export async function PATCH(
 
     const body = await request.json();
     let validated = updateExpressLinkSchema.parse(body);
+    const prefillUpdate =
+      body && typeof body === "object" && "prefill" in body
+        ? sanitizeExpressPrefill((body as { prefill?: unknown }).prefill)
+        : undefined;
     if (validated.location_type === "at_home") {
       validated = { ...validated, location_id: null };
     }
@@ -96,10 +102,12 @@ export async function PATCH(
       }
     }
 
+    const { prefill: _p, ...validatedRest } = validated;
     const { data: updated, error } = await supabase
       .from("express_booking_links")
       .update({
-        ...validated,
+        ...validatedRest,
+        ...(prefillUpdate !== undefined ? { prefill: prefillUpdate } : {}),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

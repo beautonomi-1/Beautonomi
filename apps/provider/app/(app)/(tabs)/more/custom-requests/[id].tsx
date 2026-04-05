@@ -23,6 +23,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type CustomRequest = {
   id: string;
@@ -38,8 +39,16 @@ type CustomRequest = {
   offers?: { id: string; status?: string; price?: number; currency?: string; created_at?: string }[];
 };
 
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
 export default function CustomRequestDetailScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { id } = useLocalSearchParams<{ id: string }>();
   const requestId = id ?? "";
 
@@ -93,7 +102,7 @@ export default function CustomRequestDetailScreen() {
       expDate.setDate(expDate.getDate() + Number(expirationDays));
       const payload: Record<string, unknown> = {
         price: Number(price),
-        currency: "ZAR",
+        currency: tenantCurrency,
         duration_minutes: Number(durationMinutes),
         expiration_at: expDate.toISOString(),
         notes: notes.trim() || null,
@@ -133,6 +142,7 @@ export default function CustomRequestDetailScreen() {
     scheduledAt,
     isAtHome,
     travelFee,
+    tenantCurrency,
     router,
   ]);
 
@@ -197,13 +207,13 @@ export default function CustomRequestDetailScreen() {
             )}
             {(request.budget_min != null || request.budget_max != null) && (
               <Text style={twStyle("text-sm text-gray-600")}>
-                · Budget: {request.budget_min ?? "?"} – {request.budget_max ?? "?"} ZAR
+                · Budget: {request.budget_min ?? "?"} – {request.budget_max ?? "?"} {tenantCurrency}
               </Text>
             )}
           </View>
           {request.preferred_start_at && (
             <Text style={twStyle("mt-1 text-sm text-gray-600")}>
-              Preferred: {new Date(request.preferred_start_at).toLocaleString()}
+              Preferred: {formatDateTimeSafe(request.preferred_start_at)}
             </Text>
           )}
           {request.offers && request.offers.length > 0 && (
@@ -213,7 +223,7 @@ export default function CustomRequestDetailScreen() {
           )}
         </View>
 
-        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price (ZAR) *</Text>
+        <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price ({tenantCurrency}) *</Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
           value={price}
@@ -313,7 +323,7 @@ export default function CustomRequestDetailScreen() {
 
         {isAtHome && (
           <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (ZAR, optional)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee ({tenantCurrency}, optional)</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
               value={travelFee}

@@ -9,6 +9,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/product-sales — list walk-in sales history
@@ -112,7 +113,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
       const lineTotal = parseFloat(prod.retail_price) * item.quantity;
-      const lineTax = lineTotal * (parseFloat(prod.tax_rate || "0") / 100);
+      const lineTax = percentOf(lineTotal, parseFloat(prod.tax_rate || "0"));
       subtotal += lineTotal;
       taxAmount += lineTax;
       orderItems.push({
@@ -129,7 +130,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(stockErrors.join("; "), "STOCK_ERROR", 400);
     }
 
-    const totalAmount = subtotal + taxAmount;
+    const totalAmount = sumMoney(subtotal, taxAmount);
 
     // Generate order number
     const { data: seqData } = await supabase.rpc("nextval", {

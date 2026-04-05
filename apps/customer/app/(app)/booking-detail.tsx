@@ -18,7 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { Colors } from "@/constants/colors";
 import { usePaystackPayment } from "@/hooks/usePaystackPayment";
@@ -30,9 +30,22 @@ import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import * as FileSystem from "expo-file-system/legacy";
+import * as Clipboard from "expo-clipboard";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import {
+  ARRIVAL_PIN_CUSTOMER_HEADING,
+  ARRIVAL_PIN_CUSTOMER_SUBTITLE,
+  ARRIVAL_PIN_FALLBACK_LABEL,
+  ARRIVAL_PIN_LENGTH_HINT,
+  ARRIVAL_PIN_PLACEHOLDER,
+  ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
+} from "@beautonomi/utils";
+import QRCode from "react-native-qrcode-svg";
 
 function formatDate(s: string) {
-  return new Date(s).toLocaleDateString("en-US", {
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("en-US", {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -40,7 +53,9 @@ function formatDate(s: string) {
   });
 }
 function formatTime(s: string) {
-  return new Date(s).toLocaleTimeString("en-US", {
+  const parsed = parseValidDate(s);
+  if (!parsed) return "—";
+  return parsed.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
@@ -49,6 +64,12 @@ function formatTime(s: string) {
 
 function formatDateForCalendar(d: Date): string {
   return d.toISOString().replace(/[-:]/g, "").split(".")[0];
+}
+
+function parseValidDate(value: unknown): Date | null {
+  if (typeof value !== "string" || !value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
 function getGoogleCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
@@ -62,19 +83,6 @@ function getGoogleCalendarUrl(params: { title: string; description: string; loca
     details: params.description,
   });
   return `https://calendar.google.com/calendar/render?${q.toString()}`;
-}
-
-function getOutlookCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
-  const q = new URLSearchParams({
-    path: "/calendar/action/compose",
-    rru: "addevent",
-    subject: params.title,
-    startdt: params.start.toISOString(),
-    enddt: params.end.toISOString(),
-    body: params.description,
-    location: params.location,
-  });
-  return `https://outlook.live.com/owa/0/?${q.toString()}`;
 }
 
 const COMPLETION_MODAL_STORAGE_KEY = "booking_completion_modal_seen_";
@@ -99,6 +107,7 @@ export default function BookingDetailScreen() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [pinSecondsLeft, setPinSecondsLeft] = useState<number | null>(null);
+  const [qrSecondsLeft, setQrSecondsLeft] = useState<number | null>(null);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const hasLoadedOnce = useRef(false);
@@ -113,7 +122,14 @@ export default function BookingDetailScreen() {
         setError(getApiErrorMessage(res.error, "Failed to load"));
         setBooking(null);
       } else {
-        setBooking(res.data);
+        const raw = res.data as Record<string, unknown> | null | undefined;
+        const row =
+          raw && typeof raw === "object" && "booking" in raw && (raw as { booking?: unknown }).booking
+            ? (raw as { booking: unknown }).booking
+            : raw && typeof raw === "object" && "data" in raw && (raw as { data?: unknown }).data
+              ? (raw as { data: unknown }).data
+              : raw;
+        setBooking(row ?? null);
         hasLoadedOnce.current = true;
       }
     } catch (e) {
@@ -173,6 +189,52 @@ export default function BookingDetailScreen() {
     (booking.current_stage === "provider_arrived" || (booking as any).provider_arrived_at) &&
     !booking.arrival_otp_verified &&
     !!booking.arrival_otp;
+
+  const qrPayloadForDisplay = (() => {
+    if (!booking) return null;
+    const raw = (booking as { qr_code_data?: unknown }).qr_code_data;
+    if (raw == null) return null;
+    if (typeof raw === "string") return raw.trim() || null;
+    if (typeof raw === "object") {
+      try {
+        return JSON.stringify(raw);
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+  const needsQrDisplay =
+    !!booking &&
+    booking.location_type === "at_home" &&
+    (booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at) &&
+    !booking.arrival_otp_verified &&
+    !!qrPayloadForDisplay;
+
+  const qrExpiresAt = (booking as { qr_code_expires_at?: string })?.qr_code_expires_at;
+  const qrVerificationCode = (() => {
+    if (!booking) return null;
+    const raw = (booking as { qr_code_data?: unknown }).qr_code_data;
+    if (raw && typeof raw === "object" && raw !== null && "verification_code" in raw) {
+      const v = (raw as { verification_code?: unknown }).verification_code;
+      return typeof v === "string" ? v : null;
+    }
+    return null;
+  })();
+  useEffect(() => {
+    if (!needsQrDisplay || !qrExpiresAt) {
+      setQrSecondsLeft(null);
+      return;
+    }
+    const tick = () => {
+      const left = Math.max(0, Math.ceil((new Date(qrExpiresAt).getTime() - Date.now()) / 1000));
+      setQrSecondsLeft(left);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [needsQrDisplay, qrExpiresAt]);
+
   useEffect(() => {
     if (!needsPinDisplay || !pinExpiresAt) {
       setPinSecondsLeft(null);
@@ -267,8 +329,10 @@ export default function BookingDetailScreen() {
   // eslint-disable-next-line react-hooks/exhaustive-deps -- openInBrowser stable
   }, [booking]);
 
+  const isCashBooking = (booking as any)?.payment_provider === "cash";
   const needsPayment =
     booking &&
+    !isCashBooking &&
     (booking.status === "pending" || booking.payment_status === "pending") &&
     booking.total_amount > 0;
 
@@ -278,7 +342,7 @@ export default function BookingDetailScreen() {
       booking_id: booking.id,
       amount: booking.total_amount,
       email: user.email,
-      currency: booking.currency || "ZAR",
+      currency: booking.currency || getTenantDefaultCurrency(),
     });
     if (result.dismissed) {
       load();
@@ -287,6 +351,7 @@ export default function BookingDetailScreen() {
 
   const showPayRemaining =
     booking &&
+    !isCashBooking &&
     booking.payment_status === "partially_paid" &&
     typeof booking.outstanding_balance === "number" &&
     booking.outstanding_balance > 0;
@@ -335,11 +400,14 @@ export default function BookingDetailScreen() {
         return;
       }
       const url = `${APP_URL.replace(/\/$/, "")}/api/me/bookings/${id}/calendar.ics`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-        credentials: "omit",
-      });
+      const response = await fetch(
+        url,
+        withWebApiTenantHeaders({
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: "omit",
+        }),
+      );
       if (!response.ok) {
         const text = await response.text().catch(() => "");
         const msg = text ? getApiErrorMessage({ message: text, status: response.status }, "Failed to load calendar file") : "Failed to load calendar file";
@@ -388,7 +456,11 @@ export default function BookingDetailScreen() {
 
   const handleVerifyFallback = async () => {
     const code = fallbackOtp.replace(/\D/g, "");
-    if (!id || code.length < 4 || isVerifying) return;
+    if (!id || isVerifying) return;
+    if (code.length !== 4 && code.length !== 6) {
+      Alert.alert("Required", ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE);
+      return;
+    }
     setIsVerifying(true);
     try {
       const res = await api.post<{ data?: { booking: any }; error?: { message?: string } }>(
@@ -449,9 +521,7 @@ export default function BookingDetailScreen() {
     booking.current_stage === "provider_on_way" || !!(booking as any).provider_en_route_at;
   const isProviderArrived =
     booking.current_stage === "provider_arrived" || !!(booking as any).provider_arrived_at;
-  const estimatedArrival = (booking as any).estimated_arrival
-    ? new Date((booking as any).estimated_arrival)
-    : null;
+  const estimatedArrival = parseValidDate((booking as any).estimated_arrival);
 
   return (
     <>
@@ -549,9 +619,9 @@ export default function BookingDetailScreen() {
             )}
             {/* Customer-holds-PIN: show code for provider to enter */}
             {needsPinDisplay && (
-              <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 20 }} accessibilityLabel="Your verification code">
-                <Text style={{ fontSize: 16, fontWeight: "600", color: "#1E3A8A", marginBottom: 4 }}>Your verification code</Text>
-                <Text style={{ fontSize: 14, color: "#1E40AF", marginBottom: 12 }}>Give this code to your provider when they arrive.</Text>
+              <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 20 }} accessibilityLabel={ARRIVAL_PIN_CUSTOMER_HEADING}>
+                <Text style={{ fontSize: 16, fontWeight: "600", color: "#1E3A8A", marginBottom: 4 }}>{ARRIVAL_PIN_CUSTOMER_HEADING}</Text>
+                <Text style={{ fontSize: 14, color: "#1E40AF", marginBottom: 12 }}>{ARRIVAL_PIN_CUSTOMER_SUBTITLE}</Text>
                 <View style={{ alignItems: "center", marginVertical: 12 }}>
                   <Text style={{ fontSize: 32, fontWeight: "700", letterSpacing: 6, color: "#1E3A8A" }}>
                     {(booking.arrival_otp?.length === 4
@@ -583,13 +653,13 @@ export default function BookingDetailScreen() {
                   </TouchableOpacity>
                 ) : (
                   <View style={{ marginTop: 16, paddingTop: 16, borderTopWidth: 1, borderTopColor: "#BFDBFE" }}>
-                    <Text style={{ fontSize: 13, color: "#1E3A8A", marginBottom: 8 }}>Enter the code (fallback)</Text>
-                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 6 }}>4 or 6 digits</Text>
+                    <Text style={{ fontSize: 13, color: "#1E3A8A", marginBottom: 8 }}>{ARRIVAL_PIN_FALLBACK_LABEL}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 6 }}>{ARRIVAL_PIN_LENGTH_HINT}</Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
                       <TextInput
                         value={fallbackOtp}
                         onChangeText={(t) => setFallbackOtp(t.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="1234"
+                        placeholder={ARRIVAL_PIN_PLACEHOLDER}
                         keyboardType="number-pad"
                         maxLength={6}
                         style={{ flex: 1, borderWidth: 1, borderColor: Colors.gray[300], borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, fontSize: 18 }}
@@ -597,7 +667,10 @@ export default function BookingDetailScreen() {
                       />
                       <TouchableOpacity
                         onPress={handleVerifyFallback}
-                        disabled={fallbackOtp.replace(/\D/g, "").length < 4 || isVerifying}
+                        disabled={
+                          isVerifying ||
+                          ![4, 6].includes(fallbackOtp.replace(/\D/g, "").length)
+                        }
                         style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 20, borderRadius: 12 }}
                       >
                         {isVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ color: "#fff", fontWeight: "600" }}>Verify</Text>}
@@ -608,6 +681,53 @@ export default function BookingDetailScreen() {
                     </Pressable>
                   </View>
                 )}
+              </View>
+            )}
+            {/* Customer-holds-QR: provider scans to verify arrival */}
+            {needsQrDisplay && qrPayloadForDisplay && (
+              <View
+                style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#FAF5FF", borderWidth: 1, borderColor: "#E9D5FF", padding: 20 }}
+                accessibilityLabel="Your arrival verification QR code"
+              >
+                <Text style={{ fontSize: 16, fontWeight: "600", color: "#581C87", marginBottom: 4 }}>Show this QR to your provider</Text>
+                <Text style={{ fontSize: 14, color: "#6B21A8", marginBottom: 16 }}>
+                  They will scan it or enter the code on their device to confirm they&apos;ve arrived.
+                </Text>
+                <View style={{ alignItems: "center", backgroundColor: "#fff", borderRadius: 16, padding: 16, alignSelf: "center" }}>
+                  <QRCode value={qrPayloadForDisplay} size={200} backgroundColor="#FFFFFF" color="#000000" />
+                </View>
+                {qrSecondsLeft != null && (
+                  <Text style={{ fontSize: 13, color: "#6B21A8", marginTop: 12, textAlign: "center" }}>
+                    {qrSecondsLeft > 0
+                      ? `QR expires in ${Math.floor(qrSecondsLeft / 60)}:${String(qrSecondsLeft % 60).padStart(2, "0")}`
+                      : "QR expired — ask your provider to refresh if needed"}
+                  </Text>
+                )}
+                {qrVerificationCode ? (
+                  <TouchableOpacity
+                    onPress={async () => {
+                      haptic.light();
+                      await Clipboard.setStringAsync(qrVerificationCode);
+                      Alert.alert("Copied", "Verification code copied. You can paste it in a message if scanning isn’t possible.");
+                    }}
+                    style={{
+                      marginTop: 14,
+                      alignSelf: "center",
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 12,
+                      backgroundColor: "#EDE9FE",
+                      borderWidth: 1,
+                      borderColor: "#DDD6FE",
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Copy verification code"
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: "600", color: "#5B21B6" }}>
+                      Copy code: <Text style={{ fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace" }}>{qrVerificationCode}</Text>
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
             )}
             {/* Milestones (at-home: en route / arrived; at-salon: preparing / in progress) */}
@@ -679,6 +799,30 @@ export default function BookingDetailScreen() {
                   <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
                 </View>
               )}
+              {Number((booking as any).service_fee_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Service / platform fee</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).service_fee_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).travel_fee) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).tip_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tip</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).tip_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).cancellation_fee) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Cancellation fee</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).cancellation_fee).toFixed(2)}</Text>
+                </View>
+              )}
               <View style={{ flexDirection: "row", justifyContent: "space-between", borderTopWidth: 1, borderTopColor: Colors.gray[200], paddingTop: 8, marginTop: 4 }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
@@ -693,6 +837,15 @@ export default function BookingDetailScreen() {
                 <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Outstanding balance</Text>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: "#B45309" }}>{booking.currency} {Number(booking.outstanding_balance).toFixed(2)}</Text>
+                </View>
+              )}
+              {isCashBooking && typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+                <View style={{ marginTop: 8, backgroundColor: "#FEF3C7", borderRadius: 8, padding: 10 }}>
+                  <Text style={{ fontSize: 13, color: "#92400E" }}>
+                    {booking.location_type === "at_home"
+                      ? "You will pay cash when your provider arrives."
+                      : "You will pay cash at the salon."}
+                  </Text>
                 </View>
               )}
             </View>
@@ -888,10 +1041,104 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
+        {isAtHome && !location && (() => {
+          const b = booking as Record<string, unknown>;
+          const nested = b.address as Record<string, unknown> | undefined;
+          const line1 = nested?.line1 ?? b.address_line1;
+          return Boolean(line1);
+        })() ? (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Service address</Text>
+            {(() => {
+              const b = booking as Record<string, unknown>;
+              const nested = b.address as Record<string, unknown> | undefined;
+              const a: Record<string, unknown> = nested?.line1
+                ? nested
+                : {
+                    line1: b.address_line1,
+                    line2: b.address_line2,
+                    city: b.address_city,
+                    country: b.address_country,
+                    postal_code: b.address_postal_code,
+                    latitude: b.address_latitude,
+                    longitude: b.address_longitude,
+                    apartment_unit: b.apartment_unit,
+                    building_name: b.building_name,
+                    floor_number: b.floor_number,
+                    access_codes: b.access_codes,
+                    parking_instructions: b.parking_instructions,
+                    location_landmarks: b.location_landmarks,
+                  };
+              const line1 = String(a.line1 ?? "");
+              const line2 = a.line2 ? String(a.line2) : "";
+              const city = a.city ? String(a.city) : "";
+              const country = a.country ? String(a.country) : "";
+              const postal = a.postal_code ? String(a.postal_code) : "";
+              const ac = a.access_codes as { gate?: string; buzzer?: string; door?: string } | null | undefined;
+              const hasAc = ac && (Boolean(ac.gate?.trim()) || Boolean(ac.buzzer?.trim()) || Boolean(ac.door?.trim()));
+              const lines = [line1, line2, [city, postal].filter(Boolean).join(" "), country].filter(Boolean);
+              return (
+                <>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700], lineHeight: 22 }}>{lines.join("\n")}</Text>
+                  {a.apartment_unit ? (
+                    <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 6 }}>Unit: {String(a.apartment_unit)}</Text>
+                  ) : null}
+                  {a.building_name ? (
+                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Building: {String(a.building_name)}</Text>
+                  ) : null}
+                  {a.floor_number ? (
+                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Floor: {String(a.floor_number)}</Text>
+                  ) : null}
+                  {hasAc && ac ? (
+                    <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[200] }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700], marginBottom: 4 }}>Access</Text>
+                      {ac.gate?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Gate: {ac.gate}</Text> : null}
+                      {ac.buzzer?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Buzzer: {ac.buzzer}</Text> : null}
+                      {ac.door?.trim() ? <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Door: {ac.door}</Text> : null}
+                    </View>
+                  ) : null}
+                  {a.parking_instructions ? (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Parking</Text>
+                      <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{String(a.parking_instructions)}</Text>
+                    </View>
+                  ) : null}
+                  {a.location_landmarks ? (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Landmarks</Text>
+                      <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>{String(a.location_landmarks)}</Text>
+                    </View>
+                  ) : null}
+                  {(booking as { house_call_instructions?: string | null }).house_call_instructions?.trim() ? (
+                    <View style={{ marginTop: 8 }}>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[700] }}>Visit instructions</Text>
+                      <Text style={{ fontSize: 13, color: Colors.gray[600], marginTop: 2 }}>
+                        {(booking as { house_call_instructions?: string | null }).house_call_instructions}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {typeof a.latitude === "number" && typeof a.longitude === "number" ? (
+                    <View style={{ marginTop: 8, overflow: "hidden", borderRadius: 12 }}>
+                      <StaticMapImage
+                        latitude={Number(a.latitude)}
+                        longitude={Number(a.longitude)}
+                        width={400}
+                        height={150}
+                        zoom={15}
+                        style={{ borderRadius: 12 }}
+                      />
+                    </View>
+                  ) : null}
+                </>
+              );
+            })()}
+          </View>
+        ) : null}
+
         {booking.status !== "cancelled" && (() => {
           const totalMinutes = (services || []).reduce((sum: number, s: any) => sum + (s.duration_minutes ?? s.offering?.duration_minutes ?? 0), 0);
-          const calStart = new Date(booking.selected_datetime);
-          const calEnd = new Date(calStart.getTime() + totalMinutes * 60 * 1000);
+          const calStart = parseValidDate(booking.selected_datetime);
+          const calEnd = calStart ? new Date(calStart.getTime() + totalMinutes * 60 * 1000) : null;
           const addressObj = (booking as any).address;
           const calLocation = location
             ? ((location as { address?: string }).address || [location.name, (location as { address_line1?: string }).address_line1, (location as { city?: string }).city].filter(Boolean).join(", ") || "—")
@@ -902,6 +1149,7 @@ export default function BookingDetailScreen() {
                 : "Address TBD";
           const calTitle = `Appointment with ${provider?.business_name ?? "Beautonomi"}`;
           const calDesc = `Booking #${booking.booking_number ?? ""}\n${(services || []).map((s: any) => `${s.offering_name ?? s.service_name ?? "Service"} (${s.duration_minutes ?? 0} min)`).join("\n")}`;
+          if (!calStart || !calEnd) return null;
           return (
             <View style={{ marginBottom: 16 }}>
               <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add to calendar</Text>
@@ -917,18 +1165,6 @@ export default function BookingDetailScreen() {
                 >
                   <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
                   <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Google Calendar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    haptic.light();
-                    Linking.openURL(getOutlookCalendarUrl({ title: calTitle, description: calDesc, location: calLocation, start: calStart, end: calEnd }));
-                  }}
-                  style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Add to Outlook"
-                >
-                  <Ionicons name="calendar-outline" size={16} color={Colors.gray[700]} style={{ marginRight: 6 }} />
-                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Outlook</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={handleAddToCalendarIcs}

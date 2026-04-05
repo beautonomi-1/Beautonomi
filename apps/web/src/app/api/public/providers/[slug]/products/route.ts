@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/public/providers/[slug]/products
@@ -9,11 +12,17 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { slug: string } }
+  { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const supabase = await getSupabaseServer();
-    const { slug } = params;
+    const { slug } = await params;
 
     // Get provider by slug
     const { data: provider, error: providerError } = await supabase
@@ -21,6 +30,7 @@ export async function GET(
       .select("id, status")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {
@@ -30,10 +40,11 @@ export async function GET(
       );
     }
 
-    // Get products available for retail sales (include has_variants)
+    // Get products available for retail sales (include has_variants).
+    // Currency: use tenant default below; optional `products.currency` exists after migration 387_products_currency.sql.
     const { data: products, error: productsError } = await supabase
       .from("products")
-      .select("id, name, short_description, description, retail_price, image_url, image_urls, quantity, track_stock_quantity, currency, has_variants, variant_option_types")
+      .select("id, name, short_description, description, retail_price, image_urls, quantity, track_stock_quantity, has_variants, variant_option_types, category")
       .eq("provider_id", provider.id)
       .eq("is_active", true)
       .eq("retail_sales_enabled", true)
@@ -69,9 +80,10 @@ export async function GET(
         id: product.id,
         name: product.name,
         description: product.short_description || product.description || "",
+        category: typeof product.category === "string" && product.category.trim() ? product.category.trim() : null,
         price: minPrice,
-        currency: product.currency || "ZAR",
-        imageUrl: product.image_url || (product.image_urls && product.image_urls.length > 0 ? product.image_urls[0] : null),
+        currency: defaultCurrency,
+        imageUrl: Array.isArray(product.image_urls) && product.image_urls.length > 0 ? product.image_urls[0] : null,
         inStock,
         quantity: totalQty,
         track_stock_quantity: product.track_stock_quantity || false,
@@ -81,7 +93,9 @@ export async function GET(
       };
     });
 
-    return successResponse(transformedProducts);
+    const res = successResponse(transformedProducts);
+    res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
+    return res;
   } catch (error) {
     return handleApiError(error, "Failed to fetch products");
   }

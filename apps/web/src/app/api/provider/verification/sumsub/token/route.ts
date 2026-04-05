@@ -9,6 +9,7 @@ import { createHmac } from "crypto";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";
+// createEmbedRefreshToken defaults to type="provider" — no change needed
 import { getSumsubAccessToken } from "@/lib/verification/sumsub-token";
 
 function parseEnv(s: string | null): string {

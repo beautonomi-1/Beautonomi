@@ -3,6 +3,8 @@
  * Handles all pricing components: services, products, add-ons, discounts, taxes, fees
  */
 
+import { percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
+
 export interface PricingItem {
   price: number;
   quantity?: number;
@@ -83,7 +85,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   // Step 2: Apply discounts
   let manualDiscount = input.discountAmount || 0;
   if (input.discountPercentage && input.discountPercentage > 0) {
-    manualDiscount = Math.max(manualDiscount, (subtotal * input.discountPercentage) / 100);
+    manualDiscount = Math.max(manualDiscount, percentOf(subtotal, input.discountPercentage));
   }
   
   const promoDiscount = input.promoDiscount || 0;
@@ -91,7 +93,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   
   // Cap discount at subtotal
   const cappedDiscount = Math.min(totalDiscount, subtotal);
-  const subtotalAfterDiscount = Math.max(0, subtotal - cappedDiscount);
+  const subtotalAfterDiscount = Math.max(0, subtractMoney(subtotal, cappedDiscount));
   
   // Step 3: Calculate tax (on discounted amount, only on taxable items)
   const taxableAmount = subtotalAfterDiscount; // Simplified: assume all items are taxable
@@ -103,7 +105,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   const tipAmount = input.tipAmount || 0;
   
   // Step 5: Calculate total before service fee
-  const totalBeforeServiceFee = subtotalAfterDiscount + taxAmount + travelFee + tipAmount;
+  const totalBeforeServiceFee = sumMoney(subtotalAfterDiscount, taxAmount, travelFee, tipAmount);
   
   // Step 6: Calculate service fee
   let serviceFeeAmount = 0;
@@ -119,7 +121,7 @@ export function calculateBookingPrice(input: PricingInput): PricingBreakdown {
   }
   
   // Step 7: Calculate final total
-  const totalAmount = totalBeforeServiceFee + serviceFeeAmount;
+  const totalAmount = sumMoney(totalBeforeServiceFee, serviceFeeAmount);
   
   // Build breakdown for display
   const items: PricingBreakdown['items'] = [];
@@ -217,7 +219,7 @@ export function calculateServiceFee(
       break;
       
     case 'percentage':
-      fee = baseAmount * ((config.fee_percentage || 0) / 100);
+      fee = percentOf(baseAmount, config.fee_percentage || 0);
       break;
       
     case 'tiered':
@@ -225,11 +227,10 @@ export function calculateServiceFee(
         // Find applicable tier
         const tier = config.tier_thresholds.find(t => baseAmount <= t.max);
         if (tier) {
-          fee = baseAmount * (tier.percentage / 100);
+          fee = percentOf(baseAmount, tier.percentage);
         } else {
-          // Use last tier if amount exceeds all thresholds
           const lastTier = config.tier_thresholds[config.tier_thresholds.length - 1];
-          fee = baseAmount * (lastTier.percentage / 100);
+          fee = percentOf(baseAmount, lastTier.percentage);
         }
       }
       break;

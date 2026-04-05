@@ -1,9 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse,
-  handleApiError, } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/user-reports
@@ -14,6 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = await getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -23,8 +23,9 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("user_reports")
       .select(
-        "id, reporter_id, reported_user_id, report_type, description, booking_id, status, resolution_notes, resolved_by, resolved_at, created_at, updated_at"
+        "id, reporter_id, reported_user_id, report_type, description, booking_id, tenant_id, status, resolution_notes, resolved_by, resolved_at, created_at, updated_at"
       )
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -36,7 +37,21 @@ export async function GET(request: NextRequest) {
 
     if (error) return handleApiError(error, "Failed to fetch reports");
 
-    type ReportRow = { reporter_id?: string; reported_user_id?: string; id: string; report_type?: string; description?: string; booking_id?: string; status?: string; resolution_notes?: string; resolved_by?: string; resolved_at?: string; created_at?: string; updated_at?: string };
+    type ReportRow = {
+      reporter_id?: string;
+      reported_user_id?: string;
+      id: string;
+      report_type?: string;
+      description?: string;
+      booking_id?: string;
+      tenant_id?: string;
+      status?: string;
+      resolution_notes?: string;
+      resolved_by?: string;
+      resolved_at?: string;
+      created_at?: string;
+      updated_at?: string;
+    };
     type UserMapRow = { id: string; full_name: string | null; email: string };
     const userIds = [
       ...new Set(
@@ -66,6 +81,7 @@ export async function GET(request: NextRequest) {
       report_type: r.report_type,
       description: r.description,
       booking_id: r.booking_id,
+      tenant_id: r.tenant_id,
       status: r.status,
       resolution_notes: r.resolution_notes,
       resolved_by: r.resolved_by,

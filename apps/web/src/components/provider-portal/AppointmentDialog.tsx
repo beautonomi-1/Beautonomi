@@ -29,6 +29,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Slider } from "@/components/ui/slider";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface Client {
   id: string;
@@ -70,6 +71,7 @@ export function AppointmentDialog({
   onSuccess,
   onCheckout,
 }: AppointmentDialogProps) {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -82,7 +84,6 @@ export function AppointmentDialog({
   const [showClientSearch, setShowClientSearch] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [defaultCountryCode, setDefaultCountryCode] = useState("+27");
   const [_selectedAddons, _setSelectedAddons] = useState<string[]>([]);
   const [_selectedVariants, _setSelectedVariants] = useState<Record<string, string>>({});
   const [_showCheckout, _setShowCheckout] = useState(false);
@@ -123,27 +124,6 @@ export function AppointmentDialog({
     recurrence_end_date: "",
     recurrence_occurrences: undefined as number | undefined,
   });
-
-  // Load default country code from platform settings
-  useEffect(() => {
-    const loadDefaultCountryCode = async () => {
-      try {
-        // Try to get from platform settings (if available)
-        const response = await fetch("/api/public/platform-settings");
-        if (response.ok) {
-          const _data = await response.json();
-          // Platform settings might have locale info, but for now default to +27 (South Africa)
-          // You can extend this to get from settings.localization.default_country_code if available
-          setDefaultCountryCode("+27");
-        }
-      } catch (error) {
-        console.error("Failed to load platform settings:", error);
-        // Default to +27 (South Africa)
-        setDefaultCountryCode("+27");
-      }
-    };
-    loadDefaultCountryCode();
-  }, []);
 
   useEffect(() => {
     if (open) {
@@ -807,7 +787,6 @@ export function AppointmentDialog({
                   }}
                   label="Phone"
                   placeholder="123 456 7890"
-                  defaultCountryCode={defaultCountryCode}
                   className="w-full"
                 />
                 {formData.client_phone && !isValidPhone(formData.client_phone) && (
@@ -912,7 +891,7 @@ export function AppointmentDialog({
                       </div>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm text-gray-600">
-                          R{item.unit_price.toFixed(2)} × {item.quantity} = R{item.total.toFixed(2)}
+                          {formatMoney(item.unit_price)} × {item.quantity} = {formatMoney(item.total)}
                         </span>
                       </div>
                     </div>
@@ -1311,7 +1290,7 @@ export function AppointmentDialog({
                     <div>
                       <p className="font-medium">{service.name}</p>
                       <p className="text-sm text-gray-500">
-                        {service.duration_minutes} min • R{service.price.toFixed(2)}
+                        {service.duration_minutes} min • {formatMoney(Number(service.price))}
                       </p>
                     </div>
                     <Plus className="w-5 h-5 text-gray-400" />
@@ -1345,7 +1324,7 @@ export function AppointmentDialog({
                     <div>
                       <p className="font-medium">{product.name}</p>
                       <p className="text-sm text-gray-500">
-                        R{product.retail_price.toFixed(2)}
+                        {formatMoney(Number(product.retail_price))}
                         {product.brand && ` • ${product.brand}`}
                         {product.sku && ` • SKU: ${product.sku}`}
                       </p>

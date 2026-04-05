@@ -11,6 +11,7 @@ import { Platform } from "react-native";
 import { router } from "expo-router";
 import type { NotificationClickEvent, NotificationWillDisplayEvent } from "react-native-onesignal";
 import { useAuth } from "@/providers/AuthProvider";
+import { useNativePermissionsOnboardingGate } from "@/providers/NativePermissionsOnboardingProvider";
 import { ONE_SIGNAL_APP_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { getOneSignalAppId } from "@/lib/third-party-config";
@@ -23,12 +24,47 @@ import { addBreadcrumb } from "@/lib/sentry";
 function handleNotificationRoute(data: Record<string, unknown>) {
   try {
     const type = String(data.type ?? data.notification_type ?? "");
-    const id = String(data.id ?? data.booking_id ?? data.chat_id ?? data.conversation_id ?? data.post_id ?? "");
+    const bookingId = String(data.booking_id ?? data.bookingId ?? "");
+    const id = String(
+      data.id ?? data.booking_id ?? data.bookingId ?? data.chat_id ?? data.conversation_id ?? data.post_id ?? "",
+    );
 
     addBreadcrumb("Notification tapped", "notification", { type, id });
     trackNotificationOpened(type, data);
 
+    // Template-based pushes include template_key + booking_id but often omit type
+    if (!type && bookingId) {
+      router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
+      return;
+    }
+
     switch (type) {
+      case "on_demand_declined": {
+        const rid = String(data.on_demand_request_id ?? "");
+        if (rid) {
+          router.push({
+            pathname: "/(app)/on-demand/result",
+            params: { status: "declined", requestId: rid },
+          });
+        } else {
+          router.push("/(app)/(tabs)/bookings");
+        }
+        break;
+      }
+
+      case "payment_received":
+      case "payment_successful":
+      case "payment_failed":
+      case "payment_pending":
+      case "payment_method_expired":
+      case "partial_payment_received":
+        if (bookingId || id) {
+          router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId || id } });
+        } else {
+          router.push("/(app)/account-settings/payments");
+        }
+        break;
+
       case "booking_reminder":
       case "booking_confirmed":
       case "booking_confirmation": // on-demand accepted
@@ -97,8 +133,17 @@ function handleNotificationRoute(data: Record<string, unknown>) {
 
 function usePushRegistration() {
   const { user } = useAuth();
+  const { gate } = useNativePermissionsOnboardingGate();
   const registeredRef = useRef(false);
+  const oneSignalInitKeyRef = useRef<string | null>(null);
   const [appId, setAppId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      registeredRef.current = false;
+      oneSignalInitKeyRef.current = null;
+    }
+  }, [user]);
 
   useEffect(() => {
     if (Platform.OS === "web" || !user) return;
@@ -118,6 +163,7 @@ function usePushRegistration() {
 
   useEffect(() => {
     if (Platform.OS === "web" || !appId || !user) return;
+    if (gate.phase === "loading") return;
 
     const registerWithBackend = async (playerId: string) => {
       if (registeredRef.current) return;
@@ -143,24 +189,31 @@ function usePushRegistration() {
 
         OneSignal.Debug.setLogLevel(LogLevel.None);
         OneSignal.initialize(appId);
-        OneSignal.Notifications.requestPermission(false);
 
-        OneSignal.login(user.id);
+        const sessionKey = `${user.id}:${appId}`;
+        const isFirstInitForSession = oneSignalInitKeyRef.current !== sessionKey;
+        if (isFirstInitForSession) {
+          oneSignalInitKeyRef.current = sessionKey;
+          OneSignal.login(user.id);
 
-        // Handle notification taps for deep linking
-        OneSignal.Notifications.addEventListener("click", (event: NotificationClickEvent) => {
-          const additionalData = event.notification.additionalData as
-            | Record<string, unknown>
-            | undefined;
-          if (additionalData) {
-            handleNotificationRoute(additionalData);
-          }
-        });
+          OneSignal.Notifications.addEventListener("click", (event: NotificationClickEvent) => {
+            const additionalData = event.notification.additionalData as
+              | Record<string, unknown>
+              | undefined;
+            if (additionalData) {
+              handleNotificationRoute(additionalData);
+            }
+          });
 
-        // Handle foreground notifications (show in-app banner)
-        OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
-          event.getNotification().display();
-        });
+          OneSignal.Notifications.addEventListener("foregroundWillDisplay", (event: NotificationWillDisplayEvent) => {
+            event.getNotification().display();
+          });
+        }
+
+        // Returning users (flag already in storage): same behaviour as before this onboarding flow.
+        if (gate.phase === "complete" && gate.fromRestore) {
+          OneSignal.Notifications.requestPermission(false);
+        }
 
         const subId = await OneSignal.User.pushSubscription.getIdAsync();
         if (subId) {
@@ -181,8 +234,43 @@ function usePushRegistration() {
     return () => {
       unsubscribe?.();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- run when appId/user available
-  }, [appId, user?.id]);
+  }, [appId, user, gate]);
+
+  // After first-run onboarding completes, register device if the user just granted push in the sheet.
+  useEffect(() => {
+    if (Platform.OS === "web" || !appId || !user) return;
+    if (gate.phase !== "complete" || gate.fromRestore) return;
+
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const tryRegister = async () => {
+      if (cancelled || registeredRef.current) return;
+      try {
+        const { OneSignal } = await import("react-native-onesignal");
+        const id = await OneSignal.User.pushSubscription.getIdAsync();
+        if (!id || cancelled || registeredRef.current) return;
+        const platform = Platform.OS === "ios" ? "ios" : "android";
+        const res = await api.post<{ registered?: boolean }>("/api/me/devices", {
+          player_id: id,
+          platform,
+        });
+        if (!res.error) {
+          registeredRef.current = true;
+        }
+      } catch {
+        // OneSignal not available
+      }
+    };
+
+    void tryRegister();
+    timeoutId = setTimeout(tryRegister, 2500);
+
+    return () => {
+      cancelled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [appId, user, gate]);
 }
 
 /**

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { requireAdminSection, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 
@@ -31,10 +32,7 @@ const serviceZoneSchema = z.object({
  */
 export async function GET(request: Request) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
@@ -44,23 +42,6 @@ export async function GET(request: Request) {
 
     if (providerId) {
       query = query.eq("provider_id", providerId);
-    } else if (auth.user.role === "provider_owner") {
-      // Providers can only see their own zones
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("user_id", auth.user.id)
-        .single();
-
-      if (provider) {
-        const providerRow = provider as { id: string };
-        query = query.eq("provider_id", providerRow.id);
-      } else {
-        return NextResponse.json({
-          data: [],
-          error: null,
-        });
-      }
     }
 
     const { data: zones, error } = await query;
@@ -122,17 +103,7 @@ export async function GET(request: Request) {
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error in /api/admin/mapbox/service-zones:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch service zones",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch service zones");
   }
 }
 
@@ -143,10 +114,7 @@ export async function GET(request: Request) {
  */
 export async function POST(request: Request) {
   try {
-    const auth = await requireRole(["superadmin", "provider_owner"]);
-    if (!auth) {
-      return unauthorizedResponse("Authentication required");
-    }
+    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -199,29 +167,6 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
-    }
-
-    // If provider_owner, ensure they own the provider
-    if (auth.user.role === "provider_owner" && validationResult.data.provider_id) {
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("id", validationResult.data.provider_id)
-        .eq("user_id", auth.user.id)
-        .single();
-
-      if (!provider) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              message: "Provider not found or access denied",
-              code: "FORBIDDEN",
-            },
-          },
-          { status: 403 }
-        );
-      }
     }
 
     const dbData: Record<string, unknown> = {
@@ -290,8 +235,8 @@ export async function POST(request: Request) {
     }
 
     await writeAuditLog({
-      actor_user_id: auth.user.id,
-      actor_role: auth.user.role,
+      actor_user_id: user.id,
+      actor_role: user.role,
       action: "admin.mapbox.service_zone.create",
       entity_type: "service_zone",
       entity_id: zoneRow.id,
@@ -303,16 +248,6 @@ export async function POST(request: Request) {
       error: null,
     });
   } catch (error) {
-    console.error("Unexpected error in /api/admin/mapbox/service-zones:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to create service zone",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to create service zone");
   }
 }

@@ -162,13 +162,14 @@ Translations live in `packages/i18n/src/locales/`. The web app auto-detects brow
 
 ## Deployment
 
-- **Web**: Deployed via Vercel. See `apps/web/` Vercel config.
-- **Mobile**: Built & submitted via EAS. See [docs/DEPLOYMENT_EAS.md](./docs/DEPLOYMENT_EAS.md) for full setup guide.
-- **Database**: Supabase migrations in `supabase/migrations/`. See [supabase/README.md](./supabase/README.md).
+- **Go live (ordered steps)**: **[docs/GO_LIVE_NOW.md](./docs/GO_LIVE_NOW.md)** — CI → Supabase → Vercel env (incl. `CRON_SECRET` / `CSRF_SECRET`) → EAS → smoke tests.
+- **Web**: Vercel; `apps/web/vercel.json` (crons, headers). Use **Node.js 24** and pnpm version from root `package.json` `packageManager`.
+- **Mobile**: EAS — [docs/DEPLOYMENT_EAS.md](./docs/DEPLOYMENT_EAS.md).
+- **Database**: `supabase/migrations/` — [supabase/README.md](./supabase/README.md).
 
 ### Production readiness
 
-See **[docs/PRODUCTION_READINESS.md](./docs/PRODUCTION_READINESS.md)** for the full checklist. Summary:
+See **[docs/PRODUCTION_READINESS.md](./docs/PRODUCTION_READINESS.md)** and **[docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md)**. Summary:
 
 - **Pre-release**: `pnpm run release:check` (or `prepare:production` for typecheck + lint + test + build). Run `npx expo-doctor` in `apps/customer` and `apps/provider` before EAS builds.
 - **Mobile (EAS)**: Production profile sets `APP_ENV=production`; OneSignal and config use it. Set secrets in [expo.dev](https://expo.dev) per app: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_APP_URL`, and optionally `EXPO_PUBLIC_SENTRY_DSN`, `EXPO_PUBLIC_ONESIGNAL_APP_ID`.

@@ -12,10 +12,12 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft, Package } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
 
 export default function AdsModulePage() {
+  const { currencyCode } = useReportCurrency();
   const [env, setEnv] = useState("production");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -141,7 +143,7 @@ export default function AdsModulePage() {
               Impression packs
             </CardTitle>
             <CardDescription>
-              Providers can buy fixed impression amounts (e.g. 50, 100, 500, 1000). Set price (ZAR) and active state.
+              Providers can buy fixed impression amounts (e.g. 50, 100, 500, 1000). Set price ({currencyCode}) and active state.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -153,7 +155,7 @@ export default function AdsModulePage() {
                   <div key={pack.id} className="flex flex-wrap items-center gap-4 rounded-lg border p-3">
                     <span className="font-medium">{pack.impressions} impressions</span>
                     <div className="flex items-center gap-2">
-                      <Label className="text-xs">Price (ZAR)</Label>
+                      <Label className="text-xs">Price ({currencyCode})</Label>
                       <Input
                         type="number"
                         min={0}

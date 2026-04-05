@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { getProviderIdForUser, successResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
 const createRatingSchema = z.object({
@@ -18,11 +17,7 @@ const createRatingSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const permissionCheck = await requirePermission('rate_clients', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -82,6 +77,26 @@ export async function POST(request: NextRequest) {
 
     if (createError) throw createError;
 
+    // Notify customer that provider left a rating.
+    try {
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await insertNotification({
+        user_id: booking.customer_id,
+        type: "review_response",
+        title: "New feedback from your provider",
+        message: `Your provider rated this appointment ${rating}/5${comment ? `: "${comment.slice(0, 140)}"` : "."}`,
+        data: {
+          booking_id,
+          rating,
+          comment: comment || null,
+          provider_id: providerId,
+        },
+        action_url: `/account-settings/bookings/${booking_id}`,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to notify customer after provider rating:", notifErr);
+    }
+
     return successResponse(newRating);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -104,11 +119,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const permissionCheck = await requirePermission('view_client_ratings', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
@@ -125,7 +136,7 @@ export async function GET(request: NextRequest) {
     if (bookingId) {
       const { data: existingRating, error: checkError } = await supabase
         .from("provider_client_ratings")
-        .select("id")
+        .select("id, booking_id, rating, comment, created_at, updated_at")
         .eq("booking_id", bookingId)
         .eq("provider_id", providerId)
         .maybeSingle();
@@ -136,6 +147,7 @@ export async function GET(request: NextRequest) {
 
       return successResponse({
         has_rating: !!existingRating,
+        rating: existingRating ?? null,
       });
     }
 

@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { successResponse, notFoundResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { sanitizeExpressPrefill } from "@/lib/express-booking/prefill";
 
 /**
  * GET /api/public/express-link/[slug]
@@ -15,18 +17,40 @@ export async function GET(
 ) {
   try {
     const supabase = await getSupabaseServer();
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in /api/public/express-link/[slug]:", tenantErr);
+      return errorResponse("Tenant not configured", "TENANT_UNAVAILABLE", 503);
+    }
     const { slug: rawSlug } = await params;
     const slug = (rawSlug || "").trim().toLowerCase().replace(/[^a-z0-9-]/g, "");
     if (!slug) {
       return notFoundResponse("Invalid link");
     }
 
-    const { data: link, error: linkError } = await supabase
+    // Scope the slug lookup to providers that belong to the resolved tenant,
+    // preventing cross-tenant slug collision when the same slug exists for
+    // providers in different tenants.
+    const { data: tenantProviders } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId);
+
+    const tenantProviderIds = (tenantProviders ?? []).map((p: { id: string }) => p.id);
+
+    const linkQuery = supabase
       .from("express_booking_links")
-      .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count")
+      .select("id, provider_id, name, slug, service_ids, staff_ids, location_id, location_type, is_active, expires_at, max_uses, use_count, prefill")
       .eq("slug", slug)
-      .eq("is_active", true)
-      .maybeSingle();
+      .eq("is_active", true);
+
+    if (tenantProviderIds.length > 0) {
+      linkQuery.in("provider_id", tenantProviderIds);
+    }
+
+    const { data: link, error: linkError } = await linkQuery.maybeSingle();
 
     if (linkError || !link) {
       return notFoundResponse("Booking link not found");
@@ -44,6 +68,7 @@ export async function GET(
       .from("providers")
       .select("id, slug, business_name, is_active")
       .eq("id", link.provider_id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider?.slug || provider.is_active === false) {
@@ -59,6 +84,8 @@ export async function GET(
       })
       .eq("id", link.id);
 
+    const prefill = sanitizeExpressPrefill((link as { prefill?: unknown }).prefill);
+
     return successResponse({
       provider_slug: provider.slug,
       provider_id: provider.id,
@@ -68,6 +95,7 @@ export async function GET(
       staff_ids: link.staff_ids ?? [],
       location_id: link.location_id ?? null,
       location_type: link.location_type ?? null,
+      prefill,
     });
   } catch (error) {
     return handleApiError(error, "Failed to resolve booking link");

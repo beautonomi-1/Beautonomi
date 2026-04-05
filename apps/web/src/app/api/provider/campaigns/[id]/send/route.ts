@@ -278,22 +278,22 @@ export async function POST(
       whatsapp: `You received a WhatsApp message: ${campaign.name}`,
     };
 
-    const notifications = validCustomers.map((customer: any) => ({
-      user_id: customer.id,
+    const notifInputs = validCustomers.map((customer: any) => ({
+      user_id: customer.id as string,
       type: notificationTypeMap[campaign.type] || "marketing_email",
-      title: campaign.name,
+      title: campaign.name as string,
       message: notificationMessageMap[campaign.type] || `You received a message: ${campaign.name}`,
-      metadata: {
+      data: {
         campaign_id: id,
         type: campaign.type,
       },
     }));
 
     // Insert notifications in batches
-    if (notifications.length > 0) {
-      for (let i = 0; i < notifications.length; i += 100) {
-        const batch = notifications.slice(i, i + 100);
-        await supabase.from("notifications").insert(batch);
+    if (notifInputs.length > 0) {
+      const { insertNotifications } = await import("@/lib/notifications/insert-notification");
+      for (let i = 0; i < notifInputs.length; i += 100) {
+        await insertNotifications(notifInputs.slice(i, i + 100));
       }
     }
 

@@ -1,7 +1,24 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError, requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import {
+  successResponse,
+  handleApiError,
+  requireRoleInApi,
+  errorResponse,
+  notFoundResponse,
+} from "@/lib/supabase/api-helpers";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { trackServer } from "@/lib/analytics/amplitude/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
+import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 
 /**
  * GET /api/paystack/verify
@@ -12,14 +29,16 @@ import { trackServer } from "@/lib/analytics/amplitude/server";
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { searchParams } = new URL(request.url);
-    const reference = searchParams.get("reference");
+    const reference =
+      searchParams.get("reference") || searchParams.get("trxref");
 
     if (!reference) {
       return successResponse({ status: "error", message: "Reference required" });
     }
 
-    const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+    const PAYSTACK_SECRET_KEY = await getPaystackSecretKey({ tenantId });
 
     if (!PAYSTACK_SECRET_KEY) {
       throw new Error("Paystack secret key not configured");
@@ -44,60 +63,80 @@ export async function GET(request: NextRequest) {
     if (data.data.status === "success") {
       const metadata = data.data.metadata || {};
       const supabase = await getSupabaseServer();
+      const tenantRegion = await getTenantRegionConfig(tenantId);
+      const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+      const paidCurrency =
+        typeof data.data.currency === "string" && data.data.currency.length >= 3
+          ? data.data.currency.toUpperCase()
+          : fallbackCurrency;
 
       // Handle product order payments
       const productOrderId = metadata.product_order_id;
       if (productOrderId) {
-        const { error: poErr } = await (supabase.from("product_orders") as any)
-          .update({
-            payment_status: "paid",
-            payment_reference: reference,
-            status: "confirmed",
-            confirmed_at: new Date().toISOString(),
-            paid_at: new Date().toISOString(),
-          })
-          .eq("id", productOrderId);
+        const { data: poBefore } = await (supabase.from("product_orders") as any)
+          .select("tenant_id, provider_id")
+          .eq("id", productOrderId)
+          .maybeSingle();
 
-        if (poErr) console.error("Failed to update product order:", poErr);
+        if (!poBefore) {
+          return notFoundResponse("Product order not found");
+        }
+
+        if (
+          !resourceTenantMatchesHostTenant(
+            tenantId,
+            (poBefore as { tenant_id?: string | null }).tenant_id,
+          )
+        ) {
+          return errorResponse(
+            "This order belongs to a different market. Open checkout from the correct site or app for this order.",
+            "TENANT_MISMATCH",
+            403,
+          );
+        }
+
+        const productOrderTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: (poBefore as { tenant_id?: string | null }).tenant_id,
+          provider_id: (poBefore as { provider_id?: string | null }).provider_id,
+        });
+        await recordProductOrderPayment({
+          supabase: getSupabaseAdmin() as any,
+          productOrderId,
+          reference,
+          amountMajor: Number(data.data.amount || 0) / 100,
+          feesMajor: Number(data.data.fees || 0) / 100,
+          source: "paystack_verify",
+          provider: "paystack",
+        });
 
         const { data: po } = await (supabase.from("product_orders") as any)
           .select("customer_id, provider_id, order_number, total_amount")
           .eq("id", productOrderId)
           .single();
 
-        // Look up the provider owner's user_id for notifications
-        let providerOwnerUserId: string | null = null;
-        if (po?.provider_id) {
-          const { data: providerOwner } = await supabase
-            .from("providers")
-            .select("owner_id")
-            .eq("id", po.provider_id)
-            .single();
-          providerOwnerUserId = providerOwner?.owner_id ?? null;
-        }
-
         if (po) {
-          const notifications: any[] = [
-            {
+          const amountMajor = data.data.amount / 100;
+          const { format: fmtPo } = await getTenantMoneyFormatter(productOrderTenantId);
+          void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
+            insertNotification({
               user_id: po.customer_id,
-              type: "product_order_confirmed",
+              type: "product_order_update",
               title: "Order Confirmed",
               message: `Your order ${po.order_number} has been confirmed and paid.`,
-              metadata: { product_order_id: productOrderId, amount: data.data.amount / 100 },
-              link: `/product-orders`,
-            },
-          ];
-          if (providerOwnerUserId) {
-            notifications.push({
-              user_id: providerOwnerUserId,
-              type: "product_order_placed",
+              data: { product_order_id: productOrderId, amount: amountMajor },
+              action_url: `/product-orders`,
+            })
+          );
+
+          if (po.provider_id) {
+            await notifyProviderTeamUsers(po.provider_id, {
+              type: "product_order_update",
               title: "New Product Order",
-              message: `New product order ${po.order_number} received — R${(data.data.amount / 100).toFixed(2)}.`,
-              metadata: { product_order_id: productOrderId, amount: data.data.amount / 100 },
-              link: `/provider/ecommerce/orders`,
+              message: `New product order ${po.order_number} received — ${fmtPo(amountMajor)}.`,
+              data: { product_order_id: productOrderId, amount: amountMajor },
+              action_url: `/provider/ecommerce/orders`,
             });
           }
-          await supabase.from("notifications").insert(notifications).then(() => {}, (e: any) => console.error("Notification insert failed:", e));
         }
 
         // Track payment via Amplitude
@@ -106,7 +145,7 @@ export async function GET(request: NextRequest) {
           order_number: po?.order_number,
           amount: data.data.amount / 100,
           payment_method: "paystack",
-          currency: "ZAR",
+          currency: paidCurrency,
         }, po?.customer_id).catch(() => {});
 
         return successResponse({
@@ -129,51 +168,137 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      // 1. Update booking status to confirmed
-      const { error: updateError } = await supabase
+      const { data: booking, error: bookingLookupError } = await supabase
         .from("bookings")
-        .update({
-          status: "confirmed",
-          payment_status: "paid",
-          payment_reference: reference,
-          paid_at: new Date().toISOString(),
-        })
-        .eq("id", bookingId);
-
-      if (updateError) {
-        console.error("Failed to update booking status:", updateError);
-      }
-
-      // 2. Send confirmation notification (insert into notifications table)
-      const { data: booking } = await supabase
-        .from("bookings")
-        .select("customer_id, provider_id, booking_number, ref_number, total_amount, scheduled_at")
+        .select(
+          "id, tenant_id, customer_id, provider_id, booking_number, ref_number, total_amount, scheduled_at, payment_status, status, cancelled_at",
+        )
         .eq("id", bookingId)
-        .single();
+        .maybeSingle();
 
-      if (booking) {
-        await supabase.from("notifications").insert([
-          {
-            user_id: booking.customer_id,
-            type: "booking_confirmed",
-            title: "Booking Confirmed",
-            message: `Your booking ${booking.ref_number || booking.booking_number} has been confirmed.`,
-            metadata: { booking_id: bookingId, amount: data.data.amount / 100 },
-            link: `/account-settings/bookings/${bookingId}`,
-          },
-          {
-            user_id: booking.provider_id,
-            type: "new_booking",
-            title: "New Booking Received",
-            message: `New booking ${booking.ref_number || booking.booking_number} confirmed.`,
-            metadata: { booking_id: bookingId, amount: data.data.amount / 100 },
-            link: `/provider/bookings/${bookingId}`,
-          },
-        ]);
+      if (bookingLookupError || !booking) {
+        return notFoundResponse("Booking not found");
       }
 
-      // 3. Update gift card balance if used
-      if (metadata.gift_card_id && metadata.gift_card_amount) {
+      if (booking.customer_id !== user.id) {
+        return errorResponse(
+          "You can only confirm payments for your own bookings.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+
+      if (!resourceTenantMatchesHostTenant(tenantId, booking.tenant_id)) {
+        return errorResponse(
+          "This booking belongs to a different market. Open checkout from the correct site or app for this booking.",
+          "TENANT_MISMATCH",
+          403,
+        );
+      }
+
+      if (booking.status === "cancelled" || booking.cancelled_at) {
+        return errorResponse(
+          "This booking was cancelled. If you were charged, contact support for a refund.",
+          "BOOKING_CANCELLED",
+          409,
+        );
+      }
+
+      const paymentStatusBefore =
+        (booking.payment_status as string) || "pending";
+
+      // 1. Record Paystack payment in booking_payments (RLS blocks customer INSERT; use admin).
+      //    Trigger update_booking_payment_status syncs payment_status + total_paid (deposit vs full).
+      const admin = getSupabaseAdmin();
+      const paystackTxId =
+        data.data.id !== undefined && data.data.id !== null
+          ? String(data.data.id)
+          : null;
+      const amountMajor = data.data.amount / 100;
+      let newPaymentRow = false;
+      if (paystackTxId) {
+        const { data: existingBp } = await admin
+          .from("booking_payments")
+          .select("id")
+          .eq("payment_provider", "paystack")
+          .eq("payment_provider_id", paystackTxId)
+          .maybeSingle();
+        if (!existingBp) {
+          const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id ?? null;
+          const { error: bpErr } = await admin.from("booking_payments").insert({
+            booking_id: bookingId,
+            ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
+            amount: amountMajor,
+            payment_method: "card",
+            payment_provider: "paystack",
+            payment_provider_id: paystackTxId,
+            status: "completed",
+            notes: `Payment verified via Paystack (client redirect). Ref: ${reference}`,
+            payment_provider_data: {
+              paystack_reference: reference,
+              paystack_metadata: metadata,
+              source: "paystack_verify_route",
+            },
+          });
+          if (bpErr && bpErr.code !== "23505") {
+            console.error("booking_payments insert from verify failed:", bpErr);
+          } else if (!bpErr) {
+            newPaymentRow = true;
+          }
+        }
+      }
+
+      await syncBookingAfterPaystackSuccess(admin, bookingId, {
+        paymentReference: reference,
+        paymentProvider: "paystack",
+      });
+
+      const { data: afterPay } = await admin
+        .from("bookings")
+        .select("payment_status")
+        .eq("id", bookingId)
+        .maybeSingle();
+      const psAfter = ((afterPay?.payment_status as string) || "pending") as string;
+      const paymentJustCleared =
+        paymentStatusBefore === "pending" &&
+        (psAfter === "paid" || psAfter === "partially_paid");
+
+      let providerOwnerUserId: string | null = null;
+      if (booking.provider_id) {
+        const { data: prov } = await supabase
+          .from("providers")
+          .select("user_id")
+          .eq("id", booking.provider_id)
+          .maybeSingle();
+        providerOwnerUserId = prov?.user_id ?? null;
+      }
+
+      if (paymentJustCleared && newPaymentRow) {
+        void import("@/lib/notifications/insert-notification").then(async ({ insertNotifications }) => {
+          const rows = [
+            {
+              user_id: booking.customer_id as string,
+              type: "booking_confirmation",
+              title: "Booking Confirmed",
+              message: `Your booking ${booking.ref_number || booking.booking_number} has been confirmed.`,
+              data: { booking_id: bookingId, amount: data.data.amount / 100 } as Record<string, unknown>,
+              action_url: `/account-settings/bookings/${bookingId}`,
+            },
+            ...(providerOwnerUserId ? [{
+              user_id: providerOwnerUserId as string,
+              type: "new_appointment",
+              title: "New Booking Received",
+              message: `New booking ${booking.ref_number || booking.booking_number} confirmed.`,
+              data: { booking_id: bookingId, amount: data.data.amount / 100 } as Record<string, unknown>,
+              action_url: `/provider/bookings/${bookingId}`,
+            }] : []),
+          ];
+          await insertNotifications(rows);
+        });
+      }
+
+      // Gift card capture (only on first recorded Paystack payment for this tx)
+      if (paymentJustCleared && newPaymentRow && metadata.gift_card_id && metadata.gift_card_amount) {
         const giftCardAmount = parseFloat(metadata.gift_card_amount);
         await supabase.rpc("deduct_gift_card_balance", {
           p_gift_card_id: metadata.gift_card_id,
@@ -183,7 +308,7 @@ export async function GET(request: NextRequest) {
       }
 
       // 4. Deduct loyalty points if used (idempotent: check for existing redemption for this booking)
-      if (metadata.loyalty_points_used && parseInt(metadata.loyalty_points_used) > 0) {
+      if (paymentJustCleared && newPaymentRow && metadata.loyalty_points_used && parseInt(metadata.loyalty_points_used) > 0) {
         const pointsUsed = parseInt(metadata.loyalty_points_used);
         const { data: existing } = await supabase
           .from("loyalty_point_transactions")
@@ -207,7 +332,7 @@ export async function GET(request: NextRequest) {
       }
 
       // 5. Apply coupon usage
-      if (metadata.coupon_code) {
+      if (paymentJustCleared && newPaymentRow && metadata.coupon_code) {
         const { data: promo } = await supabase
           .from("promotions")
           .select("current_uses")
@@ -233,6 +358,8 @@ export async function GET(request: NextRequest) {
         status: "success",
         bookingId: bookingId,
         message: "Payment verified successfully",
+        payment_status: psAfter,
+        duplicate: !newPaymentRow && !paymentJustCleared,
       });
     }
 

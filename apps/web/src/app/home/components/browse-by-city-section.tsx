@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 
@@ -34,7 +35,7 @@ const BrowseByCitySection = () => {
         const response = await fetcher.get<{
           data: { browseByCity: City[] };
           error: null;
-        }>("/api/public/home", { timeoutMs: 10000 });
+        }>("/api/public/home", { timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS });
         setCities(response.data.browseByCity || []);
       } catch (err) {
         const errorMessage =

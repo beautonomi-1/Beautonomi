@@ -17,6 +17,8 @@ import { Loader2, MapPin } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface CityWaitlistModalProps {
   open: boolean;
@@ -51,6 +53,11 @@ export default function CityWaitlistModal({
 
     if (!formData.name.trim()) {
       toast.error("Please enter your name");
+      return;
+    }
+
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
       return;
     }
 
@@ -127,13 +134,12 @@ export default function CityWaitlistModal({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
-              <Input
-                id="phone"
-                type="tel"
+              <PhoneInput
+                inputId="city-waitlist-phone"
+                label="Phone"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+27 123 456 789"
+                onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                placeholder="Phone number"
               />
             </div>
           </div>

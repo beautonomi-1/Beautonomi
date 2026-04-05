@@ -7,6 +7,8 @@
  * All endpoints, types, and utilities aligned with Paystack API requirements
  */
 
+import { toCents, fromCents } from "@beautonomi/utils";
+
 // ============================================================================
 // TYPES & INTERFACES
 // ============================================================================
@@ -611,14 +613,14 @@ export function verifyPaystackConfig(): {
  * Convert amount to Paystack's smallest currency unit (kobo/cents)
  */
 export function convertToSmallestUnit(amount: number): number {
-  return Math.round(amount * 100);
+  return toCents(amount);
 }
 
 /**
  * Convert from Paystack's smallest currency unit to regular amount
  */
 export function convertFromSmallestUnit(amount: number): number {
-  return amount / 100;
+  return fromCents(amount);
 }
 
 /**
@@ -638,10 +640,11 @@ export async function paystackRequest<T = unknown>(
     method?: "GET" | "POST" | "PUT" | "DELETE";
     body?: unknown;
     secretKey?: string;
+    tenantId?: string | null;
   } = {}
 ): Promise<PaystackResponse<T>> {
   const { getPaystackSecretKey } = await import("@/lib/payments/paystack-server");
-  const secretKey = options.secretKey || (await getPaystackSecretKey());
+  const secretKey = options.secretKey || (await getPaystackSecretKey({ tenantId: options.tenantId }));
   
   const url = endpoint.startsWith("http") 
     ? endpoint 
@@ -720,7 +723,8 @@ export async function chargeAuthorization(
   authorizationCode: string,
   email: string,
   amount: number,
-  metadata?: Record<string, unknown>
+  metadata?: Record<string, unknown>,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Transaction>> {
   return paystackRequest("/transaction/charge_authorization", {
     method: "POST",
@@ -730,6 +734,7 @@ export async function chargeAuthorization(
       amount,
       metadata,
     },
+    tenantId: options?.tenantId,
   });
 }
 
@@ -738,11 +743,13 @@ export async function chargeAuthorization(
  */
 
 export async function createSplit(
-  request: CreateSplitRequest
+  request: CreateSplitRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Split>> {
   return paystackRequest("/split", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -753,6 +760,7 @@ export async function listSplits(params?: {
   sortBy?: string;
   from?: string;
   to?: string;
+  tenantId?: string | null;
 }): Promise<PaystackResponse<Split[]>> {
   const queryParams = new URLSearchParams();
   if (params?.perPage) queryParams.append("perPage", params.perPage.toString());
@@ -763,7 +771,9 @@ export async function listSplits(params?: {
   if (params?.to) queryParams.append("to", params.to);
 
   const query = queryParams.toString();
-  return paystackRequest(`/split${query ? `?${query}` : ""}`);
+  return paystackRequest(`/split${query ? `?${query}` : ""}`, {
+    tenantId: params?.tenantId,
+  });
 }
 
 export async function fetchSplit(
@@ -813,11 +823,13 @@ export async function removeSubaccountFromSplit(
  */
 
 export async function createCustomer(
-  request: CreateCustomerRequest
+  request: CreateCustomerRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Customer>> {
   return paystackRequest("/customer", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -838,9 +850,12 @@ export async function listCustomers(params?: {
 }
 
 export async function fetchCustomer(
-  emailOrCode: string
+  emailOrCode: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Customer>> {
-  return paystackRequest(`/customer/${emailOrCode}`);
+  return paystackRequest(`/customer/${emailOrCode}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 export async function updateCustomer(
@@ -882,22 +897,26 @@ export async function blacklistCustomer(
  */
 
 export async function createTransferRecipient(
-  request: CreateTransferRecipientRequest
+  request: CreateTransferRecipientRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<TransferRecipient>> {
   return paystackRequest("/transferrecipient", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
 export async function bulkCreateTransferRecipients(
-  recipients: CreateTransferRecipientRequest[]
+  recipients: CreateTransferRecipientRequest[],
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<TransferRecipient[]>> {
   return paystackRequest("/transferrecipient/bulk", {
     method: "POST",
     body: {
       batch: recipients,
     },
+    tenantId: options?.tenantId,
   });
 }
 
@@ -906,6 +925,7 @@ export async function listTransferRecipients(params?: {
   page?: number;
   from?: string;
   to?: string;
+  tenantId?: string | null;
 }): Promise<PaystackResponse<TransferRecipient[]>> {
   const queryParams = new URLSearchParams();
   if (params?.perPage) queryParams.append("perPage", params.perPage.toString());
@@ -914,30 +934,39 @@ export async function listTransferRecipients(params?: {
   if (params?.to) queryParams.append("to", params.to);
 
   const query = queryParams.toString();
-  return paystackRequest(`/transferrecipient${query ? `?${query}` : ""}`);
+  return paystackRequest(`/transferrecipient${query ? `?${query}` : ""}`, {
+    tenantId: params?.tenantId,
+  });
 }
 
 export async function fetchTransferRecipient(
-  idOrCode: string
+  idOrCode: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<TransferRecipient>> {
-  return paystackRequest(`/transferrecipient/${idOrCode}`);
+  return paystackRequest(`/transferrecipient/${idOrCode}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 export async function updateTransferRecipient(
   idOrCode: string,
-  updates: Partial<CreateTransferRecipientRequest>
+  updates: Partial<CreateTransferRecipientRequest>,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<TransferRecipient>> {
   return paystackRequest(`/transferrecipient/${idOrCode}`, {
     method: "PUT",
     body: updates,
+    tenantId: options?.tenantId,
   });
 }
 
 export async function deleteTransferRecipient(
-  idOrCode: string
+  idOrCode: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<unknown>> {
   return paystackRequest(`/transferrecipient/${idOrCode}`, {
     method: "DELETE",
+    tenantId: options?.tenantId,
   });
 }
 
@@ -946,11 +975,13 @@ export async function deleteTransferRecipient(
  */
 
 export async function createTransfer(
-  request: CreateTransferRequest
+  request: CreateTransferRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Transfer>> {
   return paystackRequest("/transfer", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -961,6 +992,7 @@ export async function listTransfers(params?: {
   status?: string;
   from?: string;
   to?: string;
+  tenantId?: string | null;
 }): Promise<PaystackResponse<Transfer[]>> {
   const queryParams = new URLSearchParams();
   if (params?.perPage) queryParams.append("perPage", params.perPage.toString());
@@ -971,18 +1003,24 @@ export async function listTransfers(params?: {
   if (params?.to) queryParams.append("to", params.to);
 
   const query = queryParams.toString();
-  return paystackRequest(`/transfer${query ? `?${query}` : ""}`);
+  return paystackRequest(`/transfer${query ? `?${query}` : ""}`, {
+    tenantId: params?.tenantId,
+  });
 }
 
 export async function fetchTransfer(
-  idOrCode: string
+  idOrCode: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Transfer>> {
-  return paystackRequest(`/transfer/${idOrCode}`);
+  return paystackRequest(`/transfer/${idOrCode}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 export async function finalizeTransfer(
   transferCode: string,
-  otp: string
+  otp: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Transfer>> {
   return paystackRequest("/transfer/finalize_transfer", {
     method: "POST",
@@ -990,13 +1028,17 @@ export async function finalizeTransfer(
       transfer_code: transferCode,
       otp,
     },
+    tenantId: options?.tenantId,
   });
 }
 
 export async function verifyTransfer(
-  reference: string
+  reference: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Transfer>> {
-  return paystackRequest(`/transfer/verify/${reference}`);
+  return paystackRequest(`/transfer/verify/${reference}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 /**
@@ -1089,11 +1131,13 @@ export async function updateSubaccount(
  */
 
 export async function createPlan(
-  request: CreatePlanRequest
+  request: CreatePlanRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Plan>> {
   return paystackRequest("/plan", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -1127,11 +1171,13 @@ export async function fetchPlan(
 
 export async function updatePlan(
   idOrCode: string,
-  updates: Partial<CreatePlanRequest> & { update_existing_subscriptions?: boolean }
+  updates: Partial<CreatePlanRequest> & { update_existing_subscriptions?: boolean },
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Plan>> {
   return paystackRequest(`/plan/${idOrCode}`, {
     method: "PUT",
     body: updates,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -1140,11 +1186,13 @@ export async function updatePlan(
  */
 
 export async function createSubscription(
-  request: CreateSubscriptionRequest
+  request: CreateSubscriptionRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Subscription>> {
   return paystackRequest("/subscription", {
     method: "POST",
     body: request,
+    tenantId: options?.tenantId,
   });
 }
 
@@ -1171,9 +1219,12 @@ export async function listSubscriptions(params?: {
 }
 
 export async function fetchSubscription(
-  idOrCode: string
+  idOrCode: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Subscription>> {
-  return paystackRequest(`/subscription/${idOrCode}`);
+  return paystackRequest(`/subscription/${idOrCode}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 export async function enableSubscription(
@@ -1191,7 +1242,8 @@ export async function enableSubscription(
 
 export async function disableSubscription(
   code: string,
-  token: string
+  token: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Subscription>> {
   return paystackRequest(`/subscription/disable`, {
     method: "POST",
@@ -1199,6 +1251,7 @@ export async function disableSubscription(
       code,
       token,
     },
+    tenantId: options?.tenantId,
   });
 }
 
@@ -1207,14 +1260,15 @@ export async function disableSubscription(
  * email_token (required by Paystack disable API), then calls disable.
  */
 export async function disableSubscriptionByCode(
-  code: string
+  code: string,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<Subscription>> {
-  const res = await fetchSubscription(code);
+  const res = await fetchSubscription(code, options);
   const emailToken = res.data?.email_token;
   if (!emailToken) {
     throw new Error("Could not get subscription email_token from Paystack");
   }
-  return disableSubscription(code, emailToken);
+  return disableSubscription(code, emailToken, options);
 }
 
 /**
@@ -1519,29 +1573,16 @@ export async function fetchRefund(
  */
 
 export async function verifyAccount(
-  request: VerifyAccountRequest
+  request: VerifyAccountRequest,
+  options?: { tenantId?: string | null }
 ): Promise<PaystackResponse<VerifyAccountResponse>> {
-  const config = getPaystackConfig();
   const queryParams = new URLSearchParams({
     account_number: request.account_number,
     bank_code: request.bank_code,
   });
-
-  const response = await fetch(
-    `${PAYSTACK_API_BASE}/bank/resolve?${queryParams.toString()}`,
-    {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${config.secretKey}`,
-      },
-    }
-  );
-
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || "Verification failed");
-  }
-  return data;
+  return paystackRequest(`/bank/resolve?${queryParams.toString()}`, {
+    tenantId: options?.tenantId,
+  });
 }
 
 export async function listBanks(params?: {
@@ -1554,6 +1595,7 @@ export async function listBanks(params?: {
   gateway?: string;
   type?: string;
   currency?: string;
+  tenantId?: string | null;
 }): Promise<PaystackResponse<unknown[]>> {
   const queryParams = new URLSearchParams();
   if (params?.country) queryParams.append("country", params.country);
@@ -1567,7 +1609,9 @@ export async function listBanks(params?: {
   if (params?.currency) queryParams.append("currency", params.currency);
 
   const query = queryParams.toString();
-  return paystackRequest(`/bank${query ? `?${query}` : ""}`);
+  return paystackRequest(`/bank${query ? `?${query}` : ""}`, {
+    tenantId: params?.tenantId,
+  });
 }
 
 export async function verifyBVN(

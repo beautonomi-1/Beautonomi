@@ -4,6 +4,7 @@ import { canAccessReport } from "@/lib/subscriptions/report-gating";
 import { createClient } from "@supabase/supabase-js";
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -53,25 +54,33 @@ export async function GET(request: NextRequest) {
     const monthEnd = endOfMonth(now);
 
     // Get provider revenue from finance_transactions for different periods
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     const { totalRevenue: todayRevenue } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       startOfToday,
-      endOfToday
+      endOfToday,
+      null,
+      dashOpts
     );
 
     const { totalRevenue: weekRevenue } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       weekStart,
-      weekEnd
+      weekEnd,
+      null,
+      dashOpts
     );
 
     const { totalRevenue: monthRevenue } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       monthStart,
-      monthEnd
+      monthEnd,
+      null,
+      dashOpts
     );
 
     // Get bookings for different periods (for counts and status)

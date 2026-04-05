@@ -7,6 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Plus, User, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface GroupGuest {
   id: string;
@@ -28,6 +32,7 @@ export default function GroupAppointmentBooking({
   availableServices,
   maxGuests = 10,
 }: GroupAppointmentBookingProps) {
+  const { format: fmt } = useReportCurrency();
   const [guests, setGuests] = useState<GroupGuest[]>([
     {
       id: "1",
@@ -201,7 +206,7 @@ export default function GroupAppointmentBooking({
                         <div>
                           <p className="font-medium text-sm">{service.name}</p>
                           <p className="text-xs text-gray-600">
-                            {service.duration} min • ZAR {service.price}
+                            {service.duration} min • {fmt(service.price)}
                           </p>
                         </div>
                         {guest.services.includes(service.id) && (
@@ -249,7 +254,7 @@ export default function GroupAppointmentBooking({
             </div>
             <div className="text-right">
               <p className="text-sm text-gray-600">Total Price</p>
-              <p className="text-xl font-semibold">ZAR {totalPrice.toFixed(2)}</p>
+              <p className="text-xl font-semibold">{fmt(totalPrice)}</p>
             </div>
           </div>
         </CardContent>
@@ -294,15 +299,12 @@ export default function GroupAppointmentBooking({
             </div>
 
             <div>
-              <Label htmlFor="guest-phone">Phone (Optional)</Label>
-              <Input
-                id="guest-phone"
-                type="tel"
+              <PhoneInput
+                inputId="group-appointment-guest-phone"
+                label="Phone (Optional)"
                 value={guestForm.phone}
-                onChange={(e) =>
-                  setGuestForm({ ...guestForm, phone: e.target.value })
-                }
-                placeholder="+27 11 123 4567"
+                onChange={(e164) => setGuestForm({ ...guestForm, phone: e164 })}
+                placeholder="Phone number"
               />
             </div>
 

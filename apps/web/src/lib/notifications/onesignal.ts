@@ -8,9 +8,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
-import { getOneSignalRestApiKey, getOneSignalConfig, type OneSignalAppType } from "@/lib/platform/secrets";
-
-const ONESIGNAL_APP_ID = process.env.ONESIGNAL_APP_ID;
+import { resolveOneSignalCredentials, type OneSignalAppType } from "@/lib/platform/secrets";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -63,16 +61,18 @@ export async function verifyOneSignalConfig(): Promise<{
   missing: string[];
 }> {
   const missing: string[] = [];
-  
-  if (!ONESIGNAL_APP_ID) {
-    missing.push("ONESIGNAL_APP_ID");
+  const legacy = await resolveOneSignalCredentials(undefined);
+  if (!legacy.appId) {
+    missing.push(
+      "ONESIGNAL_APP_ID or ONESIGNAL_APP_ID_CUSTOMER or platform_settings.settings.onesignal.app_id"
+    );
   }
-  
-  const restKey = await getOneSignalRestApiKey();
-  if (!restKey) {
-    missing.push("ONESIGNAL_REST_API_KEY");
+  if (!legacy.restKey) {
+    missing.push(
+      "ONESIGNAL_REST_API_KEY (or _CUSTOMER) or platform_secrets.onesignal_rest_api_key / onesignal_rest_api_key_provider"
+    );
   }
-  
+
   return {
     configured: missing.length === 0,
     missing,
@@ -182,16 +182,9 @@ async function sendOneSignalNotification(
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
   const appType = options?.appType;
-  let appId: string | null;
-  let restKey: string | null;
-  if (appType) {
-    const c = getOneSignalConfig(appType);
-    appId = c.appId;
-    restKey = c.restApiKey;
-  } else {
-    appId = ONESIGNAL_APP_ID ?? null;
-    restKey = await getOneSignalRestApiKey();
-  }
+  const resolved = await resolveOneSignalCredentials(appType);
+  const appId = resolved.appId;
+  const restKey = resolved.restKey;
   if (!appId || !restKey) {
     console.warn("OneSignal API keys not configured. Skipping notification send.");
     await logNotification({
@@ -506,33 +499,72 @@ export async function sendToSegment(
 }
 
 /**
- * Get notification template by key
+ * Get notification template by key with tenant-aware resolution.
+ * Priority: tenant-specific template > global template (tenant_id IS NULL).
+ * Uses `.maybeSingle()` per query to avoid .single() throwing when no row is found.
+ *
+ * @param key - Template key, e.g. "booking_confirmed"
+ * @param supabaseClient - Optional admin/server client for background jobs.
+ * @param tenantId - Optional tenant ID to check for tenant-specific overrides first.
  */
-export async function getNotificationTemplate(key: string): Promise<any> {
-  const supabase = await getSupabaseServer();
+export async function getNotificationTemplate(
+  key: string,
+  supabaseClient?: any,
+  tenantId?: string | null
+): Promise<any> {
+  const supabase = supabaseClient ?? (await getSupabaseServer());
 
-  const { data: template } = await supabase
+  // 1. If tenantId provided, try tenant-specific template first
+  if (tenantId) {
+    const { data: tenantTemplate } = await supabase
+      .from("notification_templates")
+      .select("*")
+      .eq("key", key)
+      .eq("tenant_id", tenantId)
+      .eq("enabled", true)
+      .maybeSingle();
+
+    if (tenantTemplate) return tenantTemplate;
+  }
+
+  // 2. Fall back to global template (tenant_id IS NULL)
+  const { data: globalTemplate } = await supabase
     .from("notification_templates")
     .select("*")
     .eq("key", key)
+    .is("tenant_id", null)
     .eq("enabled", true)
-    .single();
+    .maybeSingle();
 
-  return template;
+  return globalTemplate ?? null;
 }
+
+/** Extended send options including tenant scope for template resolution. */
+export type SendTemplateOptions = OneSignalSendOptions & {
+  /** Tenant ID used to prefer tenant-specific templates over global ones. */
+  tenantId?: string | null;
+};
 
 /**
  * Send notification using a template.
  * @param options.appType - When set, only devices for that app are used and that app's OneSignal config is used.
+ * @param options.tenantId - Used to resolve tenant-specific template overrides before the global fallback.
  */
 export async function sendTemplateNotification(
   templateKey: string,
   userIds: string[],
   variables: Record<string, string> = {},
   channels: NotificationChannel[] = ["push"],
-  options?: OneSignalSendOptions
+  options?: SendTemplateOptions
 ): Promise<SendNotificationResult> {
-  const template = await getNotificationTemplate(templateKey);
+  const templateClient =
+    options?.supabaseClient ??
+    (options?.appType === "provider" ? getSupabaseAdmin() : undefined);
+  const template = await getNotificationTemplate(
+    templateKey,
+    templateClient,
+    options?.tenantId
+  );
 
   if (!template) {
     return {
@@ -554,6 +586,25 @@ export async function sendTemplateNotification(
     emailSubject = emailSubject.replace(regex, value);
     emailBody = emailBody.replace(regex, value);
     smsBody = smsBody.replace(regex, value);
+  });
+
+  let templateUrl = template.url ? String(template.url) : "";
+  Object.entries(variables).forEach(([key, value]) => {
+    templateUrl = templateUrl.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
+  });
+  if (templateUrl.startsWith("/")) {
+    const origin =
+      typeof process.env.NEXT_PUBLIC_APP_URL === "string"
+        ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
+        : "";
+    if (origin) {
+      templateUrl = `${origin}${templateUrl}`;
+    }
+  }
+
+  let templateImage = template.image ? String(template.image) : "";
+  Object.entries(variables).forEach(([key, value]) => {
+    templateImage = templateImage.replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), value);
   });
 
   const activeChannels =
@@ -578,10 +629,60 @@ export async function sendTemplateNotification(
   if (activeChannels.includes("sms")) {
     notificationPayload.sms_body = smsBody;
   }
-  if (template.url) notificationPayload.url = template.url;
-  if (template.image) notificationPayload.big_picture = template.image;
+  if (templateUrl) notificationPayload.url = templateUrl;
+  if (templateImage) notificationPayload.big_picture = templateImage;
   if (template.onesignal_template_id) {
     notificationPayload.template_id = template.onesignal_template_id;
+  }
+
+  // Auto-create in-app bell rows for every template notification so the bell
+  // badge and inbox populate regardless of whether OneSignal push is configured.
+  // Skips purely transactional/auth flows that don't belong in the notification inbox.
+  const SKIP_IN_APP_TEMPLATES = new Set([
+    "email_verification",
+    "password_reset",
+    "otp_verification",
+    "weather_alert",
+    "safety_alert",
+    "safety_check_in",
+  ]);
+  if (!SKIP_IN_APP_TEMPLATES.has(templateKey) && userIds.length > 0 && (title || body)) {
+    // Pull well-known context IDs out of template variables
+    const inAppData: Record<string, unknown> = { template_key: templateKey };
+    const WELL_KNOWN_VARS = [
+      "booking_id", "conversation_id", "order_id", "request_id",
+      "review_id", "dispute_id", "payment_id", "ticket_id", "campaign_id",
+      "booking_number", "provider_name", "customer_name",
+    ];
+    WELL_KNOWN_VARS.forEach((k) => {
+      if (variables[k]) inAppData[k] = variables[k];
+    });
+
+    // Derive a clean action_url from the resolved template URL
+    let actionUrl: string | undefined;
+    if (templateUrl) {
+      try {
+        actionUrl = templateUrl.startsWith("/")
+          ? templateUrl
+          : new URL(templateUrl).pathname;
+      } catch {
+        actionUrl = templateUrl;
+      }
+    }
+
+    // Fire-and-forget: never block the push send on DB insert latency
+    void import("@/lib/notifications/insert-notification").then(({ insertNotifications }) =>
+      insertNotifications(
+        userIds.map((userId) => ({
+          user_id: userId,
+          type: templateKey,
+          title: title || templateKey,
+          message: body || title || "",
+          data: inAppData,
+          action_url: actionUrl,
+        }))
+      )
+    );
   }
 
   // When appType is set, target only devices for that app (player_ids + correct app config).

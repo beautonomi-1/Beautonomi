@@ -1,144 +1,105 @@
-"use client";
-
-import React, { useState, useEffect, useMemo } from "react";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { motion } from "framer-motion";
+import { notFound } from "next/navigation";
 import { marked } from "marked";
-import { Button } from "@/components/ui/button";
-import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
+import { ChevronRight } from "lucide-react";
+import { getLearnArticle } from "@/lib/data/getLearnArticle";
+import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 import { LearnBreadcrumb } from "../../components/learn-breadcrumb";
-import { ThumbsUp, ThumbsDown, Check, ChevronRight } from "lucide-react";
+import ArticleFeedback from "./article-feedback";
 
-interface RelatedArticle {
-  id: string;
-  title: string;
-  slug: string;
-  summary: string | null;
-}
+export const revalidate = 600;
 
-interface ArticleData {
-  id: string;
-  title: string;
-  slug: string;
-  summary: string | null;
-  body: string;
-  content_format: string;
-  published_at: string | null;
-  image_url?: string | null;
-  learning_categories?: { id: string; title: string; slug: string };
-  parents?: string[];
-  parent_slugs?: string[];
-  stats?: { view_count: number; helpful_yes_count: number; helpful_no_count: number };
-  related_articles?: RelatedArticle[];
-}
+type Params = Promise<{ slug: string }>;
 
-export default function LearnArticlePage() {
-  const params = useParams();
-  const slug = params.slug as string;
-  const [article, setArticle] = useState<ArticleData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [feedbackSent, setFeedbackSent] = useState<boolean | null>(null);
-
-  useEffect(() => {
-    if (!slug) return;
-    fetch(`/api/public/learn/article/${encodeURIComponent(slug)}`)
-      .then((r) => r.json())
-      .then((res) => setArticle(res.data ?? null))
-      .catch(() => setArticle(null))
-      .finally(() => setLoading(false));
-  }, [slug]);
-
-  useEffect(() => {
-    if (!article) return;
-    const title = `${article.title} · Learning Center`;
-    const desc = article.summary?.trim() ?? "";
-    const canonicalUrl =
-      typeof window !== "undefined"
-        ? `${window.location.origin}/learn/article/${encodeURIComponent(article.slug)}`
-        : "";
-    const imageUrl = article.image_url?.trim() || "";
-
-    document.title = title;
-
-    const setMeta = (attr: "name" | "property", key: string, content: string) => {
-      if (!content) return;
-      let el = document.querySelector(`meta[${attr}="${key}"]`);
-      if (!el) {
-        el = document.createElement("meta");
-        el.setAttribute(attr, key);
-        el.setAttribute("data-learn-article", "1");
-        document.head.appendChild(el);
-      }
-      el.setAttribute("content", content);
-    };
-    const removeMeta = (attr: "name" | "property", key: string) => {
-      const el = document.querySelector(`meta[${attr}="${key}"][data-learn-article="1"]`);
-      if (el) el.remove();
-    };
-
-    if (desc) setMeta("name", "description", desc);
-    setMeta("property", "og:title", title);
-    if (desc) setMeta("property", "og:description", desc);
-    setMeta("property", "og:type", "article");
-    if (canonicalUrl) setMeta("property", "og:url", canonicalUrl);
-    if (imageUrl) setMeta("property", "og:image", imageUrl);
-    setMeta("name", "twitter:card", imageUrl ? "summary_large_image" : "summary");
-    setMeta("name", "twitter:title", title);
-    if (desc) setMeta("name", "twitter:description", desc);
-    if (imageUrl) setMeta("name", "twitter:image", imageUrl);
-
-    return () => {
-      document.title = "Learning Center";
-      removeMeta("name", "description");
-      ["og:title", "og:description", "og:type", "og:url", "og:image"].forEach((k) => removeMeta("property", k));
-      ["twitter:card", "twitter:title", "twitter:description", "twitter:image"].forEach((k) => removeMeta("name", k));
-    };
-  }, [article]);
-
-  const sendFeedback = async (helpful: boolean) => {
-    if (feedbackSent !== null) return;
-    try {
-      await fetch(`/api/public/learn/article/${encodeURIComponent(slug)}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ helpful }),
-      });
-      setFeedbackSent(helpful);
-    } catch {
-      setFeedbackSent(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="flex justify-center py-4">
-          <BeautonomiLoadingIcon size={48} />
-        </div>
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 w-2/3 bg-zinc-200 rounded-xl" />
-          <div className="h-4 w-1/2 bg-zinc-100 rounded-xl" />
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="h-4 bg-zinc-100 rounded-xl" />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { slug } = await params;
+  const article = await getLearnArticle(slug);
+  const origin = await getPublicSiteOriginFromHeaders();
+  const path = `/learn/article/${encodeURIComponent(slug)}`;
 
   if (!article) {
-    return (
-      <div>
-        <p className="text-sm text-zinc-600">Article not found.</p>
-        <Link href="/learn" className="text-[#ff0077] underline mt-2 inline-block text-sm">
-          Back to Learning Center
-        </Link>
-      </div>
-    );
+    return {
+      title: "Article Not Found · Learning Center",
+      description: "The article you're looking for doesn't exist.",
+    };
   }
+
+  const title = `${article.title} · Learning Center`;
+  const description = article.summary?.trim() || `Read ${article.title} on the Beautonomi Learning Center.`;
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `${origin}${path}`,
+      languages: getHreflangAlternateUrls(path),
+    },
+    openGraph: {
+      title,
+      description,
+      url: `${origin}${path}`,
+      siteName: "Beautonomi",
+      type: "article",
+      ...(article.image_url ? { images: [{ url: article.image_url }] } : {}),
+    },
+    twitter: {
+      card: article.image_url ? "summary_large_image" : "summary",
+      title,
+      description,
+      ...(article.image_url ? { images: [article.image_url] } : {}),
+    },
+  };
+}
+
+type TocItem = { id: string; text: string; level: number };
+
+function processArticleBody(body: string, contentFormat: string): { html: string; toc: TocItem[] } {
+  const rawHtml = contentFormat === "markdown" ? (marked.parse(body) as string) : body;
+
+  const slugify = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "") || "section";
+
+  const tocOut: TocItem[] = [];
+  let counter = 0;
+  const withIds = rawHtml.replace(
+    /<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi,
+    (_match: string, level: string, attrs: string, content: string) => {
+      const text = content.replace(/<[^>]+>/g, "").trim();
+      const id = text ? slugify(text) : `section-${++counter}`;
+      tocOut.push({ id, text: text || "Section", level: parseInt(level, 10) });
+      const existingId = attrs.match(/\bid=["']([^"']+)["']/i);
+      const finalId = existingId ? existingId[1] : id;
+      const newAttrs = existingId ? attrs : (attrs.trim() ? `${attrs} ` : "") + `id="${finalId}"`;
+      return `<h${level} ${newAttrs.trim()}>${content}</h${level}>`;
+    },
+  );
+
+  const withEmbeds = withIds.replace(
+    /<iframe([^>]*)>([\s\S]*?)<\/iframe>/gi,
+    (_m: string, attrs: string, inner: string) =>
+      `<div class="learn-embed-video"><iframe${attrs}>${inner}</iframe></div>`,
+  );
+
+  return { html: withEmbeds, toc: tocOut };
+}
+
+export default async function LearnArticlePage({ params }: { params: Params }) {
+  const { slug } = await params;
+  const article = await getLearnArticle(slug);
+
+  if (!article) {
+    notFound();
+  }
+
+  const { html, toc } = processArticleBody(article.body || "", article.content_format);
 
   const cat = article.learning_categories;
   const publishedAt = article.published_at
@@ -149,44 +110,6 @@ export default function LearnArticlePage() {
       })
     : null;
   const readMins = article.body ? Math.max(1, Math.ceil(article.body.split(/\s+/).length / 200)) : null;
-
-  const bodyHtml = useMemo(() => {
-    if (!article.body) return "";
-    return article.content_format === "markdown"
-      ? (marked.parse(article.body) as string)
-      : article.body;
-  }, [article.body, article.content_format]);
-
-  const { htmlWithHeadingIds, toc } = useMemo(() => {
-    const slugify = (s: string) =>
-      s
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, "-")
-        .replace(/[^a-z0-9-]/g, "")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "") || "section";
-    const toc: { id: string; text: string; level: number }[] = [];
-    let counter = 0;
-    const html = bodyHtml.replace(
-      /<h([23])([^>]*)>([\s\S]*?)<\/h\1>/gi,
-      (_match, level: string, attrs: string, content: string) => {
-        const text = content.replace(/<[^>]+>/g, "").trim();
-        const id = text ? slugify(text) : `section-${++counter}`;
-        toc.push({ id, text: text || "Section", level: parseInt(level, 10) });
-        const existingId = attrs.match(/\bid=["']([^"']+)["']/i);
-        const finalId = existingId ? existingId[1] : id;
-        const newAttrs = existingId ? attrs : (attrs.trim() ? `${attrs} ` : "") + `id="${finalId}"`;
-        return `<h${level} ${newAttrs.trim()}>${content}</h${level}>`;
-      }
-    );
-    const withEmbedWrappers = html.replace(
-      /<iframe([^>]*)>([\s\S]*?)<\/iframe>/gi,
-      (_m: string, attrs: string, inner: string) =>
-        `<div class="learn-embed-video"><iframe${attrs}>${inner}</iframe></div>`
-    );
-    return { htmlWithHeadingIds: withEmbedWrappers, toc };
-  }, [bodyHtml]);
 
   return (
     <article className="space-y-6 max-w-3xl">
@@ -207,12 +130,9 @@ export default function LearnArticlePage() {
       )}
 
       {article.image_url && (
-        <div className="rounded-lg overflow-hidden bg-zinc-100">
-          <img
-            src={article.image_url}
-            alt=""
-            className="w-full h-auto object-cover max-h-[320px]"
-          />
+        <div className="relative w-full overflow-hidden rounded-lg bg-zinc-100 aspect-[16/10] max-h-[320px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={article.image_url} alt="" className="h-full w-full object-cover" />
         </div>
       )}
 
@@ -251,7 +171,6 @@ export default function LearnArticlePage() {
           "learn-article-body prose prose-zinc prose-sm max-w-none",
           "prose-headings:text-black prose-p:text-zinc-700 prose-a:text-[#ff0077]",
           "prose-p:my-3 first:prose-p:mt-0",
-          // Embedded media: match article text margins, stay in context, rounded
           "[&_img]:block [&_img]:w-full [&_img]:max-w-full [&_img]:h-auto [&_img]:my-5 [&_img]:rounded-lg [&_img]:object-contain [&_img]:bg-zinc-100",
           "[&_video]:block [&_video]:w-full [&_video]:max-w-full [&_video]:my-5 [&_video]:rounded-lg [&_video]:bg-zinc-100",
           "[&_iframe]:block [&_iframe]:w-full [&_iframe]:max-w-full [&_iframe]:my-5 [&_iframe]:rounded-lg [&_iframe]:min-h-[200px]",
@@ -262,7 +181,7 @@ export default function LearnArticlePage() {
           "[&_figure_img]:my-0 [&_figure_img]:w-full [&_figure_img]:max-w-full [&_figure_img]:h-auto [&_figure_img]:rounded-t-lg",
           "[&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:text-zinc-500 [&_figcaption]:text-center [&_figcaption]:italic",
         ].join(" ")}
-        dangerouslySetInnerHTML={{ __html: htmlWithHeadingIds }}
+        dangerouslySetInnerHTML={{ __html: html }}
       />
 
       {(article.related_articles?.length ?? 0) > 0 && (
@@ -278,57 +197,14 @@ export default function LearnArticlePage() {
                   <span className="flex-1 min-w-0">{r.title}</span>
                   <ChevronRight className="w-4 h-4 shrink-0 opacity-70 group-hover:opacity-100" />
                 </Link>
-                {r.summary && (
-                  <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{r.summary}</p>
-                )}
+                {r.summary && <p className="text-xs text-zinc-500 mt-0.5 line-clamp-2">{r.summary}</p>}
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      <section className="pt-6 border-t border-zinc-200/50">
-        <p className="text-sm font-medium text-black mb-2">Was this helpful?</p>
-        <div className="flex gap-2 flex-wrap items-center">
-          <motion.div whileTap={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
-            <Button
-              variant={feedbackSent === true ? "default" : "outline"}
-              size="sm"
-              className={feedbackSent === true ? "bg-[#ff0077] hover:bg-[#ff0077]/90" : "border-zinc-200/50 active:scale-[1.02]"}
-              onClick={() => sendFeedback(true)}
-              disabled={feedbackSent !== null}
-            >
-              <ThumbsUp className="h-4 w-4 mr-1" />
-              Yes
-            </Button>
-          </motion.div>
-          <motion.div whileTap={{ scale: 1.05 }} transition={{ type: "spring", stiffness: 400, damping: 17 }}>
-            <Button
-              variant={feedbackSent === false ? "secondary" : "outline"}
-              size="sm"
-              className="border-zinc-200/50 active:scale-[1.02]"
-              onClick={() => sendFeedback(false)}
-              disabled={feedbackSent !== null}
-            >
-              <ThumbsDown className="h-4 w-4 mr-1" />
-              No
-            </Button>
-          </motion.div>
-          {feedbackSent !== null && (
-            <motion.div
-              className="flex items-center gap-2 text-zinc-600"
-              initial={{ opacity: 0, scale: 0.5 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ type: "spring", stiffness: 300, damping: 20 }}
-            >
-              <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600">
-                <Check className="h-4 w-4" />
-              </span>
-              <span className="text-xs">Thanks for your feedback.</span>
-            </motion.div>
-          )}
-        </div>
-      </section>
+      <ArticleFeedback slug={slug} />
     </article>
   );
 }

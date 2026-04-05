@@ -4,7 +4,7 @@ import { View, Text, ActivityIndicator } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, isScreenshotMode } from "@/config/public-env";
 
 const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PORTAL_CHECK_DELAY_MS = 400;
@@ -53,6 +53,8 @@ export default function Index() {
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   const [profileState, setProfileState] = useState<"idle" | "loading" | "complete" | "incomplete" | "error">("idle");
   const [profileCompletionData, setProfileCompletionData] = useState<ProfileCompletion | null>(null);
+  /** null = still checking; false = must complete customer onboarding wizard */
+  const [customerOnboardingDone, setCustomerOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
     if (loading || !session || !APP_URL?.trim()) {
@@ -101,9 +103,40 @@ export default function Index() {
     };
   }, [session, loading]);
 
-  // Phase 2: profile completion (only when portal is customer)
+  // Customer onboarding (web + native): server is source of truth before sending users home.
+  useEffect(() => {
+    if (portalState !== "customer" || !session || !APP_URL?.trim()) {
+      setCustomerOnboardingDone(null);
+      return;
+    }
+    if (isScreenshotMode()) {
+      setCustomerOnboardingDone(true);
+      return;
+    }
+
+    let cancelled = false;
+    setCustomerOnboardingDone(null);
+
+    api
+      .get<{ completed?: boolean }>("/api/me/onboarding/complete")
+      .then((res) => {
+        if (cancelled) return;
+        if (res.error) setCustomerOnboardingDone(true);
+        else setCustomerOnboardingDone(res.data?.completed === true);
+      })
+      .catch(() => {
+        if (!cancelled) setCustomerOnboardingDone(true);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [portalState, session]);
+
+  // Phase 2: profile completion (only when portal is customer and onboarding finished)
   useEffect(() => {
     if (portalState !== "customer" || !session || !APP_URL?.trim()) return;
+    if (customerOnboardingDone !== true) return;
 
     let cancelled = false;
     setProfileState("loading");
@@ -132,7 +165,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
-  }, [portalState, session]);
+  }, [portalState, session, customerOnboardingDone]);
 
   if (loading || (session && portalState === "idle") || portalState === "loading") {
     return (
@@ -164,6 +197,32 @@ export default function Index() {
           signOut();
         }}
       />
+    );
+  }
+
+  if (portalState === "customer" && session && isScreenshotMode()) {
+    return <Redirect href="/(app)/(tabs)/home" />;
+  }
+
+  if (portalState === "customer" && session && customerOnboardingDone === false) {
+    return <Redirect href="/(app)/onboarding" />;
+  }
+
+  // Onboarding status loading
+  if (portalState === "customer" && session && customerOnboardingDone === null && !isScreenshotMode()) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "#fff",
+          minHeight: 400,
+        }}
+      >
+        <ActivityIndicator size="large" color="#4B5563" />
+        <Text style={{ marginTop: 16, fontSize: 16, color: "#4B5563" }}>Loading…</Text>
+      </View>
     );
   }
 

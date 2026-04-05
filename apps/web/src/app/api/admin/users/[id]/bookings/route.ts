@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +16,7 @@ export async function GET(
       return successResponse([]);
     }
 
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     // Fetch bookings for the user - check both user_id and customer_id columns
@@ -30,6 +32,7 @@ export async function GET(
         provider_id,
         service_id
       `)
+      .eq("tenant_id", tenantId)
       .or(`customer_id.eq.${id},user_id.eq.${id}`)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -48,6 +51,7 @@ export async function GET(
       ? await supabase
           .from("providers")
           .select("id, business_name, full_name")
+          .eq("tenant_id", tenantId)
           .in("id", providerIds)
       : { data: [] };
 

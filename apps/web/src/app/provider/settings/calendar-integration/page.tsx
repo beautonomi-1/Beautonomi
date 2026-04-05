@@ -28,6 +28,7 @@ import { format } from "date-fns";
 export default function CalendarIntegrationPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+
   const [syncs, setSyncs] = useState<CalendarSync[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);

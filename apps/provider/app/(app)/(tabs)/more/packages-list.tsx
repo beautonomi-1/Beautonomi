@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   FlatList,
   RefreshControl,
-  Alert,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,7 +17,6 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { Colors } from "@/constants/colors";
-import { APP_URL } from "@/config/public-env";
 
 interface PackageItem {
   id: string;
@@ -69,24 +67,7 @@ export default function PackagesListScreen() {
 
   const handleCreatePackage = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    Alert.alert(
-      "Create package",
-      "Package creation with full editor is available on the web portal. Open the web app to create and edit packages.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Open web",
-          onPress: () => {
-            const base = APP_URL?.trim() || "https://app.beautonomi.com";
-            const url = `${base.replace(/\/$/, "")}/provider/packages/new`;
-            router.push({
-              pathname: "/(app)/(tabs)/more/in-app-browser",
-              params: { url: encodeURIComponent(url), title: "New package" },
-            } as never);
-          },
-        },
-      ]
-    );
+    router.push("/(app)/(tabs)/more/packages" as never);
   }, [router]);
 
   const renderPackageRow = (pkg: ServicePackage) => {
@@ -186,8 +167,8 @@ export default function PackagesListScreen() {
         <EmptyState
           icon="gift-outline"
           title="No packages"
-          description="Create service packages to offer bundled services at discounted rates. Use the web app to create and edit packages."
-          actionLabel="Create package (web)"
+          description="Create service packages to offer bundled services at discounted rates."
+          actionLabel="Create package"
           onAction={handleCreatePackage}
         />
       ) : (

@@ -5,6 +5,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { User, UserRole } from "@/types/beautonomi";
 import type { Session } from "@supabase/supabase-js";
+import { scheduleRetentionSyncOnSession } from "@/lib/retention/client-sync";
+import { clearFetcherCache } from "@/lib/http/fetcher";
 
 interface AuthContextType {
   user: User | null;
@@ -20,6 +22,42 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const ROLE_FETCH_TIMEOUT_MS = 5000;
+const SESSION_RECHECK_TIMEOUT_MS = 4000;
+
+function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | null> {
+  return Promise.race<T | null>([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
+  ]);
+}
+
+async function fetchRoleWithTimeout(
+  url: string,
+  timeoutMs: number = ROLE_FETCH_TIMEOUT_MS
+): Promise<UserRole | null> {
+  try {
+    const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timeout = setTimeout(() => controller?.abort(), timeoutMs);
+    try {
+      const response = await raceWithTimeout(
+        fetch(url, {
+          credentials: "include",
+          signal: controller?.signal,
+        }),
+        timeoutMs
+      );
+      if (!response || !response.ok) return null;
+      const json = (await response.json()) as { data?: { role?: UserRole } };
+      return json?.data?.role ?? null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  } catch {
+    return null;
+  }
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const userRef = useRef<User | null>(null);
@@ -83,6 +121,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         localStorage.removeItem('beautonomi_auth_cache');
         localStorage.removeItem('beautonomi_session_cache');
+        const sessionKeysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i += 1) {
+          const key = sessionStorage.key(i);
+          if (!key) continue;
+          if (
+            key === "provider_dashboard_stats" ||
+            key.startsWith("provider_dashboard_stats_") ||
+            key.startsWith("provider_dashboard_stats:")
+          ) {
+            sessionKeysToRemove.push(key);
+          }
+        }
+        sessionKeysToRemove.forEach((key) => sessionStorage.removeItem(key));
       } catch {
         // Ignore errors
       }
@@ -224,85 +275,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return mockUser;
       }
 
-      // Get session and refresh if needed - with timeout to prevent hanging
-      let currentSession = null;
-      
-      // Add timeout to getSession to prevent infinite loading
-      const sessionTimeout = new Promise<{ data: { session: null }, error: null }>((resolve) => {
-        setTimeout(() => {
-          resolve({ data: { session: null }, error: null });
-        }, 3000); // 3 second timeout
-      });
+      // Get session — never treat a timer race as "logged out". The old pattern raced getSession()
+      // against `{ session: null }`; when the tab was backgrounded, getSession often lost the race
+      // and users were cleared even though cookies still had a valid session.
+      const SESSION_GET_TIMEOUT_MS = 12000;
+      const SESSION_GET_TIMEOUT = Symbol("supabase_get_session_timeout");
 
-      let sessionPromise: Promise<any>;
+      let getSessionPromise: ReturnType<typeof supabase.auth.getSession>;
       try {
-        sessionPromise = supabase.auth.getSession();
+        getSessionPromise = supabase.auth.getSession();
       } catch (error) {
         console.warn("Error creating session promise, Supabase client may be stale:", error);
-        // If Supabase client is stale, try to get a fresh one
         const freshSupabase = getSupabaseClient();
         if (!freshSupabase) throw error;
-        sessionPromise = freshSupabase.auth.getSession();
+        getSessionPromise = freshSupabase.auth.getSession();
       }
 
-      const sessionResult = await Promise.race([sessionPromise, sessionTimeout]);
-      
-      const { data: { session: initialSession }, error: sessionError } = sessionResult as any;
-      
-      if (sessionError) {
-        console.error("Error getting session:", sessionError);
-        // Only clear state if this is a real error, not a timeout
-        // Timeouts might just mean slow network, not actual logout
-        if (sessionError.message !== 'timeout' && sessionError.code !== 'PGRST301') {
-          setSession(null);
-          setUser(null);
-          setRole(null);
-          setIsEmailVerified(false);
-        }
-        setIsLoading(false);
-        
-        // Resolve pending callbacks with current user if available
-        const result = userRef.current; // Return current user instead of null on timeout
-        pendingRefreshCallbacks.current.forEach(cb => cb.resolve(result));
-        pendingRefreshCallbacks.current = [];
-        refreshInProgress.current = false;
-        
-        return result;
-      }
+      const sessionRace = await Promise.race([
+        getSessionPromise.then((r) => ({ kind: "result" as const, r })),
+        new Promise<{ kind: typeof SESSION_GET_TIMEOUT }>((resolve) =>
+          setTimeout(() => resolve({ kind: SESSION_GET_TIMEOUT }), SESSION_GET_TIMEOUT_MS)
+        ),
+      ]);
 
-      currentSession = initialSession;
+      let currentSession: Session | null = null;
 
-      // If we have a session, try to refresh it to ensure it's valid
-      // But don't block if refresh fails - use existing session
-      if (currentSession) {
-        try {
-          // Add timeout to refresh to prevent hanging
-          const refreshTimeout = new Promise<{ data: { session: null }, error: { message: 'timeout' } }>((resolve) => {
-            setTimeout(() => {
-              resolve({ data: { session: null }, error: { message: 'timeout' } });
-            }, 2000); // 2 second timeout for refresh
-          });
-
-          const refreshPromise = supabase.auth.refreshSession();
-          const refreshResult = await Promise.race([refreshPromise, refreshTimeout]);
-          
-          const { data: { session: refreshedSession }, error: refreshError } = refreshResult as any;
-          
-          if (!refreshError && refreshedSession) {
-            currentSession = refreshedSession;
-          } else if (refreshError) {
-            // If refresh fails or times out, continue with existing session
-            // The API will handle expired tokens
-            if (refreshError.message !== 'timeout') {
-              console.warn("Session refresh failed:", refreshError);
-            }
-            // Continue with existing session - let the API handle expired tokens
+      if (sessionRace.kind === SESSION_GET_TIMEOUT) {
+        if (userRef.current || sessionRef.current) {
+          if (process.env.NODE_ENV === "development") {
+            console.warn(
+              "[auth] getSession() slow (e.g. after switching tabs) — keeping existing session; retrying in background"
+            );
           }
-        } catch (refreshError) {
-          console.warn("Error refreshing session:", refreshError);
-          // Continue with existing session
+          setIsLoading(false);
+          refreshInProgress.current = false;
+          const preserved = userRef.current;
+          pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(preserved));
+          pendingRefreshCallbacks.current = [];
+          void getSessionPromise
+            .then(({ data: { session: s } }) => {
+              if (s?.user) {
+                setSession(s);
+                refreshUser().catch(() => {});
+              }
+            })
+            .catch(() => {});
+          return preserved;
         }
+        const late = await raceWithTimeout(getSessionPromise, SESSION_RECHECK_TIMEOUT_MS);
+        if (!late) {
+          setIsLoading(false);
+          refreshInProgress.current = false;
+          const result = userRef.current;
+          pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(result));
+          pendingRefreshCallbacks.current = [];
+          return result;
+        }
+        if (late.error) {
+          console.error("Error getting session:", late.error);
+          if (late.error.message !== "timeout" && late.error.code !== "PGRST301") {
+            setSession(null);
+            setUser(null);
+            setRole(null);
+            setIsEmailVerified(false);
+          }
+          setIsLoading(false);
+          refreshInProgress.current = false;
+          const result = userRef.current;
+          pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(result));
+          pendingRefreshCallbacks.current = [];
+          return result;
+        }
+        currentSession = late.data.session;
+      } else {
+        const { data: { session: initialSession }, error: sessionError } = sessionRace.r;
+        if (sessionError) {
+          console.error("Error getting session:", sessionError);
+          if (sessionError.message !== "timeout" && sessionError.code !== "PGRST301") {
+            setSession(null);
+            setUser(null);
+            setRole(null);
+            setIsEmailVerified(false);
+          }
+          setIsLoading(false);
+          const result = userRef.current;
+          pendingRefreshCallbacks.current.forEach((cb) => cb.resolve(result));
+          pendingRefreshCallbacks.current = [];
+          refreshInProgress.current = false;
+          return result;
+        }
+        currentSession = initialSession;
       }
+
+      // NOTE: We no longer call supabase.auth.refreshSession() here.
+      // Next.js `src/proxy.ts` uses the @supabase/ssr cookie pattern to
+      // refresh expiring tokens on navigations before protected pages render. Calling
+      // refreshSession() client-side was redundant and — when it failed due to a
+      // network blip or expired refresh token — triggered a SIGNED_OUT auth event
+      // that cleared state and logged the user out unexpectedly.
 
       setSession(currentSession);
 
@@ -383,16 +453,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         window.location?.pathname?.startsWith("/provider") &&
         userRole === "customer"
       ) {
-        try {
-          const res = await fetch("/api/me/role?portal=provider", {
-            credentials: "include",
-          });
-          const json = (await res.json()) as { data?: { role?: UserRole } };
-          if (res.ok && json?.data?.role) {
-            userRole = json.data.role;
+        const resolvedRole = await fetchRoleWithTimeout("/api/me/role?portal=provider");
+        if (resolvedRole) {
+          userRole = resolvedRole;
+        }
+      }
+
+      // Admin portal: server-authoritative role (fixes stale sessionStorage / slow profile query showing wrong role, e.g. superadmin as customer)
+      if (typeof window !== "undefined" && window.location?.pathname?.startsWith("/admin")) {
+        const resolvedRole = await fetchRoleWithTimeout("/api/me/role");
+        if (resolvedRole) {
+          userRole = resolvedRole;
+          try {
+            sessionStorage.setItem(
+              "user_role_cache",
+              JSON.stringify({
+                userId: currentSession.user.id,
+                role: userRole,
+                timestamp: Date.now(),
+              }),
+            );
+          } catch {
+            // Ignore cache errors
           }
-        } catch {
-          // ignore
         }
       }
 
@@ -491,16 +574,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return result;
       }
 
-      const user = userData as User;
+      const dbUser = userData as User;
+      const effectiveRole =
+        userRole ||
+        dbUser.role ||
+        role ||
+        (currentSession.user.user_metadata?.role as UserRole | undefined) ||
+        "customer";
+      const user: User = {
+        ...dbUser,
+        role: effectiveRole,
+      };
       setUser(user);
-      setRole(user.role);
+      setRole(effectiveRole);
       
       // Cache the role for future use
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.setItem('user_role_cache', JSON.stringify({
             userId: user.id,
-            role: user.role,
+            role: effectiveRole,
             timestamp: Date.now(),
           }));
         } catch {
@@ -570,11 +663,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // First, quickly check if we have a session before clearing user state
         // This prevents the "flash" of logout during HMR/rebuilds
         try {
-          const { data: { session: quickSession } } = await supabase.auth.getSession();
+          const quickSessionResult = await raceWithTimeout(
+            supabase.auth.getSession(),
+            SESSION_RECHECK_TIMEOUT_MS
+          );
+          const quickSession = quickSessionResult?.data?.session ?? null;
           if (quickSession && !userRef.current) {
             // We have a session but no user state - this is likely a rebuild
             // Don't clear anything, just refresh in background
-            refreshUser().catch(() => {
+            refreshUser()
+              .then(() => scheduleRetentionSyncOnSession())
+              .catch(() => {
               // Ignore errors during background refresh
             });
             return;
@@ -584,6 +683,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         
         await refreshUser();
+        scheduleRetentionSyncOnSession();
         // Clear timeout if auth loaded successfully
         if (isMounted && safetyTimeout) {
           clearTimeout(safetyTimeout);
@@ -641,8 +741,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         // 2) Re-check session from storage/cookies before clearing (recovers from spurious null events)
-        supabase.auth.getSession().then(({ data: { session: recheckSession } }) => {
+        raceWithTimeout(supabase.auth.getSession(), SESSION_RECHECK_TIMEOUT_MS).then((recheckResult) => {
           if (!isMounted) return;
+          const recheckSession = recheckResult?.data?.session ?? null;
           if (recheckSession) {
             setSession(recheckSession);
             refreshUser().catch(() => {});
@@ -700,6 +801,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             userRef.current = optimisticUser;
             // Then load full profile from DB (will overwrite with real role/data)
             await refreshUser();
+            scheduleRetentionSyncOnSession();
             router.refresh();
           }
         }
@@ -708,23 +810,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     
     subscription = authSubscription;
 
-    // When tab becomes visible again, re-validate session so we don't stay "logged out" if state was lost
+    // When tab becomes visible again, restore auth state only if it was lost
+    // (e.g. the provider was unmounted while the tab was backgrounded).
+    // We deliberately do NOT call refreshUser() here — that triggers a full DB
+    // round-trip and was the cause of "feels slow after switching tabs".
+    // Token refresh is handled transparently by Next.js `src/proxy.ts` (Supabase SSR).
     let visibilityDebounce: NodeJS.Timeout | null = null;
     const handleVisibilityChange = () => {
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== "visible") return;
       if (visibilityDebounce) clearTimeout(visibilityDebounce);
       visibilityDebounce = setTimeout(() => {
         visibilityDebounce = null;
         if (!isMounted) return;
-        // If we have no user but might have session in cookies, restore from Supabase
-        if (!userRef.current) {
-          supabase.auth.getSession().then(({ data: { session: s } }) => {
-            if (!isMounted || !s) return;
-            setSession(s);
-            refreshUser().catch(() => {});
-          });
-        }
-      }, 300);
+        // Only act when we've lost our user state but may still have a session in cookies
+        if (userRef.current) return; // nothing to do, state is intact
+        raceWithTimeout(supabase.auth.getSession(), SESSION_RECHECK_TIMEOUT_MS).then((sessionResult) => {
+          const s = sessionResult?.data?.session ?? null;
+          if (!isMounted || !s) return;
+          // Session still alive — restore user state with a single full refresh
+          setSession(s);
+          refreshUser().catch(() => {});
+        });
+      }, 400);
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -750,8 +857,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole(null);
       setIsEmailVerified(false);
       
-      // Clear auth cache
+      // Clear auth cache and fetcher response cache
       clearAuthCache();
+      clearFetcherCache();
       
       // Sign out from Supabase
       const { error } = await supabase.auth.signOut();

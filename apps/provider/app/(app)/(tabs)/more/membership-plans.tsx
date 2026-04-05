@@ -22,6 +22,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 
 interface MembershipPlan {
@@ -425,7 +426,7 @@ export default function MembershipPlansScreen() {
 
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
-              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Monthly Price (R) *</Text>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{`Monthly Price (${getTenantDefaultCurrency()}) *`}</Text>
               <TextInput
                 style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 value={form.priceMonthly}

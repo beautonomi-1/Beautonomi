@@ -71,6 +71,8 @@ describe("GET /api/public/config-bundle", () => {
     expect(data.meta.version).toBe("1.2.3");
     expect(data.meta.fetched_at).toBeDefined();
     expect(typeof data.meta.fetched_at).toBe("string");
+    expect(data.meta.active_market_country).toMatch(/^[A-Z]{2}$/);
+    expect(data.meta.active_market_source).toBeDefined();
   });
 
   it("sets cache and etag headers", async () => {

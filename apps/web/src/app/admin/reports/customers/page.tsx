@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface CustomerReportData {
   period: string;
@@ -42,6 +43,7 @@ interface CustomerReportData {
 }
 
 export default function CustomerReportPage() {
+  const { currencyCode } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CustomerReportData | null>(null);
@@ -95,7 +97,7 @@ export default function CustomerReportPage() {
       const json = await response.json();
       const rows = data?.customers ?? json?.data?.customers ?? [];
       const csv = [
-        "Customer Name,Bookings,Total Spent (ZAR)",
+        `Customer Name,Bookings,Total Spent (${currencyCode})`,
         ...rows.map(
           (c: { customer_name: string; bookings_count: number; total_spent: number }) =>
             `${c.customer_name},${c.bookings_count},${c.total_spent}`

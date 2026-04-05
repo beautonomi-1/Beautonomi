@@ -5,6 +5,8 @@
  * based on the platform settings configured by superadmin.
  */
 
+import { percentOf, subtractMoney } from "@beautonomi/utils";
+
 interface PlatformFeeSettings {
   platform_service_fee_type: "percentage" | "fixed";
   platform_service_fee_percentage: number;
@@ -38,7 +40,7 @@ export function calculateServiceFee(
   }
 
   if (settings.platform_service_fee_type === "percentage") {
-    return (bookingSubtotal * settings.platform_service_fee_percentage) / 100;
+    return percentOf(bookingSubtotal, settings.platform_service_fee_percentage);
   } else {
     return settings.platform_service_fee_fixed;
   }
@@ -56,8 +58,8 @@ export function calculatePlatformCommission(
   providerPayout: number;
 } {
   const commissionPercentage = settings.platform_commission_percentage;
-  const platformCommission = (bookingTotal * commissionPercentage) / 100;
-  const providerPayout = bookingTotal - platformCommission;
+  const platformCommission = percentOf(bookingTotal, commissionPercentage);
+  const providerPayout = subtractMoney(bookingTotal, platformCommission);
 
   return {
     platformCommission,

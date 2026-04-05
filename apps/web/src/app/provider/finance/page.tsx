@@ -24,6 +24,7 @@ import {
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { usePermissions } from "@/hooks/usePermissions";
 import { Lock } from "lucide-react";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface EarningsData {
   total_earnings: number;
@@ -82,6 +83,7 @@ interface PayoutAccount {
 export default function ProviderFinance() {
   const { selectedLocationId } = useProviderPortal();
   const { hasPermission } = usePermissions();
+  const { currencyCode, format: fmt } = useReportCurrency();
   const canRequestPayout = hasPermission("process_payments");
 
   const [earnings, setEarnings] = useState<EarningsData | null>(null);
@@ -163,7 +165,7 @@ export default function ProviderFinance() {
 
     const minimumPayout = earnings?.minimum_payout_amount ?? 100;
     if (parseFloat(payoutAmount) < minimumPayout) {
-      toast.error(`Minimum payout is ZAR ${minimumPayout.toLocaleString()}`);
+      toast.error(`Minimum payout is ${fmt(minimumPayout)}`);
       return;
     }
     if (!earnings || parseFloat(payoutAmount) > earnings.available_balance) {
@@ -201,7 +203,9 @@ export default function ProviderFinance() {
 
   const handleExport = () => {
     try {
-      const url = `/api/provider/finance/export?range=${encodeURIComponent(dateRange)}`;
+      const params = new URLSearchParams({ range: dateRange });
+      if (selectedLocationId) params.set("location_id", selectedLocationId);
+      const url = `/api/provider/finance/export?${params.toString()}`;
       // Browser will download due to Content-Disposition on the response.
       window.open(url, "_blank", "noopener,noreferrer");
     } catch {
@@ -298,13 +302,13 @@ export default function ProviderFinance() {
                     <Label htmlFor="available-balance">Available Balance</Label>
                     <Input
                       id="available-balance"
-                      value={`ZAR ${earnings.available_balance.toLocaleString()}`}
+                      value={fmt(earnings.available_balance)}
                       disabled
                       className="mt-1"
                     />
                   </div>
                   <div>
-                    <Label htmlFor="payout-amount">Payout Amount (ZAR) * — min ZAR {(earnings.minimum_payout_amount ?? 100).toLocaleString()}</Label>
+                    <Label htmlFor="payout-amount">Payout Amount ({currencyCode}) * — min {fmt(earnings.minimum_payout_amount ?? 100)}</Label>
                     <Input
                       id="payout-amount"
                       type="number"
@@ -318,7 +322,7 @@ export default function ProviderFinance() {
                     />
                     {payoutAmount && parseFloat(payoutAmount) < (earnings.minimum_payout_amount ?? 100) && (
                       <p className="text-sm text-red-600 mt-1">
-                        Below minimum payout (ZAR {(earnings.minimum_payout_amount ?? 100).toLocaleString()})
+                        Below minimum payout ({fmt(earnings.minimum_payout_amount ?? 100)})
                       </p>
                     )}
                     {payoutAmount && parseFloat(payoutAmount) > earnings.available_balance && (
@@ -417,7 +421,7 @@ export default function ProviderFinance() {
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold">
-              ZAR {earnings.total_earnings.toLocaleString()}
+              {fmt(earnings.total_earnings)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
@@ -426,7 +430,7 @@ export default function ProviderFinance() {
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold text-green-600">
-              ZAR {earnings.available_balance.toLocaleString()}
+              {fmt(earnings.available_balance)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
@@ -435,7 +439,7 @@ export default function ProviderFinance() {
               <Calendar className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold text-yellow-600">
-              ZAR {earnings.pending_payouts.toLocaleString()}
+              {fmt(earnings.pending_payouts)}
             </p>
           </div>
         </div>
@@ -445,38 +449,38 @@ export default function ProviderFinance() {
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Service Earnings</p>
             <p className="text-2xl font-semibold">
-              ZAR {(earnings.bookings_earnings_total || 0).toLocaleString()}
+              {fmt(earnings.bookings_earnings_total || 0)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Travel Fees</p>
             <p className="text-2xl font-semibold text-purple-600">
-              ZAR {(earnings.travel_fees_this_period || 0).toLocaleString()}
+              {fmt(earnings.travel_fees_this_period || 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">From at-home bookings</p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
             <p className="text-2xl font-semibold">
-              ZAR {(earnings.gift_card_sales_this_period || 0).toLocaleString()}
+              {fmt(earnings.gift_card_sales_this_period || 0)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Membership Sales</p>
             <p className="text-2xl font-semibold">
-              ZAR {(earnings.membership_sales_this_period || 0).toLocaleString()}
+              {fmt(earnings.membership_sales_this_period || 0)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Refunds</p>
             <p className="text-2xl font-semibold text-red-600">
-              ZAR {(earnings.refunds_total || 0).toLocaleString()}
+              {fmt(earnings.refunds_total || 0)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Walk-in add-ons</p>
             <p className="text-2xl font-semibold text-gray-700">
-              ZAR {(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0).toLocaleString()}
+              {fmt(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
           </div>
@@ -506,13 +510,13 @@ export default function ProviderFinance() {
             <div>
               <p className="text-sm text-gray-600 mb-1">This Month</p>
               <p className="text-2xl font-semibold">
-                ZAR {earnings.this_month.toLocaleString()}
+                {fmt(earnings.this_month)}
               </p>
             </div>
             <div>
               <p className="text-sm text-gray-600 mb-1">Last Month</p>
               <p className="text-2xl font-semibold">
-                ZAR {earnings.last_month.toLocaleString()}
+                {fmt(earnings.last_month)}
               </p>
               <p className="text-sm text-green-600 mt-1">
                 +{earnings.growth_percentage}% growth
@@ -697,7 +701,7 @@ export default function ProviderFinance() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Booking Total:</span>
                           <span className="font-medium">
-                            ZAR {Number(transactionDetails.total_amount).toFixed(2)}
+                            {fmt(Number(transactionDetails.total_amount))}
                           </span>
                         </div>
                       )}
@@ -705,7 +709,7 @@ export default function ProviderFinance() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Service Fee:</span>
                           <span className="font-medium">
-                            ZAR {Number(transactionDetails.service_fee_amount).toFixed(2)}
+                            {fmt(Number(transactionDetails.service_fee_amount))}
                           </span>
                         </div>
                       )}
@@ -713,7 +717,7 @@ export default function ProviderFinance() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Tax (VAT):</span>
                           <span className="font-medium">
-                            ZAR {Number(transactionDetails.tax_amount).toFixed(2)}
+                            {fmt(Number(transactionDetails.tax_amount))}
                           </span>
                         </div>
                       )}
@@ -721,7 +725,7 @@ export default function ProviderFinance() {
                         <div className="flex justify-between">
                           <span className="text-gray-600">Travel Fee:</span>
                           <span className="font-medium">
-                            ZAR {Number(transactionDetails.travel_fee).toFixed(2)}
+                            {fmt(Number(transactionDetails.travel_fee))}
                           </span>
                         </div>
                       )}

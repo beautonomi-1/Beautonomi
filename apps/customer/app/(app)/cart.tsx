@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,15 +12,47 @@ import {
 import { Image } from "expo-image";
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useAuth } from "@/providers/AuthProvider";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
-import { emitCartUpdated } from "@/lib/cart-events";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 import type { CartItem } from "@/types/api";
+import { useCart } from "@/features/shop/useCart";
+
+interface ProviderShippingConfig {
+  offers_delivery: boolean;
+  offers_collection: boolean;
+}
+
+function useProviderShippingConfigs(providerIds: string[]) {
+  const [configs, setConfigs] = useState<Record<string, ProviderShippingConfig>>({});
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const providerIdsKey = useMemo(() => providerIds.join(","), [providerIds]);
+
+  useEffect(() => {
+    const toFetch = providerIds.filter((id) => id && id !== "unknown" && !fetchedRef.current.has(id));
+    if (toFetch.length === 0) return;
+    toFetch.forEach((id) => fetchedRef.current.add(id));
+    Promise.allSettled(
+      toFetch.map((id) =>
+        api.get<{ data?: { shipping?: ProviderShippingConfig }; shipping?: ProviderShippingConfig }>(
+          `/api/public/products/shipping-config?provider_id=${id}`,
+        ).then((res) => {
+          const raw = res.data as any;
+          const sc: ProviderShippingConfig | null =
+            raw?.shipping ?? raw?.data?.shipping ?? null;
+          if (sc) setConfigs((prev) => ({ ...prev, [id]: sc }));
+        }),
+      ),
+    );
+  }, [providerIds, providerIdsKey]);
+
+  return configs;
+}
 
 function variantLabel(item: CartItem): string {
   const ov = item.product_variant?.option_values;
@@ -33,83 +65,73 @@ function linePrice(item: CartItem): number {
 }
 
 export default function CartScreen() {
-  const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
-  const [items, setItems] = useState<CartItem[]>([]);
+  const {
+    items,
+    loading,
+    error: cartError,
+    fromCache,
+    fetchCart,
+    updateQuantity: patchCartQuantity,
+    removeItem: removeCartLine,
+    isGuestCart,
+  } = useCart();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  const fetchCart = useCallback(async (isRefresh = false) => {
-    if (!user) {
-      setItems([]);
-      setLoading(false);
-      return;
-    }
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const res = await api.get<{ items: CartItem[] }>("/api/me/cart");
-      const data = res.data as { items?: CartItem[] } | null;
-      setItems(Array.isArray(data?.items) ? data.items : []);
-    } catch {
-      setItems([]);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [user]);
+  // Derive provider IDs from items to pre-fetch shipping configs
+  const providerIds = useMemo(
+    () => [...new Set(items.map((i) => i.provider?.id).filter(Boolean) as string[])],
+    [items],
+  );
+  const shippingConfigs = useProviderShippingConfigs(providerIds);
 
-  useEffect(() => {
-    fetchCart();
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchCart();
+    setRefreshing(false);
   }, [fetchCart]);
 
-  const updateQuantity = useCallback(async (itemId: string, newQty: number) => {
-    if (newQty < 1) return;
-    const item = items.find((i) => i.id === itemId);
-    if (!item) return;
-    const maxQty = item.stock_available ?? 999;
-    if (newQty > maxQty) {
-      Alert.alert("Limited stock", `Only ${maxQty} available.`);
-      return;
-    }
-    setUpdatingId(itemId);
-    haptic.light();
-    try {
-      const res = await api.patch<{ item: CartItem }>(`/api/me/cart/${itemId}`, { quantity: newQty });
-      if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Could not update quantity."));
-      } else {
-        setItems((prev) =>
-          prev.map((i) => (i.id === itemId ? { ...i, quantity: newQty } : i)),
-        );
-        emitCartUpdated();
+  const updateQuantity = useCallback(
+    async (itemId: string, newQty: number) => {
+      if (newQty < 1) return;
+      const item = items.find((i) => i.id === itemId);
+      if (!item) return;
+      const maxQty = item.stock_available ?? 999;
+      if (newQty > maxQty) {
+        Alert.alert("Limited stock", `Only ${maxQty} available.`);
+        return;
       }
-    } catch {
-      Alert.alert("Error", "Something went wrong.");
-    } finally {
+      setUpdatingId(itemId);
+      haptic.light();
+      const { error: err } = await patchCartQuantity(itemId, newQty);
+      if (err) Alert.alert("Error", err);
       setUpdatingId(null);
-    }
-  }, [items]);
+    },
+    [items, patchCartQuantity],
+  );
 
-  const removeItem = useCallback(async (itemId: string) => {
-    setRemovingId(itemId);
-    haptic.light();
-    try {
-      const res = await api.delete(`/api/me/cart/${itemId}`);
-      if (res.error) {
-        Alert.alert("Error", getApiErrorMessage(res.error, "Could not remove item."));
-      } else {
-        setItems((prev) => prev.filter((i) => i.id !== itemId));
-        emitCartUpdated();
-      }
-    } catch {
-      Alert.alert("Error", "Something went wrong.");
-    } finally {
+  const removeItem = useCallback(
+    async (itemId: string) => {
+      setRemovingId(itemId);
+      haptic.light();
+      const { error: err } = await removeCartLine(itemId);
+      if (err) Alert.alert("Error", err);
       setRemovingId(null);
-    }
+    },
+    [removeCartLine],
+  );
+
+  const signInForCheckout = useCallback((providerId: string) => {
+    haptic.medium();
+    router.push({
+      pathname: "/(auth)/login",
+      params: {
+        return_to: `/(app)/product-checkout?provider_id=${encodeURIComponent(providerId)}`,
+      },
+    } as any);
   }, []);
 
   const openCheckout = useCallback(() => {
@@ -120,26 +142,6 @@ export default function CartScreen() {
       params: { url: encodeURIComponent(url), title: "Cart" },
     });
   }, []);
-
-  if (!user) {
-    return (
-      <>
-        <Stack.Screen options={{ title: "Cart", headerShown: true }} />
-        <View style={{ flex: 1, backgroundColor: "#fff", padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
-          <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
-          <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12, textAlign: "center" }}>
-            Sign in to view your cart
-          </Text>
-          <TouchableOpacity
-            onPress={() => router.replace("/(auth)/login" as any)}
-            style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 12 }}
-          >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Sign in</Text>
-          </TouchableOpacity>
-        </View>
-      </>
-    );
-  }
 
   if (loading && items.length === 0) {
     return (
@@ -160,35 +162,123 @@ export default function CartScreen() {
     groups[pid].subtotal += linePrice(item);
   });
   const total = items.reduce((sum, i) => sum + linePrice(i), 0);
+  const totalQty = items.reduce((sum, i) => sum + i.quantity, 0);
+  const fb = getTenantDefaultCurrency();
+  const fmt = (amount: number) => formatMoney(amount, fb);
 
   return (
     <>
-      <Stack.Screen options={{ title: "Cart", headerShown: true }} />
+      <Stack.Screen options={{ title: totalQty > 0 ? `Cart (${totalQty})` : "Cart", headerShown: true }} />
       <ScrollView
         style={{ flex: 1, backgroundColor: "#F9FAFB" }}
         contentContainerStyle={{ paddingBottom: 120, ...constraint }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchCart(true)} colors={[Colors.primary]} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[Colors.primary]} />}
       >
+        {cartError ? (
+          <View style={{ padding: contentPadding, marginBottom: 8 }}>
+            <View
+              style={{
+                backgroundColor: fromCache ? "#FFFBEB" : "#FEF2F2",
+                borderRadius: 12,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: fromCache ? "#FDE68A" : "#FECACA",
+              }}
+            >
+              <Text style={{ fontSize: 13, color: fromCache ? "#92400E" : "#991B1B" }}>
+                {fromCache ? `${cartError} Showing saved cart.` : cartError}
+              </Text>
+            </View>
+          </View>
+        ) : null}
+        {isGuestCart && items.length > 0 ? (
+          <View
+            style={{
+              marginHorizontal: contentPadding,
+              marginTop: 12,
+              marginBottom: 4,
+              padding: 14,
+              backgroundColor: "#EFF6FF",
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#BFDBFE",
+            }}
+          >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: "#1E40AF" }}>Browsing as a guest</Text>
+            <Text style={{ fontSize: 13, color: "#1E3A8A", marginTop: 4, lineHeight: 18 }}>
+              Your cart is saved on this device. Sign in to sync it everywhere and complete checkout.
+            </Text>
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(auth)/login",
+                  params: { return_to: "/(app)/cart" },
+                } as any)
+              }
+              style={{
+                alignSelf: "flex-start",
+                marginTop: 10,
+                paddingVertical: 8,
+                paddingHorizontal: 16,
+                backgroundColor: Colors.primary,
+                borderRadius: 10,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Sign in</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {items.length === 0 ? (
           <View style={{ padding: contentPadding * 2, alignItems: "center" }}>
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
-            <Text style={{ fontSize: 16, color: "#6B7280", marginTop: 12, textAlign: "center" }}>
-              Your cart is empty
+            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>Your cart is empty</Text>
+            <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
+              Browse providers and add products to get started.
             </Text>
             <TouchableOpacity
-              onPress={() => router.back()}
-              style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: Colors.primary, borderRadius: 12 }}
+              onPress={() => router.push("/(app)/(tabs)/explore" as any)}
+              style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 32, backgroundColor: Colors.primary, borderRadius: 12 }}
             >
-              <Text style={{ color: "#fff", fontWeight: "600" }}>Continue shopping</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Browse products</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/product-orders" as any)}
+              style={{ marginTop: 12, paddingVertical: 10 }}
+            >
+              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>View my orders</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <View style={{ padding: contentPadding }}>
-            {Object.values(groups).map((g) => (
+            {Object.values(groups).map((g) => {
+              const sc = shippingConfigs[g.provider.id];
+              const isPickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;
+              return (
               <View key={g.provider.id} style={{ marginBottom: 20 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 10 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151" }}>{g.provider.business_name}</Text>
+                {/* Provider header with fulfillment badge */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: isPickupOnly ? 8 : 10 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#374151", flex: 1 }}>{g.provider.business_name}</Text>
+                  {isPickupOnly && (
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FFF7ED", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: "#FED7AA" }}>
+                      <Ionicons name="storefront-outline" size={12} color="#C2410C" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#C2410C" }}>Pickup only</Text>
+                    </View>
+                  )}
+                  {sc && !isPickupOnly && sc.offers_delivery && (
+                    <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#EFF6FF", borderRadius: 20, paddingHorizontal: 8, paddingVertical: 4 }}>
+                      <Ionicons name="bicycle-outline" size={12} color="#1D4ED8" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: "#1D4ED8" }}>Delivery available</Text>
+                    </View>
+                  )}
                 </View>
+                {isPickupOnly && (
+                  <View style={{ flexDirection: "row", alignItems: "center", backgroundColor: "#FFF7ED", borderRadius: 10, padding: 10, marginBottom: 10, borderWidth: 1, borderColor: "#FED7AA" }}>
+                    <Ionicons name="information-circle-outline" size={15} color="#C2410C" style={{ marginRight: 8 }} />
+                    <Text style={{ flex: 1, fontSize: 12, color: "#92400E", lineHeight: 17 }}>
+                      In-store collection required. No delivery for this provider.
+                    </Text>
+                  </View>
+                )}
                 <View style={{ backgroundColor: "#fff", borderRadius: 12, overflow: "hidden", ...Shadows.cardSmall }}>
                   {g.items.map((item) => {
                     const label = variantLabel(item);
@@ -222,11 +312,13 @@ export default function CartScreen() {
                             {label ? ` · ${label}` : ""}
                           </Text>
                           <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>
-                            R{(item.effective_price ?? item.product?.retail_price ?? 0).toFixed(2)} each · R{linePrice(item).toFixed(2)} total
+                            {fmt(item.effective_price ?? item.product?.retail_price ?? 0)} each · {fmt(linePrice(item))} total
                           </Text>
-                          {!item.in_stock && (
-                            <Text style={{ fontSize: 11, color: "#EF4444", marginTop: 2 }}>Low stock</Text>
-                          )}
+                          {!item.in_stock ? (
+                            <Text style={{ fontSize: 11, color: "#EF4444", fontWeight: "600", marginTop: 2 }}>Out of stock — remove before checkout</Text>
+                          ) : item.stock_available != null && item.stock_available <= 5 ? (
+                            <Text style={{ fontSize: 11, color: "#D97706", fontWeight: "600", marginTop: 2 }}>Only {item.stock_available} left</Text>
+                          ) : null}
                           <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
                             <View style={{ flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8 }}>
                               <TouchableOpacity
@@ -266,10 +358,14 @@ export default function CartScreen() {
                   })}
                 </View>
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: "right" }}>
-                  Subtotal: R{g.subtotal.toFixed(2)}
+                  Subtotal: {fmt(g.subtotal)}
                 </Text>
                 <TouchableOpacity
                   onPress={() => {
+                    if (isGuestCart) {
+                      signInForCheckout(g.provider.id);
+                      return;
+                    }
                     haptic.medium();
                     router.push({
                       pathname: "/(app)/product-checkout",
@@ -278,15 +374,23 @@ export default function CartScreen() {
                   }}
                   style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — R{g.subtotal.toFixed(2)}</Text>
+                  {isPickupOnly ? (
+                    <View style={{ flexDirection: "row", alignItems: "center" }}>
+                      <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
+                    </View>
+                  ) : (
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
+                  )}
                 </TouchableOpacity>
               </View>
-            ))}
+              );
+            })}
 
             <View style={{ backgroundColor: "#fff", borderRadius: 12, padding: contentPadding, marginTop: 8, ...Shadows.cardSmall }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>Total</Text>
-                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.primary }}>R{total.toFixed(2)}</Text>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.primary }}>{fmt(total)}</Text>
               </View>
             </View>
           </View>

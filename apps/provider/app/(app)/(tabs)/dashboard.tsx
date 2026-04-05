@@ -1,13 +1,12 @@
 import { useState, useCallback, useMemo, useEffect } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
-import { useRouter } from "expo-router";
+import { InteractionManager, View, Text, TouchableOpacity } from "react-native";
+import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { format, subDays, addDays } from "date-fns";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
-import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -70,6 +69,18 @@ interface DashboardMetrics {
     supports_salon: boolean;
     max_service_distance_km: number | null;
   };
+  dashboard_bundle_version?: number;
+  insights?: {
+    weekly_revenue: WeeklyRevenue[];
+    top_services: TopService[];
+    recent_activity: ActivityItem[];
+    today_bookings: Booking[];
+    upcoming_bookings: Booking[];
+  } | null;
+  booking_eligibility?: {
+    can_accept_online_bookings: boolean;
+    booking_limit_message: string | null;
+  } | null;
 }
 
 interface Booking {
@@ -90,6 +101,8 @@ interface Booking {
   customers: { full_name: string; phone: string } | null;
   is_group_booking?: boolean;
   group_booking_ref?: string | null;
+  package_name?: string | null;
+  products?: { product_name?: string; quantity?: number }[];
 }
 
 interface WeeklyRevenue {
@@ -208,14 +221,15 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { user } = useAuth();
-  const { selectedLocationId } = useProvider();
+  const [isFocused, setIsFocused] = useState(true);
+  const { provider, selectedLocationId } = useProvider();
   const { isTablet, columns } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [dateRange, setDateRange] = useState("today");
+  const [secondaryEnabled, setSecondaryEnabled] = useState(false);
 
-  const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
   const locQFirst = selectedLocationId ? `?location_id=${selectedLocationId}` : "";
+  const locQ = selectedLocationId ? `&location_id=${selectedLocationId}` : "";
 
   const {
     data: metrics,
@@ -223,62 +237,187 @@ export default function DashboardScreen() {
     error: metricsError,
     timedOut: metricsTimedOut,
     refresh: refreshMetrics,
-  } = useApi<DashboardMetrics>(`/api/provider/dashboard${locQFirst}`, { timeoutMs: 15000 });
+  } = useApi<DashboardMetrics>(
+    `/api/provider/dashboard${locQFirst}${locQFirst ? "&" : "?"}include=insights`,
+    {
+    enabled: isFocused,
+    timeoutMs: 15000,
+    staleTimeMs: 10_000,
+    },
+  );
 
   useEffect(() => {
     trackDashboardView();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
+
+  useEffect(() => {
+    if (!isFocused) {
+      setSecondaryEnabled(false);
+      return;
+    }
+    let cancelled = false;
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (!cancelled) setSecondaryEnabled(true);
+    });
+    return () => {
+      cancelled = true;
+      task.cancel?.();
+    };
+  }, [isFocused, selectedLocationId]);
+
+  const hasBundledInsights = Boolean(metrics?.insights);
+  const hasBundledBookingEligibility = Boolean(metrics?.booking_eligibility);
   const today = format(new Date(), "yyyy-MM-dd");
-  const { data: todayBookings, error: todayBookingsError, refresh: refreshBookings } = useApi<Booking[]>(
-    `/api/provider/bookings?start_date=${today}&end_date=${today}${locQ}`,
-  );
-
-  // Upcoming = next 7 days (today through today + 6)
-  const upcomingEnd = format(addDays(new Date(), 6), "yyyy-MM-dd");
-  const { data: upcomingBookings, error: upcomingError, refresh: refreshUpcoming } = useApi<
-    Booking[]
-  >(
-    `/api/provider/bookings?status=confirmed,pending,booked&start_date=${today}&end_date=${upcomingEnd}&limit=20&sort=scheduled_at${locQ}`,
-  );
-
   const weekStart = format(subDays(new Date(), 6), "yyyy-MM-dd");
-  const { data: weeklyRevenue, refresh: refreshWeekly } = useApi<
-    WeeklyRevenue[]
-  >(
-    `/api/provider/reports/weekly-revenue?start_date=${weekStart}&end_date=${today}${locQ}`,
+  const upcomingEnd = format(addDays(new Date(), 6), "yyyy-MM-dd");
+
+  const {
+    data: fallbackTodayBookings,
+    error: fallbackTodayBookingsError,
+    refresh: refreshFallbackTodayBookings,
+  } = useApi<Booking[]>(
+    `/api/provider/bookings?start_date=${today}&end_date=${today}${locQ}`,
+    {
+      enabled: isFocused && metrics !== null && !hasBundledInsights,
+      staleTimeMs: 15_000,
+    },
   );
+  const {
+    data: fallbackUpcomingBookings,
+    error: fallbackUpcomingError,
+    refresh: refreshFallbackUpcoming,
+  } = useApi<Booking[]>(
+    `/api/provider/bookings?status=confirmed,pending,booked&start_date=${today}&end_date=${upcomingEnd}&limit=20&sort=scheduled_at${locQ}`,
+    {
+      enabled: isFocused && metrics !== null && !hasBundledInsights,
+      staleTimeMs: 15_000,
+    },
+  );
+  const {
+    data: fallbackWeeklyRevenue,
+    refresh: refreshFallbackWeekly,
+  } = useApi<WeeklyRevenue[]>(
+    `/api/provider/reports/weekly-revenue?start_date=${weekStart}&end_date=${today}${locQ}`,
+    {
+      enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
+      staleTimeMs: 60_000,
+    },
+  );
+  const {
+    data: fallbackTopServices,
+    error: fallbackTopServicesError,
+    refresh: refreshFallbackTopServices,
+  } = useApi<TopService[]>(
+    `/api/provider/reports/top-services?limit=5${locQ}`,
+    {
+      enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
+      staleTimeMs: 60_000,
+    },
+  );
+  const {
+    data: fallbackRecentActivity,
+    error: fallbackActivityError,
+    refresh: refreshFallbackActivity,
+  } = useApi<ActivityItem[]>(
+    `/api/provider/activity?limit=10${locQ}`,
+    {
+      enabled: isFocused && secondaryEnabled && metrics !== null && !hasBundledInsights,
+      staleTimeMs: 30_000,
+    },
+  );
+  const {
+    data: fallbackBookingEligibility,
+    refresh: refreshFallbackBookingEligibility,
+  } = useApi<{
+    can_accept_online_bookings: boolean;
+    booking_limit_message: string | null;
+  }>("/api/provider/subscription/booking-eligibility", {
+    enabled: isFocused && metrics !== null && !hasBundledBookingEligibility,
+    staleTimeMs: 60_000,
+  });
 
-  const { data: topServices, error: topServicesError, refresh: refreshTopServices } = useApi<
-    TopService[]
-  >(`/api/provider/reports/top-services?limit=5${locQ}`);
+  const todayBookings = metrics?.insights?.today_bookings ?? fallbackTodayBookings ?? null;
+  const upcomingBookings = metrics?.insights?.upcoming_bookings ?? fallbackUpcomingBookings ?? null;
+  const todayBookingsError = hasBundledInsights ? null : fallbackTodayBookingsError;
+  const upcomingError = hasBundledInsights ? null : fallbackUpcomingError;
 
-  const { data: recentActivity, error: activityError, refresh: refreshActivity } = useApi<
-    ActivityItem[]
-  >(`/api/provider/activity?limit=10${locQ}`);
+  const weeklyRevenue = metrics?.insights?.weekly_revenue ?? fallbackWeeklyRevenue ?? null;
+  const topServices = metrics?.insights?.top_services ?? fallbackTopServices ?? null;
+  const recentActivity = metrics?.insights?.recent_activity ?? fallbackRecentActivity ?? null;
+  const bookingEligibility = metrics?.booking_eligibility ?? fallbackBookingEligibility ?? null;
+  const topServicesError = hasBundledInsights ? null : fallbackTopServicesError;
+  const activityError = hasBundledInsights ? null : fallbackActivityError;
+
+  const refreshRealtimeDashboardData = useCallback(() => {
+    const tasks = [refreshMetrics()];
+    if (!hasBundledInsights) {
+      tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
+      if (secondaryEnabled) {
+        tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+      }
+    }
+    if (!hasBundledBookingEligibility) {
+      tasks.push(refreshFallbackBookingEligibility());
+    }
+    void Promise.all(tasks);
+  }, [
+    refreshMetrics,
+    hasBundledInsights,
+    hasBundledBookingEligibility,
+    refreshFallbackTodayBookings,
+    refreshFallbackUpcoming,
+    refreshFallbackWeekly,
+    refreshFallbackTopServices,
+    refreshFallbackActivity,
+    refreshFallbackBookingEligibility,
+    secondaryEnabled,
+  ]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([
-      refreshMetrics(),
-      refreshBookings(),
-      refreshUpcoming(),
-      refreshWeekly(),
-      refreshTopServices(),
-      refreshActivity(),
-    ]);
+    const tasks = [refreshMetrics()];
+    if (!hasBundledInsights) {
+      tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
+      if (secondaryEnabled) {
+        tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+      }
+    }
+    if (!hasBundledBookingEligibility) {
+      tasks.push(refreshFallbackBookingEligibility());
+    }
+    await Promise.all(tasks);
     setRefreshing(false);
   }, [
     refreshMetrics,
-    refreshBookings,
-    refreshUpcoming,
-    refreshWeekly,
-    refreshTopServices,
-    refreshActivity,
+    hasBundledInsights,
+    hasBundledBookingEligibility,
+    refreshFallbackTodayBookings,
+    refreshFallbackUpcoming,
+    refreshFallbackWeekly,
+    refreshFallbackTopServices,
+    refreshFallbackActivity,
+    refreshFallbackBookingEligibility,
+    secondaryEnabled,
   ]);
 
   useEffect(() => {
-    if (!user?.id) return;
+    if (!isFocused || !provider?.id) return;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = null;
+        refreshRealtimeDashboardData();
+      }, 500);
+    };
+
     const channel = supabase
       .channel("dashboard-booking-updates")
       .on(
@@ -287,35 +426,25 @@ export default function DashboardScreen() {
           event: "*",
           schema: "public",
           table: "bookings",
-          filter: `provider_id=eq.${user.id}`,
+          filter: `provider_id=eq.${provider.id}`,
         },
         () => {
-          refreshMetrics();
-          refreshBookings();
-          refreshUpcoming();
-          refreshWeekly();
-          refreshActivity();
+          scheduleRefresh();
         },
       )
       .subscribe();
 
     return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [
-    user?.id,
-    refreshMetrics,
-    refreshBookings,
-    refreshUpcoming,
-    refreshWeekly,
-    refreshActivity,
-  ]);
+  }, [isFocused, provider?.id, refreshRealtimeDashboardData]);
 
   const m = metrics;
   const statColumns = isTablet ? (columns >= 3 ? 4 : 2) : 2;
 
   const displayRevenue = useMemo(() => {
-    if (!m) return "R0.00";
+    if (!m) return formatCurrency(0);
     switch (dateRange) {
       case "today":
         return formatCurrency(m.revenue_today ?? 0);
@@ -355,12 +484,16 @@ export default function DashboardScreen() {
     }
   }, [dateRange]);
 
-  const chartData: WeeklyRevenue[] =
-    weeklyRevenue ??
-    Array.from({ length: 7 }, (_, i) => ({
-      day: format(subDays(new Date(), 6 - i), "yyyy-MM-dd"),
-      revenue: 0,
-    }));
+  const chartData: WeeklyRevenue[] = useMemo(
+    () =>
+      weeklyRevenue ??
+      Array.from({ length: 7 }, (_, i) => ({
+        day: format(subDays(new Date(), 6 - i), "yyyy-MM-dd"),
+        revenue: 0,
+      })),
+    [weeklyRevenue],
+  );
+  const insightsLoading = !secondaryEnabled;
 
   if (metricsLoading && !metrics && !metricsTimedOut) {
     return (
@@ -412,6 +545,41 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         }
       />
+
+      {bookingEligibility &&
+        !bookingEligibility.can_accept_online_bookings &&
+        bookingEligibility.booking_limit_message?.trim() && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.push("/(app)/(tabs)/more/subscription" as any);
+            }}
+            style={{
+              marginBottom: 16,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: "#fecaca",
+              backgroundColor: "#fef2f2",
+              padding: 12,
+              flexDirection: "row",
+              alignItems: "flex-start",
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Subscription required for online bookings. Opens plan and billing."
+          >
+            <Ionicons name="alert-circle-outline" size={22} color="#b91c1c" style={{ marginRight: 10, marginTop: 1 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#991b1b" }}>Online bookings need attention</Text>
+              <Text style={{ fontSize: 13, color: "#7f1d1d", marginTop: 4, lineHeight: 18 }}>
+                {bookingEligibility.booking_limit_message}
+              </Text>
+              <Text style={{ fontSize: 13, color: Colors.primary, marginTop: 8, fontWeight: "600" }}>
+                Open plan & billing →
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
 
       {/* Identity strip: rating, badge, service type, at-home radius */}
       {m && (
@@ -585,7 +753,15 @@ export default function DashboardScreen() {
 
       {/* Weekly Revenue Chart */}
       <SectionHeader title="Revenue Trend (7 Days)" />
-      <WeeklyRevenueChart data={chartData} />
+      {insightsLoading ? (
+        <Card variant="default" padding="md">
+          <View style={{ alignItems: "center", paddingVertical: 20 }}>
+            <Text style={{ fontSize: 13, color: Colors.gray[500] }}>Loading insights…</Text>
+          </View>
+        </Card>
+      ) : (
+        <WeeklyRevenueChart data={chartData} />
+      )}
 
       {/* Bookings Overview - filter responsive */}
       <SectionHeader
@@ -636,7 +812,12 @@ export default function DashboardScreen() {
 
       {/* Top Services */}
       <SectionHeader title="Top Services" />
-      {topServicesError && !topServices ? (
+      {insightsLoading ? (
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
+          <Ionicons name="hourglass-outline" size={24} color="#9ca3af" />
+          <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing top services…</Text>
+        </View>
+      ) : topServicesError && !topServices ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
@@ -835,6 +1016,16 @@ export default function DashboardScreen() {
                       Group: {booking.group_booking_ref}
                     </Text>
                   )}
+                  {booking.package_name ? (
+                    <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
+                      Package: {booking.package_name}
+                    </Text>
+                  ) : null}
+                  {(booking.products?.length ?? 0) > 0 ? (
+                    <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
+                      {booking.products!.length} product{booking.products!.length === 1 ? "" : "s"}
+                    </Text>
+                  ) : null}
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
                   <Badge status={booking.status} />
@@ -850,7 +1041,12 @@ export default function DashboardScreen() {
 
       {/* Recent Activity */}
       <SectionHeader title="Recent Activity" />
-      {activityError && !recentActivity ? (
+      {insightsLoading ? (
+        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
+          <Ionicons name="hourglass-outline" size={24} color="#9ca3af" />
+          <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing recent activity…</Text>
+        </View>
+      ) : activityError && !recentActivity ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
           <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
@@ -971,6 +1167,16 @@ export default function DashboardScreen() {
                         Group: {booking.group_booking_ref}
                       </Text>
                     )}
+                    {booking.package_name ? (
+                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
+                        Package: {booking.package_name}
+                      </Text>
+                    ) : null}
+                    {(booking.products?.length ?? 0) > 0 ? (
+                      <Text style={{ marginTop: 4, fontSize: 10, color: Colors.gray[600] }} numberOfLines={1}>
+                        {booking.products!.length} product{booking.products!.length === 1 ? "" : "s"}
+                      </Text>
+                    ) : null}
                   </View>
                   <View style={{ alignItems: "flex-end" }}>
                     <Badge status={booking.status} />

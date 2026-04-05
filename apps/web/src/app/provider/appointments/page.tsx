@@ -24,6 +24,8 @@ import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 
 export default function ProviderAppointments() {
   const { provider } = useProviderPortal();
+  /** List filter only — not the global portal location (calendar omits location_id so legacy/null rows still show). */
+  const [listLocationFilter, setListLocationFilter] = useState<string>("all");
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -41,8 +43,18 @@ export default function ProviderAppointments() {
 
   useEffect(() => {
     loadAppointments();
+  }, [page, statusFilter, dateRange, listLocationFilter]);
+
+  useEffect(() => {
+    if (listLocationFilter === "all") return;
+    if (!locations.some((l) => l.id === listLocationFilter)) {
+      setListLocationFilter("all");
+    }
+  }, [locations, listLocationFilter]);
+
+  useEffect(() => {
     loadSidebarData();
-  }, [page, statusFilter, dateRange]);
+  }, []);
 
   const loadSidebarData = async () => {
     try {
@@ -73,10 +85,22 @@ export default function ProviderAppointments() {
       const filters: FilterParams = {
         search: searchQuery || undefined,
         status: statusFilter !== "all" ? statusFilter : undefined,
+        location_id: listLocationFilter !== "all" ? listLocationFilter : undefined,
       };
 
-      if (dateRange === "month") {
-        const now = new Date();
+      const now = new Date();
+      if (dateRange === "today") {
+        const ymd = now.toISOString().split("T")[0];
+        filters.date_from = ymd;
+        filters.date_to = ymd;
+      } else if (dateRange === "week") {
+        const start = new Date(now);
+        start.setDate(now.getDate() - now.getDay());
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        filters.date_from = start.toISOString().split("T")[0];
+        filters.date_to = end.toISOString().split("T")[0];
+      } else if (dateRange === "month") {
         filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
         filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
       }
@@ -123,6 +147,31 @@ export default function ProviderAppointments() {
   const handleAppointmentClick = (appointment: Appointment) => {
     openViewMode(appointment);
   };
+
+  const getServiceModeLabel = (appointment: Appointment) =>
+    appointment.location_type === "at_home" ? "House call" : "At salon";
+
+  const handleAppointmentUpdated = useCallback((updated: Appointment) => {
+    const rootId = updated.id.includes("-svc-") ? updated.id.split("-svc-")[0] : updated.id;
+    setAppointments((prev) =>
+      prev.map((apt) => {
+        const aptRootId = apt.id.includes("-svc-") ? apt.id.split("-svc-")[0] : apt.id;
+        return aptRootId === rootId ? { ...apt, ...updated } : apt;
+      })
+    );
+    loadAppointmentsRef.current?.(true);
+  }, []);
+
+  const handleAppointmentDeleted = useCallback((appointmentId: string) => {
+    const rootId = appointmentId.includes("-svc-") ? appointmentId.split("-svc-")[0] : appointmentId;
+    setAppointments((prev) =>
+      prev.filter((apt) => {
+        const aptRootId = apt.id.includes("-svc-") ? apt.id.split("-svc-")[0] : apt.id;
+        return aptRootId !== rootId;
+      })
+    );
+    loadAppointmentsRef.current?.(true);
+  }, []);
 
   // Check if payment button should be shown (only when payment is pending or not paid, and not cancelled)
   const shouldShowPaymentButton = (appointment: Appointment) => {
@@ -215,12 +264,28 @@ export default function ProviderAppointments() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Statuses</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
             <SelectItem value="booked">Booked</SelectItem>
             <SelectItem value="started">Started</SelectItem>
             <SelectItem value="completed">Completed</SelectItem>
             <SelectItem value="cancelled">Cancelled</SelectItem>
           </SelectContent>
         </Select>
+        {locations.length > 0 && (
+          <Select value={listLocationFilter} onValueChange={setListLocationFilter}>
+            <SelectTrigger className="w-full md:w-56">
+              <SelectValue placeholder="Location" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All locations</SelectItem>
+              {locations.map((loc) => (
+                <SelectItem key={loc.id} value={loc.id}>
+                  {loc.name || "Location"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button variant="outline">
           <Filter className="w-4 h-4 mr-2" />
           Filter
@@ -245,6 +310,7 @@ export default function ProviderAppointments() {
                     <TableHead className="font-semibold">Client</TableHead>
                     <TableHead className="font-semibold">Service</TableHead>
                     <TableHead className="font-semibold">Date & Time</TableHead>
+                    <TableHead className="font-semibold">Service Mode</TableHead>
                     <TableHead className="font-semibold">Team Member</TableHead>
                     <TableHead className="font-semibold">Price</TableHead>
                     <TableHead className="font-semibold">Status</TableHead>
@@ -275,6 +341,11 @@ export default function ProviderAppointments() {
                           <div className="font-medium">{apt.scheduled_date}</div>
                           <div className="text-xs text-gray-500">{apt.scheduled_time} ({apt.duration_minutes}min)</div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <span className="inline-flex items-center rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 text-xs text-gray-700">
+                          {getServiceModeLabel(apt)}
+                        </span>
                       </TableCell>
                       <TableCell>
                         <span className={apt.team_member_name ? "font-medium" : "text-gray-400 italic"}>
@@ -346,6 +417,10 @@ export default function ProviderAppointments() {
                     <span className="text-gray-500 text-xs">Time</span>
                     <p className="font-medium">{apt.scheduled_time}</p>
                   </div>
+                  <div>
+                    <span className="text-gray-500 text-xs">Service Mode</span>
+                    <p className="font-medium">{getServiceModeLabel(apt)}</p>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
@@ -401,8 +476,8 @@ export default function ProviderAppointments() {
           services={services}
           locations={locations}
           onAppointmentCreated={() => loadAppointments()}
-          onAppointmentUpdated={() => loadAppointments()}
-          onAppointmentDeleted={() => loadAppointments()}
+          onAppointmentUpdated={handleAppointmentUpdated}
+          onAppointmentDeleted={handleAppointmentDeleted}
         />
       </div>
     </div>

@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -36,6 +37,7 @@ interface NewClientsData {
 }
 
 export default function NewClientsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subMonths(new Date(), 6),
     to: new Date(),
@@ -82,7 +84,7 @@ export default function NewClientsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "new-clients");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "new-clients", exportCurrency);
     exportToCSV(exportData, "new-clients-report");
   };
 
@@ -194,7 +196,7 @@ export default function NewClientsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageFirstBookingValue.toLocaleString()}
+                  {fmt(data.averageFirstBookingValue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -258,11 +260,11 @@ export default function NewClientsReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        ZAR {client.firstBookingValue.toLocaleString()}
+                        {fmt(client.firstBookingValue)}
                       </p>
                       {client.totalSpent > client.firstBookingValue && (
                         <p className="text-sm text-gray-600">
-                          Total: ZAR {client.totalSpent.toLocaleString()}
+                          Total: {fmt(client.totalSpent)}
                         </p>
                       )}
                     </div>

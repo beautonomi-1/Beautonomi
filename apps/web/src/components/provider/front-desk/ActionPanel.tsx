@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -7,9 +9,11 @@ import { MessageCircle, Phone, Copy, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { FrontDeskBooking } from "@/lib/front-desk/types";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { WorkflowStepper } from "./WorkflowStepper";
 import { PaymentActions } from "./PaymentActions";
 import {
+  confirmBooking,
   checkInBooking,
   arriveAtHome,
   startService,
@@ -17,6 +21,7 @@ import {
   completeBooking,
   cancelBooking,
 } from "@/lib/front-desk/actions";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 const BADGE_PILLS: Record<string, string> = {
   late: "bg-red-50/90 text-red-900/90",
@@ -27,6 +32,10 @@ const BADGE_PILLS: Record<string, string> = {
   completed: "bg-emerald-50/90 text-emerald-800",
   cancelled: "bg-red-50/90 text-red-800",
   confirmed: "bg-slate-100/80 text-slate-700",
+};
+
+const BADGE_DISPLAY: Record<string, string> = {
+  needs_confirmation: "Confirm first",
 };
 
 export interface CompleteRequestRatingPayload {
@@ -45,16 +54,22 @@ interface ActionPanelProps {
 }
 
 export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequestRating }: ActionPanelProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const customer = (booking as any).customers || {};
   const phone = customer.phone || customer.phone_number || "";
   const badge = booking.operationalBadge || "confirmed";
   const locationType = (booking as any).location_type as string | undefined;
   const isAtHome = locationType === "at_home";
 
-  const handleCopyPhone = () => {
+  const handleCopyPhone = async () => {
     if (phone) {
-      navigator.clipboard.writeText(phone);
-      toast.success("Phone copied");
+      const copied = await copyTextToClipboard(phone);
+      if (copied) {
+        toast.success("Phone copied");
+        return;
+      }
+      toast.error("Unable to copy phone on this browser");
     }
   };
 
@@ -127,7 +142,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                 BADGE_PILLS[badge] || BADGE_PILLS.confirmed
               )}
             >
-              {badge.replace("_", " ")}
+              {BADGE_DISPLAY[badge] ?? badge.replace(/_/g, " ")}
             </span>
           </div>
 
@@ -212,7 +227,7 @@ export function ActionPanel({ booking, onClose, onActionComplete, onCompleteRequ
                   bookingId={booking.id}
                   totalAmount={Number(booking.total_amount || 0)}
                   totalPaid={Number((booking as any).total_paid || 0)}
-                  currency={booking.currency || "ZAR"}
+                  currency={booking.currency || tenantCurrency}
                   onComplete={onActionComplete}
                   variant="footer"
                 />

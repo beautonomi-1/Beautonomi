@@ -105,6 +105,7 @@ export async function hasRole(
     admin_platform_config: 4,
     provider_owner: 3,
     provider_staff: 2,
+    provider_onboarding: 2,
     customer: 1,
   };
 

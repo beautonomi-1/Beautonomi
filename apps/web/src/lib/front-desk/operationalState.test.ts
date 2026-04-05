@@ -9,6 +9,7 @@ import {
   getQueueCounts,
 } from "./operationalState";
 import type { Booking } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 function baseBooking(overrides: Partial<Booking> & Record<string, any> = {}): Booking {
   const now = new Date();
@@ -31,7 +32,7 @@ function baseBooking(overrides: Partial<Booking> & Record<string, any> = {}): Bo
     subtotal: 100,
     tip_amount: 0,
     total_amount: 100,
-    currency: "ZAR",
+    currency: LAST_RESORT_CURRENCY,
     payment_status: "pending",
     payment_method: null,
     special_requests: null,
@@ -115,6 +116,17 @@ describe("getOperationalBadge", () => {
     });
     expect(getOperationalBadge(b)).toBe("confirmed");
   });
+
+  it("returns needs_confirmation when db_status is pending and booking is not in service", () => {
+    const future = new Date();
+    future.setHours(future.getHours() + 2);
+    const b = baseBooking({
+      status: "booked",
+      db_status: "pending",
+      scheduled_at: future.toISOString(),
+    });
+    expect(getOperationalBadge(b)).toBe("needs_confirmation");
+  });
 });
 
 describe("matchesQueueTab", () => {
@@ -151,6 +163,18 @@ describe("matchesQueueTab", () => {
     expect(matchesQueueTab(baseBooking({ status: "completed", payment_status: "paid", total_paid: 100, total_amount: 100 } as any), "completed")).toBe(true);
     expect(matchesQueueTab(baseBooking({ status: "cancelled" }), "completed")).toBe(true);
   });
+
+  it("needs_confirmation tab matches only that badge", () => {
+    const future = new Date();
+    future.setHours(future.getHours() + 1);
+    const pending = baseBooking({
+      status: "booked",
+      db_status: "pending",
+      scheduled_at: future.toISOString(),
+    });
+    expect(matchesQueueTab(pending, "needs_confirmation")).toBe(true);
+    expect(matchesQueueTab(baseBooking({ status: "confirmed", scheduled_at: future.toISOString() }), "needs_confirmation")).toBe(false);
+  });
 });
 
 describe("getQueueCounts", () => {
@@ -166,6 +190,7 @@ describe("getQueueCounts", () => {
     ];
     const counts = getQueueCounts(bookings);
     expect(counts.all).toBe(3);
+    expect(counts.needs_confirmation).toBe(0);
     expect(counts.completed).toBe(1);
     expect(counts.in_service).toBe(1);
   });

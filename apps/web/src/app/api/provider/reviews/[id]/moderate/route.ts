@@ -90,17 +90,18 @@ export async function POST(
 
         if (admins) {
           for (const admin of admins) {
-            await supabase.from("notifications").insert({
+            const { insertNotification: insertFlagNotif } = await import("@/lib/notifications/insert-notification");
+            await insertFlagNotif({
               user_id: admin.id,
-              type: "review_flagged",
+              type: "system",
               title: "Review Flagged for Moderation",
               message: `A review has been flagged by a provider and requires moderation.`,
-              metadata: {
+              data: {
                 review_id: reviewId,
                 provider_id: providerId,
                 reason: validated.reason,
               },
-              link: `/admin/reviews/${reviewId}`,
+              action_url: `/admin/reviews/${reviewId}`,
             });
           }
         }

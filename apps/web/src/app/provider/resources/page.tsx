@@ -25,8 +25,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 export default function ResourcesPage() {
+  const { selectedLocationId } = useProviderPortal();
   const [resources, setResources] = useState<Resource[]>([]);
   const [resourceGroups, setResourceGroups] = useState<ResourceGroup[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -40,7 +42,9 @@ export default function ResourcesPage() {
     try {
       setIsLoading(true);
       const [resourcesData, groupsData] = await Promise.all([
-        providerApi.listResources(),
+        providerApi.listResources({
+          location_id: selectedLocationId || undefined,
+        }),
         providerApi.listResourceGroups(),
       ]);
       setResources(resourcesData);
@@ -51,7 +55,7 @@ export default function ResourcesPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [selectedLocationId]);
 
   useEffect(() => {
     loadData();
@@ -160,7 +164,59 @@ export default function ResourcesPage() {
             </SectionCard>
           ) : (
             <SectionCard className="p-0 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Mobile card layout */}
+              <div className="md:hidden divide-y">
+                {resources.map((resource) => (
+                  <div key={resource.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{resource.name}</p>
+                        {resource.description && (
+                          <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{resource.description}</p>
+                        )}
+                      </div>
+                      {resource.is_active ? (
+                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-sm">
+                      <Badge className={getTypeColor(resource.type)}>
+                        {resource.type}
+                      </Badge>
+                      {resource.capacity && (
+                        <span className="text-gray-600">Capacity: {resource.capacity}</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] flex-1"
+                        onClick={() => handleEditResource(resource)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteResource(resource.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table layout */}
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -245,7 +301,54 @@ export default function ResourcesPage() {
             </SectionCard>
           ) : (
             <SectionCard className="p-0 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Mobile card layout */}
+              <div className="md:hidden divide-y">
+                {resourceGroups.map((group) => (
+                  <div key={group.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{group.name}</p>
+                        {group.description && (
+                          <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{group.description}</p>
+                        )}
+                      </div>
+                      {group.is_active ? (
+                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+
+                    <p className="text-sm text-gray-600">
+                      {group.resource_ids.length} resources
+                    </p>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] flex-1"
+                        onClick={() => handleEditGroup(group)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteGroup(group.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table layout */}
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -308,6 +411,7 @@ export default function ResourcesPage() {
         open={isResourceDialogOpen}
         onOpenChange={setIsResourceDialogOpen}
         resource={selectedResource}
+        locationId={selectedLocationId}
         onSuccess={loadData}
       />
 
@@ -327,11 +431,13 @@ function ResourceDialog({
   open,
   onOpenChange,
   resource,
+  locationId,
   onSuccess,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   resource: Resource | null;
+  locationId: string | null;
   onSuccess: () => void;
 }) {
   const [formData, setFormData] = useState({
@@ -377,7 +483,10 @@ function ResourceDialog({
         await providerApi.updateResource(resource.id, formData);
         toast.success("Resource updated");
       } else {
-        await providerApi.createResource(formData);
+        await providerApi.createResource({
+          ...formData,
+          location_id: locationId || undefined,
+        });
         toast.success("Resource created");
       }
       onSuccess();

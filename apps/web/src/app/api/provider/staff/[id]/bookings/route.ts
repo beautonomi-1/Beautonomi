@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,6 +18,18 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const { data: prow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const sp = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(sp.get("limit") || "10", 10), 50);
 
@@ -49,7 +64,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       customer_name: b.customers?.full_name || "Walk-in",
       service_names: (b.booking_services || []).map((bs: any) => bs.offerings?.title || "Service").filter(Boolean),
       total_amount: Number(b.total_amount || 0),
-      currency: b.currency || "ZAR",
+      currency: b.currency || lastResortCurrency,
     }));
 
     return successResponse(result);

@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { fuzzySearch } from '@/lib/utils/fuzzy-search';
+import { requirePublicTenant } from '@/lib/tenant/require-public-tenant';
 
 export async function GET(request: NextRequest) {
   try {
+    const tenant = await requirePublicTenant(request);
+    if (tenant instanceof NextResponse) return tenant;
+    const { tenantId } = tenant;
+
     const supabase = await getSupabaseServer();
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q') || '';
@@ -45,6 +50,7 @@ export async function GET(request: NextRequest) {
         `)
         .eq('is_active', true)
         .eq('is_approved', true)
+        .eq('tenant_id', tenantId)
         .limit(100);
 
       if (!providersError && providers) {
@@ -89,6 +95,7 @@ export async function GET(request: NextRequest) {
           providers!inner(business_name, slug)
         `)
         .eq('is_active', true)
+        .eq('providers.tenant_id', tenantId)
         .limit(100);
 
       if (!servicesError && services) {

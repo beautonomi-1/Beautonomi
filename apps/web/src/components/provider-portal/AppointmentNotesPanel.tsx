@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import {
   Dialog,
   DialogContent,
@@ -83,7 +84,7 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
     if (!confirm("Are you sure you want to delete this note?")) return;
 
     try {
-      await providerApi.deleteAppointmentNote(id);
+      await providerApi.deleteAppointmentNote(id, appointmentId);
       toast.success("Note deleted");
       loadData();
     } catch (error) {
@@ -188,9 +189,13 @@ export function AppointmentNotesPanel({ appointmentId }: AppointmentNotesPanelPr
                           Edit
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => {
-                            navigator.clipboard.writeText(note.content);
-                            toast.success("Note copied");
+                          onClick={async () => {
+                            const copied = await copyTextToClipboard(note.content);
+                            if (copied) {
+                              toast.success("Note copied");
+                              return;
+                            }
+                            toast.error("Unable to copy note on this browser");
                           }}
                         >
                           <Copy className="w-4 h-4 mr-2" />
@@ -333,7 +338,10 @@ function NoteDialog({
 
     try {
       if (note && note.id) {
-        await providerApi.updateAppointmentNote(note.id, formData);
+        await providerApi.updateAppointmentNote(note.id, {
+          appointment_id: appointmentId,
+          ...formData,
+        });
         toast.success("Note updated");
       } else {
         await providerApi.createAppointmentNote({

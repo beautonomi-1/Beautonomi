@@ -15,9 +15,14 @@ export interface AnalyticsClient {
   reset: () => void;
 }
 
+export type InitAnalyticsOptions = {
+  enableSessionReplay?: boolean;
+};
+
 export async function initAnalytics(
   config: AmplitudeConfig,
-  portal: "client" | "provider"
+  portal: "client" | "provider",
+  _options?: InitAnalyticsOptions
 ): Promise<AnalyticsClient | null> {
   const enabled =
     portal === "client" ? config.enabled_client_portal : config.enabled_provider_portal;

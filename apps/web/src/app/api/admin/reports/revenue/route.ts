@@ -2,11 +2,14 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -43,6 +46,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings } = await supabase
       .from('bookings')
       .select('scheduled_at, total_amount, status, provider_id')
+      .eq('tenant_id', tenantId)
       .gte('scheduled_at', startDate.toISOString())
       .lte('scheduled_at', endDate.toISOString())
       .in('status', ['completed', 'confirmed']);
@@ -90,6 +94,7 @@ export async function GET(request: NextRequest) {
       const { data: providers } = await supabase
         .from('providers')
         .select('id, business_name')
+        .eq('tenant_id', tenantId)
         .in('id', providerIds);
 
       (providers || []).forEach((p: { id: string; business_name?: string }) => {
@@ -113,38 +118,42 @@ export async function GET(request: NextRequest) {
     }
 
     // Get gift card metrics
-    // Gift card sales
-    const { data: salesTransactions } = await supabase
-      .from("finance_transactions")
-      .select("amount, created_at")
-      .eq("transaction_type", "gift_card_sale")
-      .gte("created_at", startDate.toISOString())
-      .lte("created_at", endDate.toISOString());
+    const salesTransactions = await fetchFinanceLedgerRowsForTenant(
+      supabase,
+      tenantId,
+      { start: startDate.toISOString(), end: endDate.toISOString() },
+      { transactionType: "gift_card_sale" }
+    );
 
-    // Gift card redemptions
+    // Redemptions always reference a booking — scope by booking.tenant_id
     const { data: redemptions } = await supabase
       .from("gift_card_redemptions")
-      .select("amount, captured_at, created_at")
+      .select("amount, captured_at, created_at, bookings!inner(tenant_id)")
+      .eq("bookings.tenant_id", tenantId)
       .eq("status", "captured")
       .not("captured_at", "is", null)
       .gte("captured_at", startDate.toISOString())
       .lte("captured_at", endDate.toISOString());
 
-    // Active gift cards (outstanding liability)
-    const { data: activeGiftCards } = await supabase
+    const { data: liabilityRows } = await supabase
       .from("gift_cards")
       .select("balance")
+      .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .gt("balance", 0);
 
+    const outstandingLiability = (liabilityRows || []).reduce(
+      (sum, g) => sum + Number(g.balance || 0),
+      0
+    );
+
     const totalSales = (salesTransactions || []).reduce((sum, t) => sum + Number(t.amount || 0), 0);
     const totalRedemptions = (redemptions || []).reduce((sum, r) => sum + Number(r.amount || 0), 0);
-    const outstandingLiability = (activeGiftCards || []).reduce((sum, g) => sum + Number(g.balance || 0), 0);
-    
-    // Get total orders for redemption rate
+
     const { data: orders } = await supabase
       .from("gift_card_orders")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("status", "paid")
       .gte("created_at", startDate.toISOString())
       .lte("created_at", endDate.toISOString());
@@ -156,6 +165,7 @@ export async function GET(request: NextRequest) {
     // Sales by day
     const salesByDay: Record<string, { sales: number; count: number }> = {};
     (salesTransactions || []).forEach((t) => {
+      if (!t.created_at) return;
       const date = new Date(t.created_at).toISOString().split("T")[0];
       if (!salesByDay[date]) {
         salesByDay[date] = { sales: 0, count: 0 };

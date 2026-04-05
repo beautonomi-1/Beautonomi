@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { createTransfer, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const bodySchema = z.object({
   reason: z.string().optional().nullable(),
@@ -22,7 +26,8 @@ export async function POST(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json(
@@ -47,9 +52,52 @@ export async function POST(
 
     type PayoutRow = { status: string; provider_id: string; amount?: number; payout_number?: string; id: string; currency?: string; payout_account_details?: { bank_account_id?: string } };
     const p = payout as PayoutRow;
+
+    const provCheck = await fetchProviderInAdminTenant(supabase, p.provider_id, tenantId, "id");
+    if ("error" in provCheck) {
+      const st = provCheck.error.status;
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: st === 403 ? "Payout belongs to another market" : "Provider not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "NOT_FOUND",
+          },
+        },
+        { status: st }
+      );
+    }
+
     if (p.status === "completed") {
       return NextResponse.json(
         { data: null, error: { message: "Payout already paid", code: "ALREADY_PAID" } },
+        { status: 400 }
+      );
+    }
+
+    const pAny = payout as PayoutRow & { transfer_code?: string | null };
+    if (p.status === "processing" && pAny.transfer_code) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "A transfer was already initiated for this payout. Wait for Paystack or mark failed before retrying.",
+            code: "TRANSFER_ALREADY_INITIATED",
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    if (p.status !== "pending" && p.status !== "processing") {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: `Cannot initiate transfer for payout in status "${p.status}"`,
+            code: "INVALID_STATE",
+          },
+        },
         { status: 400 }
       );
     }
@@ -87,16 +135,19 @@ export async function POST(
       );
     }
 
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const transferRequest = {
       source: "balance" as const,
       amount: convertToSmallestUnit(Number(p.amount || 0)),
       recipient: acct.recipient_code as string,
       reason: reason || `Payout ${p.payout_number || p.id}`,
       reference: `payout_${p.id}`,
-      currency: p.currency || acct.currency || "ZAR",
+      currency: p.currency || acct.currency || lastResortCurrency,
     };
 
-    const paystack = await createTransfer(transferRequest);
+    const paystack = await createTransfer(transferRequest, { tenantId });
 
     // Update payout to record transfer details + mark as processing
     const { data: updatedPayout, error: updateErr } = await supabase

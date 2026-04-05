@@ -33,6 +33,8 @@ export function LearnBreadcrumb({
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    // Sticky bar uses Framer scroll + DOM; gate to client only so SSR and first paint match.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration enable
     setMounted(true);
   }, []);
   useEffect(() => {

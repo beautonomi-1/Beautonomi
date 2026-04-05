@@ -76,7 +76,11 @@ export default function ExploreCollectionPage({ params }: { params: Promise<{ id
             Sign in
           </button>
         </div>
-        <LoginModal open={showLogin} setOpen={setShowLogin} />
+        <LoginModal
+          open={showLogin}
+          setOpen={setShowLogin}
+          initialMode="login"
+        />
       </div>
     );
   }

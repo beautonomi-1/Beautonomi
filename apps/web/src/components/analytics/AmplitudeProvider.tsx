@@ -3,8 +3,7 @@
 import { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AmplitudeProvider as AmplitudeContextProvider } from "@/providers/AmplitudeProvider";
-import AmplitudeGuidesProvider from "./AmplitudeGuidesProvider";
-import AmplitudeSurveysProvider from "./AmplitudeSurveysProvider";
+import AmplitudeEngagementProvider from "./AmplitudeEngagementProvider";
 
 /**
  * Client component wrapper for AmplitudeProvider
@@ -23,11 +22,7 @@ export default function AmplitudeProviderWrapper({ children }: { children: React
 
   return (
     <AmplitudeContextProvider portal={portal}>
-      <AmplitudeGuidesProvider>
-        <AmplitudeSurveysProvider>
-          {children}
-        </AmplitudeSurveysProvider>
-      </AmplitudeGuidesProvider>
+      <AmplitudeEngagementProvider>{children}</AmplitudeEngagementProvider>
     </AmplitudeContextProvider>
   );
 }

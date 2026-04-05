@@ -17,8 +17,9 @@ import {
   HelpCircle,
   Plus,
   Trophy,
+  CreditCard,
 } from "lucide-react";
-import { getGoogleCalendarUrl, getOutlookCalendarUrl } from "@/lib/calendar/ics";
+import { getGoogleCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
@@ -26,7 +27,7 @@ type BookingDetail = Booking & {
   selected_datetime?: string;
   location?: { name?: string; address?: string };
   location_name?: string;
-  provider?: { business_name?: string; phone?: string; email?: string };
+  provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string };
   outstanding_balance?: number;
 };
 import { toast } from "sonner";
@@ -59,6 +60,7 @@ export default function BookingDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [isPayingOutstanding, setIsPayingOutstanding] = useState(false);
 
   useEffect(() => {
     const loadBooking = async () => {
@@ -158,6 +160,27 @@ export default function BookingDetailPage() {
     }
   };
 
+  const handlePayOutstanding = async () => {
+    if (!bookingId) return;
+    try {
+      setIsPayingOutstanding(true);
+      const res = await fetcher.post<{
+        data: { authorization_url?: string };
+        error: null;
+      }>(`/api/me/bookings/${bookingId}/pay-remaining`, {}, { timeoutMs: 45000 });
+      const url = res?.data?.authorization_url;
+      if (url) {
+        window.location.href = url;
+        return;
+      }
+      toast.error("Could not start payment.");
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Could not start payment.");
+    } finally {
+      setIsPayingOutstanding(false);
+    }
+  };
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString("en-US", {
@@ -204,6 +227,13 @@ export default function BookingDetailPage() {
     booking.status === "confirmed" || booking.status === "pending";
   const canReschedule = booking.status === "confirmed";
   const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
+  const isCashBooking =
+    (booking as unknown as Record<string, unknown>).payment_provider === "cash";
+  const canPayOutstandingOnline =
+    !isCashBooking &&
+    booking.status !== "cancelled" &&
+    (booking.outstanding_balance ?? 0) > 0 &&
+    (booking.payment_status === "pending" || booking.payment_status === "partially_paid");
   const providerName = booking.provider?.business_name ?? "your provider";
 
   const scheduledAt = booking.selected_datetime ?? booking.scheduled_at;
@@ -363,7 +393,7 @@ export default function BookingDetailPage() {
       {calendarEvent && booking.status !== "cancelled" && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
           <h2 className="text-lg md:text-xl font-semibold mb-3 text-gray-900">Add to your calendar</h2>
-          <p className="text-sm text-gray-600 mb-3">Save this appointment to Google Calendar, Outlook, or download an .ICS file.</p>
+          <p className="text-sm text-gray-600 mb-3">Save this appointment to Google Calendar or Apple Calendar (.ics).</p>
           <div className="flex flex-wrap gap-2">
             <a
               href={getGoogleCalendarUrl(calendarEvent)}
@@ -375,20 +405,12 @@ export default function BookingDetailPage() {
               Google Calendar
             </a>
             <a
-              href={getOutlookCalendarUrl(calendarEvent)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
-            >
-              Outlook
-            </a>
-            <a
               href={`/api/me/bookings/${bookingId}/calendar.ics`}
               download
               className="inline-flex items-center justify-center min-h-[40px] px-4 py-2 rounded-lg font-medium border border-gray-200 hover:bg-gray-50 transition-colors"
             >
               <Calendar className="w-4 h-4 mr-1" />
-              Download .ICS
+              Apple Calendar (.ics)
             </a>
           </div>
         </div>
@@ -515,6 +537,82 @@ export default function BookingDetailPage() {
               </span>
             </div>
           )}
+          {booking.travel_fee > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Travel fee</span>
+              <span className="font-medium">
+                {booking.currency} {booking.travel_fee.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.discount_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">
+                Discount{booking.discount_code ? ` (${booking.discount_code})` : ""}
+              </span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.discount_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.promotion_discount_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Promotion</span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.promotion_discount_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.membership_discount_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Membership discount</span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.membership_discount_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.loyalty_discount_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Loyalty points redeemed</span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.loyalty_discount_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.gift_card_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Gift card</span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.gift_card_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.wallet_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Wallet credit</span>
+              <span className="font-medium text-green-600">
+                -{booking.currency} {booking.wallet_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.tax_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">Tax{booking.tax_rate > 0 ? ` (${booking.tax_rate}%)` : ""}</span>
+              <span className="font-medium">
+                {booking.currency} {booking.tax_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
+          {booking.service_fee_amount > 0 && (
+            <div className="flex justify-between">
+              <span className="text-gray-600">
+                Service fee{booking.service_fee_percentage > 0 ? ` (${booking.service_fee_percentage}%)` : ""}
+              </span>
+              <span className="font-medium">
+                {booking.currency} {booking.service_fee_amount.toFixed(2)}
+              </span>
+            </div>
+          )}
           {booking.additional_charges && booking.additional_charges.length > 0 && (
             <div className="pt-2 border-t">
               <p className="text-sm font-medium text-gray-700 mb-2">Additional Charges</p>
@@ -541,6 +639,14 @@ export default function BookingDetailPage() {
               </span>
             </div>
           </div>
+          {booking.total_paid > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-600">Amount paid</span>
+              <span className="font-medium text-green-600">
+                {booking.currency} {booking.total_paid.toFixed(2)}
+              </span>
+            </div>
+          )}
           {booking.outstanding_balance !== undefined && booking.outstanding_balance > 0 && (
             <div className="pt-2 border-t">
               <div className="flex justify-between">
@@ -549,10 +655,42 @@ export default function BookingDetailPage() {
                   {booking.currency} {booking.outstanding_balance.toFixed(2)}
                 </span>
               </div>
+              {isCashBooking ? (
+                <p className="text-sm text-gray-600 mt-2">
+                  {booking.location_type === "at_home"
+                    ? "You will pay cash when your provider arrives."
+                    : "You will pay cash at the salon."}
+                </p>
+              ) : canPayOutstandingOnline ? (
+                <div className="mt-3">
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto bg-primary hover:bg-primary/90"
+                    onClick={handlePayOutstanding}
+                    disabled={isPayingOutstanding}
+                  >
+                    <CreditCard className="w-4 h-4 mr-2" aria-hidden />
+                    {isPayingOutstanding ? "Processing…" : "Pay outstanding balance"}
+                  </Button>
+                  <p className="text-xs text-gray-500 mt-2">
+                    Secure payment via Paystack. You will return here after paying.
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
-          <div className="flex justify-between text-sm text-gray-600 mt-2">
-            <span>Payment Status</span>
+          <div className="flex justify-between text-sm text-gray-600 mt-2 pt-2 border-t">
+            <span>Payment method</span>
+            <span className="font-medium capitalize">
+              {isCashBooking
+                ? "Cash"
+                : booking.payment_status === "paid"
+                ? "Online"
+                : "Online (pending)"}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>Payment status</span>
             <span
               className={`font-medium ${
                 booking.payment_status === "paid"
@@ -562,14 +700,28 @@ export default function BookingDetailPage() {
                   : "text-red-600"
               }`}
             >
-              {booking.payment_status}
+              {booking.payment_status === "paid"
+                ? "Paid"
+                : booking.payment_status === "partially_paid"
+                ? "Partially paid"
+                : booking.payment_status === "pending"
+                ? isCashBooking
+                  ? "Pay on arrival"
+                  : "Pending"
+                : booking.payment_status}
             </span>
           </div>
+          {booking.loyalty_points_earned > 0 && booking.status === "completed" && (
+            <div className="flex justify-between text-sm mt-1">
+              <span className="text-gray-600">Loyalty points earned</span>
+              <span className="font-medium text-primary">+{booking.loyalty_points_earned} pts</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Order Tracking (for at-home bookings) */}
-      {booking.location_type === "at_home" && (
+      {/* Order Tracking — at-home shows full tracker with OTP/ETA; at-salon shows simplified tracker */}
+      {(booking.location_type === "at_home" || booking.location_type === "at_salon") && (
         <div className="bg-white border border-gray-200 rounded-lg p-4 md:p-6 mb-6">
           <OrderDetailsDynamic bookingId={bookingId} booking={booking} />
         </div>

@@ -4,6 +4,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 const schema = z.object({
   membership_id: z.string().uuid(),
@@ -22,6 +26,9 @@ export async function POST(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const body = await request.json();
     const parsed = schema.safeParse(body);
     if (!parsed.success)
@@ -42,11 +49,30 @@ export async function POST(request: NextRequest) {
     if (planData.provider_id !== providerId)
       return errorResponse("Plan does not belong to this provider", "FORBIDDEN", 403);
 
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "This membership is not available in your current market.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
     const amount = Number(planData.price_monthly || 0);
-    const currency = planData.currency || "ZAR";
+    const currency = planData.currency || lastResortCurrency;
 
     const { data: order, error: orderError } = await (supabase.from("membership_orders") as any)
       .insert({
+        tenant_id: tenantId,
         user_id: user.id,
         provider_id: planData.provider_id,
         plan_id: planData.id,
@@ -75,6 +101,7 @@ export async function POST(request: NextRequest) {
         provider_id: planData.provider_id,
         plan_id: planData.id,
       },
+      tenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

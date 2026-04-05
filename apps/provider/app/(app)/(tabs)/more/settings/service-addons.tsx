@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type AddonType = "service" | "product" | "upgrade";
 
@@ -81,6 +82,7 @@ function typeStyle(t: AddonType) {
 }
 
 export default function ServiceAddonsScreen() {
+  const tenantCurrency = getTenantDefaultCurrency();
   useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
@@ -152,7 +154,7 @@ export default function ServiceAddonsScreen() {
       description: form.description.trim() || null,
       type: form.type,
       price,
-      currency: "ZAR",
+      currency: tenantCurrency,
       duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
       is_active: form.is_active,
       is_recommended: form.is_recommended,
@@ -294,7 +296,7 @@ export default function ServiceAddonsScreen() {
             />
           </View>
 
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price (ZAR) *</Text>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Price ({tenantCurrency}) *</Text>
           <TextInput
             style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
             value={form.price}

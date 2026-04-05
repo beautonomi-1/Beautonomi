@@ -33,7 +33,13 @@ export type CustomerBookingStatus = "upcoming" | "past" | "cancelled";
  * Provider Portal Status Mapping
  * Provider portal uses business-focused statuses
  */
-export type ProviderBookingStatus = "booked" | "started" | "completed" | "cancelled" | "no_show";
+export type ProviderBookingStatus =
+  | "pending"
+  | "booked"
+  | "started"
+  | "completed"
+  | "cancelled"
+  | "no_show";
 
 /**
  * Map database status to customer portal status
@@ -46,12 +52,20 @@ export function mapStatusToCustomer(dbStatus: BookingStatus, scheduledAt: string
     return "cancelled";
   }
 
-  // Past: completed or scheduled in the past
+  if (dbStatus === "no_show") {
+    return "past";
+  }
+
+  // Active appointment — always treat as upcoming for tabs/labels even if start time has passed.
+  if (dbStatus === "in_progress") {
+    return "upcoming";
+  }
+
+  // Past: completed, or not yet started but the slot time has passed
   if (dbStatus === "completed" || scheduled < now) {
     return "past";
   }
 
-  // Upcoming: pending, confirmed, or in_progress scheduled in the future
   return "upcoming";
 }
 
@@ -76,7 +90,7 @@ export function mapStatusFromCustomer(customerStatus: CustomerBookingStatus): Bo
  */
 export function mapStatusToProvider(dbStatus: BookingStatus): ProviderBookingStatus {
   const mapping: Record<BookingStatus, ProviderBookingStatus> = {
-    pending: "booked",
+    pending: "pending",
     confirmed: "booked",
     in_progress: "started",
     completed: "completed",
@@ -91,6 +105,7 @@ export function mapStatusToProvider(dbStatus: BookingStatus): ProviderBookingSta
  */
 export function mapStatusFromProvider(providerStatus: ProviderBookingStatus): BookingStatus {
   const mapping: Record<ProviderBookingStatus, BookingStatus> = {
+    pending: "pending",
     booked: "confirmed",
     started: "in_progress",
     completed: "completed",

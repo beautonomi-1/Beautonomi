@@ -5,6 +5,8 @@ import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
 
+// @admin-global Superadmin feature flag registry: CRUD may target global or tenant-scoped rows; not filtered by admin session tenant alone.
+
 /**
  * GET /api/admin/feature-flags/[id]
  * Get a specific feature flag (superadmin only)

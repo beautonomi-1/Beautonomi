@@ -3,6 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { bookingTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 /**
  * POST /api/provider/bookings/[id]/send-payment-link
@@ -23,6 +27,7 @@ export async function POST(
 
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id: bookingId } = await params;
     const body = await request.json();
 
@@ -48,12 +53,14 @@ export async function POST(
       .from("bookings")
       .select(`
         id, 
+        tenant_id,
         booking_number, 
         ref_number,
         total_amount, 
         payment_status,
         provider_id, 
         customer_id,
+        location_id,
         customers:users!bookings_customer_id_fkey(
           id, 
           full_name, 
@@ -71,6 +78,27 @@ export async function POST(
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const bookingMarketMismatch = bookingTenantMismatchResponse(
+      tenantId,
+      (booking as { tenant_id?: string | null }).tenant_id,
+    );
+    if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    const { format: formatMoney } = await getTenantMoneyFormatter(
+      (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
+    );
+
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdmin,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     // Check if already paid
@@ -106,26 +134,27 @@ export async function POST(
       );
     }
 
-    // Generate Paystack payment link
-    // Superadmin manages Paystack API keys in system settings
-    const paymentLink = `${process.env.NEXT_PUBLIC_APP_URL}/bookings/${bookingId}/pay`;
+    // Customer lands on web app → Paystack via POST /api/me/bookings/[id]/pay-remaining
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const paymentLink = `${appBase}/bookings/${bookingId}/pay`;
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
 
     // Create notification for customer (will be sent via OneSignal)
     try {
-      await supabaseAdmin.from("notifications").insert({
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      await insertNotification({
         user_id: booking.customer_id,
         type: "payment_link_sent",
         title: "Payment Link Ready",
-        message: `Click to pay R${booking.total_amount.toFixed(2)} for booking ${bookingRef} via Paystack.`,
-        metadata: {
+        message: `Pay ${formatMoney(Number(booking.total_amount ?? 0))} for booking ${bookingRef}. Open: ${paymentLink}`,
+        data: {
           booking_id: bookingId,
           booking_ref: bookingRef,
           amount: booking.total_amount,
           payment_link: paymentLink,
           delivery_method,
         },
-        link: paymentLink,
+        action_url: paymentLink,
       });
 
       // Send push notification via OneSignal using template
@@ -143,10 +172,11 @@ export async function POST(
           "payment_pending",
           [booking.customer_id],
           {
-            amount: `R${booking.total_amount.toFixed(2)}`,
-            booking_number: bookingRef,
+            amount: formatMoney(Number(booking.total_amount ?? 0)),
+            booking_number: String(bookingRef),
             payment_method: "Paystack",
             booking_id: bookingId,
+            payment_link: paymentLink,
           },
           channels,
           { appType: "customer" }

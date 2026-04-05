@@ -2,11 +2,17 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  resolveFinanceLedgerRowProviderId,
+} from "@/lib/admin/finance-ledger-tenant";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -45,7 +51,8 @@ export async function GET(request: NextRequest) {
     // All providers with basic info
     const { data: providers } = await supabase
       .from('providers')
-      .select('id, business_name, owner_name, status, rating_average, created_at');
+      .select('id, business_name, owner_name, status, rating_average, created_at')
+      .eq('tenant_id', tenantId);
 
     const providerIds = (providers || []).map((p: { id: string }) => p.id);
 
@@ -54,6 +61,7 @@ export async function GET(request: NextRequest) {
       ? await supabase
           .from('bookings')
           .select('provider_id, scheduled_at, total_amount, status')
+          .eq('tenant_id', tenantId)
           .in('provider_id', providerIds)
           .gte('scheduled_at', startISO)
           .lte('scheduled_at', endISO)
@@ -69,23 +77,23 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Provider earnings from finance_transactions for period (more accurate revenue)
-    const { data: txRows } = providerIds.length > 0
-      ? await supabase
-          .from('finance_transactions')
-          .select('provider_id, net, amount')
-          .in('provider_id', providerIds)
-          .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip'])
-          .gte('created_at', startISO)
-          .lte('created_at', endISO)
-      : { data: [] };
+    // Provider earnings: merged ledger (provider in tenant OR booking in tenant) so booking-only rows count
+    const idSet = new Set(providerIds);
+    const mergedLedger =
+      providerIds.length > 0
+        ? await fetchFinanceLedgerExportRowsForTenant(supabase, tenantId, { start: startISO, end: endISO }, {
+            transactionTypes: ["provider_earnings", "travel_fee", "tip"],
+            restrictProviderIds: providerIds,
+          })
+        : [];
 
     const revenueByProvider: Record<string, number> = {};
-    (txRows || []).forEach((t: { provider_id: string; net?: number; amount?: number }) => {
-      const id = t.provider_id;
+    for (const row of mergedLedger) {
+      const id = resolveFinanceLedgerRowProviderId(row);
+      if (!id || !idSet.has(id)) continue;
       if (!revenueByProvider[id]) revenueByProvider[id] = 0;
-      revenueByProvider[id] += Number(t.net ?? t.amount ?? 0);
-    });
+      revenueByProvider[id] += Number(row.net ?? row.amount ?? 0);
+    }
 
     type ProviderReportRow = { id: string; business_name?: string; owner_name?: string; status?: string; rating_average?: number };
     const providersWithMetrics = (providers || []).map((p: ProviderReportRow) => {

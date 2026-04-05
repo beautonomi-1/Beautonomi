@@ -4,10 +4,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/finance/summary
- * 
+ *
  * Get financial summary (GMV, fees, net, provider earnings)
  */
 export async function GET(request: Request) {
@@ -18,22 +20,23 @@ export async function GET(request: Request) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    // Finance ledger is the source of truth
-    let ftQuery = supabase
-      .from("finance_transactions")
-      .select("transaction_type, amount, fees, commission, net, created_at", { count: "exact" });
+    const tx = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+      start: startDate,
+      end: endDate,
+    });
 
-    if (startDate) ftQuery = ftQuery.gte("created_at", startDate);
-    if (endDate) ftQuery = ftQuery.lte("created_at", endDate);
-
-    const { data: rows } = await ftQuery;
-    const tx = rows || [];
-
-    type FinanceRow = { transaction_type: string; amount?: number; fees?: number; commission?: number; net?: number };
+    type FinanceRow = {
+      transaction_type: string;
+      amount?: number | null;
+      fees?: number | null;
+      commission?: number | null;
+      net?: number | null;
+    };
     const sum = (
       types: string[],
       field: "amount" | "fees" | "commission" | "net" = "amount"
@@ -45,9 +48,6 @@ export async function GET(request: Request) {
     // Gateway fees (only on payment and additional_charge_payment)
     const gatewayFeesServices = sum(["payment", "additional_charge_payment"], "fees");
 
-    // Services collected (GMV): full customer payment for bookings + additional charges.
-    // - payment row: amount = commission base (not full booking); full booking = commission base + provider_earnings + tip + tax + travel_fee + service_fee.
-    // - additional_charge_payment: amount = net after gateway, so gross = amount + fees.
     const bookingGmv =
       sum(["payment"], "amount") +
       sum(["provider_earnings"], "amount") +
@@ -60,38 +60,30 @@ export async function GET(request: Request) {
     const serviceCollectedGross = bookingGmv + additionalChargeGross;
     const serviceCollectedNet = serviceCollectedGross - gatewayFeesServices;
 
-    // Platform commission (gross and net of refunds)
     const platformCommissionGross = sum(["payment", "additional_charge_payment"], "net");
-    const platformRefundImpact = sum(["refund"], "net"); // negative (commission reversal)
+    const platformRefundImpact = sum(["refund"], "net");
     const platformCommissionNet = platformCommissionGross + platformRefundImpact;
 
-    // Platform take-home (commission net of refunds, minus gateway fees)
     const platformTakeNet = platformCommissionNet - gatewayFeesServices;
 
-    // Tips & taxes (gross reporting; excluded from platform take)
     const tipsGross = sum(["tip"], "amount");
     const taxesGross = sum(["tax"], "amount");
 
-    // Provider subscription revenue (platform earns this directly)
     const subscriptionNet = sum(["provider_subscription_payment"], "net");
     const subscriptionGatewayFees = sum(["provider_subscription_payment"], "fees");
     const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
 
-    // Ads revenue (provider pre-pay for campaign budget; platform earns when they pay)
     const adsNet = sum(["provider_ads_payment"], "net");
     const adsGatewayFees = sum(["provider_ads_payment"], "fees");
     const adsGross = adsNet + adsGatewayFees;
 
     const providerEarnings = sum(["provider_earnings"], "net");
 
-    // Other provider-linked sales (gross)
     const giftCardSales = sum(["gift_card_sale"], "amount");
     const membershipSales = sum(["membership_sale"], "amount");
 
-    // Refund gross: total amount refunded to customers (positive number for display)
     const refundsGross = sum(["refund"], "amount");
 
-    // Wallet top-up revenue (cash in from customers; not in finance_transactions)
     const supabaseAdmin = getSupabaseAdmin();
     let walletTopupRevenue = 0;
     let referralPayouts = 0;
@@ -99,45 +91,64 @@ export async function GET(request: Request) {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
         .select("amount")
-        .eq("status", "paid");
+        .eq("status", "paid")
+        .eq("tenant_id", tenantId);
       if (startDate) topupQuery = topupQuery.gte("paid_at", startDate);
       if (endDate) topupQuery = topupQuery.lte("paid_at", endDate);
-      const { data: topups } = await topupQuery;
-      walletTopupRevenue = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      const { data: topups, error: topErr } = await topupQuery;
+      if (topErr) {
+        console.warn("Wallet topups tenant scope failed, falling back to unscoped sum:", topErr.message);
+        let fallback = supabaseAdmin.from("wallet_topups").select("amount").eq("status", "paid");
+        if (startDate) fallback = fallback.gte("paid_at", startDate);
+        if (endDate) fallback = fallback.lte("paid_at", endDate);
+        const { data: fb } = await fallback;
+        walletTopupRevenue = (fb || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      } else {
+        walletTopupRevenue = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      }
 
-      // Referral payouts (platform expense: credits to referrers' wallets)
       let refQuery = supabaseAdmin
         .from("wallet_transactions")
         .select("amount")
         .eq("type", "credit")
-        .eq("reference_type", "referral");
+        .eq("reference_type", "referral")
+        .eq("tenant_id", tenantId);
       if (startDate) refQuery = refQuery.gte("created_at", startDate);
       if (endDate) refQuery = refQuery.lte("created_at", endDate);
-      const { data: refTxs } = await refQuery;
-      referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      const { data: refTxs, error: refErr } = await refQuery;
+      if (refErr) {
+        console.warn("Referral payouts tenant scope failed, falling back to unscoped sum:", refErr.message);
+        let refFb = supabaseAdmin
+          .from("wallet_transactions")
+          .select("amount")
+          .eq("type", "credit")
+          .eq("reference_type", "referral");
+        if (startDate) refFb = refFb.gte("created_at", startDate);
+        if (endDate) refFb = refFb.lte("created_at", endDate);
+        const { data: rfb } = await refFb;
+        referralPayouts = (rfb || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      } else {
+        referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
     }
 
-    // Total platform take including subscription, ads, wallet top-up, minus referral payouts
     const totalPlatformTakeAfterReferrals =
       platformTakeNet + subscriptionNet + adsNet + walletTopupRevenue - referralPayouts;
 
-    // Get period comparison (previous period)
     const period = startDate && endDate ? "custom" : "month";
     let previousStart: string;
     let previousEnd: string;
 
     if (period === "month") {
       const now = new Date();
-      const _currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
       previousStart = previousMonthStart.toISOString();
       previousEnd = previousMonthEnd.toISOString();
     } else {
-      // For custom dates, calculate previous period of same length
       if (startDate && endDate) {
         const start = new Date(startDate);
         const end = new Date(endDate);
@@ -155,14 +166,11 @@ export async function GET(request: Request) {
 
     let previousGmv = 0;
     if (previousStart && previousEnd) {
-      const prevQuery = supabase
-        .from("finance_transactions")
-        .select("transaction_type, amount, fees")
-        .gte("created_at", previousStart)
-        .lte("created_at", previousEnd);
-      const { data: prevRows } = await prevQuery;
-      const prev = prevRows || [];
-      type PrevRow = { transaction_type: string; amount?: number; fees?: number };
+      const prev = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+        start: previousStart,
+        end: previousEnd,
+      });
+      type PrevRow = { transaction_type: string; amount?: number | null; fees?: number | null };
       const prevSum = (types: string[], field: "amount" | "fees") =>
         prev
           .filter((r: PrevRow) => types.includes(r.transaction_type))
@@ -233,4 +241,3 @@ export async function GET(request: Request) {
     );
   }
 }
-

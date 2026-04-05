@@ -4,6 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { Label } from "@/components/ui/label";
 import { signInWithOAuth } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -28,12 +29,15 @@ import {
   MIN_TAP,
   BOOKING_ACTIVE_SCALE,
 } from "../constants";
+import { isCompleteE164 } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import {
-  normalizePhoneToE164,
-  DEFAULT_PHONE_COUNTRY_CODE,
-  PHONE_COUNTRY_OPTIONS,
-  getFlagEmoji,
-} from "@/lib/phone";
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
 
 interface BeautonomiGateModalProps {
   holdId: string;
@@ -53,13 +57,11 @@ export function BeautonomiGateModal({
   const [loading, setLoading] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
-  const [phoneCountryCode, setPhoneCountryCode] = useState(DEFAULT_PHONE_COUNTRY_CODE);
   const [otpSent, setOtpSent] = useState<"email" | "phone" | null>(null);
   const [otpCode, setOtpCode] = useState("");
   const [sentPhoneE164, setSentPhoneE164] = useState<string>("");
 
   const validEmail = email.trim() !== "" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const normalizedPhone = normalizePhoneToE164(phone, phoneCountryCode);
 
   const redirectUrl =
     customRedirectUrl ||
@@ -92,11 +94,12 @@ export function BeautonomiGateModal({
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: redirectUrl },
+        options: { emailRedirectTo: redirectUrl, shouldCreateUser: false },
       });
       if (error) throw error;
+      setOtpCode("");
       setOtpSent("email");
-      toast.success("Check your email for the sign-in link");
+      toast.success(`Check your email for the ${SUPABASE_AUTH_OTP_LENGTH}-digit code`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send email");
     } finally {
@@ -109,22 +112,25 @@ export function BeautonomiGateModal({
       toast.error("Please enter your phone number");
       return;
     }
-    const e164 = normalizePhoneToE164(phone, phoneCountryCode);
-    if (!e164) {
-      toast.error("Please enter a valid phone number with country code (e.g. 082 123 4567 for SA)");
+    const e164 = phone.trim();
+    if (!isCompleteE164(e164)) {
+      toast.error("Please enter a valid phone number with country code.");
       return;
     }
     setLoading("phone");
     try {
       const supabase = getSupabaseClient();
       const { error } = await supabase.auth.signInWithOtp({
-        phone: e164,
-        options: { channel: "sms" },
+        phone: normalizeSupabaseAuthPhone(e164),
+        options: { channel: "sms", shouldCreateUser: false },
       });
       if (error) throw error;
-      setSentPhoneE164(e164);
+      setOtpCode("");
+      setSentPhoneE164(normalizeSupabaseAuthPhone(e164));
       setOtpSent("phone");
-      toast.success("Check your phone for the verification code");
+      toast.success(
+        `Check your phone for the ${SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to send code");
     } finally {
@@ -132,17 +138,36 @@ export function BeautonomiGateModal({
     }
   };
 
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim()) return;
+  const handleVerifyOtp = async (codeOverride?: string) => {
+    if (!otpSent) return;
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
+    if (!isCompleteSupabaseSmsOtp(token)) {
+      toast.error(
+        otpSent === "email"
+          ? `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`
+          : `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`,
+      );
+      return;
+    }
+
     setLoading("verify");
     try {
       const supabase = getSupabaseClient();
-      const { error } = await supabase.auth.verifyOtp({
-        ...(otpSent === "email"
-          ? { email: email.trim(), token: otpCode.trim(), type: "email" }
-          : { phone: sentPhoneE164, token: otpCode.trim(), type: "sms" }),
-      });
-      if (error) throw error;
+      let error: { message: string } | null = null;
+      if (otpSent === "email") {
+        ({ error } = await supabase.auth.verifyOtp({
+          email: email.trim(),
+          token,
+          type: "email",
+        }));
+      } else {
+        ({ error } = await supabase.auth.verifyOtp({
+          phone: normalizeSupabaseAuthPhone(sentPhoneE164),
+          token,
+          type: "sms",
+        }));
+      }
+      if (error) throw new Error(error.message);
       if (holdId && typeof document !== "undefined") {
         document.cookie = `beautonomi_hold_id=${holdId}; path=/; max-age=600; SameSite=Lax`;
       }
@@ -256,7 +281,7 @@ export function BeautonomiGateModal({
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
-                  Email (magic link)
+                  Email ({SUPABASE_AUTH_OTP_LENGTH}-digit code)
                 </Label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
@@ -291,46 +316,26 @@ export function BeautonomiGateModal({
                   </Button>
                 </div>
                 <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                  We&apos;ll send you a sign-in link
+                  We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code
                 </p>
               </div>
               <div className="space-y-2">
                 <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
                   Phone (SMS code)
                 </Label>
-                <div className="flex gap-2">
-                  <select
-                    aria-label="Country code"
-                    value={phoneCountryCode}
-                    onChange={(e) => setPhoneCountryCode(e.target.value)}
-                    className="rounded-xl h-12 pl-2 pr-8 border bg-gray-50/50 text-sm font-medium min-w-[100px] focus:outline-none focus:ring-2 shrink-0"
-                    style={{ borderColor: BOOKING_BORDER, outlineColor: BOOKING_ACCENT }}
-                  >
-                    {PHONE_COUNTRY_OPTIONS.map((opt) => (
-                      <option key={opt.code} value={opt.code}>
-                        {getFlagEmoji(opt.iso2)} {opt.dial}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="relative flex-1">
-                    <Input
-                      type="tel"
-                      placeholder={phoneCountryCode === "27" ? "82 123 4567" : "Phone"}
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1 min-w-0">
+                    <PhoneInput
+                      inputId="beautonomi-gate-phone"
+                      label=""
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      className="rounded-xl h-12 border bg-gray-50/50 focus-visible:ring-2 focus-visible:ring-offset-0 pr-10"
-                      style={{ borderColor: BOOKING_BORDER, outlineColor: BOOKING_ACCENT }}
-                      autoComplete="tel-national"
+                      onChange={setPhone}
+                      placeholder="Phone number"
                     />
-                    {phone.trim() !== "" && (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                        {normalizedPhone ? <Check className="h-5 w-5 text-green-600" aria-hidden /> : <X className="h-5 w-5 text-red-600" aria-hidden />}
-                      </span>
-                    )}
                   </div>
                   <Button
                     type="button"
-                    className={`rounded-xl h-12 px-4 ${MIN_TAP} ${BOOKING_ACTIVE_SCALE}`}
+                    className={`rounded-xl h-12 px-4 shrink-0 mt-0 ${MIN_TAP} ${BOOKING_ACTIVE_SCALE}`}
                     style={{
                       backgroundColor: BOOKING_ACCENT,
                       color: "#fff",
@@ -338,13 +343,16 @@ export function BeautonomiGateModal({
                       boxShadow: BOOKING_SHADOW_CARD,
                     }}
                     onClick={handlePhoneOtp}
-                    disabled={!!loading}
+                    disabled={!!loading || !isCompleteE164(phone)}
                   >
                     {loading === "phone" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
                   </Button>
                 </div>
-                <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-                  Enter number with or without country code (e.g. 082 for SA)
+                <p className="text-xs leading-relaxed" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                  Pick country, then enter national digits (hint under the field). We&apos;ll SMS a{" "}
+                  {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
+                  {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                  {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
                 </p>
               </div>
             </>
@@ -353,29 +361,34 @@ export function BeautonomiGateModal({
               <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
                 Enter verification code
               </Label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="123456"
-                  value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  className="flex-1 rounded-xl h-12 border bg-gray-50/50 focus-visible:ring-2 focus-visible:ring-offset-0"
-                  style={{ borderColor: BOOKING_BORDER, outlineColor: BOOKING_ACCENT }}
-                />
-                <Button
-                  type="button"
-                  className={`rounded-2xl h-12 font-semibold px-5 ${MIN_TAP} ${BOOKING_ACTIVE_SCALE}`}
-                  style={{
-                    backgroundColor: BOOKING_ACCENT,
-                    color: "#fff",
-                    borderRadius: BOOKING_RADIUS_BUTTON,
-                    boxShadow: BOOKING_SHADOW_CARD,
-                  }}
-                  onClick={handleVerifyOtp}
-                  disabled={!!loading || !otpCode.trim()}
-                >
-                  {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
-                </Button>
-              </div>
+              <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code we sent by SMS.
+              </p>
+              <OtpDigitInput
+                length={SUPABASE_AUTH_OTP_LENGTH}
+                value={otpCode}
+                onChange={setOtpCode}
+                onComplete={(code) => {
+                  if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
+                }}
+                disabled={!!loading}
+                autoFocus
+                label="SMS verification code"
+              />
+              <Button
+                type="button"
+                className={`w-full rounded-2xl h-12 font-semibold ${MIN_TAP} ${BOOKING_ACTIVE_SCALE}`}
+                style={{
+                  backgroundColor: BOOKING_ACCENT,
+                  color: "#fff",
+                  borderRadius: BOOKING_RADIUS_BUTTON,
+                  boxShadow: BOOKING_SHADOW_CARD,
+                }}
+                onClick={() => void handleVerifyOtp()}
+                disabled={!!loading || !isCompleteSupabaseSmsOtp(otpCode)}
+              >
+                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
+              </Button>
               <Button
                 variant="ghost"
                 size="sm"
@@ -387,9 +400,52 @@ export function BeautonomiGateModal({
               </Button>
             </div>
           ) : (
-            <p className="text-sm text-center py-2" style={{ color: BOOKING_TEXT_SECONDARY }}>
-              Check your email and click the link to sign in. You can close this and we&apos;ll redirect you when ready.
-            </p>
+            <div className="space-y-3">
+              <Label className="text-sm font-medium" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                Enter verification code
+              </Label>
+              <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to{" "}
+                <span className="font-semibold text-gray-900">{email.trim()}</span>
+              </p>
+              <OtpDigitInput
+                length={SUPABASE_AUTH_OTP_LENGTH}
+                value={otpCode}
+                onChange={setOtpCode}
+                onComplete={(code) => {
+                  if (!loading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
+                }}
+                disabled={!!loading}
+                autoFocus
+                label="Email verification code"
+              />
+              <Button
+                type="button"
+                className={`w-full rounded-2xl h-12 font-semibold ${MIN_TAP} ${BOOKING_ACTIVE_SCALE}`}
+                style={{
+                  backgroundColor: BOOKING_ACCENT,
+                  color: "#fff",
+                  borderRadius: BOOKING_RADIUS_BUTTON,
+                  boxShadow: BOOKING_SHADOW_CARD,
+                }}
+                onClick={() => void handleVerifyOtp()}
+                disabled={!!loading || !isCompleteSupabaseSmsOtp(otpCode)}
+              >
+                {loading === "verify" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Verify"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-sm touch-manipulation"
+                style={{ color: BOOKING_TEXT_SECONDARY }}
+                onClick={() => {
+                  setOtpSent(null);
+                  setOtpCode("");
+                }}
+              >
+                Use different method
+              </Button>
+            </div>
           )}
         </div>
       </DialogContent>

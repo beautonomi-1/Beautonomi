@@ -17,7 +17,7 @@ export function QRCodeDisplay({
   qrData,
   onRefresh,
   title = "Verification QR Code",
-  description = "Customer can scan this code to verify your arrival",
+  description = "The customer shows this on their app; scan it or use the code below to verify arrival.",
 }: QRCodeDisplayProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -138,7 +138,7 @@ export function QRCodeDisplay({
         </div>
         <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-500">
           <QrCode className="w-3.5 h-3.5" />
-          <span>Customer scans this code to verify</span>
+          <span>Show this to the customer if they need a backup QR on your device</span>
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const updateCitySchema = z.object({
   name: z.string().min(1).optional(),
@@ -31,11 +32,13 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: city, error } = await supabase
       .from("featured_cities")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error || !city) {
@@ -55,6 +58,7 @@ export async function GET(
     const { count } = await supabase
       .from("providers")
       .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
       .eq("city", (city as { name: string; country: string }).name)
       .eq("country", (city as { name: string; country: string }).country)
       .eq("status", "active");
@@ -98,6 +102,7 @@ export async function PUT(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -120,6 +125,7 @@ export async function PUT(
       .from("featured_cities")
       .update(validationResult.data)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -182,12 +188,14 @@ export async function DELETE(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     // Soft delete by setting is_active to false
     const { data: city, error } = await supabase
       .from("featured_cities")
       .update({ is_active: false })
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 

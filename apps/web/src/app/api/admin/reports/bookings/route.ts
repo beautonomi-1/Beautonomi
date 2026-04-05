@@ -2,11 +2,13 @@ import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d';
@@ -43,6 +45,7 @@ export async function GET(request: NextRequest) {
     const { data: bookings } = await supabase
       .from('bookings')
       .select('scheduled_at, status, provider_id')
+      .eq('tenant_id', tenantId)
       .gte('scheduled_at', startDate.toISOString())
       .lte('scheduled_at', endDate.toISOString());
 
@@ -85,6 +88,7 @@ export async function GET(request: NextRequest) {
       const { data: providers } = await supabase
         .from('providers')
         .select('id, business_name')
+        .eq('tenant_id', tenantId)
         .in('id', providerIds);
 
       (providers || []).forEach((p: { id: string; business_name?: string }) => {

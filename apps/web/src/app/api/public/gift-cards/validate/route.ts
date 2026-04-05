@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { isGiftCardsEnabledForTenant } from "@/lib/subscriptions/entitlements";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/public/gift-cards/validate?code=XXX
@@ -10,7 +13,16 @@ import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
  */
 export async function GET(request: Request) {
   try {
-    const giftCardsEnabled = await isFeatureEnabledServer("gift_cards");
+    let tenantId: string | null = null;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.warn("Tenant resolution failed in /api/public/gift-cards/validate (continuing without tenant):", tenantErr);
+      tenantId = null;
+    }
+    const tenantRegion = tenantId ? await getTenantRegionConfig(tenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const giftCardsEnabled = await isGiftCardsEnabledForTenant(tenantId);
     if (!giftCardsEnabled) {
       return NextResponse.json({ valid: false, message: "Gift cards are currently unavailable" }, { status: 403 });
     }
@@ -49,7 +61,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       valid: true,
       balance: Number(card.balance || 0),
-      currency: card.currency || "ZAR",
+      currency: card.currency || lastResortCurrency,
     });
   } catch {
     return NextResponse.json({ valid: false, message: "Failed to validate gift card" }, { status: 500 });

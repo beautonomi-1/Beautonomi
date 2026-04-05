@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/loyalty
@@ -11,6 +14,9 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get user's loyalty points balance using the function
     let pointsBalance = 0;
@@ -65,7 +71,7 @@ export async function GET(request: NextRequest) {
 
     // Get active loyalty rule to calculate redemption value
     let redemptionRate = 100; // Default: 100 points = 1 currency unit
-    let currency = "ZAR";
+    let currency = lastResortCurrency;
     let pointsPerCurrency = 1;
 
     try {
@@ -79,7 +85,7 @@ export async function GET(request: NextRequest) {
 
       if (!ruleError && activeRule) {
         redemptionRate = Number(activeRule.redemption_rate) || 100;
-        currency = activeRule.currency || "ZAR";
+        currency = activeRule.currency || lastResortCurrency;
         pointsPerCurrency = Number(activeRule.points_per_currency_unit) || 1;
       }
     } catch {

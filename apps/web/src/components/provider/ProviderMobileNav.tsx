@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -21,10 +21,22 @@ import {
   CalendarCheck,
   Clock,
   UserCheck,
-  LayoutList,
   BarChart3,
   Sparkles,
   Trophy,
+  Plus,
+  CalendarClock,
+  CalendarOff,
+  Store,
+  Package,
+  Truck,
+  ShoppingBag,
+  FileText,
+  Layers,
+  HelpCircle,
+  TicketCheck,
+  Coins,
+  DollarSign,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -35,76 +47,120 @@ import { usePlatformSettings } from "@/providers/PlatformSettingsProvider";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { StaffPermissions } from "@/lib/auth/permissions";
 
-// Navigation sections matching the desktop sidebar
-const navigationSections = [
+interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  badge?: string;
+  permission?: keyof StaffPermissions;
+}
+
+interface NavSection {
+  title: string;
+  items: NavItem[];
+}
+
+const quickActions: NavItem[] = [
+  { icon: Calendar, label: "New Appointment", href: "/provider/calendar" },
+  { icon: UsersRound, label: "New Client", href: "/provider/clients" },
+  { icon: Wallet, label: "New Sale", href: "/provider/sales" },
+  { icon: Clock, label: "Add to Waitlist", href: "/provider/waitlist" },
+];
+
+const navigationSections: NavSection[] = [
   {
     title: "Main",
     items: [
-      { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard", permission: undefined },
-      { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarCheck, label: "Appointments", href: "/provider/appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
+      { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" },
+      { icon: CalendarCheck, label: "Appointments", href: "/provider/appointments", permission: "view_calendar" },
     ],
   },
   {
     title: "Operations",
     items: [
-      { icon: LayoutList, label: "Front Desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
+      { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" },
+      { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" },
+      { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" },
+    ],
+  },
+  {
+    title: "Schedule",
+    items: [
+      { icon: CalendarClock, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" },
+      { icon: CalendarOff, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" },
+      { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" },
     ],
   },
   {
     title: "Business",
     items: [
-      { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions },
-      { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
-      { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
-      { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
-      { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification", permission: undefined },
-      { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" as keyof StaffPermissions },
-      { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" as keyof StaffPermissions },
+      { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" },
+      { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" },
+      { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" },
+      { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" },
+      { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" },
+      { icon: Trophy, label: "Rewards & Badges", href: "/provider/gamification" },
+      { icon: Grid3x3, label: "Catalogue", href: "/provider/catalogue", permission: "view_products" },
+      { icon: Sparkles, label: "Packages", href: "/provider/packages", permission: "view_services" },
+    ],
+  },
+  {
+    title: "E-Commerce",
+    items: [
+      { icon: Store, label: "E-Commerce", href: "/provider/ecommerce", permission: "view_products" },
+      { icon: Package, label: "Orders", href: "/provider/orders", permission: "view_sales" },
+      { icon: ShoppingBag, label: "Walk-in Sale", href: "/provider/ecommerce/walk-in", permission: "view_sales" },
+      { icon: Truck, label: "Shipping", href: "/provider/ecommerce/shipping", permission: "edit_settings" },
+    ],
+  },
+  {
+    title: "Resources & Forms",
+    items: [
+      { icon: Layers, label: "Resources", href: "/provider/resources", permission: "edit_settings" },
+      { icon: FileText, label: "Forms", href: "/provider/forms", permission: "edit_settings" },
     ],
   },
   {
     title: "Team & Marketing",
     items: [
-      { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" as keyof StaffPermissions },
-      { icon: Users, label: "Team", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
-      { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
-      { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
-      { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" },
+      { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" },
+      { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" },
+      { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" },
+      { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" },
+      { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" },
     ],
   },
 ];
 
-const bottomItems = [
+const bottomItems: NavItem[] = [
+  { icon: HelpCircle, label: "Help & Support", href: "/help" },
+  { icon: TicketCheck, label: "My Tickets", href: "/help/submit-ticket" },
   { icon: Settings, label: "Settings", href: "/provider/settings" },
 ];
 
-// Match routes including sub-routes
-const isActiveRoute = (pathname: string, href: string) => {
-  if (href === "/provider/catalogue") {
-    return pathname.startsWith("/provider/catalogue");
-  }
-  if (href === "/provider/explore") {
-    return pathname.startsWith("/provider/explore");
-  }
-  if (href === "/provider/marketing/automations") {
-    return pathname.startsWith("/provider/marketing");
-  }
-  if (href === "/provider/team/members") {
-    return pathname.startsWith("/provider/team");
-  }
-  if (href === "/provider/settings") {
-    return pathname.startsWith("/provider/settings");
-  }
-  if (href === "/provider/reports") {
-    return pathname.startsWith("/provider/reports");
-  }
-  if (href === "/provider/gamification") {
-    return pathname.startsWith("/provider/gamification");
-  }
+const routePrefixMap: Record<string, string> = {
+  "/provider/catalogue": "/provider/catalogue",
+  "/provider/explore": "/provider/explore",
+  "/provider/marketing/automations": "/provider/marketing",
+  "/provider/team": "/provider/team",
+  "/provider/settings": "/provider/settings",
+  "/provider/reports": "/provider/reports",
+  "/provider/gamification": "/provider/gamification",
+  "/provider/ecommerce": "/provider/ecommerce",
+  "/provider/orders": "/provider/orders",
+  "/provider/resources": "/provider/resources",
+  "/provider/forms": "/provider/forms",
+  "/provider/schedule": "/provider/schedule",
+  "/provider/time-blocks": "/provider/time-blocks",
+  "/provider/payouts": "/provider/payouts",
+  "/help": "/help",
+};
+
+const isActiveRoute = (pathname: string, href: string): boolean => {
+  const prefix = routePrefixMap[href];
+  if (prefix) return pathname.startsWith(prefix);
   return pathname === href || pathname.startsWith(href + "/");
 };
 
@@ -119,24 +175,21 @@ export function ProviderMobileNav() {
   const primaryColor = branding?.primary_color || "#FF0077";
   const secondaryColor = branding?.secondary_color || "#4fd1c5";
   const platformName = branding?.site_name || "Beautonomi";
+  const portalNavSurfaceStyle = {
+    background: `linear-gradient(to bottom, color-mix(in srgb, ${primaryColor} 30%, #171216) 0%, color-mix(in srgb, ${secondaryColor} 22%, #100d10) 100%)`,
+  } as const;
 
-  // Filter navigation sections based on permissions
-  const filteredNavigationSections = navigationSections.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      // If no permission required, always show
-      if (!item.permission) return true;
-      // If permissions are loading, show all (will filter once loaded)
-      if (permissionsLoading) return true;
-      // Check permission
-      return hasPermission(item.permission);
-    })
-  })).filter(section => section.items.length > 0); // Remove empty sections
-
-  // Filter bottom items
-  const filteredBottomItems = bottomItems.filter(_item => {
-    return true; // Settings is always accessible
-  });
+  const filteredNavigationSections = useMemo(() =>
+    navigationSections.map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (!item.permission) return true;
+        if (permissionsLoading) return true;
+        return hasPermission(item.permission);
+      })
+    })).filter(section => section.items.length > 0),
+    [permissionsLoading, hasPermission]
+  );
 
   const handleLogout = async () => {
     try {
@@ -150,11 +203,15 @@ export function ProviderMobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation menu">
           <Menu className="w-6 h-6" />
         </Button>
       </SheetTrigger>
-      <SheetContent side="left" className="w-80 sm:w-96 bg-gradient-to-b from-[#2F2A2E] to-[#1F1A1E] text-white p-0 overflow-hidden">
+      <SheetContent
+        side="left"
+        className="w-80 sm:w-96 text-white p-0 overflow-hidden border-r border-white/10"
+        style={portalNavSurfaceStyle}
+      >
         <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
         <SheetDescription className="sr-only">
           Main navigation menu for provider dashboard
@@ -162,14 +219,14 @@ export function ProviderMobileNav() {
         <div className="flex flex-col h-full">
           {/* Header */}
           <div className="h-16 flex items-center justify-between px-4 border-b border-white/10 flex-shrink-0">
-            <Link href="/provider/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2">
-              <div 
-                className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden"
-                style={{
-                  background: `linear-gradient(to bottom right, ${primaryColor}, ${secondaryColor})`,
-                }}
-              >
-                <PlatformLogo alt={platformName} className="w-6 h-6" width={24} height={24} />
+            <Link href="/provider/dashboard" onClick={() => setOpen(false)} className="flex items-center gap-2 min-w-0">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center overflow-hidden bg-white shadow-md ring-1 ring-white/40 shrink-0">
+                <PlatformLogo
+                  alt={platformName}
+                  className="w-6 h-6 object-contain"
+                  width={24}
+                  height={24}
+                />
               </div>
               <span className="text-lg font-bold text-white">{platformName}</span>
             </Link>
@@ -178,17 +235,42 @@ export function ProviderMobileNav() {
             </Button>
           </div>
 
+          {/* Quick Actions */}
+          <div className="px-3 pt-4 pb-2">
+            <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
+              Quick Actions
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {quickActions.map((action) => {
+                const Icon = action.icon;
+                return (
+                  <Link
+                    key={action.href}
+                    href={action.href}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 min-h-[44px] px-3 rounded-xl text-white/90 hover:bg-white/10 transition-all touch-manipulation"
+                    style={{
+                      background: `linear-gradient(135deg, ${primaryColor}33, ${secondaryColor}33)`,
+                      border: `1px solid ${primaryColor}44`,
+                    }}
+                  >
+                    <Plus className="w-4 h-4 flex-shrink-0" style={{ color: secondaryColor }} />
+                    <span className="text-xs font-medium">{action.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Navigation Sections */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-4 space-y-6 scrollbar-hide">
-            {filteredNavigationSections.map((section, _sectionIdx) => (
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-5 scrollbar-hide">
+            {filteredNavigationSections.map((section) => (
               <div key={section.title}>
-                {/* Section Title */}
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-2 px-3">
+                <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 px-3">
                   {section.title}
                 </p>
                 
-                {/* Section Items */}
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   {section.items.map((item) => {
                     const Icon = item.icon;
                     const isActive = isActiveRoute(pathname, item.href);
@@ -198,11 +280,12 @@ export function ProviderMobileNav() {
                         key={item.href}
                         href={item.href}
                         onClick={() => setOpen(false)}
+                        aria-current={isActive ? "page" : undefined}
                         className={cn(
-                          "flex items-center gap-3 h-10 px-3 rounded-xl transition-all relative group",
+                          "flex items-center gap-3 min-h-[44px] px-3 rounded-xl transition-all relative touch-manipulation",
                           isActive
                             ? "text-white shadow-lg"
-                            : "text-gray-400 hover:bg-white/10 hover:text-white"
+                            : "text-gray-400 hover:bg-white/10 hover:text-white active:bg-white/15"
                         )}
                         style={isActive ? {
                           background: `linear-gradient(to right, ${primaryColor}, ${primaryColor}CC)`,
@@ -235,8 +318,8 @@ export function ProviderMobileNav() {
           </nav>
 
           {/* Bottom Section */}
-          <div className="mt-auto pt-2 border-t border-white/10 px-3 space-y-1 flex-shrink-0 pb-4">
-            {filteredBottomItems.map((item) => {
+          <div className="mt-auto pt-2 border-t border-white/10 px-3 space-y-0.5 flex-shrink-0 pb-4">
+            {bottomItems.map((item) => {
               const Icon = item.icon;
               const isActive = isActiveRoute(pathname, item.href);
 
@@ -245,11 +328,12 @@ export function ProviderMobileNav() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setOpen(false)}
+                  aria-current={isActive ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-3 h-10 px-3 rounded-xl transition-all",
+                    "flex items-center gap-3 min-h-[44px] px-3 rounded-xl transition-all touch-manipulation",
                     isActive
                       ? "bg-white/10 text-white"
-                      : "text-gray-400 hover:bg-white/10 hover:text-white"
+                      : "text-gray-400 hover:bg-white/10 hover:text-white active:bg-white/15"
                   )}
                 >
                   <Icon className="w-5 h-5 flex-shrink-0" />
@@ -258,10 +342,9 @@ export function ProviderMobileNav() {
               );
             })}
 
-            {/* Logout Button */}
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 h-10 w-full rounded-xl px-3 text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all"
+              className="flex items-center gap-3 min-h-[44px] w-full rounded-xl px-3 text-gray-400 hover:bg-red-500/10 hover:text-red-400 transition-all touch-manipulation"
             >
               <LogOut className="w-5 h-5 flex-shrink-0" />
               <span className="text-sm font-medium">Sign Out</span>

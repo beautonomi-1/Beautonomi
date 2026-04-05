@@ -8,6 +8,7 @@ import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const ENVS = ["production", "staging", "development"];
 
@@ -24,10 +25,12 @@ export async function GET(request: NextRequest) {
     const offset = Math.max(0, parseInt(searchParams.get("offset") ?? "0", 10) || 0);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: rows, error } = await supabase
       .from("provider_quality_score")
-      .select("provider_id, computed_score, components, updated_at")
+      .select("provider_id, computed_score, components, updated_at, providers!inner(tenant_id)")
+      .eq("providers.tenant_id", tenantId)
       .order("computed_score", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -38,9 +41,10 @@ export async function GET(request: NextRequest) {
     const providerIds = [...new Set((rows ?? []).map((r: ScoreRow) => r.provider_id))];
     const providerMap = new Map<string, { business_name: string | null; slug: string | null }>();
     if (providerIds.length > 0) {
-      const { data: providers } = await supabase
+        const { data: providers } = await supabase
         .from("providers")
         .select("id, business_name, slug")
+        .eq("tenant_id", tenantId)
         .in("id", providerIds);
       (providers ?? []).forEach((p: ProviderInfoRow) => {
         providerMap.set(p.id, { business_name: p.business_name ?? null, slug: p.slug ?? null });

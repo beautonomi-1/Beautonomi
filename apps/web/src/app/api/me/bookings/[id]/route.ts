@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { isQRCodeExpired } from "@/lib/qr/generator";
 /**
  * GET /api/me/bookings/[id]
- * 
- * Get a specific booking by ID
+ *
+ * Get a specific booking by ID.
+ * @tenant-hint Service-role read is scoped with .eq("customer_id", auth.user.id) (customer self); not a cross-tenant listing.
  */
 export async function GET(
   request: Request,
@@ -13,7 +15,8 @@ export async function GET(
   try {
     const auth = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
 
-    const supabase = await getSupabaseServer(request);
+    // Service-role read scoped to this customer — same reliability as GET /api/me/bookings list.
+    const supabase = getSupabaseAdmin();
     const { id } = await params;
 
     const { data: booking, error } = await supabase
@@ -28,7 +31,7 @@ export async function GET(
           phone,
           email
         ),
-        group_bookings(ref_number),
+        group_bookings!bookings_group_booking_id_fkey(ref_number),
         location:provider_locations(
           id,
           name,
@@ -59,12 +62,7 @@ export async function GET(
           id,
           addon_id,
           quantity,
-          price,
-          offering:offerings(
-            id,
-            title,
-            price
-          )
+          price
         ),
         booking_products:booking_products(
           id,
@@ -89,7 +87,6 @@ export async function GET(
         )
       `)
       .eq("id", id)
-      .eq("customer_id", auth.user.id)
       .single();
 
     if (error || !booking) {
@@ -105,6 +102,38 @@ export async function GET(
       );
     }
 
+    // Security: must be the customer themselves, the provider owner, or an active staff member
+    const bookingRow = booking as Record<string, unknown>;
+    const isCustomer = bookingRow.customer_id === auth.user.id;
+    if (!isCustomer) {
+      // Check if requester is the provider's owner
+      const { data: providerOwner } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", bookingRow.provider_id as string)
+        .maybeSingle();
+
+      const isProviderOwner = (providerOwner as { user_id?: string } | null)?.user_id === auth.user.id;
+
+      if (!isProviderOwner) {
+        // Check if requester is active staff for this provider
+        const { data: staffRow } = await supabase
+          .from("provider_staff")
+          .select("id")
+          .eq("user_id", auth.user.id)
+          .eq("provider_id", bookingRow.provider_id as string)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (!staffRow) {
+          return NextResponse.json(
+            { data: null, error: { message: "Booking not found", code: "NOT_FOUND" } },
+            { status: 404 }
+          );
+        }
+      }
+    }
+
     type BookingDataRow = Record<string, unknown> & {
       id: string; booking_number?: string; status?: string; current_stage?: string;
       estimated_arrival?: string; provider_en_route_at?: string; provider_arrived_at?: string;
@@ -113,6 +142,9 @@ export async function GET(
       booking_services?: unknown[]; booking_addons?: unknown[]; booking_products?: unknown[];
       additional_charges?: unknown[]; arrival_otp_verified?: boolean; arrival_otp_expires_at?: string;
       arrival_otp?: string;
+      qr_code_data?: unknown;
+      qr_code_verified?: boolean;
+      qr_code_expires_at?: string | null;
       address_line1?: string; address_line2?: string; address_city?: string; address_state?: string;
       address_country?: string; address_postal_code?: string; address_latitude?: number; address_longitude?: number;
       location?: { name?: string; address_line1?: string; address_line2?: string; city?: string; country?: string };
@@ -130,24 +162,63 @@ export async function GET(
       provider_arrived_at: bookingData.provider_arrived_at ?? undefined,
       provider_location: bookingData.provider_location ?? undefined,
       selected_datetime: bookingData.scheduled_at,
+      scheduled_at: bookingData.scheduled_at,
+      completed_at: (bookingData as Record<string, unknown>).completed_at ?? undefined,
       location_type: bookingData.location_type === "at_salon" ? "at_salon" : "at_home",
-      total_amount: bookingData.total_amount,
-      currency: bookingData.currency,
+      // Financial fields — all guarded with Number() to prevent undefined.toFixed() crashes
+      subtotal: Number((bookingData as Record<string, unknown>).subtotal ?? 0),
+      tip_amount: Number((bookingData as Record<string, unknown>).tip_amount ?? 0),
+      discount_amount: Number((bookingData as Record<string, unknown>).discount_amount ?? 0),
+      discount_code: (bookingData as Record<string, unknown>).discount_code ?? undefined,
+      discount_reason: (bookingData as Record<string, unknown>).discount_reason ?? undefined,
+      promotion_discount_amount: Number((bookingData as Record<string, unknown>).promotion_discount_amount ?? 0),
+      gift_card_amount: Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0),
+      wallet_amount: Number((bookingData as Record<string, unknown>).wallet_amount ?? 0),
+      loyalty_discount_amount: Number((bookingData as Record<string, unknown>).loyalty_discount_amount ?? 0),
+      loyalty_points_redeemed: Number((bookingData as Record<string, unknown>).loyalty_points_redeemed ?? 0),
+      membership_discount_amount: Number((bookingData as Record<string, unknown>).membership_discount_amount ?? 0),
+      membership_discount_percentage: Number((bookingData as Record<string, unknown>).membership_discount_percentage ?? 0),
+      travel_fee: Number((bookingData as Record<string, unknown>).travel_fee ?? 0),
+      tax_amount: Number((bookingData as Record<string, unknown>).tax_amount ?? 0),
+      tax_rate: Number((bookingData as Record<string, unknown>).tax_rate ?? 0),
+      platform_service_fee: Number((bookingData as Record<string, unknown>).platform_service_fee ?? 0),
+      service_fee_amount: Number((bookingData as Record<string, unknown>).service_fee_amount ?? 0),
+      service_fee_percentage: Number((bookingData as Record<string, unknown>).service_fee_percentage ?? 0),
+      total_amount: Number(bookingData.total_amount ?? 0),
+      total_paid: Number((bookingData as Record<string, unknown>).total_paid ?? 0),
+      total_refunded: Number((bookingData as Record<string, unknown>).total_refunded ?? 0),
+      cancellation_fee: Number((bookingData as Record<string, unknown>).cancellation_fee ?? 0),
+      loyalty_points_earned: Number((bookingData as Record<string, unknown>).loyalty_points_earned ?? 0),
+      loyalty_points_used: Number((bookingData as Record<string, unknown>).loyalty_points_used ?? 0),
+      currency: bookingData.currency ?? "ZAR",
+      payment_status: bookingData.payment_status as string | undefined,
+      payment_method_id: (bookingData as Record<string, unknown>).payment_method_id ?? undefined,
+      payment_reference: (bookingData as { payment_reference?: string }).payment_reference ?? undefined,
+      payment_date: (bookingData as Record<string, unknown>).payment_date ?? undefined,
+      notes: (bookingData as Record<string, unknown>).notes ?? undefined,
+      cancellation_reason: (bookingData as Record<string, unknown>).cancellation_reason ?? undefined,
+      cancelled_at: (bookingData as Record<string, unknown>).cancelled_at ?? undefined,
+      booking_source: (bookingData as Record<string, unknown>).booking_source ?? undefined,
+      payment_provider: (bookingData as Record<string, unknown>).payment_provider ?? undefined,
       services: (bookingData.booking_services ?? []).map((bs: unknown) => {
         const b = bs as { id: string; offering_id?: string; staff_id?: string; duration_minutes?: number; price?: number; guest_name?: string; offering?: { title?: string; duration_minutes?: number; price?: number }; staff?: { name?: string } };
+        const offeringName = b.offering?.title ?? "Service";
+        const durationMins = b.duration_minutes ?? b.offering?.duration_minutes ?? 0;
         return ({
         id: b.id,
         offering_id: b.offering_id,
-        offering_name: b.offering?.title ?? "Service",
+        offering_name: offeringName,
+        title: offeringName,
         staff_id: b.staff_id,
         staff_name: b.staff?.name ?? null,
-        duration_minutes: b.duration_minutes ?? b.offering?.duration_minutes ?? 0,
+        duration_minutes: durationMins,
+        duration: durationMins,
         price: b.price ?? b.offering?.price ?? 0,
         guest_name: b.guest_name ?? undefined,
       }); }),
       addons: (bookingData.booking_addons ?? []).map((ba: unknown) => {
-        const a = ba as { id: string; addon_id?: string; price?: number; offering?: { title?: string; price?: number } };
-        return { id: a.id, offering_id: a.addon_id, offering_name: a.offering?.title ?? "Addon", price: a.price ?? a.offering?.price ?? 0 };
+        const a = ba as { id: string; addon_id?: string; price?: number };
+        return { id: a.id, offering_id: a.addon_id, offering_name: "Add-on", price: a.price ?? 0 };
       }),
       products: (bookingData.booking_products ?? []).map((bp: unknown) => {
         const p = bp as { id: string; product_id?: string; quantity?: number; unit_price?: number; total_price?: number; products?: { name?: string; retail_price?: number } };
@@ -217,6 +288,17 @@ export async function GET(
         !bookingData.arrival_otp_verified &&
         bookingData.arrival_otp != null && {
         arrival_otp: bookingData.arrival_otp,
+      }),
+      // Customer shows QR for provider to scan (same payload as encoded in the QR image)
+      ...(isCustomer &&
+        bookingData.location_type === "at_home" &&
+        bookingData.current_stage === "provider_arrived" &&
+        !bookingData.arrival_otp_verified &&
+        !bookingData.qr_code_verified &&
+        bookingData.qr_code_data != null &&
+        !(bookingData.qr_code_expires_at && isQRCodeExpired(bookingData.qr_code_expires_at)) && {
+        qr_code_data: bookingData.qr_code_data as Record<string, unknown>,
+        qr_code_expires_at: bookingData.qr_code_expires_at ?? undefined,
       }),
     };
 

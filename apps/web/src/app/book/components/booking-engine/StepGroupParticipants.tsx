@@ -21,6 +21,8 @@ import {
   MIN_TAP,
   BOOKING_ACTIVE_SCALE,
 } from "../../constants";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 const cardStyle = {
   background: "rgba(255,255,255,0.85)",
@@ -90,7 +92,10 @@ export function StepGroupParticipants({
     const primaryHasServices = primaryServices.length > 0;
     const allOthersHaveServices = participants.every((p) => p.service_ids.length > 0);
     const allOthersHaveNames = participants.every((p) => p.name.trim().length > 0);
-    return primaryHasServices && allOthersHaveServices && allOthersHaveNames;
+    const phonesOk = participants.every(
+      (p) => !p.phone?.trim() || isCompleteE164(p.phone),
+    );
+    return primaryHasServices && allOthersHaveServices && allOthersHaveNames && phonesOk;
   };
 
   return (
@@ -216,14 +221,18 @@ export function StepGroupParticipants({
                   className="rounded-xl border-2 px-3 py-2.5 text-sm w-full"
                   style={{ borderColor: BOOKING_BORDER }}
                 />
-                <input
-                  type="tel"
-                  placeholder="Phone"
-                  value={p.phone ?? ""}
-                  onChange={(e) => updateParticipant(index, { phone: e.target.value || undefined })}
-                  className="rounded-xl border-2 px-3 py-2.5 text-sm w-full col-span-2"
-                  style={{ borderColor: BOOKING_BORDER }}
-                />
+                <div className="col-span-2 w-full">
+                  <PhoneInput
+                    inputId={`booking-engine-group-guest-${index}-phone`}
+                    label="Phone (optional)"
+                    value={p.phone ?? ""}
+                    onChange={(e164) =>
+                      updateParticipant(index, { phone: e164 || undefined })
+                    }
+                    placeholder="Phone number"
+                    className="[&_label]:text-xs [&_label]:font-medium"
+                  />
+                </div>
               </div>
               <div>
                 <p className="text-xs font-medium mb-2" style={{ color: BOOKING_TEXT_SECONDARY }}>

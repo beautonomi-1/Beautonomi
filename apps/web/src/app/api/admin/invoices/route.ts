@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/invoices
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { page, limit, offset } = getPaginationParams(request);
     const searchParams = request.nextUrl.searchParams;
     const status = searchParams.get("status");
@@ -22,10 +24,11 @@ export async function GET(request: NextRequest) {
       .select(
         `
         *,
-        providers!inner(id, business_name, billing_email, billing_phone)
+        providers!inner(id, business_name, billing_email, billing_phone, tenant_id)
       `,
         { count: "exact" }
       )
+      .eq("providers.tenant_id", tenantId)
       .order("issue_date", { ascending: false })
       .range(offset, offset + limit - 1);
 

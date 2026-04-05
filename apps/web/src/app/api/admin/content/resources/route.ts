@@ -5,6 +5,8 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 const resourceSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -30,6 +32,7 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     
     // Return empty array if query fails instead of 500 error
     if (!supabase) {
@@ -39,19 +42,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: resources, error } = await supabase
-      .from("resources")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching resources:", error);
-      // Return empty array instead of 500 error
-      return NextResponse.json({
-        data: [],
-        error: null,
-      });
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "resources",
+      tenantId,
+      select: "*",
+      dedupeKey: (row) => String(row.slug ?? row.id ?? ""),
+      orderBy: { column: "created_at", ascending: false },
+    });
+    const resources = scoped.data;
 
     type ResourceRow = { category?: string; thumbnail_url?: string | null; is_published?: boolean; [key: string]: unknown };
     const transformedResources = (resources || []).map((r: ResourceRow) => ({
@@ -93,6 +92,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -121,6 +121,7 @@ export async function POST(request: NextRequest) {
     const { data: resource, error } = await supabase
       .from("resources")
       .insert({
+        tenant_id: tenantId,
         title,
         slug,
         content,

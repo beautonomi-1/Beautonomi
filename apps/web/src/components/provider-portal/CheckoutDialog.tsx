@@ -35,6 +35,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface ServiceItem {
   id: string;
@@ -93,6 +95,7 @@ export function CheckoutDialog({
   checkoutData,
   onComplete,
 }: CheckoutDialogProps) {
+  const locale = useTenantLocaleTag();
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [tipPercentage, setTipPercentage] = useState(0);
   const [customTip, setCustomTip] = useState("");
@@ -142,9 +145,9 @@ export function CheckoutDialog({
   }, [checkoutData, discountType, discountValue, tipPercentage, customTip]);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     }).format(amount);
   };
 
@@ -201,7 +204,7 @@ export function CheckoutDialog({
             </div>
             <div className="text-right">
               <p className="text-sm text-white/70">
-                {new Date(checkoutData.scheduled_date).toLocaleDateString("en-ZA", {
+                {new Date(checkoutData.scheduled_date).toLocaleDateString(locale, {
                   weekday: "short",
                   month: "short",
                   day: "numeric",

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format, startOfMonth, endOfMonth, subDays } from "date-fns";
 import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -32,10 +33,27 @@ interface PayRun {
   approved_at: string | null;
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function isPayrollOwnerRole(role: string | null): boolean {
+  return role === "provider_owner" || role === "superadmin";
+}
+
 export default function PayrollScreen() {
   const { screenPadding } = useResponsive();
+  const { role } = useProvider();
+  const isOwner = isPayrollOwnerRole(role);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOwner && createOpen) setCreateOpen(false);
+  }, [isOwner, createOpen]);
   const [periodType, setPeriodType] = useState<"weekly" | "monthly">("weekly");
   const [periodDate, setPeriodDate] = useState(() => new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -84,7 +102,7 @@ export default function PayrollScreen() {
   );
 
   const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+    formatDateSafe(d);
 
   const getPeriodBounds = useCallback(() => {
     if (periodType === "monthly") {
@@ -148,18 +166,20 @@ export default function PayrollScreen() {
         showBack
         subtitle={`${payRuns.length} pay run${payRuns.length === 1 ? "" : "s"}`}
         rightAction={
-          <TouchableOpacity
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              setPeriodDate(new Date());
-              setPeriodType("weekly");
-              setCreateOpen(true);
-            }}
-            style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
-          </TouchableOpacity>
+          isOwner ? (
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setPeriodDate(new Date());
+                setPeriodType("weekly");
+                setCreateOpen(true);
+              }}
+              style={twStyle("flex-row items-center rounded-xl bg-emerald-600 px-4 py-2")}
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={twStyle("ml-1.5 text-sm font-semibold text-white")}>New run</Text>
+            </TouchableOpacity>
+          ) : undefined
         }
       />
       <ScrollView
@@ -173,20 +193,30 @@ export default function PayrollScreen() {
         <View style={twStyle("mb-4 rounded-2xl bg-emerald-50/80 p-4")}>
           <Text style={twStyle("text-sm font-medium text-emerald-900")}>Pay runs</Text>
           <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
-            Create a run for a period, then approve and mark paid when ready.
+            {isOwner
+              ? "Create a run for a period, then approve and mark paid when ready. VAT/PAYE and UIF automation is coming soon—use manual deductions on the web pay run detail for now."
+              : "View pay runs for your workplace. Only the business owner can create runs, approve, or mark them paid."}
           </Text>
         </View>
         {payRuns.length === 0 ? (
           <EmptyState
             icon="wallet-outline"
             title="No pay runs yet"
-            description="Create a pay run for a weekly or monthly period. Then approve and mark it paid here."
-            actionLabel="Create pay run"
-            onAction={() => {
-              setPeriodDate(new Date());
-              setPeriodType("weekly");
-              setCreateOpen(true);
-            }}
+            description={
+              isOwner
+                ? "Create a pay run for a weekly or monthly period. Then approve and mark it paid here."
+                : "Your owner hasn’t created a pay run yet. Ask them to start one from this screen."
+            }
+            actionLabel={isOwner ? "Create pay run" : undefined}
+            onAction={
+              isOwner
+                ? () => {
+                    setPeriodDate(new Date());
+                    setPeriodType("weekly");
+                    setCreateOpen(true);
+                  }
+                : undefined
+            }
           />
         ) : (
           payRuns.map((run) => (
@@ -222,7 +252,7 @@ export default function PayrollScreen() {
                   </View>
                 </View>
               </View>
-              {run.status === "draft" && (
+              {run.status === "draft" && isOwner && (
                 <TouchableOpacity
                   onPress={() => handleApprove(run)}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5")}
@@ -231,7 +261,7 @@ export default function PayrollScreen() {
                   <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Approve</Text>
                 </TouchableOpacity>
               )}
-              {run.status === "approved" && (
+              {run.status === "approved" && isOwner && (
                 <TouchableOpacity
                   onPress={() => handleMarkPaid(run)}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5")}
@@ -246,7 +276,7 @@ export default function PayrollScreen() {
       </ScrollView>
 
       <BottomSheet
-        visible={createOpen}
+        visible={createOpen && isOwner}
         onClose={() => !creating && setCreateOpen(false)}
         title="Create pay run"
         subtitle="Choose period type and date"

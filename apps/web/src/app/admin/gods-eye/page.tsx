@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import LiveMapTab from "./components/LiveMapTab";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface GodsEyeData {
   overview: {
@@ -91,6 +92,7 @@ interface GodsEyeData {
 }
 
 export default function GodsEyePage() {
+  const { currencyCode } = useReportCurrency();
   const [data, setData] = useState<GodsEyeData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -200,7 +202,7 @@ export default function GodsEyePage() {
     
     // Revenue Breakdown
     rows.push("REVENUE BREAKDOWN");
-    rows.push("Period,Amount (ZAR)");
+    rows.push(`Period,Amount (${currencyCode})`);
     rows.push(`Today,${data.revenue_breakdown.today}`);
     rows.push(`This Week,${data.revenue_breakdown.this_week}`);
     rows.push(`This Month,${data.revenue_breakdown.this_month}`);

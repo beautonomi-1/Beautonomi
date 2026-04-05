@@ -168,7 +168,11 @@ export default function CarouselCard({
         shareUrl={content?.link ? `${typeof window !== "undefined" ? window.location.origin : ""}${content.link}` : undefined}
       />
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 }

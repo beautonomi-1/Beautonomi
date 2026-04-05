@@ -1,32 +1,57 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireAdminSection, requireRoleInApi, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
+import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from 'zod';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-const travelFeesSchema = z.object({
-  default_rate_per_km: z.number().min(0).optional(),
-  default_minimum_fee: z.number().min(0).optional(),
-  default_maximum_fee: z.number().min(0).nullable().optional(),
-  default_currency: z.string().optional(),
-  allow_provider_customization: z.boolean().optional(),
-  provider_min_rate_per_km: z.number().min(0).optional(),
-  provider_max_rate_per_km: z.number().min(0).optional(),
-  provider_min_minimum_fee: z.number().min(0).optional(),
-  provider_max_minimum_fee: z.number().min(0).optional(),
+const travelFeeTierSchema = z.object({
+  max_km: z.number().min(0),
+  fee: z.number().min(0),
 });
+
+const travelFeesSchema = z
+  .object({
+    default_rate_per_km: z.number().min(0).optional(),
+    default_minimum_fee: z.number().min(0).optional(),
+    default_maximum_fee: z.number().min(0).nullable().optional(),
+    default_currency: z.string().optional(),
+    allow_provider_customization: z.boolean().optional(),
+    provider_min_rate_per_km: z.number().min(0).optional(),
+    provider_max_rate_per_km: z.number().min(0).optional(),
+    provider_min_minimum_fee: z.number().min(0).optional(),
+    provider_max_minimum_fee: z.number().min(0).optional(),
+    pricing_model: z.enum(['per_km', 'tiered']).optional(),
+    default_tiers: z.array(travelFeeTierSchema).optional(),
+    allow_provider_tiered: z.boolean().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.pricing_model !== 'tiered') return true;
+      const tiers = data.default_tiers;
+      if (!tiers || tiers.length === 0) return false;
+      for (let i = 1; i < tiers.length; i++) {
+        if (tiers[i].max_km <= tiers[i - 1].max_km) return false;
+      }
+      return true;
+    },
+    { message: 'When pricing_model is tiered, default_tiers must be non-empty and sorted by max_km ascending', path: ['default_tiers'] }
+  );
 
 /**
  * GET /api/admin/travel-fees
- * 
- * Get platform travel fee settings
- * Allows providers to read limits (for validation), but only superadmins can modify
+ *
+ * Get platform travel fee settings (admin-only).
  */
 export async function GET(request: NextRequest) {
   try {
-    // Allow providers and superadmins to read platform limits
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
+    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: platformSettings, error } = await supabase
       .from('platform_settings')
@@ -44,28 +69,21 @@ export async function GET(request: NextRequest) {
       default_rate_per_km: 8.00,
       default_minimum_fee: 20.00,
       default_maximum_fee: null,
-      default_currency: 'ZAR',
+      default_currency: defaultCurrency,
       allow_provider_customization: true,
       provider_min_rate_per_km: 0.00,
       provider_max_rate_per_km: 50.00,
       provider_min_minimum_fee: 0.00,
       provider_max_minimum_fee: 100.00,
     };
+    const normalized = {
+      ...travelFees,
+      pricing_model: travelFees.pricing_model ?? 'per_km',
+      default_tiers: travelFees.default_tiers ?? null,
+      allow_provider_tiered: travelFees.allow_provider_tiered !== false,
+    };
 
-    // For providers, only return the limits they need for validation
-    // For superadmins, return full settings
-    if (user.role === 'superadmin') {
-      return successResponse(travelFees);
-    } else {
-      // Return only the limits providers need
-      return successResponse({
-        provider_min_rate_per_km: travelFees.provider_min_rate_per_km || 0.00,
-        provider_max_rate_per_km: travelFees.provider_max_rate_per_km || 50.00,
-        provider_min_minimum_fee: travelFees.provider_min_minimum_fee || 0.00,
-        provider_max_minimum_fee: travelFees.provider_max_minimum_fee || 100.00,
-        allow_provider_customization: travelFees.allow_provider_customization !== false,
-      });
-    }
+    return successResponse(normalized);
   } catch (error) {
     return handleApiError(error, 'Failed to fetch travel fee settings');
   }
@@ -80,6 +98,9 @@ export async function PATCH(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const body = await request.json();
 
     const validatedData = travelFeesSchema.parse(body);
@@ -132,7 +153,7 @@ export async function PATCH(request: NextRequest) {
             default_rate_per_km: 8.00,
             default_minimum_fee: 20.00,
             default_maximum_fee: null,
-            default_currency: 'ZAR',
+            default_currency: defaultCurrency,
             allow_provider_customization: true,
             provider_min_rate_per_km: 0.00,
             provider_max_rate_per_km: 50.00,

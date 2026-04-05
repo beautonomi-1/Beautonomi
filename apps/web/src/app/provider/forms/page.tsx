@@ -161,20 +161,13 @@ export default function ProviderFormsPage() {
             action={{ label: "Add form", onClick: openCreate }}
           />
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Fields</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <>
+            {/* Mobile card layout */}
+            <div className="md:hidden divide-y">
               {forms.map((form) => (
-                <TableRow key={form.id}>
-                  <TableCell>
-                    <div>
+                <div key={form.id} className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 flex-1">
                       <Link
                         href={`/provider/forms/${form.id}`}
                         className="font-medium text-primary hover:underline"
@@ -182,51 +175,121 @@ export default function ProviderFormsPage() {
                         {form.title}
                       </Link>
                       {form.description && (
-                        <p className="text-sm text-gray-500 line-clamp-1">{form.description}</p>
+                        <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{form.description}</p>
                       )}
                     </div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{form.form_type ?? "intake"}</Badge>
-                  </TableCell>
-                  <TableCell>
+                    <Badge variant="secondary" className="shrink-0">{form.form_type ?? "intake"}</Badge>
+                  </div>
+
+                  <div className="text-sm text-gray-600">
                     <Link
                       href={`/provider/forms/${form.id}`}
                       className="text-primary hover:underline"
                     >
                       {(form.fields ?? []).length} fields
                     </Link>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" asChild>
-                        <Link href={`/provider/forms/${form.id}`} className="gap-1">
-                          <ListOrdered className="w-4 h-4" />
-                          Fields
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => openEdit(form)}
-                        aria-label="Edit form"
-                      >
-                        <FileEdit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDelete(form)}
-                        aria-label="Delete form"
-                      >
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button variant="outline" size="sm" className="min-h-[44px] flex-1" asChild>
+                      <Link href={`/provider/forms/${form.id}`} className="gap-1">
+                        <ListOrdered className="w-4 h-4" />
+                        Fields
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[44px]"
+                      onClick={() => openEdit(form)}
+                      aria-label="Edit form"
+                    >
+                      <FileEdit className="w-4 h-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="min-h-[44px] text-destructive"
+                      onClick={() => handleDelete(form)}
+                      aria-label="Delete form"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+
+            {/* Desktop table layout */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Fields</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {forms.map((form) => (
+                    <TableRow key={form.id}>
+                      <TableCell>
+                        <div>
+                          <Link
+                            href={`/provider/forms/${form.id}`}
+                            className="font-medium text-primary hover:underline"
+                          >
+                            {form.title}
+                          </Link>
+                          {form.description && (
+                            <p className="text-sm text-gray-500 line-clamp-1">{form.description}</p>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary">{form.form_type ?? "intake"}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Link
+                          href={`/provider/forms/${form.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {(form.fields ?? []).length} fields
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" asChild>
+                            <Link href={`/provider/forms/${form.id}`} className="gap-1">
+                              <ListOrdered className="w-4 h-4" />
+                              Fields
+                            </Link>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => openEdit(form)}
+                            aria-label="Edit form"
+                          >
+                            <FileEdit className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(form)}
+                            aria-label="Delete form"
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </SectionCard>
 

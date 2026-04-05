@@ -11,7 +11,7 @@
  * @module components/appointments/AppointmentSidebar
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -84,7 +84,14 @@ import {
   Search,
 } from "lucide-react";
 
-import type { Appointment, TeamMember, ServiceItem, ProductItem, Salon } from "@/lib/provider-portal/types";
+import type {
+  Appointment,
+  TeamMember,
+  ServiceItem,
+  ProductItem,
+  Salon,
+  Provider as PortalProviderProfile,
+} from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { fetcher } from "@/lib/http/fetcher";
 import {
@@ -98,11 +105,16 @@ import {
   unmapStatus,
 } from "@/lib/scheduling/mangomintAdapter";
 import { ProviderClientRatingDialog } from "@/components/provider-portal/ProviderClientRatingDialog";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { PostForRewardNudge } from "@/components/provider/PostForRewardNudge";
 import { getStatusColors } from "@/lib/scheduling/visualMapping";
 import { DEFAULT_APPOINTMENT_STATUS } from "@/lib/provider-portal/constants";
 import { computeTravelFee, DEFAULT_TRAVEL_FEE_RULES, type TravelFeeRules } from "@/lib/travel/travelFeeEngine";
 import { NotificationToggle } from "@/components/calendar/NotificationToggle";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // ============================================================================
 // TYPES
@@ -222,6 +234,18 @@ export function AppointmentSidebar({
     setSendNotification,
     updateSelectedAppointment,
   } = useAppointmentSidebar();
+
+  const { format: formatMoney } = useProviderMoneyFormat();
+  const { provider: portalProviderRaw } = useProviderPortal();
+  const portalProvider = portalProviderRaw as PortalProviderProfile | null;
+
+  /** Booking id for PATCH /bookings/:id (calendar rows may use composite ids or service-line ids). */
+  const activeBookingId = useMemo(() => {
+    if (!selectedAppointment?.id) return "";
+    if (selectedAppointment.booking_id) return selectedAppointment.booking_id;
+    const id = selectedAppointment.id;
+    return id.includes("-svc-") ? id.split("-svc-")[0] : id;
+  }, [selectedAppointment]);
 
   // In-salon appointments: only list locations where clients can visit (location_type === 'salon'); base = distance-only
   const salonLocations = (locations || []).filter(
@@ -344,9 +368,7 @@ export function AppointmentSidebar({
     last_name: "",
     email: "",
     phone: "",
-    countryCode: "+27", // Default to South Africa
   });
-  const [phoneValidationError, setPhoneValidationError] = useState<string>("");
   
   // Product search state
   const [productSearchQuery, setProductSearchQuery] = useState("");
@@ -538,121 +560,36 @@ export function AppointmentSidebar({
     setShowClientSearch(false);
   };
   
-  // Format phone number to E.164 format (required by Supabase Auth)
-  const _formatPhoneToE164 = (phone: string, countryCode: string = "+27"): string | undefined => {
-    if (!phone || !phone.trim()) {
-      return undefined;
-    }
-    
-    // Remove all whitespace and non-digit characters
-    let cleaned = phone.trim().replace(/[\s\-\(\)]/g, '');
-    
-    // If it already starts with +, validate it
-    if (cleaned.startsWith('+')) {
-      // E.164 format: + followed by country code and number (min 7 digits after country code)
-      // Minimum valid length: +1 + 7 digits = 9 characters
-      if (cleaned.length >= 9 && /^\+[1-9]\d{7,}$/.test(cleaned)) {
-        return cleaned;
-      }
-      // Invalid format, return undefined
-      return undefined;
-    }
-    
-    // Remove all non-digit characters
-    cleaned = cleaned.replace(/[^\d]/g, '');
-    
-    if (cleaned.length === 0) {
-      return undefined;
-    }
-    
-    // If it starts with 0, remove the leading 0 and use the selected country code
-    if (cleaned.startsWith('0')) {
-      cleaned = cleaned.substring(1);
-    }
-    
-    // Combine country code with phone number
-    const formatted = countryCode + cleaned;
-    
-    // Validate length (minimum 9 characters: country code + 7 digits)
-    if (formatted.length >= 9 && /^\+[1-9]\d{7,}$/.test(formatted)) {
-      return formatted;
-    }
-    
-    // Invalid format
-    return undefined;
-  };
-  
   const handleCreateNewClient = useCallback(async () => {
     if (!newClientData.first_name.trim() || !newClientData.last_name.trim()) {
       toast.error("First name and last name are required");
       return;
     }
     
-    // Validate phone number if provided
     const phone = newClientData.phone.trim();
-    if (phone) {
-      // Remove spaces, dashes, parentheses
-      const cleanPhone = phone.replace(/[\s\-\(\)]/g, '');
-      
-      // Check if it starts with + (international format)
-      if (cleanPhone.startsWith('+')) {
-        // International format: +27 followed by 9 digits (South Africa example)
-        const digits = cleanPhone.substring(1).replace(/\D/g, '');
-        if (digits.length < 10 || digits.length > 15) {
-          setPhoneValidationError("Phone number must be 10-15 digits (including country code)");
-          toast.error("Invalid phone number length");
-          return;
-        }
-      } else if (cleanPhone.startsWith('0')) {
-        // Local format: 0 followed by 9 digits (South Africa example)
-        const digits = cleanPhone.replace(/\D/g, '');
-        if (digits.length !== 10) {
-          setPhoneValidationError("Phone number must be 10 digits (e.g., 0823456789)");
-          toast.error("Invalid phone number length");
-          return;
-        }
-      } else {
-        // No prefix - assume it needs country code
-        const digits = cleanPhone.replace(/\D/g, '');
-        if (digits.length !== 9) {
-          setPhoneValidationError("Phone number must be 9 digits without leading 0");
-          toast.error("Invalid phone number length");
-          return;
-        }
-      }
-      
-      // Clear validation error if we got here
-      setPhoneValidationError("");
+    if (phone && !isCompleteE164(phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
     }
-    
-    // Parse phone number to extract country code and number (same format as clients page)
-    const phoneMatch = phone.match(/^(\+\d{1,4})\s*(.+)$/);
-    const phoneNumber = phoneMatch ? phoneMatch[2] : phone;
-    const countryCode = phoneMatch ? phoneMatch[1] : newClientData.countryCode;
-    
-    // Prepare request body - use same format as clients page
+
     const requestBody: {
       first_name: string;
       last_name: string;
       full_name: string;
       email?: string;
       phone?: string;
-      countryCode?: string;
     } = {
       first_name: newClientData.first_name.trim(),
       last_name: newClientData.last_name.trim(),
       full_name: `${newClientData.first_name.trim()} ${newClientData.last_name.trim()}`.trim(),
     };
-    
+
     if (newClientData.email.trim()) {
       requestBody.email = newClientData.email.trim();
     }
-    
-    // Format phone same way as clients page: "countryCode phoneNumber"
-    // Also send countryCode separately for proper normalization
-    if (phoneNumber) {
-      requestBody.phone = `${countryCode} ${phoneNumber}`.trim();
-      requestBody.countryCode = countryCode; // Send separately for phone normalization
+
+    if (phone) {
+      requestBody.phone = phone;
     }
     
     try {
@@ -720,8 +657,7 @@ export function AppointmentSidebar({
       }));
       
       // Reset and close dialog
-      setNewClientData({ first_name: "", last_name: "", email: "", phone: "", countryCode: "+27" });
-      setPhoneValidationError("");
+      setNewClientData({ first_name: "", last_name: "", email: "", phone: "" });
       setShowNewClientDialog(false);
       setClientSearchQuery("");
       setClientSearchResults([]);
@@ -929,7 +865,7 @@ export function AppointmentSidebar({
     const fetchFullAppointment = async () => {
       try {
         setLoading(true);
-        const fullAppointment = await providerApi.getAppointment(selectedAppointment.id);
+        const fullAppointment = await providerApi.getAppointment(activeBookingId || selectedAppointment.id);
         updateSelectedAppointment(fullAppointment);
       } catch (err) {
         console.warn("Could not fetch full appointment data:", err);
@@ -938,7 +874,7 @@ export function AppointmentSidebar({
       }
     };
     fetchFullAppointment();
-  }, [mode, selectedAppointment?.id]);
+  }, [mode, selectedAppointment?.id, activeBookingId]);
 
   // Listen for custom event to open sidebar in CREATE mode (from /provider/appointments)
   useEffect(() => {
@@ -1227,10 +1163,7 @@ export function AppointmentSidebar({
     if (!selectedAppointment) return;
     
     try {
-      // Use booking ID (handle composite id from calendar: bookingId-svc-0)
-      const bookingId = selectedAppointment.id.includes("-svc-")
-        ? selectedAppointment.id.split("-svc-")[0]
-        : selectedAppointment.id;
+      const bookingId = activeBookingId;
       const refNumber = selectedAppointment.ref_number;
       
       if (!bookingId) {
@@ -1326,15 +1259,13 @@ export function AppointmentSidebar({
       console.error("Failed to generate invoice:", error);
       toast.error(error instanceof Error ? error.message : "Failed to generate invoice");
     }
-  }, [selectedAppointment]);
+  }, [selectedAppointment, activeBookingId]);
 
   const handleEmailInvoice = useCallback(async () => {
     if (!selectedAppointment) return;
     
     try {
-      const bookingId = selectedAppointment.id.includes("-svc-")
-        ? selectedAppointment.id.split("-svc-")[0]
-        : selectedAppointment.id;
+      const bookingId = activeBookingId;
       
       if (!bookingId) {
         throw new Error("Appointment ID is missing");
@@ -1380,13 +1311,17 @@ export function AppointmentSidebar({
       console.error("Failed to send invoice:", error);
       toast.error(error instanceof Error ? error.message : "Failed to send invoice");
     }
-  }, [selectedAppointment]);
+  }, [selectedAppointment, activeBookingId]);
 
 
   // Generate invoice HTML from API data
   const generateInvoiceHTMLFromData = (invoiceData: any) => {
+    const displayCurrency =
+      (invoiceData.currency as string | undefined)?.trim() ||
+      portalProvider?.currency?.trim() ||
+      LAST_RESORT_CURRENCY;
     const formatCurrency = (amount: number) => {
-      return `${invoiceData.currency || 'ZAR'} ${amount.toFixed(2)}`;
+      return `${displayCurrency} ${amount.toFixed(2)}`;
     };
 
     return `
@@ -2127,12 +2062,12 @@ export function AppointmentSidebar({
         selectedAppointment.scheduled_date !== formData.date ||
         selectedAppointment.scheduled_time !== formData.startTime;
 
-      await providerApi.updateAppointment(selectedAppointment.id, updates);
+      await providerApi.updateAppointment(activeBookingId, updates);
       
       // Send reschedule notification if enabled and time changed (API route to avoid server-only imports)
       if (sendNotification && timeChanged) {
         try {
-          const res = await fetch(`/api/provider/bookings/${selectedAppointment.id}/notify-reschedule`, {
+          const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-reschedule`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -2182,6 +2117,7 @@ export function AppointmentSidebar({
     if (!selectedAppointment) return;
 
     setSaving(true);
+    const previousAppointment = { ...selectedAppointment };
     try {
       const dbStatus = unmapStatus(newStatus);
       const updatePayload: Record<string, any> = { status: dbStatus };
@@ -2195,14 +2131,16 @@ export function AppointmentSidebar({
         updatePayload.current_stage = null; // Cleared when service starts
       }
 
-      await providerApi.updateAppointment(selectedAppointment.id, {
+      const updated = { ...selectedAppointment, status: dbStatus, ...updatePayload };
+      // Optimistic update so the UI feels instant.
+      updateSelectedAppointment(updated);
+      onAppointmentUpdated?.(updated);
+
+      await providerApi.updateAppointment(activeBookingId, {
         ...updatePayload,
         ...(newStatus === AppointmentStatus.WAITING && sendNotification && { send_arrival_notification: true }),
       } as any);
 
-      const updated = { ...selectedAppointment, status: dbStatus, ...updatePayload };
-      updateSelectedAppointment(updated);
-      onAppointmentUpdated?.(updated);
       onRefresh?.();
       
       // Show user-friendly success messages
@@ -2219,7 +2157,7 @@ export function AppointmentSidebar({
           // Check if rating already exists, then show rating dialog
           if (selectedAppointment?.id && selectedAppointment?.client_id) {
             try {
-              const ratingCheck = await fetch(`/api/provider/ratings?booking_id=${selectedAppointment.id}`);
+              const ratingCheck = await fetch(`/api/provider/ratings?booking_id=${activeBookingId}`);
               if (ratingCheck.ok) {
                 const ratingData = await ratingCheck.json();
                 // If no rating exists for this booking, show dialog
@@ -2255,6 +2193,9 @@ export function AppointmentSidebar({
       toast.success(successMessage);
     } catch (error) {
       console.error("Failed to update status:", error);
+      // Revert optimistic state when request fails.
+      updateSelectedAppointment(previousAppointment);
+      onAppointmentUpdated?.(previousAppointment);
       toast.error("Failed to update status");
     } finally {
       setSaving(false);
@@ -2267,14 +2208,14 @@ export function AppointmentSidebar({
 
     setSaving(true);
     try {
-      await providerApi.updateAppointment(selectedAppointment.id, {
+      await providerApi.updateAppointment(activeBookingId, {
         status: "cancelled",
         cancellation_reason: cancelReason,
       });
 
       if (sendNotification) {
         try {
-          const res = await fetch(`/api/provider/bookings/${selectedAppointment.id}/notify-cancellation`, {
+          const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-cancellation`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ cancellation_type: cancelReason }),
@@ -2307,13 +2248,13 @@ export function AppointmentSidebar({
 
     setSaving(true);
     try {
-      await providerApi.updateAppointment(selectedAppointment.id, {
-        status: DEFAULT_APPOINTMENT_STATUS,
+      await providerApi.updateAppointment(activeBookingId, {
+        status: "pending",
         cancellation_reason: undefined,
       });
 
       toast.success("Appointment restored");
-      onAppointmentUpdated?.({ ...selectedAppointment, status: "booked" });
+      onAppointmentUpdated?.({ ...selectedAppointment, status: "pending" });
       onRefresh?.();
     } catch (error) {
       console.error("Failed to restore appointment:", error);
@@ -2329,9 +2270,9 @@ export function AppointmentSidebar({
 
     setSaving(true);
     try {
-      await providerApi.deleteAppointment(selectedAppointment.id);
+      await providerApi.deleteAppointment(activeBookingId);
       toast.success("Appointment deleted");
-      onAppointmentDeleted?.(selectedAppointment.id);
+      onAppointmentDeleted?.(activeBookingId);
       onRefresh?.();
       closeSidebar();
     } catch (error) {
@@ -2351,7 +2292,7 @@ export function AppointmentSidebar({
     }
 
     try {
-      const res = await fetch(`/api/provider/bookings/${selectedAppointment.id}/notify-resend`, {
+      const res = await fetch(`/api/provider/bookings/${activeBookingId}/notify-resend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type }),
@@ -2940,10 +2881,11 @@ export function AppointmentSidebar({
                           <div className="flex justify-between items-center">
                             <p className="text-sm text-blue-700">Travel fee</p>
                             <p className="text-sm font-medium text-blue-700">
-                              R{(formData.hasTravelOverride && formData.travelFeeOverride !== null 
-                                ? formData.travelFeeOverride 
-                                : formData.travelFee
-                              ).toFixed(2)}
+                              {formatMoney(
+                                formData.hasTravelOverride && formData.travelFeeOverride !== null
+                                  ? formData.travelFeeOverride
+                                  : formData.travelFee
+                              )}
                               {formData.hasTravelOverride && (
                                 <span className="ml-1 text-xs text-blue-500">(overridden)</span>
                               )}
@@ -2982,7 +2924,7 @@ export function AppointmentSidebar({
                       </div>
                       <div className="bg-blue-50 rounded-lg p-2">
                         <p className="text-xs text-blue-700">
-                          <span className="font-medium">Calculated travel fee:</span> R{formData.travelFee.toFixed(2)}
+                          <span className="font-medium">Calculated travel fee:</span> {formatMoney(formData.travelFee)}
                         </p>
                       </div>
                     </div>
@@ -3078,7 +3020,7 @@ export function AppointmentSidebar({
                       )}
                       {formData.travelFeeOverride !== null && (
                         <p className="text-sm text-gray-700">
-                          <span className="text-gray-500">Fee:</span> R{formData.travelFeeOverride.toFixed(2)}
+                          <span className="text-gray-500">Fee:</span> {formatMoney(formData.travelFeeOverride)}
                         </p>
                       )}
                       {formData.travelOverrideReason && (
@@ -3227,10 +3169,16 @@ export function AppointmentSidebar({
                       <SelectValue placeholder="Select status" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="pending">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-amber-500" />
+                          Pending
+                        </div>
+                      </SelectItem>
                       <SelectItem value="booked">
                         <div className="flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-blue-500" />
-                          Booked
+                          Confirmed
                         </div>
                       </SelectItem>
                       <SelectItem value="started">
@@ -3270,7 +3218,7 @@ export function AppointmentSidebar({
                 <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
                   Services & Products
                 </Label>
-                {mode !== "view" && (
+                {mode === "create" && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="h-8">
@@ -3401,7 +3349,7 @@ export function AppointmentSidebar({
                                         </Button>
                                       )}
                                     </div>
-                                    <span className="text-gray-700 font-medium">R{addon.price.toFixed(2)}</span>
+                                    <span className="text-gray-700 font-medium">{formatMoney(addon.price)}</span>
                                   </div>
                                 ))}
                               </div>
@@ -3422,7 +3370,7 @@ export function AppointmentSidebar({
                               </Button>
                             )}
                           </div>
-                          <p className="font-semibold text-sm text-gray-900 flex-shrink-0">R{serviceTotal.toFixed(2)}</p>
+                          <p className="font-semibold text-sm text-gray-900 flex-shrink-0">{formatMoney(serviceTotal)}</p>
                         </div>
                       </div>
                     );
@@ -3509,11 +3457,11 @@ export function AppointmentSidebar({
                               />
                             </>
                           ) : (
-                            <span>Qty: {product.quantity} × R{product.unitPrice.toFixed(2)}</span>
+                            <span>Qty: {product.quantity} × {formatMoney(product.unitPrice)}</span>
                           )}
                         </div>
                       </div>
-                      <p className="font-semibold text-sm text-gray-900 flex-shrink-0">R{product.totalPrice.toFixed(2)}</p>
+                      <p className="font-semibold text-sm text-gray-900 flex-shrink-0">{formatMoney(product.totalPrice)}</p>
                     </div>
                   ))}
                 </div>
@@ -3578,7 +3526,7 @@ export function AppointmentSidebar({
                                 {hasVariants && <span className="text-xs text-purple-500">[Has Variants]</span>}
                                 <span>{isVariant && variantName ? variantName : service.name}</span>
                                 <span className="text-gray-400">-</span>
-                                <span className="font-medium">R{service.price}</span>
+                                <span className="font-medium">{formatMoney(Number(service.price))}</span>
                                 {service.duration_minutes && (
                                   <>
                                     <span className="text-gray-400">-</span>
@@ -3654,7 +3602,7 @@ export function AppointmentSidebar({
                                     <div className="flex items-center gap-2">
                                       <span>{product.name}</span>
                                       <span className="text-gray-500">· {label}</span>
-                                      <span className="font-medium">R{(v.retail_price ?? 0).toFixed(2)}</span>
+                                      <span className="font-medium">{formatMoney(v.retail_price ?? 0)}</span>
                                     </div>
                                   </SelectItem>
                                 );
@@ -3665,7 +3613,7 @@ export function AppointmentSidebar({
                                 <div className="flex items-center gap-2">
                                   <span>{product.name}</span>
                                   <span className="text-gray-400">-</span>
-                                  <span className="font-medium">R{(product.retail_price ?? 0).toFixed(2)}</span>
+                                  <span className="font-medium">{formatMoney(product.retail_price ?? 0)}</span>
                                 </div>
                               </SelectItem>,
                             ];
@@ -3721,7 +3669,7 @@ export function AppointmentSidebar({
                                   </span>
                                 )}
                                 {pkg.price && (
-                                  <span className="text-xs font-semibold text-gray-900">R{pkg.price.toFixed(2)}</span>
+                                  <span className="text-xs font-semibold text-gray-900">{formatMoney(pkg.price)}</span>
                                 )}
                               </div>
                             </SelectItem>
@@ -3768,7 +3716,7 @@ export function AppointmentSidebar({
                 {/* Subtotal */}
                 <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                   <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium text-gray-900">R{formData.subtotal.toFixed(2)}</span>
+                  <span className="font-medium text-gray-900">{formatMoney(formData.subtotal)}</span>
                 </div>
                 
                 {/* Discount */}
@@ -3779,7 +3727,7 @@ export function AppointmentSidebar({
                         ? ` (${formData.discountCode || formData.discountReason})`
                         : ""}
                     </span>
-                    <span className="font-medium text-red-600">-R{formData.discountAmount.toFixed(2)}</span>
+                    <span className="font-medium text-red-600">{formatMoney(-formData.discountAmount)}</span>
                   </div>
                 )}
                 
@@ -3787,7 +3735,7 @@ export function AppointmentSidebar({
                 {formData.taxAmount > 0 && (
                   <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                     <span className="text-gray-600">Tax ({(Math.round(formData.taxRate * 10000) / 100).toFixed(1)}%)</span>
-                    <span className="font-medium text-gray-900">R{formData.taxAmount.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900">{formatMoney(formData.taxAmount)}</span>
                   </div>
                 )}
                 
@@ -3795,7 +3743,7 @@ export function AppointmentSidebar({
                 {formData.travelFee > 0 && (
                   <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                     <span className="text-gray-600">Travel Fee</span>
-                    <span className="font-medium text-gray-900">R{formData.travelFee.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900">{formatMoney(formData.travelFee)}</span>
                   </div>
                 )}
                 
@@ -3803,7 +3751,7 @@ export function AppointmentSidebar({
                 {formData.serviceFeeAmount > 0 && (
                   <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                     <span className="text-gray-600">Service Fee ({(formData.serviceFeePercentage * 100).toFixed(1)}%)</span>
-                    <span className="font-medium text-gray-900">R{formData.serviceFeeAmount.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900">{formatMoney(formData.serviceFeeAmount)}</span>
                   </div>
                 )}
                 
@@ -3811,7 +3759,7 @@ export function AppointmentSidebar({
                 {formData.tipAmount > 0 && (
                   <div className="flex justify-between text-xs sm:text-xs md:text-sm">
                     <span className="text-gray-600">Tip</span>
-                    <span className="font-medium text-gray-900">R{formData.tipAmount.toFixed(2)}</span>
+                    <span className="font-medium text-gray-900">{formatMoney(formData.tipAmount)}</span>
                   </div>
                 )}
                 
@@ -3820,7 +3768,7 @@ export function AppointmentSidebar({
                 {/* Total */}
                 <div className="flex justify-between">
                   <span className="font-semibold text-sm sm:text-sm md:text-base text-gray-900">Total</span>
-                  <span className="font-bold text-base sm:text-base md:text-lg text-gray-900">R{formData.totalAmount.toFixed(2)}</span>
+                  <span className="font-bold text-base sm:text-base md:text-lg text-gray-900">{formatMoney(formData.totalAmount)}</span>
                 </div>
               </div>
               
@@ -4004,7 +3952,7 @@ export function AppointmentSidebar({
                     )}
                     
                     {formData.tipAmount > 0 && (
-                      <p className="text-[11px] text-gray-500">Tip: R{formData.tipAmount.toFixed(2)}</p>
+                      <p className="text-[11px] text-gray-500">Tip: {formatMoney(formData.tipAmount)}</p>
                     )}
                   </div>
                 </div>
@@ -4069,9 +4017,9 @@ export function AppointmentSidebar({
                               "font-medium",
                               totalPaid < totalAmount ? "text-blue-600" : "text-green-600"
                             )}>
-                              R{totalPaid.toFixed(2)}
+                              {formatMoney(totalPaid)}
                               {totalPaid < totalAmount && (
-                                <span className="text-gray-500 ml-1">of R{totalAmount.toFixed(2)}</span>
+                                <span className="text-gray-500 ml-1">of {formatMoney(totalAmount)}</span>
                               )}
                             </span>
                           </div>
@@ -4088,7 +4036,7 @@ export function AppointmentSidebar({
                           <div className="flex items-center justify-between text-xs">
                             <span className="text-gray-600">Refunded:</span>
                             <span className="font-medium text-red-600">
-                              R{totalRefunded.toFixed(2)}
+                              {formatMoney(totalRefunded)}
                             </span>
                           </div>
                         );
@@ -4111,7 +4059,7 @@ export function AppointmentSidebar({
                             <>
                               {isPartiallyPaid && (
                                 <div className="mb-2 p-2 bg-blue-50 rounded text-xs text-blue-700">
-                                  Remaining Balance: <span className="font-semibold">R{remainingBalance.toFixed(2)}</span>
+                                  Remaining Balance: <span className="font-semibold">{formatMoney(remainingBalance)}</span>
                                 </div>
                               )}
                               <Button 
@@ -4124,7 +4072,7 @@ export function AppointmentSidebar({
                                     const remainingBalance = totalAmount - totalPaid;
                                     const paymentAmount = remainingBalance > 0 ? remainingBalance : totalAmount;
                                     
-                                    const response = await fetch(`/api/provider/bookings/${selectedAppointment.id}/mark-paid`, {
+                                    const response = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({
@@ -4212,7 +4160,7 @@ export function AppointmentSidebar({
                                 if (!manualConfirm) return;
 
                                 // Manual card payment
-                                const response = await fetch(`/api/provider/bookings/${selectedAppointment.id}/mark-paid`, {
+                                const response = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -4263,8 +4211,8 @@ export function AppointmentSidebar({
                                 body: JSON.stringify({
                                   device_id: selectedDeviceId,
                                   amount: paymentAmountCard,
-                                  currency: 'ZAR',
-                                  appointment_id: selectedAppointment.id,
+                                  currency: portalProvider?.currency?.trim() || LAST_RESORT_CURRENCY,
+                                  appointment_id: activeBookingId,
                                   metadata: {
                                     client_name: selectedAppointment.client_name,
                                     service_name: selectedAppointment.service_name,
@@ -4286,7 +4234,7 @@ export function AppointmentSidebar({
                               const paymentAmountYoco = remainingBalanceYoco > 0 ? remainingBalanceYoco : totalAmountYoco;
                               const isPartiallyPaidYoco = totalPaidYoco > 0 && totalPaidYoco < totalAmountYoco;
                               
-                              const markPaidResponse = await fetch(`/api/provider/bookings/${selectedAppointment.id}/mark-paid`, {
+                              const markPaidResponse = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4331,7 +4279,7 @@ export function AppointmentSidebar({
                             size="sm"
                             onClick={async () => {
                               try {
-                                const response = await fetch(`/api/provider/bookings/${selectedAppointment.id}/send-payment-link`, {
+                                const response = await fetch(`/api/provider/bookings/${activeBookingId}/send-payment-link`, {
                                   method: 'POST',
                                   headers: { 'Content-Type': 'application/json' },
                                   body: JSON.stringify({
@@ -4387,7 +4335,7 @@ export function AppointmentSidebar({
                             
                             if (selectedAppointment.payment_status === 'partially_paid') {
                               try {
-                                const paymentsResponse = await fetch(`/api/provider/bookings/${selectedAppointment.id}/payments`);
+                                const paymentsResponse = await fetch(`/api/provider/bookings/${activeBookingId}/payments`);
                                 if (paymentsResponse.ok) {
                                   const paymentsData = await paymentsResponse.json();
                                   const totalPaid = paymentsData.data?.summary?.total_paid || 0;
@@ -4467,7 +4415,7 @@ export function AppointmentSidebar({
                                   }
                                   
                                   try {
-                                    const response = await fetch(`/api/provider/bookings/${selectedAppointment.id}/refund`, {
+                                    const response = await fetch(`/api/provider/bookings/${activeBookingId}/refund`, {
                                       method: 'POST',
                                       headers: { 'Content-Type': 'application/json' },
                                       body: JSON.stringify({
@@ -4701,7 +4649,7 @@ export function AppointmentSidebar({
         <ProviderClientRatingDialog
           open={showRatingDialog}
           onOpenChange={setShowRatingDialog}
-          bookingId={selectedAppointment.id}
+          bookingId={activeBookingId}
           customerName={selectedAppointment.client_name || "Client"}
           locationId={selectedAppointment.location_id || null}
           locationName={selectedAppointment.location_name || null}
@@ -4755,7 +4703,7 @@ onRatingSubmitted={() => {
                         <p className="font-medium">{variant.variant_name || variant.title}</p>
                         <p className="text-sm text-gray-500">{variant.duration} min</p>
                       </div>
-                      <p className="font-semibold">R{variant.price.toFixed(2)}</p>
+                      <p className="font-semibold">{formatMoney(variant.price)}</p>
                     </div>
                   </button>
                 );
@@ -4806,7 +4754,7 @@ onRatingSubmitted={() => {
                           <p className="font-medium">{addon.title || addon.name}</p>
                           <p className="text-sm text-gray-500">{addon.duration || 0} min</p>
                         </div>
-                        <p className="font-semibold">R{addon.price.toFixed(2)}</p>
+                        <p className="font-semibold">{formatMoney(addon.price)}</p>
                       </div>
                     </button>
                   );
@@ -4865,85 +4813,18 @@ onRatingSubmitted={() => {
               />
             </div>
             <div>
-              <Label>Phone</Label>
-              <div className="border border-gray-300 rounded-lg overflow-hidden">
-                <div className="border-b border-gray-300 px-4 py-2 bg-gray-50">
-                  <Label className="text-xs font-medium text-gray-700">Country code</Label>
-                  <Select 
-                    value={newClientData.countryCode} 
-                    onValueChange={(value) => setNewClientData(prev => ({ ...prev, countryCode: value }))}
-                  >
-                    <SelectTrigger className="w-full border-none px-0 pt-1 text-base font-semibold bg-transparent h-auto">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="+27">South Africa (+27)</SelectItem>
-                      <SelectItem value="+254">Kenya (+254)</SelectItem>
-                      <SelectItem value="+233">Ghana (+233)</SelectItem>
-                      <SelectItem value="+234">Nigeria (+234)</SelectItem>
-                      <SelectItem value="+20">Egypt (+20)</SelectItem>
-                      <SelectItem value="+1">USA (+1)</SelectItem>
-                      <SelectItem value="+44">UK (+44)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="px-4 py-3">
-                  <Input
-                    type="tel"
-                    className={`text-base border-0 px-0 h-auto focus-visible:ring-0 focus-visible:ring-offset-0 ${
-                      phoneValidationError ? 'text-red-600' : ''
-                    }`}
-                    placeholder="Phone number (e.g., 0823456789 or +27823456789)"
-                    value={newClientData.phone}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setNewClientData(prev => ({ ...prev, phone: value }));
-                      
-                      // Real-time validation
-                      if (value.trim()) {
-                        const cleanPhone = value.replace(/[\s\-\(\)]/g, '');
-                        const digits = cleanPhone.replace(/\D/g, '');
-                        
-                        if (cleanPhone.startsWith('+')) {
-                          if (digits.length < 10 || digits.length > 15) {
-                            setPhoneValidationError(`${digits.length} digits - need 10-15`);
-                          } else {
-                            setPhoneValidationError("");
-                          }
-                        } else if (cleanPhone.startsWith('0')) {
-                          if (digits.length !== 10) {
-                            setPhoneValidationError(`${digits.length} digits - need 10`);
-                          } else {
-                            setPhoneValidationError("");
-                          }
-                        } else {
-                          if (digits.length !== 9) {
-                            setPhoneValidationError(`${digits.length} digits - need 9`);
-                          } else {
-                            setPhoneValidationError("");
-                          }
-                        }
-                      } else {
-                        setPhoneValidationError("");
-                      }
-                    }}
-                    autoComplete="tel"
-                    inputMode="tel"
-                  />
-                  {phoneValidationError && (
-                    <p className="text-xs text-red-600 mt-1">{phoneValidationError}</p>
-                  )}
-                  <p className="text-xs text-gray-500 mt-1">
-                    Format: 0823456789 (10 digits) or +27823456789 (country code + 9 digits)
-                  </p>
-                </div>
-              </div>
+              <PhoneInput
+                inputId="appointment-sidebar-new-client-phone"
+                label="Phone"
+                value={newClientData.phone}
+                onChange={(e164) => setNewClientData((prev) => ({ ...prev, phone: e164 }))}
+                placeholder="Phone number"
+              />
             </div>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => {
-              setNewClientData({ first_name: "", last_name: "", email: "", phone: "", countryCode: "+27" });
-              setPhoneValidationError("");
+              setNewClientData({ first_name: "", last_name: "", email: "", phone: "" });
               setShowNewClientDialog(false);
             }}>
               Cancel

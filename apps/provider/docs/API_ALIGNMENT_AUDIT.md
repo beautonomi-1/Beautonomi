@@ -103,8 +103,8 @@ Audit date: 2025-02. Ensures provider mobile app (Expo) and provider portal (Nex
 ## Settings – all native
 
 - **Calendar display** → native `more/settings/calendar-preferences` (GET/PATCH `/api/provider/settings/calendar-preferences`).
-- **Calendar colors & icons** → native `more/settings/calendar-colors-icons` (info screen + “Open on web” to portal for full CRUD).
-- **Calendar links** → native `more/settings/calendar-links` (info screen + “Open on web” to portal for full CRUD).
+- **Calendar colors & icons** → native `more/settings/calendar-colors-icons` (routes to native calendar preferences).
+- **Calendar links** → native `more/settings/calendar-links` (routes to native booking-link management).
 - **Waitlist settings** → native `more/settings/waitlist-settings` (GET/PATCH `/api/provider/settings/waitlist`).
 - **Payout center** → native `more/payouts`.
 

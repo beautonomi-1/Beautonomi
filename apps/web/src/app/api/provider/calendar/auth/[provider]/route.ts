@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkCalendarSyncFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { encodeCalendarOAuthState } from "@/lib/calendar/oauth-state";
 
 /**
  * Get OAuth credentials from database (with environment variable fallback)
@@ -184,9 +185,9 @@ export async function GET(
       );
     }
 
-    // Generate OAuth URL based on provider
+    // Generate OAuth URL based on provider (state carries provider_id for callback)
     const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/provider/calendar/callback/${provider}`;
-    const state = Math.random().toString(36).substring(7);
+    const state = encodeCalendarOAuthState(providerId);
 
     let authUrl = "";
 
@@ -251,9 +252,6 @@ export async function GET(
         "https://graph.microsoft.com/Calendars.ReadWrite offline_access"
       )}&state=${state}`;
     }
-
-    // Store state in session/database for verification
-    // In production, store this securely
 
     return NextResponse.json({
       url: authUrl,

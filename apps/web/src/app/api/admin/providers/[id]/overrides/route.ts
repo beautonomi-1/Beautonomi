@@ -5,6 +5,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const overridesSchema = z.object({
   commission_override: z.number().min(0).max(100).optional().nullable(),
@@ -29,6 +30,7 @@ export async function PUT(
 
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -51,6 +53,7 @@ export async function PUT(
     const { data: provider } = await supabase
       .from("providers")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
 
@@ -87,6 +90,7 @@ export async function PUT(
       .from("providers")
       .update(updateData)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select()
       .single();
 

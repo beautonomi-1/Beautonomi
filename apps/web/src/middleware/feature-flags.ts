@@ -1,6 +1,6 @@
 /**
- * Middleware utilities for feature flags
- * Use these in Next.js middleware or route handlers
+ * Utilities for feature-flag checks at the network boundary
+ * Use these in Next.js `proxy.ts` or route handlers
  */
 
 import { NextRequest, NextResponse } from 'next/server';

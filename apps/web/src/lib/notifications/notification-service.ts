@@ -7,6 +7,21 @@
 
 import { sendTemplateNotification, type NotificationChannel } from "./onesignal";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { formatCurrency } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+/** ISO currency from a booking row; defaults to platform last-resort. */
+function bookingCurrency(booking: { currency?: string | null } | null | undefined): string {
+  const c = booking?.currency;
+  return typeof c === "string" && c.trim() ? c.trim().toUpperCase() : LAST_RESORT_CURRENCY;
+}
+
+/** Format amounts for OneSignal / email template variables (locale-aware). */
+function fmt(amount: number | string | null | undefined, currency?: string | null): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : Number(amount ?? 0);
+  const code = (currency && currency.trim()) || LAST_RESORT_CURRENCY;
+  return formatCurrency(Number.isFinite(n) ? n : 0, code);
+}
 
 /**
  * Helper to get user IDs from booking data
@@ -36,6 +51,7 @@ async function getBookingDetails(bookingId: string): Promise<any> {
       *,
       customer:users!bookings_customer_id_fkey(id, full_name, email, phone),
       provider:providers!bookings_provider_id_fkey(id, business_name, user_id),
+      package:service_packages!package_id(id, name),
       booking_services(
         *,
         offerings!inner(
@@ -68,6 +84,17 @@ async function getBookingDetails(bookingId: string): Promise<any> {
   return booking;
 }
 
+/** Services line for email/push templates; includes package name when the booking used a package. */
+function formatBookingServicesLineForTemplates(booking: {
+  services?: { service?: { name?: string } }[];
+  package?: { name?: string } | null;
+}): string {
+  const servicesList =
+    booking.services?.map((s) => s.service?.name).join(", ") ?? "Services";
+  const pkgName = booking.package?.name;
+  return pkgName?.trim() ? `Package: ${pkgName.trim()} — ${servicesList}` : servicesList;
+}
+
 /**
  * Helper to replace variables in URL
  */
@@ -95,7 +122,7 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    total_amount: `ZAR ${booking.total_amount || 0}`,
+    total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
   };
@@ -705,7 +732,7 @@ export async function notifyServiceExtended(
     provider_name: booking.provider?.business_name || "Provider",
     extension_time: extensionTime,
     new_end_time: newEndTime.toLocaleTimeString(),
-    additional_charge: `ZAR ${additionalCharge}`,
+    additional_charge: fmt(additionalCharge, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -836,7 +863,7 @@ export async function notifyCustomerNoShow(bookingId: string, noShowFee: number,
     provider_name: booking.provider?.business_name || "Provider",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    no_show_fee: `ZAR ${noShowFee}`,
+    no_show_fee: fmt(noShowFee, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -867,7 +894,7 @@ export async function notifyPaymentSuccessful(
   if (!booking) return { success: false, error: "Booking not found" };
 
   const variables = {
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     payment_method: paymentMethod,
     transaction_id: transactionId,
@@ -896,7 +923,7 @@ export async function notifyPaymentFailed(
   if (!booking) return { success: false, error: "Booking not found" };
 
   const variables = {
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     failure_reason: failureReason,
     booking_id: bookingId,
@@ -923,11 +950,15 @@ export async function notifyPaymentPending(
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
+  const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+  const payment_link = `${appBase}/bookings/${bookingId}/pay`;
+
   const variables = {
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     payment_method: paymentMethod,
     booking_id: bookingId,
+    payment_link,
   };
 
   return await sendTemplateNotification(
@@ -948,7 +979,7 @@ export async function notifyPaymentMethodExpired(bookingId: string, amount: numb
 
   const variables = {
     booking_number: booking.booking_number || bookingId,
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -974,8 +1005,8 @@ export async function notifyPartialPayment(
   if (!booking) return { success: false, error: "Booking not found" };
 
   const variables = {
-    partial_amount: `ZAR ${partialAmount}`,
-    remaining_balance: `ZAR ${remainingBalance}`,
+    partial_amount: fmt(partialAmount, bookingCurrency(booking)),
+    remaining_balance: fmt(remainingBalance, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     booking_id: bookingId,
   };
@@ -1002,7 +1033,7 @@ export async function notifyRefundProcessed(
   if (!booking) return { success: false, error: "Booking not found" };
 
   const variables = {
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
     refund_reason: refundReason,
     booking_id: bookingId,
@@ -1031,7 +1062,7 @@ export async function notifyInvoiceGenerated(
 
   const variables = {
     booking_number: booking.booking_number || bookingId,
-    total_amount: `ZAR ${totalAmount}`,
+    total_amount: fmt(totalAmount, bookingCurrency(booking)),
     invoice_number: invoiceNumber,
     booking_id: bookingId,
   };
@@ -1059,7 +1090,7 @@ export async function notifyReceiptSent(
 
   const variables = {
     booking_number: booking.booking_number || bookingId,
-    total_amount: `ZAR ${totalAmount}`,
+    total_amount: fmt(totalAmount, bookingCurrency(booking)),
     payment_date: paymentDate.toLocaleDateString(),
     booking_id: bookingId,
   };
@@ -1090,8 +1121,8 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    total_amount: `ZAR ${booking.total_amount || 0}`,
+    services: formatBookingServicesLineForTemplates(booking),
+    total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -1131,7 +1162,7 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
+    services: formatBookingServicesLineForTemplates(booking),
     booking_id: bookingId,
   };
 
@@ -1158,7 +1189,7 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
     visit_number: visitNumber.toString(),
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
+    services: formatBookingServicesLineForTemplates(booking),
     booking_id: bookingId,
   };
 
@@ -1184,7 +1215,7 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
     customer_name: booking.customer?.full_name || "Customer",
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
-    services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
+    services: formatBookingServicesLineForTemplates(booking),
     total_bookings: totalBookings.toString(),
     booking_id: bookingId,
   };
@@ -1211,7 +1242,7 @@ export async function notifyProviderPayoutProcessed(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, currency")
     .eq("id", providerId)
     .single();
 
@@ -1219,8 +1250,9 @@ export async function notifyProviderPayoutProcessed(
     return { success: false, error: "Provider not found" };
   }
 
+  const pc = (provider as { currency?: string | null }).currency;
   const variables = {
-    amount: `ZAR ${amount}`,
+    amount: fmt(amount, pc),
     payout_date: payoutDate.toLocaleDateString(),
     transaction_id: transactionId,
   };
@@ -1247,7 +1279,7 @@ export async function notifyProviderPayoutScheduled(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, currency")
     .eq("id", providerId)
     .single();
 
@@ -1255,8 +1287,9 @@ export async function notifyProviderPayoutScheduled(
     return { success: false, error: "Provider not found" };
   }
 
+  const pc = (provider as { currency?: string | null }).currency;
   const variables = {
-    payout_amount: `ZAR ${payoutAmount}`,
+    payout_amount: fmt(payoutAmount, pc),
     payout_date: payoutDate.toLocaleDateString(),
     payment_method: paymentMethod,
   };
@@ -1282,7 +1315,7 @@ export async function notifyProviderPayoutFailed(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, currency")
     .eq("id", providerId)
     .single();
 
@@ -1290,8 +1323,9 @@ export async function notifyProviderPayoutFailed(
     return { success: false, error: "Provider not found" };
   }
 
+  const pc = (provider as { currency?: string | null }).currency;
   const variables = {
-    payout_amount: `ZAR ${payoutAmount}`,
+    payout_amount: fmt(payoutAmount, pc),
     failure_reason: failureReason,
   };
 
@@ -1318,7 +1352,7 @@ export async function notifyProviderWeeklyEarnings(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, currency")
     .eq("id", providerId)
     .single();
 
@@ -1326,10 +1360,11 @@ export async function notifyProviderWeeklyEarnings(
     return { success: false, error: "Provider not found" };
   }
 
+  const pc = (provider as { currency?: string | null }).currency;
   const variables = {
-    total_earnings: `ZAR ${totalEarnings}`,
+    total_earnings: fmt(totalEarnings, pc),
     completed_bookings: completedBookings.toString(),
-    pending_payout: `ZAR ${pendingPayout}`,
+    pending_payout: fmt(pendingPayout, pc),
     payout_date: payoutDate.toLocaleDateString(),
   };
 
@@ -1510,12 +1545,16 @@ export async function notifyProviderNewReview(
   rating: number,
   reviewText: string,
   providerUserId: string,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  options?: { bookingId?: string }
 ) {
+  const bookingId = options?.bookingId;
   const variables = {
     customer_name: customerName,
     rating: rating.toString(),
     review_text: reviewText,
+    review_id: reviewId,
+    ...(bookingId ? { booking_id: bookingId } : {}),
   };
 
   return await sendTemplateNotification(
@@ -1591,8 +1630,8 @@ export async function notifyAddonAdded(
 
   const variables = {
     addon_name: addonName,
-    addon_price: `ZAR ${addonPrice}`,
-    new_total: `ZAR ${newTotal}`,
+    addon_price: fmt(addonPrice, bookingCurrency(booking)),
+    new_total: fmt(newTotal, bookingCurrency(booking)),
     booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
     provider_name: booking.provider?.business_name || "Provider",
     booking_id: bookingId,
@@ -1622,8 +1661,8 @@ export async function notifyAddonRemoved(
 
   const variables = {
     addon_name: addonName,
-    refund_amount: `ZAR ${refundAmount}`,
-    new_total: `ZAR ${newTotal}`,
+    refund_amount: fmt(refundAmount, bookingCurrency(booking)),
+    new_total: fmt(newTotal, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -1652,7 +1691,7 @@ export async function notifyServiceUpgradeOffered(
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     upgrade_name: upgradeName,
-    upgrade_price: `ZAR ${upgradePrice}`,
+    upgrade_price: fmt(upgradePrice, bookingCurrency(booking)),
     upgrade_benefits: upgradeBenefits,
     booking_id: bookingId,
   };
@@ -1684,9 +1723,9 @@ export async function notifyTravelFeeApplied(
   if (!booking) return { success: false, error: "Booking not found" };
 
   const variables = {
-    travel_fee: `ZAR ${travelFee}`,
+    travel_fee: fmt(travelFee, bookingCurrency(booking)),
     distance: distance.toString(),
-    total_amount: `ZAR ${totalAmount}`,
+    total_amount: fmt(totalAmount, bookingCurrency(booking)),
     booking_id: bookingId,
   };
 
@@ -1873,7 +1912,7 @@ export async function notifyPromotionAvailable(
     promotion_title: promotionTitle,
     promotion_description: promotionDescription,
     promo_code: promoCode,
-    discount_amount: `ZAR ${discountAmount}`,
+    discount_amount: fmt(discountAmount),
     expiry_date: expiryDate.toLocaleDateString(),
     promotion_id: promotionId,
   };
@@ -1930,7 +1969,7 @@ export async function notifyLoyaltyPointsRedeemed(
 ) {
   const variables = {
     points: points.toString(),
-    discount_amount: `ZAR ${discountAmount}`,
+    discount_amount: fmt(discountAmount),
     remaining_points: remainingPoints.toString(),
   };
 
@@ -1979,7 +2018,7 @@ export async function notifyReferralBonusEarned(
   channels?: NotificationChannel[]
 ) {
   const variables = {
-    bonus_amount: `ZAR ${bonusAmount}`,
+    bonus_amount: fmt(bonusAmount),
     referred_name: referredName,
     referral_code: referralCode,
   };
@@ -2004,7 +2043,7 @@ export async function notifyReferralCodeUsed(
 ) {
   const variables = {
     referrer_name: referrerName,
-    bonus_amount: `ZAR ${bonusAmount}`,
+    bonus_amount: fmt(bonusAmount),
   };
 
   return await sendTemplateNotification(
@@ -2035,7 +2074,7 @@ export async function notifyServicePackagePurchased(
   const variables = {
     package_name: packageName,
     services_included: servicesIncluded,
-    package_value: `ZAR ${packageValue}`,
+    package_value: fmt(packageValue),
     expiry_date: expiryDate.toLocaleDateString(),
     package_id: packageId,
   };
@@ -2145,7 +2184,7 @@ export async function notifyOrderConfirmation(
   const variables = {
     order_number: orderNumber,
     order_id: orderId,
-    total_amount: `R${totalAmount.toFixed(2)}`,
+    total_amount: fmt(totalAmount),
   };
 
   return await sendTemplateNotification(
@@ -2172,7 +2211,7 @@ export async function notifyGiftCardPurchased(
   channels?: NotificationChannel[]
 ) {
   const variables = {
-    gift_card_amount: `ZAR ${giftCardAmount}`,
+    gift_card_amount: fmt(giftCardAmount),
     recipient_name: recipientName,
     gift_card_code: giftCardCode,
   };
@@ -2199,7 +2238,7 @@ export async function notifyGiftCardReceived(
 ) {
   const variables = {
     sender_name: senderName,
-    gift_card_amount: `ZAR ${giftCardAmount}`,
+    gift_card_amount: fmt(giftCardAmount),
     gift_card_code: giftCardCode,
     message: message,
   };
@@ -2230,7 +2269,7 @@ export async function notifyMembershipRenewalReminder(
   const variables = {
     membership_name: membershipName,
     renewal_date: renewalDate.toLocaleDateString(),
-    renewal_amount: `ZAR ${renewalAmount}`,
+    renewal_amount: fmt(renewalAmount),
   };
 
   return await sendTemplateNotification(
@@ -2362,6 +2401,7 @@ export async function notifyDisputeOpened(
 
   const variables = {
     booking_number: booking.booking_number || bookingId,
+    booking_id: bookingId,
     provider_name: booking.provider?.business_name || "Provider",
     dispute_reason: disputeReason,
     dispute_id: disputeId,
@@ -2402,6 +2442,7 @@ export async function notifyDisputeResolved(
 
   const variables = {
     booking_number: booking.booking_number || bookingId,
+    booking_id: bookingId,
     resolution_details: resolutionDetails,
     dispute_outcome: disputeOutcome,
     dispute_id: disputeId,
@@ -2654,7 +2695,8 @@ export async function notifyProviderOnboardingWelcome(providerUserId: string, ch
     "provider_onboarding_welcome",
     [providerUserId],
     {},
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -2666,7 +2708,8 @@ export async function notifyProviderProfileApproved(providerUserId: string, chan
     "provider_profile_approved",
     [providerUserId],
     {},
-    channels
+    channels,
+    { appType: "provider" }
   );
 }
 
@@ -2768,7 +2811,7 @@ export async function notifyServiceSuggestion(
   const variables = {
     suggested_service: suggestedService,
     provider_name: providerName,
-    service_price: `ZAR ${servicePrice}`,
+    service_price: fmt(servicePrice),
     service_description: serviceDescription,
     service_id: serviceId,
   };

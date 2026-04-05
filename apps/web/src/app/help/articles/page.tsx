@@ -268,7 +268,11 @@ export default function ArticlePage() {
           </Button>
         </div>
       </div>
-      <LoginModal open={isModalOpen} setOpen={setIsModalOpen} />
+      <LoginModal
+        open={isModalOpen}
+        setOpen={setIsModalOpen}
+        initialMode="login"
+      />
 
     </div>
   );

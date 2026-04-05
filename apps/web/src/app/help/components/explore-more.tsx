@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import Policies from "./../../../../public/images/policy-web.png";
 import Safety from "./../../../../public/images/safety-web.png";
 
@@ -70,7 +71,7 @@ export default function ExploreMore() {
                   size="md"
                   asChild
                 >
-                  <Link href="/help/submit-ticket">Contact support</Link>
+                  <Link href={PLATFORM_CONTACT_HREF}>Contact us</Link>
                 </Button>
                 <Button variant="outline" className="w-72 text-base" size="md" asChild>
                   <Link href="/help/my-tickets">My tickets</Link>
@@ -82,7 +83,7 @@ export default function ExploreMore() {
               <p className="text-base font-light ">
                 You can also{" "}
                 <Link
-                  href="#"
+                  href="/help-center?topic=feedback"
                   className="underline font-light "
                   prefetch={false}
                 >

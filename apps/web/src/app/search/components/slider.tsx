@@ -2,8 +2,8 @@
 
 import React, { useState, useRef, useEffect, useMemo } from "react";
 import Image from "next/image";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+import type mapboxgl from "mapbox-gl";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 import CarouselCard from "@/app/home/components/carousel-card";
 import MapIcon from "./../../../../public/images/map.svg";
 import { X } from "lucide-react";
@@ -334,35 +334,51 @@ const MapSlider = () => {
       return;
     }
 
-    const token = process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN;
-    if (!token) return;
+    let cancelled = false;
 
-    mapboxgl.accessToken = token;
+    (async () => {
+      const [{ accessToken, styleUrl }, mapboxModule] = await Promise.all([
+        fetchMapboxPublicMapConfig(),
+        import("mapbox-gl"),
+      ]);
+      await import("mapbox-gl/dist/mapbox-gl.css");
+      const mb = mapboxModule.default;
+      if (cancelled || !mapContainerRef.current || !accessToken) return;
 
-    const map = new mapboxgl.Map({
-      container: mapContainerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [-0.1278, 51.5074],
-      zoom: 13,
-    });
+      mb.accessToken = accessToken;
 
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
+      const map = new mb.Map({
+        container: mapContainerRef.current,
+        style: styleUrl?.trim() || "mapbox://styles/mapbox/light-v11",
+        center: [-0.1278, 51.5074],
+        zoom: 13,
+      });
 
-    markersRef.current = listings.map((listing) => {
-      const el = createPriceMarker(listing.price);
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([listing.lng, listing.lat])
-        .addTo(map);
-      el.addEventListener("click", () => onMarkerClickRef.current(listing));
-      return marker;
-    });
+      map.addControl(new mb.NavigationControl(), "top-right");
 
-    mapRef.current = map;
+      markersRef.current = listings.map((listing) => {
+        const el = createPriceMarker(listing.price);
+        const marker = new mb.Marker({ element: el })
+          .setLngLat([listing.lng, listing.lat])
+          .addTo(map);
+        el.addEventListener("click", () => onMarkerClickRef.current(listing));
+        return marker;
+      });
+
+      if (cancelled) {
+        markersRef.current.forEach((m) => m.remove());
+        markersRef.current = [];
+        map.remove();
+        return;
+      }
+      mapRef.current = map;
+    })();
 
     return () => {
+      cancelled = true;
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      map.remove();
+      mapRef.current?.remove();
       mapRef.current = null;
     };
   }, [showMap, listings]);

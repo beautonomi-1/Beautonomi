@@ -65,7 +65,9 @@ export async function GET(request: NextRequest) {
     const supabaseAdmin = await getSupabaseAdmin();
     const { data: customers, error: customersError } = await supabaseAdmin
       .from("users")
-      .select("id, full_name, email, phone, avatar_url, rating_average, review_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled")
+      .select(
+        "id, full_name, email, phone, avatar_url, rating_average, review_count, customer_review_rating_avg, customer_review_rating_count, customer_booking_rating_avg, customer_booking_rating_count, date_of_birth, email_notifications_enabled, sms_notifications_enabled",
+      )
       .in("id", customerIds);
 
     if (customersError) {
@@ -99,6 +101,10 @@ export async function GET(request: NextRequest) {
             avatar_url: null,
             rating_average: null,
             review_count: 0,
+            customer_review_rating_avg: null,
+            customer_review_rating_count: null,
+            customer_booking_rating_avg: null,
+            customer_booking_rating_count: null,
           },
         };
       }

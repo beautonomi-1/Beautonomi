@@ -1,8 +1,8 @@
 /**
- * Subscription Feature Access
- * 
- * Provides utilities to check if providers have access to features
- * based on their subscription tier.
+ * Subscription feature access — interprets `subscription_plans.features` JSON per provider.
+ *
+ * **Does not** apply tenant `feature_flags` (use `entitlements.ts` + `isFeatureEnabledServer` for payment killswitches).
+ * **Precedence** across the stack: see `entitlements.ts`.
  */
 
 import { getSupabaseServer } from "@/lib/supabase/server";
@@ -181,6 +181,45 @@ async function getProviderSubscriptionTier(
   }
 
   return null;
+}
+
+/** Feature keys under subscription_plans.features used for gating (see migration defaults on free tier). */
+export const SUBSCRIPTION_FEATURE_KEYS = {
+  intakeForms: "intake_forms",
+  serviceResources: "service_resources",
+} as const;
+
+/**
+ * Resolves a boolean flag from plan features. If the key is missing, returns true (legacy plans).
+ * If the key is an object, uses `enabled` when set; if `enabled` is omitted, returns true so
+ * objects like `{ max_forms: 5 }` still allow access unless explicitly disabled.
+ */
+export function resolvePlanFeatureEnabled(
+  features: Record<string, unknown> | null | undefined,
+  key: string
+): boolean {
+  if (!features || typeof features !== "object") return true;
+  const node = features[key];
+  if (node === undefined || node === null) return true;
+  if (typeof node === "object" && node !== null) {
+    const o = node as { enabled?: boolean };
+    if (o.enabled === undefined) return true;
+    return o.enabled === true;
+  }
+  return true;
+}
+
+/**
+ * Server-side check for subscription-gated product features (forms builder, equipment resources, etc.).
+ */
+export async function isProviderSubscriptionFeatureEnabled(
+  providerId: string,
+  featureKey: string
+): Promise<boolean> {
+  const supabase = await getSupabaseServer();
+  const tier = await getProviderSubscriptionTier(supabase, providerId);
+  if (!tier) return true;
+  return resolvePlanFeatureEnabled(tier.features as Record<string, unknown>, featureKey);
 }
 
 /**

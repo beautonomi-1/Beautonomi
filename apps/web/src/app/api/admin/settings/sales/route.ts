@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 import type { PlatformSalesDefaults, PlatformSalesConstraints } from "@/lib/platform-sales-settings";
+import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 const salesDefaultsSchema = z.object({
   tax_rate_percent: z.number().min(0).max(100).optional(),
@@ -42,17 +43,21 @@ type SalesShape = { defaults?: Record<string, unknown>; constraints?: Record<str
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
-    const { data: settings, error } = await supabase
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .single();
-
-    if (error || !settings) {
+    const scopedSettings = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+      supabase,
+      table: "platform_settings",
+      tenantId: currentTenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const settings = scopedSettings.data;
+    if (!settings) {
       // Return defaults if no settings exist
       return successResponse({
         defaults: {
@@ -123,15 +128,20 @@ export async function PATCH(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = await getSupabaseServer(request);
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
     const validated = updateSalesSettingsSchema.parse(body);
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body, user.role ?? null);
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
     // Get existing settings
-    const { data: existingSettings, error: fetchError } = await supabase
+    let query = supabase
       .from("platform_settings")
       .select("id, settings")
       .eq("is_active", true)
-      .single();
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    query = scopeTenantId == null ? query.is("tenant_id", null) : query.eq("tenant_id", scopeTenantId);
+    const { data: existingSettings, error: fetchError } = await query.maybeSingle();
 
     type SettingsRow = { id?: string; settings?: Record<string, unknown> };
     let platformSettings: Record<string, unknown> = {};
@@ -169,6 +179,7 @@ export async function PATCH(request: NextRequest) {
       const { data: updatedSettings, error: updateError } = await supabase
         .from("platform_settings")
         .update({
+          tenant_id: scopeTenantId,
           settings: platformSettings,
           updated_at: new Date().toISOString(),
         })
@@ -189,6 +200,8 @@ export async function PATCH(request: NextRequest) {
         metadata: {
           updated_fields: Object.keys(validated),
           updated_at: new Date().toISOString(),
+          scope: requestedScope.scope,
+          tenant_id: scopeTenantId,
         },
       });
 
@@ -202,6 +215,7 @@ export async function PATCH(request: NextRequest) {
       const { data: newSettings, error: createError } = await supabase
         .from("platform_settings")
         .insert({
+          tenant_id: scopeTenantId,
           settings: platformSettings,
         })
         .select("id, settings")
@@ -219,6 +233,8 @@ export async function PATCH(request: NextRequest) {
       entity_id: (newSettings as SettingsRow).id,
         metadata: {
           created_at: new Date().toISOString(),
+          scope: requestedScope.scope,
+          tenant_id: scopeTenantId,
         },
       });
 

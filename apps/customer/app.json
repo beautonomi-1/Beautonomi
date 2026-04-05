@@ -9,7 +9,7 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "version": "1.0.2",
+    "version": "1.0.5",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -22,17 +22,24 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.beautonomi",
+      "appleTeamId": "QW33CYPQX5",
       "infoPlist": {
-        "UIBackgroundModes": ["remote-notification"],
+        "UIBackgroundModes": [
+          "remote-notification"
+        ],
         "ITSAppUsesNonExemptEncryption": false
       },
       "entitlements": {
         "aps-environment": "development",
-        "com.apple.security.application-groups": ["group.com.beautonomi.onesignal"]
+        "com.apple.security.application-groups": [
+          "group.com.beautonomi.onesignal"
+        ]
       },
       "associatedDomains": [
         "applinks:beautonomi.com",
-        "applinks:www.beautonomi.com"
+        "applinks:www.beautonomi.com",
+        "applinks:beautonomi.co.za",
+        "applinks:www.beautonomi.co.za"
       ]
     },
     "android": {
@@ -41,7 +48,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.beautonomi",
-      "versionCode": 19,
+      "permissions": [
+        "com.google.android.gms.permission.AD_ID"
+      ],
+      "versionCode": 23,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",
@@ -59,9 +69,22 @@
               "scheme": "https",
               "host": "www.beautonomi.com",
               "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "beautonomi.co.za",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "www.beautonomi.co.za",
+              "pathPrefix": "/"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -71,10 +94,48 @@
       "output": "single"
     },
     "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          }
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Beautonomi uses Face ID or Touch ID so you can sign in quickly. Biometric data stays on your device and is not sent to our servers."
+        }
+      ],
+      [
+        "onesignal-expo-plugin",
+        {
+          "mode": "development"
+        }
+      ],
       "expo-router",
       "expo-font",
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "This identifier is used to measure how people discover Beautonomi (for example, which campaigns led to installs) so we can improve the app. You can change this anytime in Settings."
+        }
+      ],
       "singular-react-native",
-      ["onesignal-expo-plugin", { "mode": "development" }],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Beautonomi uses your location while the app is open to show nearby professionals, travel times, and better address suggestions."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Beautonomi to access your photos for your profile, reviews, and sharing images.",
+          "cameraPermission": "Allow Beautonomi to use the camera for your profile, reviews, and sharing photos."
+        }
+      ],
       [
         "expo-splash-screen",
         {
@@ -86,11 +147,12 @@
       ]
     ],
     "extra": {
-      "eas": {"projectId": "434ef972-0597-4d93-9c09-ff7b9e11b149"},
+      "eas": {
+        "projectId": "434ef972-0597-4d93-9c09-ff7b9e11b149"
+      },
       "router": {
         "origin": "https://beautonomi.com"
-      },
-      "iosAppId": ""
+      }
     }
   }
 }

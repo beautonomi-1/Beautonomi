@@ -8,6 +8,7 @@
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { PaystackEvent, SupabaseClient } from "./shared";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -70,6 +71,18 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
 
   // If linked to a booking, update its payment status
   if (txn?.booking_id) {
+    const { data: bookingRow } = await supabase
+      .from("bookings")
+      .select("provider_id, tenant_id")
+      .eq("id", txn.booking_id)
+      .maybeSingle();
+    const providerId =
+      (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? null;
+    const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      provider_id: providerId,
+    });
+
     await supabase.from("bookings")
       .update({
         payment_status: "refunded",
@@ -77,10 +90,11 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       })
       .eq("id", txn.booking_id);
 
-    // Finance ledger entry
+    // Finance ledger entry (provider_id keeps tenant-scoped admin/reporting consistent)
     await supabase.from("finance_transactions").insert({
       booking_id: txn.booking_id,
-      provider_id: null,
+      provider_id: providerId,
+      tenant_id: refundLedgerTenantId,
       transaction_type: "refund",
       amount: refundAmount,
       fees: 0,

@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -6,8 +8,23 @@ import {
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import {
+  PROVIDER_MARKET_MISMATCH_MSG,
+  providerTenantMismatchResponse,
+} from "@/lib/tenant/provider-matches-host";
+import type { UserRole } from "@/types/beautonomi";
+
+const PROVIDER_SETTINGS_ROLES = [
+  "provider_owner",
+  "provider_staff",
+  "provider_onboarding",
+  "superadmin",
+] as const satisfies readonly UserRole[];
 
 /**
  * GET /api/provider/settings/payments
@@ -17,11 +34,9 @@ import { requirePermission } from "@/lib/auth/requirePermission";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(
-      ["provider_owner", "provider_staff"],
-      request
-    );
+    const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
     const supabase = await getSupabaseServer(request);
+    const hostTenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
@@ -32,7 +47,7 @@ export async function GET(request: NextRequest) {
     const { data: provider, error: providerError } = await supabase
       .from("providers")
       .select(
-        "currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
+        "tenant_id, currency, tax_rate_percent, is_vat_registered, vat_number, requires_deposit, deposit_percentage, no_show_fee_enabled, no_show_fee_amount, accept_cash, accept_card, accept_online, tax_inclusive, tips_enabled, tip_presets, receipt_auto_send, tips_distribution"
       )
       .eq("id", providerId)
       .single();
@@ -40,6 +55,20 @@ export async function GET(request: NextRequest) {
     if (providerError) {
       throw providerError;
     }
+
+    if (
+      !resourceTenantMatchesHostTenant(
+        hostTenantId,
+        (provider as { tenant_id?: string | null }).tenant_id,
+      )
+    ) {
+      return errorResponse(PROVIDER_MARKET_MISMATCH_MSG, "TENANT_MISMATCH", 403);
+    }
+
+    const effectiveTenantId =
+      (provider as { tenant_id?: string | null }).tenant_id ?? hostTenantId;
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get Yoco integration status
     const { data: yocoIntegration } = await supabase
@@ -59,7 +88,7 @@ export async function GET(request: NextRequest) {
       platformSettings?.settings?.taxes?.default_tax_rate ?? 15;
 
     const result = {
-      currency: provider.currency || "ZAR",
+      currency: provider.currency || lastResortCurrency,
       taxRatePercent: provider.tax_rate_percent ?? defaultTaxRate,
       isVatRegistered: provider.is_vat_registered ?? false,
       vatNumber: provider.vat_number || null,
@@ -95,18 +124,18 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    const permissionCheck = await requirePermission("edit_settings", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
+    const { user } = await requireRoleInApi([...PROVIDER_SETTINGS_ROLES], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const body = await request.json();
     const providerId = await getProviderIdForUser(user.id, supabase);
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
+
+    const mismatch = await providerTenantMismatchResponse(supabase, tenantId, providerId);
+    if (mismatch) return mismatch;
 
     const updates: Record<string, any> = {};
 

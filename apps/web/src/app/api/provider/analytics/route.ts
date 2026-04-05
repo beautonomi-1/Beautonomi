@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 import { subMonths, startOfMonth, endOfMonth } from "date-fns";
 
 /**
@@ -50,6 +51,8 @@ export async function GET(request: NextRequest) {
     // Ensure this month query only includes up to current date (not future)
     const thisMonthEndDate = now < thisMonthEnd ? now : thisMonthEnd;
 
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     // Parallel queries for better performance
     const [
       revenueResult,
@@ -58,11 +61,11 @@ export async function GET(request: NextRequest) {
       serviceDataResult,
       customerDataResult,
     ] = await Promise.all([
-      // Revenue from finance_transactions (accurate provider earnings)
+      // Revenue — same net as main provider dashboard revenue cards
       Promise.all([
-        getProviderRevenue(supabaseAdmin, providerId, new Date(0), now),
-        getProviderRevenue(supabaseAdmin, providerId, thisMonthStart, thisMonthEndDate),
-        getProviderRevenue(supabaseAdmin, providerId, lastMonthStart, lastMonthEnd),
+        getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, null, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, thisMonthStart, thisMonthEndDate, null, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, lastMonthStart, lastMonthEnd, null, dashOpts),
       ]),
       // Booking counts (parallel queries)
       Promise.all([
@@ -123,8 +126,8 @@ export async function GET(request: NextRequest) {
     const lastMonthBookings = lastMonthBookingsData.data?.length || 0;
     const upcomingBookings = upcomingBookingsResult.count || 0;
 
-    // Process service stats
-    const serviceStats = new Map<string, { name: string; count: number; revenue: number }>();
+    // Process service stats (distinct bookings per offering, not raw line rows)
+    const serviceStats = new Map<string, { name: string; bookingIds: Set<string>; revenue: number }>();
     if (serviceDataResult.data) {
       for (const service of serviceDataResult.data) {
         const offering = service.offerings as any;
@@ -133,12 +136,13 @@ export async function GET(request: NextRequest) {
         if (!serviceStats.has(key)) {
           serviceStats.set(key, {
             name: offering.title || "Service",
-            count: 0,
+            bookingIds: new Set<string>(),
             revenue: 0,
           });
         }
         const stat = serviceStats.get(key)!;
-        stat.count++;
+        const bid = (service as { booking_id?: string }).booking_id;
+        if (bid) stat.bookingIds.add(bid);
         stat.revenue += Number(service.price || 0);
       }
     }
@@ -154,7 +158,7 @@ export async function GET(request: NextRequest) {
 
       trendPromises.push(
         Promise.all([
-          getProviderRevenue(supabaseAdmin, providerId, monthDate, monthEnd),
+          getProviderRevenue(supabaseAdmin, providerId, monthDate, monthEnd, null, dashOpts),
           supabaseAdmin
             .from("bookings")
             .select("id", { count: "exact", head: true })
@@ -219,6 +223,7 @@ export async function GET(request: NextRequest) {
         new: uniqueCustomers.size - repeatCustomers,
       },
       services: Array.from(serviceStats.values())
+        .map((s) => ({ name: s.name, count: s.bookingIds.size, revenue: s.revenue }))
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 10), // Top 10 services
       trends: trendsData,

@@ -51,6 +51,7 @@ export async function GET(request: NextRequest) {
       const { data: payRuns } = await supabaseAdmin
         .from("provider_pay_runs")
         .select("id, pay_period_start, pay_period_end, status, created_at, approved_at")
+        .eq("provider_id", providerId)
         .in("id", payRunIds);
       for (const pr of payRuns || []) {
         payRunMap.set((pr as any).id, pr);

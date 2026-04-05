@@ -3,12 +3,11 @@ import { NextRequest } from "next/server";
 const _VERCEL_CRON_USER_AGENT = "vercel-cron/1.0";
 
 export function verifyCronRequest(request: NextRequest): { valid: boolean; error?: string } {
-  // 1. Check CRON_SECRET header
   const authHeader = request.headers.get("authorization");
-  const cronSecret = process.env.CRON_SECRET;
+  const cronSecret = process.env.CRON_SECRET || process.env.INTERNAL_API_SECRET;
   
   if (!cronSecret) {
-    console.error("CRON_SECRET environment variable not set");
+    console.error("CRON_SECRET (or INTERNAL_API_SECRET) not set — refusing cron request");
     return { valid: false, error: "Server configuration error" };
   }
   

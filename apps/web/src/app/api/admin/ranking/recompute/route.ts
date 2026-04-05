@@ -11,6 +11,8 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { computeQualityScoreForProvider } from "@/lib/ranking/quality-score";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 const BATCH_SIZE = 100;
 const ENVS = ["production", "staging", "development"];
@@ -29,6 +31,7 @@ export async function POST(request: NextRequest) {
     const environment = parseEnv(body.environment);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: config } = await supabase
       .from("ranking_module_config")
@@ -39,6 +42,10 @@ export async function POST(request: NextRequest) {
     const weights = (config?.weights as Record<string, number>) ?? {};
 
     if (providerId) {
+      const prov = await fetchProviderInAdminTenant(supabase, providerId, tenantId, "id");
+      if ("error" in prov) {
+        return prov.error;
+      }
       const { computed_score, components } = await computeQualityScoreForProvider(
         supabase,
         providerId,
@@ -60,6 +67,7 @@ export async function POST(request: NextRequest) {
       const { data: ids } = await supabase
         .from("providers")
         .select("id")
+        .eq("tenant_id", tenantId)
         .eq("status", "active");
       const providerIds = (ids ?? []).map((p: { id: string }) => p.id);
       let recomputed = 0;

@@ -108,17 +108,18 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
         });
 
         // Create notification record
-        await supabaseAdmin.from("notifications").insert({
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
           user_id: booking.customer_id,
           type: "appointment_reminder",
           title: `Appointment Reminder - ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""} to go`,
           message: `Your appointment with ${provider.business_name} is in ${hoursBefore} hour${hoursBefore > 1 ? "s" : ""}. Date: ${dateStr} at ${timeStr}`,
-          metadata: {
+          data: {
             booking_id: booking.id,
             reminder_key: reminderKey,
             hours_before: hoursBefore,
           },
-          link: `/account-settings/bookings/${booking.id}`,
+          action_url: `/account-settings/bookings/${booking.id}`,
         });
 
         // Send push/email/SMS notification
@@ -155,6 +156,118 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
     console.error("Error sending appointment reminders:", error);
     throw error;
   }
+}
+
+const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Send "time to rebook" nudges for completed bookings where the offering has
+ * reminder_to_rebook_enabled and today matches completed_at + reminder_to_rebook_weeks.
+ * Intended to run once daily via /api/cron/send-reminders (same cron as appointment reminders).
+ */
+export async function sendRebookReminders() {
+  const supabaseAdmin = getSupabaseAdmin();
+  const now = new Date();
+  const startOfTodayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const sent: string[] = [];
+
+  const since = new Date(now.getTime() - 400 * MS_PER_WEEK).toISOString();
+  const { data: bookings, error } = await supabaseAdmin
+    .from("bookings")
+    .select(
+      `
+      id,
+      customer_id,
+      completed_at,
+      providers!inner ( id, business_name, slug ),
+      booking_services (
+        id,
+        offering:offerings!inner (
+          id,
+          title,
+          reminder_to_rebook_enabled,
+          reminder_to_rebook_weeks
+        )
+      )
+    `
+    )
+    .eq("status", "completed")
+    .not("completed_at", "is", null)
+    .gte("completed_at", since);
+
+  if (error) throw error;
+  if (!bookings?.length) {
+    return { success: true, rebookRemindersSent: 0 };
+  }
+
+  for (const booking of bookings as any[]) {
+    const completedRaw = booking.completed_at as string;
+    const completedAt = new Date(completedRaw);
+    const provider = booking.providers as { business_name?: string; slug?: string } | null;
+    const providerName = provider?.business_name || "your provider";
+    const providerSlug = provider?.slug || "";
+
+    for (const bs of booking.booking_services || []) {
+      const off = bs?.offering;
+      if (!off?.reminder_to_rebook_enabled) continue;
+      const weeks = Math.max(1, Number(off.reminder_to_rebook_weeks) || 4);
+      const target = new Date(completedAt.getTime() + weeks * MS_PER_WEEK);
+      const targetDayUtc = Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate());
+      if (targetDayUtc !== startOfTodayUtc) continue;
+
+      const reminderKey = `rebook_${booking.id}_${off.id}_${weeks}`;
+      const { data: existing } = await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", booking.customer_id)
+        .eq("type", "rebook_reminder")
+        .contains("metadata", { reminder_key: reminderKey })
+        .limit(1);
+      if (existing && existing.length > 0) continue;
+
+      const serviceTitle = (off.title as string) || "Service";
+      const bookingUrlPath = providerSlug
+        ? `/book/${encodeURIComponent(providerSlug)}?service=${encodeURIComponent(off.id)}`
+        : `/book`;
+
+      const { insertNotification: insertRebookNotification } = await import("@/lib/notifications/insert-notification");
+      await insertRebookNotification({
+        user_id: booking.customer_id,
+        type: "rebook_reminder",
+        title: "Time to book again?",
+        message: `It may be time to book ${serviceTitle} again with ${providerName}.`,
+        data: {
+          reminder_key: reminderKey,
+          booking_id: booking.id,
+          offering_id: off.id,
+          weeks: weeks,
+        },
+        action_url: bookingUrlPath,
+      });
+
+      try {
+        await sendTemplateNotification(
+          "rebook_reminder",
+          [booking.customer_id],
+          {
+            provider_name: providerName,
+            service_title: serviceTitle,
+            service_id: off.id,
+            provider_slug: providerSlug,
+            booking_id: booking.id,
+            booking_url: bookingUrlPath,
+          },
+          ["push", "email"],
+          { appType: "customer" }
+        );
+        sent.push(reminderKey);
+      } catch (e) {
+        console.warn("sendRebookReminders: template send failed", e);
+      }
+    }
+  }
+
+  return { success: true, rebookRemindersSent: sent.length };
 }
 
 /**
@@ -216,16 +329,17 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
     });
 
     // Create notification
-    await supabaseAdmin.from("notifications").insert({
+    const { insertNotification: insertSingleReminder } = await import("@/lib/notifications/insert-notification");
+    await insertSingleReminder({
       user_id: booking.customer_id,
       type: "appointment_reminder",
       title: `Appointment Reminder`,
       message: `Your appointment with ${provider.business_name} is coming up. Date: ${dateStr} at ${timeStr}`,
-      metadata: {
+      data: {
         booking_id: booking.id,
         hours_before: hoursBefore,
       },
-      link: `/account-settings/bookings/${booking.id}`,
+      action_url: `/account-settings/bookings/${booking.id}`,
     });
 
     // Send notification

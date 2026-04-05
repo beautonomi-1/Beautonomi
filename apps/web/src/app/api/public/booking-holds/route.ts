@@ -6,24 +6,33 @@
  */
 
 import { NextRequest } from "next/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { normalizePublicStaffIdForDatabase } from "@beautonomi/utils";
+import { checkBookingSnapshotSegmentConflicts } from "@/lib/bookings/conflict-check";
+import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
+import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 import {
   checkHoldRateLimit,
   incrementHoldRateLimit,
 } from "@/lib/rate-limit/hold-creation";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
+import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
 
 const createHoldSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
-  staff_id: z.string().uuid("Invalid staff ID").optional().nullable(),
+  staff_id: zPublicBookingStaffIdOptional,
   services: z
     .array(
       z.object({
         offering_id: z.string().uuid("Invalid offering ID"),
-        staff_id: z.string().uuid("Invalid staff ID").optional().nullable(),
+        staff_id: zPublicBookingStaffIdOptional,
       })
     )
     .min(1, "At least one service is required"),
@@ -44,340 +53,451 @@ const createHoldSchema = z.object({
       apartment_unit: z.string().optional().nullable(),
       building_name: z.string().optional().nullable(),
       floor_number: z.string().optional().nullable(),
+      access_codes: z.record(z.string(), z.string()).optional().nullable(),
+      parking_instructions: z.string().optional().nullable(),
+      location_landmarks: z.string().optional().nullable(),
     })
     .optional()
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
+  /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
+  package_id: z.string().uuid().optional().nullable(),
+  primary_package_id: z.string().uuid().optional().nullable(),
 });
 
 const HOLD_EXPIRY_MINUTES = 7;
 
 export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const parsed = createHoldSchema.safeParse(body);
-
-    if (!parsed.success) {
-      return handleApiError(
-        new Error(parsed.error.issues.map((e) => e.message).join(", ")),
-        "Validation failed",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const {
-      provider_id,
-      staff_id: bodyStaffId,
-      services,
-      start_at,
-      end_at,
-      location_type,
-      location_id,
-      address,
-      guest_fingerprint_hash,
-      resource_ids,
-    } = parsed.data;
-
-    const startDate = new Date(start_at);
-    const endDate = new Date(end_at);
-    if (endDate <= startDate) {
-      return handleApiError(
-        new Error("end_at must be after start_at"),
-        "Invalid time range",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    const supabase = getSupabaseAdmin();
-    const nowIso = new Date().toISOString();
-
-    // Rate limiting
-    const rateLimit = checkHoldRateLimit(request, guest_fingerprint_hash || null);
-    if (!rateLimit.allowed) {
-      return handleApiError(
-        new Error(rateLimit.reason),
-        rateLimit.reason!,
-        "RATE_LIMIT_EXCEEDED",
-        429
-      );
-    }
-
-    // Max 1 active, non-expired hold per fingerprint
-    if (guest_fingerprint_hash) {
-      const { data: activeHold } = await supabase
-        .from("booking_holds")
-        .select("id")
-        .eq("guest_fingerprint_hash", guest_fingerprint_hash)
-        .eq("hold_status", "active")
-        .gt("expires_at", nowIso)
-        .limit(1)
-        .maybeSingle();
-      if (activeHold) {
-        return handleApiError(
-          new Error("You already have an active booking hold. Please complete or cancel it first."),
-          "You already have an active booking hold. Please complete or cancel it first.",
-          "ACTIVE_HOLD_EXISTS",
-          429
-        );
-      }
-    }
-
-    // Load provider
-    const { data: provider, error: providerError } = await supabase
-      .from("providers")
-      .select("id, currency, status")
-      .eq("id", provider_id)
-      .single();
-
-    if (providerError || !provider) {
-      return handleApiError(
-        new Error("Provider not found"),
-        "Provider not found",
-        "NOT_FOUND",
-        404
-      );
-    }
-
-    if (provider.status !== "active") {
-      return handleApiError(
-        new Error("Provider is not available for booking"),
-        "Provider is not available",
-        "PROVIDER_INACTIVE",
-        400
-      );
-    }
-
-    const currency = provider.currency || "ZAR";
-
-    // Load offerings and build snapshot
-    const offeringIds = services.map((s) => s.offering_id);
-    const { data: offerings, error: offeringsError } = await supabase
-      .from("offerings")
-      .select(
-        "id, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home"
-      )
-      .in("id", offeringIds);
-
-    if (offeringsError) throw offeringsError;
-
-    const offeringById = new Map(
-      (offerings || []).map((o) => [o.id, o])
-    );
-
-    for (const s of services) {
-      const off = offeringById.get(s.offering_id);
-      if (!off || off.provider_id !== provider_id || !off.is_active) {
-        return handleApiError(
-          new Error("Invalid service selection"),
-          "Invalid service selection",
-          "VALIDATION_ERROR",
-          400
-        );
-      }
-      if (
-        location_type === "at_home" &&
-        off.supports_at_home === false
-      ) {
-        return handleApiError(
-          new Error("One or more services do not support at-home"),
-          "At-home not supported",
-          "VALIDATION_ERROR",
-          400
-        );
-      }
-    }
-
-    // Resolve staff_id: use body staff_id or first service's staff_id. null = "anyone" mode (assign at confirm).
-    const staffId = bodyStaffId ?? services[0]?.staff_id ?? null;
-
-    // Build booking_services_snapshot
-    let cursor = new Date(startDate);
-    const bookingServicesSnapshot: Array<{
-      offering_id: string;
-      staff_id: string | null;
-      duration_minutes: number;
-      price: number;
-      currency: string;
-      scheduled_start_at: string;
-      scheduled_end_at: string;
-    }> = [];
-
-    for (const s of services) {
-      const off = offeringById.get(s.offering_id);
-      if (!off) continue;
-      const duration = Number(off.duration_minutes || 0);
-      const price =
-        location_type === "at_home" && off.at_home_price_adjustment
-          ? Number(off.price || 0) + Number(off.at_home_price_adjustment || 0)
-          : Number(off.price || 0);
-      const start = new Date(cursor);
-      const end = new Date(cursor.getTime() + duration * 60000);
-      bookingServicesSnapshot.push({
-        offering_id: off.id,
-        staff_id: s.staff_id ?? staffId,
-        duration_minutes: duration,
-        price,
-        currency: off.currency || currency,
-        scheduled_start_at: start.toISOString(),
-        scheduled_end_at: end.toISOString(),
-      });
-      cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
-    }
-
-    const lastOffering = offeringById.get(services[services.length - 1].offering_id);
-    const bufferMinutes = Number(lastOffering?.buffer_minutes || 15);
-    // If client sent full block end (slot start + totalSpan including last buffer), don't add buffer again
-    const expectedBlockEnd = new Date(cursor.getTime() + bufferMinutes * 60000);
-    const clientSentFullSpan = endDate.getTime() >= expectedBlockEnd.getTime() - 60000;
-    const bufferForConflict = clientSentFullSpan ? 0 : bufferMinutes;
-
-    // Check for conflicts: existing bookings (skip when staff_id is null / "anyone" mode)
-    if (staffId) {
-      const conflictResult = await checkBookingConflict(
-        supabase as any,
-        staffId,
-        startDate,
-        endDate,
-        bufferForConflict
-      );
-      if (conflictResult.hasConflict) {
-        return handleApiError(
-          new Error("This time slot is no longer available. Please select another time."),
-          "This time slot is no longer available. Please select another time.",
-          "CONFLICT",
-          409
-        );
-      }
-    }
-
-    // Check for overlapping active, non-expired holds: same staff, or same provider when staff_id is null (anyone mode)
-    const overlapQuery = supabase
-      .from("booking_holds")
-      .select("id")
-      .eq("hold_status", "active")
-      .gt("expires_at", nowIso)
-      .lt("start_at", endDate.toISOString())
-      .gt("end_at", startDate.toISOString());
-    if (staffId) {
-      overlapQuery.eq("staff_id", staffId);
-    } else {
-      overlapQuery.eq("provider_id", provider_id);
-    }
-    const { data: overlappingHolds } = await overlapQuery.limit(1);
-
-    if (overlappingHolds && overlappingHolds.length > 0) {
-      return handleApiError(
-        new Error("This time slot is no longer available. Please select another time."),
-        "This time slot is no longer available. Please select another time.",
-        "CONFLICT",
-        409
-      );
-    }
-
-    // Location validation
-    if (location_type === "at_salon" && !location_id) {
-      return handleApiError(
-        new Error("location_id is required for at_salon bookings"),
-        "location_id is required for at_salon",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-    if (location_type === "at_home" && !address) {
-      return handleApiError(
-        new Error("address is required for at_home bookings"),
-        "address is required for at_home",
-        "VALIDATION_ERROR",
-        400
-      );
-    }
-
-    let holdMetadata: Record<string, any> = {};
-    if (location_type === "at_home" && address && address.latitude != null && address.longitude != null) {
+  return withRouteMetrics(
+    request,
+    "/api/public/booking-holds",
+    "POST",
+    async () => {
       try {
-        const travelResult = await calculateTravelFeeForHold(supabase, provider_id, {
-          latitude: address.latitude,
-          longitude: address.longitude,
-          line1: address.line1,
-          city: address.city,
-          country: address.country,
-          postal_code: address.postal_code,
+        const body = await request.json();
+        const parsed = createHoldSchema.safeParse(body);
+
+        if (!parsed.success) {
+          return handleApiError(
+            new Error(parsed.error.issues.map((e) => e.message).join(", ")),
+            "Validation failed",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+
+        const {
+          provider_id,
+          staff_id: bodyStaffId,
+          services,
+          start_at,
+          end_at,
+          location_type,
+          location_id,
+          address,
+          guest_fingerprint_hash,
+          resource_ids,
+          package_id: bodyPackageId,
+          primary_package_id: bodyPrimaryPackageId,
+        } = parsed.data;
+        const packageIdForHold =
+          (bodyPackageId?.trim() || bodyPrimaryPackageId?.trim()) || undefined;
+
+        const startDate = new Date(start_at);
+        const endDate = new Date(end_at);
+        if (endDate <= startDate) {
+          return handleApiError(
+            new Error("end_at must be after start_at"),
+            "Invalid time range",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+
+        const tenantRes = await requirePublicTenant(request);
+        if (tenantRes instanceof Response) {
+          return tenantRes;
+        }
+        const { tenantId } = tenantRes;
+
+        const marketAvailability = evaluateMarketAvailabilityFromRequest(request);
+        if (marketAvailability.status === "restricted") {
+          return handleApiError(
+            new Error("Access unavailable for this country"),
+            "Access unavailable in your country due to legal or regulatory restrictions.",
+            "COUNTRY_RESTRICTED",
+            451,
+          );
+        }
+
+        const supabase = getSupabaseAdmin();
+        const nowIso = new Date().toISOString();
+
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("slug")
+          .eq("id", tenantId)
+          .maybeSingle();
+
+        if ((tenant as { slug?: string } | null)?.slug === "global") {
+          return handleApiError(
+            new Error("Bookings are unavailable on global entry"),
+            "Please switch to an available market to continue booking.",
+            "MARKET_SWITCH_REQUIRED",
+            403,
+          );
+        }
+
+        // Rate limiting
+        const rateLimit = await checkHoldRateLimit(request, guest_fingerprint_hash || null);
+        if (!rateLimit.allowed) {
+          const response = handleApiError(
+            new Error(rateLimit.reason),
+            rateLimit.reason!,
+            "RATE_LIMIT_EXCEEDED",
+            429
+          );
+          return applyRateLimitHeaders(response, {
+            remaining: 0,
+            retryAfterSeconds: rateLimit.retryAfterSeconds,
+          });
+        }
+
+        // Max 1 active, non-expired hold per fingerprint
+        if (guest_fingerprint_hash) {
+          const { data: activeHold } = await supabase
+            .from("booking_holds")
+            .select("id")
+            .eq("guest_fingerprint_hash", guest_fingerprint_hash)
+            .eq("hold_status", "active")
+            .gt("expires_at", nowIso)
+            .limit(1)
+            .maybeSingle();
+          if (activeHold) {
+            return handleApiError(
+              new Error("You already have an active booking hold. Please complete or cancel it first."),
+              "You already have an active booking hold. Please complete or cancel it first.",
+              "ACTIVE_HOLD_EXISTS",
+              429
+            );
+          }
+        }
+
+        // Load provider
+        const { data: provider, error: providerError } = await supabase
+          .from("providers")
+          .select("id, currency, status, business_name")
+          .eq("id", provider_id)
+          .eq("tenant_id", tenantId)
+          .single();
+
+        if (providerError || !provider) {
+          return handleApiError(
+            new Error("Provider not found"),
+            "Provider not found",
+            "NOT_FOUND",
+            404
+          );
+        }
+
+        if (provider.status !== "active") {
+          return handleApiError(
+            new Error("Provider is not available for booking"),
+            "Provider is not available",
+            "PROVIDER_INACTIVE",
+            400
+          );
+        }
+
+        const { data: obSettings } = await supabase
+          .from("provider_online_booking_settings")
+          .select("min_notice_minutes")
+          .eq("provider_id", provider_id)
+          .maybeSingle();
+        const rawNotice = obSettings?.min_notice_minutes;
+        const minNoticeMinutes =
+          typeof rawNotice === "number"
+            ? rawNotice
+            : typeof rawNotice === "string"
+              ? parseInt(rawNotice, 10)
+              : 60;
+        const effectiveMinNotice =
+          Number.isFinite(minNoticeMinutes) && minNoticeMinutes >= 0 ? minNoticeMinutes : 60;
+        if (effectiveMinNotice > 0) {
+          const cutoffMs = Date.now() + effectiveMinNotice * 60 * 1000;
+          if (startDate.getTime() < cutoffMs) {
+            return handleApiError(
+              new Error("Hold start violates minimum notice"),
+              `This provider requires at least ${effectiveMinNotice} minutes' notice. Please choose a later time.`,
+              "MIN_NOTICE_NOT_MET",
+              400
+            );
+          }
+        }
+
+        const tenantRegion = await getTenantRegionConfig(tenantId);
+        const currency = provider.currency || tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
+
+        // Load offerings and build snapshot
+        const offeringIds = services.map((s) => s.offering_id);
+        const { data: offerings, error: offeringsError } = await supabase
+          .from("offerings")
+          .select(
+            "id, provider_id, duration_minutes, buffer_minutes, price, currency, is_active, at_home_price_adjustment, supports_at_home"
+          )
+          .in("id", offeringIds);
+
+        if (offeringsError) throw offeringsError;
+
+        const offeringById = new Map(
+          (offerings || []).map((o) => [o.id, o])
+        );
+
+        for (const s of services) {
+          const off = offeringById.get(s.offering_id);
+          if (!off || off.provider_id !== provider_id || !off.is_active) {
+            return handleApiError(
+              new Error("Invalid service selection"),
+              "Invalid service selection",
+              "VALIDATION_ERROR",
+              400
+            );
+          }
+          if (
+            location_type === "at_home" &&
+            off.supports_at_home === false
+          ) {
+            return handleApiError(
+              new Error("One or more services do not support at-home"),
+              "At-home not supported",
+              "VALIDATION_ERROR",
+              400
+            );
+          }
+        }
+
+        // Resolve staff_id: use body staff_id or first service's staff_id. null = "anyone" mode (assign at confirm).
+        // Synthetic `provider-{uuid}` is not a DB FK — store null on hold + snapshot; keep token in metadata.
+        const rawStaffKey = bodyStaffId ?? services[0]?.staff_id ?? null;
+        const { dbStaffId: holdStaffIdForDb, syntheticToken: syntheticStaffPublicId } =
+          normalizePublicStaffIdForDatabase(rawStaffKey ?? undefined);
+
+        // Build booking_services_snapshot
+        let cursor = new Date(startDate);
+        const bookingServicesSnapshot: Array<{
+          offering_id: string;
+          staff_id: string | null;
+          duration_minutes: number;
+          price: number;
+          currency: string;
+          scheduled_start_at: string;
+          scheduled_end_at: string;
+        }> = [];
+
+        for (const s of services) {
+          const off = offeringById.get(s.offering_id);
+          if (!off) continue;
+          const duration = Number(off.duration_minutes || 0);
+          const price =
+            location_type === "at_home" && off.at_home_price_adjustment
+              ? Number(off.price || 0) + Number(off.at_home_price_adjustment || 0)
+              : Number(off.price || 0);
+          const start = new Date(cursor);
+          const end = new Date(cursor.getTime() + duration * 60000);
+          const lineRaw = s.staff_id ?? rawStaffKey ?? null;
+          const { dbStaffId: lineStaffDb } = normalizePublicStaffIdForDatabase(lineRaw ?? undefined);
+          bookingServicesSnapshot.push({
+            offering_id: off.id,
+            staff_id: lineStaffDb ?? holdStaffIdForDb,
+            duration_minutes: duration,
+            price,
+            currency: off.currency || currency,
+            scheduled_start_at: start.toISOString(),
+            scheduled_end_at: end.toISOString(),
+          });
+          cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
+        }
+
+        const offeringBufferMinutesById = new Map<string, number>(
+          Array.from(offeringById.entries()).map(([id, o]) => [
+            id,
+            Number(o.buffer_minutes ?? 15),
+          ])
+        );
+
+        const conflictResult = await checkBookingSnapshotSegmentConflicts(
+          supabase as SupabaseClient,
+          provider_id,
+          bookingServicesSnapshot,
+          offeringBufferMinutesById
+        );
+        if (conflictResult.hasConflict) {
+          return handleApiError(
+            new Error("This time slot is no longer available. Please select another time."),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+
+        // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff
+        const distinctSnapshotStaffIds = [
+          ...new Set(
+            bookingServicesSnapshot
+              .map((l) => l.staff_id)
+              .filter((id): id is string => Boolean(id))
+          ),
+        ];
+
+        let overlappingHolds: { id: string }[] | null = null;
+        if (distinctSnapshotStaffIds.length > 0) {
+          const { data } = await supabase
+            .from("booking_holds")
+            .select("id")
+            .eq("hold_status", "active")
+            .gt("expires_at", nowIso)
+            .lt("start_at", endDate.toISOString())
+            .gt("end_at", startDate.toISOString())
+            .in("staff_id", distinctSnapshotStaffIds)
+            .limit(1);
+          overlappingHolds = data;
+        } else {
+          const { data: anyoneOverlaps } = await supabase
+            .from("booking_holds")
+            .select("id")
+            .eq("hold_status", "active")
+            .gt("expires_at", nowIso)
+            .lt("start_at", endDate.toISOString())
+            .gt("end_at", startDate.toISOString())
+            .eq("provider_id", provider_id)
+            .is("staff_id", null)
+            .limit(1);
+          overlappingHolds = anyoneOverlaps;
+        }
+
+        if (overlappingHolds && overlappingHolds.length > 0) {
+          return handleApiError(
+            new Error("This time slot is no longer available. Please select another time."),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+
+        // Location validation
+        if (location_type === "at_salon" && !location_id) {
+          return handleApiError(
+            new Error("location_id is required for at_salon bookings"),
+            "location_id is required for at_salon",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+        if (location_type === "at_home" && !address) {
+          return handleApiError(
+            new Error("address is required for at_home bookings"),
+            "address is required for at_home",
+            "VALIDATION_ERROR",
+            400
+          );
+        }
+
+        let holdMetadata: Record<string, unknown> = {};
+        if (location_type === "at_home" && address && address.latitude != null && address.longitude != null) {
+          try {
+            const travelResult = await calculateTravelFeeForHold(supabase, provider_id, {
+              latitude: address.latitude,
+              longitude: address.longitude,
+              line1: address.line1,
+              city: address.city,
+              country: address.country,
+              postal_code: address.postal_code,
+            });
+            holdMetadata = {
+              travel_fee: travelResult.withinServiceArea ? travelResult.travelFee : 0,
+              travel_distance_km: travelResult.distanceKm,
+            };
+          } catch {
+            holdMetadata = { travel_fee: 0, travel_distance_km: 0 };
+          }
+        }
+        if (resource_ids && resource_ids.length > 0) {
+          holdMetadata = { ...holdMetadata, resource_ids };
+        }
+        if (syntheticStaffPublicId) {
+          holdMetadata = {
+            ...holdMetadata,
+            public_booking_staff_id: syntheticStaffPublicId,
+            solo_staff_display_name: (provider as { business_name?: string | null }).business_name ?? undefined,
+          };
+        }
+        if (packageIdForHold) {
+          holdMetadata = { ...holdMetadata, package_id: packageIdForHold };
+        }
+
+        const expiresAt = new Date(Date.now() + HOLD_EXPIRY_MINUTES * 60 * 1000);
+
+        const { data: hold, error: insertError } = await supabase
+          .from("booking_holds")
+          .insert({
+            provider_id,
+            staff_id: holdStaffIdForDb,
+            booking_services_snapshot: bookingServicesSnapshot,
+            start_at: start_at,
+            end_at: end_at,
+            location_type,
+            location_id: location_id || null,
+            address_snapshot: address || null,
+            hold_status: "active",
+            expires_at: expiresAt.toISOString(),
+            created_by_user_id: null,
+            guest_fingerprint_hash: guest_fingerprint_hash || null,
+            metadata: holdMetadata,
+          })
+          .select("id, expires_at")
+          .single();
+
+        if (insertError) {
+          // DB exclusion constraint: only one active non-expired hold per (staff|provider) and time range
+          const err = insertError as { code?: string; details?: string; message?: string };
+          const isExclusionViolation =
+            err.code === "23P01" ||
+            [err.details, err.message].some(
+              (t) =>
+                t &&
+                (t.includes("booking_holds_no_overlap_staff") ||
+                  t.includes("booking_holds_no_overlap_provider_anyone"))
+            );
+          if (isExclusionViolation) {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
+          throw insertError;
+        }
+
+        incrementHoldRateLimit(request, guest_fingerprint_hash || null);
+
+        if (!hold) {
+          return handleApiError(
+            new Error("Failed to create hold"),
+            "Failed to create hold",
+            "CREATE_ERROR",
+            500
+          );
+        }
+
+        return successResponse({
+          hold_id: hold.id,
+          expires_at: hold.expires_at,
         });
-        holdMetadata = {
-          travel_fee: travelResult.withinServiceArea ? travelResult.travelFee : 0,
-          travel_distance_km: travelResult.distanceKm,
-        };
-      } catch {
-        holdMetadata = { travel_fee: 0, travel_distance_km: 0 };
+      } catch (error) {
+        return handleApiError(error, "Failed to create booking hold");
       }
-    }
-    if (resource_ids && resource_ids.length > 0) {
-      holdMetadata = { ...holdMetadata, resource_ids };
-    }
-
-    const expiresAt = new Date(Date.now() + HOLD_EXPIRY_MINUTES * 60 * 1000);
-
-    const { data: hold, error: insertError } = await supabase
-      .from("booking_holds")
-      .insert({
-        provider_id,
-        staff_id: staffId,
-        booking_services_snapshot: bookingServicesSnapshot,
-        start_at: start_at,
-        end_at: end_at,
-        location_type,
-        location_id: location_id || null,
-        address_snapshot: address || null,
-        hold_status: "active",
-        expires_at: expiresAt.toISOString(),
-        created_by_user_id: null,
-        guest_fingerprint_hash: guest_fingerprint_hash || null,
-        metadata: holdMetadata,
-      })
-      .select("id, expires_at")
-      .single();
-
-    if (insertError) {
-      // DB exclusion constraint: only one active non-expired hold per (staff|provider) and time range
-      const err = insertError as { code?: string; details?: string; message?: string };
-      const isExclusionViolation =
-        err.code === "23P01" ||
-        [err.details, err.message].some(
-          (t) =>
-            t &&
-            (t.includes("booking_holds_no_overlap_staff") ||
-              t.includes("booking_holds_no_overlap_provider_anyone"))
-        );
-      if (isExclusionViolation) {
-        return handleApiError(
-          new Error("This time slot is no longer available. Please select another time."),
-          "This time slot is no longer available. Please select another time.",
-          "CONFLICT",
-          409
-        );
-      }
-      throw insertError;
-    }
-
-    incrementHoldRateLimit(request, guest_fingerprint_hash || null);
-
-    if (!hold) {
-      return handleApiError(
-        new Error("Failed to create hold"),
-        "Failed to create hold",
-        "CREATE_ERROR",
-        500
-      );
-    }
-
-    return successResponse({
-      hold_id: hold.id,
-      expires_at: hold.expires_at,
-    });
-  } catch (error) {
-    return handleApiError(error, "Failed to create booking hold");
-  }
+    },
+  );
 }

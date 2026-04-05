@@ -7,6 +7,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
 import { checkAnalyticsFeatureAccess } from "./feature-access";
+import { isUserSuperadmin } from "./entitlements";
 import { errorResponse } from "@/lib/supabase/api-helpers";
 
 /**
@@ -116,16 +117,7 @@ export async function canAccessReportType(
     };
   }
 
-  // Check if user is superadmin - allow access regardless of subscription
-  const { data: userRole } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "superadmin")
-    .maybeSingle();
-
-  // Superadmins have full access to all reports
-  if (userRole) {
+  if (await isUserSuperadmin(supabase, userId)) {
     return { allowed: true };
   }
 

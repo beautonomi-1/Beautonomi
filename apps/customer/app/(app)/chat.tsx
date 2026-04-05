@@ -305,11 +305,15 @@ export default function ChatScreen() {
   };
 
   const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    (() => {
+      const parsed = new Date(iso);
+      if (!Number.isFinite(parsed.getTime())) return "—";
+      return parsed.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    })();
 
   const formatDateLabel = (iso: string) => {
     const d = new Date(iso);

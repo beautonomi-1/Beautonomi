@@ -19,6 +19,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { StatCard } from "@/components/ui/StatCard";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { twStyle } from "@/lib/twStyle";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 
 interface TwilioIntegration {
   id?: string;
@@ -98,6 +100,13 @@ function templateTypeIcon(type: string): { icon: keyof typeof Ionicons.glyphMap;
   }
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function TwilioIntegrationScreen() {
   const [form, setForm] = useState<Form>(EMPTY_FORM);
   const [dirty, setDirty] = useState(false);
@@ -141,6 +150,16 @@ export default function TwilioIntegrationScreen() {
       Alert.alert("Required", "Account SID is required");
       return;
     }
+    const smsErr = form.smsFrom.trim() ? validateE164Phone(form.smsFrom.trim()) : null;
+    if (smsErr) {
+      Alert.alert("SMS number", smsErr);
+      return;
+    }
+    const waErr = form.whatsappFrom.trim() ? validateE164Phone(form.whatsappFrom.trim()) : null;
+    if (waErr) {
+      Alert.alert("WhatsApp number", waErr);
+      return;
+    }
     const payload = {
       account_sid: form.accountSid,
       auth_token: form.authToken,
@@ -160,12 +179,18 @@ export default function TwilioIntegrationScreen() {
   }
 
   async function handleTest(channel: "sms" | "whatsapp") {
-    if (!testPhone.trim()) {
+    const tp = testPhone.trim();
+    if (!tp) {
       Alert.alert("Required", "Enter a phone number to test");
       return;
     }
+    const testErr = validateE164Phone(tp);
+    if (testErr) {
+      Alert.alert("Invalid number", testErr);
+      return;
+    }
     setTestingChannel(channel);
-    const { error } = await sendTest({ test_phone: testPhone.trim(), channel });
+    const { error } = await sendTest({ test_phone: tp, channel });
     setTestingChannel(null);
     if (error) {
       Alert.alert("Test Failed", error);
@@ -221,7 +246,7 @@ export default function TwilioIntegrationScreen() {
         <View style={twStyle("mb-4 flex-row items-center rounded-lg bg-green-50 px-3 py-2")}>
           <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
           <Text style={twStyle("ml-2 text-xs text-green-700")}>
-            Connected since {new Date(integration.connected_date).toLocaleDateString()}
+            Connected since {formatDateSafe(integration.connected_date)}
           </Text>
         </View>
       )}
@@ -362,19 +387,13 @@ export default function TwilioIntegrationScreen() {
           />
         </View>
         {form.whatsappEnabled && (
-          <>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-              WhatsApp From Number
-            </Text>
-            <TextInput
-              style={twStyle("mb-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-              value={form.whatsappFrom}
-              onChangeText={(t) => update("whatsappFrom", t)}
-              placeholder="+27..."
-              placeholderTextColor="#9ca3af"
-              keyboardType="phone-pad"
-            />
-          </>
+          <E164PhoneField
+            label="WhatsApp From Number"
+            valueE164={form.whatsappFrom}
+            onChangeE164={(v) => update("whatsappFrom", v)}
+            placeholderNational="Phone number"
+            showHint
+          />
         )}
       </View>
 
@@ -434,20 +453,21 @@ export default function TwilioIntegrationScreen() {
       {integration?.id && (
         <View style={twStyle("mt-2")}>
           <SectionHeader title="Test Integration" />
-          <TextInput
-            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            value={testPhone}
-            onChangeText={setTestPhone}
-            placeholder="Phone number (+27...)"
-            placeholderTextColor="#9ca3af"
-            keyboardType="phone-pad"
-          />
+          <View style={twStyle("mb-3")}>
+            <E164PhoneField
+              label="Test destination"
+              valueE164={testPhone}
+              onChangeE164={setTestPhone}
+              placeholderNational="Phone number"
+              showHint
+            />
+          </View>
           <View style={twStyle("flex-row")}>
             {form.smsEnabled && (
               <TouchableOpacity
                 style={[twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-indigo-50 py-3"), { marginRight: 12 }]}
                 onPress={() => handleTest("sms")}
-                disabled={!!testingChannel}
+                disabled={!!testingChannel || !testPhone.trim() || !!validateE164Phone(testPhone.trim())}
               >
                 {testingChannel === "sms" ? (
                   <ActivityIndicator size="small" color="#6366f1" />
@@ -463,7 +483,7 @@ export default function TwilioIntegrationScreen() {
               <TouchableOpacity
                 style={twStyle("flex-1 flex-row items-center justify-center rounded-xl bg-green-50 py-3")}
                 onPress={() => handleTest("whatsapp")}
-                disabled={!!testingChannel}
+                disabled={!!testingChannel || !testPhone.trim() || !!validateE164Phone(testPhone.trim())}
               >
                 {testingChannel === "whatsapp" ? (
                   <ActivityIndicator size="small" color="#22c55e" />

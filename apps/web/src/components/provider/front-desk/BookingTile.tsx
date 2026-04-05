@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  confirmBooking,
   checkInBooking,
   arriveAtHome,
   startService,
@@ -26,6 +27,7 @@ import {
 
 /** Desaturated status pills - matches reference (lavender for in_service, etc.) */
 const BADGE_STYLES: Record<string, string> = {
+  needs_confirmation: "bg-amber-100 text-amber-900 border border-amber-200/80",
   late: "bg-rose-50 text-rose-700",
   arriving: "bg-sky-50 text-sky-700",
   checked_in: "bg-emerald-50 text-emerald-700",
@@ -34,6 +36,10 @@ const BADGE_STYLES: Record<string, string> = {
   completed: "bg-emerald-50 text-emerald-600",
   cancelled: "bg-slate-100 text-slate-500",
   confirmed: "bg-slate-100 text-slate-600",
+};
+
+const BADGE_LABELS: Record<string, string> = {
+  needs_confirmation: "Confirm first",
 };
 
 function getInitials(name: string) {
@@ -96,6 +102,13 @@ export function BookingTile({
   const getQuickActions = (): Array<{ label: string; onClick: () => void }> => {
     const actions: Array<{ label: string; onClick: () => void }> = [];
     if (["completed", "cancelled"].includes(badge)) return actions;
+    if (badge === "needs_confirmation") {
+      actions.push({
+        label: "Confirm booking",
+        onClick: () => runQuickAction(() => confirmBooking(booking.id, (booking as any).version)),
+      });
+      return actions;
+    }
     if (badge === "confirmed") {
       if (isAtHome) {
         actions.push({ label: "I've Arrived", onClick: () => runQuickAction(() => arriveAtHome(booking.id)) });
@@ -182,7 +195,7 @@ export function BookingTile({
             BADGE_STYLES[badge] || BADGE_STYLES.confirmed
           )}
         >
-          {badge.replace(/_/g, " ")}
+          {BADGE_LABELS[badge] ?? badge.replace(/_/g, " ")}
         </span>
       </div>
 

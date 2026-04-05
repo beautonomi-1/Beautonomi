@@ -5,6 +5,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const updateFaqSchema = z.object({
   question: z.string().min(1).optional(),
@@ -31,11 +32,13 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: faq, error } = await supabase
       .from("faqs")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error || !faq) {
@@ -87,6 +90,7 @@ export async function PUT(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -109,6 +113,7 @@ export async function PUT(
       .from("faqs")
       .update(validationResult.data)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -171,12 +176,14 @@ export async function DELETE(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     // Soft delete by setting is_active to false
     const { data: faq, error } = await supabase
       .from("faqs")
       .update({ is_active: false })
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 

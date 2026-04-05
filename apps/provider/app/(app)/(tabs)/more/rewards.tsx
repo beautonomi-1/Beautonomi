@@ -47,6 +47,13 @@ interface GamificationResponse {
   };
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 /** Content-only for use in Rewards hub (Points tab). */
 export function RewardsPointsContent() {
   const { screenPadding } = useResponsive();
@@ -124,7 +131,7 @@ export function RewardsPointsContent() {
                 ) : null}
                 {badge.earned_at && (
                   <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-                    Earned {new Date(badge.earned_at).toLocaleDateString()}
+                    Earned {formatDateSafe(badge.earned_at)}
                   </Text>
                 )}
               </View>
@@ -184,7 +191,7 @@ export function RewardsPointsContent() {
                     {t.description ?? t.source ?? "Points"}
                   </Text>
                   <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                    {new Date(t.created_at).toLocaleDateString()}
+                    {formatDateSafe(t.created_at)}
                   </Text>
                 </View>
                 <Text

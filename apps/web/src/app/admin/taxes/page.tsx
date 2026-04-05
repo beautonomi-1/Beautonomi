@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface TaxRate {
   id: string;
@@ -53,6 +54,7 @@ interface TaxStatistics {
 }
 
 export default function AdminTaxes() {
+  const { format: fmt } = useReportCurrency();
   const [taxRates, setTaxRates] = useState<TaxRate[]>([]);
   const [_providerTaxRates, setProviderTaxRates] = useState<ProviderTaxRate[]>([]);
   void _providerTaxRates;
@@ -174,19 +176,13 @@ export default function AdminTaxes() {
             <div className="bg-white border rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Total Tax Collected</p>
               <p className="text-2xl font-semibold">
-                ZAR {statistics.total_tax_collected.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmt(statistics.total_tax_collected)}
               </p>
             </div>
             <div className="bg-white border rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Total Revenue</p>
               <p className="text-2xl font-semibold">
-                ZAR {statistics.total_revenue.toLocaleString(undefined, {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+                {fmt(statistics.total_revenue)}
               </p>
             </div>
             <div className="bg-white border rounded-lg p-4">

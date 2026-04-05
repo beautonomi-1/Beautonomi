@@ -9,6 +9,8 @@
  * and payment calls. Confirm with Yoco docs whether this is a long-lived API key or OAuth JWT.
  */
 
+import { toCents, fromCents } from "@beautonomi/utils";
+
 /**
  * Verify Yoco configuration
  */
@@ -36,14 +38,14 @@ export function verifyYocoConfig(secretKey?: string, publicKey?: string): {
  * Convert amount to cents (Yoco uses cents for ZAR)
  */
 export function convertToCents(amount: number): number {
-  return Math.round(amount * 100);
+  return toCents(amount);
 }
 
 /**
  * Convert from cents to amount
  */
 export function convertFromCents(amount: number): number {
-  return amount / 100;
+  return fromCents(amount);
 }
 
 /**

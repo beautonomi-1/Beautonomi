@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
 
 /**
@@ -19,6 +20,7 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: userData, error } = await supabase
       .from("users")
@@ -38,13 +40,15 @@ export async function GET(
       const { count: bookingCount } = await supabase
         .from("bookings")
         .select("*", { count: "exact", head: true })
-        .eq("customer_id", id);
+        .eq("customer_id", id)
+        .eq("tenant_id", tenantId);
 
       // Get total spent
       const { data: bookings } = await supabase
         .from("bookings")
         .select("total_amount")
         .eq("customer_id", id)
+        .eq("tenant_id", tenantId)
         .in("status", ["completed", "confirmed"]);
 
       const totalSpent = bookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
@@ -54,6 +58,7 @@ export async function GET(
         .from("bookings")
         .select("scheduled_at")
         .eq("customer_id", id)
+        .eq("tenant_id", tenantId)
         .order("scheduled_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -65,7 +70,8 @@ export async function GET(
       const { count: providerCount } = await supabase
         .from("providers")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", id);
+        .eq("user_id", id)
+        .eq("tenant_id", tenantId);
 
       stats.provider_count = providerCount || 0;
     }

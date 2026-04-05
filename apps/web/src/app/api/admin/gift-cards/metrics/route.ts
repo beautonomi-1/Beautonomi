@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { subDays } from "date-fns";
 
 /**
@@ -13,6 +15,7 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "30d";
@@ -37,23 +40,22 @@ export async function GET(request: NextRequest) {
         startDate = subDays(now, 30);
     }
 
-    // Get gift card sales (from finance_transactions)
-    const { data: salesTransactions, error: salesError } = await supabaseAdmin
-      .from("finance_transactions")
-      .select("amount, net, created_at")
-      .eq("transaction_type", "gift_card_sale")
-      .gte("created_at", startDate.toISOString())
-      .lte("created_at", now.toISOString())
-      .order("created_at", { ascending: false });
-
-    if (salesError) {
-      console.error("Error fetching gift card sales:", salesError);
+    let salesTransactions: Awaited<ReturnType<typeof fetchFinanceLedgerRowsForTenant>> = [];
+    try {
+      salesTransactions = await fetchFinanceLedgerRowsForTenant(
+        supabaseAdmin,
+        tenantId,
+        { start: startDate.toISOString(), end: now.toISOString() },
+        { transactionType: "gift_card_sale" }
+      );
+    } catch (e) {
+      console.error("Error fetching gift card sales:", e);
     }
 
-    // Get gift card orders
     const { data: orders, error: ordersError } = await supabaseAdmin
       .from("gift_card_orders")
       .select("id, amount, currency, status, created_at, gift_card_id")
+      .eq("tenant_id", tenantId)
       .eq("status", "paid")
       .gte("created_at", startDate.toISOString())
       .lte("created_at", now.toISOString())
@@ -63,10 +65,10 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching gift card orders:", ordersError);
     }
 
-    // Get gift card redemptions
     const { data: redemptions, error: redemptionsError } = await supabaseAdmin
       .from("gift_card_redemptions")
-      .select("id, amount, currency, status, captured_at, created_at")
+      .select("id, amount, currency, status, captured_at, created_at, bookings!inner(tenant_id)")
+      .eq("bookings.tenant_id", tenantId)
       .eq("status", "captured")
       .not("captured_at", "is", null)
       .gte("captured_at", startDate.toISOString())
@@ -77,15 +79,15 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching gift card redemptions:", redemptionsError);
     }
 
-    // Get active gift cards (unredeemed balance)
     const { data: activeGiftCards, error: activeError } = await supabaseAdmin
       .from("gift_cards")
       .select("balance, initial_balance, currency")
+      .eq("tenant_id", tenantId)
       .eq("is_active", true)
       .gt("balance", 0);
 
     if (activeError) {
-      console.error("Error fetching active gift cards:", activeError);
+      console.error("Error fetching tenant gift cards:", activeError);
     }
 
     // Calculate metrics
@@ -107,6 +109,7 @@ export async function GET(request: NextRequest) {
     // Sales by day
     const salesByDay: Record<string, { sales: number; count: number }> = {};
     (salesTransactions || []).forEach((t) => {
+      if (!t.created_at) return;
       const date = new Date(t.created_at).toISOString().split("T")[0];
       if (!salesByDay[date]) {
         salesByDay[date] = { sales: 0, count: 0 };

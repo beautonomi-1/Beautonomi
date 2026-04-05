@@ -17,6 +17,36 @@ import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_PAYMENT_SUCCESS, EVENT_PAYMENT_FAILED } from "@/lib/analytics/amplitude/types";
 import type { PaystackEvent, SupabaseClient } from "./shared";
 import { savePaystackAuthorization, generateGiftCardCode } from "./shared";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { percentOf, subtractMoney } from "@beautonomi/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+
+async function lastResortCurrencyFromTenantId(
+  tenantId: string | null | undefined,
+  options?: { supabase?: SupabaseClient; providerId?: string | null | undefined },
+): Promise<string> {
+  if (tenantId) {
+    const tr = await getTenantRegionConfig(tenantId);
+    return tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+  }
+  const pid = options?.providerId;
+  if (options?.supabase && pid) {
+    const { data } = await options.supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", pid)
+      .maybeSingle();
+    const tid = (data as { tenant_id?: string | null } | null)?.tenant_id;
+    if (tid) {
+      const tr = await getTenantRegionConfig(tid);
+      return tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    }
+  }
+  return LAST_RESORT_CURRENCY;
+}
 
 /** Paystack charge webhook payload (reference, metadata, amount, etc.) */
 type PaystackChargeData = {
@@ -47,6 +77,7 @@ type ChargeBookingRow = Record<string, unknown> & {
   currency?: string;
   promotion_id?: string;
   promotion_discount_amount?: number;
+  tenant_id?: string | null;
 };
 
 // ─── Exported Handlers ───────────────────────────────────────────────────────
@@ -79,6 +110,19 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const { reference, metadata, amount, fees, customer, authorization } = data;
 
   if (!reference || !metadata?.booking_id) {
+    if (metadata?.product_order_id && reference) {
+      const productOrderId = String(metadata.product_order_id);
+      await recordProductOrderPayment({
+        supabase,
+        productOrderId,
+        reference: String(reference),
+        amountMajor: convertFromSmallestUnit(amount || 0),
+        feesMajor: convertFromSmallestUnit(fees || 0),
+        source: "paystack_webhook",
+        provider: "paystack",
+      });
+      return;
+    }
     // Non-booking flows (gift cards, subscriptions, etc.)
     if (metadata?.custom_offer_id) {
       await handleCustomOfferSuccess({ reference, metadata, amount, fees, customer }, supabase);
@@ -118,9 +162,13 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     return;
   }
 
-  // Additional charge payment flow
-  if (metadata?.additional_charge_id) {
-    await handleAdditionalChargeSuccess({ reference, metadata, amount, fees, customer }, supabase);
+  // Additional charge payment flow (metadata may use additional_charge_id or legacy charge_id)
+  if (metadata?.additional_charge_id || metadata?.charge_id) {
+    const merged = {
+      ...metadata,
+      additional_charge_id: metadata.additional_charge_id || metadata.charge_id,
+    };
+    await handleAdditionalChargeSuccess({ reference, metadata: merged, amount, fees, customer }, supabase);
     return;
   }
 
@@ -144,6 +192,11 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   }
 
   const bookingData = booking as ChargeBookingRow;
+
+  const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: bookingData.tenant_id as string | null | undefined,
+    provider_id: bookingData.provider_id as string | null | undefined,
+  });
 
   if (bookingData.payment_status === "paid" && bookingData.payment_reference === reference) {
     console.log(`Payment ${reference} already processed`);
@@ -186,9 +239,9 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     : 0;
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? (commissionBase * commissionRate) / 100 : 0;
+    commissionEnabled && commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
 
-  const providerEarnings = commissionBase - platformCommission + travelFee + tipAmount;
+  const providerEarnings = subtractMoney(commissionBase, platformCommission) + travelFee + tipAmount;
 
   // Update booking payment status
   const { error: updateError } = await supabase
@@ -331,6 +384,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
+    tenant_id: financeTenantId,
     transaction_type: "payment",
     amount: commissionBase,
     fees: feesInCurrency,
@@ -343,6 +397,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
+    tenant_id: financeTenantId,
     transaction_type: "provider_earnings",
     amount: providerEarnings,
     fees: 0,
@@ -357,6 +412,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     await supabase.from("finance_transactions").insert({
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
+      tenant_id: financeTenantId,
       transaction_type: "service_fee",
       amount: serviceFeeAmount,
       fees: 0,
@@ -371,6 +427,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     {
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
+      tenant_id: financeTenantId,
       transaction_type: "tip",
       amount: tipAmount,
       fees: 0,
@@ -382,6 +439,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     {
       booking_id: metadata.booking_id,
       provider_id: bookingData.provider_id || null,
+      tenant_id: financeTenantId,
       transaction_type: "tax",
       amount: taxAmount,
       fees: 0,
@@ -395,6 +453,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
           {
             booking_id: metadata.booking_id,
             provider_id: bookingData.provider_id || null,
+            tenant_id: financeTenantId,
             transaction_type: "travel_fee",
             amount: travelFee,
             fees: 0,
@@ -492,13 +551,17 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
 
   // Track Amplitude event
   try {
+    const lastResortSuccess = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
+      supabase,
+      providerId: bookingData.provider_id,
+    });
     await trackServer(
       EVENT_PAYMENT_SUCCESS,
       {
         portal: "client",
         booking_id: metadata.booking_id,
         amount: amountInCurrency,
-        currency: metadata?.currency || bookingData.currency || "ZAR",
+        currency: metadata?.currency || bookingData.currency || lastResortSuccess,
         payment_method: metadata?.save_card ? "saved_card" : "new_card",
         payment_provider: "paystack",
         transaction_id: reference,
@@ -561,7 +624,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
 
   const { data: booking } = await supabase
     .from("bookings")
-    .select("customer_id, booking_number")
+    .select("customer_id, booking_number, tenant_id, provider_id")
     .eq("id", metadata.booking_id)
     .single();
 
@@ -571,6 +634,15 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
   }
 
   const bookingData = booking as ChargeBookingRow;
+  const lastResortFailed = await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
+    supabase,
+    providerId: bookingData.provider_id,
+  });
+
+  const failedChargeWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: bookingData.tenant_id,
+    provider_id: bookingData.provider_id,
+  });
 
   // If wallet was used as partial payment, refund it immediately
   const walletAmountApplied = Number(metadata?.wallet_amount_applied ?? 0);
@@ -579,10 +651,11 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
       await supabase.rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
         p_amount: walletAmountApplied,
-        p_currency: metadata?.currency || "ZAR",
+        p_currency: metadata?.currency || lastResortFailed,
         p_description: `Wallet refund (payment failed) for booking ${bookingData.booking_number}`,
         p_reference_id: metadata.booking_id,
         p_reference_type: "booking_payment_failed",
+        p_tenant_id: failedChargeWalletTenantId,
       });
 
       await supabase.from("bookings")
@@ -675,7 +748,7 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
         portal: "client",
         booking_id: metadata.booking_id,
         amount: amt,
-        currency: metadata?.currency || "ZAR",
+        currency: metadata?.currency || lastResortFailed,
         payment_method: metadata?.save_card ? "saved_card" : "new_card",
         payment_provider: "paystack",
         error_code: message || gateway_response || "unknown",
@@ -713,6 +786,15 @@ async function handleCustomOfferSuccess(
   const req = offer.request as CustomRequestRow | undefined;
   if (!req) return;
 
+  const { data: provForCurrency } = await adminSupabase
+    .from("providers")
+    .select("tenant_id")
+    .eq("id", req.provider_id ?? "")
+    .maybeSingle();
+  const offerCurrencyFallback = await lastResortCurrencyFromTenantId(
+    (provForCurrency as { tenant_id?: string } | null)?.tenant_id,
+  );
+
   // Idempotency: if booking already created, just ensure status is paid
   if (offer.status === "paid" && offer.booking_id) return;
 
@@ -743,7 +825,7 @@ async function handleCustomOfferSuccess(
       duration_minutes: offer.duration_minutes,
       buffer_minutes: 0,
       price: offer.price,
-      currency: offer.currency || "ZAR",
+      currency: offer.currency || offerCurrencyFallback,
       supports_at_home: req.location_type === "at_home",
       supports_at_salon: req.location_type === "at_salon",
       is_active: false,
@@ -788,7 +870,7 @@ async function handleCustomOfferSuccess(
     service_fee_percentage: 0,
     service_fee_amount: serviceFeeAmount,
     total_amount: amountInCurrency,
-    currency: offer.currency || "ZAR",
+    currency: offer.currency || offerCurrencyFallback,
     payment_status: "paid",
     payment_reference: payload.reference,
     payment_date: new Date().toISOString(),
@@ -837,7 +919,7 @@ async function handleCustomOfferSuccess(
       staff_id: assignedStaffId,
       duration_minutes: Number(offer.duration_minutes || 60),
       price: bookingSubtotal,
-      currency: offer.currency || "ZAR",
+      currency: offer.currency || offerCurrencyFallback,
       scheduled_start_at: start.toISOString(),
       scheduled_end_at: end.toISOString(),
       created_at: new Date().toISOString(),
@@ -866,7 +948,7 @@ async function handleCustomOfferSuccess(
     provider_id: req.provider_id,
     payment_number: "",
     amount: amountInCurrency,
-    currency: offer.currency || "ZAR",
+    currency: offer.currency || offerCurrencyFallback,
     status: "paid",
     payment_provider: "paystack",
     payment_provider_transaction_id: payload.reference,
@@ -890,8 +972,8 @@ async function handleCustomOfferSuccess(
   const commissionRate =
     (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
   const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
-  const platformCommission = (commissionBase * commissionRate) / 100;
-  const providerEarnings = commissionBase - platformCommission;
+  const platformCommission = percentOf(commissionBase, commissionRate);
+  const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
   await adminSupabase.from("payment_transactions").insert({
     booking_id: booking.id,
@@ -905,10 +987,16 @@ async function handleCustomOfferSuccess(
     created_at: new Date().toISOString(),
   });
 
+  const customOfferFinanceTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+    tenant_id: (booking as { tenant_id?: string | null }).tenant_id,
+    provider_id: req.provider_id,
+  });
+
   await adminSupabase.from("finance_transactions").insert([
     {
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "payment",
       amount: commissionBase,
       fees: feesInCurrency,
@@ -920,6 +1008,7 @@ async function handleCustomOfferSuccess(
     {
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "provider_earnings",
       amount: providerEarnings,
       fees: 0,
@@ -936,6 +1025,7 @@ async function handleCustomOfferSuccess(
     extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "service_fee",
       amount: serviceFeeAmount,
       fees: 0,
@@ -949,6 +1039,7 @@ async function handleCustomOfferSuccess(
     {
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "tip",
       amount: tipAmount,
       fees: 0,
@@ -960,6 +1051,7 @@ async function handleCustomOfferSuccess(
     {
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "tax",
       amount: taxAmount,
       fees: 0,
@@ -973,6 +1065,7 @@ async function handleCustomOfferSuccess(
     extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
       transaction_type: "travel_fee",
       amount: travelFee,
       fees: 0,
@@ -1085,21 +1178,37 @@ async function handleCustomOfferSuccess(
       .eq("id", req.provider_id)
       .single();
     const providerUserId = (providerRow as { user_id?: string } | null)?.user_id;
-    const payload = {
-      title: "Custom Order Paid",
-      message: "Your custom order has been paid and a booking has been created.",
-      data: {
-        type: "custom_order_paid",
-        custom_offer_id: offerId,
-        booking_id: (booking as { id?: string })?.id,
-      },
-      url: "/account-settings/bookings",
+    const bookingId = (booking as { id?: string })?.id;
+    const baseData = {
+      type: "custom_order_paid" as const,
+      custom_offer_id: offerId,
+      booking_id: bookingId,
     };
     if (req.customer_id) {
-      await sendToUser(req.customer_id, payload, ["push"], { appType: "customer" });
+      await sendToUser(
+        req.customer_id,
+        {
+          title: "Custom Order Paid",
+          message: "Your custom order has been paid and a booking has been created.",
+          data: baseData,
+          url: "/account-settings/bookings",
+        },
+        ["push"],
+        { appType: "customer" },
+      );
     }
     if (providerUserId) {
-      await sendToUser(providerUserId, payload, ["push"], { appType: "provider" });
+      await sendToUser(
+        providerUserId,
+        {
+          title: "Custom Order Paid",
+          message: "Your custom order has been paid and a booking has been created.",
+          data: baseData,
+          url: bookingId ? `/provider/bookings/${bookingId}` : "/provider/bookings",
+        },
+        ["push"],
+        { appType: "provider" },
+      );
     }
   } catch {
     // ignore
@@ -1138,12 +1247,29 @@ async function handleWalletTopupSuccess(
     .single();
   if (!topup) return;
 
-  type TopupRow = { status?: string; currency?: string; user_id?: string };
+  type TopupRow = { status?: string; currency?: string; user_id?: string; tenant_id?: string | null };
   const topupRow = topup as TopupRow;
   if (topupRow.status === "paid") return;
 
+  let resolvedTenantId = topupRow.tenant_id ?? null;
+  const metaTenant = payload.metadata?.tenant_id as string | undefined;
+  if (!resolvedTenantId && metaTenant) resolvedTenantId = metaTenant;
+  if (!resolvedTenantId && topupRow.user_id) {
+    const { data: urow } = await supabase
+      .from("users")
+      .select("preferred_home_tenant_id")
+      .eq("id", topupRow.user_id)
+      .maybeSingle();
+    resolvedTenantId = (urow as { preferred_home_tenant_id?: string | null } | null)?.preferred_home_tenant_id ?? null;
+  }
+
   const amountInCurrency = convertFromSmallestUnit(payload.amount || 0);
-  const currency = topupRow.currency ?? "ZAR";
+  const currency = topupRow.currency ?? (await lastResortCurrencyFromTenantId(resolvedTenantId));
+
+  const topupWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: resolvedTenantId,
+    provider_id: null,
+  });
 
   await supabase.rpc("wallet_credit_admin", {
     p_user_id: topupRow.user_id,
@@ -1152,14 +1278,17 @@ async function handleWalletTopupSuccess(
     p_description: `Wallet top up (${currency} ${amountInCurrency})`,
     p_reference_id: topupId,
     p_reference_type: "wallet_topup",
+    p_tenant_id: topupWalletTenantId,
   });
 
-  await supabase.from("wallet_topups")
+  await supabase
+    .from("wallet_topups")
     .update({
       status: "paid",
       paid_at: new Date().toISOString(),
       paystack_reference: payload.reference,
       updated_at: new Date().toISOString(),
+      tenant_id: topupWalletTenantId,
     })
     .eq("id", topupId);
 }
@@ -1197,10 +1326,38 @@ async function handleGiftCardOrderSuccess(
     .single();
   if (!order) return;
 
-  type GiftOrderRow = { status?: string; gift_card_id?: string; currency?: string; amount?: number; quantity?: number; total_amount?: number; purchaser_user_id?: string; recipient_email?: string };
+  type GiftOrderRow = {
+    status?: string;
+    gift_card_id?: string;
+    currency?: string;
+    amount?: number;
+    quantity?: number;
+    total_amount?: number;
+    purchaser_user_id?: string;
+    recipient_email?: string;
+    provider_id?: string | null;
+    tenant_id?: string | null;
+  };
   const orderData = order as GiftOrderRow;
   if (orderData.status === "paid" && orderData.gift_card_id) return;
-  const currency = orderData.currency || "ZAR";
+
+  let cardTenantId: string | null = orderData.tenant_id ?? null;
+  if (!cardTenantId && orderData.provider_id) {
+    const { data: prov } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", orderData.provider_id)
+      .maybeSingle();
+    cardTenantId = (prov as { tenant_id?: string } | null)?.tenant_id ?? null;
+  }
+
+  const giftOrderFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: cardTenantId,
+    provider_id: orderData.provider_id ?? null,
+  });
+
+  const currency =
+    orderData.currency || (await lastResortCurrencyFromTenantId(giftOrderFinanceTenantId));
   const value = Number(orderData.amount || 0);
   const quantity = Number(orderData.quantity || metadata.quantity || 1);
   const totalAmount = Number(orderData.total_amount || value * quantity);
@@ -1226,6 +1383,7 @@ async function handleGiftCardOrderSuccess(
         initial_balance: value,
         balance: value,
         is_active: true,
+        tenant_id: giftOrderFinanceTenantId,
         metadata: {
           source: "purchase",
           order_id: orderId,
@@ -1252,11 +1410,13 @@ async function handleGiftCardOrderSuccess(
     throw new Error("Failed to issue any gift cards");
   }
 
-  await supabase.from("gift_card_orders")
+  await supabase
+    .from("gift_card_orders")
     .update({
       status: "paid",
       gift_card_id: giftCardIds[0],
       updated_at: new Date().toISOString(),
+      tenant_id: giftOrderFinanceTenantId,
     })
     .eq("id", orderId);
 
@@ -1280,7 +1440,8 @@ async function handleGiftCardOrderSuccess(
 
   await supabase.from("finance_transactions").insert({
     booking_id: null,
-    provider_id: null,
+    provider_id: orderData.provider_id ?? null,
+    tenant_id: giftOrderFinanceTenantId,
     transaction_type: "gift_card_sale",
     amount: totalAmount,
     fees: 0,
@@ -1352,6 +1513,11 @@ async function handleMembershipOrderSuccess(
 
   const providerId = orderData.provider_id ?? null;
 
+  const membershipFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: null,
+    provider_id: providerId,
+  });
+
   const expiresAt = new Date();
   expiresAt.setMonth(expiresAt.getMonth() + 1);
 
@@ -1395,6 +1561,7 @@ async function handleMembershipOrderSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
+    tenant_id: membershipFinanceTenantId,
     transaction_type: "membership_sale",
     amount: Number(orderData.amount || 0),
     fees: 0,
@@ -1408,6 +1575,7 @@ async function handleMembershipOrderSuccess(
     await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
+      tenant_id: membershipFinanceTenantId,
       transaction_type: "provider_earnings",
       amount: Number(orderData.amount || 0),
       fees: 0,
@@ -1473,6 +1641,11 @@ async function handleProviderSubscriptionOrderSuccess(
   const planId = orderData.plan_id as string;
   const billingPeriod = (orderData.billing_period ?? "monthly") as "monthly" | "yearly";
 
+  const providerSubOrderFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: null,
+    provider_id: providerId,
+  });
+
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
@@ -1494,6 +1667,7 @@ async function handleProviderSubscriptionOrderSuccess(
   await supabase.from("provider_subscriptions").upsert(
     {
       provider_id: providerId,
+      tenant_id: providerSubOrderFinanceTenantId,
       plan_id: planId,
       status: "active",
       started_at: now.toISOString(),
@@ -1528,6 +1702,7 @@ async function handleProviderSubscriptionOrderSuccess(
     {
       booking_id: null,
       provider_id: providerId,
+      tenant_id: providerSubOrderFinanceTenantId,
       transaction_type: "provider_subscription_payment",
       amount: netAmount,
       fees: feesInCurrency,
@@ -1539,6 +1714,7 @@ async function handleProviderSubscriptionOrderSuccess(
     {
       booking_id: null,
       provider_id: providerId,
+      tenant_id: providerSubOrderFinanceTenantId,
       transaction_type: "provider_expense",
       amount: amountInCurrency,
       fees: 0,
@@ -1588,6 +1764,11 @@ async function handleAdsBudgetOrderSuccess(
   const feesInCurrency = convertFromSmallestUnit(payload.fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
+  const adsBudgetFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: null,
+    provider_id: providerId,
+  });
+
   await supabase.from("ads_budget_orders")
     .update({
       status: "paid",
@@ -1626,6 +1807,7 @@ async function handleAdsBudgetOrderSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
+    tenant_id: adsBudgetFinanceTenantId,
     transaction_type: "provider_ads_payment",
     amount: amountInCurrency,
     fees: feesInCurrency,
@@ -1671,6 +1853,11 @@ async function handleSubscriptionAuthorizationSuccess(
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
+  const subscriptionAuthTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: null,
+    provider_id: providerId,
+  });
+
   await supabase.from("provider_subscription_orders")
     .update({
       status: "paid",
@@ -1697,6 +1884,7 @@ async function handleSubscriptionAuthorizationSuccess(
   } else {
     await supabase.from("provider_subscriptions").insert({
       provider_id: providerId,
+      tenant_id: subscriptionAuthTenantId,
       plan_id: planId,
       status: "pending",
       billing_period: billingPeriod,
@@ -1785,6 +1973,7 @@ async function handleBookingRemainingSuccess(
   const { data: existingPayment } = await supabase
     .from("booking_payments")
     .select("id")
+    .eq("payment_provider", "paystack")
     .eq("payment_provider_id", reference)
     .maybeSingle();
   if (existingPayment) {
@@ -1804,20 +1993,38 @@ async function handleBookingRemainingSuccess(
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
 
+  const payRemainingFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: bookingData.tenant_id as string | null | undefined,
+    provider_id: bookingData.provider_id as string | null | undefined,
+  });
+
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  await supabase.from("booking_payments").insert({
-    booking_id: bookingId,
-    amount: amountInCurrency,
-    payment_method: "card",
-    payment_provider: "paystack",
-    payment_provider_id: reference,
-    payment_provider_data: { metadata, customer_email: customer?.email },
-    status: "completed",
-    notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
-  });
+  const { error: bookingPaymentInsertError } = await supabase
+    .from("booking_payments")
+    .insert({
+      booking_id: bookingId,
+      tenant_id: payRemainingFinanceTenantId,
+      amount: amountInCurrency,
+      payment_method: "card",
+      payment_provider: "paystack",
+      payment_provider_id: reference,
+      payment_provider_data: { metadata, customer_email: customer?.email },
+      status: "completed",
+      notes: `Remaining balance paid via Paystack. Ref: ${reference}`,
+    });
+  if (bookingPaymentInsertError) {
+    if (bookingPaymentInsertError.code === "23505") {
+      console.log(
+        `Pay-remaining payment ${reference} already recorded (unique index / concurrent webhook)`,
+      );
+      return;
+    }
+    console.error("Pay-remaining: booking_payments insert failed", bookingPaymentInsertError);
+    return;
+  }
 
   const { data: settingsRow } = await supabase
     .from("platform_settings")
@@ -1828,8 +2035,8 @@ async function handleBookingRemainingSuccess(
     .maybeSingle();
   const commissionRate =
     (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
-  const platformCommission = commissionRate > 0 ? (netAmount * commissionRate) / 100 : 0;
-  const providerEarnings = netAmount - platformCommission;
+  const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
+  const providerEarnings = subtractMoney(netAmount, platformCommission);
 
   await supabase.from("payment_transactions").insert({
     booking_id: bookingId,
@@ -1850,6 +2057,7 @@ async function handleBookingRemainingSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
+    tenant_id: payRemainingFinanceTenantId,
     transaction_type: "payment",
     amount: netAmount,
     fees: feesInCurrency,
@@ -1861,6 +2069,7 @@ async function handleBookingRemainingSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
+    tenant_id: payRemainingFinanceTenantId,
     transaction_type: "provider_earnings",
     amount: providerEarnings,
     fees: 0,
@@ -1881,13 +2090,26 @@ async function handleBookingRemainingSuccess(
     })
     .eq("id", bookingId);
 
+  const payRemainRegion = payRemainingFinanceTenantId
+    ? await getTenantRegionConfig(payRemainingFinanceTenantId)
+    : null;
+  const payRemainCurrency =
+    (typeof bookingData.currency === "string" && bookingData.currency) ||
+    payRemainRegion?.defaultCurrency ||
+    LAST_RESORT_CURRENCY;
+  const payRemainLocale = getTenantLocaleTagFromRegionConfig(payRemainRegion);
+  const payRemainFormatted = new Intl.NumberFormat(payRemainLocale, {
+    style: "currency",
+    currency: payRemainCurrency,
+  }).format(amountInCurrency);
+
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     await sendToUser(
       bookingData.customer_id,
       {
         title: "Payment Confirmed",
-        message: `Your remaining balance of R${amountInCurrency.toFixed(2)} for booking ${bookingData.booking_number} has been paid.`,
+        message: `Your remaining balance of ${payRemainFormatted} for booking ${bookingData.booking_number} has been paid.`,
         data: { type: "payment_success", booking_id: bookingId },
         url: `/account-settings/bookings`,
       },
@@ -1938,6 +2160,11 @@ async function handleAdditionalChargeSuccess(
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
 
+  const additionalChargeFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: bookingData.tenant_id as string | null | undefined,
+    provider_id: bookingData.provider_id as string | null | undefined,
+  });
+
   const { data: charge } = await supabase
     .from("additional_charges")
     .select("*")
@@ -1963,8 +2190,8 @@ async function handleAdditionalChargeSuccess(
 
   const commissionRate =
     (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
-  const platformCommission = (netAmount * commissionRate) / 100;
-  const providerEarnings = netAmount - platformCommission;
+  const platformCommission = percentOf(netAmount, commissionRate);
+  const providerEarnings = subtractMoney(netAmount, platformCommission);
 
   await supabase.from("additional_charges")
     .update({
@@ -2000,6 +2227,7 @@ async function handleAdditionalChargeSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
+    tenant_id: additionalChargeFinanceTenantId,
     transaction_type: "additional_charge_payment",
     amount: netAmount,
     fees: feesInCurrency,
@@ -2012,6 +2240,7 @@ async function handleAdditionalChargeSuccess(
   await supabase.from("finance_transactions").insert({
     booking_id: bookingId,
     provider_id: providerId,
+    tenant_id: additionalChargeFinanceTenantId,
     transaction_type: "provider_earnings",
     amount: providerEarnings,
     fees: 0,
@@ -2043,11 +2272,17 @@ async function handleAdditionalChargeSuccess(
   // Notify customer + provider
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
+    const notifyCurrency =
+      bookingData.currency ||
+      (await lastResortCurrencyFromTenantId(bookingData.tenant_id, {
+        supabase,
+        providerId: bookingData.provider_id,
+      }));
     await sendToUser(
       bookingData.customer_id,
       {
         title: "Additional Payment Confirmed",
-        message: `Your additional payment of ${bookingData.currency || "ZAR"} ${amountInCurrency.toFixed(2)} was successful.`,
+        message: `Your additional payment of ${notifyCurrency} ${amountInCurrency.toFixed(2)} was successful.`,
         data: {
           type: "additional_payment_paid",
           booking_id: bookingId,

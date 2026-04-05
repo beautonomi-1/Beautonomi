@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import type { TimeBlock, BlockedTimeType, TeamMember, RecurrencePattern } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { RADIX_SELECT_ANY, RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 
 interface TimeBlockDialogProps {
   open: boolean;
@@ -162,14 +163,16 @@ export function TimeBlockDialog({
             <div>
               <Label htmlFor="team_member_id">Team Member (Optional)</Label>
               <Select
-                value={formData.team_member_id}
-                onValueChange={(value) => setFormData({ ...formData, team_member_id: value })}
+                value={formData.team_member_id || RADIX_SELECT_ANY}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, team_member_id: value === RADIX_SELECT_ANY ? "" : value })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="All team members" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All team members</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>All team members</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}
@@ -181,14 +184,19 @@ export function TimeBlockDialog({
             <div>
               <Label htmlFor="blocked_time_type_id">Blocked Time Type</Label>
               <Select
-                value={formData.blocked_time_type_id}
-                onValueChange={(value) => setFormData({ ...formData, blocked_time_type_id: value })}
+                value={formData.blocked_time_type_id || RADIX_SELECT_NONE}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    blocked_time_type_id: value === RADIX_SELECT_NONE ? "" : value,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value={RADIX_SELECT_NONE}>None</SelectItem>
                   {blockedTimeTypes.map((type) => (
                     <SelectItem key={type.id} value={type.id}>
                       {type.name}

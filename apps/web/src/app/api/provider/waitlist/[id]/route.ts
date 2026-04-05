@@ -10,6 +10,7 @@ const updateWaitlistSchema = z.object({
   customer_phone: z.string().optional(),
   service_id: z.string().uuid().nullable().optional(),
   staff_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   preferred_date: z.string().nullable().optional(),
   preferred_time: z.string().nullable().optional(), // Single time field from frontend
   preferred_time_start: z.string().nullable().optional(),
@@ -77,6 +78,7 @@ export async function GET(
       created_at: entry.created_at,
       created_date: entry.created_at,
       notified_date: entry.notified_at,
+      location_id: (entry as { location_id?: string | null }).location_id ?? null,
     };
 
     return successResponse(transformedEntry);
@@ -174,6 +176,7 @@ export async function PATCH(
       created_at: updatedEntry.created_at,
       created_date: updatedEntry.created_at,
       notified_date: updatedEntry.notified_at,
+      location_id: (updatedEntry as { location_id?: string | null }).location_id ?? null,
     };
 
     return successResponse(transformedEntry);

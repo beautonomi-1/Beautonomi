@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -38,6 +39,7 @@ interface LifetimeValueData {
 }
 
 export default function LifetimeValueReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [data, setData] = useState<LifetimeValueData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +67,7 @@ export default function LifetimeValueReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "lifetime-value");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "lifetime-value", exportCurrency);
     exportToCSV(exportData, "lifetime-value-report");
   };
 
@@ -133,7 +135,7 @@ export default function LifetimeValueReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageLTV.toLocaleString()}
+                  {fmt(data.averageLTV)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -147,7 +149,7 @@ export default function LifetimeValueReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.medianLTV.toLocaleString()}
+                  {fmt(data.medianLTV)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-blue-600" />
               </div>
@@ -161,7 +163,7 @@ export default function LifetimeValueReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalLTV.toLocaleString()}
+                  {fmt(data.totalLTV)}
                 </p>
                 <DollarSign className="w-5 h-5 text-purple-600" />
               </div>
@@ -200,7 +202,7 @@ export default function LifetimeValueReport() {
                     <p className="text-sm text-gray-600">{segment.count} clients</p>
                   </div>
                   <p className="font-semibold text-gray-900">
-                    ZAR {segment.avgLTV.toLocaleString()} avg
+                    {fmt(segment.avgLTV)} avg
                   </p>
                 </div>
               ))}
@@ -236,10 +238,10 @@ export default function LifetimeValueReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        ZAR {client.totalSpent.toLocaleString()}
+                        {fmt(client.totalSpent)}
                       </p>
                       <p className="text-sm text-gray-600">
-                        ZAR {client.averageBookingValue.toLocaleString()} avg
+                        {fmt(client.averageBookingValue)} avg
                       </p>
                     </div>
                   </div>

@@ -97,7 +97,6 @@ export default function CalendarColorsIconsPage() {
     <SettingsDetailLayout
       title="Calendar Colors & Icons"
       subtitle="Customize how appointments appear on your calendar"
-      onSave={() => console.log("Save color schemes")}
       breadcrumbs={breadcrumbs}
     >
       <div className="mb-4 flex justify-end">

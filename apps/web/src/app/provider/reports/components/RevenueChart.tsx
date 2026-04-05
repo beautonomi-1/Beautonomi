@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   LineChart,
   Line,
@@ -47,6 +48,7 @@ function formatChartDate(dateStr: string, period?: string): string {
 }
 
 export function RevenueChart({ data, type = "line", period }: RevenueChartProps) {
+  const { currencyCode, format: fmt } = useReportCurrency();
   const chartData = data.map((item) => ({
     date: formatChartDate(item.date, period),
     revenue: item.revenue,
@@ -73,7 +75,7 @@ export function RevenueChart({ data, type = "line", period }: RevenueChartProps)
             fontSize={12}
             tickLine={false}
             tick={{ fill: "#6b7280" }}
-            tickFormatter={(value) => `ZAR ${formatYAxisValue(value)}`}
+            tickFormatter={(value) => `${currencyCode} ${formatYAxisValue(value)}`}
             width={50}
             domain={[0, "auto"]}
           />
@@ -83,7 +85,7 @@ export function RevenueChart({ data, type = "line", period }: RevenueChartProps)
               border: "1px solid #e5e7eb",
               borderRadius: "8px",
             }}
-            formatter={(value: number) => [`ZAR ${value.toLocaleString()}`, "Revenue"]}
+            formatter={(value: number) => [fmt(value), "Revenue"]}
           />
           <Legend />
           <Bar
@@ -114,7 +116,7 @@ export function RevenueChart({ data, type = "line", period }: RevenueChartProps)
           fontSize={12}
           tickLine={false}
           tick={{ fill: "#6b7280" }}
-          tickFormatter={(value) => `ZAR ${formatYAxisValue(value)}`}
+          tickFormatter={(value) => `${currencyCode} ${formatYAxisValue(value)}`}
           width={50}
           domain={[0, "auto"]}
         />
@@ -124,7 +126,7 @@ export function RevenueChart({ data, type = "line", period }: RevenueChartProps)
             border: "1px solid #e5e7eb",
             borderRadius: "8px",
           }}
-          formatter={(value: number) => [`ZAR ${value.toLocaleString()}`, "Revenue"]}
+          formatter={(value: number) => [fmt(value), "Revenue"]}
         />
         <Legend />
         <Line

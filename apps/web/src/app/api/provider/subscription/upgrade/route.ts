@@ -1,10 +1,21 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  notFoundResponse,
+  successResponse,
+  handleApiError,
+  errorResponse,
+} from '@/lib/supabase/api-helpers';
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { z } from 'zod';
 import { createCustomer, fetchCustomer, createSubscription } from '@/lib/payments/paystack-complete';
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { createClient } from '@supabase/supabase-js';
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().uuid('Plan ID is required'),
@@ -35,8 +46,29 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
     const body = await request.json();
 
     const { plan_id, billing_period } = upgradeSubscriptionSchema.parse(body);
@@ -61,6 +93,7 @@ export async function POST(request: NextRequest) {
       const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
           provider_id: providerId,
+          tenant_id: tenantId,
           plan_id,
           status: "active",
           started_at: now.toISOString(),
@@ -153,7 +186,7 @@ export async function POST(request: NextRequest) {
     let customerCode: string;
     try {
       // Try to fetch existing customer
-      const customerResponse = await fetchCustomer(email);
+      const customerResponse = await fetchCustomer(email, { tenantId });
       customerCode = customerResponse.data?.customer_code || email;
     } catch {
       // Create new customer if doesn't exist
@@ -163,7 +196,7 @@ export async function POST(request: NextRequest) {
           first_name: userEmailRow?.first_name || undefined,
           last_name: userEmailRow?.last_name || undefined,
           phone: userEmailRow?.phone || undefined,
-        });
+        }, { tenantId });
         customerCode = customerResponse.data?.customer_code || email;
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : "Unknown error";
@@ -211,7 +244,7 @@ export async function POST(request: NextRequest) {
         customer: customerCode,
         plan: paystackPlanCode,
         authorization: authorizationCode,
-      });
+      }, { tenantId });
 
       const paystackSubscription = subscriptionResponse.data;
 
@@ -220,6 +253,7 @@ export async function POST(request: NextRequest) {
       const { data: subscription, error: subError } = await supabase.from("provider_subscriptions")
         .upsert({
           provider_id: providerId,
+          tenant_id: tenantId,
           plan_id,
           status: "active",
           started_at: now.toISOString(),
@@ -279,7 +313,7 @@ export async function POST(request: NextRequest) {
               business_name: providerData.business_name || "Provider",
               plan_name: newPlanName,
               old_plan_name: oldPlanName,
-              new_amount: newAmount ? `${planRow.currency ?? "ZAR"} ${newAmount.toLocaleString()}` : "N/A",
+              new_amount: newAmount ? `${planRow.currency ?? lastResortCurrency} ${newAmount.toLocaleString()}` : "N/A",
               billing_period: billing_period,
               next_payment_date: nextPaymentDate,
               effective_date: new Date().toLocaleDateString(),

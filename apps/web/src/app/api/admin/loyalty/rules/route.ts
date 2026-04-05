@@ -4,10 +4,13 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const upsertSchema = z.object({
   points_per_currency_unit: z.number().positive(),
-  currency: z.string().min(1).default("ZAR"),
+  currency: z.string().min(1).optional(),
   redemption_rate: z.number().positive(), // points per currency unit (e.g. 100 points == 10 ZAR -> store 100)
   is_active: z.boolean().optional().default(true),
 });
@@ -35,7 +38,11 @@ export async function POST(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
 
-    const body = upsertSchema.parse(await request.json());
+    const parsed = upsertSchema.parse(await request.json());
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const body = { ...parsed, currency: parsed.currency ?? lastResortCurrency };
 
     const { data: row, error } = await supabase
       .from("loyalty_rules")

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { Sparkles, ArrowRight } from "lucide-react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface TeaserData {
   points_balance: number;
@@ -35,7 +36,7 @@ export function LoyaltyTeaser() {
   if (!data) return null;
 
   const hasPoints = data.points_balance > 0;
-  const currencySymbol = data.redemption_currency === "ZAR" ? "R" : data.redemption_currency + " ";
+  const currencySymbol = data.redemption_currency === LAST_RESORT_CURRENCY ? "R" : data.redemption_currency + " ";
 
   return (
     <Link

@@ -8,6 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type Service = {
   id: string;
@@ -20,6 +21,7 @@ type Service = {
 
 export default function CatalogueOfferingsHubScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<Service[] | { data?: Service[] }>(
     "/api/provider/services"
@@ -96,7 +98,7 @@ export default function CatalogueOfferingsHubScreen() {
                 )}
                 <View style={{ marginTop: 8, flexDirection: "row", flexWrap: "wrap" }}>
                   {typeof s.price === "number" && (
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginRight: 12 }}>ZAR {s.price.toLocaleString()}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginRight: 12 }}>{tenantCurrency} {s.price.toLocaleString()}</Text>
                   )}
                   {s.duration_minutes != null && (
                     <Text style={{ fontSize: 14, color: Colors.gray[500] }}>{s.duration_minutes} min</Text>

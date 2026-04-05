@@ -7,6 +7,7 @@ import { AlertCircle, Mail, Phone, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 
 export default function AccountSuspendedPage() {
   const router = useRouter();
@@ -131,7 +132,7 @@ export default function AccountSuspendedPage() {
               Back to Home
             </Button>
             <Button
-              onClick={() => router.push("/help/submit-ticket")}
+              onClick={() => router.push(PLATFORM_CONTACT_HREF)}
               className="flex-1 bg-[#FF0077] hover:bg-[#D60565]"
             >
               Contact Support

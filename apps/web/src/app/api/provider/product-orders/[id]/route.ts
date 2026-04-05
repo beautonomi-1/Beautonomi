@@ -23,6 +23,7 @@ const updateSchema = z.object({
     ])
     .optional(),
   tracking_number: z.string().max(100).optional(),
+  carrier: z.string().max(100).optional(),
   estimated_delivery_date: z.string().optional(),
   cancellation_reason: z.string().max(500).optional(),
 });
@@ -146,6 +147,7 @@ export async function PATCH(
       }
     }
     if (parsed.tracking_number) updatePayload.tracking_number = parsed.tracking_number;
+    if (parsed.carrier) updatePayload.carrier = parsed.carrier;
     if (parsed.estimated_delivery_date)
       updatePayload.estimated_delivery_date = parsed.estimated_delivery_date;
 
@@ -215,7 +217,7 @@ export async function PATCH(
         shipped: {
           type: "product_order_shipped",
           title: "Order Shipped",
-          message: `Your order ${updated.order_number} has been shipped.${parsed.tracking_number ? ` Tracking: ${parsed.tracking_number}` : ""}`,
+          message: `Your order ${updated.order_number} has been shipped.${parsed.carrier ? ` via ${parsed.carrier}` : ""}${parsed.tracking_number ? ` Tracking: ${parsed.tracking_number}` : ""}`,
         },
         ready_for_collection: {
           type: "product_order_ready_collection",
@@ -236,18 +238,20 @@ export async function PATCH(
 
       const notif = notificationMap[parsed.status];
       if (notif) {
-        await supabase.from("notifications").insert({
-          user_id: updated.customer.id,
-          type: notif.type,
-          title: notif.title,
-          message: notif.message,
-          metadata: {
-            product_order_id: id,
-            order_number: updated.order_number,
-            status: parsed.status,
-          },
-          link: "/product-orders",
-        }).then(() => {}, () => {});
+        void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
+          insertNotification({
+            user_id: updated.customer.id,
+            type: notif.type,
+            title: notif.title,
+            message: notif.message,
+            data: {
+              product_order_id: id,
+              order_number: updated.order_number,
+              status: parsed.status,
+            },
+            action_url: "/product-orders",
+          })
+        );
       }
     }
 

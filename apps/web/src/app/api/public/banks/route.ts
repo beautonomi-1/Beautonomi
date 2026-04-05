@@ -1,6 +1,9 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { successResponse } from "@/lib/supabase/api-helpers";
 import { listBanks } from "@/lib/payments/paystack-complete";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * Map ISO country code to Paystack country parameter.
@@ -17,7 +20,7 @@ const ISO_TO_PAYSTACK_COUNTRY: Record<string, string> = {
  * Default currency by country (ISO code)
  */
 const COUNTRY_CURRENCY: Record<string, string> = {
-  ZA: "ZAR",
+  ZA: LAST_RESORT_CURRENCY,
   NG: "NGN",
   GH: "GHS",
   KE: "KES",
@@ -30,15 +33,35 @@ const COUNTRY_CURRENCY: Record<string, string> = {
  * @param country - ISO code (ZA, NG, GH, KE) or Paystack format (south africa, nigeria, ghana, kenya)
  */
 export async function GET(request: NextRequest) {
+  let tenantId: string;
+  try {
+    tenantId = await resolveTenantIdWithZaFallback(request);
+  } catch (tenantErr) {
+    console.error("Tenant resolution failed in /api/public/banks:", tenantErr);
+    return NextResponse.json(
+      {
+        data: null,
+        error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" },
+      },
+      { status: 503 }
+    );
+  }
+  const tenantRegion = await getTenantRegionConfig(tenantId);
+  const fallbackIso = tenantRegion?.regionCode || "ZA";
+  const fallbackCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
   try {
     const { searchParams } = new URL(request.url);
-    const countryParam = (searchParams.get("country") || "ZA").trim();
+    const countryParam = (searchParams.get("country") || fallbackIso).trim();
 
     // Map ISO code to Paystack format if needed
     const paystackCountry =
       ISO_TO_PAYSTACK_COUNTRY[countryParam.toUpperCase()] ?? countryParam.toLowerCase();
 
-    const response = await listBanks({ country: paystackCountry });
+    const response = await listBanks({
+      country: paystackCountry,
+      tenantId,
+    });
 
     if (!response.status) {
       throw new Error(response.message || "Failed to fetch banks");
@@ -49,7 +72,8 @@ export async function GET(request: NextRequest) {
         ([, v]) => v === paystackCountry
       )?.[0] ?? countryParam.toUpperCase();
 
-    const defaultCurrency = COUNTRY_CURRENCY[isoCountry] ?? "ZAR";
+    const defaultCurrency =
+      COUNTRY_CURRENCY[isoCountry] ?? tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Transform Paystack response to our format
     const banks = (response.data || []).map((bank: any) => ({
@@ -62,9 +86,9 @@ export async function GET(request: NextRequest) {
 
     return successResponse(banks);
   } catch {
-    // If Paystack fails, return fallback list for South Africa
-    const isoCountry = "ZA";
-    const currency = "ZAR";
+    // If Paystack fails, return a static fallback list for the tenant's region (defaults ZA)
+    const isoCountry = fallbackIso;
+    const currency = fallbackCurrency;
     const saBanks = [
       { code: "632005", name: "Standard Bank", country: isoCountry, currency, type: "nuban" },
       { code: "632001", name: "First National Bank (FNB)", country: isoCountry, currency, type: "nuban" },

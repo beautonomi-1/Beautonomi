@@ -25,6 +25,8 @@ import { Textarea } from "@/components/ui/textarea";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface Location {
   id: string;
@@ -62,7 +64,9 @@ export default function LocationsSettings() {
     try {
       setIsLoading(true);
       setLoadError(null);
-      const response = await fetcher.get<{ data: Location[] }>("/api/provider/locations");
+      const response = await fetcher.get<{ data: Location[] }>(
+        "/api/provider/locations?include_inactive=true"
+      );
       setLocations(response.data || []);
     } catch (error) {
       console.error("Error loading locations:", error);
@@ -92,8 +96,15 @@ export default function LocationsSettings() {
     if (!confirm(`Are you sure you want to delete "${location.name}"?`)) return;
 
     try {
-      await fetcher.delete(`/api/provider/locations/${location.id}`);
-      toast.success("Location deleted");
+      const res = (await fetcher.delete(`/api/provider/locations/${location.id}`)) as {
+        data?: { deactivated?: boolean };
+      };
+      const deactivated = Boolean(res?.data?.deactivated);
+      toast.success(
+        deactivated
+          ? "Location deactivated (it is still linked to bookings or other records)."
+          : "Location removed"
+      );
       loadLocations();
     } catch {
       toast.error("Failed to delete location");
@@ -224,8 +235,10 @@ export default function LocationsSettings() {
                     <div>
                       <h3 className="font-semibold text-lg">{location.name}</h3>
                       <div className="flex flex-wrap gap-2 mt-1">
-                        {location.is_active && (
+                        {location.is_active ? (
                           <span className="text-xs text-primary font-medium">Active</span>
+                        ) : (
+                          <span className="text-xs text-amber-700 font-medium">Inactive</span>
                         )}
                         {(location.location_type || "salon") === "salon" ? (
                           <span className="text-xs bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded font-medium">
@@ -327,6 +340,7 @@ function LocationDialog({
     longitude: location?.longitude ?? undefined,
     operating_hours: location?.operating_hours ?? defaultHours,
     location_type: (location?.location_type || "salon") as "salon" | "base",
+    is_active: location?.is_active !== false,
   });
 
   // Sync form when editing a different location
@@ -345,6 +359,7 @@ function LocationDialog({
       longitude: location?.longitude ?? undefined,
       operating_hours: location?.operating_hours ?? defaultHours,
       location_type: (location?.location_type || "salon") as "salon" | "base",
+      is_active: location?.is_active !== false,
     });
   }, [location?.id]);
 
@@ -371,11 +386,17 @@ function LocationDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
     onSave({
       name: formData.label,
       ...formData,
+      phone: formData.phone?.trim() || null,
       operating_hours: formData.operating_hours,
       location_type: formData.location_type,
+      ...(location ? { is_active: formData.is_active } : {}),
     });
   };
 
@@ -440,6 +461,17 @@ function LocationDialog({
             {/* Details */}
             <section className="space-y-4">
               <h3 className="text-sm font-semibold text-gray-900">Details</h3>
+              {location && (
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_active}
+                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                    className="rounded border-gray-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-gray-800">Location is active (shown in booking flows)</span>
+                </label>
+              )}
               <div>
                 <Label htmlFor="name">Location name *</Label>
                 <Input
@@ -540,13 +572,12 @@ function LocationDialog({
                 </div>
               </div>
               <div>
-                <Label htmlFor="phone">Phone (optional)</Label>
-                <Input
-                  id="phone"
-                  type="tel"
+                <PhoneInput
+                  inputId="settings-location-dialog-phone"
+                  label="Phone (optional)"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+27 11 123 4567"
+                  onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                  placeholder="Phone number"
                   className="mt-1.5"
                 />
               </div>

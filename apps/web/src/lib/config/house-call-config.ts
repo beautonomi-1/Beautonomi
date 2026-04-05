@@ -4,6 +4,8 @@
  * Centralized configuration for house call services to avoid hardcoded values
  */
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 export const HOUSE_CALL_CONFIG = {
   // Default travel buffer time in minutes (used when actual travel time is not available)
   DEFAULT_TRAVEL_BUFFER_MINUTES: 30,
@@ -19,7 +21,7 @@ export const HOUSE_CALL_CONFIG = {
     RATE_PER_KM: 8.00,
     MINIMUM_FEE: 20.00,
     MAXIMUM_FEE: null,
-    CURRENCY: "ZAR",
+    CURRENCY: LAST_RESORT_CURRENCY,
   },
   
   // Default maximum service distance in km

@@ -1,5 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
@@ -7,6 +8,13 @@ import Footer from "@/components/layout/footer";
 import CategoryPageClient from "./category-page-client";
 import { BreadcrumbSchema } from "@/components/seo/structured-data";
 import type { Category } from "@/types/beautonomi";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import {
+  getPublicSiteOriginFromHeaders,
+  openGraphLocaleForHost,
+} from "@/lib/seo/public-site-origin";
+import { isGlobalCategoryIconImageUrl } from "@/lib/icons/global-category-lucide";
+import { withGlobalCategoryIconCacheBust } from "@beautonomi/utils";
 
 type Props = {
   params: Promise<{ slug: string }>;
@@ -14,8 +22,13 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
-  
+  const origin = await getPublicSiteOriginFromHeaders();
+  const path = `/category/${slug}`;
+  const h = await headers();
+  const hostRaw =
+    (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
+  const ogLocale = openGraphLocaleForHost(hostRaw);
+
   try {
     const supabase = await getSupabaseServer();
     const { data: category } = await supabase
@@ -31,17 +44,31 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       };
     }
 
+    const rawIcon = category.icon?.trim() ?? "";
+    const iconCacheRev = process.env.NEXT_PUBLIC_CATEGORY_ICON_CACHE_REVISION?.trim();
+    const ogCategoryIconUrl =
+      rawIcon && isGlobalCategoryIconImageUrl(rawIcon)
+        ? withGlobalCategoryIconCacheBust(
+            rawIcon.startsWith("http://") || rawIcon.startsWith("https://")
+              ? rawIcon
+              : `${origin}${rawIcon.startsWith("/") ? "" : "/"}${rawIcon}`,
+            iconCacheRev || undefined
+          )
+        : undefined;
+
     return {
       title: `${category.name} Services | Beautonomi`,
       description: category.description || `Discover top-rated ${category.name} services and providers on Beautonomi`,
       alternates: {
-        canonical: `${baseUrl}/category/${slug}`,
+        canonical: `${origin}${path}`,
+        languages: getHreflangAlternateUrls(path),
       },
       openGraph: {
         title: `${category.name} Services | Beautonomi`,
         description: category.description || `Find the best ${category.name} services near you`,
-        url: `${baseUrl}/category/${slug}`,
-        images: category.icon ? [{ url: category.icon }] : undefined,
+        url: `${origin}${path}`,
+        locale: ogLocale,
+        images: ogCategoryIconUrl ? [{ url: ogCategoryIconUrl }] : undefined,
       },
       twitter: {
         card: "summary_large_image",
@@ -119,7 +146,7 @@ export default async function CategoryPage({ params }: Props) {
     providers = providersData || [];
   }
 
-  const _baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
+  const breadcrumbBaseUrl = await getPublicSiteOriginFromHeaders();
   const breadcrumbs = [
     { name: "Home", url: "/" },
     { name: "Categories", url: "/categories" },
@@ -128,7 +155,7 @@ export default async function CategoryPage({ params }: Props) {
 
   return (
     <>
-      <BreadcrumbSchema items={breadcrumbs} />
+      <BreadcrumbSchema baseUrl={breadcrumbBaseUrl} items={breadcrumbs} />
       <BeautonomiHeader />
       <CategoryPageClient 
         category={category as Category} 

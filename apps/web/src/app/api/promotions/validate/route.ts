@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { percentOf } from "@beautonomi/utils";
 
 const validateSchema = z.object({
   code: z.string().min(1, "Code is required"),
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
       // Calculate discount
       let discount = 0;
       if (coupon.discount_type === "percentage") {
-        discount = (body.cartTotal * coupon.discount_value) / 100;
+        discount = percentOf(body.cartTotal, coupon.discount_value);
         if (coupon.max_discount) {
           discount = Math.min(discount, coupon.max_discount);
         }

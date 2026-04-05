@@ -15,12 +15,25 @@ export interface CancellationPolicy {
   /** Percentage to refund (0–100). When present, used for refund amount; else late_cancellation_type is used. */
   refund_percentage?: number;
   hours_before?: number;
+  /** Optional explicit fee (used when refund_percentage is 0 / no refund). */
+  fee_amount?: number;
+  fee_type?: 'fixed' | 'percentage';
 }
 
 export interface CancellationCheckResult {
   allowed: boolean;
   reason?: string;
   policy?: CancellationPolicy;
+  /** True when cancel is allowed but the appointment is inside the late window (refund follows late rules). */
+  isLateCancellation?: boolean;
+}
+
+export interface CanCancelBookingOptions {
+  /**
+   * When true (default), cancellations after the cutoff are not allowed online (used for reschedule).
+   * When false, late cancellation is allowed and refunds follow late policy (customer cancel / portal).
+   */
+  forbidLateSelfService?: boolean;
 }
 
 /**
@@ -34,8 +47,10 @@ export function canCancelBooking(
     location_type: 'at_salon' | 'at_home';
   },
   policy: CancellationPolicy,
-  currentTime: Date = new Date()
+  currentTime: Date = new Date(),
+  options?: CanCancelBookingOptions
 ): CancellationCheckResult {
+  const forbidLateSelfService = options?.forbidLateSelfService !== false;
   const bookingCreatedAt = new Date(booking.created_at);
   const scheduledAt = new Date(booking.scheduled_at);
 
@@ -45,6 +60,7 @@ export function canCancelBooking(
     return {
       allowed: true,
       policy,
+      isLateCancellation: false,
     };
   }
 
@@ -54,14 +70,24 @@ export function canCancelBooking(
     return {
       allowed: true,
       policy,
+      isLateCancellation: false,
     };
   }
 
-  // Outside policy window
+  // Inside late window (after cutoff, outside grace)
+  if (forbidLateSelfService) {
+    return {
+      allowed: false,
+      reason: `Changes must be made at least ${policy.hours_before_cutoff} hours before the appointment. Please contact the provider.`,
+      policy,
+      isLateCancellation: true,
+    };
+  }
+
   return {
-    allowed: false,
-    reason: `Cancellations must be made at least ${policy.hours_before_cutoff} hours before the appointment. This booking can no longer be cancelled online.`,
+    allowed: true,
     policy,
+    isLateCancellation: true,
   };
 }
 
@@ -117,5 +143,8 @@ export async function getCancellationPolicy(
     policy_text: 'Cancellations must be made at least 24 hours before your appointment.',
     late_cancellation_type: 'no_refund',
     is_active: true,
+    refund_percentage: 0,
+    fee_amount: 0,
+    fee_type: 'fixed',
   };
 }

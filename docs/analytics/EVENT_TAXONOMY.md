@@ -81,6 +81,14 @@ Examples:
 | `message_thread_open` | thread_id, participant_type | Web, Customer, Provider |
 | `message_sent` | thread_id, message_type | Web, Customer, Provider |
 
+### Market Routing (4 events)
+| Event | Properties | Platforms |
+|-------|-----------|-----------|
+| `market_auto_switch_attempted` | from_host, to_host, source, confidence, country_code | Web, Customer, Provider |
+| `market_auto_switch_suppressed` | from_host, to_host, reason, source, confidence, country_code | Web, Customer, Provider |
+| `market_manual_switch` | from_host, to_host, reason, country_code | Web, Customer, Provider |
+| `market_switch_declined` | host, reason, country_code | Web, Customer, Provider |
+
 ## User Properties (Identify)
 
 ### All Users
@@ -122,3 +130,5 @@ Examples:
 | Web (Server SDK) | `apps/web/src/lib/analytics/amplitude/server.ts` |
 
 **Canonical constants:** Use event name constants from `@beautonomi/analytics` (see `packages/analytics/src/events.ts`) when integrating in new code so web and mobile stay aligned. Property keys (e.g. `provider_id`, `booking_id`, `post_id`) should match the tables above for funnel and provider ROI consistency.
+
+For dashboard/query templates, see `docs/analytics/MARKET_ROUTING_DASHBOARD_SPEC.md`.

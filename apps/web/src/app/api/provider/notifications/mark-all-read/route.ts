@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * POST /api/provider/notifications/mark-all-read
@@ -10,12 +10,7 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff'], request);
-    const supabase = await getSupabaseServer(request);
-
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return successResponse({ message: "No provider found" });
-    }
+    const supabase = getSupabaseAdmin();
 
     // Mark all as read
     const { error } = await supabase
@@ -25,11 +20,7 @@ export async function POST(request: NextRequest) {
       .eq("is_read", false);
 
     if (error) {
-      // If table doesn't exist, return success (graceful degradation)
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        return successResponse({ message: "All notifications marked as read" });
-      }
-      throw error;
+      console.warn("Error marking all provider notifications read:", error);
     }
 
     return successResponse({ message: "All notifications marked as read" });

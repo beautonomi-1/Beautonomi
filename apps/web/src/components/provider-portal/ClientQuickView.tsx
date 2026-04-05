@@ -24,6 +24,8 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface ClientInfo {
   id: string;
@@ -62,6 +64,7 @@ export function ClientQuickView({
   onSendMessage,
   onBookAppointment,
 }: ClientQuickViewProps) {
+  const locale = useTenantLocaleTag();
   if (!client) return null;
 
   const initials = client.name
@@ -72,14 +75,14 @@ export function ClientQuickView({
     .slice(0, 2);
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     }).format(amount);
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-ZA", {
+    return new Date(dateStr).toLocaleDateString(locale, {
       year: "numeric",
       month: "short",
       day: "numeric",

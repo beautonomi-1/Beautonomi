@@ -1,4 +1,5 @@
 "use client";
+import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -26,6 +27,7 @@ interface ClientRetentionData {
 }
 
 export default function ClientRetentionReport() {
+  const exportCurrency = useReportExportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<ClientRetentionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function ClientRetentionReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "client-retention");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "client-retention", exportCurrency);
     exportToCSV(exportData, "client-retention-report");
   };
 

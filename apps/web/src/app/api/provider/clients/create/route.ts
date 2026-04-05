@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -8,6 +10,8 @@ import {
   normalizePhoneToE164,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * Helper function to create a walk-in email
@@ -76,6 +80,17 @@ export async function POST(request: NextRequest) {
     if (!providerId) {
       return handleApiError(new Error("Provider not found"), "Provider account required", 403);
     }
+
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const walletTenantId =
+      (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const walletTenantRegion = await getTenantRegionConfig(walletTenantId);
+    const walletCurrency = walletTenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const body = await request.json();
 
@@ -289,7 +304,7 @@ export async function POST(request: NextRequest) {
           .from("user_wallets")
           .insert({
             user_id: customerId,
-            currency: "ZAR",
+            currency: walletCurrency,
           });
       } catch (walletError: any) {
         if (walletError?.code !== '23505') { // Ignore duplicate key errors

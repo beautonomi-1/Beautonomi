@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requirePublicTenant } from '@/lib/tenant/require-public-tenant';
 import { z } from 'zod';
 
 const suggestionsSchema = z.object({
@@ -26,22 +27,30 @@ export async function GET(request: NextRequest) {
       return successResponse({ suggestions: [] });
     }
 
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) {
+      return tenantRes;
+    }
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const searchTerm = data.q.trim();
 
     // Search services - use separate queries for better compatibility
     const { data: servicesByName, error: servicesByNameError } = await supabase
       .from('services')
-      .select('id, name, category_id, category:service_categories(name)')
+      .select('id, name, category_id, category:service_categories(name), providers!inner(tenant_id)')
       .ilike('name', `%${searchTerm}%`)
       .eq('is_active', true)
+      .eq('providers.tenant_id', tenantId)
       .limit(Math.ceil(data.limit / 3));
 
     const { data: servicesByDesc, error: servicesByDescError } = await supabase
       .from('services')
-      .select('id, name, category_id, category:service_categories(name)')
+      .select('id, name, category_id, category:service_categories(name), providers!inner(tenant_id)')
       .ilike('description', `%${searchTerm}%`)
       .eq('is_active', true)
+      .eq('providers.tenant_id', tenantId)
       .limit(Math.ceil(data.limit / 3));
 
     // Combine and deduplicate results
@@ -62,6 +71,7 @@ export async function GET(request: NextRequest) {
       .select('id, business_name, description')
       .ilike('business_name', `%${searchTerm}%`)
       .eq('status', 'active')
+      .eq('tenant_id', tenantId)
       .limit(Math.ceil(data.limit / 3));
 
     // Only search description if it's not null/empty
@@ -71,6 +81,7 @@ export async function GET(request: NextRequest) {
       .not('description', 'is', null)
       .ilike('description', `%${searchTerm}%`)
       .eq('status', 'active')
+      .eq('tenant_id', tenantId)
       .limit(Math.ceil(data.limit / 3));
 
     // Combine and deduplicate results

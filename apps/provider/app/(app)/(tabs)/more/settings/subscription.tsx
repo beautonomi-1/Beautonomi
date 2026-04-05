@@ -4,7 +4,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from "react";
 import { View, Text, TouchableOpacity, Alert, AppState } from "react-native";
-import { useRouter } from "expo-router";
+import * as Linking from "expo-linking";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -42,7 +42,6 @@ interface Subscription {
 }
 
 export default function SubscriptionScreen() {
-  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const appState = useRef(AppState.currentState);
   const {
@@ -54,7 +53,7 @@ export default function SubscriptionScreen() {
   const { data: plans } = useApi<Plan[]>("/api/provider/subscription/plans");
   const { execute: postAction } = useApiMutation("post");
 
-  // Refresh when app comes to foreground (e.g. after paying in WebView or returning from browser)
+  // Refresh when app comes to foreground (e.g. after paying in browser and returning to app)
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (appState.current.match(/inactive|background/) && nextState === "active") {
@@ -108,10 +107,7 @@ export default function SubscriptionScreen() {
     }
     const url = (data as { payment_url?: string })?.payment_url;
     if (url) {
-      router.push({
-        pathname: "/(app)/(tabs)/more/in-app-browser",
-        params: { url: encodeURIComponent(url), title: "Renew subscription" },
-      } as never);
+      await Linking.openURL(url);
     } else {
       Alert.alert("No payment link", "Unable to start renewal. Please try again or contact support.");
     }
@@ -129,10 +125,7 @@ export default function SubscriptionScreen() {
     }
     const url = (data as { authorization_url?: string; payment_url?: string })?.authorization_url ?? (data as { payment_url?: string })?.payment_url;
     if (url) {
-      router.push({
-        pathname: "/(app)/(tabs)/more/in-app-browser",
-        params: { url: encodeURIComponent(url), title: "Upgrade subscription" },
-      } as never);
+      await Linking.openURL(url);
     } else {
       Alert.alert("No payment link", "Unable to start upgrade. Please try again or contact support.");
     }

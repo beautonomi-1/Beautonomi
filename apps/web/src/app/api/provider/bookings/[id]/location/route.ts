@@ -6,7 +6,10 @@ import {
   handleApiError,
   getProviderIdForUser,
   badRequestResponse,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { z } from "zod";
 
 const locationUpdateSchema = z.object({
@@ -54,13 +57,25 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id, location_type, status, current_stage, staff_id, address_latitude, address_longitude")
+      .select("id, provider_id, location_id, location_type, status, current_stage, staff_id, address_latitude, address_longitude")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
 
     if (bookingError || !booking) {
       return badRequestResponse("Booking not found or access denied");
+    }
+
+    const supabaseAdminLoc = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminLoc,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     // Only allow location updates for at-home bookings
@@ -140,7 +155,13 @@ export async function POST(
       etaDate.setMinutes(etaDate.getMinutes() + etaMinutes);
       bookingUpdate.estimated_arrival = etaDate.toISOString();
     }
-    await supabase.from("bookings").update(bookingUpdate).eq("id", bookingId);
+    const { error: bookingUpdateError } = await supabaseAdminLoc
+      .from("bookings")
+      .update(bookingUpdate)
+      .eq("id", bookingId);
+    if (bookingUpdateError) {
+      throw bookingUpdateError;
+    }
 
     return successResponse({
       location: locationUpdate,

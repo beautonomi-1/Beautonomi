@@ -1,10 +1,13 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { useEffect, useState, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { fetcher } from "@/lib/http/fetcher";
+import { FetchError, fetcher } from "@/lib/http/fetcher";
 import { useAuth } from "@/providers/AuthProvider";
 import { useFeatureFlag } from "@/hooks/useFeatureFlag";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import {
   Store,
   Truck,
@@ -64,6 +67,8 @@ export default function ProductCheckoutPage() {
   const [shippingConfig, setShippingConfig] = useState<ShippingConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [requiresProviderSelection, setRequiresProviderSelection] = useState(false);
 
   const [fulfillment, setFulfillment] = useState<"collection" | "delivery">("collection");
   const [selectedAddress, setSelectedAddress] = useState<string>("");
@@ -72,82 +77,131 @@ export default function ProductCheckoutPage() {
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
   const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "percentage", percentage: 5, fixed: 0, show: true });
+  const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
 
   useEffect(() => {
-    if (!providerId) return;
+    let cancelled = false;
     (async () => {
-      setLoading(true);
+      try {
+        setLoading(true);
+        setPageError(null);
 
-      // Fetch cart
-      const cartRes = await fetcher.get<{ data: { items: CartItem[] } }>("/api/me/cart");
-      const allItems = cartRes?.data?.items ?? [];
-      const providerItems = allItems.filter(
-        (item: any) => (item.provider?.id ?? item.product?.provider_id) === providerId,
-      );
-      setItems(providerItems);
+        // Fetch cart first; this lets us recover when provider_id is missing.
+        const cartRes = await fetcher.get<{ data: { items: CartItem[] } }>("/api/me/cart");
+        const allItems = cartRes?.data?.items ?? [];
+        const providerIds = Array.from(
+          new Set(
+            allItems
+              .map((item: any) => item.provider?.id ?? item.product?.provider_id ?? null)
+              .filter((id: string | null): id is string => Boolean(id)),
+          ),
+        );
+        const effectiveProviderId = providerId ?? (providerIds.length === 1 ? providerIds[0] : null);
 
-      // Fetch addresses
-      const addrRes = await fetcher.get<{ data: { addresses: Address[] } | Address[] }>(
-        "/api/me/addresses",
-      );
-      const addrData = addrRes?.data;
-      const addrList = Array.isArray(addrData) ? addrData : (addrData as any)?.addresses ?? [];
-      setAddresses(addrList);
-      const def = addrList.find((a: Address) => a.is_default);
-      if (def) setSelectedAddress(def.id);
-
-      // Fetch locations
-      const locRes = await fetcher.get<{ data: { locations: Location[] } | Location[] }>(
-        `/api/public/provider-locations?provider_id=${providerId}`,
-      );
-      const locData = locRes?.data;
-      const locList = Array.isArray(locData) ? locData : (locData as any)?.locations ?? [];
-      setLocations(locList);
-      if (locList.length > 0) setSelectedLocation(locList[0].id);
-
-      // Fetch shipping config
-      const shipRes = await fetcher.get<{ data: any }>(
-        `/api/public/products/shipping-config?provider_id=${providerId}`,
-      );
-      if (shipRes?.data) {
-        const sc = shipRes.data?.shipping ?? shipRes.data?.config ?? shipRes.data;
-        setShippingConfig(sc);
-        if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
-      }
-
-      // Fetch platform fees
-      const feeRes = await fetcher.get<{ data: any }>("/api/public/platform-fees");
-      if (feeRes?.data) {
-        setPlatformFeeConfig({
-          type: feeRes.data.platform_service_fee_type ?? "percentage",
-          percentage: feeRes.data.platform_service_fee_percentage ?? 5,
-          fixed: feeRes.data.platform_service_fee_fixed ?? 0,
-          show: feeRes.data.show_service_fee_to_customer !== false,
-        });
-      }
-
-      // Fetch wallet balance (for "Use wallet" option)
-      if (user) {
-        try {
-          const walletRes = await fetcher.get<{ data: { wallet: { balance: number } } }>("/api/me/wallet", { cache: "no-store" });
-          if (walletRes?.data?.wallet) setWalletBalance(Number(walletRes.data.wallet.balance) || 0);
-        } catch {
-          // ignore
+        if (!effectiveProviderId) {
+          if (!cancelled) {
+            setItems([]);
+            setRequiresProviderSelection(!providerId && providerIds.length > 1);
+          }
+          return;
         }
-      }
+        if (!cancelled) setRequiresProviderSelection(false);
 
-      setLoading(false);
+        if (!providerId) {
+          router.replace(`/shop/checkout?provider_id=${encodeURIComponent(effectiveProviderId)}`);
+        }
+
+        const providerItems = allItems.filter(
+          (item: any) => (item.provider?.id ?? item.product?.provider_id) === effectiveProviderId,
+        );
+        if (!cancelled) setItems(providerItems);
+
+        const addrRes = await fetcher.get<{ data: { addresses: Address[] } | Address[] }>(
+          "/api/me/addresses",
+        );
+        const addrData = addrRes?.data;
+        const addrList = Array.isArray(addrData) ? addrData : (addrData as any)?.addresses ?? [];
+        if (!cancelled) {
+          setAddresses(addrList);
+          const def = addrList.find((a: Address) => a.is_default);
+          if (def) setSelectedAddress(def.id);
+        }
+
+        const locRes = await fetcher.get<{ data: { locations: Location[] } | Location[] }>(
+          `/api/public/provider-locations?provider_id=${effectiveProviderId}`,
+        );
+        const locData = locRes?.data;
+        const locList = Array.isArray(locData) ? locData : (locData as any)?.locations ?? [];
+        if (!cancelled) {
+          setLocations(locList);
+          if (locList.length > 0) setSelectedLocation(locList[0].id);
+        }
+
+        const shipRes = await fetcher.get<{ data: any }>(
+          `/api/public/products/shipping-config?provider_id=${effectiveProviderId}`,
+        );
+        if (!cancelled && shipRes?.data) {
+          const sc = shipRes.data?.shipping ?? shipRes.data?.config ?? shipRes.data;
+          setShippingConfig(sc);
+          if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
+        }
+
+        const feeRes = await fetcher.get<{ data: any }>("/api/public/platform-fees");
+        if (!cancelled && feeRes?.data) {
+          setPlatformFeeConfig({
+            type: feeRes.data.platform_service_fee_type ?? "percentage",
+            percentage: feeRes.data.platform_service_fee_percentage ?? 5,
+            fixed: feeRes.data.platform_service_fee_fixed ?? 0,
+            show: feeRes.data.show_service_fee_to_customer !== false,
+          });
+          setCashEnabledOnPlatform(feeRes.data.cash_enabled_on_platform === true);
+        }
+
+        if (user) {
+          try {
+            const walletRes = await fetcher.get<{ data: { wallet: { balance: number } } }>(
+              "/api/me/wallet",
+              { cache: "no-store" },
+            );
+            if (!cancelled && walletRes?.data?.wallet) {
+              setWalletBalance(Number(walletRes.data.wallet.balance) || 0);
+            }
+          } catch {
+            // ignore wallet fetch issues
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPageError(err instanceof Error ? err.message : "Failed to load checkout");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
     })();
-  }, [providerId, user]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId, user, router]);
 
   // When Paystack is disabled, default to pay on delivery
   useEffect(() => {
     if (!paystackEnabled && paymentMethod === "paystack") {
-      setPaymentMethod("card_on_delivery");
+      if (cashEnabledOnPlatform) {
+        setPaymentMethod("card_on_delivery");
+      }
     }
-  }, [paystackEnabled, paymentMethod]);
+  }, [paystackEnabled, paymentMethod, cashEnabledOnPlatform]);
+
+  useEffect(() => {
+    if (!cashEnabledOnPlatform && paymentMethod === "card_on_delivery") {
+      setPaymentMethod("paystack");
+    }
+  }, [cashEnabledOnPlatform, paymentMethod]);
 
   const linePrice = (i: CartItem) => (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
   const subtotal = items.reduce(
@@ -167,6 +221,7 @@ export default function ProductCheckoutPage() {
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
   const total = subtotal + deliveryFee + platformFee;
+  const hasAnyEnabledPaymentMethod = paystackEnabled || cashEnabledOnPlatform;
 
   const handlePlaceOrder = useCallback(async () => {
     if (!providerId) return;
@@ -174,55 +229,64 @@ export default function ProductCheckoutPage() {
     if (fulfillment === "collection" && !selectedLocation) return;
 
     setPlacing(true);
+    setPageError(null);
 
-    const orderRes = await fetcher.post<{
-      data: { order: { id: string; order_number: string }; paid_with_wallet?: boolean; amount_due?: number };
-    }>("/api/me/orders", {
-      provider_id: providerId,
-      fulfillment_type: fulfillment,
-      delivery_address_id: fulfillment === "delivery" ? selectedAddress : undefined,
-      collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
-      payment_method: paymentMethod,
-      use_wallet: paymentMethod === "paystack" ? useWallet : false,
-    });
+    try {
+      const orderRes = await fetcher.post<{
+        data: { order: { id: string; order_number: string }; paid_with_wallet?: boolean; amount_due?: number };
+      }>("/api/me/orders", {
+        provider_id: providerId,
+        fulfillment_type: fulfillment,
+        delivery_address_id: fulfillment === "delivery" ? selectedAddress : undefined,
+        collection_location_id: fulfillment === "collection" ? selectedLocation : undefined,
+        payment_method: paymentMethod,
+        use_wallet: paymentMethod === "paystack" ? useWallet : false,
+      });
 
-    const order = orderRes?.data?.order;
-    const paidWithWallet = orderRes?.data?.paid_with_wallet === true;
-    const amountDue = orderRes?.data?.amount_due ?? total;
+      const order = orderRes?.data?.order;
+      const paidWithWallet = orderRes?.data?.paid_with_wallet === true;
+      const amountDue = orderRes?.data?.amount_due ?? total;
 
-    if (paymentMethod === "card_on_delivery" || paidWithWallet) {
+      if (paymentMethod === "card_on_delivery" || paidWithWallet) {
+        router.push("/account-settings/orders");
+        return;
+      }
+
+      if (!order || !user?.email) {
+        router.push("/account-settings/orders");
+        return;
+      }
+
+      // Initialize Paystack for remaining amount
+      const payRes = await fetcher.post<{
+        data: { authorization_url: string; reference: string };
+      }>("/api/paystack/initialize", {
+        email: user.email,
+        amount: Math.round(amountDue * 100),
+        metadata: {
+          product_order_id: order.id,
+          order_number: order.order_number,
+          type: "product_order",
+        },
+      });
+
+      if (payRes?.data?.authorization_url) {
+        window.location.href = payRes.data.authorization_url;
+      } else {
+        router.push("/account-settings/orders");
+      }
+    } catch (err) {
+      setPageError(
+        err instanceof FetchError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not place order. Please try again.",
+      );
+    } finally {
       setPlacing(false);
-      router.push("/account-settings/orders");
-      return;
     }
-
-    if (!order || !user?.email) {
-      setPlacing(false);
-      router.push("/account-settings/orders");
-      return;
-    }
-
-    // Initialize Paystack for remaining amount
-    const payRes = await fetcher.post<{
-      data: { authorization_url: string; reference: string };
-    }>("/api/paystack/initialize", {
-      email: user.email,
-      amount: Math.round(amountDue * 100),
-      metadata: {
-        product_order_id: order.id,
-        order_number: order.order_number,
-        type: "product_order",
-      },
-    });
-
-    setPlacing(false);
-
-    if (payRes?.data?.authorization_url) {
-      window.location.href = payRes.data.authorization_url;
-    } else {
-      router.push("/account-settings/orders");
-    }
-  }, [providerId, fulfillment, selectedAddress, selectedLocation, user, total, router]);
+  }, [providerId, fulfillment, selectedAddress, selectedLocation, paymentMethod, useWallet, user, total, router]);
 
   if (loading) {
     return (
@@ -237,9 +301,16 @@ export default function ProductCheckoutPage() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <ShoppingBag className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">No items to checkout</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {requiresProviderSelection ? "Select a provider to continue" : "No items to checkout"}
+          </h2>
+          <p className="text-sm text-gray-500 mb-3">
+            {requiresProviderSelection
+              ? "Your cart has items from multiple providers. Choose checkout from a provider group in cart."
+              : "Add items to your cart to continue."}
+          </p>
           <Link href="/cart" className="text-pink-600 hover:underline">
-            Back to cart
+            Go to cart
           </Link>
         </div>
       </div>
@@ -260,6 +331,16 @@ export default function ProductCheckoutPage() {
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Checkout</h1>
 
         <div className="grid gap-6">
+          {pageError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+              {pageError}
+            </div>
+          )}
+          {!hasAnyEnabledPaymentMethod && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-800">
+              No payment methods are currently enabled for on-platform checkout. Please contact support.
+            </div>
+          )}
           {/* Fulfillment type */}
           <div className="bg-white rounded-xl border p-6">
             <h3 className="font-semibold text-gray-900 mb-4">How would you like to receive your order?</h3>
@@ -389,6 +470,11 @@ export default function ProductCheckoutPage() {
                 Online payment is currently unavailable. Please pay when you receive your order.
               </p>
             )}
+            {!cashEnabledOnPlatform && (
+              <p className="text-sm text-blue-700 bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                Pay-on-delivery is disabled by platform policy. Please complete payment online.
+              </p>
+            )}
             <div className="space-y-3">
               {paystackEnabled && (
                 <label
@@ -418,29 +504,32 @@ export default function ProductCheckoutPage() {
                     className="accent-pink-600 rounded"
                   />
                   <span className="text-sm text-gray-700">
-                    Use wallet balance — R{Number(walletBalance).toFixed(2)} available
+                    Use wallet balance — {tenantCurrency}
+                    {Number(walletBalance).toFixed(2)} available
                   </span>
                 </label>
               )}
-              <label
-                className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                  paymentMethod === "card_on_delivery" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
-                }`}
-              >
-                <input
-                  type="radio"
-                  name="payment"
-                  checked={paymentMethod === "card_on_delivery"}
-                  onChange={() => setPaymentMethod("card_on_delivery")}
-                  className="accent-pink-600"
-                />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
-                  </p>
-                  <p className="text-xs text-gray-500">Cash or card when you receive your order</p>
-                </div>
-              </label>
+              {cashEnabledOnPlatform && (
+                <label
+                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    paymentMethod === "card_on_delivery" ? "border-pink-500 bg-pink-50" : "border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="payment"
+                    checked={paymentMethod === "card_on_delivery"}
+                    onChange={() => setPaymentMethod("card_on_delivery")}
+                    className="accent-pink-600"
+                  />
+                  <div>
+                    <p className="font-medium text-gray-900">
+                      Pay at {fulfillment === "delivery" ? "Delivery" : "Collection"}
+                    </p>
+                    <p className="text-xs text-gray-500">Cash or card when you receive your order</p>
+                  </div>
+                </label>
+              )}
             </div>
             {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
@@ -463,7 +552,8 @@ export default function ProductCheckoutPage() {
                     x{item.quantity}
                   </span>
                   <span className="font-medium text-gray-900">
-                    R{linePrice(item).toFixed(2)}
+                    {tenantCurrency}
+                    {linePrice(item).toFixed(2)}
                   </span>
                 </div>
               ))}
@@ -471,25 +561,34 @@ export default function ProductCheckoutPage() {
             <div className="border-t pt-3 space-y-2">
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Subtotal</span>
-                <span className="text-gray-900">R{subtotal.toFixed(2)}</span>
+                <span className="text-gray-900">
+                  {tenantCurrency}
+                  {subtotal.toFixed(2)}
+                </span>
               </div>
               {fulfillment === "delivery" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Delivery</span>
                   <span className={deliveryFee === 0 ? "text-green-600" : "text-gray-900"}>
-                    {deliveryFee === 0 ? "Free" : `R${deliveryFee.toFixed(2)}`}
+                    {deliveryFee === 0 ? "Free" : `${tenantCurrency}${deliveryFee.toFixed(2)}`}
                   </span>
                 </div>
               )}
               {platformFee > 0 && platformFeeConfig.show && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Service Fee</span>
-                  <span className="text-gray-900">R{platformFee.toFixed(2)}</span>
+                  <span className="text-gray-900">
+                    {tenantCurrency}
+                    {platformFee.toFixed(2)}
+                  </span>
                 </div>
               )}
               <div className="flex justify-between text-lg font-bold pt-2 border-t">
                 <span className="text-gray-900">Total</span>
-                <span className="text-pink-600">R{total.toFixed(2)}</span>
+                <span className="text-pink-600">
+                  {tenantCurrency}
+                  {total.toFixed(2)}
+                </span>
               </div>
             </div>
           </div>
@@ -497,7 +596,7 @@ export default function ProductCheckoutPage() {
           {/* Pay button */}
           <button
             onClick={handlePlaceOrder}
-            disabled={placing}
+            disabled={placing || !hasAnyEnabledPaymentMethod}
             className="w-full py-4 bg-pink-600 text-white rounded-xl font-bold text-lg hover:bg-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {placing ? (
@@ -506,7 +605,7 @@ export default function ProductCheckoutPage() {
                 Processing...
               </>
             ) : (
-              `${paymentMethod === "paystack" ? "Pay &" : ""} Place Order — R${total.toFixed(2)}`
+              `${paymentMethod === "paystack" ? "Pay &" : ""} Place Order — ${tenantCurrency}${total.toFixed(2)}`
             )}
           </button>
         </div>

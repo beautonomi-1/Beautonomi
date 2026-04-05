@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -22,6 +24,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface Client {
   id: string;
@@ -34,6 +37,10 @@ interface Client {
     avatar_url: string | null;
     rating_average: number | null;
     review_count: number | null;
+    customer_review_rating_avg?: number | null;
+    customer_review_rating_count?: number | null;
+    customer_booking_rating_avg?: number | null;
+    customer_booking_rating_count?: number | null;
   };
   notes: string | null;
   tags: string[] | null;
@@ -54,6 +61,10 @@ interface ServicedCustomer {
     avatar_url: string | null;
     rating_average: number | null;
     review_count: number | null;
+    customer_review_rating_avg?: number | null;
+    customer_review_rating_count?: number | null;
+    customer_booking_rating_avg?: number | null;
+    customer_booking_rating_count?: number | null;
   };
   last_service_date: string;
   total_bookings: number;
@@ -62,6 +73,8 @@ interface ServicedCustomer {
 }
 
 export default function ClientListPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [activeTab, setActiveTab] = useState<"all" | "saved" | "serviced">("all");
   const [clients, setClients] = useState<Client[]>([]);
   const [servicedCustomers, setServicedCustomers] = useState<ServicedCustomer[]>([]);
@@ -200,8 +213,8 @@ export default function ClientListPage() {
     });
   };
 
-  const formatCurrency = (amount: number, currency: string = "ZAR") => {
-    return new Intl.NumberFormat("en-ZA", {
+  const formatCurrency = (amount: number, currency: string = tenantCurrency) => {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
       currency: currency,
     }).format(amount);
@@ -217,7 +230,6 @@ export default function ClientListPage() {
         { label: "Settings", href: "/provider/settings" },
         { label: "Client List" }
       ]}
-      onSave={() => {}}
     >
       <div className="space-y-6">
         {/* Search and Filter */}
@@ -535,12 +547,24 @@ function ClientCard({
           <span>{formatCurrency(client.total_spent)}</span>
         </div>
         {client.customer.rating_average && client.customer.rating_average > 0 && (
-          <div className="flex items-center gap-2 text-gray-600">
-            <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-            <span>
-              {client.customer.rating_average.toFixed(1)} (
-              {client.customer.review_count || 0} reviews)
-            </span>
+          <div className="flex flex-col gap-1 text-gray-600">
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+              <span>
+                {client.customer.rating_average.toFixed(1)} combined (
+                {client.customer.review_count || 0}{" "}
+                {(client.customer.review_count || 0) === 1 ? "rating" : "ratings"})
+              </span>
+            </div>
+            {(client.customer.customer_review_rating_count ?? 0) > 0 &&
+              (client.customer.customer_booking_rating_count ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  Reviews {Number(client.customer.customer_review_rating_avg ?? 0).toFixed(1)} (
+                  {client.customer.customer_review_rating_count}) · After visits{" "}
+                  {Number(client.customer.customer_booking_rating_avg ?? 0).toFixed(1)} (
+                  {client.customer.customer_booking_rating_count})
+                </p>
+              )}
           </div>
         )}
       </div>
@@ -603,12 +627,24 @@ function ServicedCustomerCard({
           <span>{formatCurrency(customer.total_spent)}</span>
         </div>
         {customer.customer.rating_average && customer.customer.rating_average > 0 && (
-          <div className="flex items-center gap-2 text-gray-600">
-            <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-            <span>
-              {customer.customer.rating_average.toFixed(1)} (
-              {customer.customer.review_count || 0} reviews)
-            </span>
+          <div className="flex flex-col gap-1 text-gray-600">
+            <div className="flex items-center gap-2">
+              <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+              <span>
+                {customer.customer.rating_average.toFixed(1)} combined (
+                {customer.customer.review_count || 0}{" "}
+                {(customer.customer.review_count || 0) === 1 ? "rating" : "ratings"})
+              </span>
+            </div>
+            {(customer.customer.customer_review_rating_count ?? 0) > 0 &&
+              (customer.customer.customer_booking_rating_count ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground pl-6">
+                  Reviews {Number(customer.customer.customer_review_rating_avg ?? 0).toFixed(1)} (
+                  {customer.customer.customer_review_rating_count}) · After visits{" "}
+                  {Number(customer.customer.customer_booking_rating_avg ?? 0).toFixed(1)} (
+                  {customer.customer.customer_booking_rating_count})
+                </p>
+              )}
           </div>
         )}
       </div>

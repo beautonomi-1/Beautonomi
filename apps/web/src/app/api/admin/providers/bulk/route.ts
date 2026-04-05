@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { z } from "zod";
 
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -60,17 +62,21 @@ export async function POST(request: NextRequest) {
         break;
     }
 
-    // Perform bulk update
-    const { error: updateError } = await supabase
+    // Perform bulk update (only rows in this admin tenant)
+    const { data: updatedRows, error: updateError } = await supabase
       .from("providers")
       .update(updateData)
-      .in("id", provider_ids);
+      .in("id", provider_ids)
+      .eq("tenant_id", tenantId)
+      .select("id");
 
     if (updateError) {
       throw updateError;
     }
 
-    results.success = provider_ids.length;
+    const n = updatedRows?.length ?? 0;
+    results.success = n;
+    results.failed = provider_ids.length - n;
 
     // Log audit trail
     await writeAuditLog({

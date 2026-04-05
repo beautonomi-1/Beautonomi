@@ -4,6 +4,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface PlatformSettings {
   branding: {
@@ -64,7 +68,10 @@ interface PlatformSettings {
   onesignal: {
     app_id: string;
     app_id_provider?: string;
+    /** Customer app REST key (stored in platform_secrets.onesignal_rest_api_key). */
     rest_api_key: string;
+    /** Provider app REST key (stored in platform_secrets.onesignal_rest_api_key_provider). */
+    rest_api_key_provider?: string;
     safari_web_id?: string;
     enabled: boolean;
   };
@@ -154,15 +161,15 @@ function getDefaultPlatformSettings(): PlatformSettings {
       branding: {
         site_name: "Beautonomi",
         logo_url: "/images/logo.svg",
-        favicon_url: "/favicon.ico",
+        favicon_url: "/icon.svg",
         primary_color: "#FF0077",
         secondary_color: "#D60565",
       },
       localization: {
         default_language: "en",
         supported_languages: ["en", "af", "zu"],
-        default_currency: "ZAR",
-        supported_currencies: ["ZAR", "USD", "EUR"],
+        default_currency: LAST_RESORT_CURRENCY,
+        supported_currencies: [LAST_RESORT_CURRENCY, "USD", "EUR"],
         timezone: "Africa/Johannesburg",
       },
       payouts: {
@@ -182,10 +189,10 @@ function getDefaultPlatformSettings(): PlatformSettings {
         push_enabled: true,
       },
       payment_types: {
-        cash: true,
+        cash: false,
         card: true,
         mobile: true,
-        gift_card: false,
+        gift_card: true,
       },
       features: {
         auto_approve_providers: false,
@@ -208,6 +215,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
         app_id: process.env.ONESIGNAL_APP_ID || "",
         app_id_provider: process.env.ONESIGNAL_APP_ID_PROVIDER || undefined,
         rest_api_key: "",
+        rest_api_key_provider: "",
         safari_web_id: process.env.ONESIGNAL_SAFARI_WEB_ID || undefined,
         enabled: true,
       },
@@ -293,6 +301,35 @@ function getDefaultPlatformSettings(): PlatformSettings {
     };
 }
 
+/** Defaults merged with tenant region currency (ZAR only as last resort). */
+async function getTenantAwareDefaultPlatformSettings(
+  request: NextRequest,
+  tenantId: string | null
+): Promise<PlatformSettings> {
+  const base = getDefaultPlatformSettings();
+  const effectiveTenantId = tenantId ?? (await resolveAdminApiTenantId(request));
+  const tr = await getTenantRegionConfig(effectiveTenantId);
+  const dc = tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+  return {
+    ...base,
+    localization: {
+      ...base.localization,
+      default_currency: dc,
+      supported_currencies: Array.from(new Set([dc, "USD", "EUR"])),
+    },
+  };
+}
+
+/** Admin GET masks saved secrets as `***`; PATCH must not persist that placeholder or wipe keys. */
+function mergeSecretField(
+  incoming: string | undefined | null,
+  existing: string | null | undefined
+): string | null {
+  const t = typeof incoming === "string" ? incoming.trim() : "";
+  if (!t || t === "***") return (existing && String(existing).trim()) || null;
+  return t;
+}
+
 /**
  * GET /api/admin/settings
  *
@@ -300,38 +337,52 @@ function getDefaultPlatformSettings(): PlatformSettings {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = getSupabaseAdmin();
-    const defaultSettings = getDefaultPlatformSettings();
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
+    const defaultSettings = await getTenantAwareDefaultPlatformSettings(request, currentTenantId);
 
     // Get latest platform_settings row (table has id, settings, is_active; no key/value)
     try {
-      const { data: settings, error: settingsError } = await supabase
-        .from("platform_settings")
-        .select("*")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (settingsError || !settings) {
+      const scopedSettings = await fetchScopedSingle<{ id?: string; settings?: Record<string, unknown> }>({
+        supabase,
+        table: "platform_settings",
+        tenantId: currentTenantId,
+        select: "*",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      if (!scopedSettings.data) {
         return successResponse(defaultSettings, 200);
       }
 
       type SettingsRow = { id?: string; settings?: Record<string, unknown> };
-      const settingsRow = settings as SettingsRow | null;
+      const settingsRow = scopedSettings.data as SettingsRow;
       if (settingsRow?.settings) {
         const merged = { ...settingsRow.settings } as unknown as PlatformSettings;
+        merged.onesignal = {
+          ...defaultSettings.onesignal,
+          ...(merged.onesignal ?? ({} as PlatformSettings["onesignal"])),
+        };
         try {
-          const { data: secretRow } = await supabase.from("platform_secrets")
-            .select("paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret")
-            .limit(1)
-            .maybeSingle();
+          const scopedSecrets = await fetchScopedSingle<Record<string, unknown>>({
+            supabase,
+            table: "platform_secrets",
+            tenantId: currentTenantId,
+            select:
+              "paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret",
+            apply: (q) => q,
+            orderBy: { column: "updated_at", ascending: false },
+          });
+          const secretRow = scopedSecrets.data;
 
           if (secretRow?.paystack_secret_key) merged.paystack.secret_key = "***";
           if (secretRow?.paystack_public_key) merged.paystack.public_key = "***";
           if (secretRow?.paystack_webhook_secret) merged.paystack.webhook_secret = "***";
           if (secretRow?.onesignal_rest_api_key) merged.onesignal.rest_api_key = "***";
+          if (secretRow?.onesignal_rest_api_key_provider)
+            merged.onesignal.rest_api_key_provider = "***";
           if (secretRow?.mapbox_access_token) merged.mapbox.access_token = "***";
           if (secretRow?.amplitude_secret_key) merged.amplitude.secret_key = "***";
           if (secretRow?.google_calendar_client_id) merged.calendar_integrations.google.client_id = "***";
@@ -365,19 +416,42 @@ export async function PATCH(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
 
     const supabase = getSupabaseAdmin();
-    const body = (await request.json()) as Partial<PlatformSettings>;
+    const rawBody = (await request.json()) as Record<string, unknown>;
+    const { scope: _scope, tenant_id: _tenantId, tenantId: _tenantIdAlt, ...rawSettingsPatch } = rawBody;
+    const body = rawSettingsPatch as Partial<PlatformSettings>;
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, rawBody, user.role ?? null);
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
     // Load existing settings and merge with defaults + body so partial payloads always validate
     type SettingsRow = { id?: string; settings?: Record<string, unknown> };
-    const { data: existingRow } = await supabase
+    let existingQuery = supabase
       .from("platform_settings")
       .select("id, settings")
+      .eq("is_active", true)
       .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    existingQuery =
+      scopeTenantId == null ? existingQuery.is("tenant_id", null) : existingQuery.eq("tenant_id", scopeTenantId);
+    const { data: existingRow } = await existingQuery.maybeSingle();
 
-    const defaults = getDefaultPlatformSettings();
-    const existing = (existingRow as SettingsRow | null)?.settings ?? {};
+    let globalFallbackRow: SettingsRow | null = null;
+    if (!existingRow && scopeTenantId != null) {
+      const { data: globalRow } = await supabase
+        .from("platform_settings")
+        .select("id, settings")
+        .eq("is_active", true)
+        .is("tenant_id", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      globalFallbackRow = (globalRow as SettingsRow | null) ?? null;
+    }
+
+    const defaults = await getTenantAwareDefaultPlatformSettings(
+      request,
+      scopeTenantId ?? currentTenantId
+    );
+    const existing = (existingRow as SettingsRow | null)?.settings ?? globalFallbackRow?.settings ?? {};
     const settings: PlatformSettings = { ...defaults, ...existing, ...body } as PlatformSettings;
 
     // Validate required top-level sections after merge
@@ -392,6 +466,7 @@ export async function PATCH(request: NextRequest) {
       !!settings.paystack.public_key ||
       !!settings.paystack.webhook_secret ||
       !!settings.onesignal.rest_api_key ||
+      !!settings.onesignal.rest_api_key_provider ||
       !!settings.mapbox.access_token ||
       !!settings.amplitude.secret_key ||
       !!settings.calendar_integrations.google.client_id ||
@@ -401,22 +476,49 @@ export async function PATCH(request: NextRequest) {
 
     if (hasAnySecrets) {
       // Upsert singleton row
-      const { data: existingSecretRow } = await supabase.from("platform_secrets")
-        .select("id")
-        .limit(1)
-        .maybeSingle();
+      let secretQuery = supabase
+        .from("platform_secrets")
+        .select(
+          "id, paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret"
+        )
+        .order("updated_at", { ascending: false })
+        .limit(1);
+      secretQuery =
+        scopeTenantId == null ? secretQuery.is("tenant_id", null) : secretQuery.eq("tenant_id", scopeTenantId);
+      const { data: existingSecretRow } = await secretQuery.maybeSingle();
+      const prev = existingSecretRow as Record<string, string | null | undefined> | null;
 
       const secretPayload: Record<string, unknown> = {
-        paystack_secret_key: settings.paystack.secret_key || null,
-        paystack_public_key: settings.paystack.public_key || null,
-        paystack_webhook_secret: settings.paystack.webhook_secret || null,
-        onesignal_rest_api_key: settings.onesignal.rest_api_key || null,
-        mapbox_access_token: settings.mapbox.access_token || null,
-        amplitude_secret_key: settings.amplitude.secret_key || null,
-        google_calendar_client_id: settings.calendar_integrations.google.client_id || null,
-        google_calendar_client_secret: settings.calendar_integrations.google.client_secret || null,
-        outlook_client_id: settings.calendar_integrations.outlook.client_id || null,
-        outlook_client_secret: settings.calendar_integrations.outlook.client_secret || null,
+        tenant_id: scopeTenantId,
+        paystack_secret_key: mergeSecretField(settings.paystack.secret_key, prev?.paystack_secret_key),
+        paystack_public_key: mergeSecretField(settings.paystack.public_key, prev?.paystack_public_key),
+        paystack_webhook_secret: mergeSecretField(
+          settings.paystack.webhook_secret as string | undefined,
+          prev?.paystack_webhook_secret
+        ),
+        onesignal_rest_api_key: mergeSecretField(settings.onesignal.rest_api_key, prev?.onesignal_rest_api_key),
+        onesignal_rest_api_key_provider: mergeSecretField(
+          settings.onesignal.rest_api_key_provider,
+          prev?.onesignal_rest_api_key_provider
+        ),
+        mapbox_access_token: mergeSecretField(settings.mapbox.access_token, prev?.mapbox_access_token),
+        amplitude_secret_key: mergeSecretField(settings.amplitude.secret_key, prev?.amplitude_secret_key),
+        google_calendar_client_id: mergeSecretField(
+          settings.calendar_integrations.google.client_id,
+          prev?.google_calendar_client_id
+        ),
+        google_calendar_client_secret: mergeSecretField(
+          settings.calendar_integrations.google.client_secret,
+          prev?.google_calendar_client_secret
+        ),
+        outlook_client_id: mergeSecretField(
+          settings.calendar_integrations.outlook.client_id,
+          prev?.outlook_client_id
+        ),
+        outlook_client_secret: mergeSecretField(
+          settings.calendar_integrations.outlook.client_secret,
+          prev?.outlook_client_secret
+        ),
         updated_at: new Date().toISOString(),
       };
 
@@ -434,6 +536,7 @@ export async function PATCH(request: NextRequest) {
     settings.paystack.public_key = "";
     settings.paystack.webhook_secret = undefined;
     settings.onesignal.rest_api_key = "";
+    settings.onesignal.rest_api_key_provider = "";
     settings.mapbox.access_token = "";
     settings.amplitude.secret_key = undefined;
     settings.calendar_integrations.google.client_id = "";
@@ -448,6 +551,7 @@ export async function PATCH(request: NextRequest) {
       const { data: updatedSettings, error: updateError } = await supabase
         .from("platform_settings")
         .update({
+          tenant_id: scopeTenantId,
           settings,
           updated_at: new Date().toISOString(),
         })
@@ -468,6 +572,8 @@ export async function PATCH(request: NextRequest) {
         metadata: {
           updated_at: new Date().toISOString(),
           has_secrets_update: hasAnySecrets,
+          scope: requestedScope.scope,
+          tenant_id: scopeTenantId,
         },
       });
 
@@ -478,6 +584,7 @@ export async function PATCH(request: NextRequest) {
       const { data: newSettings, error: createError } = await supabase
         .from("platform_settings")
         .insert({
+          tenant_id: scopeTenantId,
           settings,
         })
         .select()
@@ -496,6 +603,8 @@ export async function PATCH(request: NextRequest) {
         metadata: {
           created_at: new Date().toISOString(),
           has_secrets_update: hasAnySecrets,
+          scope: requestedScope.scope,
+          tenant_id: scopeTenantId,
         },
       });
 

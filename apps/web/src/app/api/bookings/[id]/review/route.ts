@@ -8,18 +8,55 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await requireRoleInApi(["customer"], request);
     const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
     const body = await request.json();
-    const { rating, comment, photos } = body;
+    const { rating, comment, photos, service_ratings, staff_rating } = body;
 
     if (!rating || rating < 1 || rating > 5) {
       return NextResponse.json(
         { error: "Rating must be between 1 and 5" },
         { status: 400 }
       );
+    }
+
+    if (service_ratings !== undefined) {
+      const validServiceRatings =
+        Array.isArray(service_ratings) &&
+        service_ratings.every(
+          (entry) =>
+            entry &&
+            typeof entry === "object" &&
+            typeof entry.offering_id === "string" &&
+            entry.offering_id.length > 0 &&
+            typeof entry.rating === "number" &&
+            entry.rating >= 1 &&
+            entry.rating <= 5
+        );
+      if (!validServiceRatings) {
+        return NextResponse.json(
+          { error: "service_ratings must be an array of { offering_id, rating(1-5) }" },
+          { status: 400 }
+        );
+      }
+    }
+
+    if (staff_rating !== undefined && staff_rating !== null) {
+      const validStaffRating =
+        typeof staff_rating === "object" &&
+        typeof staff_rating.staff_id === "string" &&
+        staff_rating.staff_id.length > 0 &&
+        typeof staff_rating.rating === "number" &&
+        staff_rating.rating >= 1 &&
+        staff_rating.rating <= 5;
+      if (!validStaffRating) {
+        return NextResponse.json(
+          { error: "staff_rating must be { staff_id, rating(1-5) } or null" },
+          { status: 400 }
+        );
+      }
     }
 
     // Get booking to verify ownership
@@ -36,8 +73,7 @@ export async function POST(
       );
     }
 
-    // Verify user is the customer for this booking
-    if (user.role === "customer" && booking.customer_id !== user.id) {
+    if (booking.customer_id !== user.id) {
       return NextResponse.json(
         { error: "Unauthorized" },
         { status: 403 }
@@ -52,13 +88,12 @@ export async function POST(
       );
     }
 
-    // Check if review already exists
+    // One review per booking (unique on booking_id)
     const { data: existingReview } = await supabase
       .from("reviews")
       .select("id")
       .eq("booking_id", bookingId)
-      .eq("customer_id", user.id)
-      .single();
+      .maybeSingle();
 
     if (existingReview) {
       return NextResponse.json(
@@ -68,21 +103,55 @@ export async function POST(
     }
 
     // Create review
-    const { data: review, error: reviewError } = await supabase
+    let review: any = null;
+    const insertPayload = {
+      booking_id: bookingId,
+      customer_id: user.id,
+      provider_id: booking.provider_id,
+      rating,
+      comment: comment || null,
+      photos: Array.isArray(photos) ? photos : [],
+      service_ratings: Array.isArray(service_ratings) ? service_ratings : [],
+      staff_rating: staff_rating ?? null,
+      is_verified: true,
+      status: "published",
+      is_visible: true,
+    };
+
+    const withStatus = await supabase
       .from("reviews")
-      .insert({
-        booking_id: bookingId,
-        customer_id: user.id,
-        provider_id: booking.provider_id,
-        rating,
-        comment: comment || null,
-        photos: photos || [],
-        is_verified: true,
-      })
+      .insert(insertPayload)
       .select()
       .single();
 
-    if (reviewError) throw reviewError;
+    if (withStatus.error) {
+      const message = `${withStatus.error.message || ""} ${withStatus.error.details || ""}`.toLowerCase();
+      const missingStatusColumn =
+        message.includes("status") && (message.includes("column") || message.includes("schema cache"));
+      if (!missingStatusColumn) {
+        throw withStatus.error;
+      }
+      const withoutStatus = await supabase
+        .from("reviews")
+        .insert({
+          booking_id: bookingId,
+          customer_id: user.id,
+          provider_id: booking.provider_id,
+          rating,
+          comment: comment || null,
+          photos: Array.isArray(photos) ? photos : [],
+          service_ratings: Array.isArray(service_ratings) ? service_ratings : [],
+          staff_rating: staff_rating ?? null,
+          is_verified: true,
+          is_visible: true,
+        })
+        .select()
+        .single();
+      if (withoutStatus.error) throw withoutStatus.error;
+      review = withoutStatus.data;
+    } else {
+      review = withStatus.data;
+    }
 
     // Notify provider that customer left a review
     try {
@@ -94,18 +163,42 @@ export async function POST(
         .single();
 
       if (providerData?.user_id) {
-        await supabaseNotify.from("notifications").insert({
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
           user_id: providerData.user_id,
           type: "new_review",
           title: "New Review Received",
-          message: `You received a ${rating}-star review from a customer.`,
-          metadata: {
+          message: `You received a ${rating}-star review from a customer.${comment ? ` "${String(comment).slice(0, 120)}"` : ""}`,
+          data: {
             review_id: review.id,
             booking_id: bookingId,
             rating,
+            comment: comment || null,
+            photos: Array.isArray(photos) ? photos : [],
           },
-          link: `/provider/reviews`,
+          action_url: `/provider/reviews`,
         });
+
+        // Push/email template notification for provider apps/channels.
+        try {
+          const { notifyProviderNewReview } = await import("@/lib/notifications/notification-service");
+          const { data: customerUser } = await supabaseNotify
+            .from("users")
+            .select("full_name")
+            .eq("id", user.id)
+            .maybeSingle();
+          await notifyProviderNewReview(
+            review.id,
+            customerUser?.full_name || "Customer",
+            Number(rating),
+            comment || "",
+            providerData.user_id,
+            undefined,
+            { bookingId }
+          );
+        } catch (pushErr) {
+          console.warn("Failed to send provider push/email for new review:", pushErr);
+        }
       }
     } catch (notifError) {
       // Log but don't fail the request
@@ -135,20 +228,21 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
+    const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
     const body = await request.json();
-    const { rating, comment, photos } = body;
+    const { rating, comment, photos, service_ratings, staff_rating } = body;
 
-    // Get review
-    const { data: review, error: reviewError } = await supabase
+    let reviewQuery = supabase
       .from("reviews")
       .select("*")
-      .eq("booking_id", bookingId)
-      .eq("customer_id", user.id)
-      .single();
+      .eq("booking_id", bookingId);
+    if (user.role !== "superadmin") {
+      reviewQuery = reviewQuery.eq("customer_id", user.id);
+    }
+    const { data: review, error: reviewError } = await reviewQuery.single();
 
     if (reviewError || !review) {
       return NextResponse.json(
@@ -169,6 +263,47 @@ export async function PATCH(
     }
     if (comment !== undefined) updateData.comment = comment;
     if (photos !== undefined) updateData.photos = photos;
+    if (service_ratings !== undefined) {
+      const validServiceRatings =
+        Array.isArray(service_ratings) &&
+        service_ratings.every(
+          (entry) =>
+            entry &&
+            typeof entry === "object" &&
+            typeof entry.offering_id === "string" &&
+            entry.offering_id.length > 0 &&
+            typeof entry.rating === "number" &&
+            entry.rating >= 1 &&
+            entry.rating <= 5
+        );
+      if (!validServiceRatings) {
+        return NextResponse.json(
+          { error: "service_ratings must be an array of { offering_id, rating(1-5) }" },
+          { status: 400 }
+        );
+      }
+      updateData.service_ratings = service_ratings;
+    }
+    if (staff_rating !== undefined) {
+      if (staff_rating === null) {
+        updateData.staff_rating = null;
+      } else {
+        const validStaffRating =
+          typeof staff_rating === "object" &&
+          typeof staff_rating.staff_id === "string" &&
+          staff_rating.staff_id.length > 0 &&
+          typeof staff_rating.rating === "number" &&
+          staff_rating.rating >= 1 &&
+          staff_rating.rating <= 5;
+        if (!validStaffRating) {
+          return NextResponse.json(
+            { error: "staff_rating must be { staff_id, rating(1-5) } or null" },
+            { status: 400 }
+          );
+        }
+        updateData.staff_rating = staff_rating;
+      }
+    }
 
     const { data: updatedReview, error: updateError } = await supabase
       .from("reviews")
@@ -192,30 +327,24 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["customer", "superadmin", "provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
 
     const { id: bookingId } = await params;
 
-    // Get review
-    const { data: review, error: reviewError } = await supabase
+    let deleteQuery = supabase
       .from("reviews")
       .select("*")
-      .eq("booking_id", bookingId)
-      .single();
+      .eq("booking_id", bookingId);
+    if (user.role !== "superadmin") {
+      deleteQuery = deleteQuery.eq("customer_id", user.id);
+    }
+    const { data: review, error: reviewError } = await deleteQuery.single();
 
     if (reviewError || !review) {
       return NextResponse.json(
         { error: "Review not found" },
         { status: 404 }
-      );
-    }
-
-    // Verify user is the customer who wrote the review (or superadmin)
-    if (user.role === "customer" && review.customer_id !== user.id) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 403 }
       );
     }
 

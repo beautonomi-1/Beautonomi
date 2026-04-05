@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -38,6 +39,7 @@ interface StaffPerformanceData {
 }
 
 export default function StaffPerformanceReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -108,7 +110,7 @@ export default function StaffPerformanceReport() {
   const handleExport = (format: "csv" | "pdf" = "csv") => {
     if (!data) return;
     if (format === "csv") {
-      const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-performance");
+      const exportData = formatReportDataForExport(data as unknown as ReportRow, "staff-performance", exportCurrency);
       exportToCSV(exportData, "staff-performance-report");
     } else {
       exportToPDF("staff-performance-report", "staff-performance-report", "Staff Performance Report");
@@ -257,7 +259,7 @@ export default function StaffPerformanceReport() {
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.summary.totalRevenue.toLocaleString()}
+                  {fmt(data.summary.totalRevenue)}
                 </p>
               </div>
             </CardContent>
@@ -344,10 +346,10 @@ export default function StaffPerformanceReport() {
                         </div>
                       </td>
                       <td className="text-right py-3 px-4 text-sm font-semibold text-gray-900">
-                        ZAR {staff.totalRevenue.toLocaleString()}
+                        {fmt(staff.totalRevenue)}
                       </td>
                       <td className="text-right py-3 px-4 text-sm text-gray-600">
-                        ZAR {staff.averageBookingValue.toLocaleString()}
+                        {fmt(staff.averageBookingValue)}
                       </td>
                       <td className="text-right py-3 px-4">
                         <div className="flex items-center justify-end gap-1">
@@ -361,7 +363,7 @@ export default function StaffPerformanceReport() {
                         </div>
                       </td>
                       <td className="text-right py-3 px-4 text-sm font-semibold text-green-600">
-                        ZAR {staff.commissionEarned.toLocaleString()}
+                        {fmt(staff.commissionEarned)}
                       </td>
                     </tr>
                   ))}

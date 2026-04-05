@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -24,6 +24,7 @@ import {
   LogOut,
   User,
   Globe,
+  Globe2,
   Map,
   ShieldCheck,
   ToggleLeft,
@@ -50,6 +51,7 @@ import {
   GraduationCap,
   Smartphone,
   Link2,
+  Network,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -72,6 +74,7 @@ import {
   canAccessSection,
   ALL_ADMIN_ROLES,
   ADMIN_SECTION_OVERVIEW,
+  ADMIN_SECTION_SUPPORT,
   ADMIN_SECTION_PROVIDERS_OPERATIONS,
   ADMIN_SECTION_FINANCE,
   ADMIN_SECTION_USERS_TRUST,
@@ -112,6 +115,11 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
+    label: "Support",
+    section: ADMIN_SECTION_SUPPORT,
+    items: [{ title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle }],
+  },
+  {
     label: "Providers & operations",
     section: ADMIN_SECTION_PROVIDERS_OPERATIONS,
     items: [
@@ -122,7 +130,6 @@ const navGroups: NavGroup[] = [
       { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag },
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
-      { title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle },
     ],
   },
   {
@@ -191,7 +198,6 @@ const navGroups: NavGroup[] = [
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
-      { title: "Service Zones", href: "/admin/service-zones", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
     ],
   },
@@ -199,6 +205,7 @@ const navGroups: NavGroup[] = [
     label: "Operations",
     section: ADMIN_SECTION_OPERATIONS,
     items: [
+      { title: "Market Coverage", href: "/admin/service-zones", icon: Globe2, superadminOnly: true },
       { title: "System Health", href: "/admin/system-health", icon: Activity },
       { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
       { title: "Security", href: "/admin/security", icon: Shield },
@@ -209,6 +216,7 @@ const navGroups: NavGroup[] = [
     section: ADMIN_SECTION_PLATFORM_CONFIG,
     items: [
       { title: "Settings", href: "/admin/settings", icon: Settings },
+      { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
@@ -225,10 +233,52 @@ interface SearchResult {
   providers: Array<{ id: string; business_name: string; owner_name: string | null; owner_email: string | null; status: string }>;
 }
 
+/** Read the last-known role from local/session storage for use during auth hydration. */
+function readCachedRole(): UserRole | null {
+  if (typeof window === "undefined") return null;
+  // 1. Try sessionStorage first (written by AuthProvider on every successful auth; cleared on tab close)
+  try {
+    const raw = sessionStorage.getItem("user_role_cache");
+    if (raw) {
+      const parsed = JSON.parse(raw) as { role?: UserRole; timestamp?: number };
+      if (parsed.role && parsed.timestamp && Date.now() - parsed.timestamp < 60 * 60 * 1000) {
+        return parsed.role;
+      }
+    }
+  } catch { /* ignore */ }
+  // 2. Fall back to localStorage (survives tab close; 24 h TTL)
+  try {
+    const raw = localStorage.getItem("beautonomi_auth_cache");
+    if (raw) {
+      const parsed = JSON.parse(raw) as { role?: UserRole; timestamp?: number };
+      if (parsed.role && parsed.timestamp && Date.now() - parsed.timestamp < 24 * 60 * 60 * 1000) {
+        return parsed.role;
+      }
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const _router = useRouter();
-  const { user, signOut } = useAuth();
+  const { user, signOut, role: authRole } = useAuth();
+
+  /**
+   * Cached role is read synchronously via a lazy useState initializer so it is
+   * available on the very first render — before AuthProvider has finished
+   * re-validating the session.  This prevents "Tenant domains" and other
+   * superadminOnly nav items from disappearing during the auth hydration window.
+   */
+  const [cachedRole] = useState<UserRole | null>(readCachedRole);
+
+  /**
+   * Prefer the live role from AuthProvider; fall back to cached role during
+   * the brief window where user/authRole are both null (e.g. after navigation).
+   */
+  const sidebarRole = (user?.role ?? authRole ?? cachedRole) as UserRole | undefined;
+  const isSuperadminSidebar =
+    sidebarRole === "superadmin" || String(sidebarRole ?? "").toLowerCase() === "superadmin";
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
@@ -237,9 +287,28 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const searchRef = useRef<HTMLDivElement>(null);
   const [navCounts, setNavCounts] = useState<Record<string, number>>({});
   const [effectiveSectionRoles, setEffectiveSectionRoles] = useState<Record<string, string[]> | null>(null);
+  const [adminScopeMode, setAdminScopeMode] = useState<"tenant" | "global">("tenant");
+  const [adminScopeTenantId, setAdminScopeTenantId] = useState("");
+  const [tenantOptions, setTenantOptions] = useState<Array<{ id: string; name: string; slug?: string | null }>>([]);
+  const adminRole = user?.role as UserRole | undefined;
+  const canUseGlobalSearch = useMemo(() => {
+    if (!adminRole || !ALL_ADMIN_ROLES.includes(adminRole)) return false;
+    if (adminRole === "superadmin") return true;
+    return canAccessSection(
+      adminRole,
+      ADMIN_SECTION_USERS_TRUST,
+      effectiveSectionRoles ?? undefined
+    );
+  }, [adminRole, effectiveSectionRoles]);
 
   // Debounce search
   useEffect(() => {
+    if (!canUseGlobalSearch) {
+      setSearchResults(null);
+      setShowResults(false);
+      setIsSearching(false);
+      return;
+    }
     if (searchQuery.trim().length < 2) {
       setSearchResults(null);
       setShowResults(false);
@@ -263,7 +332,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     }, 300);
 
     return () => clearTimeout(timeoutId);
-  }, [searchQuery]);
+  }, [searchQuery, canUseGlobalSearch]);
 
   // Close results when clicking outside
   useEffect(() => {
@@ -293,7 +362,6 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   // Fetch effective section roles so sidebar only shows sections the user can access (per DB matrix).
   // Refetch on pathname change so sidebar updates after superadmin saves on team-permissions.
-  const adminRole = user?.role as UserRole | undefined;
   useEffect(() => {
     if (!adminRole || !ALL_ADMIN_ROLES.includes(adminRole)) {
       setEffectiveSectionRoles(null);
@@ -313,9 +381,47 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     };
   }, [adminRole, pathname]);
 
+  // Superadmin-only scope controls for settings/content/template customization.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mode = window.localStorage.getItem("admin_scope_mode");
+    const tenant = window.localStorage.getItem("admin_scope_tenant_id");
+    if (mode === "global" || mode === "tenant") setAdminScopeMode(mode);
+    if (tenant) setAdminScopeTenantId(tenant);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("admin_scope_mode", adminScopeMode);
+    if (adminScopeTenantId) {
+      window.localStorage.setItem("admin_scope_tenant_id", adminScopeTenantId);
+    }
+  }, [adminScopeMode, adminScopeTenantId]);
+
+  useEffect(() => {
+    if (!isSuperadminSidebar) return;
+    let cancelled = false;
+    fetcher
+      .get<{ data?: Array<{ id: string; name?: string; slug?: string | null }> }>("/api/admin/tenants")
+      .then((res) => {
+        if (cancelled) return;
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setTenantOptions(
+          rows.map((t) => ({ id: t.id, name: t.name || t.slug || t.id, slug: t.slug ?? null }))
+        );
+        if (!adminScopeTenantId && rows[0]?.id) {
+          setAdminScopeTenantId(rows[0].id);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isSuperadminSidebar, adminScopeTenantId]);
+
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.trim().length >= 2) {
+    if (canUseGlobalSearch && searchQuery.trim().length >= 2) {
       setShowResults(true);
     }
   };
@@ -358,7 +464,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     pathname={pathname}
                     onNavigate={() => setSidebarOpen(false)}
                     navCounts={navCounts}
-                    role={user?.role as UserRole | undefined}
+                    role={sidebarRole}
+                    isSuperadmin={isSuperadminSidebar}
                     effectiveSectionRoles={effectiveSectionRoles}
                   />
                 </SheetContent>
@@ -387,15 +494,18 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
                 type="text"
-                placeholder="Search..."
+                placeholder={canUseGlobalSearch ? "Search..." : "Search unavailable for your role"}
                 value={searchQuery}
+                disabled={!canUseGlobalSearch}
                 onChange={(e) => {
+                  if (!canUseGlobalSearch) return;
                   setSearchQuery(e.target.value);
                   if (e.target.value.trim().length >= 2) {
                     setShowResults(true);
                   }
                 }}
                 onFocus={() => {
+                  if (!canUseGlobalSearch) return;
                   if (searchQuery.trim().length >= 2 && searchResults) {
                     setShowResults(true);
                   }
@@ -506,7 +616,13 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex w-full overflow-x-hidden">
         {/* Desktop Sidebar */}
         <aside className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 lg:z-50 bg-white border-r overflow-x-hidden">
-          <SidebarContent pathname={pathname} navCounts={navCounts} role={user?.role as UserRole | undefined} effectiveSectionRoles={effectiveSectionRoles} />
+          <SidebarContent
+            pathname={pathname}
+            navCounts={navCounts}
+            role={sidebarRole}
+            isSuperadmin={isSuperadminSidebar}
+            effectiveSectionRoles={effectiveSectionRoles}
+          />
         </aside>
 
         {/* Main Content */}
@@ -519,15 +635,22 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                   <Input
                     type="text"
-                    placeholder="Search users, bookings, providers..."
+                    placeholder={
+                      canUseGlobalSearch
+                        ? "Search users, bookings, providers..."
+                        : "Search unavailable for your role"
+                    }
                     value={searchQuery}
+                    disabled={!canUseGlobalSearch}
                     onChange={(e) => {
+                      if (!canUseGlobalSearch) return;
                       setSearchQuery(e.target.value);
                       if (e.target.value.trim().length >= 2) {
                         setShowResults(true);
                       }
                     }}
                     onFocus={() => {
+                      if (!canUseGlobalSearch) return;
                       if (searchQuery.trim().length >= 2 && searchResults) {
                         setShowResults(true);
                       }
@@ -654,6 +777,32 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 </div>
               </form>
               <div className="flex items-center gap-4">
+                {isSuperadminSidebar && (
+                  <div className="flex items-center gap-2 rounded-lg border px-2 py-1 bg-gray-50">
+                    <span className="text-xs text-gray-600">Scope</span>
+                    <select
+                      className="text-xs bg-white border rounded px-2 py-1"
+                      value={adminScopeMode}
+                      onChange={(e) => setAdminScopeMode(e.target.value === "global" ? "global" : "tenant")}
+                    >
+                      <option value="tenant">Tenant override</option>
+                      <option value="global">Global default</option>
+                    </select>
+                    {adminScopeMode === "tenant" && (
+                      <select
+                        className="text-xs bg-white border rounded px-2 py-1 max-w-[220px]"
+                        value={adminScopeTenantId}
+                        onChange={(e) => setAdminScopeTenantId(e.target.value)}
+                      >
+                        {tenantOptions.map((tenant) => (
+                          <option key={tenant.id} value={tenant.id}>
+                            {tenant.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                )}
                 <NotificationsDropdown />
                 <Badge
                   variant={environment === "prod" ? "destructive" : "outline"}
@@ -683,12 +832,15 @@ function SidebarContent({
   onNavigate,
   navCounts = {},
   role,
+  isSuperadmin = false,
   effectiveSectionRoles = null,
 }: {
   pathname: string;
   onNavigate?: () => void;
   navCounts?: Record<string, number>;
   role?: UserRole;
+  /** Prefer explicit flag so superadmin-only nav shows when user.role is briefly stale. */
+  isSuperadmin?: boolean;
   /** When set, sidebar uses DB matrix; otherwise uses code defaults. */
   effectiveSectionRoles?: Record<string, string[]> | null;
 }) {
@@ -714,7 +866,7 @@ function SidebarContent({
             </div>
             <div className="space-y-0.5">
               {group.items
-                .filter((item) => !item.superadminOnly || role === "superadmin")
+                .filter((item) => !item.superadminOnly || isSuperadmin || role === "superadmin")
                 .map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href || pathname.startsWith(item.href + "/");

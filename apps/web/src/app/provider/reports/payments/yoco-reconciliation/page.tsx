@@ -1,4 +1,5 @@
 "use client";
+import { useReportExportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -15,6 +16,7 @@ import { exportToCSV, formatReportDataForExport, type ReportRow } from "../../ut
 import type { YocoReconciliationResponse } from "@/app/api/provider/reports/payments/yoco-reconciliation/route";
 
 export default function YocoReconciliationReport() {
+  const exportCurrency = useReportExportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -61,7 +63,7 @@ export default function YocoReconciliationReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "yoco-reconciliation");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "yoco-reconciliation", exportCurrency);
     exportToCSV(exportData, "yoco-reconciliation-report");
   };
 

@@ -1,6 +1,6 @@
 import "../global.css";
 import "@/lib/i18n";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { Platform, View } from "react-native";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -11,6 +11,7 @@ import { NotificationsProvider } from "@/providers/NotificationsContext";
 import { SelectedAddressProvider } from "@/providers/SelectedAddressProvider";
 import { AnalyticsProvider } from "@/providers/AnalyticsProvider";
 import { ConfigBundleProvider } from "@/providers/ConfigBundleProvider";
+import { NativePermissionsOnboardingProvider } from "@/providers/NativePermissionsOnboardingProvider";
 import { PushNotificationsProvider } from "@/providers/PushNotificationsProvider";
 import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -18,10 +19,20 @@ import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
 import { initSentry, Sentry } from "@/lib/sentry";
 import { initSingular } from "@/lib/singular";
+import { i18n } from "@beautonomi/i18n";
+import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
+import {
+  initializeRuntimeMarketHost,
+  startRuntimeMarketHostLinkListener,
+} from "@/config/public-env";
+import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBootstrap";
 
 if (Platform.OS !== "web") {
   SplashScreen.preventAutoHideAsync();
 }
+
+/** Max time splash can stay visible; then hide so auth/login can render. */
+const MAX_SPLASH_MS = 4000;
 
 try {
   initSentry();
@@ -33,7 +44,15 @@ try {
 function SplashController() {
   const { loading } = useAuth();
   useEffect(() => {
-    if (!loading && Platform.OS !== "web") SplashScreen.hideAsync();
+    if (Platform.OS === "web") return;
+    if (!loading) {
+      SplashScreen.hideAsync();
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      SplashScreen.hideAsync();
+    }, MAX_SPLASH_MS);
+    return () => clearTimeout(timeoutId);
   }, [loading]);
   return null;
 }
@@ -55,6 +74,7 @@ function ThemedApp() {
       <OfflineBar />
       <ForceUpdateGate>
         <PushNotificationsProvider>
+          <ScreenshotDeepLinkBootstrap />
           <Stack
             screenOptions={{
               headerShown: false,
@@ -72,8 +92,19 @@ function ThemedApp() {
         </PushNotificationsProvider>
       </ForceUpdateGate>
       <StatusBar style={isDark ? "light" : "dark"} />
+      <MarketAvailabilityGate />
     </>
   );
+}
+
+function LanguageReactiveRoot({ children }: { children: React.ReactNode }) {
+  const [, setLocale] = useState(() => i18n.language || "en");
+  useEffect(() => {
+    const handler = (lng: string) => setLocale(lng || "en");
+    i18n.on("languageChanged", handler);
+    return () => i18n.off("languageChanged", handler);
+  }, []);
+  return <>{children}</>;
 }
 
 function RootLayout() {
@@ -86,8 +117,11 @@ function RootLayout() {
     <ErrorBoundary>
       <View style={rootStyle}>
         <SafeAreaProvider>
+          <MarketHostBootstrap />
           <ThemeProvider>
+            <LanguageReactiveRoot>
             <AuthProvider>
+              <NativePermissionsOnboardingProvider>
               <NotificationsProvider>
               <SelectedAddressProvider>
                 <AnalyticsProvider>
@@ -97,12 +131,23 @@ function RootLayout() {
                 </AnalyticsProvider>
               </SelectedAddressProvider>
               </NotificationsProvider>
+              </NativePermissionsOnboardingProvider>
             </AuthProvider>
+            </LanguageReactiveRoot>
           </ThemeProvider>
         </SafeAreaProvider>
       </View>
     </ErrorBoundary>
   );
+}
+
+function MarketHostBootstrap() {
+  useEffect(() => {
+    void initializeRuntimeMarketHost();
+    const unsubscribe = startRuntimeMarketHostLinkListener();
+    return unsubscribe;
+  }, []);
+  return null;
 }
 
 export default Sentry.wrap(RootLayout);

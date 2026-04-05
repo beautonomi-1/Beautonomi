@@ -9,11 +9,15 @@
 import * as amplitude from "@amplitude/analytics-react-native";
 import { add as amplitudeAdd } from "@amplitude/analytics-react-native";
 import { getPlugin, handleURL as engagementHandleURL } from "@amplitude/plugin-engagement-react-native";
+import { SessionReplayPlugin } from "@amplitude/plugin-session-replay-react-native";
 import type { AmplitudeConfig } from "./types";
 
 let isInitialized = false;
 let currentConfig: AmplitudeConfig | null = null;
 let engagementEnabled = false;
+/** Last session replay choice; mismatch → reset + re-init (e.g. sign-in). */
+let lastEnableSessionReplay: boolean | undefined = undefined;
+let lastPortal: "client" | "provider" | null = null;
 
 export interface AnalyticsClient {
   track: (eventType: string, eventProperties?: Record<string, unknown>) => void;
@@ -22,6 +26,14 @@ export interface AnalyticsClient {
   reset: () => void;
 }
 
+export type InitAnalyticsOptions = {
+  /**
+   * When false, Session Replay is not loaded (anonymous / pre-consent).
+   * When true, replay uses admin-configured sampling_rate (0–1, default 0).
+   */
+  enableSessionReplay?: boolean;
+};
+
 /**
  * Initialize Amplitude from remote config.
  * When guides_enabled or surveys_enabled, adds the Engagement plugin (Guides & Surveys).
@@ -29,19 +41,56 @@ export interface AnalyticsClient {
  */
 export async function initAnalytics(
   config: AmplitudeConfig,
-  portal: "client" | "provider"
+  portal: "client" | "provider",
+  options?: InitAnalyticsOptions
 ): Promise<AnalyticsClient | null> {
+  const enableSessionReplay = options?.enableSessionReplay ?? true;
   const enabled =
     portal === "client" ? config.enabled_client_portal : config.enabled_provider_portal;
   if (!config.api_key_public || !enabled) {
     return null;
   }
 
+  if (
+    isInitialized &&
+    lastEnableSessionReplay === enableSessionReplay &&
+    lastPortal === portal
+  ) {
+    return createClient();
+  }
+
+  if (isInitialized) {
+    try {
+      amplitude.reset();
+    } catch {
+      /* ignore */
+    }
+    isInitialized = false;
+    engagementEnabled = false;
+    currentConfig = null;
+    lastEnableSessionReplay = undefined;
+    lastPortal = null;
+  }
+
   try {
     amplitude.init(config.api_key_public);
     isInitialized = true;
     currentConfig = config;
+    lastEnableSessionReplay = enableSessionReplay;
+    lastPortal = portal;
     engagementEnabled = Boolean(config.guides_enabled || config.surveys_enabled);
+
+    if (enableSessionReplay) {
+      const sampleRate =
+        config.sampling_rate != null && config.sampling_rate >= 0 && config.sampling_rate <= 1
+          ? config.sampling_rate
+          : 0;
+      try {
+        await amplitudeAdd(new SessionReplayPlugin({ sampleRate })).promise;
+      } catch (replayErr) {
+        console.warn("[Amplitude] Session Replay plugin add failed:", replayErr);
+      }
+    }
 
     if (engagementEnabled) {
       try {
@@ -55,6 +104,9 @@ export async function initAnalytics(
     return createClient();
   } catch (err) {
     console.warn("[Amplitude] Init failed:", err);
+    isInitialized = false;
+    lastEnableSessionReplay = undefined;
+    lastPortal = null;
     return null;
   }
 }

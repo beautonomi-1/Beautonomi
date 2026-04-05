@@ -14,6 +14,9 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
+import { getTenantLocaleTag } from "@/lib/locale";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 
 const PRIMARY = Colors.primary;
 const RETURN_WINDOW_DAYS = 14;
@@ -36,7 +39,9 @@ const STATUS_TIMELINE = [
 
 function formatDate(date: string | null) {
   if (!date) return null;
-  return new Date(date).toLocaleString("en-ZA", {
+  const parsed = new Date(date);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString(getTenantLocaleTag(), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -93,6 +98,9 @@ export default function ProductOrderDetailScreen() {
 
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
   const currentIdx = getTimelineIndex(order.status);
+  const fb = getTenantDefaultCurrency();
+  const cur = order.currency;
+  const fmt = (amount: number) => formatMoney(amount, cur ?? fb);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#F9FAFB" }} edges={["top"]}>
@@ -261,11 +269,11 @@ export default function ProductOrderDetailScreen() {
                   {item.product_name}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
-                  {item.quantity} x R{Number(item.unit_price).toFixed(2)}
+                  {item.quantity} x {fmt(Number(item.unit_price))}
                 </Text>
               </View>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", alignSelf: "center" }}>
-                R{Number(item.total_price).toFixed(2)}
+                {fmt(Number(item.total_price))}
               </Text>
             </View>
           ))}
@@ -316,18 +324,18 @@ export default function ProductOrderDetailScreen() {
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-            <Text style={{ fontSize: 14, color: "#111827" }}>R{Number(order.subtotal).toFixed(2)}</Text>
+            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal))}</Text>
           </View>
           {Number(order.delivery_fee) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>R{Number(order.delivery_fee).toFixed(2)}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee))}</Text>
             </View>
           )}
           {Number(order.tax_amount) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>R{Number(order.tax_amount).toFixed(2)}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount))}</Text>
             </View>
           )}
           <View
@@ -342,7 +350,7 @@ export default function ProductOrderDetailScreen() {
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
-              R{Number(order.total_amount).toFixed(2)}
+              {fmt(Number(order.total_amount))}
             </Text>
           </View>
         </View>

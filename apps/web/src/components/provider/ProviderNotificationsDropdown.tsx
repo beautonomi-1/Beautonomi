@@ -17,6 +17,9 @@ import {
   Settings,
   FileText,
   Zap,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import {
   Popover,
@@ -41,6 +44,8 @@ interface Notification {
   priority: 'low' | 'medium' | 'high';
   read: boolean;
   metadata?: Record<string, any>;
+  /** JSONB from API (subscription_limit alerts, etc.) */
+  data?: Record<string, any>;
 }
 
 interface NotificationResponse {
@@ -48,7 +53,10 @@ interface NotificationResponse {
   total_unread: number;
 }
 
-const getNotificationIcon = (type: string) => {
+const getNotificationIcon = (type: string, meta?: Record<string, any>) => {
+  if (meta?.subscription_limit) {
+    return AlertTriangle;
+  }
   switch (type) {
     case 'appointment_reminder':
     case 'appointment_cancelled':
@@ -113,11 +121,24 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+function deriveNotificationUrl(notification: Notification): string | undefined {
+  if (notification.link) return notification.link;
+  const d = { ...notification.data, ...notification.metadata };
+  if (d?.booking_id) return `/provider/bookings/${d.booking_id}`;
+  if (d?.conversation_id) return `/provider/messaging?id=${d.conversation_id}`;
+  if (d?.appointment_id) return `/provider/calendar`;
+  if (d?.client_id) return `/provider/clients/${d.client_id}`;
+  if (d?.staff_id) return `/provider/team/members`;
+  if (d?.order_id) return `/provider/orders/${d.order_id}`;
+  return undefined;
+}
+
 export function ProviderNotificationsDropdown() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [totalUnread, setTotalUnread] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
   const { user } = useAuth();
 
@@ -131,11 +152,12 @@ export function ProviderNotificationsDropdown() {
       setTotalUnread(0);
     }
 
-    // Set up real-time subscription for notifications
+    // Realtime + React Strict Mode (dev): first mount's channel is torn down while the WebSocket is
+    // still connecting, which spams the console. Poll in dev; use realtime in production.
     const supabase = getSupabaseClient();
     let subscription: any = null;
 
-    if (user?.id) {
+    if (user?.id && process.env.NODE_ENV === "production") {
       // Subscribe to new notifications for this user
       subscription = supabase
         .channel(`notifications:${user.id}`)
@@ -165,6 +187,7 @@ export function ProviderNotificationsDropdown() {
                 priority: (newNotification.priority || 'low') as 'low' | 'medium' | 'high',
                 read: newNotification.is_read || false,
                 metadata: newNotification.metadata,
+                data: newNotification.data,
               }, ...prev];
             });
             
@@ -209,8 +232,9 @@ export function ProviderNotificationsDropdown() {
         .subscribe();
     }
 
-    // Fallback: Refresh every 5 minutes when authenticated
-    const interval = user?.id ? setInterval(loadNotifications, 300000) : undefined;
+    const pollMs =
+      process.env.NODE_ENV === "development" ? 60_000 : 300_000;
+    const interval = user?.id ? setInterval(loadNotifications, pollMs) : undefined;
 
     return () => {
       if (subscription) {
@@ -250,7 +274,6 @@ export function ProviderNotificationsDropdown() {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
-    // Mark as read
     if (!notification.read) {
       try {
         await fetcher.post(`/api/provider/notifications/${notification.id}/read`);
@@ -265,10 +288,29 @@ export function ProviderNotificationsDropdown() {
       }
     }
 
-    // Navigate if link exists
-    if (notification.link) {
+    const url = deriveNotificationUrl(notification);
+    if (url) {
       setOpen(false);
-      router.push(notification.link);
+      router.push(url);
+    } else {
+      setExpandedId((prev) => (prev === notification.id ? null : notification.id));
+    }
+  };
+
+  const handleDeleteNotification = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    try {
+      await fetcher.delete(`/api/provider/notifications/${id}`);
+      setNotifications((prev) => {
+        const removed = prev.find((n) => n.id === id);
+        if (removed && !removed.read) {
+          setTotalUnread((u) => Math.max(0, u - 1));
+        }
+        return prev.filter((n) => n.id !== id);
+      });
+    } catch (error) {
+      console.error('Failed to delete notification:', error);
+      toast.error('Failed to delete notification');
     }
   };
 
@@ -354,46 +396,80 @@ export function ProviderNotificationsDropdown() {
           ) : (
             <div className="divide-y">
               {notifications.map((notification) => {
-                const Icon = getNotificationIcon(notification.type);
+                const Icon = getNotificationIcon(
+                  notification.type,
+                  notification.metadata || notification.data
+                );
+                const isExpanded = expandedId === notification.id;
+                const derivedUrl = deriveNotificationUrl(notification);
                 return (
-                  <button
-                    key={notification.id}
-                    onClick={() => handleNotificationClick(notification)}
-                    className={cn(
-                      "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors",
-                      !notification.read && "bg-blue-50/50"
-                    )}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={cn(
-                          "p-2 rounded-lg border flex-shrink-0",
-                          getPriorityColor(notification.priority)
-                        )}
-                      >
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between gap-2 mb-1">
-                          <p className={cn(
-                            "font-medium text-sm text-gray-900",
-                            !notification.read && "font-semibold"
-                          )}>
-                            {notification.title}
-                          </p>
-                          {!notification.read && (
-                            <span className="w-2 h-2 bg-[#FF0077] rounded-full flex-shrink-0 mt-1.5" />
+                  <div key={notification.id}>
+                    <button
+                      onClick={() => handleNotificationClick(notification)}
+                      className={cn(
+                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors",
+                        !notification.read && "bg-blue-50/50"
+                      )}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div
+                          className={cn(
+                            "p-2 rounded-lg border flex-shrink-0",
+                            getPriorityColor(notification.priority)
                           )}
+                        >
+                          <Icon className="w-4 h-4" />
                         </div>
-                        <p className="text-sm text-gray-600 line-clamp-2 mb-1">
-                          {notification.message}
-                        </p>
-                        <span className="text-xs text-gray-500">
-                          {formatTimeAgo(notification.timestamp)}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 mb-1">
+                            <p className={cn(
+                              "font-medium text-sm text-gray-900",
+                              !notification.read && "font-semibold"
+                            )}>
+                              {notification.title}
+                            </p>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {!notification.read && (
+                                <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5" />
+                              )}
+                              <button
+                                onClick={(e) => handleDeleteNotification(e, notification.id)}
+                                className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
+                                title="Delete notification"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          <p className={cn("text-sm text-gray-600 mb-1", !isExpanded && "line-clamp-2")}>
+                            {notification.message}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">
+                              {formatTimeAgo(notification.timestamp)}
+                            </span>
+                            {!derivedUrl && (
+                              <span className="text-xs text-gray-400">
+                                {isExpanded ? <ChevronUp className="w-3 h-3 inline" /> : <ChevronDown className="w-3 h-3 inline" />}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </button>
+                    </button>
+                    {isExpanded && !derivedUrl && (
+                      <div className="px-4 pb-3 pt-0 ml-12 text-xs text-gray-500 space-y-1 border-b">
+                        <p className="text-gray-600">{notification.message}</p>
+                        {notification.metadata && Object.keys(notification.metadata).length > 0 && (
+                          <div className="text-gray-400 space-y-0.5">
+                            {Object.entries(notification.metadata).map(([k, v]) => (
+                              <p key={k}><span className="font-medium">{k}:</span> {String(v)}</p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

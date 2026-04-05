@@ -59,6 +59,20 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
     if (q.duration_minutes) routeParams.duration_minutes = q.duration_minutes;
     return { pathname: "/(app)/book", params: routeParams };
   }
+  if (path.startsWith("book/l/") || screen === "book-l" || screen === "express-booking") {
+    const linkSlug = q.link_slug ?? q.linkSlug ?? path.replace(/^book\/l\//i, "").split("?")[0] ?? "";
+    if (!linkSlug) return null;
+    const routeParams: Record<string, string> = { linkSlug };
+    if (q.embed === "1") routeParams.embed = "1";
+    return { pathname: "/(app)/book/l/[linkSlug]", params: routeParams };
+  }
+  if (path === "book/continue" || screen === "book-continue") {
+    const holdId = q.hold_id ?? q.holdId ?? "";
+    if (!holdId) return null;
+    const routeParams: Record<string, string> = { hold_id: holdId };
+    if (q.reschedule_booking_id) routeParams.reschedule_booking_id = q.reschedule_booking_id;
+    return { pathname: "/(app)/book/continue", params: routeParams };
+  }
   if (screen === "notifications" || path === "notifications") {
     return { pathname: "/(app)/notifications" };
   }
@@ -125,9 +139,25 @@ function onSingularLink(params: SingularLinkParams) {
   }
 }
 
+async function requestIosAttBeforeAttribution(): Promise<void> {
+  if (Platform.OS !== "ios") return;
+  try {
+    const { getTrackingPermissionsAsync, requestTrackingPermissionsAsync } = await import(
+      "expo-tracking-transparency"
+    );
+    const { status } = await getTrackingPermissionsAsync();
+    if (status === "undetermined") {
+      await requestTrackingPermissionsAsync();
+    }
+  } catch {
+    // Expo Go / missing native module — Singular still initializes without IDFA until next launch
+  }
+}
+
 /**
  * Initialize Singular. Call once at app startup (root layout).
  * No-op on web or when key/secret missing.
+ * On iOS, requests App Tracking Transparency before init when status is undetermined (store requirement with Singular).
  */
 export function initSingular() {
   if (Platform.OS === "web") return;
@@ -136,12 +166,15 @@ export function initSingular() {
   const secret = getSingularSecret();
   if (!apikey || !secret) return;
 
-  try {
-    const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
-    Singular.init(config);
-  } catch (e) {
-    if (__DEV__) {
-      console.warn("[Singular] Init failed:", e);
+  void (async () => {
+    await requestIosAttBeforeAttribution();
+    try {
+      const config = new SingularConfig(apikey, secret).withSingularLink(onSingularLink);
+      Singular.init(config);
+    } catch (e) {
+      if (__DEV__) {
+        console.warn("[Singular] Init failed:", e);
+      }
     }
-  }
+  })();
 }

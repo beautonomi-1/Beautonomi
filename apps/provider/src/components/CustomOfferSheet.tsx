@@ -14,6 +14,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useApi } from "@/hooks/useApi";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 export interface CustomOfferSheetProps {
   visible: boolean;
@@ -70,6 +71,7 @@ export function CustomOfferSheet({
   const [addressCountry, setAddressCountry] = useState("");
   const [travelFee, setTravelFee] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const tenantCurrency = getTenantDefaultCurrency();
 
   const resetForm = useCallback(() => {
     setServiceName("");
@@ -123,7 +125,7 @@ export function CustomOfferSheet({
         customer_id: customerId,
         description: description.trim(),
         price: Number(price),
-        currency: "ZAR",
+        currency: tenantCurrency,
         duration_minutes: Number(duration),
         expiration_at: expDate.toISOString(),
         notes: notes.trim() || null,
@@ -212,7 +214,7 @@ export function CustomOfferSheet({
         </Text>
 
         <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
-          Price (ZAR) <Text style={twStyle("text-red-500")}>*</Text>
+          Price ({tenantCurrency}) <Text style={twStyle("text-red-500")}>*</Text>
         </Text>
         <TextInput
           style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -350,7 +352,7 @@ export function CustomOfferSheet({
                 placeholderTextColor="#9ca3af"
               />
             </View>
-            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (optional, ZAR)</Text>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Travel fee (optional, {tenantCurrency})</Text>
             <TextInput
               style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
               value={travelFee}

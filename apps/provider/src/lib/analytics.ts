@@ -10,7 +10,7 @@ let amplitudeInstance: {
   identify?: (userId: string, props?: Record<string, unknown>) => void;
 } | null = null;
 
-/** Initialize with the Amplitude instance from AnalyticsProvider */
+/** Initialize with the Amplitude instance from AnalyticsProvider (null to clear). */
 export function setAnalyticsInstance(instance: typeof amplitudeInstance) {
   amplitudeInstance = instance;
 }
@@ -47,6 +47,11 @@ export function identifyProvider(
     total_revenue?: number;
     country?: string;
     city?: string;
+    preferred_language?: string | null;
+    signup_source?: string | null;
+    portal?: string;
+    active_tenant_id?: string;
+    booking_tenant_id?: string;
   }
 ) {
   try {
@@ -54,6 +59,7 @@ export function identifyProvider(
       ...properties,
       platform: Platform.OS,
       device_type: Platform.OS,
+      portal: properties.portal ?? "provider",
     });
   } catch {
     // Silently fail
@@ -253,4 +259,68 @@ export function trackSupportTicketReply(ticketId: string) {
 
 export function trackScreenView(screenName: string) {
   track("page_view", { screen_name: screenName, platform: Platform.OS, portal: "provider" });
+}
+
+export function trackMarketAutoSwitch(input: {
+  fromHost: string;
+  toHost: string;
+  source: string;
+  confidence: string;
+  countryCode?: string;
+}) {
+  track("market_auto_switch_attempted", {
+    from_host: input.fromHost,
+    to_host: input.toHost,
+    source: input.source,
+    confidence: input.confidence,
+    country_code: input.countryCode,
+    portal: "provider",
+  });
+}
+
+export function trackMarketAutoSwitchSuppressed(input: {
+  fromHost: string;
+  toHost: string;
+  reason: "manual_override";
+  source: string;
+  confidence: string;
+  countryCode?: string;
+}) {
+  track("market_auto_switch_suppressed", {
+    from_host: input.fromHost,
+    to_host: input.toHost,
+    reason: input.reason,
+    source: input.source,
+    confidence: input.confidence,
+    country_code: input.countryCode,
+    portal: "provider",
+  });
+}
+
+export function trackMarketManualSwitch(input: {
+  fromHost: string;
+  toHost: string;
+  reason: "unsupported" | "restricted" | "manual";
+  countryCode?: string;
+}) {
+  track("market_manual_switch", {
+    from_host: input.fromHost,
+    to_host: input.toHost,
+    reason: input.reason,
+    country_code: input.countryCode,
+    portal: "provider",
+  });
+}
+
+export function trackMarketSwitchDeclined(input: {
+  host: string;
+  reason: "unsupported" | "restricted";
+  countryCode?: string;
+}) {
+  track("market_switch_declined", {
+    host: input.host,
+    reason: input.reason,
+    country_code: input.countryCode,
+    portal: "provider",
+  });
 }

@@ -4,13 +4,16 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { checkYocoFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 import { convertToCents, validateYocoAmount, YOCO_ENDPOINTS } from "@/lib/payments/yoco";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createPaymentSchema = z
   .object({
     device_id: z.string().min(1, "Device ID is required"),
     amount: z.number().min(0.01).optional(),
     amount_cents: z.number().int().min(1).optional(),
-    currency: z.string().optional().default("ZAR"),
+    currency: z.string().optional(),
     appointment_id: z.string().uuid().optional().nullable(),
     booking_id: z.string().uuid().optional().nullable(),
     sale_id: z.string().uuid().optional().nullable(),
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     // Get provider ID
     const { data: provider } = await supabase
       .from("providers")
-      .select("id")
+      .select("id, tenant_id")
       .or(`user_id.eq.${auth.user.id},id.in.(select provider_id from provider_staff where user_id.eq.${auth.user.id})`)
       .single();
 
@@ -85,6 +88,12 @@ export async function POST(request: Request) {
         { status: 404 }
       );
     }
+
+    const providerRow = provider as { id: string; tenant_id?: string | null };
+    const effectiveTenantId =
+      providerRow.tenant_id ?? (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Subscription gate: Yoco is a paid feature (app shows upgrade message for SUBSCRIPTION_REQUIRED)
     const yocoAccess = await checkYocoFeatureAccess(provider.id);
@@ -178,7 +187,7 @@ export async function POST(request: Request) {
 
     // Convert amount to cents
     const amountInCents = convertToCents(amountInRands);
-    const currency = validationResult.data.currency || "ZAR";
+    const currency = validationResult.data.currency || lastResortCurrency;
 
     // Reuse recent pending payment for same booking or sale to avoid double-send when app timed out after first create
     const PENDING_WINDOW_MINUTES = 15;

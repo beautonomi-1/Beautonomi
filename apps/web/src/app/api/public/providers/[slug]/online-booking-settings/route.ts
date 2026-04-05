@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/providers/[slug]/online-booking-settings
@@ -10,6 +11,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     let { slug } = await params;
     try {
@@ -23,6 +28,7 @@ export async function GET(
       .select("id, online_booking_enabled, waitlist_online_enabled")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (provErr || !provider) {

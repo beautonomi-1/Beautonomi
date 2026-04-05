@@ -14,6 +14,7 @@ import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { formatPercentage } from "@/lib/format";
@@ -68,7 +69,7 @@ export default function BookingsReport() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
   const bookingsReportUrl = `/api/provider/reports/bookings?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading } = useApi<BookingsData>(bookingsReportUrl);
+  const { data, loading, error: dataError, refresh } = useApi<BookingsData>(bookingsReportUrl);
 
   const handleExport = useCallback(async () => {
     if (!data) return;
@@ -102,7 +103,8 @@ export default function BookingsReport() {
       </ScrollView>
 
       {loading && !data && <ActivityIndicator style={twStyle("my-8")} color="#3b82f6" />}
-      {!loading && !data && <EmptyState icon="calendar-outline" title="No bookings data" description="Booking analytics will appear here" />}
+      {!loading && dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
+      {!loading && !data && !dataError && <EmptyState icon="calendar-outline" title="No bookings data" description="Booking analytics will appear here" />}
 
       {data && (
         <View>

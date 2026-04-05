@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { YocoDevice, YocoPayment } from "@/lib/provider-portal/types";
@@ -19,11 +21,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { CreditCard, Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Money } from "./Money";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface YocoPaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  amount: number; // Amount in Rands (will be converted to cents)
+  amount: number; // Major currency units (converted to cents server-side)
   appointmentId?: string;
   saleId?: string;
   onSuccess?: (payment: YocoPayment) => void;
@@ -37,6 +40,8 @@ export function YocoPaymentDialog({
   saleId,
   onSuccess,
 }: YocoPaymentDialogProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [devices, setDevices] = useState<YocoDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string>("");
   const [customAmount, setCustomAmount] = useState<string>(amount.toString());
@@ -84,11 +89,11 @@ export function YocoPaymentDialog({
       setIsProcessing(true);
       setPaymentResult(null);
 
-      // API expects amount in Rands (will convert to cents server-side)
+      // API expects amount in major units (will convert to cents server-side)
       let payment = await providerApi.createYocoPayment({
         device_id: selectedDeviceId,
-        amount: amount, // Amount in Rands
-        currency: "ZAR",
+        amount: amount,
+        currency: tenantCurrency,
         appointment_id: appointmentId,
         sale_id: saleId,
         metadata: {
@@ -193,24 +198,24 @@ export function YocoPaymentDialog({
           <div className="space-y-4 py-4">
             <div>
               <Label htmlFor="device">Payment Device</Label>
-              <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
-                <SelectTrigger id="device" className="mt-1">
-                  <SelectValue placeholder="Select a device" />
-                </SelectTrigger>
-                <SelectContent>
-                  {devices.length === 0 ? (
-                    <SelectItem value="" disabled>
-                      No active devices available
-                    </SelectItem>
-                  ) : (
-                    devices.map((device) => (
+              {devices.length === 0 ? (
+                <p id="device" className="mt-1 text-sm text-gray-500 rounded-md border border-input bg-background px-3 py-2">
+                  No active devices available
+                </p>
+              ) : (
+                <Select value={selectedDeviceId} onValueChange={setSelectedDeviceId}>
+                  <SelectTrigger id="device" className="mt-1">
+                    <SelectValue placeholder="Select a device" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {devices.map((device) => (
                       <SelectItem key={device.id} value={device.id}>
                         {device.name} {device.location_name && `(${device.location_name})`}
                       </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {devices.length === 0 && (
                 <p className="text-xs text-gray-500 mt-1">
                   <a
@@ -225,7 +230,7 @@ export function YocoPaymentDialog({
             </div>
 
             <div>
-              <Label htmlFor="amount">Amount (ZAR)</Label>
+              <Label htmlFor="amount">Amount ({tenantCurrency})</Label>
               <Input
                 id="amount"
                 type="number"

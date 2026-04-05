@@ -19,6 +19,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { twStyle } from "@/lib/twStyle";
 
 interface ServiceCategory {
@@ -153,14 +154,13 @@ export default function ServiceFormScreen() {
 
   useEffect(() => {
     if (service) {
-      const opts = service.pricing_options?.[0];
       setForm({
         name: service.title || service.name || "",
         categoryId: service.provider_category_id ?? "",
         serviceType: service.service_type ?? "basic",
         durationMinutes: String(service.duration_minutes ?? 60),
         price: String(service.price ?? ""),
-        pricingName: service.pricing_name ?? opts?.pricing_name ?? "",
+        pricingName: service.pricing_name ?? "",
         description: service.description ?? "",
         aftercareDescription: service.aftercare_description ?? "",
         availableFor: service.service_available_for ?? "everyone",
@@ -486,7 +486,7 @@ export default function ServiceFormScreen() {
                   keyboardType="decimal-pad"
                 />
                 <FormField
-                  label="At-home price adjustment (R)"
+                  label={`At-home price adjustment (${getTenantDefaultCurrency()})`}
                   value={form.atHomePriceAdjustment}
                   onChangeText={(t) => setForm((p) => ({ ...p, atHomePriceAdjustment: t }))}
                   placeholder="0"

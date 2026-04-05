@@ -2,6 +2,24 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAuthInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { addMonths, addWeeks, format, parseISO } from "date-fns";
+import { nextUpcomingOccurrenceYmd } from "@/lib/recurring/next-due-date";
+
+function customerFrequencyToRrule(frequency: "weekly" | "biweekly" | "monthly"): string {
+  if (frequency === "weekly") return "FREQ=WEEKLY;INTERVAL=1";
+  if (frequency === "biweekly") return "FREQ=WEEKLY;INTERVAL=2";
+  return "FREQ=MONTHLY;INTERVAL=1";
+}
+
+function preferredTimeToHhMmSs(preferred: string): string {
+  const t = preferred.trim();
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  return "10:00:00";
+}
 
 const recurringBookingSchema = z.object({
   provider_id: z.string().uuid(),
@@ -41,19 +59,25 @@ export async function POST(request: NextRequest) {
 
     const validated = recurringBookingSchema.parse(body);
 
-    // Calculate end date if not provided
-    let endDate: Date | null = null;
+    // End date: explicit, or last occurrence date from count (calendar-aware months/weeks).
+    let endDateYmd: string | null = null;
     if (validated.end_date) {
-      endDate = new Date(validated.end_date);
-    } else if (validated.number_of_occurrences) {
-      const startDate = new Date(validated.start_date);
-      const daysToAdd = validated.frequency === "weekly" 
-        ? validated.number_of_occurrences * 7
-        : validated.frequency === "biweekly"
-        ? validated.number_of_occurrences * 14
-        : validated.number_of_occurrences * 30;
-      endDate = new Date(startDate.getTime() + daysToAdd * 24 * 60 * 60 * 1000);
+      endDateYmd = validated.end_date;
+    } else if (validated.number_of_occurrences && validated.number_of_occurrences > 0) {
+      const start = parseISO(validated.start_date);
+      const n = validated.number_of_occurrences;
+      const lastOcc =
+        validated.frequency === "weekly"
+          ? addWeeks(start, n - 1)
+          : validated.frequency === "biweekly"
+            ? addWeeks(start, 2 * (n - 1))
+            : addMonths(start, n - 1);
+      endDateYmd = format(lastOcc, "yyyy-MM-dd");
     }
+
+    const first = validated.services[0]!;
+    const startTime = preferredTimeToHhMmSs(validated.preferred_time);
+    const recurrenceRule = customerFrequencyToRrule(validated.frequency);
 
     // Create recurring appointment
     const { data: recurring, error } = await supabase
@@ -61,14 +85,19 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: validated.provider_id,
         customer_id: user.id,
+        service_id: first.offering_id,
+        staff_id: first.staff_id ?? null,
+        recurrence_rule: recurrenceRule,
+        start_time: startTime,
         frequency: validated.frequency,
         start_date: validated.start_date,
-        end_date: endDate?.toISOString().split("T")[0] || null,
+        end_date: endDateYmd,
         preferred_time: validated.preferred_time,
         location_type: validated.location_type,
         location_id: validated.location_id,
         payment_method: validated.payment_method,
         is_active: validated.is_active,
+        last_booking_date: null,
         metadata: {
           services: validated.services,
           address: validated.address,
@@ -87,7 +116,8 @@ export async function POST(request: NextRequest) {
 
     return successResponse({
       recurring,
-      message: "Recurring booking created successfully",
+      message:
+        "Recurring schedule saved. The first appointment is created by the daily job on the start date (payment is still per visit unless you pay in the app).",
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -102,29 +132,6 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Compute next occurrence date from start/last_booking + frequency.
- */
-function computeNextDate(
-  startDateStr: string | null,
-  lastBookingDateStr: string | null,
-  frequency: string | null
-): string | null {
-  const base = lastBookingDateStr || startDateStr;
-  if (!base || !frequency) return startDateStr || null;
-  const baseDate = new Date(base);
-  const days =
-    frequency === "weekly"
-      ? 7
-      : frequency === "biweekly"
-        ? 14
-        : frequency === "monthly"
-          ? 30
-          : 7;
-  const next = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
-  return next.toISOString().split("T")[0];
-}
-
-/**
  * GET /api/recurring-bookings
  *
  * Get user's recurring bookings. Enriched with service_name, provider_name,
@@ -134,6 +141,9 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireAuthInApi(request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: rows, error } = await supabase
       .from("recurring_appointments")
@@ -183,12 +193,27 @@ export async function GET(request: NextRequest) {
       const meta = row.metadata as { services?: { offering_id?: string }[] } | null;
       const firstOfferingId = Array.isArray(meta?.services) && meta.services[0]?.offering_id ? meta.services[0].offering_id : null;
       const serviceName = firstOfferingId ? offeringsMap.get(firstOfferingId) ?? "Recurring appointment" : "Recurring appointment";
-      const frequency = row.frequency ?? "weekly";
       const startDate = row.start_date ?? null;
-      const lastBooking = row.last_booking_date ?? null;
+      const lastBooking =
+        typeof row.last_booking_date === "string"
+          ? row.last_booking_date
+          : row.last_booking_date
+            ? format(new Date(row.last_booking_date), "yyyy-MM-dd")
+            : null;
       const endDate = row.end_date ?? null;
       const isActive = row.is_active !== false;
-      const nextDate = computeNextDate(startDate, typeof lastBooking === "string" ? lastBooking : lastBooking ? new Date(lastBooking).toISOString().split("T")[0] : null, frequency);
+      const nextDate =
+        startDate &&
+        nextUpcomingOccurrenceYmd(
+          {
+            start_date: startDate,
+            last_booking_date: lastBooking,
+            frequency: row.frequency,
+            recurrence_rule: row.recurrence_rule,
+            end_date: endDate,
+          },
+          todayStr
+        );
       let status: "active" | "paused" | "cancelled" = "active";
       if (!isActive) status = endDate && endDate < todayStr ? "cancelled" : "paused";
       else if (endDate && endDate < todayStr) status = "cancelled";
@@ -200,7 +225,7 @@ export async function GET(request: NextRequest) {
         next_date: nextDate ?? startDate,
         status,
         price: row.price ?? null,
-        currency: row.currency ?? "ZAR",
+        currency: row.currency ?? lastResortCurrency,
       };
     });
 

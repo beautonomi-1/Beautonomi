@@ -1,7 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import React, { useState, useEffect, useCallback } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +30,19 @@ import UserDetailModal from "./components/UserDetailModal";
 import Link from "next/link";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import { Checkbox } from "@/components/ui/checkbox";
+import { VirtualHtmlTable, VirtualList } from "@/components/ui/virtual-list";
+
+const SIGNUP_SOURCE_LABELS: Record<string, string> = {
+  google: "Google",
+  social_instagram: "Instagram",
+  social_facebook: "Facebook",
+  social_twitter: "Twitter/X",
+  friend_or_family: "Friend or family",
+  blog_or_article: "Blog or article",
+  app_store: "App Store",
+  provider_referral: "Provider referral",
+  other: "Other",
+};
 
 interface UserData {
   id: string;
@@ -42,11 +54,15 @@ interface UserData {
   created_at: string;
   deactivated_at?: string | null;
   deactivation_reason?: string | null;
+  signup_source?: string | null;
+  preferred_language?: string | null;
   stats?: {
     booking_count?: number;
     provider_count?: number;
   };
 }
+
+const MOBILE_CARD_HEIGHT = 220;
 
 export default function AdminUsers() {
   const [users, setUsers] = useState<UserData[]>([]);
@@ -55,6 +71,7 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [signupSourceFilter, setSignupSourceFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
@@ -74,7 +91,7 @@ export default function AdminUsers() {
 
   useEffect(() => {
     loadUsers();
-  }, [page, roleFilter, debouncedSearchQuery]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/pagination change
+  }, [page, roleFilter, signupSourceFilter, debouncedSearchQuery]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/pagination change
 
   const loadUsers = async () => {
     try {
@@ -84,6 +101,7 @@ export default function AdminUsers() {
       const params = new URLSearchParams();
       if (debouncedSearchQuery) params.set("search", debouncedSearchQuery);
       if (roleFilter !== "all") params.set("role", roleFilter);
+      if (signupSourceFilter !== "all") params.set("signup_source", signupSourceFilter);
       params.set("page", page.toString());
       params.set("limit", "50");
 
@@ -315,6 +333,182 @@ export default function AdminUsers() {
     );
   });
 
+  const renderDesktopRow = useCallback(
+    (user: UserData) => (
+      <tr
+        key={user.id}
+        className="cursor-pointer transition-colors hover:bg-white/60 border-b border-white/40"
+        style={{ height: 64 }}
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest('input[type="checkbox"]')) return;
+          handleUserClick(user);
+        }}
+      >
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+          <Checkbox
+            checked={selectedUserIds.has(user.id)}
+            onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
+          />
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+          <div className="flex items-center">
+            <div className="flex-shrink-0 h-10 w-10">
+              {user.avatar_url ? (
+                <img className="h-10 w-10 rounded-full" src={user.avatar_url} alt={user.full_name || user.email} />
+              ) : (
+                <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
+                  <User className="w-5 h-5 text-gray-500" />
+                </div>
+              )}
+            </div>
+            <div className="ml-4">
+              <div className="text-sm font-medium text-gray-900">{user.full_name || "No name"}</div>
+              <div className="text-sm text-gray-500">{user.email}</div>
+            </div>
+          </div>
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+          <div className="text-sm text-gray-900">{user.phone || "No phone"}</div>
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
+          <div className="flex flex-col gap-1">
+            <Badge className={getRoleBadgeColor(user.role)}>{user.role}</Badge>
+            {user.deactivated_at && (
+              <Badge className="bg-red-100 text-red-800 text-xs">
+                <Ban className="w-3 h-3 mr-1" />Suspended
+              </Badge>
+            )}
+          </div>
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {user.signup_source ? SIGNUP_SOURCE_LABELS[user.signup_source] ?? user.signup_source : "—"}
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+          {user.stats?.booking_count !== undefined && <div>Bookings: {user.stats.booking_count}</div>}
+          {user.stats?.provider_count !== undefined && <div>Providers: {user.stats.provider_count}</div>}
+        </td>
+        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Edit className="w-4 h-4 mr-2" />Actions<ChevronDown className="w-4 h-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleRoleChange(user.id, "customer")} disabled={user.role === "customer"}>Set as Customer</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRoleChange(user.id, "provider_owner")} disabled={user.role === "provider_owner"}>Set as Provider Owner</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRoleChange(user.id, "provider_staff")} disabled={user.role === "provider_staff"}>Set as Provider Staff</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleRoleChange(user.id, "superadmin")} disabled={user.role === "superadmin"}>Set as Superadmin</DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={(e) => user.deactivated_at ? handleReactivate(user, e) : handleSuspend(user, e)}
+                disabled={user.role === "superadmin"}
+                className={user.deactivated_at ? "text-green-600" : "text-yellow-600"}
+              >
+                {user.deactivated_at ? (<><CheckCircle className="w-4 h-4 mr-2" />Reactivate</>) : (<><Ban className="w-4 h-4 mr-2" />Suspend</>)}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => handleDelete(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
+                <Trash2 className="w-4 h-4 mr-2" />Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </td>
+      </tr>
+    ),
+    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, handleDelete],
+  );
+
+  const renderMobileCard = useCallback(
+    (user: UserData) => (
+      <div
+        key={user.id}
+        className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:shadow-xl transition-all"
+      >
+        <div className="flex items-start gap-3">
+          <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={selectedUserIds.has(user.id)}
+              onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
+            />
+          </div>
+          <div className="flex-1 cursor-pointer" onClick={() => handleUserClick(user)}>
+            <div className="flex items-start justify-between mb-3">
+              <div className="flex items-center flex-1 min-w-0">
+                <div className="flex-shrink-0 h-12 w-12">
+                  {user.avatar_url ? (
+                    <img className="h-12 w-12 rounded-full" src={user.avatar_url} alt={user.full_name || user.email} />
+                  ) : (
+                    <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
+                      <User className="w-6 h-6 text-gray-500" />
+                    </div>
+                  )}
+                </div>
+                <div className="ml-3 flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">{user.full_name || "No name"}</div>
+                  <div className="text-xs text-gray-500 truncate mt-0.5">{user.email}</div>
+                </div>
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex-shrink-0"><Edit className="w-4 h-4" /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => handleRoleChange(user.id, "customer")} disabled={user.role === "customer"}>Set as Customer</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRoleChange(user.id, "provider_owner")} disabled={user.role === "provider_owner"}>Set as Provider Owner</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRoleChange(user.id, "provider_staff")} disabled={user.role === "provider_staff"}>Set as Provider Staff</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleRoleChange(user.id, "superadmin")} disabled={user.role === "superadmin"}>Set as Superadmin</DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={(e) => user.deactivated_at ? handleReactivate(user, e) : handleSuspend(user, e)}
+                    disabled={user.role === "superadmin"}
+                    className={user.deactivated_at ? "text-green-600" : "text-yellow-600"}
+                  >
+                    {user.deactivated_at ? (<><CheckCircle className="w-4 h-4 mr-2" />Reactivate</>) : (<><Ban className="w-4 h-4 mr-2" />Suspend</>)}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={(e) => handleDelete(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
+                    <Trash2 className="w-4 h-4 mr-2" />Delete
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href={`/admin/users/${user.id}`}><Edit className="w-4 h-4 mr-2" />View Details</Link>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+          <div className="space-y-2 pt-3 border-t">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">Phone:</span>
+              <span className="text-gray-900 font-medium">{user.phone || "No phone"}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">Role:</span>
+              <div className="flex flex-col gap-1 items-end">
+                <Badge className={getRoleBadgeColor(user.role)}>{user.role}</Badge>
+                {user.deactivated_at && (
+                  <Badge className="bg-red-100 text-red-800 text-xs"><Ban className="w-3 h-3 mr-1" />Suspended</Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500">Source:</span>
+              <span className="text-gray-900 font-medium">
+                {user.signup_source ? SIGNUP_SOURCE_LABELS[user.signup_source] ?? user.signup_source : "—"}
+              </span>
+            </div>
+            {(user.stats?.booking_count !== undefined || user.stats?.provider_count !== undefined) && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">Stats:</span>
+                <div className="text-gray-900 font-medium text-right">
+                  {user.stats?.booking_count !== undefined && <div>Bookings: {user.stats.booking_count}</div>}
+                  {user.stats?.provider_count !== undefined && <div>Providers: {user.stats.provider_count}</div>}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ),
+    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, handleDelete],
+  );
+
   if (isLoading && users.length === 0) {
     return (
       <div className="min-h-screen bg-zinc-50/50">
@@ -329,21 +523,15 @@ export default function AdminUsers() {
     <RoleGuard allowedRoles={["superadmin"]} redirectTo="/">
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-8"
           >
             <div className="mb-4 sm:mb-6">
-              <motion.h1
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+              <h1
                 className="text-2xl sm:text-3xl font-semibold tracking-tighter mb-1 sm:mb-2 text-gray-900"
               >
                 User Management
-              </motion.h1>
+              </h1>
               <p className="text-sm sm:text-base font-light text-gray-600">Manage platform users and roles</p>
             </div>
 
@@ -370,15 +558,27 @@ export default function AdminUsers() {
                   }}
                   className="px-3 sm:px-4 py-2 text-sm sm:text-base border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-[#FF0077] focus:ring-[#FF0077]"
                 >
-              <option value="all">All Roles</option>
-              <option value="customer">Customer</option>
-              <option value="provider_owner">Provider Owner</option>
-              <option value="provider_staff">Provider Staff</option>
-              <option value="superadmin">Superadmin</option>
-            </select>
+                  <option value="all">All Roles</option>
+                  <option value="customer">Customer</option>
+                  <option value="provider_owner">Provider Owner</option>
+                  <option value="provider_staff">Provider Staff</option>
+                  <option value="superadmin">Superadmin</option>
+                </select>
+                <select
+                  value={signupSourceFilter}
+                  onChange={(e) => {
+                    setSignupSourceFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  className="px-3 sm:px-4 py-2 text-sm sm:text-base border border-white/40 rounded-xl backdrop-blur-sm bg-white/60 focus:border-[#FF0077] focus:ring-[#FF0077]"
+                >
+                  <option value="all">All sources</option>
+                  {Object.entries(SIGNUP_SOURCE_LABELS).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
             </div>
             <div className="flex gap-2 sm:gap-0 sm:flex-col">
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
                 <Button
                   type="button"
                   variant="outline"
@@ -411,10 +611,9 @@ export default function AdminUsers() {
                   <span className="hidden sm:inline">Export CSV</span>
                   <span className="sm:hidden">Export</span>
                 </Button>
-              </motion.div>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Bulk Actions Bar */}
         <BulkActionsBar
@@ -442,9 +641,13 @@ export default function AdminUsers() {
           <>
             {/* Desktop Table View */}
             <div className="hidden md:block backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl overflow-hidden shadow-lg">
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead className="backdrop-blur-sm bg-white/60 border-b border-white/40">
+              <VirtualHtmlTable
+                items={filteredUsers}
+                rowHeight={64}
+                containerHeight={600}
+                overscan={10}
+                thead={
+                  <thead className="backdrop-blur-sm bg-white/60 border-b border-white/40 sticky top-0 z-10">
                     <tr>
                       <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
                         <Checkbox
@@ -462,6 +665,9 @@ export default function AdminUsers() {
                         Role
                       </th>
                       <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Source
+                      </th>
+                      <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Stats
                       </th>
                       <th className="px-4 lg:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -469,295 +675,21 @@ export default function AdminUsers() {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="backdrop-blur-sm bg-white/40 divide-y divide-white/40">
-                    {filteredUsers.map((user) => (
-                      <motion.tr
-                        key={user.id}
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        whileHover={{ backgroundColor: "rgba(255, 255, 255, 0.6)" }}
-                        className="cursor-pointer transition-colors"
-                        onClick={(e) => {
-                          // Don't trigger row click if clicking checkbox
-                          if ((e.target as HTMLElement).closest('input[type="checkbox"]')) {
-                            return;
-                          }
-                          handleUserClick(user);
-                        }}
-                      >
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <Checkbox
-                            checked={selectedUserIds.has(user.id)}
-                            onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
-                          />
-                        </td>
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              {user.avatar_url ? (
-                                <img
-                                  className="h-10 w-10 rounded-full"
-                                  src={user.avatar_url}
-                                  alt={user.full_name || user.email}
-                                />
-                              ) : (
-                                <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center">
-                                  <User className="w-5 h-5 text-gray-500" />
-                                </div>
-                              )}
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">
-                                {user.full_name || "No name"}
-                              </div>
-                              <div className="text-sm text-gray-500">{user.email}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {user.phone || "No phone"}
-                          </div>
-                        </td>
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap">
-                          <div className="flex flex-col gap-1">
-                            <Badge className={getRoleBadgeColor(user.role)}>
-                              {user.role}
-                            </Badge>
-                            {user.deactivated_at && (
-                              <Badge className="bg-red-100 text-red-800 text-xs">
-                                <Ban className="w-3 h-3 mr-1" />
-                                Suspended
-                              </Badge>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {user.stats?.booking_count !== undefined && (
-                            <div>Bookings: {user.stats.booking_count}</div>
-                          )}
-                          {user.stats?.provider_count !== undefined && (
-                            <div>Providers: {user.stats.provider_count}</div>
-                          )}
-                        </td>
-                        <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="outline" size="sm">
-                                <Edit className="w-4 h-4 mr-2" />
-                                Actions
-                                <ChevronDown className="w-4 h-4 ml-2" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                onClick={() => handleRoleChange(user.id, "customer")}
-                                disabled={user.role === "customer"}
-                              >
-                                Set as Customer
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleRoleChange(user.id, "provider_owner")}
-                                disabled={user.role === "provider_owner"}
-                              >
-                                Set as Provider Owner
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleRoleChange(user.id, "provider_staff")}
-                                disabled={user.role === "provider_staff"}
-                              >
-                                Set as Provider Staff
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => handleRoleChange(user.id, "superadmin")}
-                                disabled={user.role === "superadmin"}
-                              >
-                                Set as Superadmin
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => user.deactivated_at ? handleReactivate(user, e) : handleSuspend(user, e)}
-                                disabled={user.role === "superadmin"}
-                                className={user.deactivated_at ? "text-green-600" : "text-yellow-600"}
-                              >
-                                {user.deactivated_at ? (
-                                  <>
-                                    <CheckCircle className="w-4 h-4 mr-2" />
-                                    Reactivate
-                                  </>
-                                ) : (
-                                  <>
-                                    <Ban className="w-4 h-4 mr-2" />
-                                    Suspend
-                                  </>
-                                )}
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={(e) => handleDelete(user, e)}
-                                disabled={user.role === "superadmin"}
-                                className="text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4 mr-2" />
-                                Delete
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </td>
-                      </motion.tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                }
+                renderRow={renderDesktopRow}
+              />
             </div>
 
             {/* Mobile Card View */}
-            <div className="md:hidden space-y-3">
-              {filteredUsers.map((user) => (
-                <motion.div
-                  key={user.id}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
-                  className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:shadow-xl transition-all"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="pt-1" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={selectedUserIds.has(user.id)}
-                        onCheckedChange={(checked) => handleSelectUser(user.id, checked as boolean)}
-                      />
-                    </div>
-                    <div
-                      className="flex-1 cursor-pointer"
-                      onClick={() => handleUserClick(user)}
-                    >
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex items-center flex-1 min-w-0">
-                          <div className="flex-shrink-0 h-12 w-12">
-                            {user.avatar_url ? (
-                              <img
-                                className="h-12 w-12 rounded-full"
-                                src={user.avatar_url}
-                                alt={user.full_name || user.email}
-                              />
-                            ) : (
-                              <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center">
-                                <User className="w-6 h-6 text-gray-500" />
-                              </div>
-                            )}
-                          </div>
-                          <div className="ml-3 flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-gray-900 truncate">
-                              {user.full_name || "No name"}
-                            </div>
-                            <div className="text-xs text-gray-500 truncate mt-0.5">{user.email}</div>
-                          </div>
-                        </div>
-                        <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm" className="flex-shrink-0">
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => handleRoleChange(user.id, "customer")}
-                          disabled={user.role === "customer"}
-                        >
-                          Set as Customer
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleRoleChange(user.id, "provider_owner")}
-                          disabled={user.role === "provider_owner"}
-                        >
-                          Set as Provider Owner
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleRoleChange(user.id, "provider_staff")}
-                          disabled={user.role === "provider_staff"}
-                        >
-                          Set as Provider Staff
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleRoleChange(user.id, "superadmin")}
-                          disabled={user.role === "superadmin"}
-                        >
-                          Set as Superadmin
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => user.deactivated_at ? handleReactivate(user, e) : handleSuspend(user, e)}
-                          disabled={user.role === "superadmin"}
-                          className={user.deactivated_at ? "text-green-600" : "text-yellow-600"}
-                        >
-                          {user.deactivated_at ? (
-                            <>
-                              <CheckCircle className="w-4 h-4 mr-2" />
-                              Reactivate
-                            </>
-                          ) : (
-                            <>
-                              <Ban className="w-4 h-4 mr-2" />
-                              Suspend
-                            </>
-                          )}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={(e) => handleDelete(user, e)}
-                          disabled={user.role === "superadmin"}
-                          className="text-red-600"
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Delete
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={`/admin/users/${user.id}`}>
-                            <Edit className="w-4 h-4 mr-2" />
-                            View Details
-                          </Link>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                  
-                    <div className="space-y-2 pt-3 border-t">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Phone:</span>
-                      <span className="text-gray-900 font-medium">
-                        {user.phone || "No phone"}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-500">Role:</span>
-                      <div className="flex flex-col gap-1 items-end">
-                        <Badge className={getRoleBadgeColor(user.role)}>
-                          {user.role}
-                        </Badge>
-                        {user.deactivated_at && (
-                          <Badge className="bg-red-100 text-red-800 text-xs">
-                            <Ban className="w-3 h-3 mr-1" />
-                            Suspended
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    {(user.stats?.booking_count !== undefined || user.stats?.provider_count !== undefined) && (
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-gray-500">Stats:</span>
-                        <div className="text-gray-900 font-medium text-right">
-                          {user.stats?.booking_count !== undefined && (
-                            <div>Bookings: {user.stats.booking_count}</div>
-                          )}
-                          {user.stats?.provider_count !== undefined && (
-                            <div>Providers: {user.stats.provider_count}</div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
+            <div className="md:hidden">
+              <VirtualList
+                items={filteredUsers}
+                itemHeight={MOBILE_CARD_HEIGHT}
+                renderItem={renderMobileCard}
+                containerHeight={Math.min(filteredUsers.length * MOBILE_CARD_HEIGHT, 600)}
+                overscan={5}
+                itemClassName="pb-3"
+              />
             </div>
 
             {/* Pagination */}

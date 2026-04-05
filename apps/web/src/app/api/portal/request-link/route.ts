@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createPortalToken, getPortalUrl } from "@/lib/portal/token";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 
 /**
  * POST /api/portal/request-link
@@ -11,14 +13,24 @@ import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
  * Rate limited - 5 requests per minute per IP.
  */
 export async function POST(request: NextRequest) {
-  const { allowed } = checkPortalRateLimit(request);
+  const tenantRes = await requirePublicTenant(request);
+  if (tenantRes instanceof Response) return tenantRes;
+  const { tenantId } = tenantRes;
+
+  const rate = await checkPortalRateLimit(request);
+  const { allowed } = rate;
   if (!allowed) {
-    return handleApiError(
+    const response = handleApiError(
       new Error("Rate limit exceeded"),
       "Too many requests. Please try again in a minute.",
       "RATE_LIMITED",
       429
     );
+    return applyRateLimitHeaders(response, {
+      limit: 30,
+      remaining: rate.remaining,
+      retryAfterSeconds: rate.retryAfterSeconds,
+    });
   }
 
   try {
@@ -56,6 +68,7 @@ export async function POST(request: NextRequest) {
       .from("bookings")
       .select("id, booking_number, scheduled_at")
       .eq("customer_id", user.id)
+      .eq("tenant_id", tenantId)
       .in("status", ["confirmed", "pending"])
       .gte("scheduled_at", now)
       .order("scheduled_at", { ascending: true })

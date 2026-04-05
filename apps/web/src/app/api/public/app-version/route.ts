@@ -45,14 +45,24 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const minVersion = versionSettings.min_version;
-    const latestVersion = versionSettings.latest_version;
+    const minVersion =
+      typeof versionSettings.min_version === "string" && versionSettings.min_version.trim()
+        ? versionSettings.min_version.trim()
+        : null;
+    const latestVersion =
+      typeof versionSettings.latest_version === "string" && versionSettings.latest_version.trim()
+        ? versionSettings.latest_version.trim()
+        : null;
     const forceUpdate = versionSettings.force_update || false;
-    const updateUrl = versionSettings.update_url;
+    const updateUrl =
+      typeof versionSettings.update_url === "string" && versionSettings.update_url.trim()
+        ? versionSettings.update_url.trim()
+        : null;
 
     // Clients compare locally: if (data.forceUpdate && compareVersions(currentVersion, data.minVersion) < 0) → force; else compare to latestVersion for optional prompt.
     const hasVersion = currentVersion && currentVersion.trim().length > 0;
-    const requiresUpdate = hasVersion ? compareVersions(currentVersion, minVersion) < 0 : false;
+    const requiresUpdate =
+      hasVersion && minVersion ? compareVersions(currentVersion, minVersion) < 0 : false;
 
     return NextResponse.json({
       requiresUpdate,
@@ -60,6 +70,8 @@ export async function GET(request: NextRequest) {
       minVersion,
       latestVersion,
       updateUrl,
+      /** Echo ?app= from request for clients (per-app rows may be added later). */
+      app: request.nextUrl.searchParams.get("app") ?? undefined,
       ...(hasVersion && { currentVersion: currentVersion, platform: platformKey }),
     });
   } catch (error) {

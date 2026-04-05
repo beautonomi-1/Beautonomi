@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Save, Globe, CreditCard, Bell, Palette, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2, Plug, ExternalLink } from "lucide-react";
+import { Save, Globe, CreditCard, Bell, Palette, BarChart3, Smartphone, MapPin, Car, QrCode, Search, Calendar, Building2, Plug, ExternalLink, Copy, Plus, Trash2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import Link from "next/link";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
@@ -14,6 +14,8 @@ import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface PlatformSettings {
   branding: {
@@ -65,6 +67,7 @@ interface PlatformSettings {
     app_id: string;
     app_id_provider?: string;
     rest_api_key: string;
+    rest_api_key_provider?: string;
     safari_web_id?: string;
     enabled: boolean;
   };
@@ -142,6 +145,9 @@ interface PlatformSettings {
     provider_max_rate_per_km: number;
     provider_min_minimum_fee: number;
     provider_max_minimum_fee: number;
+    pricing_model?: "per_km" | "tiered";
+    default_tiers?: { max_km: number; fee: number }[];
+    allow_provider_tiered?: boolean;
   };
   seo: {
     site_url: string;
@@ -183,6 +189,8 @@ interface PlatformSettings {
 }
 
 export default function AdminSettings() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -222,7 +230,7 @@ export default function AdminSettings() {
           default_rate_per_km: 8.00,
           default_minimum_fee: 20.00,
           default_maximum_fee: null,
-          default_currency: 'ZAR',
+          default_currency: tenantCurrency,
           allow_provider_customization: true,
           provider_min_rate_per_km: 0.00,
           provider_max_rate_per_km: 50.00,
@@ -320,6 +328,14 @@ export default function AdminSettings() {
         <div className="mb-4 sm:mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold mb-2">Platform Settings</h1>
           <p className="text-sm sm:text-base text-gray-600">Configure platform-wide settings</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/settings/tenant-domains">Tenant domains &amp; markets</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/settings/team-permissions">Team permissions</Link>
+            </Button>
+          </div>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -614,11 +630,13 @@ function LocalizationSettings({
   settings: PlatformSettings["localization"] | undefined;
   onChange: (updates: Partial<PlatformSettings["localization"]>) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { user, role } = useAuth();
   const safeSettings = {
     default_language: settings?.default_language ?? "en",
     supported_languages: settings?.supported_languages ?? [],
-    default_currency: settings?.default_currency ?? "ZAR",
+    default_currency: settings?.default_currency ?? tenantCurrency,
     supported_currencies: settings?.supported_currencies ?? [],
     timezone: settings?.timezone ?? "Africa/Johannesburg",
   };
@@ -645,7 +663,12 @@ function LocalizationSettings({
     } catch (error) {
       console.error("Error loading ISO codes:", error);
       // Fallback to defaults
-      setCurrencies([{ code: "ZAR", name: "South African Rand" }, { code: "USD", name: "US Dollar" }, { code: "EUR", name: "Euro" }]);
+      setCurrencies([
+        { code: tenantCurrency, name: `${tenantCurrency} (default)` },
+        { code: LAST_RESORT_CURRENCY, name: "South African Rand" },
+        { code: "USD", name: "US Dollar" },
+        { code: "EUR", name: "Euro" },
+      ]);
       setLanguages([{ code: "en", name: "English" }, { code: "af", name: "Afrikaans" }, { code: "zu", name: "Zulu" }]);
       setTimezones([{ code: "Africa/Johannesburg", name: "Africa/Johannesburg (SAST)" }]);
     } finally {
@@ -733,6 +756,8 @@ function PayoutSettings({
   settings: PlatformSettings["payouts"] | undefined;
   onChange: (updates: Partial<PlatformSettings["payouts"]>) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const safeSettings = {
     provider_payout_percentage: settings?.provider_payout_percentage ?? 80,
     payout_schedule: (settings?.payout_schedule ?? "weekly") as "daily" | "weekly" | "monthly",
@@ -831,7 +856,7 @@ function PayoutSettings({
                   }
                   className="flex-1"
                 />
-                <span className="text-xs sm:text-sm text-gray-600">ZAR</span>
+                <span className="text-xs sm:text-sm text-gray-600">{tenantCurrency}</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
                 Fixed amount charged to customers per booking
@@ -977,7 +1002,7 @@ function PayoutSettings({
                 }
                 className="flex-1"
               />
-              <span className="text-xs sm:text-sm text-gray-600">ZAR</span>
+              <span className="text-xs sm:text-sm text-gray-600">{tenantCurrency}</span>
             </div>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
               Minimum amount required before payout is processed
@@ -1192,6 +1217,7 @@ function OneSignalSettings({
     app_id: settings?.app_id ?? "",
     app_id_provider: settings?.app_id_provider ?? "",
     rest_api_key: settings?.rest_api_key ?? "",
+    rest_api_key_provider: settings?.rest_api_key_provider ?? "",
     safari_web_id: settings?.safari_web_id ?? "",
     enabled: settings?.enabled ?? false,
   };
@@ -1260,19 +1286,36 @@ function OneSignalSettings({
 
       <div>
         <Label htmlFor="onesignal_rest_api_key" className="text-sm sm:text-base">
-          REST API Key *
+          Customer REST API Key *
         </Label>
         <Input
           id="onesignal_rest_api_key"
           type="password"
           value={safeSettings.rest_api_key}
           onChange={(e) => onChange({ rest_api_key: e.target.value })}
-          placeholder="Your REST API Key"
+          placeholder="Customer app REST key (os_v2_app_…)"
           className="mt-1 font-mono text-xs sm:text-sm"
           required
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          OneSignal REST API Key (keep secure)
+          Stored in <code className="text-[11px]">platform_secrets.onesignal_rest_api_key</code>
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="onesignal_rest_api_key_provider" className="text-sm sm:text-base">
+          Provider REST API Key
+        </Label>
+        <Input
+          id="onesignal_rest_api_key_provider"
+          type="password"
+          value={safeSettings.rest_api_key_provider}
+          onChange={(e) => onChange({ rest_api_key_provider: e.target.value })}
+          placeholder="Provider app REST key (os_v2_app_…)"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          Stored in <code className="text-[11px]">platform_secrets.onesignal_rest_api_key_provider</code>. Leave empty only if the partner app shares the customer OneSignal app and key.
         </p>
       </div>
 
@@ -1313,8 +1356,19 @@ function MapboxSettings({
     <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
       <div>
         <h3 className="text-base sm:text-lg font-semibold mb-4">Mapbox Configuration</h3>
-        <p className="text-xs sm:text-sm text-gray-600 mb-4">
-          Configure Mapbox for maps, geocoding, and location services.
+        <p className="text-xs sm:text-sm text-gray-600 mb-3 leading-relaxed">
+          <strong className="font-medium text-gray-800">Canonical setup:</strong> use{" "}
+          <Link href="/admin/mapbox" className="text-primary underline font-medium">
+            Admin → Mapbox
+          </Link>{" "}
+          to save the <strong className="font-medium text-gray-800">secret</strong> token (server geocoding) and{" "}
+          <strong className="font-medium text-gray-800">public</strong> token (browser maps) into the database. Values here
+          are legacy platform settings; saving Mapbox on this page may be overwritten when Mapbox admin syncs to{" "}
+          <code className="text-[11px]">platform_settings</code>.
+        </p>
+        <p className="text-xs sm:text-sm text-gray-600 mb-4 leading-relaxed">
+          Secret token powers address autocomplete and server-side Mapbox APIs; public <code className="text-[11px]">pk.</code>{" "}
+          token powers interactive maps. Both are needed for the full provider onboarding location step on the web.
         </p>
       </div>
 
@@ -1345,12 +1399,17 @@ function MapboxSettings({
           type="password"
           value={safeSettings.access_token}
           onChange={(e) => onChange({ access_token: e.target.value })}
-          placeholder="pk.eyJ1Ijoi..."
+          placeholder="sk.eyJ1Ijo… (server / geocoding)"
           className="mt-1 font-mono text-xs sm:text-sm"
           required
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Mapbox secret access token (server-side)
+          Mapbox <strong className="font-medium text-gray-800">secret</strong> token for server-side geocoding (typically{" "}
+          <code className="text-[11px]">sk.</code>). Prefer configuring via{" "}
+          <Link href="/admin/mapbox" className="underline text-primary">
+            /admin/mapbox
+          </Link>
+          .
         </p>
       </div>
 
@@ -1368,7 +1427,12 @@ function MapboxSettings({
           required
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
-          Mapbox public token (client-side, safe to expose)
+          Mapbox <strong className="font-medium text-gray-800">public</strong> token for client maps (
+          <code className="text-[11px]">pk.</code>). Also set on{" "}
+          <Link href="/admin/mapbox" className="underline text-primary">
+            /admin/mapbox
+          </Link>
+          .
         </p>
       </div>
     </div>
@@ -2040,17 +2104,17 @@ function PaymentTypesSettings({
   onChange: (updates: Partial<PlatformSettings["payment_types"]>) => void;
 }) {
   const paymentTypeLabels: Record<string, string> = {
-    cash: "Cash",
+    cash: "Cash / Pay on Delivery (On-platform)",
     card: "Card",
     mobile: "Mobile Payment",
     gift_card: "Gift Card",
   };
 
   const safeSettings = {
-    cash: settings?.cash ?? true,
+    cash: settings?.cash ?? false,
     card: settings?.card ?? true,
     mobile: settings?.mobile ?? true,
-    gift_card: settings?.gift_card ?? false,
+    gift_card: settings?.gift_card ?? true,
   };
 
   return (
@@ -2058,7 +2122,10 @@ function PaymentTypesSettings({
       <div className="mb-4">
         <h3 className="text-base sm:text-lg font-semibold mb-2">Accepted Payment Methods</h3>
         <p className="text-sm text-gray-600">
-          Configure which payment methods are accepted across the platform
+          Configure which payment methods are accepted for on-platform customer checkout and booking
+        </p>
+        <p className="text-xs text-amber-700 mt-1">
+          Tip: Keeping cash disabled helps ensure platform service fee capture on online transactions.
         </p>
       </div>
       {Object.entries(safeSettings).map(([typeId, enabled]) => (
@@ -2152,7 +2219,7 @@ function _VerificationSettings({
                   </Label>
                 </div>
                 <p className="text-sm sm:text-base text-gray-600 leading-relaxed">
-                  Send 6-digit OTP codes via SMS/Email for customer verification when provider arrives.
+                  Send 4- or 6-digit arrival codes via SMS/email so the customer can confirm when the provider arrives.
                 </p>
               </div>
               <div className="flex-shrink-0 pt-1">
@@ -2240,16 +2307,38 @@ function TravelFeesSettings({
   settings: PlatformSettings["travel_fees"] | undefined;
   onChange: (updates: Partial<PlatformSettings["travel_fees"]>) => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const safeSettings = {
     default_rate_per_km: settings?.default_rate_per_km ?? 8.00,
     default_minimum_fee: settings?.default_minimum_fee ?? 20.00,
     default_maximum_fee: settings?.default_maximum_fee ?? null,
-    default_currency: settings?.default_currency ?? "ZAR",
+    default_currency: settings?.default_currency ?? tenantCurrency,
     allow_provider_customization: settings?.allow_provider_customization ?? true,
     provider_min_rate_per_km: settings?.provider_min_rate_per_km ?? 0.00,
     provider_max_rate_per_km: settings?.provider_max_rate_per_km ?? 50.00,
     provider_min_minimum_fee: settings?.provider_min_minimum_fee ?? 0.00,
     provider_max_minimum_fee: settings?.provider_max_minimum_fee ?? 100.00,
+    pricing_model: (settings?.pricing_model ?? "per_km") as "per_km" | "tiered",
+    default_tiers: settings?.default_tiers ?? [],
+    allow_provider_tiered: settings?.allow_provider_tiered ?? true,
+  };
+
+  const defaultTiers = Array.isArray(safeSettings.default_tiers) ? safeSettings.default_tiers : [];
+
+  const updateTier = (index: number, field: "max_km" | "fee", value: number) => {
+    const next = [...defaultTiers];
+    if (!next[index]) next[index] = { max_km: 0, fee: 0 };
+    next[index] = { ...next[index], [field]: value };
+    onChange({ default_tiers: next });
+  };
+  const addTier = () => {
+    const last = defaultTiers[defaultTiers.length - 1];
+    const nextMaxKm = last ? last.max_km + 10 : 10;
+    onChange({ default_tiers: [...defaultTiers, { max_km: nextMaxKm, fee: 100 }] });
+  };
+  const removeTier = (index: number) => {
+    onChange({ default_tiers: defaultTiers.filter((_, i) => i !== index) });
   };
 
   return (
@@ -2259,49 +2348,38 @@ function TravelFeesSettings({
         <p className="text-sm text-gray-600 mb-4">
           These are the default travel fees used when providers don't set custom rates.
         </p>
-        
-        <div className="space-y-4">
-          <div>
-            <Label htmlFor="default_rate_per_km">Default Rate per Kilometer</Label>
-            <Input
-              id="default_rate_per_km"
-              type="number"
-              min="0"
-              step="0.01"
-              value={safeSettings.default_rate_per_km}
-              onChange={(e) => onChange({ default_rate_per_km: parseFloat(e.target.value) || 0 })}
-              className="mt-1"
-            />
-            <p className="text-xs text-gray-500 mt-1">Amount charged per kilometer traveled</p>
-          </div>
 
+        <div className="space-y-4 mb-4">
           <div>
-            <Label htmlFor="default_minimum_fee">Default Minimum Fee</Label>
-            <Input
-              id="default_minimum_fee"
-              type="number"
-              min="0"
-              step="0.01"
-              value={safeSettings.default_minimum_fee}
-              onChange={(e) => onChange({ default_minimum_fee: parseFloat(e.target.value) || 0 })}
-              className="mt-1"
-            />
-            <p className="text-xs text-gray-500 mt-1">Minimum travel fee regardless of distance</p>
-          </div>
-
-          <div>
-            <Label htmlFor="default_maximum_fee">Default Maximum Fee (Optional)</Label>
-            <Input
-              id="default_maximum_fee"
-              type="number"
-              min="0"
-              step="0.01"
-              value={safeSettings.default_maximum_fee || ""}
-              onChange={(e) => onChange({ default_maximum_fee: e.target.value ? parseFloat(e.target.value) : null })}
-              className="mt-1"
-              placeholder="No maximum"
-            />
-            <p className="text-xs text-gray-500 mt-1">Maximum travel fee cap (leave empty for no limit)</p>
+            <Label>Pricing model</Label>
+            <div className="flex gap-4 mt-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing_model"
+                  checked={safeSettings.pricing_model === "per_km"}
+                  onChange={() => onChange({ pricing_model: "per_km" })}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Per kilometer</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="pricing_model"
+                  checked={safeSettings.pricing_model === "tiered"}
+                  onChange={() => {
+                    const tiers = Array.isArray(safeSettings.default_tiers) ? safeSettings.default_tiers : [];
+                    onChange({
+                      pricing_model: "tiered",
+                      default_tiers: tiers.length > 0 ? tiers : [{ max_km: 10, fee: 100 }],
+                    });
+                  }}
+                  className="w-4 h-4"
+                />
+                <span className="text-sm">Distance tiers (fixed rate per range)</span>
+              </label>
+            </div>
           </div>
 
           <div>
@@ -2317,6 +2395,91 @@ function TravelFeesSettings({
             <p className="text-xs text-gray-500 mt-1">Currency code (e.g., ZAR, USD)</p>
           </div>
         </div>
+
+        {safeSettings.pricing_model === "per_km" && (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="default_rate_per_km">Default Rate per Kilometer</Label>
+              <Input
+                id="default_rate_per_km"
+                type="number"
+                min="0"
+                step="0.01"
+                value={safeSettings.default_rate_per_km}
+                onChange={(e) => onChange({ default_rate_per_km: parseFloat(e.target.value) || 0 })}
+                className="mt-1"
+              />
+              <p className="text-xs text-gray-500 mt-1">Amount charged per kilometer traveled</p>
+            </div>
+            <div>
+              <Label htmlFor="default_minimum_fee">Default Minimum Fee</Label>
+              <Input
+                id="default_minimum_fee"
+                type="number"
+                min="0"
+                step="0.01"
+                value={safeSettings.default_minimum_fee}
+                onChange={(e) => onChange({ default_minimum_fee: parseFloat(e.target.value) || 0 })}
+                className="mt-1"
+              />
+              <p className="text-xs text-gray-500 mt-1">Minimum travel fee regardless of distance</p>
+            </div>
+            <div>
+              <Label htmlFor="default_maximum_fee">Default Maximum Fee (Optional)</Label>
+              <Input
+                id="default_maximum_fee"
+                type="number"
+                min="0"
+                step="0.01"
+                value={safeSettings.default_maximum_fee || ""}
+                onChange={(e) => onChange({ default_maximum_fee: e.target.value ? parseFloat(e.target.value) : null })}
+                className="mt-1"
+                placeholder="No maximum"
+              />
+              <p className="text-xs text-gray-500 mt-1">Maximum travel fee cap (leave empty for no limit)</p>
+            </div>
+          </div>
+        )}
+
+        {safeSettings.pricing_model === "tiered" && (
+          <div className="space-y-3">
+            <Label>Default tiers</Label>
+            <p className="text-xs text-gray-500">Fixed fee per distance band (e.g. 0–10 km = R100, 11–50 km = R150). Add tiers in ascending order by max km.</p>
+            <div className="space-y-2">
+              {defaultTiers.map((tier, i) => (
+                <div key={i} className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-gray-600">Up to</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={tier.max_km}
+                    onChange={(e) => updateTier(i, "max_km", parseInt(e.target.value, 10) || 0)}
+                    className="w-24"
+                  />
+                  <span className="text-sm text-gray-600">km</span>
+                  <span className="text-sm text-gray-600">=</span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={tier.fee}
+                    onChange={(e) => updateTier(i, "fee", parseFloat(e.target.value) || 0)}
+                    className="w-28"
+                  />
+                  <span className="text-sm text-gray-600">{safeSettings.default_currency}</span>
+                  <Button type="button" variant="outline" size="icon" onClick={() => removeTier(i)} aria-label="Remove tier">
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" onClick={addTier}>
+                <Plus className="w-4 h-4 mr-1" />
+                Add tier
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border-t pt-4">
@@ -2338,6 +2501,22 @@ function TravelFeesSettings({
               id="allow_provider_customization"
               checked={safeSettings.allow_provider_customization}
               onChange={(e) => onChange({ allow_provider_customization: e.target.checked })}
+              className="w-5 h-5"
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <Label htmlFor="allow_provider_tiered">Allow providers to use tiered pricing</Label>
+              <p className="text-sm text-gray-600">
+                Let providers choose distance tiers instead of per-km rates
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              id="allow_provider_tiered"
+              checked={safeSettings.allow_provider_tiered}
+              onChange={(e) => onChange({ allow_provider_tiered: e.target.checked })}
               className="w-5 h-5"
             />
           </div>
@@ -2736,14 +2915,35 @@ function CalendarIntegrationsSettings({
                 </p>
               </div>
 
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                 <p className="text-xs sm:text-sm text-blue-800">
-                  <strong>Redirect URI:</strong> <code className="bg-blue-100 px-1 rounded">
-                    {process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com"}/api/provider/calendar/callback/google
-                  </code>
+                  <strong>Redirect URI:</strong>
                 </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="bg-blue-100 px-2 py-1 rounded text-xs sm:text-sm break-all flex-1 min-w-0">
+                    {typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin) : (process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com")}/api/provider/calendar/callback/google
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => {
+                      const uri = `${typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin) : (process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com")}/api/provider/calendar/callback/google`;
+                      navigator.clipboard.writeText(uri);
+                      toast.success("Redirect URI copied to clipboard");
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copy
+                  </Button>
+                </div>
                 <p className="text-xs sm:text-sm text-blue-800 mt-2">
-                  Make sure to add this exact redirect URI in your Google Cloud Console OAuth client configuration.
+                  Add this exact redirect URI in your{" "}
+                  <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    Google Cloud Console OAuth client
+                  </a>
+                  .
                 </p>
               </div>
             </div>
@@ -2826,14 +3026,35 @@ function CalendarIntegrationsSettings({
                 </p>
               </div>
 
-              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                 <p className="text-xs sm:text-sm text-blue-800">
-                  <strong>Redirect URI:</strong> <code className="bg-blue-100 px-1 rounded">
-                    {process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com"}/api/provider/calendar/callback/outlook
-                  </code>
+                  <strong>Redirect URI:</strong>
                 </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <code className="bg-blue-100 px-2 py-1 rounded text-xs sm:text-sm break-all flex-1 min-w-0">
+                    {typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin) : (process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com")}/api/provider/calendar/callback/outlook
+                  </code>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    onClick={() => {
+                      const uri = `${typeof window !== "undefined" ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin) : (process.env.NEXT_PUBLIC_APP_URL || "https://yourdomain.com")}/api/provider/calendar/callback/outlook`;
+                      navigator.clipboard.writeText(uri);
+                      toast.success("Redirect URI copied to clipboard");
+                    }}
+                  >
+                    <Copy className="w-4 h-4 mr-1" />
+                    Copy
+                  </Button>
+                </div>
                 <p className="text-xs sm:text-sm text-blue-800 mt-2">
-                  Make sure to add this exact redirect URI in your Azure App Registration.
+                  Add this exact redirect URI in your{" "}
+                  <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener noreferrer" className="underline font-medium">
+                    Azure App Registration
+                  </a>
+                  .
                 </p>
               </div>
             </div>
@@ -2881,7 +3102,7 @@ function CalendarIntegrationsSettings({
       </div>
 
       <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-        <p className="text-sm text-yellow-800">
+        <div className="text-sm text-yellow-800">
           <strong>How it works:</strong>
           <ul className="list-disc list-inside mt-2 space-y-1 text-xs sm:text-sm">
             <li>Superadmin configures OAuth credentials here (one-time setup for Google/Outlook)</li>
@@ -2890,7 +3111,7 @@ function CalendarIntegrationsSettings({
             <li>Apple Calendar uses iCal subscription URLs (no OAuth required)</li>
             <li>This centralized approach is more secure and easier to manage than per-provider OAuth apps</li>
           </ul>
-        </p>
+        </div>
       </div>
     </div>
   );

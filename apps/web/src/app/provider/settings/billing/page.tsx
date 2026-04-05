@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { SectionCard } from "@/components/provider/SectionCard";
@@ -30,6 +32,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import AddressForm from "@/components/mapbox/AddressForm";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface BillingData {
   billingAddress: any;
@@ -102,11 +107,16 @@ export default function BillingSettings() {
       }
     }
 
+    if (billingForm.phone?.trim() && !isCompleteE164(billingForm.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
+
     try {
       setIsSaving(true);
       await fetcher.patch("/api/provider/settings/billing", {
         billingEmail: billingForm.email || null,
-        billingPhone: billingForm.phone || null,
+        billingPhone: billingForm.phone?.trim() || null,
         billingAddress: billingForm.address,
       });
       setShowBillingDialog(false);
@@ -260,15 +270,12 @@ export default function BillingSettings() {
               />
             </div>
             <div>
-              <Label htmlFor="billingPhone" className="text-sm sm:text-base">
-                Billing Phone
-              </Label>
-              <Input
-                id="billingPhone"
-                type="tel"
+              <PhoneInput
+                inputId="settings-billing-phone"
+                label="Billing Phone"
                 value={billingForm.phone}
-                onChange={(e) => setBillingForm({ ...billingForm, phone: e.target.value })}
-                placeholder="+27 11 123 4567"
+                onChange={(e164) => setBillingForm({ ...billingForm, phone: e164 })}
+                placeholder="Phone number"
                 className="mt-1 w-full"
               />
             </div>
@@ -582,6 +589,8 @@ function PaymentMethodsSection({ paymentMethods, onRefresh }: { paymentMethods: 
 
 // Invoices Section Component
 function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[]; onRefresh: () => void }) {
+  const { bundle } = useConfigBundle();
+  const invoiceCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [selectedStatus, setSelectedStatus] = useState<string>("all");
 
   const filteredInvoices = selectedStatus === "all"
@@ -609,9 +618,9 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "ZAR",
+      currency: invoiceCurrency,
     }).format(amount);
   };
 
@@ -648,7 +657,61 @@ function InvoicesSection({ invoices, onRefresh: _onRefresh }: { invoices: any[];
         </Select>
       </div>
 
-      <div className="border border-gray-200 rounded-lg overflow-hidden">
+      {/* Mobile card layout */}
+      <div className="md:hidden space-y-3">
+        {filteredInvoices.map((invoice) => (
+          <div
+            key={invoice.id}
+            className="rounded-lg border bg-white p-4 space-y-3"
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-medium text-sm">{invoice.invoice_number}</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {new Date(invoice.period_start).toLocaleDateString()} – {new Date(invoice.period_end).toLocaleDateString()}
+                </p>
+              </div>
+              {getStatusBadge(invoice.status)}
+            </div>
+
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+              <div>
+                <span className="text-xs text-gray-500">Issue Date</span>
+                <p className="text-gray-900">{new Date(invoice.issue_date).toLocaleDateString()}</p>
+              </div>
+              <div>
+                <span className="text-xs text-gray-500">Due Date</span>
+                <p className="text-gray-900">{new Date(invoice.due_date).toLocaleDateString()}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-1 border-t">
+              <p className="font-semibold">{formatCurrency(invoice.total_amount)}</p>
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-[44px] min-w-[44px]"
+                  onClick={() => window.open(`/api/provider/invoices/${invoice.id}/download`, "_blank")}
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="min-h-[44px] min-w-[44px]"
+                  onClick={() => window.location.href = `/provider/settings/billing/invoices/${invoice.id}`}
+                >
+                  <Eye className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table layout */}
+      <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>

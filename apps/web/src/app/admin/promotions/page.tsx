@@ -10,6 +10,8 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface Promotion {
   id: string;
@@ -216,7 +218,7 @@ function PromotionCard({
           <span>
             {promotion.type === "percentage"
               ? `${promotion.value}% off`
-              : `${promotion.value} ${promotion.type === "fixed_amount" ? "ZAR" : ""} off`}
+              : `${promotion.value} ${promotion.type === "fixed_amount" ? LAST_RESORT_CURRENCY : ""} off`}
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -265,6 +267,9 @@ function PromotionModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency =
+    bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [formData, setFormData] = useState({
     name: promotion?.name || "",
     code: promotion?.code || "",
@@ -392,7 +397,7 @@ function PromotionModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="min_purchase">Minimum Purchase (ZAR)</Label>
+              <Label htmlFor="min_purchase">Minimum Purchase ({tenantCurrency})</Label>
               <Input
                 id="min_purchase"
                 type="number"
@@ -407,7 +412,7 @@ function PromotionModal({
               />
             </div>
             <div>
-              <Label htmlFor="max_discount">Max Discount (ZAR)</Label>
+              <Label htmlFor="max_discount">Max Discount ({tenantCurrency})</Label>
               <Input
                 id="max_discount"
                 type="number"

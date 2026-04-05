@@ -1,8 +1,10 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerExportRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/export/finance
@@ -21,37 +23,30 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return errorResponse("Database unavailable", "SERVER_ERROR", 500);
+    }
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const transactionType = searchParams.get("transaction_type");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
 
-    let query = supabase
-      .from("finance_transactions")
-      .select(`
-        *,
-        booking:bookings(id, booking_number, customer_id, provider_id)
-      `)
-      .order("created_at", { ascending: false });
-
-    if (transactionType && transactionType !== "all") {
-      query = query.eq("transaction_type", transactionType);
-    }
-
-    if (startDate) {
-      query = query.gte("created_at", startDate);
-    }
-
-    if (endDate) {
-      query = query.lte("created_at", endDate);
-    }
-
-    const { data: transactions, error } = await query;
-
-    if (error) {
-      return handleApiError(error, "Failed to fetch financial data");
+    let transactions: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
+    try {
+      transactions = await fetchFinanceLedgerExportRowsForTenant(
+        supabase,
+        tenantId,
+        { start: startDate, end: endDate },
+        {
+          transactionType:
+            transactionType && transactionType !== "all" ? transactionType : null,
+        }
+      );
+    } catch (err) {
+      return handleApiError(err, "Failed to fetch financial data");
     }
 
     // Convert to CSV

@@ -10,7 +10,9 @@ import { requireAdminSection,
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { z } from "zod";
 
-const MAX_INCLUDE = 500;
+/** Max postal area rows per include request (large metros need headroom). */
+const MAX_INCLUDE = 12_000;
+const INSERT_CHUNK = 500;
 
 const bodySchema = z.object({
   type: z.enum(["country", "province", "city", "town", "postal_code"]),
@@ -68,33 +70,108 @@ export async function POST(
       .limit(MAX_INCLUDE);
 
     const { type, ref_code, ref_name } = parse.data;
-    if (type === "province") query = query.eq("province_name", ref_code);
-    else if (type === "city") query = query.eq("city_name", ref_code);
-    else if (type === "town") query = query.eq("town_name", ref_code);
-    else if (type === "postal_code") query = query.eq("postal_code", ref_code);
+    const ref = ref_code.trim();
+    if (type === "province") query = query.ilike("province_name", ref);
+    else if (type === "city") query = query.ilike("city_name", ref);
+    else if (type === "town") query = query.ilike("town_name", ref);
+    else if (type === "postal_code") query = query.eq("postal_code", ref);
     else if (type === "country") {
       query = query.limit(MAX_INCLUDE);
     }
 
-    const { data: areas, error: fetchError } = await query;
+    let { data: areas, error: fetchError } = await query;
+    // Some postal datasets carry trailing spaces or minor label variance.
+    // If strict ilike/eq did not match, retry with a broader contains pattern.
+    if ((!areas || areas.length === 0) && !fetchError && (type === "province" || type === "city" || type === "town")) {
+      let fallback = admin
+        .from("postal_areas")
+        .select("id, postal_code, province_name, city_name, town_name, geom")
+        .eq("country_code", country)
+        .not("geom", "is", null)
+        .limit(MAX_INCLUDE);
+      const fuzzy = `%${ref}%`;
+      if (type === "province") fallback = fallback.ilike("province_name", fuzzy);
+      else if (type === "city") fallback = fallback.ilike("city_name", fuzzy);
+      else fallback = fallback.ilike("town_name", fuzzy);
+      const fallbackRes = await fallback;
+      areas = fallbackRes.data ?? [];
+      fetchError = fallbackRes.error ?? null;
+    }
 
     if (fetchError) throw fetchError;
-    if (!areas?.length && type !== "country") {
+    if (!areas?.length) {
       return successResponse({ included: 0, message: "No matching areas found" });
     }
 
-    type AreaRow = { postal_code?: string; province_name?: string; city_name?: string; town_name?: string; geom?: unknown };
-    const toInsert = (areas || []).map((a: AreaRow) => ({
-      zone_id,
-      type,
-      ref_code: a.postal_code ?? a.province_name ?? a.city_name ?? a.town_name ?? ref_code,
-      ref_name: ref_name ?? a.postal_code ?? a.province_name ?? a.city_name ?? a.town_name ?? ref_code,
-      source: "postal_dataset",
-      geom: a.geom,
-    }));
+    type AreaRow = {
+      postal_code?: string;
+      province_name?: string;
+      city_name?: string;
+      town_name?: string;
+      geom?: unknown;
+    };
 
-    const { error: insertError } = await admin.from("platform_zone_inclusions").insert(toInsert);
-    if (insertError) throw insertError;
+    const { data: existingRows } = await admin
+      .from("platform_zone_inclusions")
+      .select("ref_code")
+      .eq("zone_id", zone_id);
+
+    const existingRef = new Set((existingRows || []).map((r: { ref_code: string }) => r.ref_code));
+
+    const toInsert: {
+      zone_id: string;
+      type: string;
+      ref_code: string;
+      ref_name: string;
+      source: string;
+      geom: unknown;
+    }[] = [];
+
+    const seen = new Set<string>();
+    for (const a of areas || []) {
+      const pc = a.postal_code?.trim();
+
+      // If no postal_code, build a geographic composite key from the most-specific names.
+      // This handles boundary rows that represent city/province polygons without postal codes.
+      const areaRefCode =
+        pc ||
+        [a.town_name, a.city_name, a.province_name]
+          .filter(Boolean)
+          .join("/");
+
+      if (!areaRefCode) continue;
+      if (seen.has(areaRefCode) || existingRef.has(areaRefCode)) continue;
+      seen.add(areaRefCode);
+
+      const areaType = pc ? "postal_code" : type;
+      const areaLabel = [a.city_name, a.town_name, a.province_name].filter(Boolean).join(" · ");
+      const refLabel = [ref_name || ref_code, areaLabel].filter(Boolean).join(" · ");
+
+      toInsert.push({
+        zone_id,
+        type: areaType,
+        ref_code: areaRefCode,
+        ref_name: refLabel || areaRefCode,
+        source: "postal_dataset",
+        geom: a.geom,
+      });
+    }
+
+    if (toInsert.length === 0) {
+      return successResponse({
+        included: 0,
+        message: "All matching postal areas were already included",
+        skipped_existing: (areas || []).length,
+        matched_areas: (areas || []).length,
+        truncated: (areas || []).length >= MAX_INCLUDE,
+      });
+    }
+
+    for (let i = 0; i < toInsert.length; i += INSERT_CHUNK) {
+      const chunk = toInsert.slice(i, i + INSERT_CHUNK);
+      const { error: insertError } = await admin.from("platform_zone_inclusions").insert(chunk);
+      if (insertError) throw insertError;
+    }
 
     const { error: rpcError } = await admin.rpc("update_platform_zone_geometry", { p_zone_id: zone_id });
     if (rpcError) throw rpcError;
@@ -109,6 +186,8 @@ export async function POST(
     const updatedRow = updated as UpdatedRow | null;
     return successResponse({
       included: toInsert.length,
+      matched_areas: (areas || []).length,
+      truncated: (areas || []).length >= MAX_INCLUDE,
       version: updatedRow?.version,
       has_geometry: !!updatedRow?.geometry,
     });

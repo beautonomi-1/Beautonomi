@@ -23,6 +23,13 @@ type Ticket = {
 
 type TicketsResponse = { tickets?: Ticket[]; total?: number };
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 function statusBgColor(status: string): string {
   switch (status) {
     case "open":
@@ -81,7 +88,21 @@ export default function SupportTicketsListScreen() {
 
   return (
     <ScreenContainer>
-      <ScreenHeader title="My support tickets" onBack={() => router.back()} />
+      <ScreenHeader
+        title="Support tickets"
+        onBack={() => router.back()}
+        rightAction={
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new" as never)}
+            hitSlop={8}
+            accessibilityLabel="New support ticket"
+            accessibilityRole="button"
+            style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center" }}
+          >
+            <Ionicons name="add-circle-outline" size={26} color={Colors.primary} />
+          </TouchableOpacity>
+        }
+      />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingBottom: 100 }}
@@ -95,8 +116,16 @@ export default function SupportTicketsListScreen() {
             <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />
             <Text style={{ marginTop: 16, textAlign: "center", color: Colors.gray[600] }}>No support tickets yet</Text>
             <Text style={{ marginTop: 8, textAlign: "center", fontSize: 14, color: Colors.gray[500] }}>
-              Tap Contact support in Settings to submit a ticket
+              Tap the + button to submit a new support ticket
             </Text>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/support-tickets/new" as never)}
+              style={{ marginTop: 20, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 12, backgroundColor: Colors.primary }}
+              accessibilityLabel="New support ticket"
+              accessibilityRole="button"
+            >
+              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>New support ticket</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <View style={{ paddingHorizontal: 8, paddingBottom: 16 }}>
@@ -121,7 +150,7 @@ export default function SupportTicketsListScreen() {
                   {t.subject}
                 </Text>
                 <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-                  Updated {new Date(t.updated_at).toLocaleDateString()}
+                  Updated {formatDateSafe(t.updated_at)}
                 </Text>
               </TouchableOpacity>
             ))}

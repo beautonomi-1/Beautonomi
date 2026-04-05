@@ -76,8 +76,19 @@ export async function POST(request: NextRequest) {
       return badRequestResponse("Polygon coordinates are required for polygon zones");
     }
     if (data.zone_type === "radius") {
-      if (!data.center_latitude || !data.center_longitude || !data.radius_km) {
-        return badRequestResponse("Center coordinates and radius are required for radius zones");
+      const { center_latitude: lat, center_longitude: lng, radius_km: r } = data;
+      if (
+        lat == null ||
+        lng == null ||
+        r == null ||
+        !Number.isFinite(Number(lat)) ||
+        !Number.isFinite(Number(lng)) ||
+        !Number.isFinite(Number(r)) ||
+        Number(r) <= 0
+      ) {
+        return badRequestResponse(
+          "Center coordinates and a positive radius are required for radius zones"
+        );
       }
     }
 

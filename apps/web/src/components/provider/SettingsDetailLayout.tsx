@@ -96,7 +96,20 @@ export function SettingsDetailLayout({
       </div>
 
       {/* Content */}
-      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden">{children}</div>
+      <div className="space-y-4 sm:space-y-6 w-full max-w-full overflow-x-hidden pb-20 md:pb-0">{children}</div>
+
+      {/* Mobile sticky save bar — fixed at viewport bottom on small screens */}
+      {onSave && (
+        <div className="fixed bottom-0 inset-x-0 z-40 bg-white border-t p-3 md:hidden safe-area-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.08)]">
+          <Button
+            onClick={onSave}
+            disabled={disabled}
+            className="bg-[#FF0077] hover:bg-[#D60565] text-white w-full min-h-[48px] text-base font-semibold touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {label}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

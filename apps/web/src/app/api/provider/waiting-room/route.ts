@@ -3,6 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createWaitingRoomEntrySchema = z.object({
   client_name: z.string().min(1),
@@ -156,6 +159,19 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id, currency")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const bookingCurrency =
+      (prow as { currency?: string | null } | null)?.currency || lastResortCurrency;
+
     const data = validationResult.data;
     const checkedInTime = new Date().toISOString();
 
@@ -225,6 +241,7 @@ export async function POST(request: NextRequest) {
       .from("bookings")
       .insert({
         provider_id: providerId,
+        tenant_id: effectiveTenantId,
         customer_id: null, // Walk-in, no customer account
         customer_name: data.client_name,
         customer_email: data.client_email,
@@ -235,6 +252,7 @@ export async function POST(request: NextRequest) {
         checked_in_time: checkedInTime,
         staff_id: data.team_member_id || null,
         notes: data.notes || null,
+        currency: bookingCurrency,
       })
       .select(`
         id,
@@ -287,7 +305,7 @@ export async function POST(request: NextRequest) {
             scheduled_end_at: serviceEnd.toISOString(),
             duration_minutes: service.duration_minutes || 60,
             price: service.price || 0,
-            currency: 'ZAR',
+            currency: bookingCurrency,
           });
 
         // Update booking with service info

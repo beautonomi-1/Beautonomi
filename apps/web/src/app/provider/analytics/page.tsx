@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,6 +9,8 @@ import { TrendingUp, TrendingDown, DollarSign, Calendar, Users, Package } from "
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface AnalyticsData {
   revenue: {
@@ -41,6 +44,8 @@ interface AnalyticsData {
 }
 
 export default function ProviderAnalyticsPage() {
+  const locale = useTenantLocaleTag();
+  const { selectedLocationId } = useProviderPortal();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,15 +53,17 @@ export default function ProviderAnalyticsPage() {
 
   useEffect(() => {
     loadAnalytics();
-  }, [period]);
+  }, [period, selectedLocationId]);
 
   const loadAnalytics = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      const params = new URLSearchParams({ period });
+      if (selectedLocationId) params.append("location_id", selectedLocationId);
       const response = await fetcher.get<{ data: AnalyticsData }>(
-        `/api/provider/analytics?period=${period}`,
-        { timeoutMs: 30000 } // 30 second timeout
+        `/api/provider/analytics?${params.toString()}`,
+        { timeoutMs: 30000 }
       );
       setAnalytics(response.data);
     } catch (err) {
@@ -68,9 +75,9 @@ export default function ProviderAnalyticsPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     }).format(amount);
   };
 
@@ -97,8 +104,14 @@ export default function ProviderAnalyticsPage() {
           { label: "Analytics" },
         ]}
       >
-        <div className="text-center py-8">
-          <p className="text-red-600">{error || "Failed to load analytics"}</p>
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <p className="text-sm text-red-600">{error || "Failed to load analytics"}</p>
+          <button
+            onClick={loadAnalytics}
+            className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90 min-h-[44px] touch-manipulation"
+          >
+            Try Again
+          </button>
         </div>
       </SettingsDetailLayout>
     );

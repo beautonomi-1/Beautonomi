@@ -24,7 +24,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDuration } from "@/lib/format";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
 import { twStyle } from "@/lib/twStyle";
 
@@ -57,7 +57,9 @@ interface AddOn {
 
 interface ServiceVariant {
   id: string;
-  name: string;
+  /** Provider API returns title (same field used in booking flow) */
+  title: string;
+  variant_name?: string | null;
   price: number;
   duration_minutes: number;
 }
@@ -109,9 +111,13 @@ export default function ServiceDetailScreen() {
   const { data: addOns, refresh: refreshAddOns } = useApi<AddOn[]>(
     `/api/provider/services/${id}/addons`
   );
-  const { data: variants } = useApi<
-    ServiceVariant[]
-  >(`/api/provider/services/${id}/variants`);
+  const { data: variantResponse, refresh: refreshVariants } = useApi<{
+    variants: ServiceVariant[];
+    parent_service: { id: string; title: string; service_type: string };
+    total_count: number;
+  }>(`/api/provider/services/${id}/variants`);
+  // The API returns { data: { variants, parent_service, total_count } }; extract the array.
+  const variants = variantResponse?.variants ?? null;
 
   const { execute: updateService, loading: saving } = useApiMutation("patch");
   const { execute: deleteItem } = useApiMutation("delete");
@@ -121,6 +127,10 @@ export default function ServiceDetailScreen() {
   >(`/api/provider/services/${id}/addons`);
   const { execute: updateAddOn, loading: updatingAddOn } =
     useApiMutation("patch");
+  const { execute: createVariant, loading: creatingVariant } = useApiPost<
+    object,
+    ServiceVariant
+  >(`/api/provider/services/${id}/variants`);
 
   const [form, setForm] = useState<FormState | null>(null);
   const [editing, setEditing] = useState(false);
@@ -133,6 +143,10 @@ export default function ServiceDetailScreen() {
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [uploadingImage, setUploadingImage] = useState(false);
+
+  // Variant form state
+  const [showVariantSheet, setShowVariantSheet] = useState(false);
+  const [variantForm, setVariantForm] = useState({ title: "", price: "", duration_minutes: "" });
 
   async function handlePickServiceImage() {
     if (!editing) return;
@@ -169,13 +183,16 @@ export default function ServiceDetailScreen() {
       } as any);
       formData.append("folder", "services");
 
-      const uploadRes = await fetch(`${APP_URL}/api/upload`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      const uploadRes = await fetch(
+        `${APP_URL}/api/upload`,
+        withWebApiTenantHeaders({
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }),
+      );
 
       if (!uploadRes.ok) {
         const err = await uploadRes.json().catch(() => null);
@@ -339,6 +356,53 @@ export default function ServiceDetailScreen() {
           );
           if (error) Alert.alert("Error", error);
           else refreshAddOns();
+        },
+      },
+    ]);
+  }
+
+  function openVariantForm() {
+    setVariantForm({ title: "", price: "", duration_minutes: "" });
+    setShowVariantSheet(true);
+  }
+
+  async function handleSaveVariant() {
+    if (!variantForm.title.trim() || !variantForm.price || !variantForm.duration_minutes) {
+      Alert.alert("Error", "Title, price, and duration are required");
+      return;
+    }
+    const payload = {
+      title: variantForm.title.trim(),
+      price: Number(variantForm.price),
+      duration_minutes: Number(variantForm.duration_minutes),
+    };
+    const { error } = await createVariant(payload);
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    setShowVariantSheet(false);
+    await refreshVariants();
+    // Also refresh the service so has_variants flag is current
+    await refresh();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  async function handleDeleteVariant(v: ServiceVariant) {
+    Alert.alert("Delete Variant", `Remove "${v.title || v.variant_name || "this variant"}"?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error } = await deleteItem(
+            `/api/provider/services/${id}/variants/${v.id}`
+          );
+          if (error) Alert.alert("Error", error);
+          else {
+            await refreshVariants();
+            await refresh();
+          }
         },
       },
     ]);
@@ -663,13 +727,30 @@ export default function ServiceDetailScreen() {
           )}
 
           {/* Variants Section */}
-          <SectionHeader title="Service Variants" />
+          <SectionHeader
+            title="Service Variants"
+            actionLabel="Add New"
+            onAction={openVariantForm}
+          />
+          <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
+            Variants let customers choose from different options (e.g. short / long hair, 30 min / 60 min). Each variant gets its own price and duration and appears as a selectable option in the booking flow.
+          </Text>
           {!variants || variants.length === 0 ? (
             <View style={twStyle("items-center rounded-xl border border-dashed border-gray-200 bg-gray-50 py-6")}>
               <Ionicons name="layers-outline" size={28} color="#d1d5db" />
               <Text style={twStyle("mt-2 text-sm text-gray-400")}>
-                No variants configured
+                No variants yet
               </Text>
+              <TouchableOpacity
+                style={twStyle("mt-3 rounded-lg bg-indigo-50 px-4 py-2")}
+                onPress={openVariantForm}
+                accessibilityLabel="Create first variant"
+                accessibilityRole="button"
+              >
+                <Text style={twStyle("text-sm font-medium text-indigo-600")}>
+                  Create Variant
+                </Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View>
@@ -678,17 +759,22 @@ export default function ServiceDetailScreen() {
                   key={v.id}
                   style={[twStyle("flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-4"), vIdx > 0 && { marginTop: 8 }]}
                 >
-                  <View>
+                  <View style={twStyle("flex-1")}>
                     <Text style={twStyle("text-sm font-medium text-gray-900")}>
-                      {v.name}
+                      {v.title || v.variant_name || "—"}
                     </Text>
                     <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                      {formatDuration(v.duration_minutes)}
+                      {formatDuration(v.duration_minutes)} · {formatCurrency(v.price, service.currency)}
                     </Text>
                   </View>
-                  <Text style={twStyle("text-sm font-semibold text-gray-900")}>
-                    {formatCurrency(v.price, service.currency)}
-                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleDeleteVariant(v)}
+                    style={twStyle("rounded-lg bg-red-50 p-2")}
+                    accessibilityLabel={`Delete variant ${v.title || v.variant_name}`}
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
+                  </TouchableOpacity>
                 </View>
               ))}
             </View>
@@ -771,6 +857,66 @@ export default function ServiceDetailScreen() {
           loading={creatingAddOn || updatingAddOn}
           fullWidth
           disabled={!addOnForm.name.trim() || !addOnForm.price}
+        />
+      </BottomSheet>
+
+      {/* Variant Bottom Sheet */}
+      <BottomSheet
+        visible={showVariantSheet}
+        onClose={() => setShowVariantSheet(false)}
+        title="New Variant"
+      >
+        <Text style={twStyle("mb-3 text-xs text-gray-500 leading-relaxed")}>
+          Add a booking option with its own price and duration (e.g. &quot;Short Hair - 30 min&quot;).
+        </Text>
+        <View style={twStyle("mb-4")}>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
+          <TextInput
+            style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
+            placeholder="e.g., Short Hair, 30 min session"
+            placeholderTextColor="#9ca3af"
+            value={variantForm.title}
+            onChangeText={(v) => setVariantForm((p) => ({ ...p, title: v }))}
+            accessibilityLabel="Variant title"
+          />
+        </View>
+        <View style={twStyle("mb-4 flex-row")}>
+          <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+              Price ({service?.currency})
+            </Text>
+            <TextInput
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
+              placeholder="0"
+              placeholderTextColor="#9ca3af"
+              value={variantForm.price}
+              onChangeText={(v) => setVariantForm((p) => ({ ...p, price: v }))}
+              keyboardType="numeric"
+              accessibilityLabel="Variant price"
+            />
+          </View>
+          <View style={twStyle("flex-1")}>
+            <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>
+              Duration (min)
+            </Text>
+            <TextInput
+              style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900")}
+              placeholder="60"
+              placeholderTextColor="#9ca3af"
+              value={variantForm.duration_minutes}
+              onChangeText={(v) => setVariantForm((p) => ({ ...p, duration_minutes: v }))}
+              keyboardType="numeric"
+              accessibilityLabel="Variant duration in minutes"
+            />
+          </View>
+        </View>
+        <ActionButton
+          label="Create Variant"
+          variant="secondary"
+          onPress={handleSaveVariant}
+          loading={creatingVariant}
+          fullWidth
+          disabled={!variantForm.title.trim() || !variantForm.price || !variantForm.duration_minutes}
         />
       </BottomSheet>
 

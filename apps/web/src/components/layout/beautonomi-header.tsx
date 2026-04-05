@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Scissors, Sparkles, Wand2, Droplets, Palette, Ruler, ScanFace, Eye, Armchair, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { MapPin, ChevronDown, ChevronLeft, ChevronRight, Search, Menu, User, Home, Briefcase, History, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import PlatformLogo from "@/components/platform/PlatformLogo";
 import { useAuth } from "@/providers/AuthProvider";
@@ -29,41 +29,27 @@ import { useRecentLocations } from "@/hooks/useRecentLocations";
 import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { toast } from "sonner";
 import { HomeNavIcon, ExploreNavIcon } from "@/components/layout/nav-icons";
-
-// Icon mapping for dynamic resolution
-const IconMap: Record<string, React.ReactNode> = {
-  home: <Home className="w-6 h-6" />,
-  all: <Wand2 className="w-6 h-6" />, // Magic wand sparkles for "All" category
-  scissors: <Scissors className="w-6 h-6" />,
-  sparkles: <Sparkles className="w-6 h-6" />,
-  droplets: <Droplets className="w-6 h-6" />,
-  palette: <Palette className="w-6 h-6" />,
-  ruler: <Ruler className="w-6 h-6" />,
-  scanface: <ScanFace className="w-6 h-6" />,
-  eye: <Eye className="w-6 h-6" />,
-  armchair: <Armchair className="w-6 h-6" />,
-  hair: <Scissors className="w-6 h-6" />,
-  makeup: <Palette className="w-6 h-6" />,
-  nails: <Sparkles className="w-6 h-6" />, // Fallback
-  facial: <ScanFace className="w-6 h-6" />,
-  massage: <Armchair className="w-6 h-6" />,
-};
+import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
+import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
 
 interface Category {
   id: string;
   name: string;
   slug: string;
-  icon?: string; // Database returns string (name or emoji)
+  icon?: string; // Lucide name (PascalCase), image URL, or legacy emoji
 }
 
 interface BeautonomiHeaderProps {
   activeCategory?: string;
   onCategoryChange?: (category: string) => void;
+  /** When set (e.g. from RSC home), category pills render without a client fetch delay */
+  initialGlobalCategories?: Category[];
 }
 
 const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   activeCategory,
   onCategoryChange,
+  initialGlobalCategories,
 }) => {
   const { user, isLoading: authLoading, signOut } = useAuth();
   const router = useRouter();
@@ -100,33 +86,42 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const { addresses, isLoading: _addressesLoading, loadAddresses } = useSavedAddresses();
   const { recentLocations, addLocation } = useRecentLocations();
   const { availability, checkAvailability } = useServiceAvailability();
-  const [categories, setCategories] = useState<Category[]>([
-    // Initial fallback state while loading
-    { id: "all", name: "All", slug: "all", icon: "all" },
-  ]);
+  const [categories, setCategories] = useState<Category[]>(() => {
+    const all: Category = { id: "all", name: "All", slug: "all", icon: "all" };
+    if (initialGlobalCategories?.length) {
+      return [
+        all,
+        ...initialGlobalCategories.map((c) => ({
+          id: c.id,
+          name: c.name,
+          slug: c.slug,
+          icon: c.icon || "BeautonomiAll",
+        })),
+      ];
+    }
+    return [all];
+  });
   const categoryScrollRef = useRef<HTMLDivElement>(null);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch categories from API
+  // Fetch categories from API (skipped when RSC already supplied them — faster first paint on home)
   useEffect(() => {
+    if (initialGlobalCategories?.length) return;
+
     const fetchCategories = async () => {
       try {
-        console.log("Fetching categories from API...");
         const response = await fetcher.get<{ data: any[] }>("/api/public/categories/global?all=true");
-        console.log("Categories API response:", response);
-        
+
         if (response && response.data && Array.isArray(response.data) && response.data.length > 0) {
           const mappedCategories = response.data.map((cat: any) => ({
             id: cat.id,
             name: cat.name,
             slug: cat.slug,
-            icon: cat.icon || "scissors" // Fallback icon if not provided
+            icon: cat.icon || "BeautonomiAll"
           }));
-          
-          console.log("Mapped categories:", mappedCategories);
-          
+
           // Prepend "All" category if not present
           setCategories([
             { id: "all", name: "All", slug: "all", icon: "all" },
@@ -151,7 +146,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     if (isMounted) {
       fetchCategories();
     }
-  }, [isMounted]);
+  }, [isMounted, initialGlobalCategories]);
 
   useEffect(() => {
     setIsMounted(true);
@@ -230,19 +225,15 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     }
   };
 
-  // Helper to render icon
-  const renderCategoryIcon = (iconStr?: string) => {
-    if (!iconStr) return <Wand2 className="w-6 h-6" />; // Default for "All" / missing icons
-    
-    // Check if it's a known Lucide icon name (lowercase)
-    const lowerIcon = iconStr.toLowerCase();
-    if (IconMap[lowerIcon]) {
-      return IconMap[lowerIcon];
-    }
-    
-    // Assume it's an emoji or other text
-    return <span className="text-2xl leading-none">{iconStr}</span>;
-  };
+  const renderCategoryIcon = (iconStr?: string, active?: boolean) => (
+    <GlobalCategoryIcon
+      icon={iconStr || "BeautonomiAll"}
+      size={24}
+      strokeWidth={1.75}
+      className="text-current"
+      isActive={active}
+    />
+  );
 
   useEffect(() => {
     setIsMounted(true);
@@ -459,11 +450,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     if (onCategoryChange) {
       onCategoryChange(slug);
     } else {
-      // If "all", go to home page, otherwise filter by category
+      // Use client-side navigation to avoid full document reload on mobile.
       if (slug === "all") {
-        window.location.href = `/`;
+        router.replace("/", { scroll: false });
       } else {
-        window.location.href = `/?category=${encodeURIComponent(slug)}`;
+        router.replace(`/?category=${encodeURIComponent(slug)}`, { scroll: false });
       }
     }
   };
@@ -484,14 +475,14 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         const { latitude, longitude } = position.coords;
         
         try {
-          // Reverse geocode to get address - Mapbox uses "longitude,latitude" format
-          const response = await fetcher.post<{ data: any[] }>("/api/mapbox/geocode", {
-            query: `${longitude},${latitude}`,
-            limit: 1
+          // Use reverse-geocode endpoint with explicit coordinates.
+          const response = await fetcher.post<{ data: any | null }>("/api/mapbox/reverse-geocode", {
+            longitude,
+            latitude,
           });
 
-          if (response.data && response.data.length > 0) {
-            const address = response.data[0].place_name;
+          if (response.data?.place_name) {
+            const address = response.data.place_name;
             setSelectedAddress(address);
             setSelectedLocation({ latitude, longitude, address });
             
@@ -894,6 +885,9 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               <Search className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
             </button>
 
+            {/* Notification bell for signed-in customers (incl. mobile public home). */}
+            {isMounted && user && user.role === "customer" ? <CustomerNotificationsDropdown /> : null}
+
             {/* Become a partner link (Desktop) */}
             <Link
               href="/become-a-partner"
@@ -1191,8 +1185,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                         : "text-gray-600 font-normal hover:text-gray-900"
                     }`}
                   >
-                    <span className="text-gray-600 group-hover:text-[#FF007F] transition-colors flex items-center justify-center h-6">
-                      {renderCategoryIcon(category.icon)}
+                    <span className="flex items-center justify-center h-6 w-6 text-inherit">
+                      {renderCategoryIcon(category.icon, isActive)}
                     </span>
                     <span className="text-[10px] md:text-sm font-medium">{category.name}</span>
                     {isActive && (

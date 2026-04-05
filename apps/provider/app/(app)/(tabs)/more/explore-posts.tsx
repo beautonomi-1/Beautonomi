@@ -57,6 +57,13 @@ interface ExploreComment {
   created_at: string;
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 type PickedAsset = { uri: string; mimeType?: string; fileName?: string };
 
 export default function ExplorePostsScreen() {
@@ -663,7 +670,7 @@ export default function ExplorePostsScreen() {
                       </Text>
                       <Text style={twStyle("text-sm text-gray-900")}>{c.body}</Text>
                       <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                        {new Date(c.created_at).toLocaleDateString()}
+                        {formatDateSafe(c.created_at)}
                       </Text>
                     </View>
                   ))}

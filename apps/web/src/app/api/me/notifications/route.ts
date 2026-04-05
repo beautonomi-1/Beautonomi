@@ -1,16 +1,17 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * GET /api/me/notifications
  *
- * Get customer's notifications
+ * Get customer's notifications. Uses admin client so RLS doesn't silently
+ * block rows — ownership is enforced via explicit user_id filter.
  */
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "20");

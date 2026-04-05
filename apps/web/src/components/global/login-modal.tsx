@@ -14,13 +14,48 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { FaApple, FaFacebook, FaGoogle } from "react-icons/fa6";
 import { CiMail } from "react-icons/ci";
-import { X, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { X, AlertCircle, Eye, EyeOff, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/providers/AuthProvider";
+import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
+import { useAmplitude } from "@/hooks/useAmplitude";
 import { signIn as signInAuth, signUp as signUpAuth, signInWithOAuth, resendVerificationEmail } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 import { normalizeFullPhoneToE164 } from "@/lib/phone";
+import { fetcher } from "@/lib/http/fetcher";
+import { supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
+import { EVENT_SIGNUP_START, EVENT_SIGNUP_COMPLETE, EVENT_LOGIN_SUCCESS } from "@/lib/analytics/amplitude/types";
+import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
+import {
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+} from "@/lib/supabase/auth-sms-otp";
+import type { UserRole } from "@/types/beautonomi";
+
+const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
+const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
+const LOGIN_MODAL_I18N_LABELS: Record<string, string> = {
+  "auth.preferredLanguage": "Preferred language",
+  "auth.howHearAboutUs": "How did you hear about us?",
+  "auth.signupSourceSkip": "Prefer not to say",
+  "auth.signupSource.social_media": "Social media",
+  "auth.signupSource.friend_family": "Friend or family",
+  "auth.signupSource.google_search": "Google search",
+  "auth.signupSource.advertisement": "Advertisement",
+  "auth.signupSource.other": "Other",
+};
 
 
 interface LoginModalProps {
@@ -28,13 +63,28 @@ interface LoginModalProps {
   setOpen: (open: boolean) => void;
   initialMode?: "login" | "signup";
   redirectContext?: "provider" | "customer"; // Context for where signup was initiated
-  onAuthSuccess?: () => void; // Callback when authentication succeeds
+  /** Runs after successful auth; see skipDefaultSignupRedirect. */
+  onAuthSuccess?: () => void;
   redirectUrl?: string; // URL to redirect to after auth (for OAuth callbacks)
+  /**
+   * When true, email signup skips default router redirects and only runs onAuthSuccess
+   * (e.g. pricing → subscription checkout). Default false: navigate first, then onAuthSuccess.
+   */
+  skipDefaultSignupRedirect?: boolean;
 }
 
-export default function LoginModal({ open, setOpen, initialMode, redirectContext, onAuthSuccess, redirectUrl }: LoginModalProps) {
+export default function LoginModal({
+  open,
+  setOpen,
+  initialMode,
+  redirectContext,
+  onAuthSuccess,
+  redirectUrl,
+  skipDefaultSignupRedirect = false,
+}: LoginModalProps) {
   const router = useRouter();
   const { refreshUser, role: contextRole, user } = useAuth();
+  const { track, isReady } = useAmplitude();
   
   // Close modal and call onAuthSuccess when user becomes authenticated
   useEffect(() => {
@@ -62,6 +112,43 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
   const [otpSent, setOtpSent] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [sentPhoneE164, setSentPhoneE164] = useState("");
+  const [otpExpiresAt, setOtpExpiresAt] = useState<number | null>(null);
+  const [otpSecondsLeft, setOtpSecondsLeft] = useState(0);
+  const [otpResending, setOtpResending] = useState(false);
+  const [emailOtpMode, setEmailOtpMode] = useState(false);
+  const [emailOtpSent, setEmailOtpSent] = useState(false);
+  const [emailOtpCode, setEmailOtpCode] = useState("");
+  const [pendingEmailOtp, setPendingEmailOtp] = useState("");
+  const [preferredLanguage, setPreferredLanguage] = useState(() => {
+    if (typeof navigator !== "undefined" && navigator.language) {
+      const code = navigator.language.split("-")[0];
+      return supportedLanguages.some((l) => l.code === code) ? code : "en";
+    }
+    return "en";
+  });
+  const [signupSource, setSignupSource] = useState<string | null>(null);
+  const t = (key: string) => LOGIN_MODAL_I18N_LABELS[key] ?? key;
+  const fieldClass = "bg-gray-100 border-gray-200 text-[13px] text-gray-700 placeholder:text-gray-400";
+  const labelClass = "text-xs font-medium text-gray-700 mb-2 block";
+
+  useEffect(() => {
+    if (isReady && open && isSignup) track(EVENT_SIGNUP_START);
+  }, [isReady, open, isSignup, track]);
+
+  // Apply pending signup_source / preferred_language when user becomes available (e.g. after email verification)
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const pendingSource = sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY);
+    const pendingLang = sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY);
+    if (!pendingSource && !pendingLang) return;
+    const payload: { signup_source?: string; preferred_language?: string } = {};
+    if (pendingSource) payload.signup_source = pendingSource;
+    if (pendingLang) payload.preferred_language = pendingLang;
+    fetcher.patch("/api/me/profile", payload).then(() => {
+      sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
+      sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
+    }).catch(() => {});
+  }, [user?.id]);
 
   // Reset form when modal opens/closes
   useEffect(() => {
@@ -82,8 +169,40 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
       setOtpSent(false);
       setOtpCode("");
       setSentPhoneE164("");
+      setOtpExpiresAt(null);
+      setOtpSecondsLeft(0);
+      setOtpResending(false);
+      setEmailOtpMode(false);
+      setEmailOtpSent(false);
+      setEmailOtpCode("");
+      setPendingEmailOtp("");
+      const langCode = typeof navigator !== "undefined" && navigator.language
+        ? (() => { const c = navigator.language.split("-")[0]; return supportedLanguages.some((l) => l.code === c) ? c : "en"; })()
+        : "en";
+      setPreferredLanguage(langCode);
+      setSignupSource(null);
     }
   }, [open, initialMode]);
+
+  useEffect(() => {
+    if (!otpExpiresAt) {
+      setOtpSecondsLeft(0);
+      return;
+    }
+    const tick = () => {
+      const remaining = Math.max(0, Math.ceil((otpExpiresAt - Date.now()) / 1000));
+      setOtpSecondsLeft(remaining);
+    };
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [otpExpiresAt]);
+
+  const formatOtpCountdown = (seconds: number) => {
+    const mm = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const ss = String(seconds % 60).padStart(2, "0");
+    return `${mm}:${ss}`;
+  };
 
   const handleEmailContinue = () => {
     if (!email) {
@@ -119,6 +238,21 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     setShowResendVerification(false);
 
     try {
+      const resolveRoleFast = async (providerContext: boolean): Promise<UserRole | null> => {
+        try {
+          const qs = providerContext ? "?portal=provider" : "";
+          const res = await fetch(`/api/me/role${qs}`, {
+            credentials: "include",
+            cache: "no-store",
+          });
+          if (!res.ok) return null;
+          const json = (await res.json()) as { data?: { role?: UserRole } };
+          return json?.data?.role ?? null;
+        } catch {
+          return null;
+        }
+      };
+
       if (isSignup) {
         // Sign up new user
         if (!fullName) {
@@ -142,31 +276,39 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
         // If email verification is disabled, Supabase returns a session immediately
         // If email verification is enabled, session will be null until email is verified
         if (signupResult?.session) {
-          // User is logged in (email verification disabled or already verified)
+          if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
           toast.success("Account created successfully! Welcome to Beautonomi.");
           
           // Wait for auth state to update
           await refreshUser();
           
+          try {
+            await fetcher.patch("/api/me/profile", {
+              signup_source: signupSource || undefined,
+              preferred_language: preferredLanguage,
+            });
+          } catch {
+            // Non-blocking
+          }
+          
           // Small delay to ensure auth context is updated
           await new Promise(resolve => setTimeout(resolve, 300));
           
           setOpen(false);
-          
-          // Call onAuthSuccess callback if provided (e.g., continue booking)
-          if (onAuthSuccess) {
+
+          if (skipDefaultSignupRedirect && onAuthSuccess) {
             onAuthSuccess();
             return;
           }
-          
-          // Context-aware redirect: if signing up from provider flow, go to onboarding
+
           if (redirectContext === "provider") {
             router.push("/provider/onboarding");
           } else if (redirectUrl) {
             router.push(redirectUrl);
           } else {
-            router.push("/account-settings");
+            router.push("/onboarding");
           }
+          onAuthSuccess?.();
         } else if (signupResult?.user) {
           // User was created but no session - this means email verification is required
           // Try to sign in immediately as a fallback (in case verification is actually disabled)
@@ -175,6 +317,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             
             // Check if login actually created a session
             if (loginResult?.session) {
+              if (isReady) track(EVENT_SIGNUP_COMPLETE, { method: "email" });
               toast.success("Account created successfully! Welcome to Beautonomi.");
               
               // Wait for auth state to update
@@ -184,20 +327,20 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               await new Promise(resolve => setTimeout(resolve, 300));
               
               setOpen(false);
-              
-              // Call onAuthSuccess callback if provided
-              if (onAuthSuccess) {
+
+              if (skipDefaultSignupRedirect && onAuthSuccess) {
                 onAuthSuccess();
                 return;
               }
-              
+
               if (redirectContext === "provider") {
                 router.push("/provider/onboarding");
               } else if (redirectUrl) {
                 router.push(redirectUrl);
               } else {
-                router.push("/account-settings");
+                router.push("/onboarding");
               }
+              onAuthSuccess?.();
             } else {
               // Login didn't create a session - email verification is required
               throw new Error("Email verification required");
@@ -205,7 +348,10 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
           } catch (loginError: unknown) {
             // If login fails, email verification is required
             console.log("Auto-login after signup failed, email verification is required:", loginError);
-            
+            if (typeof window !== "undefined") {
+              if (signupSource) sessionStorage.setItem(PENDING_SIGNUP_SOURCE_KEY, signupSource);
+              sessionStorage.setItem(PENDING_PREFERRED_LANGUAGE_KEY, preferredLanguage);
+            }
             // Don't close modal or redirect - user needs to verify email first
             toast.success(
               "Account created! Please check your email to verify your account. You'll be able to log in after verification.",
@@ -226,47 +372,70 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
         }
       } else {
         // Sign in existing user
-        await signInAuth({ email: trimmedEmail, password: trimmedPassword });
+        const loginResult = await signInAuth({ email: trimmedEmail, password: trimmedPassword });
         
         // Clear any errors on successful sign in
         setError(null);
         setShowResendVerification(false);
-        
-        // Refresh user data to get updated role (this already includes role in the returned user)
-        // Add timeout handling - if refreshUser times out, try to get role from session
-        let updatedUser = await refreshUser();
-        
-        // If refreshUser timed out or returned null, wait a bit and try once more (max 2 retries)
-        let retries = 0;
-        while (!updatedUser && retries < 2) {
-          // Wait a moment for auth state to settle
-          await new Promise(resolve => setTimeout(resolve, 500));
-          updatedUser = await refreshUser();
-          retries++;
+
+        // Provider-intent fast path: route immediately, then refresh in background.
+        // This avoids waiting on role/profile reads before navigation.
+        const providerContext = redirectContext === "provider";
+        const providerIntent =
+          providerContext ||
+          (typeof window !== "undefined" && window.location.pathname.startsWith("/provider"));
+        if (providerIntent) {
+          if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
+          toast.success("Logged in successfully!");
+          setOpen(false);
+          router.replace("/provider/dashboard");
+          void refreshUser().catch(() => {});
+          setIsLoading(false);
+          return;
         }
-        
-        // Get role directly from updated user
-        let userRole = updatedUser?.role;
-        
-        // If we still don't have a role after retries, wait a bit more for auth context to update
-        if (!userRole) {
-          // Wait for auth state change listener to update the context
-          await new Promise(resolve => setTimeout(resolve, 500));
-          // Try one more time
-          updatedUser = await refreshUser();
-          userRole = updatedUser?.role;
+
+        // Resolve role server-side first (fast path), with provider context upgrade when relevant.
+        let finalRole =
+          (await resolveRoleFast(providerContext)) ||
+          ((loginResult as any)?.user?.user_metadata?.role as UserRole | undefined) ||
+          contextRole;
+
+        // Fallback: only if still unknown, perform the slower client refresh sequence.
+        if (!finalRole) {
+          let updatedUser = await refreshUser();
+          let retries = 0;
+          while (!updatedUser && retries < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            updatedUser = await refreshUser();
+            retries++;
+          }
+          finalRole = updatedUser?.role || contextRole;
         }
-        
-        // Final role check
-        const finalRole = userRole || contextRole;
         
         // Only close modal and redirect if we have a role
         if (finalRole) {
+          // Apply any pending signup_source / preferred_language (e.g. after email verification)
+          const pendingSource = typeof window !== "undefined" ? sessionStorage.getItem(PENDING_SIGNUP_SOURCE_KEY) : null;
+          const pendingLang = typeof window !== "undefined" ? sessionStorage.getItem(PENDING_PREFERRED_LANGUAGE_KEY) : null;
+          if (pendingSource || pendingLang) {
+            try {
+              await fetcher.patch("/api/me/profile", {
+                ...(pendingSource && { signup_source: pendingSource }),
+                ...(pendingLang && { preferred_language: pendingLang }),
+              });
+              sessionStorage.removeItem(PENDING_SIGNUP_SOURCE_KEY);
+              sessionStorage.removeItem(PENDING_PREFERRED_LANGUAGE_KEY);
+            } catch {
+              // Non-blocking
+            }
+          }
           // Clear any errors before closing
           setError(null);
           setShowResendVerification(false);
+          if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
           toast.success("Logged in successfully!");
           setOpen(false);
+          void refreshUser().catch(() => {});
           
           // Role-based redirect after login - immediate redirect
           // Use replace instead of push to avoid back button issues
@@ -278,7 +447,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
             router.replace(redirectUrl);
           } else {
             // If redirectContext is provider, send customers to onboarding to become a provider
-            if (redirectContext === "provider") {
+            if (providerContext) {
               router.replace("/provider/onboarding");
             } else {
               router.replace("/");
@@ -288,6 +457,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
           // Role not loaded yet: redirect to /portal so server can route by role (provider → dashboard, etc.)
           setError(null);
           setOpen(false);
+          if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
           toast.success("Logged in successfully!");
           router.replace("/portal");
           setIsLoading(false);
@@ -370,6 +540,68 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     // Default to login unless initialMode is explicitly signup
     setIsSignup(initialMode === "signup");
     setError(null);
+    setEmailOtpMode(false);
+    setEmailOtpSent(false);
+    setEmailOtpCode("");
+    setPendingEmailOtp("");
+  };
+
+  const routeAfterOtpAuth = async () => {
+    // Booking and other embedded flows can provide their own post-auth behavior.
+    if (onAuthSuccess) return;
+
+    if (redirectContext === "provider") {
+      router.replace("/provider/dashboard");
+      return;
+    }
+    if (redirectUrl) {
+      router.replace(redirectUrl);
+      return;
+    }
+
+    try {
+      const roleRes = await fetch("/api/me/role", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (roleRes.ok) {
+        const roleJson = (await roleRes.json()) as { data?: { role?: string } };
+        const role = roleJson?.data?.role;
+        if (role === "superadmin") {
+          router.replace("/admin/login?next=%2Fadmin%2Fdashboard");
+          return;
+        }
+        if (role === "provider_owner" || role === "provider_staff" || role === "provider_onboarding") {
+          router.replace("/provider/dashboard");
+          return;
+        }
+        if (role === "customer") {
+          try {
+            const onboardingRes = await fetch("/api/me/onboarding/complete", {
+              credentials: "include",
+              cache: "no-store",
+            });
+            if (onboardingRes.ok) {
+              const onboardingJson = (await onboardingRes.json()) as {
+                data?: { completed?: boolean };
+              };
+              if (onboardingJson?.data?.completed === false) {
+                router.replace("/onboarding");
+                return;
+              }
+            }
+          } catch {
+            // fall through to bookings
+          }
+          router.replace("/bookings");
+          return;
+        }
+      }
+    } catch {
+      // fallback below
+    }
+
+    router.replace("/portal");
   };
 
   const fullPhoneE164 = normalizeFullPhoneToE164(phoneFull) ?? (phoneFull || "").replace(/\s/g, "").trim();
@@ -385,13 +617,15 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     try {
       const supabase = getSupabaseClient();
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        phone: fullPhoneE164,
-        options: { channel: "sms" },
+        phone: normalizeSupabaseAuthPhone(fullPhoneE164),
+        options: { channel: "sms", shouldCreateUser: isSignup },
       });
       if (otpError) throw otpError;
-      setSentPhoneE164(fullPhoneE164);
+      setSentPhoneE164(normalizeSupabaseAuthPhone(fullPhoneE164));
       setOtpSent(true);
       setOtpCode("");
+      const expiresAt = Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000;
+      setOtpExpiresAt(expiresAt);
       toast.success("Check your phone for the verification code");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to send code";
@@ -402,24 +636,110 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
     }
   };
 
-  const handleVerifyOtp = async () => {
-    if (!otpCode.trim() || !sentPhoneE164) return;
+  const handleResendPhoneOtp = async () => {
+    if (!sentPhoneE164) return;
+    setOtpResending(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        phone: normalizeSupabaseAuthPhone(sentPhoneE164),
+        options: { channel: "sms", shouldCreateUser: isSignup },
+      });
+      if (otpError) throw otpError;
+      setOtpCode("");
+      const expiresAt = Date.now() + SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS * 1000;
+      setOtpExpiresAt(expiresAt);
+      toast.success("A new verification code has been sent");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to resend code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setOtpResending(false);
+    }
+  };
+
+  const handleVerifyOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? otpCode);
+    if (!sentPhoneE164 || !isCompleteSupabaseSmsOtp(token)) return;
     setIsLoading(true);
     setError(null);
     try {
       const supabase = getSupabaseClient();
       const { error: verifyError } = await supabase.auth.verifyOtp({
-        phone: sentPhoneE164,
-        token: otpCode.trim(),
+        phone: normalizeSupabaseAuthPhone(sentPhoneE164),
+        token,
         type: "sms",
       });
       if (verifyError) throw verifyError;
+      if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "phone" });
       await refreshUser();
       setOpen(false);
       onAuthSuccess?.();
-      if (redirectContext === "provider") {
-        router.replace("/provider/dashboard");
-      }
+      await routeAfterOtpAuth();
+      toast.success("You're signed in");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSendEmailOtp = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      setError("Please enter a valid email address");
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const emailRedirectTo =
+        redirectContext === "provider"
+          ? `${origin}/auth/callback?next=/provider/dashboard`
+          : `${origin}/auth/callback`;
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: trimmed,
+        options: { emailRedirectTo, shouldCreateUser: false },
+      });
+      if (otpError) throw otpError;
+      setPendingEmailOtp(trimmed);
+      setEmailOtpSent(true);
+      setEmailOtpCode("");
+      toast.success(`Check your email for the ${SUPABASE_AUTH_OTP_LENGTH}-digit code`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to send code";
+      setError(msg);
+      toast.error(msg);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyEmailOtp = async (codeOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(codeOverride ?? emailOtpCode);
+    const addr = pendingEmailOtp || email.trim();
+    if (!addr || !isCompleteSupabaseSmsOtp(token)) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const supabase = getSupabaseClient();
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: addr.trim(),
+        token,
+        type: "email",
+      });
+      if (verifyError) throw verifyError;
+      if (isReady) track(EVENT_LOGIN_SUCCESS, { method: "email" });
+      await refreshUser();
+      setOpen(false);
+      onAuthSuccess?.();
+      await routeAfterOtpAuth();
       toast.success("You're signed in");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Invalid code";
@@ -472,7 +792,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
         </DialogHeader>
         <div className="px-5 sm:px-6 pb-6 sm:pb-8 pt-0">
           <h2 className="text-2xl sm:text-[28px] font-bold text-gray-900 tracking-tight mb-1">Welcome to Beautonomi</h2>
-          <p className="text-[15px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
+          <p className="text-[13px] text-gray-500 mb-7 sm:mb-8">Log in or sign up to continue</p>
           
           {/* Error Message */}
           {error && (
@@ -508,24 +828,39 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   label="Phone number"
                   value={phoneFull}
                   onChange={setPhoneFull}
-                  placeholder="e.g. 82 123 4567"
                   defaultCountryCode="+27"
+                  placeholder="e.g. 82 123 4567"
                 />
               </div>
               
-              <p className="text-[13px] text-gray-500 mb-6 leading-relaxed">
-                We&apos;ll send you a verification code. Standard rates apply.{" "}
+              <p className="mb-6 text-[13px] leading-relaxed text-gray-500">
+                We&apos;ll text a {SUPABASE_AUTH_OTP_LENGTH}-digit code (about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Msg &amp; data rates may apply. By continuing you agree to our{" "}
+                <Link href="/terms-and-condition" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
+                  Terms
+                </Link>
+                {" "}&amp;{" "}
                 <Link href="/privacy-policy" className="font-medium text-gray-700 underline underline-offset-2 hover:text-gray-900" onClick={() => setOpen(false)}>
                   Privacy Policy
                 </Link>
+                {" "}(incl. communications &amp; analytics; optional session replay when signed in — adjust in account settings).
               </p>
               
               <Button 
-                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
+                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                 onClick={handlePhoneSendOtp}
                 disabled={isLoading || !isValidE164}
+                aria-busy={isLoading}
               >
-                {isLoading ? "Sending code…" : "Continue"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                    Sending code…
+                  </>
+                ) : (
+                  "Continue"
+                )}
               </Button>
             </>
           )}
@@ -533,33 +868,58 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
           {/* OTP verification step (after phone OTP sent) */}
           {!showEmailForm && otpSent && (
             <>
-              <p className="text-base font-semibold text-gray-900 mb-1">Enter code</p>
-              <p className="text-[13px] text-gray-500 mb-5">
-                We sent a 6-digit code to <span className="font-medium text-gray-700">{sentPhoneE164}</span>
+              <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
+              <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
+                We sent a {SUPABASE_AUTH_OTP_LENGTH}-digit code to{" "}
+                <span className="font-semibold text-gray-900">{sentPhoneE164}</span> (valid about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).
               </p>
-              <Input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
+              <OtpDigitInput
                 value={otpCode}
-                onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, "").slice(0, 6);
+                onChange={(v) => {
                   setOtpCode(v);
                   if (error) setError(null);
                 }}
-                className="text-center text-xl sm:text-2xl tracking-[0.4em] font-mono rounded-2xl min-h-[56px] mb-5 border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/30"
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && otpCode.trim().length >= 4) handleVerifyOtp();
+                onComplete={(code) => {
+                  if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyOtp(code);
                 }}
+                disabled={isLoading}
+                autoFocus
+                label="Phone verification code"
+                className="mb-5"
+                length={SUPABASE_AUTH_OTP_LENGTH}
               />
+              <div className="mb-4 flex items-center justify-between gap-3 text-xs">
+                <span className="text-gray-500">
+                  Code expires in{" "}
+                  <span className="font-semibold text-gray-700">
+                    {formatOtpCountdown(otpSecondsLeft)}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void handleResendPhoneOtp()}
+                  disabled={otpResending || isLoading}
+                  className="font-medium text-primary hover:underline disabled:opacity-50 disabled:no-underline"
+                >
+                  {otpResending ? "Resending..." : "Resend code"}
+                </button>
+              </div>
               <Button
-                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40"
-                onClick={handleVerifyOtp}
-                disabled={isLoading || otpCode.trim().length < 4}
+                className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
+                onClick={() => void handleVerifyOtp()}
+                disabled={isLoading || !isCompleteSupabaseSmsOtp(otpCode)}
+                aria-busy={isLoading}
               >
-                {isLoading ? "Verifying…" : "Verify"}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                    Verifying…
+                  </>
+                ) : (
+                  "Verify"
+                )}
               </Button>
               <button
                 type="button"
@@ -586,6 +946,10 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   setShowEmailForm(false);
                   setShowPasswordField(false);
                   setError(null);
+                  setEmailOtpMode(false);
+                  setEmailOtpSent(false);
+                  setEmailOtpCode("");
+                  setPendingEmailOtp("");
                 }}
                 className="flex items-center gap-2 text-[15px] text-gray-500 hover:text-gray-900 font-medium mb-5 -mx-1 px-1 py-2 rounded-xl active:bg-gray-100 touch-manipulation"
               >
@@ -597,10 +961,10 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                 <>
                   {isSignup && (
                     <div className="mb-4">
-                      <Label className="text-sm font-medium text-gray-700 mb-2 block">Full name</Label>
+                      <Label className={labelClass}>Full name</Label>
                       <Input
                         type="text"
-                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/20"
+                        className={`${fieldClass} min-h-[48px] h-12 rounded-2xl focus-visible:ring-2 focus-visible:ring-primary/20`}
                         placeholder="Full name"
                         value={fullName}
                         onChange={(e) => setFullName(e.target.value)}
@@ -615,15 +979,19 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     </div>
                   )}
                   <div className="mb-4">
-                    <Label className="text-sm font-medium text-gray-700 mb-2 block">Email</Label>
+                    <Label className={labelClass}>Email</Label>
                     <Input
                       type="email"
-                      className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 focus-visible:ring-2 focus-visible:ring-primary/20"
+                      className={`${fieldClass} min-h-[48px] h-12 rounded-2xl focus-visible:ring-2 focus-visible:ring-primary/20`}
                       placeholder="Enter your email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" && email && !isLoading) {
+                          if (!isSignup && emailOtpMode && !emailOtpSent) {
+                            void handleSendEmailOtp();
+                            return;
+                          }
                           if (initialMode === "login") {
                             const passwordInput = document.querySelector('input[type="password"], input[type="text"][placeholder="Password"]') as HTMLInputElement;
                             if (passwordInput) {
@@ -641,14 +1009,72 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       autoFocus={!isSignup}
                     />
                   </div>
-                  {/* Show password field immediately in login mode (when not signup) */}
-                  {!isSignup && (
+                  {!isSignup && emailOtpSent && (
+                    <>
+                      <p className="text-base sm:text-lg font-semibold text-gray-900 mb-1">Enter verification code</p>
+                      <p className="mb-5 text-[13px] leading-relaxed text-gray-600 sm:text-sm">
+                        Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code we sent to{" "}
+                        <span className="font-semibold text-gray-900">{pendingEmailOtp || email.trim()}</span>
+                      </p>
+                      <OtpDigitInput
+                        value={emailOtpCode}
+                        onChange={(v) => {
+                          setEmailOtpCode(v);
+                          if (error) setError(null);
+                        }}
+                        onComplete={(code) => {
+                          if (!isLoading && isCompleteSupabaseSmsOtp(code)) void handleVerifyEmailOtp(code);
+                        }}
+                        disabled={isLoading}
+                        autoFocus
+                        label="Email verification code"
+                        className="mb-5"
+                        length={SUPABASE_AUTH_OTP_LENGTH}
+                      />
+                      <Button
+                        className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-4 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
+                        onClick={() => void handleVerifyEmailOtp()}
+                        disabled={isLoading || !isCompleteSupabaseSmsOtp(emailOtpCode)}
+                        aria-busy={isLoading}
+                      >
+                        {isLoading ? (
+                          <>
+                            <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                            Verifying…
+                          </>
+                        ) : (
+                          "Verify"
+                        )}
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailOtpSent(false);
+                          setEmailOtpCode("");
+                          setPendingEmailOtp("");
+                          setError(null);
+                        }}
+                        className="w-full py-3 text-[15px] text-gray-500 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100 mb-6"
+                      >
+                        Use a different email
+                      </button>
+                    </>
+                  )}
+
+                  {!isSignup && emailOtpMode && !emailOtpSent && (
+                    <p className="mb-5 text-[13px] leading-relaxed text-gray-600">
+                      We&apos;ll email you a {SUPABASE_AUTH_OTP_LENGTH}-digit verification code.
+                    </p>
+                  )}
+
+                  {/* Show password field immediately in login mode (when not signup and not email OTP flow) */}
+                  {!isSignup && !emailOtpMode && !emailOtpSent && (
                     <div className="mb-5">
-                      <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
+                      <Label className={labelClass}>Password</Label>
                       <div className="relative">
                         <Input
                           type={showPassword ? "text" : "password"}
-                          className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-primary/20"
+                          className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pr-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
                           placeholder="Password"
                           value={password}
                           onChange={(e) => {
@@ -681,7 +1107,7 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       </div>
                     </div>
                   )}
-                  {!isSignup && (
+                  {!isSignup && !emailOtpMode && !emailOtpSent && (
                     <div className="mb-5 text-center">
                       <Link
                         href="/forgot-password"
@@ -692,14 +1118,88 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       </Link>
                     </div>
                   )}
-                  <Button 
-                    className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
-                    onClick={!isSignup ? handleEmailAuth : handleEmailContinue}
-                    disabled={isLoading || !email || (!isSignup && !password)}
-                  >
-                    {!isSignup ? (isLoading ? "Logging in…" : "Log in") : "Continue"}
-                  </Button>
-                  
+                  {!isSignup && !emailOtpMode && !emailOtpSent && (
+                    <div className="mb-5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailOtpMode(true);
+                          setPassword("");
+                          setEmailOtpSent(false);
+                          setEmailOtpCode("");
+                          setPendingEmailOtp("");
+                          setError(null);
+                        }}
+                        className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
+                      >
+                        Sign in with <span className="text-primary font-semibold">email code</span> instead
+                      </button>
+                    </div>
+                  )}
+                  {!isSignup && emailOtpMode && !emailOtpSent && (
+                    <div className="mb-5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEmailOtpMode(false);
+                          setEmailOtpSent(false);
+                          setEmailOtpCode("");
+                          setPendingEmailOtp("");
+                          setError(null);
+                        }}
+                        className="text-[15px] text-gray-600 hover:text-gray-900 font-medium py-2 touch-manipulation"
+                      >
+                        Use password instead
+                      </button>
+                    </div>
+                  )}
+
+                  {isSignup && (
+                    <Button
+                      className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40"
+                      onClick={handleEmailContinue}
+                      disabled={isLoading || !email}
+                    >
+                      Continue
+                    </Button>
+                  )}
+                  {!isSignup && !emailOtpSent && !emailOtpMode && (
+                    <Button
+                      className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
+                      onClick={handleEmailAuth}
+                      disabled={isLoading || !email || !password}
+                      aria-busy={isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                          Signing in…
+                        </>
+                      ) : (
+                        "Log in"
+                      )}
+                    </Button>
+                  )}
+                  {!isSignup && emailOtpMode && !emailOtpSent && (
+                    <Button
+                      className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-6 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
+                      onClick={() => void handleSendEmailOtp()}
+                      disabled={isLoading || !email.trim()}
+                      aria-busy={isLoading}
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                          Sending…
+                        </>
+                      ) : (
+                        "Send code"
+                      )}
+                    </Button>
+                  )}
+
+                  {!( !isSignup && emailOtpSent) && (
+                    <>
                   {/* Separator */}
                   <div className="flex items-center my-6">
                     <div className="flex-grow border-t border-gray-200 rounded-full"></div>
@@ -734,6 +1234,10 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                     onClick={() => {
                       setShowEmailForm(false);
                       setError(null);
+                      setEmailOtpMode(false);
+                      setEmailOtpSent(false);
+                      setEmailOtpCode("");
+                      setPendingEmailOtp("");
                     }}
                     disabled={isLoading}
                   >
@@ -757,13 +1261,15 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                   <div className="text-center mt-6">
                     <button
                       onClick={() => {
-                        window.open("/help", "_blank");
+                        window.open(PLATFORM_CONTACT_HREF, "_blank");
                       }}
                       className="text-[15px] text-gray-500 hover:text-gray-900 font-medium py-2 touch-manipulation"
                     >
                       Need help?
                     </button>
                   </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -771,11 +1277,11 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
               {showPasswordField && (
                 <>
                   <div className="mb-5">
-                    <Label className="text-sm font-medium text-gray-700 mb-2 block">Password</Label>
+                    <Label className={labelClass}>Password</Label>
                     <div className="relative">
                       <Input
                         type={showPassword ? "text" : "password"}
-                        className="text-base min-h-[48px] h-12 rounded-2xl border-gray-200 pr-12 focus-visible:ring-2 focus-visible:ring-primary/20"
+                        className={`${fieldClass} min-h-[48px] h-12 rounded-2xl pr-12 focus-visible:ring-2 focus-visible:ring-primary/20`}
                         placeholder="Password"
                         value={password}
                         onChange={(e) => {
@@ -808,15 +1314,62 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       </button>
                     </div>
                   </div>
+                  {isSignup && (
+                    <>
+                      <div className="mb-5">
+                        <Label className={labelClass}>{t("auth.preferredLanguage")}</Label>
+                        <Select value={preferredLanguage} onValueChange={setPreferredLanguage}>
+                          <SelectTrigger className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {supportedLanguages.map((lang) => (
+                              <SelectItem key={lang.code} value={lang.code}>
+                                {lang.nativeName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="mb-5">
+                        <Label className={labelClass}>
+                          {t("auth.howHearAboutUs")} <span className="text-gray-500 font-normal">(optional)</span>
+                        </Label>
+                        <Select
+                          value={signupSource ?? RADIX_SELECT_NONE}
+                          onValueChange={(v) => setSignupSource(v === RADIX_SELECT_NONE ? null : v)}
+                        >
+                          <SelectTrigger className={`w-full min-h-[48px] h-12 rounded-2xl ${fieldClass}`}>
+                            <SelectValue placeholder={t("auth.signupSourceSkip")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={RADIX_SELECT_NONE}>{t("auth.signupSourceSkip")}</SelectItem>
+                            {SIGNUP_SOURCE_OPTIONS.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value}>
+                                {t(opt.labelKey)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                   <Button 
-                    className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40"
+                    className="w-full rounded-2xl bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary-hover text-white min-h-[52px] h-12 text-base font-semibold mb-5 touch-manipulation shadow-lg shadow-pink-200/40 gap-2"
                     onClick={handleEmailAuth}
                     disabled={isLoading || !password}
+                    aria-busy={isLoading}
                   >
-                    {isLoading 
-                      ? (isSignup ? "Creating account…" : "Logging in…") 
-                      : (isSignup ? "Sign up" : "Log in")
-                    }
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                        {isSignup ? "Creating account…" : "Signing in…"}
+                      </>
+                    ) : isSignup ? (
+                      "Sign up"
+                    ) : (
+                      "Log in"
+                    )}
                   </Button>
                   <div className="text-center space-y-1">
                     {!isSignup && (
@@ -841,6 +1394,10 @@ export default function LoginModal({ open, setOpen, initialMode, redirectContext
                       onClick={() => {
                         setIsSignup(!isSignup);
                         setError(null);
+                        setEmailOtpMode(false);
+                        setEmailOtpSent(false);
+                        setEmailOtpCode("");
+                        setPendingEmailOtp("");
                       }}
                       className="block w-full py-3 text-[15px] text-gray-600 hover:text-gray-900 font-medium touch-manipulation rounded-xl active:bg-gray-100"
                     >

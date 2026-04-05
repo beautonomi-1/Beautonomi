@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect, useLayoutEffect } from "react";
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { Search, User, Calendar, Package, Loader2 } from "lucide-react";
@@ -41,6 +41,11 @@ export function ProviderGlobalSearch({
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const searchRequestIdRef = useRef(0);
+  const supportsResizeObserver = useMemo(
+    () => typeof window !== "undefined" && typeof window.ResizeObserver !== "undefined",
+    []
+  );
 
   // Update dropdown position for portal (avoids overflow clipping from sticky/overflow parents)
   const updateDropdownPosition = () => {
@@ -57,17 +62,17 @@ export function ProviderGlobalSearch({
   useLayoutEffect(() => {
     if (isOpen && suggestions.length > 0 && containerRef.current) {
       updateDropdownPosition();
-      const resizeObserver = new ResizeObserver(updateDropdownPosition);
-      resizeObserver.observe(containerRef.current);
+      const resizeObserver = supportsResizeObserver ? new ResizeObserver(updateDropdownPosition) : null;
+      resizeObserver?.observe(containerRef.current);
       window.addEventListener("scroll", updateDropdownPosition, true);
       window.addEventListener("resize", updateDropdownPosition);
       return () => {
-        resizeObserver.disconnect();
+        resizeObserver?.disconnect();
         window.removeEventListener("scroll", updateDropdownPosition, true);
         window.removeEventListener("resize", updateDropdownPosition);
       };
     }
-  }, [isOpen, suggestions.length]);
+  }, [isOpen, suggestions.length, supportsResizeObserver]);
 
   // Debounced search
   useEffect(() => {
@@ -83,6 +88,7 @@ export function ProviderGlobalSearch({
     }
 
     setIsLoading(true);
+    const requestId = ++searchRequestIdRef.current;
     debounceRef.current = setTimeout(async () => {
       try {
         const response = await fetcher.get<{
@@ -90,15 +96,19 @@ export function ProviderGlobalSearch({
         }>(
           `/api/provider/search?q=${encodeURIComponent(query.trim())}&limit=10`
         );
+        if (requestId !== searchRequestIdRef.current) return;
         const results = response.data?.suggestions || [];
         setSuggestions(results);
         setIsOpen(results.length > 0);
         setSelectedIndex(-1);
       } catch (error) {
+        if (requestId !== searchRequestIdRef.current) return;
         console.error("Provider search error:", error);
         setSuggestions([]);
       } finally {
-        setIsLoading(false);
+        if (requestId === searchRequestIdRef.current) {
+          setIsLoading(false);
+        }
       }
     }, 300);
 

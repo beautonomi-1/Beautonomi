@@ -1,13 +1,29 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { requireRoleInApi, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import type { UserRole } from "@/types/beautonomi";
 import { writeAuditLog } from "@/lib/audit/audit";
 
+const MANAGEABLE_USER_ROLES = [
+  "customer",
+  "provider_owner",
+  "provider_staff",
+  "support_agent",
+  "admin_support",
+  "admin_finance",
+  "admin_trust",
+  "admin_content",
+  "admin_ecommerce",
+  "admin_marketing",
+  "admin_integrations",
+  "admin_operations",
+  "admin_platform_config",
+  "superadmin",
+] as const satisfies readonly UserRole[];
+
 const roleUpdateSchema = z.object({
-  role: z.enum(["customer", "provider_owner", "provider_staff", "superadmin"]),
+  role: z.enum(MANAGEABLE_USER_ROLES),
 });
 
 /**
@@ -20,7 +36,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    const { user } = await requireRoleInApi(["superadmin"], request);
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);

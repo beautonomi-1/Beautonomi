@@ -1,10 +1,14 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/ui/page-header";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import EmptyState from "@/components/ui/empty-state";
 import type { Category, PublicProviderCard } from "@/types/beautonomi";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_CATEGORY_VIEW } from "@/lib/analytics/amplitude/types";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 type Props = {
   category: Category;
@@ -13,6 +17,13 @@ type Props = {
 };
 
 export default function CategoryPageClient({ category, initialProviders, slug }: Props) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const { track, isReady } = useAmplitude();
+  useEffect(() => {
+    if (isReady) track(EVENT_CATEGORY_VIEW, { category_slug: slug, category_name: category.name });
+  }, [isReady, track, slug, category.name]);
+
   // Transform providers to match PublicProviderCard type
   const providers: PublicProviderCard[] = initialProviders.map((p) => ({
     id: p.id,
@@ -28,7 +39,7 @@ export default function CategoryPageClient({ category, initialProviders, slug }:
     is_featured: p.is_featured || false,
     is_verified: p.is_verified || false,
     starting_price: undefined,
-    currency: p.currency || "ZAR",
+    currency: p.currency || tenantCurrency,
     description: null,
     distance_km: null,
     supports_house_calls: false,

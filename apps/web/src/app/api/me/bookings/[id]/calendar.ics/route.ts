@@ -64,10 +64,11 @@ export async function GET(
     } | null;
     const services = (booking.booking_services as Array<{ duration_minutes?: number; offering?: { title?: string; duration_minutes?: number } }>) ?? [];
 
-    const totalMinutes = services.reduce(
+    const totalMinutesRaw = services.reduce(
       (sum, s) => sum + (s.duration_minutes ?? s.offering?.duration_minutes ?? 0),
       0
     );
+    const totalMinutes = totalMinutesRaw > 0 ? totalMinutesRaw : 60;
     const start = new Date(booking.scheduled_at);
     const end = new Date(start.getTime() + totalMinutes * 60 * 1000);
 

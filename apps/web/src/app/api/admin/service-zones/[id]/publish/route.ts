@@ -28,7 +28,7 @@ export async function POST(
 
     const { data: zone, error: fetchError } = await supabase
       .from("platform_zones")
-      .select("id, status, version")
+      .select("id, status, version, geometry, published_at")
       .eq("id", id)
       .single();
 
@@ -38,12 +38,25 @@ export async function POST(
       return errorResponse("Version conflict; refresh and retry", "CONFLICT", 409);
     }
 
+    const zrow = zone as { geometry?: unknown; published_at?: string | null };
+    if (!zrow.geometry) {
+      return errorResponse(
+        "Cannot publish: add coverage (cities or postals) so the zone has geometry first.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    const now = new Date().toISOString();
+    const firstPublishAt = zrow.published_at ?? now;
+
     const { data: updated, error: updateError } = await supabase
       .from("platform_zones")
       .update({
         status: "active",
         is_active: true,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
+        published_at: firstPublishAt,
       })
       .eq("id", id)
       .select()
@@ -51,7 +64,20 @@ export async function POST(
 
     if (updateError) throw updateError;
 
-    return successResponse(updated);
+    // Auto-enroll qualifying providers — non-fatal if it fails
+    let enrolledCount = 0;
+    try {
+      const { data: enrollResult } = await supabase.rpc(
+        "auto_enroll_providers_for_zone",
+        { p_zone_id: id }
+      );
+      enrolledCount =
+        (enrollResult as { enrolled?: number } | null)?.enrolled ?? 0;
+    } catch {
+      // Zone is live regardless; enrollment can be re-triggered manually
+    }
+
+    return successResponse({ ...(updated as object), enrolled_count: enrolledCount });
   } catch (error) {
     return handleApiError(error, "Failed to publish zone");
   }

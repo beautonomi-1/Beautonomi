@@ -1,36 +1,65 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest, resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/public/platform-settings
  * 
  * Get platform-wide locale and currency settings (public endpoint)
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await getSupabaseServer();
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
 
     // Get platform settings
-    const { data: settings, error } = await supabase
+    let tenantSettings: Record<string, any> | null = null;
+    let tenantError: unknown = null;
+    if (tenantId) {
+      const tenantRes = await supabase
+        .from("platform_settings")
+        .select("*")
+        .eq("is_active", true)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      tenantSettings = (tenantRes.data as Record<string, any> | null) ?? null;
+      tenantError = tenantRes.error ?? null;
+    }
+    const { data: globalSettings, error: globalError } = await supabase
       .from("platform_settings")
       .select("*")
       .eq("is_active", true)
-      .single();
+      .is("tenant_id", null)
+      .maybeSingle();
+    const settings = tenantSettings ?? globalSettings;
+    const error = tenantError ?? globalError;
 
-    if (error && error.code !== "PGRST116") {
+    const errCode =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code ?? "")
+        : "";
+    if (error && errCode !== "PGRST116") {
       // PGRST116 = no rows returned, which is okay for first time setup
       console.error("Error fetching platform settings:", error);
     }
 
+    // Resolve tenant-region defaults (currency, locale, timezone) so we never hard-code ZA/South Africa.
+    const tenantRegionConfig = tenantId ? await getTenantRegionConfig(tenantId) : null;
+
     // Get currency info if currency code is set
     let currencyInfo = null;
-    if (settings?.localization?.default_currency) {
+    const effectiveCurrency =
+      settings?.localization?.default_currency || tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY;
+    if (effectiveCurrency) {
       const { data: currency } = await supabase
         .from("iso_currencies")
         .select("code, symbol, name, decimal_places")
-        .eq("code", settings.localization.default_currency)
+        .eq("code", effectiveCurrency)
         .eq("is_active", true)
-        .single();
+        .maybeSingle();
 
       if (currency) {
         currencyInfo = currency;
@@ -55,22 +84,27 @@ export async function GET() {
       }));
     }
     if (!supportedLanguages.length) {
-      supportedLanguages = ["en", "af", "zu"];
+      supportedLanguages = [tenantRegionConfig?.defaultLanguage || "en"];
     }
 
     // Merge settings with currency info
     const response = {
-      default_currency: settings?.localization?.default_currency || "ZAR",
-      default_language: settings?.localization?.default_language || "en",
-      timezone: settings?.localization?.timezone || "Africa/Johannesburg",
-      supported_currencies: settings?.localization?.supported_currencies || ["ZAR", "USD", "EUR"],
+      default_currency:
+        settings?.localization?.default_currency || tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY,
+      default_language:
+        settings?.localization?.default_language || tenantRegionConfig?.defaultLanguage || "en",
+      timezone:
+        settings?.localization?.timezone || tenantRegionConfig?.defaultTimezone || "Africa/Johannesburg",
+      supported_currencies:
+        settings?.localization?.supported_currencies ||
+        [tenantRegionConfig?.defaultCurrency || LAST_RESORT_CURRENCY, "USD", "EUR"],
       supported_languages: supportedLanguages,
       languages_meta: languages_meta.length ? languages_meta : undefined,
       currency_info: currencyInfo || {
-        code: settings?.localization?.default_currency || "ZAR",
-        symbol: "R",
-        name: "South African Rand",
-        decimal_places: 2,
+        code: effectiveCurrency,
+        symbol: currencyInfo?.symbol || undefined,
+        name: currencyInfo?.name || undefined,
+        decimal_places: currencyInfo?.decimal_places ?? 2,
       },
     };
 
@@ -80,19 +114,30 @@ export async function GET() {
     });
   } catch (error: unknown) {
     console.error("Unexpected error in /api/public/platform-settings:", error);
+    let fallbackCurrency: string = LAST_RESORT_CURRENCY;
+    try {
+      const tid = await resolveTenantIdWithZaFallback(request);
+      const tr = await getTenantRegionConfig(tid);
+      fallbackCurrency = tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    } catch (tenantErr) {
+      console.warn(
+        "Tenant resolution failed in /api/public/platform-settings error path (fallback currency):",
+        tenantErr,
+      );
+    }
     return NextResponse.json(
       {
         data: {
-          default_currency: "ZAR",
+          default_currency: fallbackCurrency,
           default_language: "en",
           timezone: "Africa/Johannesburg",
-          supported_currencies: ["ZAR", "USD", "EUR"],
-          supported_languages: ["en", "af", "zu"],
+          supported_currencies: [fallbackCurrency, "USD", "EUR"],
+          supported_languages: ["en"],
           languages_meta: undefined,
           currency_info: {
-            code: "ZAR",
-            symbol: "R",
-            name: "South African Rand",
+            code: fallbackCurrency,
+            symbol: undefined,
+            name: undefined,
             decimal_places: 2,
           },
         },

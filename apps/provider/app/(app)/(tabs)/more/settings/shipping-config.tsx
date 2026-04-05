@@ -23,6 +23,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface ShippingConfig {
   offers_delivery: boolean;
@@ -48,6 +49,7 @@ type ShippingResponse = { config?: ShippingConfig };
 
 export default function ShippingConfigScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { data, loading, error, refresh } = useApi<ShippingResponse>("/api/provider/shipping-config");
   const [config, setConfig] = useState<ShippingConfig>(DEFAULTS);
   const [saving, setSaving] = useState(false);
@@ -153,7 +155,9 @@ export default function ShippingConfigScreen() {
           {config.offers_delivery && (
             <View>
               <View style={{ marginBottom: 12 }}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Delivery fee (ZAR)</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
+                  Delivery fee ({tenantCurrency})
+                </Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={String(config.delivery_fee ?? "")}
@@ -164,7 +168,9 @@ export default function ShippingConfigScreen() {
                 />
               </View>
               <View style={{ marginBottom: 12 }}>
-                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Free delivery above (ZAR)</Text>
+                <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>
+                  Free delivery above ({tenantCurrency})
+                </Text>
                 <TextInput
                   style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                   value={config.free_delivery_threshold != null ? String(config.free_delivery_threshold) : ""}

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { sendAppointmentReminders } from "@/lib/bookings/appointment-reminders";
+import { sendAppointmentReminders, sendRebookReminders } from "@/lib/bookings/appointment-reminders";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
@@ -18,10 +18,12 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await sendAppointmentReminders();
+    const rebook = await sendRebookReminders();
 
     return successResponse({
       message: "Reminders sent successfully",
       ...result,
+      ...rebook,
     });
   } catch (error) {
     return handleApiError(error, "Failed to send reminders");

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,15 +23,15 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
+      fromDate = startOfDay(subDays(toDate, MAX_REPORT_DAYS));
     }
 
     const locationId = searchParams.get("location_id") || null;
@@ -55,19 +55,22 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider revenue from finance_transactions (filter by location when provided)
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     const { revenueByBooking } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
-      locationId || undefined
+      locationId || undefined,
+      dashOpts
     );
 
     // Calculate status breakdown
     const statusBreakdown = {
       pending: bookings?.filter((b) => b.status === 'pending').length || 0,
       confirmed: bookings?.filter((b) => b.status === 'confirmed').length || 0,
+      in_progress: bookings?.filter((b) => b.status === 'in_progress').length || 0,
       completed: bookings?.filter((b) => b.status === 'completed').length || 0,
       cancelled: bookings?.filter((b) => b.status === 'cancelled').length || 0,
       noShow: bookings?.filter((b) => b.status === 'no_show').length || 0,
@@ -104,6 +107,12 @@ export async function GET(request: NextRequest) {
         count: statusBreakdown.confirmed,
         percentage: totalBookings > 0 ? (statusBreakdown.confirmed / totalBookings) * 100 : 0,
         revenue: revenueByStatus.get('confirmed') || 0,
+      },
+      {
+        status: 'in_progress',
+        count: statusBreakdown.in_progress,
+        percentage: totalBookings > 0 ? (statusBreakdown.in_progress / totalBookings) * 100 : 0,
+        revenue: revenueByStatus.get('in_progress') || 0,
       },
       {
         status: 'completed',

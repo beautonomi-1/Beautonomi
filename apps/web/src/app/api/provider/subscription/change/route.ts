@@ -1,10 +1,14 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
+    const hostTenantId = await resolveTenantIdWithZaFallback(request);
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -14,6 +18,24 @@ export async function POST(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const marketMismatch = await providerTenantMismatchResponse(
+      supabaseAdmin,
+      hostTenantId,
+      providerId,
+    );
+    if (marketMismatch) return marketMismatch;
+
+    const { data: providerRow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const subscriptionTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+      tenant_id: (providerRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      provider_id: providerId,
+    });
+
     const body = await request.json();
     const { plan_id } = body;
 
@@ -40,7 +62,12 @@ export async function POST(request: NextRequest) {
     if (updateError) {
       const { error: insertError } = await supabaseAdmin
         .from("provider_subscriptions")
-        .insert({ provider_id: providerId, plan_id, status: "active" });
+        .insert({
+          provider_id: providerId,
+          plan_id,
+          status: "active",
+          tenant_id: subscriptionTenantId,
+        });
       if (insertError) throw insertError;
     }
 

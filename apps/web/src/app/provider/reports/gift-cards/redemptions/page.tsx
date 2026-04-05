@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -26,6 +27,7 @@ interface GiftCardRedemptionsData {
 }
 
 export default function GiftCardRedemptionsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -72,7 +74,7 @@ export default function GiftCardRedemptionsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "gift-card-redemptions");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "gift-card-redemptions", exportCurrency);
     exportToCSV(exportData, "gift-card-redemptions-report");
   };
 
@@ -158,7 +160,7 @@ export default function GiftCardRedemptionsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRedeemedValue.toLocaleString()}
+                  {fmt(data.totalRedeemedValue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -187,7 +189,7 @@ export default function GiftCardRedemptionsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageRedemptionValue.toLocaleString()}
+                  {fmt(data.averageRedemptionValue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-purple-600" />
               </div>
@@ -216,7 +218,7 @@ export default function GiftCardRedemptionsReport() {
                       </p>
                     </div>
                     <p className="font-semibold text-gray-900">
-                      ZAR {Number(redemption.amount || 0).toLocaleString()}
+                      {fmt(Number(redemption.amount || 0))}
                     </p>
                   </div>
                 ))}

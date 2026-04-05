@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -20,6 +21,7 @@ export async function GET(
 
     const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const byId = UUID_REGEX.test(idOrSlug);
 
@@ -31,6 +33,7 @@ export async function GET(
         staff:provider_staff(*),
         offerings(*)
       `)
+      .eq("tenant_id", tenantId)
       .eq(byId ? "id" : "slug", idOrSlug)
       .single();
 
@@ -55,6 +58,7 @@ export async function GET(
     const { count: bookingCount } = await supabase
       .from("bookings")
       .select("*", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
       .eq("provider_id", providerId);
 
     const { count: reviewCount } = await supabase
@@ -99,6 +103,7 @@ export async function PATCH(
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const byId = UUID_REGEX.test(idOrSlug);
@@ -106,6 +111,7 @@ export async function PATCH(
     const { data: provider } = await supabase
       .from("providers")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq(byId ? "id" : "slug", idOrSlug)
       .single();
 
@@ -129,6 +135,7 @@ export async function PATCH(
       .from("providers")
       .update(updateData)
       .eq("id", providerId)
+      .eq("tenant_id", tenantId)
       .select("*, locations:provider_locations(*), staff:provider_staff(*), offerings(*)")
       .single();
 

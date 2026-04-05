@@ -1,17 +1,30 @@
 /**
  * Staff member detail – profile, quick actions (permissions, locations, schedule, etc.).
- * GET /api/provider/staff/[id], PATCH for edit.
+ * GET /api/provider/staff/[id], PATCH for inline edit, DELETE for removal.
  */
 import { useState, useCallback } from "react";
-import { View, Text, TouchableOpacity, ScrollView, Alert, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+  RefreshControl,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { Avatar } from "@/components/ui/Avatar";
+import { BottomSheet } from "@/components/ui/BottomSheet";
+import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
@@ -22,28 +35,72 @@ interface StaffMember {
   phone?: string | null;
   avatar_url?: string | null;
   role: string;
+  commission_rate?: number | null;
   is_active: boolean;
   mobileReady?: boolean;
 }
 
-const LINK_ITEMS: { label: string; icon: keyof typeof Ionicons.glyphMap; route: string; useId?: boolean }[] = [
-  { label: "Permissions", icon: "lock-open-outline", route: "/(app)/(tabs)/more/settings/staff-permissions", useId: true },
-  { label: "Locations", icon: "location-outline", route: "/(app)/(tabs)/more/locations" },
-  { label: "Schedule", icon: "calendar-outline", route: "/(app)/(tabs)/more/staff-schedule" },
-  { label: "Days off", icon: "sunny-outline", route: "/(app)/(tabs)/more/days-off" },
-  { label: "Commission", icon: "cash-outline", route: "/(app)/(tabs)/more/settings/team-commissions" },
+const ROLES = [
+  { label: "Staff", value: "provider_staff" },
+  { label: "Manager", value: "provider_manager" },
+  { label: "Owner", value: "provider_owner" },
+];
+
+const LINK_ITEMS: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  route: string;
+  useId?: boolean;
+  passStaffId?: string;
+}[] = [
+  {
+    label: "Permissions",
+    icon: "lock-open-outline",
+    route: "/(app)/(tabs)/more/settings/staff-permissions",
+    useId: true,
+  },
+  {
+    label: "Schedule",
+    icon: "calendar-outline",
+    route: "/(app)/(tabs)/more/staff-schedule",
+    passStaffId: "staff_id",
+  },
+  {
+    label: "Days off",
+    icon: "sunny-outline",
+    route: "/(app)/(tabs)/more/days-off",
+    passStaffId: "staff_id",
+  },
+  {
+    label: "Commission",
+    icon: "cash-outline",
+    route: "/(app)/(tabs)/more/settings/team-commissions",
+  },
+  {
+    label: "Locations",
+    icon: "location-outline",
+    route: "/(app)/(tabs)/more/locations",
+  },
 ];
 
 export default function TeamMemberDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    phone: "",
+    role: "provider_staff",
+    commission_rate: "",
+  });
 
   const { data: member, loading, error, refresh } = useApi<StaffMember>(
     id ? `/api/provider/staff/${id}` : "",
     { enabled: !!id }
   );
   const { execute: updateStaff, loading: saving } = useApiMutation("patch");
+  const { execute: deleteStaff, loading: deleting } = useApiMutation("delete");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -51,18 +108,65 @@ export default function TeamMemberDetailScreen() {
     setRefreshing(false);
   }, [refresh]);
 
+  const openEdit = useCallback(() => {
+    if (!member) return;
+    setEditForm({
+      name: member.name,
+      phone: member.phone ?? "",
+      role: member.role,
+      commission_rate: member.commission_rate != null ? String(member.commission_rate) : "",
+    });
+    setEditOpen(true);
+  }, [member]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editForm.name.trim()) {
+      Alert.alert("Validation", "Name is required.");
+      return;
+    }
+    const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
+    if (phoneErr) {
+      Alert.alert("Invalid phone", phoneErr);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const payload: Record<string, unknown> = {
+      name: editForm.name.trim(),
+      phone: editForm.phone.trim() || null,
+      role: editForm.role,
+    };
+    if (editForm.commission_rate.trim()) {
+      const rate = parseFloat(editForm.commission_rate);
+      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+        Alert.alert("Validation", "Commission must be between 0 and 100.");
+        return;
+      }
+      payload.commission_rate = rate;
+    } else {
+      payload.commission_rate = null;
+    }
+    const { error: err } = await updateStaff(`/api/provider/staff/${id}`, payload);
+    if (err) {
+      Alert.alert("Error", err);
+    } else {
+      setEditOpen(false);
+      refresh();
+    }
+  }, [editForm, id, updateStaff, refresh]);
+
   const handleToggleActive = useCallback(() => {
     if (!member) return;
     const newActive = !member.is_active;
     Alert.alert(
-      newActive ? "Activate" : "Deactivate",
+      newActive ? "Activate member" : "Deactivate member",
       newActive
-        ? `Activate ${member.name}? They will appear in the team and can be assigned.`
-        : `Deactivate ${member.name}? They will be hidden from the team and booking.`,
+        ? `Activate ${member.name}? They will appear in the team and can be assigned to bookings.`
+        : `Deactivate ${member.name}? They will be hidden from the team and unavailable for new bookings.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: newActive ? "Activate" : "Deactivate",
+          style: newActive ? "default" : "destructive",
           onPress: async () => {
             const { error: err } = await updateStaff(`/api/provider/staff/${id}`, { is_active: newActive });
             if (err) Alert.alert("Error", err);
@@ -72,6 +176,29 @@ export default function TeamMemberDetailScreen() {
       ]
     );
   }, [member, id, updateStaff, refresh]);
+
+  const handleDelete = useCallback(() => {
+    if (!member) return;
+    Alert.alert(
+      "Remove team member",
+      `Remove ${member.name} from your team? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            const { error: err } = await deleteStaff(`/api/provider/staff/${id}`, {});
+            if (err) {
+              Alert.alert("Error", err);
+            } else {
+              router.back();
+            }
+          },
+        },
+      ]
+    );
+  }, [member, id, deleteStaff, router]);
 
   if (loading && !member) {
     return (
@@ -103,11 +230,21 @@ export default function TeamMemberDetailScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer scrollable={false}>
       <ScreenHeader
         title={member.name}
         showBack
         subtitle={capitalizeFirst(member.role)}
+        rightAction={
+          <TouchableOpacity
+            onPress={openEdit}
+            style={twStyle("rounded-xl bg-gray-100 px-3 py-1.5")}
+            accessibilityLabel="Edit team member"
+            accessibilityRole="button"
+          >
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Edit</Text>
+          </TouchableOpacity>
+        }
       />
       <ScrollView
         style={twStyle("flex-1")}
@@ -115,8 +252,11 @@ export default function TeamMemberDetailScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Avatar & status */}
         <View style={twStyle("items-center px-4 pt-4 pb-6")}>
           <Avatar name={member.name} imageUrl={member.avatar_url ?? undefined} size="xl" />
+          <Text style={twStyle("mt-2 text-xl font-bold text-gray-900")}>{member.name}</Text>
+          <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>{capitalizeFirst(member.role)}</Text>
           <View style={twStyle("mt-2 flex-row items-center")}>
             <View
               style={twStyle(`h-2.5 w-2.5 rounded-full ${member.is_active ? "bg-green-500" : "bg-gray-400"}`)}
@@ -127,56 +267,162 @@ export default function TeamMemberDetailScreen() {
           </View>
         </View>
 
-        <View style={twStyle("mx-4 mb-4 rounded-xl border border-gray-200 bg-white p-4")}>
+        {/* Contact & commission info */}
+        <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
           <Row label="Email" value={member.email} />
           {member.phone ? <Row label="Phone" value={member.phone} /> : null}
+          {member.commission_rate != null ? (
+            <Row label="Commission" value={`${member.commission_rate}%`} />
+          ) : null}
         </View>
 
+        {/* Quick actions */}
         <View style={twStyle("mx-4 mb-4")}>
-          <Text style={twStyle("mb-2 text-sm font-medium text-gray-500")}>Quick actions</Text>
-          <View style={twStyle("rounded-xl border border-gray-200 bg-white")}>
+          <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 px-1")}>
+            Manage
+          </Text>
+          <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
             {LINK_ITEMS.map((item, i) => (
               <TouchableOpacity
                 key={item.label}
                 style={twStyle(
-                  `flex-row items-center px-4 py-3.5 ${i < LINK_ITEMS.length - 1 ? "border-b border-gray-100" : ""}`
+                  `flex-row items-center px-4 py-3.5 ${i < LINK_ITEMS.length - 1 ? "border-b border-gray-50" : ""}`
                 )}
                 onPress={() => {
-                  if (item.useId && id) router.push(`${item.route}/${id}` as any);
-                  else router.push(item.route as any);
+                  if (item.useId && id) {
+                    router.push(`${item.route}/${id}` as any);
+                  } else if (item.passStaffId && id) {
+                    router.push(`${item.route}?${item.passStaffId}=${id}` as any);
+                  } else {
+                    router.push(item.route as any);
+                  }
                 }}
+                accessibilityLabel={item.label}
+                accessibilityRole="button"
               >
-                <Ionicons name={item.icon} size={20} color="#6b7280" />
-                <Text style={twStyle("ml-3 flex-1 text-base text-gray-900")}>{item.label}</Text>
-                <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+                <View style={twStyle("mr-3 h-9 w-9 items-center justify-center rounded-xl bg-gray-50")}>
+                  <Ionicons name={item.icon} size={20} color="#374151" />
+                </View>
+                <Text style={twStyle("flex-1 text-base text-gray-900")}>{item.label}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#d1d5db" />
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        <View style={twStyle("mx-4")}>
+        {/* Active/inactive toggle */}
+        <View style={twStyle("mx-4 mb-3")}>
           <TouchableOpacity
             style={twStyle(
-              `flex-row items-center justify-center rounded-xl border py-3.5 ${member.is_active ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"}`
+              `flex-row items-center justify-center rounded-2xl border py-3.5 ${
+                member.is_active ? "border-amber-200 bg-amber-50" : "border-green-200 bg-green-50"
+              }`
             )}
             onPress={handleToggleActive}
             disabled={saving}
+            accessibilityLabel={member.is_active ? "Deactivate member" : "Activate member"}
+            accessibilityRole="button"
           >
             <Ionicons
               name={member.is_active ? "pause-circle-outline" : "play-circle-outline"}
               size={20}
-              color={member.is_active ? "#dc2626" : "#16a34a"}
+              color={member.is_active ? "#d97706" : "#16a34a"}
             />
             <Text
-              style={twStyle(
-                `ml-2 font-medium ${member.is_active ? "text-red-700" : "text-green-700"}`
-              )}
+              style={twStyle(`ml-2 font-semibold ${member.is_active ? "text-amber-700" : "text-green-700"}`)}
             >
               {member.is_active ? "Deactivate member" : "Activate member"}
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* Delete */}
+        <View style={twStyle("mx-4 mb-6")}>
+          <TouchableOpacity
+            style={twStyle("flex-row items-center justify-center rounded-2xl border border-red-200 bg-red-50 py-3.5")}
+            onPress={handleDelete}
+            disabled={deleting}
+            accessibilityLabel="Remove team member"
+            accessibilityRole="button"
+          >
+            <Ionicons name="trash-outline" size={18} color="#dc2626" />
+            <Text style={twStyle("ml-2 font-semibold text-red-700")}>
+              Remove from team
+            </Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
+
+      {/* ─── Edit Bottom Sheet ──────────────────────────────────── */}
+      <BottomSheet
+        visible={editOpen}
+        onClose={() => setEditOpen(false)}
+        title="Edit team member"
+        snapHeight="auto"
+      >
+        <FormField
+          label="Full Name *"
+          value={editForm.name}
+          onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
+          placeholder="Full name"
+        />
+
+        <E164PhoneField
+          label="Phone"
+          valueE164={editForm.phone}
+          onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
+          compact
+          muted
+          accessibilityLabel="Team member phone"
+        />
+
+        {/* Role */}
+        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+        <View style={twStyle("mb-3 flex-row flex-wrap")}>
+          {ROLES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[
+                twStyle(
+                  `rounded-full px-4 py-2 ${
+                    editForm.role === r.value
+                      ? "bg-gray-900"
+                      : "border border-gray-200 bg-white"
+                  }`
+                ),
+                { marginRight: 8, marginBottom: 8 },
+              ]}
+              onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
+              accessibilityLabel={`Select role ${r.label}`}
+            >
+              <Text
+                style={twStyle(
+                  `text-sm font-medium ${
+                    editForm.role === r.value ? "text-white" : "text-gray-600"
+                  }`
+                )}
+              >
+                {r.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <FormField
+          label="Commission Rate (%)"
+          value={editForm.commission_rate}
+          onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
+          placeholder="e.g. 30"
+          keyboardType="numeric"
+        />
+
+        <ActionButton
+          label="Save changes"
+          onPress={handleSaveEdit}
+          loading={saving}
+          fullWidth
+        />
+      </BottomSheet>
     </ScreenContainer>
   );
 }
@@ -188,6 +434,37 @@ function Row({ label, value }: { label: string; value: string }) {
       <Text style={twStyle("flex-1 text-sm text-gray-900")} numberOfLines={1}>
         {value}
       </Text>
+    </View>
+  );
+}
+
+function FormField({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+  placeholder?: string;
+  keyboardType?: "default" | "email-address" | "phone-pad" | "numeric";
+}) {
+  return (
+    <View style={twStyle("mb-3")}>
+      <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>{label}</Text>
+      <TextInput
+        style={twStyle(
+          "rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"
+        )}
+        placeholder={placeholder}
+        placeholderTextColor="#9ca3af"
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        accessibilityLabel={label}
+      />
     </View>
   );
 }

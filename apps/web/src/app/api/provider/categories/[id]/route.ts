@@ -1,12 +1,24 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { z } from "zod";
 
-const updateProviderCategorySchema = z.object({
-  name: z.string().min(1).optional(),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
+const updateCategorySchema = z.object({
+  name: z.string().min(1, "Category name is required").optional(),
+  slug: z
+    .string()
+    .min(1)
+    .regex(/^[a-z0-9-]+$/)
+    .optional()
+    .nullable(),
   description: z.string().optional().nullable(),
   icon: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
@@ -16,8 +28,6 @@ const updateProviderCategorySchema = z.object({
 
 /**
  * GET /api/provider/categories/[id]
- * 
- * Get single provider category
  */
 export async function GET(
   request: NextRequest,
@@ -25,29 +35,23 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    
-    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const supabase = await getSupabaseServer(request);
-
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
+    if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: category, error } = await supabase
+    const { data, error } = await supabase
       .from("provider_categories")
       .select("*")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
-    if (error || !category) {
-      return notFoundResponse("Category not found");
-    }
-
-    return successResponse(category);
+    if (error || !data) return notFoundResponse("Category not found");
+    return successResponse(data);
   } catch (error) {
     return handleApiError(error, "Failed to fetch category");
   }
@@ -55,84 +59,104 @@ export async function GET(
 
 /**
  * PUT /api/provider/categories/[id]
- * 
- * Update provider category
+ * Full replacement update — used by mobile catalogue edit sheet.
  */
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  return _updateCategory(request, params);
+}
+
+/**
+ * PATCH /api/provider/categories/[id]
+ * Partial update — e.g. reorder only.
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  return _updateCategory(request, params);
+}
+
+async function _updateCategory(
+  request: NextRequest,
+  paramsPromise: Promise<{ id: string }>
+) {
   try {
-    const { id } = await params;
-    
-    // Check permission to edit services (categories are part of services)
-    const permissionCheck = await requirePermission('edit_services', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
+    const { id } = await paramsPromise;
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
+    if (!providerId) return notFoundResponse("Provider not found");
 
     const body = await request.json();
-
-    // Validate request body
-    const validationResult = updateProviderCategorySchema.safeParse(body);
-    if (!validationResult.success) {
+    const parsed = updateCategorySchema.safeParse(body);
+    if (!parsed.success) {
       return errorResponse(
         "Validation failed",
         "VALIDATION_ERROR",
         400,
-        validationResult.error.issues.map((issue) => ({
-          path: issue.path.join("."),
-          message: issue.message,
-        }))
+        parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }))
       );
     }
 
-    const updateData: any = {};
-    if (validationResult.data.name !== undefined) updateData.name = validationResult.data.name;
-    if (validationResult.data.slug !== undefined)
-      updateData.slug = validationResult.data.slug.toLowerCase();
-    if (validationResult.data.description !== undefined)
-      updateData.description = validationResult.data.description;
-    if (validationResult.data.icon !== undefined) updateData.icon = validationResult.data.icon;
-    if (validationResult.data.color !== undefined) updateData.color = validationResult.data.color;
-    if (validationResult.data.display_order !== undefined)
-      updateData.display_order = validationResult.data.display_order;
-    if (validationResult.data.is_active !== undefined)
-      updateData.is_active = validationResult.data.is_active;
+    // If a new display_order is not provided but provider wants to reorder by direction,
+    // support simple { direction: "up" | "down" } bodies too.
+    let updates: Record<string, unknown> = { ...parsed.data, updated_at: new Date().toISOString() };
 
-    updateData.updated_at = new Date().toISOString();
+    if ((body as any).direction === "up" || (body as any).direction === "down") {
+      const { data: current } = await supabase
+        .from("provider_categories")
+        .select("display_order")
+        .eq("id", id)
+        .eq("provider_id", providerId)
+        .single();
 
-    const { data: category, error } = await (supabase
-      .from("provider_categories") as any)
-      .update(updateData)
+      if (current) {
+        const step = (body as any).direction === "up" ? -1 : 1;
+        const newOrder = Math.max(0, (current.display_order ?? 0) + step);
+
+        // Swap with the neighbour that holds newOrder
+        const { data: neighbour } = await supabase
+          .from("provider_categories")
+          .select("id, display_order")
+          .eq("provider_id", providerId)
+          .eq("display_order", newOrder)
+          .neq("id", id)
+          .maybeSingle();
+
+        if (neighbour) {
+          await supabase
+            .from("provider_categories")
+            .update({ display_order: current.display_order })
+            .eq("id", neighbour.id);
+        }
+
+        updates = { display_order: newOrder, updated_at: new Date().toISOString() };
+      }
+    }
+
+    const { data: category, error } = await supabase
+      .from("provider_categories")
+      .update(updates)
       .eq("id", id)
       .eq("provider_id", providerId)
       .select()
       .single();
 
-    if (error || !category) {
-      throw error || new Error("Failed to update provider category");
-    }
-
+    if (error || !category) return notFoundResponse("Category not found");
     return successResponse(category);
   } catch (error) {
-    return handleApiError(error, "Failed to update provider category");
+    return handleApiError(error, "Failed to update category");
   }
 }
 
 /**
  * DELETE /api/provider/categories/[id]
- * 
- * Delete provider category (soft delete)
  */
 export async function DELETE(
   request: NextRequest,
@@ -140,36 +164,30 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params;
-    
-    // Check permission to edit services (categories are part of services)
-    const permissionCheck = await requirePermission('edit_services', request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
+    const permissionCheck = await requirePermission("edit_services", request);
+    if (!permissionCheck.authorized) return permissionCheck.response!;
     const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
-
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
+    if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: category, error } = await (supabase
-      .from("provider_categories") as any)
-      .update({ is_active: false, updated_at: new Date().toISOString() })
-      .eq("id", id)
+    // Nullify category on associated services (do not delete services)
+    await supabase
+      .from("offerings")
+      .update({ provider_category_id: null })
       .eq("provider_id", providerId)
-      .select()
-      .single();
+      .eq("provider_category_id", id);
 
-    if (error || !category) {
-      throw error || new Error("Failed to delete provider category");
-    }
+    const { error } = await supabase
+      .from("provider_categories")
+      .delete()
+      .eq("id", id)
+      .eq("provider_id", providerId);
 
-    return successResponse({ message: "Provider category deleted successfully" });
+    if (error) throw error;
+    return successResponse({ message: "Category deleted" });
   } catch (error) {
-    return handleApiError(error, "Failed to delete provider category");
+    return handleApiError(error, "Failed to delete category");
   }
 }

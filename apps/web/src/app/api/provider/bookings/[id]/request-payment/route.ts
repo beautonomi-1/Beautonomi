@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { z } from "zod";
 import type { Booking, AdditionalCharge } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 const requestPaymentSchema = z.object({
   description: z.string().min(1, "Description is required"),
@@ -22,6 +28,9 @@ export async function POST(
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { id } = await params;
     const body = await request.json();
 
@@ -55,6 +64,31 @@ export async function POST(
       return notFoundResponse("Booking not found");
     }
 
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (booking as { tenant_id?: string | null }).tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "This booking belongs to a different market. Use the provider site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
+    const supabaseAdminReq = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminReq,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+    }
+
     const bookingData = booking as any;
 
     // Check if booking is in progress or completed
@@ -69,7 +103,7 @@ export async function POST(
         booking_id: id,
         description,
         amount,
-        currency: bookingData.currency || "ZAR",
+        currency: bookingData.currency || lastResortCurrency,
         status: "pending",
         requested_by: user.id,
         requested_at: new Date().toISOString(),

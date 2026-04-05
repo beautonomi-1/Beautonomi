@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
+import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
+import { isGlobalCategoryIconImageUrl } from "@/lib/icons/global-category-lucide";
 
 interface GlobalCategory {
   id: string;
@@ -14,6 +16,22 @@ interface GlobalCategory {
   provider_count?: number;
 }
 
+const FALLBACK_CATEGORIES: GlobalCategory[] = [
+  { id: "hair", name: "Hair", slug: "hair", icon: "/images/hairstylist_6672954.svg", display_order: 10, is_featured: true },
+  { id: "nails", name: "Nails", slug: "nails", icon: "/images/nail-art.png", display_order: 20, is_featured: true },
+  { id: "braids", name: "Braids", slug: "braids", icon: "/images/braids.png", display_order: 30, is_featured: true },
+  { id: "makeup", name: "Makeup", slug: "makeup", icon: "/images/makeup.png", display_order: 40, is_featured: true },
+  { id: "massage", name: "Massage", slug: "massage", icon: "/images/massage.png", display_order: 50, is_featured: true },
+  { id: "dreadlocks", name: "Dreadlocks", slug: "dreadlocks", icon: "/images/dreadlocks.png", display_order: 60, is_featured: true },
+  { id: "brows-lashes", name: "Brows & Lashes", slug: "brows-lashes", icon: "/images/mascara.png", display_order: 70, is_featured: true },
+  { id: "natural-hair", name: "Natural Hair", slug: "natural-hair", icon: "/images/afro-natural-hair.png", display_order: 80, is_featured: true },
+  { id: "wigs-weaves", name: "Wigs & Weaves", slug: "wigs-weaves", icon: "/images/curling-hair.png", display_order: 90, is_featured: true },
+  { id: "skin-facials", name: "Skin & Facials", slug: "skin-facials", icon: "/images/facial-treatment.png", display_order: 100, is_featured: true },
+  { id: "hair-removal", name: "Hair Removal", slug: "hair-removal", icon: "/images/wax.png", display_order: 110, is_featured: true },
+  { id: "barber", name: "Barber", slug: "barber", icon: "/images/barbershop.png", display_order: 120, is_featured: true },
+  { id: "spa", name: "Spa", slug: "spa", icon: "/images/facial.png", display_order: 130, is_featured: true },
+];
+
 const ServiceCategoriesNav = () => {
   const [categories, setCategories] = useState<GlobalCategory[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -21,19 +39,8 @@ const ServiceCategoriesNav = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Set fallback categories immediately so page can render
-    const fallbackCategories = [
-      { id: "makeup", name: "Makeup", slug: "makeup", icon: "💄", display_order: 0, is_featured: true },
-      { id: "hair", name: "Hair", slug: "hair", icon: "✂️", display_order: 1, is_featured: true },
-      { id: "nail", name: "Nail", slug: "nail", icon: "💅", display_order: 2, is_featured: true },
-      { id: "cutting", name: "Cutting", slug: "cutting", icon: "✂️", display_order: 3, is_featured: true },
-      { id: "facial", name: "Facial", slug: "facial", icon: "✨", display_order: 4, is_featured: true },
-      { id: "eyebrow", name: "Eyebrow", slug: "eyebrow", icon: "👁️", display_order: 5, is_featured: true },
-      { id: "massage", name: "Massage", slug: "massage", icon: "💆", display_order: 6, is_featured: true },
-      { id: "beard", name: "Beard", slug: "beard", icon: "🧔", display_order: 7, is_featured: true },
-    ];
-    setCategories(fallbackCategories);
-    setActiveCategory("makeup");
+    setCategories(FALLBACK_CATEGORIES);
+    setActiveCategory(FALLBACK_CATEGORIES[0]?.slug ?? "");
     setIsLoading(false);
 
     const loadCategories = async () => {
@@ -43,50 +50,26 @@ const ServiceCategoriesNav = () => {
           data: GlobalCategory[];
           error: null | { message: string; code?: string };
         }>("/api/public/categories/global", { timeoutMs: 10000 });
-        
-        // Check if response has error
+
         if (response.error) {
           console.warn("API returned error, using fallback categories:", response.error);
           throw new Error(response.error.message);
         }
-        
+
         const fetchedCategories = response.data || [];
-        
-        // If no categories returned, use fallback
+
         if (fetchedCategories.length === 0) {
           console.warn("No categories returned from API, using fallback");
-          // Use fallback categories instead of throwing error
-          const fallbackCategories = [
-            { id: "makeup", name: "Makeup", slug: "makeup", icon: "💄", display_order: 0, is_featured: true },
-            { id: "hair", name: "Hair", slug: "hair", icon: "✂️", display_order: 1, is_featured: true },
-            { id: "nail", name: "Nail", slug: "nail", icon: "💅", display_order: 2, is_featured: true },
-            { id: "cutting", name: "Cutting", slug: "cutting", icon: "✂️", display_order: 3, is_featured: true },
-            { id: "facial", name: "Facial", slug: "facial", icon: "✨", display_order: 4, is_featured: true },
-            { id: "eyebrow", name: "Eyebrow", slug: "eyebrow", icon: "👁️", display_order: 5, is_featured: true },
-            { id: "massage", name: "Massage", slug: "massage", icon: "💆", display_order: 6, is_featured: true },
-            { id: "beard", name: "Beard", slug: "beard", icon: "🧔", display_order: 7, is_featured: true },
-          ];
-          setCategories(fallbackCategories);
-          setActiveCategory("makeup");
+          setCategories(FALLBACK_CATEGORIES);
+          setActiveCategory(FALLBACK_CATEGORIES[0]?.slug ?? "");
         } else {
           setCategories(fetchedCategories);
-          setActiveCategory(fetchedCategories[0].slug);
+          setActiveCategory(fetchedCategories[0]?.slug ?? "");
         }
       } catch (err) {
         console.error("Error loading global categories:", err);
-        // Fallback to default categories if API fails
-        const fallbackCategories = [
-          { id: "makeup", name: "Makeup", slug: "makeup", icon: "💄", display_order: 0, is_featured: true },
-          { id: "hair", name: "Hair", slug: "hair", icon: "✂️", display_order: 1, is_featured: true },
-          { id: "nail", name: "Nail", slug: "nail", icon: "💅", display_order: 2, is_featured: true },
-          { id: "cutting", name: "Cutting", slug: "cutting", icon: "✂️", display_order: 3, is_featured: true },
-          { id: "facial", name: "Facial", slug: "facial", icon: "✨", display_order: 4, is_featured: true },
-          { id: "eyebrow", name: "Eyebrow", slug: "eyebrow", icon: "👁️", display_order: 5, is_featured: true },
-          { id: "massage", name: "Massage", slug: "massage", icon: "💆", display_order: 6, is_featured: true },
-          { id: "beard", name: "Beard", slug: "beard", icon: "🧔", display_order: 7, is_featured: true },
-        ];
-        setCategories(fallbackCategories);
-        setActiveCategory("makeup");
+        setCategories(FALLBACK_CATEGORIES);
+        setActiveCategory(FALLBACK_CATEGORIES[0]?.slug ?? "");
       } finally {
         setIsLoading(false);
       }
@@ -106,13 +89,12 @@ const ServiceCategoriesNav = () => {
   };
 
   return (
-    <div className="border-b bg-white sticky top-[73px] md:top-[73px] z-40">
+    <div className="border-b border-t border-gray-100 bg-white sticky top-[73px] md:top-[73px] z-40">
       <div className="max-w-[2340px] mx-auto px-2 md:px-8 lg:px-20">
         <div className="flex items-center justify-between gap-1 md:gap-0">
-          {/* Categories */}
           <div
             ref={scrollContainerRef}
-            className="flex-1 flex items-center gap-1 md:gap-2 overflow-x-auto px-2 md:px-4 hide-scrollbar"
+            className="flex-1 flex items-center gap-1 md:gap-3 overflow-x-auto px-2 md:px-4 hide-scrollbar"
             style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
           >
             {isLoading ? (
@@ -125,18 +107,28 @@ const ServiceCategoriesNav = () => {
                   key={category.id}
                   href={`/search?category=${encodeURIComponent(category.slug)}`}
                   onClick={() => setActiveCategory(category.slug)}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 md:py-3 text-xs md:text-sm font-normal whitespace-nowrap transition-colors border-b-2 ${
+                  className={`relative flex flex-col items-center gap-1 px-2 md:px-4 py-2 md:py-3 text-[10px] md:text-sm font-medium whitespace-nowrap transition-colors border-b-2 min-w-[56px] md:min-w-[72px] ${
                     activeCategory === category.slug
                       ? "text-primary border-primary"
                       : "text-gray-600 border-transparent hover:text-gray-900"
                   }`}
                 >
-                  <span className="text-base md:text-lg">{category.icon || "📦"}</span>
+                  <GlobalCategoryIcon
+                    icon={category.icon || "BeautonomiAll"}
+                    size={22}
+                    strokeWidth={1.75}
+                    className={
+                      isGlobalCategoryIconImageUrl(category.icon)
+                        ? undefined
+                        : "text-current"
+                    }
+                    isActive={activeCategory === category.slug}
+                  />
                   <span>{category.name}</span>
                 </Link>
               ))
             )}
-            <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2" />
+            <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 ml-2 md:hidden" />
           </div>
         </div>
       </div>

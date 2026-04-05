@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { fetcher, FetchError, FetchTimeoutError, DEFAULT_FETCH_TIMEOUT_MS } from "@/lib/http/fetcher";
 
 export interface PlatformBranding {
   site_name: string;
@@ -24,7 +24,7 @@ const PlatformSettingsContext = createContext<PlatformSettingsContextType | unde
 const defaultBranding: PlatformBranding = {
   site_name: "Beautonomi",
   logo_url: "/images/logo.svg",
-  favicon_url: "/favicon.ico",
+  favicon_url: "/icon.svg",
   primary_color: "#FF0077",
   secondary_color: "#D60565",
 };
@@ -43,7 +43,7 @@ export function PlatformSettingsProvider({ children }: { children: React.ReactNo
 
       const response = await fetcher.get<{ data: PlatformBranding }>(
         "/api/public/settings/branding",
-        { timeoutMs: 3000 } // Shorter timeout for settings
+        { timeoutMs: DEFAULT_FETCH_TIMEOUT_MS }
       );
 
       if (response.data) {

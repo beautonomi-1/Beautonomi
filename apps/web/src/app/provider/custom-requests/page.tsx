@@ -11,6 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 type RequestItem = {
   id: string;
@@ -28,6 +30,8 @@ type RequestItem = {
 };
 
 export default function ProviderCustomRequestsPage() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [items, setItems] = useState<RequestItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +86,7 @@ export default function ProviderCustomRequestsPage() {
       setIsSubmitting(true);
       const payload: Record<string, unknown> = {
         price: Number(price || 0),
-        currency: "ZAR",
+        currency: tenantCurrency,
         duration_minutes: Number(durationMinutes || 60),
         expiration_at: expirationAt,
         notes: notes || null,
@@ -157,7 +161,7 @@ export default function ProviderCustomRequestsPage() {
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Price (ZAR)</Label>
+                <Label>Price ({tenantCurrency})</Label>
                 <Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -172,7 +176,7 @@ export default function ProviderCustomRequestsPage() {
               </div>
               {selected?.location_type === "at_home" && (
                 <div className="space-y-2">
-                  <Label>Travel fee (ZAR, optional)</Label>
+                  <Label>Travel fee ({tenantCurrency}, optional)</Label>
                   <Input
                     type="number"
                     min={0}

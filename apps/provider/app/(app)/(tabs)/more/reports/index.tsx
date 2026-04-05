@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
+import { formatCurrency } from "@/lib/format";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -219,7 +220,7 @@ export default function ReportsIndex() {
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
             <View style={{ flexDirection: "row", alignItems: "baseline" }}>
               <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>
-                R{revenueThisMonth.toFixed(0)}
+                {formatCurrency(revenueThisMonth)}
               </Text>
               {revenueGrowth !== "0" && revenueGrowth !== "New" && (
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginLeft: 4 }}>({revenueGrowth}%)</Text>

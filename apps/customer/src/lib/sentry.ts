@@ -32,9 +32,9 @@ export function initSentry() {
   });
 }
 
-/** Identify the current user for Sentry context */
-export function setSentryUser(userId: string, email?: string) {
-  Sentry.setUser({ id: userId, email });
+/** Identify the current user for Sentry context (email omitted to minimize PII) */
+export function setSentryUser(userId: string, _email?: string) {
+  Sentry.setUser({ id: userId });
 }
 
 /** Clear user on logout */

@@ -10,6 +10,7 @@ export type { Booking };
 
 /** Operational state badge for queue display */
 export type OperationalBadge =
+  | "needs_confirmation"
   | "late"
   | "arriving"
   | "checked_in"
@@ -20,7 +21,13 @@ export type OperationalBadge =
   | "confirmed";
 
 /** Queue tab IDs matching the spec */
-export type QueueTabId = "all" | "arrivals" | "in_service" | "ready_to_pay" | "completed";
+export type QueueTabId =
+  | "all"
+  | "needs_confirmation"
+  | "arrivals"
+  | "in_service"
+  | "ready_to_pay"
+  | "completed";
 
 /** Extended booking with operational state for front desk */
 export interface FrontDeskBooking extends Booking {

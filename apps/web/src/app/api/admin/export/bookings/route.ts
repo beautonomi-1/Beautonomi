@@ -5,6 +5,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/export/bookings
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const startDate = searchParams.get("start_date");
@@ -54,7 +56,8 @@ export async function GET(request: Request) {
         scheduled_at,
         customer:users!bookings_customer_id_fkey(id, email, full_name),
         provider:providers!bookings_provider_id_fkey(id, business_name)
-      `);
+      `)
+      .eq("tenant_id", tenantId);
 
     // Apply filters
     if (startDate) {

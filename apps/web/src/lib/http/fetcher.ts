@@ -34,6 +34,137 @@ export class FetchTimeoutError extends Error {
   }
 }
 
+const ADMIN_SCOPE_STORAGE_KEY = "admin_scope_mode";
+const ADMIN_SCOPE_TENANT_STORAGE_KEY = "admin_scope_tenant_id";
+
+function isScopedAdminCustomizationUrl(url: string): boolean {
+  return (
+    url.startsWith("/api/admin/settings") ||
+    url.startsWith("/api/admin/content") ||
+    url.startsWith("/api/admin/email-templates") ||
+    url.startsWith("/api/admin/sms-templates") ||
+    url.startsWith("/api/admin/notification-templates") ||
+    url.startsWith("/api/admin/mapbox/config") ||
+    url.startsWith("/api/admin/control-plane/integrations/gemini") ||
+    url.startsWith("/api/admin/control-plane/integrations/aura") ||
+    url.startsWith("/api/admin/control-plane/integrations/sumsub") ||
+    url.startsWith("/api/admin/subscription-plans")
+  );
+}
+
+function withAdminScope(url: string, method: string, body?: Record<string, unknown> | FormData): {
+  url: string;
+  body?: Record<string, unknown> | FormData;
+} {
+  if (typeof window === "undefined" || !isScopedAdminCustomizationUrl(url)) {
+    return { url, body };
+  }
+
+  const scope = window.localStorage.getItem(ADMIN_SCOPE_STORAGE_KEY) ?? "tenant";
+  const tenantId = window.localStorage.getItem(ADMIN_SCOPE_TENANT_STORAGE_KEY) ?? "";
+  if (scope !== "global" && scope !== "tenant") {
+    return { url, body };
+  }
+
+  if (method.toUpperCase() === "GET") {
+    const base = window.location.origin;
+    const u = new URL(url, base);
+    u.searchParams.set("scope", scope);
+    if (scope === "tenant" && tenantId) {
+      u.searchParams.set("tenant_id", tenantId);
+    }
+    return { url: `${u.pathname}${u.search}` };
+  }
+
+  if (!body || body instanceof FormData) {
+    return { url, body };
+  }
+
+  return {
+    url,
+    body: {
+      ...body,
+      scope,
+      ...(scope === "tenant" && tenantId ? { tenant_id: tenantId } : {}),
+    },
+  };
+}
+
+/**
+ * HTTP status from fetch errors. Prefer over `instanceof FetchError` when throw/catch may use
+ * different class identities (dynamic import + bundler chunking).
+ */
+export function getFetchErrorStatus(error: unknown): number | undefined {
+  if (!error || typeof error !== "object") return undefined;
+  const s = (error as { status?: unknown }).status;
+  return typeof s === "number" ? s : undefined;
+}
+
+export function isNotFoundHttpError(error: unknown): boolean {
+  return getFetchErrorStatus(error) === 404;
+}
+
+/** Next.js dev returned HTML (e.g. Turbopack not matching /api/.../[id]) instead of JSON. */
+export function isHtmlRoutingFetchError(error: unknown): boolean {
+  return (
+    error instanceof FetchError &&
+    (error.code === "NOT_FOUND_HTML" || error.code === "HTML_ERROR_RESPONSE")
+  );
+}
+
+function isFetchTimeoutLike(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if (error instanceof FetchTimeoutError) return true;
+  const name = (error as { name?: string }).name;
+  if (name === "FetchTimeoutError") return true;
+  const m = String((error as Error).message || "").toLowerCase();
+  return m.includes("timed out") || m.includes("timeout");
+}
+
+/** True when a failed request may succeed on retry (dev server restart, tab sleep, ECONNRESET, cold dev compile). */
+export function isTransientNetworkFetchError(error: unknown): boolean {
+  if (!error) return false;
+  if (isFetchTimeoutLike(error)) return true;
+  if (error instanceof FetchError) {
+    if (error.code === "NETWORK_ERROR") return true;
+    if (error.status === 0 && error.code === "UNKNOWN_ERROR") {
+      const m = (error.message || "").toLowerCase();
+      if (
+        m.includes("econnreset") ||
+        m.includes("aborted") ||
+        m.includes("network") ||
+        m.includes("failed to fetch")
+      ) {
+        return true;
+      }
+    }
+  }
+  if (error instanceof Error) {
+    const m = error.message.toLowerCase();
+    if (
+      m.includes("econnreset") ||
+      m.includes("network error") ||
+      m.includes("failed to fetch") ||
+      m.includes("load failed") ||
+      m.includes("unable to reach")
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Timeouts for server routes that often cold-compile in `next dev` (10s is routinely too low).
+ * Production keeps a modest ceiling so hung APIs fail visibly.
+ */
+export const PROVIDER_BOOTSTRAP_TIMEOUT_MS =
+  typeof process !== "undefined" && process.env.NODE_ENV === "development" ? 90_000 : 20_000;
+
+/** Default for generic API reads: dev cold-compile + DB often exceed 10s. */
+export const DEFAULT_FETCH_TIMEOUT_MS =
+  typeof process !== "undefined" && process.env.NODE_ENV === "development" ? 60_000 : 25_000;
+
 /**
  * Fetches JSON from an API endpoint with timeout and error handling
  * 
@@ -48,13 +179,15 @@ export async function fetchJson<T = unknown>(
 ): Promise<T> {
   const {
     method = 'GET',
-    body,
+    body: originalBody,
     headers = {},
-    timeoutMs = 10000, // Reduced to 10s for better responsiveness
+    timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
     ...fetchOptions
   } = options;
 
-  // Debug logging removed
+  const scoped = withAdminScope(url, method, originalBody);
+  url = scoped.url;
+  const body = scoped.body;
 
   // Create AbortController for timeout
   const controller = new AbortController();
@@ -69,6 +202,14 @@ export async function fetchJson<T = unknown>(
     const requestHeaders: HeadersInit = {
       ...headers,
     };
+
+    // Auto-inject CSRF token for mutation requests (POST/PUT/PATCH/DELETE)
+    if (typeof document !== "undefined" && method !== "GET" && method !== "HEAD") {
+      const csrfMatch = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+      if (csrfMatch?.[1]) {
+        (requestHeaders as Record<string, string>)["x-csrf-token"] = csrfMatch[1];
+      }
+    }
 
     // Prepare body
     let requestBody: BodyInit | undefined;
@@ -106,12 +247,22 @@ export async function fetchJson<T = unknown>(
         const contentType = response.headers.get('content-type');
         if (contentType?.includes('application/json')) {
           const jsonData = await response.json();
-          // Handle both { error: "..." } and { error: { message: "..." } } formats
+          const topMessage =
+            typeof jsonData.message === "string" && jsonData.message.trim()
+              ? jsonData.message.trim()
+              : null;
+          const permissionKey =
+            typeof jsonData.permission === "string" && jsonData.permission.trim()
+              ? jsonData.permission.trim()
+              : "";
+
+          // Handle both { error: "..." } and { error: { message: "..." } } formats.
+          // Prefer top-level `message` when present (e.g. requirePermission 403).
           if (jsonData.error) {
-            if (typeof jsonData.error === 'string') {
-              errorData.message = jsonData.error;
+            if (typeof jsonData.error === "string") {
+              errorData.message = topMessage || jsonData.error;
             } else if (jsonData.error.message) {
-              errorData.message = jsonData.error.message;
+              errorData.message = topMessage || jsonData.error.message;
               errorData.code = jsonData.error.code;
               errorData.details = jsonData.error.details;
             }
@@ -122,9 +273,33 @@ export async function fetchJson<T = unknown>(
           } else {
             errorData = jsonData;
           }
+
+          if (
+            permissionKey &&
+            typeof errorData.message === "string" &&
+            errorData.message &&
+            !errorData.message.includes(permissionKey)
+          ) {
+            errorData.message = `${errorData.message}\n\nPermission: ${permissionKey}`;
+          }
         } else {
           const textResponse = await response.text();
-          errorData.message = textResponse || `HTTP ${response.status}: ${response.statusText}`;
+          const trimmed = textResponse.trim();
+          // Next.js App Router not-found / error documents (e.g. Turbopack missing dynamic API routes in dev)
+          if (
+            trimmed.startsWith("<!DOCTYPE") ||
+            trimmed.startsWith("<html") ||
+            trimmed.includes("__next_f")
+          ) {
+            errorData.message =
+              response.status === 404
+                ? "API route not found: the server returned an HTML page instead of JSON. With Next.js 16 dev, use the Webpack dev server (pnpm dev in apps/web defaults to --webpack) so dynamic routes like /api/.../[id] resolve."
+                : `Server returned HTML instead of JSON (HTTP ${response.status}).`;
+            errorData.code =
+              response.status === 404 ? "NOT_FOUND_HTML" : "HTML_ERROR_RESPONSE";
+          } else {
+            errorData.message = textResponse || `HTTP ${response.status}: ${response.statusText}`;
+          }
         }
       } catch {
         // If we can't parse the error response, use status text
@@ -222,12 +397,78 @@ export async function fetchJson<T = unknown>(
   }
 }
 
+/* ─── Client-side GET response cache ─── */
+
+/** Client-only GET cache TTL. Time-sensitive routes should pass `{ staleTimeMs: 0 }` (e.g. availability, provider booking lists after edits). */
+const DEFAULT_STALE_TIME_MS = 15_000;
+const MAX_GET_CACHE_ENTRIES = 150;
+
+interface GetCacheEntry {
+  data: unknown;
+  expiresAt: number;
+}
+
+const getResponseCache = new Map<string, GetCacheEntry>();
+const inflightGetRequests = new Map<string, Promise<unknown>>();
+
+function pruneGetCache(now: number): void {
+  for (const [key, entry] of getResponseCache.entries()) {
+    if (entry.expiresAt <= now) getResponseCache.delete(key);
+  }
+  if (getResponseCache.size <= MAX_GET_CACHE_ENTRIES) return;
+  const overflow = getResponseCache.size - MAX_GET_CACHE_ENTRIES;
+  let removed = 0;
+  for (const key of getResponseCache.keys()) {
+    getResponseCache.delete(key);
+    if (++removed >= overflow) break;
+  }
+}
+
+export function clearFetcherCache(): void {
+  getResponseCache.clear();
+  inflightGetRequests.clear();
+}
+
+export interface CachedGetOptions extends Omit<FetchOptions, 'method' | 'body'> {
+  staleTimeMs?: number;
+}
+
+async function cachedGet<T = unknown>(url: string, options?: CachedGetOptions): Promise<T> {
+  if (typeof window === "undefined") {
+    return fetchJson<T>(url, { ...options, method: "GET" });
+  }
+
+  const staleMs = options?.staleTimeMs ?? DEFAULT_STALE_TIME_MS;
+  const now = Date.now();
+  const cached = getResponseCache.get(url);
+  if (cached && cached.expiresAt > now) {
+    return cached.data as T;
+  }
+
+  const inflight = inflightGetRequests.get(url);
+  if (inflight) return inflight as Promise<T>;
+
+  const promise = fetchJson<T>(url, { ...options, method: "GET" }).then((data) => {
+    getResponseCache.set(url, { data, expiresAt: Date.now() + staleMs });
+    pruneGetCache(Date.now());
+    inflightGetRequests.delete(url);
+    return data;
+  }).catch((err) => {
+    inflightGetRequests.delete(url);
+    throw err;
+  });
+
+  inflightGetRequests.set(url, promise);
+  return promise;
+}
+
 /**
- * Convenience methods for common HTTP methods
+ * Convenience methods for common HTTP methods.
+ * `get` uses a client-side cache with request deduplication.
  */
 export const fetcher = {
-  get: <T = unknown>(url: string, options?: Omit<FetchOptions, 'method' | 'body'>) =>
-    fetchJson<T>(url, { ...options, method: 'GET' }),
+  get: <T = unknown>(url: string, options?: CachedGetOptions) =>
+    cachedGet<T>(url, options),
 
   post: <T = unknown>(url: string, body?: any, options?: Omit<FetchOptions, 'method' | 'body'>) =>
     fetchJson<T>(url, { ...options, method: 'POST', body }),

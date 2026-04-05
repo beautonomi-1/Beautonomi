@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -46,6 +47,7 @@ interface InventoryData {
 }
 
 export default function InventoryReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [data, setData] = useState<InventoryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,7 @@ export default function InventoryReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "inventory");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "inventory", exportCurrency);
     exportToCSV(exportData, "inventory-report");
   };
 
@@ -165,7 +167,7 @@ export default function InventoryReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalStockValue.toLocaleString()}
+                  {fmt(data.totalStockValue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -205,7 +207,7 @@ export default function InventoryReport() {
                     <div className="text-right">
                       <p className="font-semibold text-orange-600">{product.stock_quantity} left</p>
                       <p className="text-sm text-gray-600">
-                        ZAR {Number(product.price || 0).toLocaleString()}
+                        {fmt(Number(product.price || 0))}
                       </p>
                     </div>
                   </div>
@@ -235,7 +237,7 @@ export default function InventoryReport() {
                     <div className="text-right">
                       <p className="font-semibold text-red-600">0 in stock</p>
                       <p className="text-sm text-gray-600">
-                        ZAR {Number(product.price || 0).toLocaleString()}
+                        {fmt(Number(product.price || 0))}
                       </p>
                     </div>
                   </div>
@@ -265,7 +267,7 @@ export default function InventoryReport() {
                       <p className="text-sm text-gray-600">{category.count} products</p>
                     </div>
                     <p className="font-semibold text-gray-900">
-                      ZAR {category.stockValue.toLocaleString()}
+                      {fmt(category.stockValue)}
                     </p>
                   </div>
                 ))}

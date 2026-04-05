@@ -10,13 +10,19 @@ export function LocationSwitcher() {
   const [visible, setVisible] = useState(false);
 
   const locations = provider?.locations ?? [];
-  if (locations.length <= 1) return null;
+  if (locations.length === 0) return null;
 
-  const current = locations.find((l) => l.id === selectedLocationId);
+  const current = selectedLocationId ? locations.find((l) => l.id === selectedLocationId) : null;
 
-  function handleSelect(id: string) {
+  function handleSelectBranch(id: string) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSelectedLocationId(id);
+    setVisible(false);
+  }
+
+  function handleSelectAll() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedLocationId(null);
     setVisible(false);
   }
 
@@ -58,11 +64,55 @@ export function LocationSwitcher() {
                 Switch Location
               </Text>
               <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                Data will update for the selected location
+                {locations.length > 1
+                  ? "Data will update for the selected location or every branch"
+                  : "Filter by this site or see all provider data"}
               </Text>
             </View>
 
-            {/* Location list */}
+            {/* All locations (org-wide lists) */}
+            <TouchableOpacity
+              style={twStyle(
+                `min-h-[56px] flex-row items-center border-b border-gray-50 px-5 py-3 ${
+                  selectedLocationId == null ? "bg-indigo-50" : ""
+                }`
+              )}
+              onPress={handleSelectAll}
+              accessibilityRole="radio"
+              accessibilityState={{ selected: selectedLocationId == null }}
+              accessibilityLabel="All locations"
+            >
+              <View
+                style={twStyle(
+                  `mr-3 h-10 w-10 items-center justify-center rounded-xl ${
+                    selectedLocationId == null ? "bg-indigo-100" : "bg-gray-100"
+                  }`
+                )}
+              >
+                <Ionicons
+                  name="globe-outline"
+                  size={18}
+                  color={selectedLocationId == null ? "#6366f1" : "#6b7280"}
+                />
+              </View>
+              <View style={twStyle("flex-1")}>
+                <Text
+                  style={twStyle(
+                    `text-sm font-medium ${selectedLocationId == null ? "text-indigo-700" : "text-gray-900"}`
+                  )}
+                >
+                  All locations
+                </Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                  Show bookings and data for every branch
+                </Text>
+              </View>
+              {selectedLocationId == null ? (
+                <Ionicons name="checkmark-circle" size={20} color="#6366f1" />
+              ) : null}
+            </TouchableOpacity>
+
+            {/* Per-branch list */}
             {locations.map((loc, idx) => {
               const isSelected = loc.id === selectedLocationId;
               return (
@@ -71,7 +121,7 @@ export function LocationSwitcher() {
                   style={twStyle(`min-h-[56px] flex-row items-center px-5 py-3 ${
                     idx < locations.length - 1 ? "border-b border-gray-50" : ""
                   } ${isSelected ? "bg-indigo-50" : ""}`)}
-                  onPress={() => handleSelect(loc.id)}
+                  onPress={() => handleSelectBranch(loc.id)}
                   accessibilityRole="radio"
                   accessibilityState={{ selected: isSelected }}
                   accessibilityLabel={`${loc.name}, ${loc.city}`}

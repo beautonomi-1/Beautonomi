@@ -1,33 +1,66 @@
 "use client";
 
-import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, useRef } from "react";
 import OnlineBookingFlowNew from "../components/OnlineBookingFlowNew";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_BOOKING_START } from "@/lib/analytics/amplitude/types";
 
-export default function BookProviderPage() {
+/**
+ * `/book/[providerSlug]` is reserved for:
+ * - Embedded express booking (`?embed=1`) — compact "phone frame" UI
+ * - Multi-service deep links (`?services=id1,id2,...`) — OnlineBookingFlowNew handles these
+ *
+ * All other visits redirect IMMEDIATELY (no provider fetch) to `/booking?slug=...`.
+ * This avoids any chance of showing the wrong flow due to async provider loading.
+ */
+function BookProviderPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const providerSlug = params?.providerSlug as string;
+
+  const embed = searchParams?.get("embed") === "1";
+  const servicesParam = searchParams?.get("services") || "";
+  const multiServiceDeepLink = servicesParam.split(",").filter(Boolean).length > 1;
+  const useLegacyFlow = embed || multiServiceDeepLink;
+
+  // For embed / multi-service we load the provider for OnlineBookingFlowNew
   const [provider, setProvider] = useState<{ id: string; slug: string; business_name: string } | null>(null);
   const [onlineBookingDisabled, setOnlineBookingDisabled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { track, isReady } = useAmplitude();
+  const bookingStartTracked = useRef(false);
+  const didRedirectRef = useRef(false);
 
+  // IMMEDIATE redirect for non-embed / non-multi-service — fired on first render,
+  // no provider fetch needed. Prevents showing OnlineBookingFlowNew accidentally.
   useEffect(() => {
-    if (!providerSlug) return;
+    if (!providerSlug || useLegacyFlow) return;
+    if (didRedirectRef.current) return;
+    didRedirectRef.current = true;
+    const q = new URLSearchParams(searchParams?.toString() ?? "");
+    q.set("slug", providerSlug);
+    router.replace(`/booking?${q.toString()}`);
+  // providerSlug and useLegacyFlow are both derived from URL params — stable on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Only fetch provider data when we need OnlineBookingFlowNew
+  useEffect(() => {
+    if (!providerSlug || !useLegacyFlow) return;
     const load = async () => {
       try {
         const provRes = await fetcher.get<{ data: { id: string; slug: string; business_name: string } }>(
-          `/api/public/providers/${encodeURIComponent(providerSlug)}`
+          `/api/public/providers/${encodeURIComponent(providerSlug)}`,
         );
         setProvider(provRes.data);
         try {
-          await fetcher.get(
-            `/api/public/providers/${encodeURIComponent(providerSlug)}/online-booking-settings`
-          );
+          await fetcher.get(`/api/public/providers/${encodeURIComponent(providerSlug)}/online-booking-settings`);
           setOnlineBookingDisabled(false);
         } catch (settingsErr) {
           if (settingsErr instanceof FetchError && settingsErr.status === 403) {
@@ -39,7 +72,18 @@ export default function BookProviderPage() {
       }
     };
     load();
-  }, [providerSlug]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [providerSlug, useLegacyFlow]);
+
+  useEffect(() => {
+    if (provider && isReady && !bookingStartTracked.current && useLegacyFlow) {
+      bookingStartTracked.current = true;
+      track(EVENT_BOOKING_START, {
+        provider_id: provider.id,
+        provider_name: provider.business_name,
+      });
+    }
+  }, [provider, isReady, track, useLegacyFlow]);
 
   if (!providerSlug) {
     return (
@@ -48,6 +92,17 @@ export default function BookProviderPage() {
       </div>
     );
   }
+
+  // Non-express: show transition screen while router.replace fires
+  if (!useLegacyFlow) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingTimeout loadingMessage="Opening booking..." />
+      </div>
+    );
+  }
+
+  // Express / embed flow — needs provider data
 
   if (error) {
     return (
@@ -59,11 +114,9 @@ export default function BookProviderPage() {
 
   if (!provider) {
     return (
-      <Suspense fallback={<LoadingTimeout loadingMessage="Loading..." />}>
-        <div className="min-h-screen flex items-center justify-center">
-          <LoadingTimeout loadingMessage="Loading provider..." />
-        </div>
-      </Suspense>
+      <div className="min-h-screen flex items-center justify-center">
+        <LoadingTimeout loadingMessage="Loading booking..." />
+      </div>
     );
   }
 
@@ -95,8 +148,27 @@ export default function BookProviderPage() {
         anyone: searchParams?.get("anyone") === "true",
         date: searchParams?.get("date") ?? undefined,
         auth_return: searchParams?.get("auth_return") ?? undefined,
+        addons: searchParams?.get("addons") ?? undefined,
+        promo: searchParams?.get("promo") ?? undefined,
+        gift_card: searchParams?.get("gift_card") ?? undefined,
+        products: searchParams?.get("products") ?? undefined,
+        package: searchParams?.get("package") ?? undefined,
       }}
-      embed={searchParams?.get("embed") === "1"}
+      embed={embed}
     />
+  );
+}
+
+export default function BookProviderPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <LoadingTimeout loadingMessage="Loading..." />
+        </div>
+      }
+    >
+      <BookProviderPageContent />
+    </Suspense>
   );
 }

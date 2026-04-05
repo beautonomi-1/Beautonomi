@@ -1,5 +1,4 @@
 import React from "react";
-import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
 
 export default function ArticleLoading() {
   return (

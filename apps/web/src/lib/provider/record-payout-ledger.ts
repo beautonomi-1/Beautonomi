@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 /**
  * Insert a finance_transactions row of type 'payout' when a payout is completed.
@@ -12,8 +13,14 @@ export async function recordPayoutLedger(
   const amount = Number(payout.net_amount ?? payout.amount ?? 0);
   if (amount <= 0) return;
 
+  const tenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: null,
+    provider_id: payout.provider_id,
+  });
+
   const { error } = await (supabase.from("finance_transactions") as any)
     .insert({
+      tenant_id: tenantId,
       provider_id: payout.provider_id,
       payout_id: payout.id,
       transaction_type: "payout",

@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/promotions/[id]/redemptions
@@ -21,6 +22,7 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const page = parseInt(searchParams.get("page") || "1");
@@ -32,6 +34,7 @@ export async function GET(
       .from("promotions")
       .select("id, code")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (!promotion) {
@@ -60,6 +63,7 @@ export async function GET(
         customer:users!bookings_customer_id_fkey(id, full_name, email)
       `, { count: "exact" })
       .eq("promotion_code", (promotion as { id: string; code: string }).code)
+      .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 

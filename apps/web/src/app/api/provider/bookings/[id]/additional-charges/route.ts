@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 
 /**
  * GET /api/provider/bookings/[id]/additional-charges
@@ -21,12 +23,24 @@ export async function GET(
 
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id")
+      .select("id, location_id")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
 
     if (!booking) return notFoundResponse("Booking not found");
+
+    const supabaseAdminCharges = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminCharges,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+    }
 
     const { data: charges, error } = await (supabase
       .from("additional_charges") as any)

@@ -5,6 +5,7 @@
 
 import { createHash } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import type {
   PublicConfigBundle,
   GetPublicConfigBundleParams,
@@ -21,7 +22,9 @@ import type {
   SafeSumsubModuleConfig,
   SafeAuraModuleConfig,
   SafeSafetyModuleConfig,
+  TenantRegionMeta,
 } from "./types";
+import { mergeGlobalAndTenantFeatureFlags } from "./merge-feature-flags";
 
 const DEFAULT_AMPLITUDE: SafeAmplitudeConfig = {
   api_key_public: null,
@@ -38,7 +41,7 @@ const DEFAULT_AMPLITUDE: SafeAmplitudeConfig = {
 const DEFAULT_BRANDING: SafeBrandingConfig = {
   site_name: "Beautonomi",
   logo_url: "/images/logo.svg",
-  favicon_url: "/favicon.ico",
+  favicon_url: "/icon.svg",
   primary_color: "#FF0077",
   secondary_color: "#D60565",
 };
@@ -157,6 +160,30 @@ function compareSemver(a: string, b: string): number {
   return 0;
 }
 
+/** Keys from `region_settings.settings` that are safe to ship to web/mobile clients (no secrets). */
+const PUBLIC_REGION_SETTING_KEYS = new Set([
+  "support_email",
+  "help_center_url",
+  "marketing_tagline",
+  "app_store_url",
+  "play_store_url",
+  /** Public key only; never put secret keys in region_settings. */
+  "paystack_public_key",
+]);
+
+function pickPublicRegionSettings(
+  rs: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!rs) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const k of PUBLIC_REGION_SETTING_KEYS) {
+    if (k in rs && rs[k] !== undefined) {
+      out[k] = rs[k];
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
 /**
  * Load and return the full public config bundle. No secrets.
  */
@@ -167,6 +194,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     appVersion = null,
     role = null,
     userId = null,
+    tenantId = null,
   } = params;
 
   const supabase = getSupabaseAdmin();
@@ -175,7 +203,10 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
   const results = await Promise.allSettled([
     supabase.from("amplitude_integration_config").select("api_key_public, environment, enabled_client_portal, enabled_provider_portal, enabled_admin_portal, guides_enabled, surveys_enabled, sampling_rate, debug_mode").eq("environment", environment).maybeSingle(),
     supabase.from("platform_settings").select("settings").eq("is_active", true).limit(1).maybeSingle(),
-    supabase.from("feature_flags").select("feature_key, enabled, rollout_percent, platforms_allowed, roles_allowed, min_app_version, environments_allowed"),
+    supabase
+      .from("feature_flags")
+      .select("feature_key, enabled, rollout_percent, platforms_allowed, roles_allowed, min_app_version, environments_allowed")
+      .is("tenant_id", null),
     supabase.from("on_demand_module_config").select("*").eq("environment", environment).maybeSingle(),
     supabase.from("ai_module_config").select("*").eq("environment", environment).maybeSingle(),
     supabase.from("ads_module_config").select("*").eq("environment", environment).maybeSingle(),
@@ -213,7 +244,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     : { ...DEFAULT_AMPLITUDE, environment };
 
   const settings = (platformSettingsRes.data as { settings?: Record<string, any> } | null)?.settings;
-  const third_party: SafeThirdPartyConfig = {};
+  let third_party: SafeThirdPartyConfig = {};
   if (settings?.onesignal && (settings.onesignal as { enabled?: boolean }).enabled) {
     const o = settings.onesignal as { app_id?: string; safari_web_id?: string };
     third_party.onesignal = { enabled: true, app_id: o.app_id, safari_web_id: o.safari_web_id };
@@ -223,7 +254,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     third_party.mapbox = { enabled: true, public_token: m.public_token };
   }
 
-  const branding: SafeBrandingConfig = settings?.branding
+  let branding: SafeBrandingConfig = settings?.branding
     ? {
         site_name: (settings.branding as SafeBrandingConfig).site_name ?? DEFAULT_BRANDING.site_name,
         logo_url: (settings.branding as SafeBrandingConfig).logo_url ?? DEFAULT_BRANDING.logo_url,
@@ -233,7 +264,58 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       }
     : DEFAULT_BRANDING;
 
-  const rawFlags = (featureFlagsRes.data ?? []) as Array<{
+  let tenantSlug: string | undefined;
+  let tenantSettingsOverlay: Record<string, unknown> | undefined;
+  let tenantRegionMeta: TenantRegionMeta | undefined;
+  let regionSettingsPublic: Record<string, unknown> | undefined;
+  if (tenantId) {
+    const [{ data: tsRow }, { data: tRow }, tenantRegionConfig] = await Promise.all([
+      supabase.from("tenant_settings").select("settings").eq("tenant_id", tenantId).maybeSingle(),
+      supabase.from("tenants").select("slug").eq("id", tenantId).maybeSingle(),
+      getTenantRegionConfig(tenantId),
+    ]);
+    tenantSlug = (tRow as { slug?: string } | null)?.slug;
+    const ts = (tsRow as { settings?: Record<string, unknown> } | null)?.settings;
+    if (ts && typeof ts === "object") {
+      tenantSettingsOverlay = ts;
+      const tb = ts.branding as Partial<SafeBrandingConfig> | undefined;
+      if (tb && typeof tb === "object") {
+        branding = {
+          site_name: tb.site_name ?? branding.site_name,
+          logo_url: tb.logo_url ?? branding.logo_url,
+          favicon_url: tb.favicon_url ?? branding.favicon_url,
+          primary_color: tb.primary_color ?? branding.primary_color,
+          secondary_color: tb.secondary_color ?? branding.secondary_color,
+        };
+      }
+      const tos = ts.onesignal as { enabled?: boolean; app_id?: string; safari_web_id?: string } | undefined;
+      if (tos?.enabled) {
+        third_party.onesignal = {
+          enabled: true,
+          app_id: tos.app_id,
+          safari_web_id: tos.safari_web_id,
+        };
+      }
+      const tm = ts.mapbox as { enabled?: boolean; public_token?: string } | undefined;
+      if (tm?.enabled && tm.public_token) {
+        third_party.mapbox = { enabled: true, public_token: tm.public_token };
+      }
+    }
+    if (tenantRegionConfig) {
+      tenantRegionMeta = {
+        code: tenantRegionConfig.regionCode,
+        name: tenantRegionConfig.regionDisplayName,
+        default_currency: tenantRegionConfig.defaultCurrency,
+        default_language: tenantRegionConfig.defaultLanguage,
+        timezone: tenantRegionConfig.defaultTimezone,
+        phone_country_code: tenantRegionConfig.phoneCountryCode,
+        ...(tenantRegionConfig.regionId ? { region_id: tenantRegionConfig.regionId } : {}),
+      };
+      regionSettingsPublic = pickPublicRegionSettings(tenantRegionConfig.regionSettings);
+    }
+  }
+
+  type FlagRow = {
     feature_key: string;
     enabled: boolean;
     rollout_percent?: number | null;
@@ -241,7 +323,22 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     roles_allowed?: string[] | null;
     min_app_version?: string | null;
     environments_allowed?: string[] | null;
-  }>;
+  };
+
+  let mergedFlagRows = (featureFlagsRes.data ?? []) as FlagRow[];
+  if (tenantId && !featureFlagsRes.error) {
+    const { data: tenantFlagRows, error: tenantFlagErr } = await supabase
+      .from("feature_flags")
+      .select(
+        "feature_key, enabled, rollout_percent, platforms_allowed, roles_allowed, min_app_version, environments_allowed"
+      )
+      .eq("tenant_id", tenantId);
+    if (!tenantFlagErr && tenantFlagRows?.length) {
+      mergedFlagRows = mergeGlobalAndTenantFeatureFlags(mergedFlagRows, tenantFlagRows as FlagRow[]);
+    }
+  }
+
+  const rawFlags = mergedFlagRows;
   const flags = resolveFlagsForUser({
     flags: rawFlags,
     userId,
@@ -332,6 +429,15 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
       platform,
       version: appVersion ?? null,
       fetched_at,
+      ...(tenantId
+        ? {
+            tenant_id: tenantId,
+            ...(tenantSlug ? { tenant_slug: tenantSlug } : {}),
+            ...(tenantSettingsOverlay ? { tenant_settings_overlay: tenantSettingsOverlay } : {}),
+            ...(tenantRegionMeta ? { tenant_region: tenantRegionMeta } : {}),
+            ...(regionSettingsPublic ? { region_settings_public: regionSettingsPublic } : {}),
+          }
+        : {}),
     },
     amplitude,
     third_party,

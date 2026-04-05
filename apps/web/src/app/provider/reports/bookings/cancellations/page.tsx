@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -41,6 +42,7 @@ interface CancellationsData {
 }
 
 export default function CancellationsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -87,7 +89,7 @@ export default function CancellationsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "cancellations");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "cancellations", exportCurrency);
     exportToCSV(exportData, "cancellations-report");
   };
 
@@ -187,7 +189,7 @@ export default function CancellationsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.lostRevenue.toLocaleString()}
+                  {fmt(data.lostRevenue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-red-600" />
               </div>
@@ -266,7 +268,7 @@ export default function CancellationsReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        ZAR {Number(booking.total_amount || 0).toLocaleString()}
+                        {fmt(Number(booking.total_amount || 0))}
                       </p>
                       <p className="text-xs text-gray-500">
                         {format(new Date(booking.cancelled_at || booking.scheduled_at), "MMM dd")}

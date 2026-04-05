@@ -10,6 +10,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const updateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -31,11 +32,13 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(_request);
 
     const { data, error } = await supabase
       .from("learning_categories")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error || !data) {
@@ -88,6 +91,7 @@ export async function PUT(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const parsed = updateSchema.safeParse(body);
@@ -119,6 +123,7 @@ export async function PUT(
       .from("learning_categories")
       .update(parsed.data)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -159,11 +164,13 @@ export async function DELETE(
 
     const { id } = await params;
     const supabase = await getSupabaseServer();
+    const tenantId = await resolveAdminApiTenantId(_request);
 
     const { data: children } = await supabase
       .from("learning_categories")
       .select("id")
       .eq("parent_id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .limit(1);
     if (children && children.length > 0) {
       return NextResponse.json(
@@ -174,7 +181,8 @@ export async function DELETE(
     const { count: articleCount } = await supabase
       .from("learning_articles")
       .select("id", { count: "exact", head: true })
-      .eq("category_id", id);
+      .eq("category_id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
     if (articleCount && articleCount > 0) {
       return NextResponse.json(
         { data: null, error: { message: `Cannot delete: category has ${articleCount} article(s). Move them to another category first.`, code: "HAS_ARTICLES" } },
@@ -182,7 +190,11 @@ export async function DELETE(
       );
     }
 
-    const { error } = await supabase.from("learning_categories").delete().eq("id", id);
+    const { error } = await supabase
+      .from("learning_categories")
+      .delete()
+      .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) {
       console.error("Error deleting learning category:", error);

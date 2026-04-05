@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 import {
   Select,
   SelectContent,
@@ -22,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { WaitingRoomEntry, TeamMember, ServiceItem } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { toast } from "sonner";
+import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 
 interface WaitingRoomEntryDialogProps {
   open: boolean;
@@ -95,13 +98,17 @@ export function WaitingRoomEntryDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.client_phone?.trim() && !isCompleteE164(formData.client_phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
     setIsLoading(true);
 
     try {
       const entryData: Partial<WaitingRoomEntry> = {
         client_name: formData.client_name,
         client_email: formData.client_email || undefined,
-        client_phone: formData.client_phone || undefined,
+        client_phone: formData.client_phone?.trim() || undefined,
         service_id: formData.service_id || undefined,
         service_name: formData.service_name,
         team_member_id: formData.team_member_id || undefined,
@@ -147,13 +154,14 @@ export function WaitingRoomEntryDialog({
                 required
               />
             </div>
-            <div>
-              <Label htmlFor="client_phone">Phone</Label>
-              <Input
-                id="client_phone"
-                type="tel"
+            <div className="space-y-2">
+              <Label htmlFor="waiting-room-client-phone">Phone (optional)</Label>
+              <PhoneInput
+                label=""
+                inputId="waiting-room-client-phone"
                 value={formData.client_phone}
-                onChange={(e) => setFormData({ ...formData, client_phone: e.target.value })}
+                onChange={(e164) => setFormData({ ...formData, client_phone: e164 })}
+                className="space-y-1"
               />
             </div>
           </div>
@@ -172,8 +180,12 @@ export function WaitingRoomEntryDialog({
             <div>
               <Label htmlFor="service_id">Service</Label>
               <Select
-                value={formData.service_id}
+                value={formData.service_id || RADIX_SELECT_ANY}
                 onValueChange={(value) => {
+                  if (value === RADIX_SELECT_ANY) {
+                    setFormData({ ...formData, service_id: "", service_name: "" });
+                    return;
+                  }
                   const service = services.find((s) => s.id === value);
                   setFormData({
                     ...formData,
@@ -186,7 +198,7 @@ export function WaitingRoomEntryDialog({
                   <SelectValue placeholder="Select service" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any service</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>Any service</SelectItem>
                   {services.map((service) => (
                     <SelectItem key={service.id} value={service.id}>
                       {service.name}
@@ -198,14 +210,19 @@ export function WaitingRoomEntryDialog({
             <div>
               <Label htmlFor="team_member_id">Preferred Team Member</Label>
               <Select
-                value={formData.team_member_id}
-                onValueChange={(value) => setFormData({ ...formData, team_member_id: value })}
+                value={formData.team_member_id || RADIX_SELECT_ANY}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    team_member_id: value === RADIX_SELECT_ANY ? "" : value,
+                  })
+                }
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Any team member" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Any team member</SelectItem>
+                  <SelectItem value={RADIX_SELECT_ANY}>Any team member</SelectItem>
                   {teamMembers.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
                       {member.name}

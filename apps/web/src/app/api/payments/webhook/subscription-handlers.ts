@@ -11,6 +11,9 @@
 
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 /**
  * Handle subscription.create event
@@ -45,7 +48,7 @@ export async function handleSubscriptionCreate(payload: Record<string, unknown>,
   // Find provider
   const { data: provider } = await supabase
     .from("providers")
-    .select("id")
+    .select("id, tenant_id")
     .eq("user_id", customerRow.id)
     .single();
 
@@ -53,6 +56,11 @@ export async function handleSubscriptionCreate(payload: Record<string, unknown>,
     console.error("Provider not found for user:", customerRow.id);
     return;
   }
+
+  const subscriptionTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+    tenant_id: (provider as { tenant_id?: string | null }).tenant_id,
+    provider_id: (provider as { id: string }).id,
+  });
 
   // Find plan by Paystack plan code
   const { data: planRow } = await supabase
@@ -82,6 +90,7 @@ export async function handleSubscriptionCreate(payload: Record<string, unknown>,
   const createdAt = payload.createdAt as string | number | Date | undefined;
   await supabase.from("provider_subscriptions").upsert({
     provider_id: provider.id,
+    tenant_id: subscriptionTenantId,
     plan_id: planRow.id,
     status: status === "active" ? "active" : "inactive",
     paystack_subscription_code: subscriptionCode,
@@ -218,9 +227,14 @@ export async function handleSubscriptionInvoice(
     // Get subscription details for notification
     const { data: subscriptionDetails } = await supabase
       .from("provider_subscriptions")
-      .select("billing_period, plan_id, provider_id")
+      .select("billing_period, plan_id, provider_id, tenant_id")
       .eq("paystack_subscription_code", subscriptionCode)
       .single();
+
+    const renewalFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: (subscriptionDetails as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      provider_id: providerId ?? null,
+    });
 
     // Update subscription
     const now = new Date();
@@ -259,6 +273,7 @@ export async function handleSubscriptionInvoice(
     await supabase.from("finance_transactions").insert({
       booking_id: null,
       provider_id: providerId,
+      tenant_id: renewalFinanceTenantId,
       transaction_type: "provider_subscription_payment",
       amount: netAmount,
       fees: feesInCurrency,
@@ -285,7 +300,7 @@ export async function handleSubscriptionInvoice(
         // Get provider details
         const { data: provider } = await supabase
           .from("providers")
-          .select("user_id, business_name")
+          .select("user_id, business_name, tenant_id")
           .eq("id", subDetails.provider_id)
           .single();
 
@@ -293,7 +308,13 @@ export async function handleSubscriptionInvoice(
           const planAmount = billingPeriod === "yearly" 
             ? (plan.price_yearly || netAmount)
             : (plan.price_monthly || netAmount);
-          const currency = plan.currency || "ZAR";
+          const provTenant = (provider as { tenant_id?: string | null }).tenant_id;
+          const subTenant = (subscriptionDetails as { tenant_id?: string | null })?.tenant_id ?? null;
+          const tenantForCurrency = provTenant ?? subTenant;
+          const lastResortCurrency = tenantForCurrency
+            ? (await getTenantRegionConfig(tenantForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY
+            : LAST_RESORT_CURRENCY;
+          const currency = plan.currency || lastResortCurrency;
 
           await sendTemplateNotification(
             "subscription_renewed",

@@ -42,24 +42,35 @@ export default function DynamicBranding() {
       root.style.setProperty("--brand-secondary-rgb", `${secondaryRgb.r}, ${secondaryRgb.g}, ${secondaryRgb.b}`);
     }
 
-    // Update favicon
+    const defaultFavicon = "/icon.svg";
+    const raw = branding.favicon_url?.trim() ?? "";
+    const faviconHref =
+      raw && raw !== "/favicon.ico" && raw !== "/images/favicon.ico" ? raw : defaultFavicon;
+
     let favicon = document.querySelector("link[rel='icon']") as HTMLLinkElement;
     if (!favicon) {
       favicon = document.createElement("link");
       favicon.rel = "icon";
       document.head.appendChild(favicon);
     }
-    favicon.href = branding.favicon_url || "/images/favicon.ico";
+    favicon.href = faviconHref;
+    if (faviconHref.endsWith(".svg")) {
+      favicon.type = "image/svg+xml";
+    } else {
+      favicon.removeAttribute("type");
+    }
 
-    // Update apple-touch-icon if needed
     let appleIcon = document.querySelector("link[rel='apple-touch-icon']") as HTMLLinkElement;
-    if (branding.favicon_url && !appleIcon) {
+    if (!appleIcon) {
       appleIcon = document.createElement("link");
       appleIcon.rel = "apple-touch-icon";
       document.head.appendChild(appleIcon);
     }
-    if (appleIcon && branding.favicon_url) {
-      appleIcon.href = branding.favicon_url;
+    appleIcon.href = faviconHref;
+    if (faviconHref.endsWith(".svg")) {
+      appleIcon.type = "image/svg+xml";
+    } else {
+      appleIcon.removeAttribute("type");
     }
 
     // Update site title

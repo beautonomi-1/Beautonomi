@@ -3,7 +3,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const bodySchema = z.object({
   set_as_default: z.boolean().optional(),
@@ -21,6 +24,9 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const body = await request.json().catch(() => ({}));
     const parsed = bodySchema.safeParse(body);
@@ -37,7 +43,7 @@ export async function POST(request: NextRequest) {
       return errorResponse("Email is required to add a card. Please set your email in account settings.", "VALIDATION_ERROR", 400);
     }
 
-    const currency = "ZAR";
+    const currency = lastResortCurrency;
     const amountInCurrency = 1; // R1 (or minimum) for verification
     const amountInSmallestUnit = convertToSmallestUnit(amountInCurrency);
     const reference = generateTransactionReference("card_verify", user.id);
@@ -55,6 +61,7 @@ export async function POST(request: NextRequest) {
         set_as_default: set_as_default ?? false,
         kind: "card_verification",
       },
+      tenantId,
     });
 
     return successResponse({

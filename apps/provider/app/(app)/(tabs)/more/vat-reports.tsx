@@ -23,6 +23,8 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { formatCurrency } from "@/lib/format";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 interface VATTransaction {
   id: string;
@@ -54,6 +56,17 @@ interface VATReportsData {
   reports: VATReport[];
   provider: { vat_number: string | null; is_vat_registered: boolean };
   year: number;
+}
+
+function formatDateSafe(
+  value: unknown,
+  locales: string | string[] = "en-ZA",
+  options?: Intl.DateTimeFormatOptions,
+): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(locales, options);
 }
 
 const currentYear = new Date().getFullYear();
@@ -111,8 +124,8 @@ export default function VATReportsScreen() {
         ["Booking Number", "Date", "VAT Amount", "Description"],
         ...report.transactions.map((t) => [
           t.booking_number,
-          new Date(t.booking_date).toLocaleDateString("en-ZA"),
-          `R${t.amount.toFixed(2)}`,
+          formatDateSafe(t.booking_date, getTenantLocaleTag()),
+          formatCurrency(t.amount),
           t.description || "",
         ]),
       ];
@@ -262,7 +275,7 @@ export default function VATReportsScreen() {
                       </View>
                     </View>
                     <Text style={twStyle("text-sm text-gray-500 mt-1")}>
-                      Deadline: {new Date(report.deadline_date).toLocaleDateString("en-ZA", {
+                      Deadline: {formatDateSafe(report.deadline_date, getTenantLocaleTag(), {
                         day: "numeric",
                         month: "long",
                         year: "numeric",
@@ -294,7 +307,7 @@ export default function VATReportsScreen() {
                         {report.transactions.slice(0, 20).map((t) => (
                           <View key={t.id} style={twStyle("flex-row justify-between py-1.5")}>
                             <Text style={twStyle("text-sm text-gray-600")} numberOfLines={1}>
-                              {t.booking_number} · {new Date(t.booking_date).toLocaleDateString("en-ZA")}
+                              {t.booking_number} · {formatDateSafe(t.booking_date, getTenantLocaleTag())}
                             </Text>
                             <Text style={twStyle("text-sm font-medium text-gray-900")}>R{t.amount.toFixed(2)}</Text>
                           </View>
@@ -324,7 +337,7 @@ export default function VATReportsScreen() {
                         Remitted to SARS
                         {report.remitted_at && (
                           <Text style={twStyle("text-green-700")}>
-                            {" "}· {new Date(report.remitted_at).toLocaleDateString("en-ZA")}
+                            {" "}· {formatDateSafe(report.remitted_at, getTenantLocaleTag())}
                           </Text>
                         )}
                       </Text>

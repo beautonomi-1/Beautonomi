@@ -14,10 +14,15 @@ const nextConfig = {
   // Enable React strict mode for better performance debugging
   reactStrictMode: true,
 
+  // pdfkit → fontkit ESM hits a Turbopack/@swc/helpers mismatch ("applyDecoratedDescriptor").
+  // Externalize so the route uses Node resolution (same pattern as other native-heavy libs).
+  serverExternalPackages: ['pdfkit', 'fontkit'],
+
   // Transpile monorepo packages for proper module resolution
   transpilePackages: [
     "@beautonomi/ui-tokens",
     "@beautonomi/i18n",
+    "@beautonomi/phone",
     "@beautonomi/types",
     "@beautonomi/api",
     "@beautonomi/analytics",
@@ -68,6 +73,8 @@ const nextConfig = {
 
   // Experimental features for performance
   experimental: {
+    // Lowers peak RSS during `next build --webpack` (important on ~7GB CI / default Vercel builders).
+    webpackMemoryOptimizations: true,
     // Exclude @radix-ui/react-select to avoid Turbopack HMR "module factory is not available" errors
     optimizePackageImports: [
       'lucide-react',
@@ -79,71 +86,32 @@ const nextConfig = {
     ],
   },
 
-  // Turbopack configuration (Next.js 16 default)
+  // Turbopack config placeholder (required alongside custom webpack when using `next build --turbo` in some setups).
+  // Default scripts use Webpack for dev/build so App Router API routes with dynamic segments resolve correctly.
   turbopack: {},
 
-  // Webpack optimizations (for --webpack flag usage)
-  webpack: (config, { isServer }) => {
-    // Optimize bundle size
-    if (!isServer) {
-      config.optimization = {
-        ...config.optimization,
-        moduleIds: 'deterministic',
-        runtimeChunk: 'single',
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            default: false,
-            vendors: false,
-            // Vendor chunk for large libraries
-            vendor: {
-              name: 'vendor',
-              chunks: 'all',
-              test: /node_modules/,
-              priority: 20,
-            },
-            // Common chunk for shared code
-            common: {
-              name: 'common',
-              minChunks: 2,
-              chunks: 'all',
-              priority: 10,
-              reuseExistingChunk: true,
-              enforce: true,
-            },
-            // React and React DOM
-            react: {
-              name: 'react',
-              test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/,
-              chunks: 'all',
-              priority: 30,
-            },
-            // UI components
-            ui: {
-              name: 'ui',
-              test: /[\\/]node_modules[\\/]@radix-ui[\\/]/,
-              chunks: 'all',
-              priority: 25,
-            },
-            // Date libraries
-            date: {
-              name: 'date',
-              test: /[\\/]node_modules[\\/](date-fns|react-day-picker)[\\/]/,
-              chunks: 'all',
-              priority: 25,
-            },
-            // Charts
-            charts: {
-              name: 'charts',
-              test: /[\\/]node_modules[\\/]recharts[\\/]/,
-              chunks: 'all',
-              priority: 25,
-            },
-          },
-        },
-      };
+  // Never use a client cacheGroup with a fixed `name: "vendor"` (same logical chunk id for JS + CSS
+  // breaks the manifest: the browser loads vendor.css as a script → MIME / SyntaxError).
+  // Strip it if present (e.g. stale tooling) and avoid replacing Next's default client splitChunks.
+  webpack: (config, { dev, isServer }) => {
+    // Cap parallel module work in production builds to avoid OOM on 7–8GB runners (heap alone can exceed RAM).
+    if (!dev) {
+      config.parallelism = Math.min(config.parallelism ?? 100, 2);
     }
-
+    // Windows dev: persistent webpack filesystem cache under .next/dev/cache/webpack can hit ENOENT
+    // (missing *.pack.gz / routes-manifest) after partial deletes or restarts while compiling → 500 ISE.
+    // Memory-only cache is slower but avoids a corrupted pack leaving the server unusable until full clean.
+    if (dev) {
+      config.cache = false;
+    }
+    if (!isServer && config.optimization?.splitChunks?.cacheGroups) {
+      const groups = config.optimization.splitChunks.cacheGroups;
+      for (const key of Object.keys(groups)) {
+        if (groups[key]?.name === 'vendor') {
+          delete groups[key];
+        }
+      }
+    }
     return config;
   },
 
@@ -151,40 +119,94 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/terms', destination: '/terms-and-condition', permanent: true },
+      { source: '/terms-of-service', destination: '/terms-and-condition', permanent: true },
+      // Legacy clients request /favicon.ico; serve the Beautonomi symbol (same as /icon.svg).
+      { source: '/favicon.ico', destination: '/icon.svg', permanent: false },
     ];
   },
 
   // Headers for caching & security
   async headers() {
     return [
-      // CORS headers for API routes (mobile apps access backend)
+      // CORS for public booking / search endpoints — open to all origins so that
+      // express booking links embedded in third-party sites work correctly.
+      {
+        source: '/api/public/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With, X-App' },
+          { key: 'Access-Control-Max-Age', value: '86400' },
+        ],
+      },
+      // CORS for authenticated/admin API routes — restrict to known origins.
+      // React Native mobile apps do not send Origin headers so they are unaffected.
       {
         source: '/api/:path*',
         headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: process.env.NEXT_PUBLIC_APP_URL || 'https://beautonomi.co.za',
+          },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },
           { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With, X-App' },
+          { key: 'Access-Control-Allow-Credentials', value: 'true' },
           { key: 'Access-Control-Max-Age', value: '86400' },
         ],
       },
       {
         source: '/:path*',
         headers: [
+          { key: 'X-DNS-Prefetch-Control', value: 'on' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          // HSTS: enforce HTTPS for 1 year, include subdomains
           {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on',
+            key: 'Strict-Transport-Security',
+            value: 'max-age=31536000; includeSubDomains; preload',
           },
+          // Restrict browser feature access
           {
-            key: 'X-Frame-Options',
-            value: 'SAMEORIGIN',
+            key: 'Permissions-Policy',
+            value: [
+              'camera=()',
+              'microphone=()',
+              'geolocation=(self)',
+              'payment=(self)',
+              'usb=()',
+              'magnetometer=()',
+              'gyroscope=()',
+              'accelerometer=()',
+            ].join(', '),
           },
+          // Content Security Policy
+          // Next.js requires 'unsafe-inline' for runtime styles. 'unsafe-eval' is
+          // required by Mapbox GL JS and some analytics SDKs.
+          // TODO: Migrate to nonce-based CSP when Next.js stable nonce support lands.
           {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
+            key: 'Content-Security-Policy',
+            value: [
+              "default-src 'self'",
+              // Scripts: self + inline (Next hydration) + CDN SDKs
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com",
+              // Styles: self + inline (Tailwind runtime)
+              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+              // Fonts
+              "font-src 'self' data: https://fonts.gstatic.com",
+              // Images: supabase storage + maps + data URIs
+              "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com",
+              // XHR/fetch/WebSocket
+              "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com",
+              // Iframes (Paystack popup uses an iframe)
+              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co",
+              // Workers (Next.js, service workers)
+              "worker-src 'self' blob:",
+              "object-src 'none'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "upgrade-insecure-requests",
+            ].join('; '),
           },
         ],
       },

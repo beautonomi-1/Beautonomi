@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RADIX_SELECT_NONE } from "@/lib/ui/select-radix-sentinels";
 
 interface Currency {
   code: string;
@@ -1089,14 +1090,19 @@ function IsoCodeDialog({
               <div>
                 <Label htmlFor="country_code">Country Code (Optional)</Label>
                 <Select
-                  value={formData.country_code || ""}
-                  onValueChange={(value) => setFormData({ ...formData, country_code: value })}
+                  value={formData.country_code || RADIX_SELECT_NONE}
+                  onValueChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      country_code: value === RADIX_SELECT_NONE ? "" : value,
+                    })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select country" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value={RADIX_SELECT_NONE}>None</SelectItem>
                     {countries.map((country) => (
                       <SelectItem key={country.code} value={country.code}>
                         {country.name} ({country.code})

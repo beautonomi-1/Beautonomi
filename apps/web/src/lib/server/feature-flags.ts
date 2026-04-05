@@ -3,8 +3,9 @@
  * For use in Server Components and API routes
  */
 
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export interface FeatureFlag {
   id: string;
@@ -16,6 +17,27 @@ export interface FeatureFlag {
   metadata: Record<string, any>;
   created_at: string;
   updated_at: string;
+  tenant_id?: string | null;
+}
+
+type FlagRowDb = {
+  feature_key: string;
+  enabled: boolean;
+  tenant_id: string | null;
+};
+
+function enabledForKeyFromRows(
+  rows: FlagRowDb[],
+  featureKey: string,
+  tenantId: string | null | undefined
+): boolean {
+  const matches = rows.filter((r) => r.feature_key === featureKey);
+  if (tenantId) {
+    const t = matches.find((r) => r.tenant_id === tenantId);
+    if (t) return Boolean(t.enabled);
+  }
+  const g = matches.find((r) => r.tenant_id == null);
+  return g ? Boolean(g.enabled) : false;
 }
 
 /**
@@ -38,7 +60,7 @@ async function getSupabaseClient() {
             );
           } catch {
             // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
+            // This can be ignored if you have proxy refreshing cookies
             // user sessions.
           }
         },
@@ -48,26 +70,35 @@ async function getSupabaseClient() {
 }
 
 /**
- * Check if a feature is enabled (server-side)
- * @param featureKey - The key of the feature to check
- * @returns Promise<boolean> - True if feature is enabled, false otherwise
+ * Check if a feature is enabled (server-side). Uses service role for reads (RLP-safe).
+ * When tenantId is set, a tenant-specific row overrides the global row for that key.
  */
-export async function isFeatureEnabledServer(featureKey: string): Promise<boolean> {
+export async function isFeatureEnabledServer(
+  featureKey: string,
+  tenantId?: string | null
+): Promise<boolean> {
   try {
-    const supabase = await getSupabaseClient();
-    
-    const { data, error } = await supabase
-      .from('feature_flags')
-      .select('enabled')
-      .eq('feature_key', featureKey)
-      .single();
+    const supabase = getSupabaseAdmin();
+    let q = supabase.from("feature_flags").select("enabled, tenant_id").eq("feature_key", featureKey);
+    if (tenantId) {
+      q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    } else {
+      q = q.is("tenant_id", null);
+    }
 
-    if (error || !data) {
-      console.warn(`Feature flag not found or error: ${featureKey}`, error);
+    const { data, error } = await q;
+
+    if (error || !data?.length) {
+      if (error) console.warn(`Feature flag not found or error: ${featureKey}`, error);
       return false;
     }
 
-    return data.enabled ?? false;
+    if (tenantId) {
+      const tenantRow = data.find((r) => r.tenant_id === tenantId);
+      if (tenantRow) return Boolean(tenantRow.enabled);
+    }
+    const globalRow = data.find((r) => r.tenant_id == null);
+    return globalRow ? Boolean(globalRow.enabled) : false;
   } catch (error) {
     console.error(`Error checking feature flag ${featureKey}:`, error);
     return false;
@@ -76,37 +107,43 @@ export async function isFeatureEnabledServer(featureKey: string): Promise<boolea
 
 /**
  * Check multiple features at once (server-side)
- * @param featureKeys - Array of feature keys to check
- * @returns Promise<Record<string, boolean>> - Object mapping feature keys to enabled status
  */
 export async function checkMultipleFeaturesServer(
-  featureKeys: string[]
+  featureKeys: string[],
+  tenantId?: string | null
 ): Promise<Record<string, boolean>> {
+  if (featureKeys.length === 0) return {};
+
   try {
-    const supabase = await getSupabaseClient();
-    
-    const { data, error } = await supabase
-      .from('feature_flags')
-      .select('feature_key, enabled')
-      .in('feature_key', featureKeys);
+    const supabase = getSupabaseAdmin();
+
+    let q = supabase
+      .from("feature_flags")
+      .select("feature_key, enabled, tenant_id")
+      .in("feature_key", featureKeys);
+
+    if (tenantId) {
+      q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
+    } else {
+      q = q.is("tenant_id", null);
+    }
+
+    const { data, error } = await q;
 
     if (error) {
-      console.error('Error fetching feature flags:', error);
-      // Return all false as fallback
+      console.error("Error fetching feature flags:", error);
       return featureKeys.reduce((acc, key) => ({ ...acc, [key]: false }), {});
     }
 
-    // Build result object
+    const rows = (data ?? []) as FlagRowDb[];
     const result: Record<string, boolean> = {};
     featureKeys.forEach((key) => {
-      const flag = data?.find((f) => f.feature_key === key);
-      result[key] = flag?.enabled ?? false;
+      result[key] = enabledForKeyFromRows(rows, key, tenantId);
     });
 
     return result;
   } catch (error) {
-    console.error('Error checking feature flags:', error);
-    // Return all false as fallback
+    console.error("Error checking feature flags:", error);
     return featureKeys.reduce((acc, key) => ({ ...acc, [key]: false }), {});
   }
 }
@@ -118,21 +155,21 @@ export async function checkMultipleFeaturesServer(
 export async function getAllFeatureFlagsServer(): Promise<FeatureFlag[]> {
   try {
     const supabase = await getSupabaseClient();
-    
+
     // Check if user is superadmin
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (!user || user.user_metadata?.role !== 'superadmin') {
-      throw new Error('Unauthorized: Superadmin access required');
+    if (!user || user.user_metadata?.role !== "superadmin") {
+      throw new Error("Unauthorized: Superadmin access required");
     }
 
     const { data, error } = await supabase
-      .from('feature_flags')
-      .select('*')
-      .order('category', { ascending: true })
-      .order('feature_name', { ascending: true });
+      .from("feature_flags")
+      .select("*")
+      .order("category", { ascending: true })
+      .order("feature_name", { ascending: true });
 
     if (error) {
       throw new Error(`Failed to fetch feature flags: ${error.message}`);
@@ -140,7 +177,7 @@ export async function getAllFeatureFlagsServer(): Promise<FeatureFlag[]> {
 
     return data ?? [];
   } catch (error) {
-    console.error('Error fetching feature flags:', error);
+    console.error("Error fetching feature flags:", error);
     throw error;
   }
 }
@@ -157,20 +194,20 @@ export async function hasPermissionServer(
 ): Promise<boolean> {
   try {
     const supabase = await getSupabaseClient();
-    
-    const { data, error } = await supabase.rpc('has_permission', {
+
+    const { data, error } = await supabase.rpc("has_permission", {
       user_role: userRole,
       permission_key_param: permissionKey,
     });
 
     if (error) {
-      console.error('Error checking permission:', error);
+      console.error("Error checking permission:", error);
       return false;
     }
 
     return data ?? false;
   } catch (error) {
-    console.error('Error checking permission:', error);
+    console.error("Error checking permission:", error);
     return false;
   }
 }

@@ -79,7 +79,11 @@ const ActionToolbar = () => {
         }
       />
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 };

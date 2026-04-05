@@ -47,7 +47,11 @@ export async function GET(request: Request) {
     const products = (productsRaw || []).map((p: any) => {
       const variants = (p.product_variants || []).sort((a: any, b: any) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       const { product_variants: _, ...rest } = p;
-      return { ...rest, variants };
+      const hasV = Boolean(rest.has_variants && variants.length > 0);
+      const effective_quantity = hasV
+        ? variants.reduce((sum: number, v: any) => sum + (Number(v.quantity) || 0), 0)
+        : Number(rest.quantity) || 0;
+      return { ...rest, variants, effective_quantity };
     });
 
     const totalPages = count ? Math.ceil(count / limit) : 1;

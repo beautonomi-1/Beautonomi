@@ -4,6 +4,8 @@ import React from "react";
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 // HMR fix
 
 interface KpiCard {
@@ -21,11 +23,12 @@ interface KpiCardsRowProps {
 }
 
 export function KpiCardsRow({ cards }: KpiCardsRowProps) {
+  const locale = useTenantLocaleTag();
   const formatValue = (value: string | number): string => {
     if (typeof value === "number") {
-      return new Intl.NumberFormat("en-ZA", {
+      return new Intl.NumberFormat(locale, {
         style: "currency",
-        currency: "ZAR",
+        currency: LAST_RESORT_CURRENCY,
         minimumFractionDigits: 0,
       }).format(value);
     }

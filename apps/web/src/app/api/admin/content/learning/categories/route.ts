@@ -10,6 +10,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const categorySchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -41,6 +42,7 @@ export async function GET(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     if (!supabase) {
       return NextResponse.json({ data: [], error: null });
     }
@@ -53,6 +55,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("learning_categories")
       .select("*")
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .order("sort_order", { ascending: true })
       .order("created_at", { ascending: false });
 
@@ -86,6 +89,7 @@ export async function POST(request: NextRequest) {
     if (!user) return unauthorizedResponse("Authentication required");
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const parsed = categorySchema.safeParse(body);
@@ -105,7 +109,7 @@ export async function POST(request: NextRequest) {
 
     const { data: row, error } = await supabase
       .from("learning_categories")
-      .insert(parsed.data)
+      .insert({ ...parsed.data, tenant_id: tenantId })
       .select()
       .single();
 

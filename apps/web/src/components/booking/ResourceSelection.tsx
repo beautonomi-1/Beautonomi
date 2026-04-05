@@ -5,6 +5,8 @@ import { Check, AlertCircle } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { coerceSelectedDate } from "@beautonomi/utils";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import { fetcher } from "@/lib/http/fetcher";
 
 interface Resource {
@@ -73,10 +75,11 @@ export default function ResourceSelection({
   };
 
   const checkAvailability = async () => {
-    if (!selectedDate || !selectedTimeSlot || selectedResources.length === 0) return;
+    const day = coerceSelectedDate(selectedDate);
+    if (!day || !selectedTimeSlot || selectedResources.length === 0) return;
 
     try {
-      const dateStr = selectedDate.toISOString().split("T")[0];
+      const dateStr = formatLocalDateYYYYMMDD(day);
       const timeStr = typeof selectedTimeSlot === "string" && selectedTimeSlot.length >= 5
         ? selectedTimeSlot.slice(0, 5)
         : selectedTimeSlot;

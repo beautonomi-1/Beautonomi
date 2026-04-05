@@ -6,6 +6,7 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /** Map DB status to app status; consider slot passed (preferred_date in the past) as expired. */
 function toAppStatus(
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data: rows, error } = await supabase
       .from("waitlist_entries")
@@ -81,7 +83,11 @@ export async function GET(request: NextRequest) {
 
     const [providersRes, offeringsRes] = await Promise.all([
       providerIds.length > 0
-        ? supabase.from("providers").select("id, business_name, slug").in("id", providerIds)
+        ? supabase
+            .from("providers")
+            .select("id, business_name, slug")
+            .in("id", providerIds)
+            .eq("tenant_id", tenantId)
         : { data: [] as { id: string; business_name: string | null; slug: string | null }[] },
       serviceIds.length > 0
         ? supabase.from("offerings").select("id, title").in("id", serviceIds)
@@ -96,7 +102,8 @@ export async function GET(request: NextRequest) {
     );
 
     const today = new Date().toISOString().slice(0, 10);
-    const enriched: WaitlistEntryEnriched[] = entries.map((row: any, index: number) => {
+    const tenantEntries = entries.filter((row: any) => providersById.has(row.provider_id));
+    const enriched: WaitlistEntryEnriched[] = tenantEntries.map((row: any, index: number) => {
       const preferredDate = row.preferred_date ?? null;
       const slotPassed = !!preferredDate && preferredDate < today;
       const appStatus = toAppStatus(row.status, preferredDate);
@@ -137,6 +144,7 @@ export async function DELETE(request: NextRequest) {
       request
     );
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { searchParams } = new URL(request.url);
     const entryId = searchParams.get("id");
@@ -153,7 +161,7 @@ export async function DELETE(request: NextRequest) {
     // Verify the entry belongs to this customer before deleting
     const { data: entry, error: fetchError } = await supabase
       .from("waitlist_entries")
-      .select("id, customer_id")
+      .select("id, customer_id, provider_id")
       .eq("id", entryId)
       .eq("customer_id", user.id)
       .maybeSingle();
@@ -163,6 +171,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     if (!entry) {
+      return notFoundResponse("Waitlist entry not found");
+    }
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", (entry as { provider_id: string }).provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!provider?.id) {
       return notFoundResponse("Waitlist entry not found");
     }
 

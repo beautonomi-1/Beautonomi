@@ -3,7 +3,11 @@ import { unstable_cache } from "next/cache";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { resolveActiveMarketFromRequest } from "@/lib/tenant/resolve-active-market";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -25,12 +29,14 @@ export const revalidate = 60;
  */
 export async function GET(request: Request) {
   try {
-    // Try to use admin client to bypass RLS for public provider listings
-    // Fallback to regular server client if admin client isn't configured
-    // We still filter by status = 'active' in queries to only show active providers
+    // Prefer admin client for broad read access, but probe it first.
+    // If the admin key is invalid/mismatched for this URL, fall back to
+    // request-scoped server client so public home can still return data.
     let supabase;
+    let usingAdminClient = false;
     try {
       supabase = getSupabaseAdmin();
+      usingAdminClient = true;
     } catch (adminError) {
       console.warn("Admin client not available, falling back to server client:", adminError);
       supabase = await getSupabaseServer(request);
@@ -52,17 +58,67 @@ export async function GET(request: Request) {
         );
       }
     }
+
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in /api/public/home:", tenantErr);
+      return NextResponse.json(
+        {
+          data: {
+            all: [],
+            topRated: [],
+            nearest: [],
+            hottest: [],
+            upcoming: [],
+            browseByCity: [],
+          },
+          error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" },
+        },
+        { status: 503 }
+      );
+    }
+
+    const tenantRegionConfig = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegionConfig?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    // Probe admin client against providers for this tenant. If it returns an
+    // auth/key error, use the server client instead of returning empty sections.
+    if (usingAdminClient) {
+      const probe = await supabase
+        .from("providers")
+        .select("id", { head: true, count: "exact" })
+        .eq("tenant_id", tenantId)
+        .limit(1);
+      if (probe.error) {
+        console.warn("Admin probe failed in /api/public/home; falling back to server client:", {
+          message: probe.error.message,
+          code: probe.error.code,
+          details: probe.error.details,
+        });
+        supabase = await getSupabaseServer(request);
+      }
+    }
     
     const { searchParams } = new URL(request.url);
     const latitude = searchParams.get("lat");
     const longitude = searchParams.get("lng");
     const city = searchParams.get("city");
-    const country = searchParams.get("country") || "ZA"; // Default to South Africa
+    const country = resolveActiveMarketFromRequest(request, searchParams.get("country")).countryCode;
     const categorySlug = searchParams.get("category"); // Filter by category slug
 
-    const cacheKey = `home-${latitude ?? ""}-${longitude ?? ""}-${city ?? ""}-${country}-${categorySlug ?? "all"}`;
+    const cacheKey = `home-${tenantId}-${latitude ?? ""}-${longitude ?? ""}-${city ?? ""}-${country}-${categorySlug ?? "all"}`;
     const result = await unstable_cache(
       async () => {
+    // Supabase query builders require .select() before .eq() in this context.
+    // Wrap selects so tenant scoping is always applied consistently.
+    const providersTable = () => ({
+      select: (...args: any[]) =>
+        (supabase.from("providers") as any)
+          .select(...args)
+          .eq("tenant_id", tenantId),
+    });
     // Get category ID if category slug is provided (skip if "all")
     let categoryId: string | null = null;
     let providerIdsForCategory: string[] | null = null;
@@ -86,8 +142,9 @@ export async function GET(request: Request) {
         // Get provider IDs associated with this category
         const { data: associations, error: assocError } = await supabase
           .from("provider_global_category_associations")
-          .select("provider_id")
-          .eq("global_category_id", categoryId);
+          .select("provider_id, providers!inner(tenant_id)")
+          .eq("global_category_id", categoryId)
+          .eq("providers.tenant_id", tenantId);
         
         if (assocError) {
           console.error(`Error fetching associations for category ${categoryId}:`, assocError);
@@ -141,6 +198,7 @@ export async function GET(request: Request) {
       slug,
       business_name,
       business_type,
+      offers_mobile_services,
       rating_average,
       review_count,
       thumbnail_url,
@@ -176,8 +234,7 @@ export async function GET(request: Request) {
         try {
         // First try: providers with 5+ reviews
         const { data: topRatedWithReviews } = await withTimeout(applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .gte("review_count", 5)
@@ -192,8 +249,7 @@ export async function GET(request: Request) {
         
         // Fallback 1: providers with any reviews
         const { data: topRatedAnyReviews } = await withTimeout(applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .gt("review_count", 0)
@@ -208,8 +264,7 @@ export async function GET(request: Request) {
         
         // Fallback 2: verified or featured providers
         const { data: topRatedFallback } = await withTimeout(applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .or("is_verified.eq.true,is_featured.eq.true")
@@ -234,8 +289,7 @@ export async function GET(request: Request) {
         
         // First try: providers created in last 90 days
         const { data: recentProviders } = await withTimeout(applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .gte("created_at", ninetyDaysAgo.toISOString())
@@ -250,8 +304,7 @@ export async function GET(request: Request) {
         
         // Fallback: newest providers (regardless of date)
         const { data: newestProviders } = await withTimeout(applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .order("created_at", { ascending: false })
@@ -270,8 +323,7 @@ export async function GET(request: Request) {
       (async () => {
         try {
           const result = await withTimeout(applyCategoryFilter(
-            supabase
-              .from("providers")
+            providersTable()
               .select(providerFields)
               .eq("status", "active")
               .order("created_at", { ascending: false })
@@ -292,8 +344,9 @@ export async function GET(request: Request) {
           // Increased limit to capture more cities, especially for countries with many locations
           const { data: locationsData, error: locationsError } = await supabase
             .from("provider_locations")
-            .select("city, country, provider_id")
+            .select("city, country, provider_id, providers!inner(tenant_id)")
             .eq("is_active", true)
+            .eq("providers.tenant_id", tenantId)
             .limit(400);
 
           if (locationsError || !locationsData) {
@@ -305,8 +358,7 @@ export async function GET(request: Request) {
           const providerIds = [...new Set(locationsData.map((loc: any) => loc.provider_id).filter(Boolean))];
           
           // Fetch provider names, slugs, and ratings for sorting
-          const { data: providersDataRaw } = providerIds.length > 0 ? await supabase
-            .from("providers")
+          const { data: providersDataRaw } = providerIds.length > 0 ? await providersTable()
             .select("id, business_name, slug, status, user_id, rating_average, review_count")
             .eq("status", "active")
             .in("id", providerIds) : { data: null };
@@ -419,6 +471,7 @@ export async function GET(request: Request) {
           let bookingQuery = supabase
             .from("bookings")
             .select("provider_id")
+            .eq("tenant_id", tenantId)
             .gte("created_at", thirtyDaysAgo.toISOString())
             .in("status", ["confirmed", "completed", "in_progress"])
             .limit(5000);
@@ -432,8 +485,7 @@ export async function GET(request: Request) {
           if (bookingError || !bookingCounts || bookingCounts.length === 0) {
             // Fallback 1: featured providers
             const { data: featuredData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_featured", true)
@@ -447,8 +499,7 @@ export async function GET(request: Request) {
 
             // Fallback 2: verified providers
             const { data: verifiedData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_verified", true)
@@ -462,8 +513,7 @@ export async function GET(request: Request) {
 
             // Fallback 3: newest providers
             const { data: newestData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .order("created_at", { ascending: false })
@@ -494,8 +544,7 @@ export async function GET(request: Request) {
           if (sortedProviderIds.length === 0) {
             // No bookings, fallback 1: featured providers
             const { data: featuredData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_featured", true)
@@ -509,8 +558,7 @@ export async function GET(request: Request) {
 
             // Fallback 2: verified providers
             const { data: verifiedData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_verified", true)
@@ -524,8 +572,7 @@ export async function GET(request: Request) {
 
             // Fallback 3: newest providers
             const { data: newestData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .order("created_at", { ascending: false })
@@ -536,8 +583,7 @@ export async function GET(request: Request) {
           }
 
           // Fetch provider details for top providers
-          const { data: hottestProvidersRaw, error: hottestError } = await supabase
-            .from("providers")
+          const { data: hottestProvidersRaw, error: hottestError } = await providersTable()
             .select(providerFields)
             .eq("status", "active")
             .in("id", sortedProviderIds);
@@ -548,8 +594,7 @@ export async function GET(request: Request) {
           if (hottestError || !hottestProviders) {
             // Fallback 1: featured providers
             const { data: featuredData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_featured", true)
@@ -563,8 +608,7 @@ export async function GET(request: Request) {
 
             // Fallback 2: verified providers
             const { data: verifiedData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_verified", true)
@@ -578,8 +622,7 @@ export async function GET(request: Request) {
 
             // Fallback 3: newest providers
             const { data: newestData } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .order("created_at", { ascending: false })
@@ -601,8 +644,7 @@ export async function GET(request: Request) {
           if (hottest.length < 12) {
             const existingIds = new Set(hottest.map((p: any) => p.id));
             const { data: featuredProviders } = await applyCategoryFilter(
-              supabase
-                .from("providers")
+              providersTable()
                 .select(providerFields)
                 .eq("status", "active")
                 .eq("is_featured", true)
@@ -624,8 +666,7 @@ export async function GET(request: Request) {
           console.error("Error calculating hottest picks:", error);
           // Fallback 1: featured providers
           const { data: featuredData } = await applyCategoryFilter(
-            supabase
-              .from("providers")
+            providersTable()
               .select(providerFields)
               .eq("status", "active")
               .eq("is_featured", true)
@@ -640,8 +681,7 @@ export async function GET(request: Request) {
 
           // Fallback 2: verified providers
           const { data: verifiedData } = await applyCategoryFilter(
-            supabase
-              .from("providers")
+            providersTable()
               .select(providerFields)
               .eq("status", "active")
               .eq("is_verified", true)
@@ -656,8 +696,7 @@ export async function GET(request: Request) {
 
           // Fallback 3: newest providers
           const { data: newestData } = await applyCategoryFilter(
-            supabase
-              .from("providers")
+            providersTable()
               .select(providerFields)
               .eq("status", "active")
               .order("created_at", { ascending: false })
@@ -768,7 +807,7 @@ export async function GET(request: Request) {
     // Increased limit and added price > 0 filter to ensure we get all valid prices
     const { data: offerings } = allProviderIds.size > 0 ? await supabase
       .from("offerings")
-      .select("provider_id, price, currency, service:services(supports_at_home)")
+      .select("provider_id, price, currency, supports_at_home, service:services(supports_at_home)")
       .in("provider_id", Array.from(allProviderIds))
       .eq("is_active", true)
       .not("price", "is", null)
@@ -800,14 +839,14 @@ export async function GET(request: Request) {
           if (!existing || Number(offering.price) < existing.price) {
             priceMap.set(offering.provider_id, {
               price: Number(offering.price),
-              currency: offering.currency || "ZAR",
+              currency: offering.currency || defaultCurrency,
             });
           }
         }
         
         // Check service type support (supports_salon set only from provider_locations with location_type = 'salon')
         const serviceType = serviceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
-        if (offering.service?.supports_at_home) {
+        if (Boolean(offering.supports_at_home) || Boolean(offering.service?.supports_at_home)) {
           serviceType.supports_house_calls = true;
         }
         serviceTypeMap.set(offering.provider_id, serviceType);
@@ -827,13 +866,13 @@ export async function GET(request: Request) {
             // No offering price, use service price
             priceMap.set(service.provider_id, {
               price: servicePrice,
-              currency: service.currency || "ZAR",
+              currency: service.currency || defaultCurrency,
             });
           } else if (servicePrice < existing.price) {
             // Service price is lower, use it
             priceMap.set(service.provider_id, {
               price: servicePrice,
-              currency: service.currency || "ZAR",
+              currency: service.currency || defaultCurrency,
             });
           }
         }
@@ -918,7 +957,9 @@ export async function GET(request: Request) {
       const badge = badgeMap.get(provider.id);
 
       // Ensure service type fields are always boolean, never undefined
-      const supportsHouseCalls = Boolean(serviceType.supports_house_calls);
+      const supportsHouseCalls = Boolean(
+        serviceType.supports_house_calls || provider.offers_mobile_services === true
+      );
       const supportsSalon = Boolean(serviceType.supports_salon);
 
       // Ensure description is preserved (can be string, null, or undefined)
@@ -938,7 +979,7 @@ export async function GET(request: Request) {
         is_featured: provider.is_featured || false,
         is_verified: provider.is_verified || false,
         starting_price: priceInfo?.price,
-        currency: priceInfo?.currency || provider.currency || "ZAR",
+        currency: priceInfo?.currency || provider.currency || defaultCurrency,
         description: description, // Preserve description from provider data
         distance_km: distance || null, // Include distance if calculated
         supports_house_calls: supportsHouseCalls,
@@ -964,8 +1005,7 @@ export async function GET(request: Request) {
         };
 
         // Get all active providers (will filter by SEO setting after)
-        const { data: allProvidersForDistanceRaw, error: providersError } = await supabase
-          .from("providers")
+        const { data: allProvidersForDistanceRaw, error: providersError } = await providersTable()
           .select(providerFields)
           .eq("status", "active")
           .limit(100);
@@ -1032,7 +1072,7 @@ export async function GET(request: Request) {
         // Fetch prices and service types for nearest providers from both offerings and services
         const { data: nearestOfferings } = await supabase
           .from("offerings")
-          .select("provider_id, price, currency, service:services(supports_at_home)")
+          .select("provider_id, price, currency, supports_at_home, service:services(supports_at_home)")
           .in("provider_id", nearestProviderIds)
           .eq("is_active", true)
           .not("price", "is", null)
@@ -1059,14 +1099,14 @@ export async function GET(request: Request) {
               if (!existing || Number(offering.price) < existing.price) {
                 nearestPriceMap.set(offering.provider_id, {
                   price: Number(offering.price),
-                  currency: offering.currency || "ZAR",
+                  currency: offering.currency || defaultCurrency,
                 });
               }
             }
             
             // Check service type support (supports_salon set only from salon-type locations below)
             const serviceType = nearestServiceTypeMap.get(offering.provider_id) || { supports_house_calls: false, supports_salon: false };
-            if (offering.service?.supports_at_home) {
+            if (Boolean(offering.supports_at_home) || Boolean(offering.service?.supports_at_home)) {
               serviceType.supports_house_calls = true;
             }
             nearestServiceTypeMap.set(offering.provider_id, serviceType);
@@ -1084,7 +1124,7 @@ export async function GET(request: Request) {
               if (!existing || servicePrice < existing.price) {
                 nearestPriceMap.set(service.provider_id, {
                   price: servicePrice,
-                  currency: service.currency || "ZAR",
+                  currency: service.currency || defaultCurrency,
                 });
               }
             }
@@ -1164,7 +1204,9 @@ export async function GET(request: Request) {
               serviceType = { supports_house_calls: false, supports_salon: false };
             }
 
-            const supportsHouseCalls = Boolean(serviceType.supports_house_calls);
+            const supportsHouseCalls = Boolean(
+              serviceType.supports_house_calls || provider.offers_mobile_services === true
+            );
             const supportsSalon = Boolean(serviceType.supports_salon);
             
             return {
@@ -1181,7 +1223,7 @@ export async function GET(request: Request) {
               is_featured: provider.is_featured || false,
               is_verified: provider.is_verified || false,
               starting_price: priceInfo?.price,
-              currency: priceInfo?.currency || provider.currency || "ZAR",
+              currency: priceInfo?.currency || provider.currency || defaultCurrency,
               description: provider.description ?? null, // Use ?? to preserve empty strings
               distance_km: distance_km || null, // Include distance in the result
               supports_house_calls: supportsHouseCalls,
@@ -1197,15 +1239,15 @@ export async function GET(request: Request) {
         try {
           const { data: fallbackLocations } = await supabase
             .from("provider_locations")
-            .select("provider_id")
+            .select("provider_id, providers!inner(tenant_id)")
             .eq("country", country)
             .eq("is_active", true)
+            .eq("providers.tenant_id", tenantId)
             .limit(12);
           
           const providerIds = fallbackLocations?.map(loc => loc.provider_id) || [];
           if (providerIds.length > 0) {
-            const { data: fallbackData } = await supabase
-              .from("providers")
+            const { data: fallbackData } = await providersTable()
               .select(providerFields)
               .eq("status", "active")
               .in("id", providerIds)
@@ -1258,7 +1300,7 @@ export async function GET(request: Request) {
                     if (!existing || Number(offering.price) < existing.price) {
                       fallbackPriceMap.set(offering.provider_id, {
                         price: Number(offering.price),
-                        currency: offering.currency || "ZAR",
+                        currency: offering.currency || defaultCurrency,
                       });
                     }
                   }
@@ -1273,7 +1315,7 @@ export async function GET(request: Request) {
                     if (!existing || servicePrice < existing.price) {
                       fallbackPriceMap.set(service.provider_id, {
                         price: servicePrice,
-                        currency: service.currency || "ZAR",
+                        currency: service.currency || defaultCurrency,
                       });
                     }
                   }
@@ -1297,9 +1339,9 @@ export async function GET(request: Request) {
                   is_featured: provider.is_featured || false,
                   is_verified: provider.is_verified || false,
                   starting_price: priceInfo?.price,
-                  currency: priceInfo?.currency || provider.currency || "ZAR",
+                  currency: priceInfo?.currency || provider.currency || defaultCurrency,
                   description: provider.description ?? null, // Use ?? to preserve empty strings
-                  supports_house_calls: false,
+                  supports_house_calls: Boolean(provider.offers_mobile_services),
                   supports_salon: false,
                 };
               }) as PublicProviderCard[];
@@ -1314,15 +1356,15 @@ export async function GET(request: Request) {
       try {
         const { data: cityLocations } = await supabase
           .from("provider_locations")
-          .select("provider_id")
+          .select("provider_id, providers!inner(tenant_id)")
           .eq("city", city)
           .eq("is_active", true)
+          .eq("providers.tenant_id", tenantId)
           .limit(12);
         
         const providerIds = cityLocations?.map(loc => loc.provider_id) || [];
         if (providerIds.length > 0) {
-          const { data: nearestData } = await supabase
-            .from("providers")
+          const { data: nearestData } = await providersTable()
             .select(providerFields)
             .eq("status", "active")
             .in("id", providerIds)
@@ -1375,7 +1417,7 @@ export async function GET(request: Request) {
                   if (!existing || Number(offering.price) < existing.price) {
                     cityPriceMap.set(offering.provider_id, {
                       price: Number(offering.price),
-                      currency: offering.currency || "ZAR",
+                      currency: offering.currency || defaultCurrency,
                     });
                   }
                 }
@@ -1390,7 +1432,7 @@ export async function GET(request: Request) {
                   if (!existing || servicePrice < existing.price) {
                     cityPriceMap.set(service.provider_id, {
                       price: servicePrice,
-                      currency: service.currency || "ZAR",
+                      currency: service.currency || defaultCurrency,
                     });
                   }
                 }
@@ -1414,9 +1456,9 @@ export async function GET(request: Request) {
                 is_featured: provider.is_featured || false,
                 is_verified: provider.is_verified || false,
                 starting_price: priceInfo?.price,
-                currency: priceInfo?.currency || provider.currency || "ZAR",
+                currency: priceInfo?.currency || provider.currency || defaultCurrency,
                 description: provider.description ?? null, // Use ?? to preserve empty strings
-                supports_house_calls: false,
+                supports_house_calls: Boolean(provider.offers_mobile_services),
                 supports_salon: false,
               };
             }) as PublicProviderCard[];
@@ -1430,8 +1472,7 @@ export async function GET(request: Request) {
       try {
         // Try featured first
         const { data: featuredNearestRaw } = await applyCategoryFilter(
-          supabase
-            .from("providers")
+          providersTable()
             .select(providerFields)
             .eq("status", "active")
             .eq("is_featured", true)
@@ -1489,7 +1530,7 @@ export async function GET(request: Request) {
                 if (!existing || Number(offering.price) < existing.price) {
                   featuredPriceMap.set(offering.provider_id, {
                     price: Number(offering.price),
-                    currency: offering.currency || "ZAR",
+                    currency: offering.currency || defaultCurrency,
                   });
                 }
               }
@@ -1504,7 +1545,7 @@ export async function GET(request: Request) {
                 if (!existing || servicePrice < existing.price) {
                   featuredPriceMap.set(service.provider_id, {
                     price: servicePrice,
-                    currency: service.currency || "ZAR",
+                    currency: service.currency || defaultCurrency,
                   });
                 }
               }
@@ -1528,17 +1569,16 @@ export async function GET(request: Request) {
               is_featured: provider.is_featured || false,
               is_verified: provider.is_verified || false,
               starting_price: priceInfo?.price,
-              currency: priceInfo?.currency || provider.currency || "ZAR",
+              currency: priceInfo?.currency || provider.currency || defaultCurrency,
               description: provider.description ?? null, // Use ?? to preserve empty strings
-              supports_house_calls: false,
+              supports_house_calls: Boolean(provider.offers_mobile_services),
               supports_salon: false,
             };
           }) as PublicProviderCard[];
         } else {
           // Fallback to verified or newest providers
           const { data: fallbackNearestRaw } = await applyCategoryFilter(
-            supabase
-              .from("providers")
+            providersTable()
               .select(providerFields)
               .eq("status", "active")
               .order("created_at", { ascending: false })
@@ -1595,7 +1635,7 @@ export async function GET(request: Request) {
                   if (!existing || Number(offering.price) < existing.price) {
                     fallbackPriceMap.set(offering.provider_id, {
                       price: Number(offering.price),
-                      currency: offering.currency || "ZAR",
+                      currency: offering.currency || defaultCurrency,
                     });
                   }
                 }
@@ -1610,7 +1650,7 @@ export async function GET(request: Request) {
                   if (!existing || servicePrice < existing.price) {
                     fallbackPriceMap.set(service.provider_id, {
                       price: servicePrice,
-                      currency: service.currency || "ZAR",
+                      currency: service.currency || defaultCurrency,
                     });
                   }
                 }
@@ -1634,9 +1674,9 @@ export async function GET(request: Request) {
                 is_featured: provider.is_featured || false,
                 is_verified: provider.is_verified || false,
                 starting_price: priceInfo?.price,
-                currency: priceInfo?.currency || provider.currency || "ZAR",
+                currency: priceInfo?.currency || provider.currency || defaultCurrency,
                 description: provider.description ?? null, // Use ?? to preserve empty strings
-                supports_house_calls: false,
+                supports_house_calls: Boolean(provider.offers_mobile_services),
                 supports_salon: false,
               };
             }) as PublicProviderCard[];
@@ -1713,7 +1753,7 @@ export async function GET(request: Request) {
       const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
       const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
       if (providerIds.length > 0) {
-        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active");
+        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active").eq("tenant_id", tenantId);
         if (providersRaw?.length) {
           const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
           for (const p of providersRaw as any[]) {
@@ -1731,7 +1771,7 @@ export async function GET(request: Request) {
               is_featured: p.is_featured ?? false,
               is_verified: p.is_verified ?? false,
               starting_price: null,
-              currency: p.currency ?? "ZAR",
+              currency: p.currency ?? defaultCurrency,
               description: p.description ?? null,
               distance_km: null,
               supports_house_calls: false,

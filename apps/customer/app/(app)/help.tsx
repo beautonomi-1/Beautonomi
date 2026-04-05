@@ -40,6 +40,26 @@ export default function HelpScreen() {
           <Text style={styles.quickLinkText}>Submit ticket</Text>
         </TouchableOpacity>
       </View>
+      <View style={styles.quickLinksSecondRow}>
+        <TouchableOpacity
+          style={[styles.quickLink, styles.quickLinkFirst]}
+          onPress={() => openInAppBrowser("/privacy-policy", "Privacy policy")}
+          accessibilityLabel="Open privacy policy"
+          accessibilityRole="button"
+        >
+          <Ionicons name="document-text-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>Privacy</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.quickLink}
+          onPress={() => openInAppBrowser("/terms-and-condition", "Terms of service")}
+          accessibilityLabel="Open terms of service"
+          accessibilityRole="button"
+        >
+          <Ionicons name="reader-outline" size={20} color={Colors.primary} style={styles.quickLinkIcon} />
+          <Text style={styles.quickLinkText}>Terms</Text>
+        </TouchableOpacity>
+      </View>
       <WebView
         source={{ uri: `${APP_URL}/help` }}
         style={styles.webview}
@@ -78,6 +98,14 @@ const styles = StyleSheet.create({
   },
   quickLinkFirst: {
     marginRight: 12,
+  },
+  quickLinksSecondRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.gray[100],
+    backgroundColor: Colors.gray[50],
   },
   quickLinkIcon: { marginRight: 6 },
   quickLinkText: { fontSize: 14, fontWeight: "500", color: Colors.gray[800] },

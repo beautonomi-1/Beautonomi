@@ -4,6 +4,7 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/notification-templates/[id]
@@ -21,12 +22,14 @@ export async function GET(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = params;
 
     const { data: template, error } = await supabase
       .from("notification_templates")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error) throw error;
@@ -53,6 +56,7 @@ export async function PATCH(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = params;
     const body = await request.json();
 
@@ -72,6 +76,7 @@ export async function PATCH(
       .from("notification_templates")
       .update(updateData)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -108,12 +113,14 @@ export async function DELETE(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = params;
 
     const { error } = await supabase
       .from("notification_templates")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) throw error;
 

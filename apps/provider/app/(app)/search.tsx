@@ -202,7 +202,6 @@ export default function SearchScreen() {
           </View>
         )}
 
-        {!searchPath && inputValue.trim().length >= MIN_QUERY_LENGTH && null}
       </ScrollView>
     </ScreenContainer>
   );

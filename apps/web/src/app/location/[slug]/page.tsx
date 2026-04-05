@@ -1,18 +1,15 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import type { Metadata } from "next";
 import Link from "next/link";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
-import LoadingTimeout from "@/components/ui/loading-timeout";
-import EmptyState from "@/components/ui/empty-state";
-import type { PublicProviderCard } from "@/types/beautonomi";
+import { MapPin } from "lucide-react";
+import { getProvidersByCity } from "@/lib/data/getProvidersByCity";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import Navbar from "@/components/layout/navbar";
 import Footer from "@/components/layout/footer";
-import { MapPin } from "lucide-react";
+import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
-/** Convert URL slug to display name (e.g. "cape-town" -> "Cape Town") */
+export const revalidate = 600;
+
 function slugToCityName(slug: string): string {
   return slug
     .split("-")
@@ -20,94 +17,35 @@ function slugToCityName(slug: string): string {
     .join(" ");
 }
 
-export default function LocationPage() {
-  const params = useParams();
-  const slug = typeof params.slug === "string" ? params.slug : null;
-  const cityName = slug ? slugToCityName(slug) : "";
+type Params = Promise<{ slug: string }>;
 
-  const [providers, setProviders] = useState<PublicProviderCard[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
+  const { slug } = await params;
+  const cityName = slugToCityName(slug);
+  const origin = await getPublicSiteOriginFromHeaders();
+  const path = `/location/${slug}`;
 
-  useEffect(() => {
-    if (!slug) {
-      setError("Location is required");
-      setIsLoading(false);
-      return;
-    }
+  return {
+    title: `Beauty Providers in ${cityName} | Beautonomi`,
+    description: `Discover top-rated beauty and salon providers in ${cityName}. Book services from verified professionals on Beautonomi.`,
+    alternates: {
+      canonical: `${origin}${path}`,
+      languages: getHreflangAlternateUrls(path),
+    },
+    openGraph: {
+      title: `Beauty Providers in ${cityName} | Beautonomi`,
+      description: `Discover top-rated beauty and salon providers in ${cityName}.`,
+      url: `${origin}${path}`,
+      siteName: "Beautonomi",
+      type: "website",
+    },
+  };
+}
 
-    const loadData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await fetcher.get<{
-          data: { providers: PublicProviderCard[]; total: number };
-          error: null;
-        }>(`/api/public/search?city=${encodeURIComponent(cityName)}&limit=50`);
-        setProviders(response.data?.providers || []);
-      } catch (err) {
-        const errorMessage =
-          err instanceof FetchTimeoutError
-            ? "Request timed out. Please try again."
-            : err instanceof FetchError
-              ? err.message
-              : "Failed to load providers in this area";
-        setError(errorMessage);
-        console.error("Error loading location providers:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadData();
-  }, [slug, cityName]);
-
-  if (!slug) {
-    return (
-      <div>
-        <Navbar />
-        <div className="max-w-[2340px] mx-auto px-10 py-12">
-          <EmptyState
-            title="Location required"
-            description="Please choose a location from the menu or search."
-            action={{ label: "Go home", onClick: () => window.location.assign("/") }}
-          />
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div>
-        <Navbar />
-        <div className="max-w-[2340px] mx-auto px-10 py-12">
-          <LoadingTimeout loadingMessage={`Loading providers in ${cityName}...`} />
-        </div>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div>
-        <Navbar />
-        <div className="max-w-[2340px] mx-auto px-10 py-12">
-          <EmptyState
-            title="Unable to load providers"
-            description={error}
-            action={{
-              label: "Retry",
-              onClick: () => window.location.reload(),
-            }}
-          />
-        </div>
-        <Footer />
-      </div>
-    );
-  }
+export default async function LocationPage({ params }: { params: Params }) {
+  const { slug } = await params;
+  const cityName = slugToCityName(slug);
+  const providers = await getProvidersByCity(cityName);
 
   return (
     <div>
@@ -116,19 +54,16 @@ export default function LocationPage() {
         <div className="max-w-[2340px] mx-auto px-10">
           <div className="flex items-center gap-2 mb-5">
             <MapPin className="h-6 w-6 md:h-8 md:w-8 text-[#FF0077]" aria-hidden />
-            <h1 className="text-2xl md:text-[32px] font-normal">
-              Providers in {cityName}
-            </h1>
+            <h1 className="text-2xl md:text-[32px] font-normal">Providers in {cityName}</h1>
           </div>
           {providers.length === 0 ? (
-            <EmptyState
-              title={`No providers in ${cityName} yet`}
-              description="Check back later or browse other locations."
-              action={{
-                label: "Browse all",
-                onClick: () => window.location.assign("/"),
-              }}
-            />
+            <div className="text-center py-12">
+              <h2 className="text-xl font-medium text-gray-900 mb-2">No providers in {cityName} yet</h2>
+              <p className="text-gray-500 mb-4">Check back later or browse other locations.</p>
+              <Link href="/" className="text-[#FF0077] hover:underline">
+                Browse all
+              </Link>
+            </div>
           ) : (
             <>
               <p className="text-gray-600 mb-6">
@@ -142,10 +77,7 @@ export default function LocationPage() {
             </>
           )}
           <div className="mt-8">
-            <Link
-              href="/"
-              className="text-sm text-[#FF0077] hover:underline"
-            >
+            <Link href="/" className="text-sm text-[#FF0077] hover:underline">
               ← Back to home
             </Link>
           </div>

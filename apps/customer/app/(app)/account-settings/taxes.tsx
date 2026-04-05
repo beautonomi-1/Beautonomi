@@ -57,14 +57,30 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function DocumentCard({ doc, onDownload }: { doc: TaxDocument; onDownload: () => void }) {
+  const hasUrl = Boolean(doc.download_url);
   return (
     <View style={{ backgroundColor: Colors.white, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: Colors.gray[100], flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
       <View style={{ flex: 1, marginRight: 12 }}>
         <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>{doc.label ?? doc.type ?? "Tax Document"}</Text>
         <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 2 }}>{doc.year}</Text>
+        {!hasUrl && (
+          <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>Not yet issued</Text>
+        )}
       </View>
-      <TouchableOpacity onPress={onDownload} activeOpacity={0.7} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 }}>
-        <Text style={{ color: Colors.white, fontSize: 14, fontWeight: "600" }}>Download</Text>
+      <TouchableOpacity
+        onPress={hasUrl ? onDownload : undefined}
+        activeOpacity={hasUrl ? 0.7 : 1}
+        style={{
+          backgroundColor: hasUrl ? Colors.primary : Colors.gray[200],
+          paddingHorizontal: 16,
+          paddingVertical: 8,
+          borderRadius: 8,
+          opacity: hasUrl ? 1 : 0.6,
+        }}
+      >
+        <Text style={{ color: hasUrl ? Colors.white : Colors.gray[500], fontSize: 14, fontWeight: "600" }}>
+          Download
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -92,28 +108,33 @@ export default function TaxesScreen() {
 
     try {
       const [taxRes, docsRes] = await Promise.all([
-        api.get<TaxInfo>("/api/me/tax-info"),
-        api.get<TaxDocument[]>("/api/me/tax-documents"),
+        api.get<Record<string, unknown>>("/api/me/tax-info"),
+        api.get<unknown>("/api/me/tax-documents"),
       ]);
 
       if (taxRes.error) {
         setError(taxRes.error.message || "Failed to load tax information");
       } else {
-        const raw = taxRes.data;
-        const obj = raw as unknown as Record<string, unknown>;
-        if (obj?.tax_info) {
-          setTaxInfo(obj.tax_info as TaxInfo);
+        const raw = taxRes.data ?? {};
+        // API returns { tax_info: {...}, vat_id: string|null }
+        // Merge top-level vat_id into the tax_info object so the UI can display it
+        const taxInfoObj = (raw.tax_info as TaxInfo | null) ?? (raw as unknown as TaxInfo) ?? null;
+        const topLevelVatId = (raw.vat_id as string | null) ?? null;
+        if (taxInfoObj) {
+          setTaxInfo({ ...taxInfoObj, vat_id: topLevelVatId ?? taxInfoObj.vat_id });
+        } else if (topLevelVatId) {
+          setTaxInfo({ country: null, vat_id: topLevelVatId, tax_id: null, tax_status: null });
         } else {
-          setTaxInfo((raw as TaxInfo) ?? null);
+          setTaxInfo(null);
         }
       }
 
       const rawDocs = docsRes.data;
       if (Array.isArray(rawDocs)) {
-        setDocs(rawDocs);
+        setDocs(rawDocs as TaxDocument[]);
       } else {
-        const obj = rawDocs as unknown as Record<string, unknown>;
-        const items = (obj?.documents ?? obj?.data ?? []) as TaxDocument[];
+        const obj = rawDocs as Record<string, unknown>;
+        const items = ((obj?.documents ?? obj?.data ?? []) as TaxDocument[]);
         setDocs(Array.isArray(items) ? items : []);
       }
     } catch (e) {
@@ -125,52 +146,8 @@ export default function TaxesScreen() {
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const init = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [taxRes, docsRes] = await Promise.all([
-          api.get<TaxInfo>("/api/me/tax-info"),
-          api.get<TaxDocument[]>("/api/me/tax-documents"),
-        ]);
-
-        if (cancelled) return;
-
-        if (taxRes.error) {
-          setError(taxRes.error.message || "Failed to load tax information");
-        } else {
-          const raw = taxRes.data;
-          const obj = raw as unknown as Record<string, unknown>;
-          if (obj?.tax_info) {
-            setTaxInfo(obj.tax_info as TaxInfo);
-          } else {
-            setTaxInfo((raw as TaxInfo) ?? null);
-          }
-        }
-
-        const rawDocs = docsRes.data;
-        if (Array.isArray(rawDocs)) {
-          setDocs(rawDocs);
-        } else {
-          const obj = rawDocs as unknown as Record<string, unknown>;
-          const items = (obj?.documents ?? obj?.data ?? []) as TaxDocument[];
-          setDocs(Array.isArray(items) ? items : []);
-        }
-      } catch (e) {
-        if (cancelled) return;
-        setError(e instanceof Error ? e.message : "Failed to load tax information");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-
-    init();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    load();
+  }, [load]);
 
   const handleDownload = useCallback((url: string) => {
     Linking.openURL(url).catch(() => {

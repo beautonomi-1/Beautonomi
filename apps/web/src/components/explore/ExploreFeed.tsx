@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import { ExplorePostCard } from "./ExplorePostCard";
 import { ExploreEmptyState } from "./ExploreEmptyState";
 import { fetcher } from "@/lib/http/fetcher";
@@ -12,19 +13,24 @@ type SortMode = "chronological" | "trending" | "nearby" | "for_you";
 interface ExploreFeedProps {
   initialPosts?: ExplorePost[];
   initialCursor?: string;
+  /** When set (e.g. from SSR), avoids duplicate first page on infinite scroll */
+  initialHasMore?: boolean;
   saved?: boolean;
 }
 
 export function ExploreFeed({
   initialPosts = [],
   initialCursor,
+  initialHasMore,
   saved = false,
 }: ExploreFeedProps) {
   const { user } = useAuth();
   const [posts, setPosts] = React.useState<ExplorePost[]>(initialPosts);
   const [cursor, setCursor] = React.useState<string | undefined>(initialCursor);
   const [hasMore, setHasMore] = React.useState(
-    initialPosts.length === 0 || initialPosts.length >= 20
+    initialHasMore !== undefined
+      ? initialHasMore
+      : initialPosts.length === 0 || initialPosts.length >= 20
   );
   const [isLoading, setIsLoading] = React.useState(initialPosts.length === 0);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -32,8 +38,16 @@ export function ExploreFeed({
   const [sortMode, setSortMode] = React.useState<SortMode>("chronological");
   const [location, setLocation] = React.useState<{ lat: number; lng: number } | null>(null);
   const [locationLoading, setLocationLoading] = React.useState(false);
+  const [searchInput, setSearchInput] = React.useState("");
+  const [debouncedSearch, setDebouncedSearch] = React.useState("");
+  const prevDebouncedSearch = useRef<string | null>(null);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     if (!user) {
@@ -68,10 +82,11 @@ export function ExploreFeed({
           params.set("lng", String(loc.lng));
           params.set("radius_km", "50");
         }
+        if (debouncedSearch) params.set("search", debouncedSearch);
       }
       return params;
     },
-    [cursor, saved, sortMode, location]
+    [cursor, saved, sortMode, location, debouncedSearch]
   );
 
   const loadMore = useCallback(
@@ -138,6 +153,7 @@ export function ExploreFeed({
       params.set("lat", String(lat));
       params.set("lng", String(lng));
       params.set("radius_km", "50");
+      if (debouncedSearch) params.set("search", debouncedSearch);
       fetcher
         .get<{ data: ExplorePost[]; next_cursor?: string; has_more: boolean }>(
           `/api/explore/posts?${params}`
@@ -158,7 +174,7 @@ export function ExploreFeed({
           setLocationLoading(false);
         });
     },
-    []
+    [debouncedSearch]
   );
 
   const handleNearMe = useCallback(() => {
@@ -216,6 +232,22 @@ export function ExploreFeed({
       loadMoreRefFn.current(true);
     }
   }, []);
+
+  useEffect(() => {
+    if (saved) return;
+    if (prevDebouncedSearch.current === null) {
+      prevDebouncedSearch.current = debouncedSearch;
+      return;
+    }
+    if (prevDebouncedSearch.current === debouncedSearch) return;
+    prevDebouncedSearch.current = debouncedSearch;
+    setPosts([]);
+    setCursor(undefined);
+    setHasMore(true);
+    setLoadError(null);
+    initialLoadDone.current = true;
+    loadMoreRefFn.current(true);
+  }, [debouncedSearch, saved]);
 
   useEffect(() => {
     const el = loadMoreRef.current;
@@ -286,6 +318,33 @@ export function ExploreFeed({
 
   return (
     <div className="pb-8">
+      {!saved && (
+        <div className="mb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+            <h1 className="text-2xl font-bold text-gray-900">Explore</h1>
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                href="/explore/saved"
+                className="text-sm font-semibold text-gray-700 hover:text-[#FF0077] whitespace-nowrap"
+              >
+                Saved
+              </Link>
+            </div>
+          </div>
+          <label className="block text-sm font-medium text-gray-600 mb-2 sr-only" htmlFor="explore-search">
+            Search inspiration
+          </label>
+          <input
+            id="explore-search"
+            type="search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search looks, styles, treatments…"
+            className="w-full rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-[#FF0077] focus:outline-none focus:ring-2 focus:ring-pink-100 mb-4"
+            autoComplete="off"
+          />
+        </div>
+      )}
       {!saved && (
         <div className="flex flex-wrap items-center gap-2 mb-4">
           <button

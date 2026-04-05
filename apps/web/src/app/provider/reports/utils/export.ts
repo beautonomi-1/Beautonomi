@@ -2,8 +2,22 @@
  * Utility functions for exporting report data to CSV and PDF
  */
 
+import { formatCurrency } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 /** Generic report row shape for export formatters */
 export type ReportRow = Record<string, unknown>;
+
+/** Format numeric amounts for CSV/PDF export rows (tenant currency from config bundle). */
+export function fm(amount: unknown, currencyCode: string): string {
+  const n =
+    typeof amount === "number"
+      ? amount
+      : typeof amount === "string"
+        ? parseFloat(amount)
+        : Number(amount ?? 0);
+  return formatCurrency(Number.isFinite(n) ? n : 0, currencyCode);
+}
 
 export function exportToCSV(data: Record<string, unknown>[], filename: string) {
   if (!data || data.length === 0) {
@@ -245,28 +259,32 @@ export function exportToPDF(reportIdOrData: string | unknown[], filename?: strin
   };
 }
 
-export function formatReportDataForExport(data: ReportRow, reportType: string): Record<string, unknown>[] {
+export function formatReportDataForExport(
+  data: ReportRow,
+  reportType: string,
+  currencyCode: string = LAST_RESORT_CURRENCY
+): Record<string, unknown>[] {
   switch (reportType) {
     case "booking-summary":
       return [
         { Metric: "Total Bookings", Value: data.totalBookings || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${(data.totalRevenue as number)?.toLocaleString() || 0}` },
-        { Metric: "Average Booking Value", Value: `ZAR ${(data.averageBookingValue as number)?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm((data.totalRevenue as number), currencyCode) },
+        { Metric: "Average Booking Value", Value: fm((data.averageBookingValue as number), currencyCode) },
         ...((data.statusBreakdown as ReportRow[]) || []).map((status) => ({
           Status: status.status,
           Count: status.count,
-          Revenue: `ZAR ${(status.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((status.revenue as number), currencyCode),
           Percentage: `${(status.percentage as number)?.toFixed(1) || 0}%`,
         })),
         ...((data.dailyBookings as ReportRow[]) || []).map((day) => ({
           Date: day.date,
           Bookings: day.count,
-          Revenue: `ZAR ${(day.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((day.revenue as number), currencyCode),
         })),
         ...((data.topServices as ReportRow[]) || []).map((service) => ({
           Service: service.serviceName,
           Bookings: service.bookings,
-          Revenue: `ZAR ${(service.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((service.revenue as number), currencyCode),
         })),
       ];
 
@@ -275,35 +293,35 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       const week = data.week as Record<string, unknown> | undefined;
       const month = data.month as Record<string, unknown> | undefined;
       return [
-        { Metric: "Today's Revenue", Value: `ZAR ${(today?.revenue as number)?.toLocaleString() || 0}` },
+        { Metric: "Today's Revenue", Value: fm((today?.revenue as number), currencyCode) },
         { Metric: "Today's Bookings", Value: (today?.bookings as number) || 0 },
         { Metric: "Today's Completed", Value: (today?.completed as number) || 0 },
-        { Metric: "Week Revenue", Value: `ZAR ${(week?.revenue as number)?.toLocaleString() || 0}` },
+        { Metric: "Week Revenue", Value: fm((week?.revenue as number), currencyCode) },
         { Metric: "Week Bookings", Value: (week?.bookings as number) || 0 },
-        { Metric: "Month Revenue", Value: `ZAR ${(month?.revenue as number)?.toLocaleString() || 0}` },
+        { Metric: "Month Revenue", Value: fm((month?.revenue as number), currencyCode) },
         { Metric: "Month Bookings", Value: (month?.bookings as number) || 0 },
         { Metric: "Month Clients", Value: (month?.clients as number) || 0 },
         ...((data.upcomingBookings as ReportRow[]) || []).map((booking) => ({
           "Upcoming Booking": new Date((booking.scheduled_at as string) || 0).toLocaleString(),
           Status: booking.status,
-          Amount: `ZAR ${Number(booking.total_amount || 0).toLocaleString()}`,
+          Amount: fm(Number(booking.total_amount || 0), currencyCode),
         })),
         ...((data.recentBookings as ReportRow[]) || []).map((booking) => ({
           "Recent Booking": new Date((booking.scheduled_at as string) || 0).toLocaleString(),
           Status: booking.status,
-          Amount: `ZAR ${Number(booking.total_amount || 0).toLocaleString()}`,
+          Amount: fm(Number(booking.total_amount || 0), currencyCode),
         })),
       ];
     }
     
     case "sales-summary":
       return [
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         { Metric: "Total Bookings", Value: data.totalBookings || 0 },
-        { Metric: "Average Booking Value", Value: `ZAR ${data.averageBookingValue?.toLocaleString() || 0}` },
+        { Metric: "Average Booking Value", Value: fm(data.averageBookingValue, currencyCode) },
         ...((data.revenueByDay as ReportRow[]) || []).map((item) => ({
           Date: item.date,
-          Revenue: `ZAR ${(item.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((item.revenue as number), currencyCode),
           Bookings: item.bookings || 0,
         })),
       ];
@@ -312,10 +330,10 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       return ((data.staffMembers as ReportRow[]) || []).map((staff) => ({
         "Staff Name": staff.staffName,
         "Total Bookings": staff.totalBookings,
-        "Total Revenue": `ZAR ${(staff.totalRevenue || 0).toLocaleString()}`,
+        "Total Revenue": fm((staff.totalRevenue || 0), currencyCode),
         "Hours Worked": `${Number(staff.totalHours ?? 0).toFixed(1)}h`,
         "Average Rating": staff.averageRating != null ? Number(staff.averageRating).toFixed(1) : "N/A",
-        "Commission": `ZAR ${(staff.commissionEarned || 0).toLocaleString()}`,
+        "Commission": fm((staff.commissionEarned || 0), currencyCode),
       }));
     
     case "client-summary":
@@ -323,11 +341,11 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
         { Metric: "Total Clients", Value: data.totalClients || 0 },
         { Metric: "New Clients", Value: data.newClients || 0 },
         { Metric: "Returning Clients", Value: data.returningClients || 0 },
-        { Metric: "Average Lifetime Value", Value: `ZAR ${data.averageLifetimeValue?.toLocaleString() || 0}` },
+        { Metric: "Average Lifetime Value", Value: fm(data.averageLifetimeValue, currencyCode) },
         ...((data.topClients as ReportRow[]) || []).map((client) => ({
           "Client Name": client.clientName,
           "Total Bookings": client.totalBookings,
-          "Total Spent": `ZAR ${(client.totalSpent as number)?.toLocaleString() || 0}`,
+          "Total Spent": fm((client.totalSpent as number), currencyCode),
           "Last Visit": client.lastVisit,
         })),
       ];
@@ -342,7 +360,7 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
           Status: status.status,
           Count: status.count,
           Percentage: `${(status.percentage as number)?.toFixed(1) || 0}%`,
-          Revenue: `ZAR ${(status.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((status.revenue as number), currencyCode),
         })),
       ];
 
@@ -350,33 +368,33 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       return [
         { Metric: "Total Services", Value: data.totalServices || 0 },
         { Metric: "Total Bookings", Value: data.totalBookings || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         ...((data.topServices as ReportRow[]) || (data.allServices as ReportRow[]) || []).map((s) => ({
           Service: s.serviceName,
           Category: s.category,
           Bookings: s.bookings,
-          Revenue: `ZAR ${(s.revenue as number)?.toLocaleString() || 0}`,
-          "Avg Price": `ZAR ${(s.averagePrice as number)?.toLocaleString() || 0}`,
+          Revenue: fm((s.revenue as number), currencyCode),
+          "Avg Price": fm((s.averagePrice as number), currencyCode),
         })),
       ];
 
     case "revenue-trends":
       return [
         { Metric: "Period", Value: data.period || "" },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         { Metric: "Total Bookings", Value: data.totalBookings || 0 },
         { Metric: "Revenue Growth", Value: `${Number(data.revenueGrowth ?? 0).toFixed(1)}%` },
         ...((data.trends as ReportRow[]) || []).map((t) => ({
           Period: t.period,
-          Revenue: `ZAR ${(t.revenue as number)?.toLocaleString() || 0}`,
+          Revenue: fm((t.revenue as number), currencyCode),
           Bookings: t.bookings || 0,
         })),
       ];
 
     case "business-overview":
       return [
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
-        { Metric: "Net Revenue", Value: `ZAR ${data.netRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: "Net Revenue", Value: fm(data.netRevenue, currencyCode) },
         { Metric: "Total Bookings", Value: data.totalBookings || 0 },
         { Metric: "Unique Clients", Value: data.uniqueClients || 0 },
         { Metric: "Completion Rate", Value: `${Number(data.completionRate ?? 0).toFixed(1)}%` },
@@ -388,8 +406,8 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       const previous = data.previous as Record<string, unknown> | undefined;
       const growth = data.growth as Record<string, unknown> | undefined;
       return [
-        { Metric: "Current Revenue", Value: `ZAR ${(current?.revenue as number)?.toLocaleString() || 0}` },
-        { Metric: "Previous Revenue", Value: `ZAR ${(previous?.revenue as number)?.toLocaleString() || 0}` },
+        { Metric: "Current Revenue", Value: fm((current?.revenue as number), currencyCode) },
+        { Metric: "Previous Revenue", Value: fm((previous?.revenue as number), currencyCode) },
         { Metric: "Revenue Growth", Value: `${Number(growth?.revenue ?? 0).toFixed(1)}%` },
       ];
     }
@@ -397,20 +415,20 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
     case "gift-card-sales":
       return [
         { Metric: "Total Redemptions", Value: data.totalGiftCardsSold || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         ...((data.giftCardSales as ReportRow[]) || []).map((item) => ({
-          Amount: `ZAR ${Number(item.amount || 0).toLocaleString()}`,
+          Amount: fm(Number(item.amount || 0), currencyCode),
           Count: item.count || 0,
-          Revenue: `ZAR ${Number(item.revenue || 0).toLocaleString()}`,
+          Revenue: fm(Number(item.revenue || 0), currencyCode),
         })),
       ];
 
     case "gift-card-redemptions":
       return [
         { Metric: "Total Redemptions", Value: data.totalRedemptions || 0 },
-        { Metric: "Total Redeemed Value", Value: `ZAR ${data.totalRedeemedValue?.toLocaleString() || 0}` },
+        { Metric: "Total Redeemed Value", Value: fm(data.totalRedeemedValue, currencyCode) },
         ...((data.redemptions as ReportRow[]) || []).map((r) => ({
-          Amount: `ZAR ${Number(r.amount || 0).toLocaleString()}`,
+          Amount: fm(Number(r.amount || 0), currencyCode),
           Date: r.captured_at,
         })),
       ];
@@ -419,7 +437,7 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       return [
         { Metric: "Total Cancelled", Value: data.totalCancelled || 0 },
         { Metric: "Cancellation Rate", Value: `${Number(data.cancellationRate ?? 0).toFixed(1)}%` },
-        { Metric: "Lost Revenue", Value: `ZAR ${data.lostRevenue?.toLocaleString() || 0}` },
+        { Metric: "Lost Revenue", Value: fm(data.lostRevenue, currencyCode) },
         ...((data.cancellationReasons as ReportRow[]) || []).map((r) => ({
           Reason: r.reason,
           Count: r.count,
@@ -430,45 +448,45 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
     case "no-shows":
       return [
         { Metric: "Total No-Shows", Value: data.totalNoShows || 0 },
-        { Metric: "Lost Revenue", Value: `ZAR ${data.lostRevenue?.toLocaleString() || 0}` },
+        { Metric: "Lost Revenue", Value: fm(data.lostRevenue, currencyCode) },
         ...((data.repeatOffenders as ReportRow[]) || []).map((r) => ({
           Name: r.name,
           Count: r.count,
-          Revenue: `ZAR ${Number(r.revenue || 0).toLocaleString()}`,
+          Revenue: fm(Number(r.revenue || 0), currencyCode),
         })),
       ];
 
     case "product-sales":
       return [
         { Metric: "Total Products Sold", Value: data.totalProductsSold || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
-        { Metric: "Total Cost", Value: `ZAR ${(data.totalCost ?? 0).toLocaleString()}` },
-        { Metric: "Total Profit", Value: `ZAR ${(data.totalProfit ?? 0).toLocaleString()}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
+        { Metric: "Total Cost", Value: fm((data.totalCost ?? 0), currencyCode) },
+        { Metric: "Total Profit", Value: fm((data.totalProfit ?? 0), currencyCode) },
         ...((data.topProducts as ReportRow[]) || []).map((p) => ({
           Product: p.productName,
           "Quantity Sold": p.quantitySold || 0,
-          Revenue: `ZAR ${((p.revenue as number) || 0).toLocaleString()}`,
-          Cost: `ZAR ${((p.cost as number) ?? 0).toLocaleString()}`,
-          Profit: `ZAR ${((p.profit as number) ?? 0).toLocaleString()}`,
+          Revenue: fm(((p.revenue as number) || 0), currencyCode),
+          Cost: fm(((p.cost as number) ?? 0), currencyCode),
+          Profit: fm(((p.profit as number) ?? 0), currencyCode),
         })),
         ...((data.productsByCategory as ReportRow[]) || []).map((p) => ({
           Category: p.category,
           "Quantity Sold": p.quantitySold || 0,
-          Revenue: `ZAR ${((p.revenue as number) || 0).toLocaleString()}`,
-          Profit: `ZAR ${((p.profit as number) ?? 0).toLocaleString()}`,
+          Revenue: fm(((p.revenue as number) || 0), currencyCode),
+          Profit: fm(((p.profit as number) ?? 0), currencyCode),
         })),
       ];
 
     case "payment-summary":
       return [
         { Metric: "Total Payments", Value: data.totalPayments || 0 },
-        { Metric: "Total Amount", Value: `ZAR ${data.totalAmount?.toLocaleString() || 0}` },
-        { Metric: "Net Amount", Value: `ZAR ${data.netAmount?.toLocaleString() || 0}` },
+        { Metric: "Total Amount", Value: fm(data.totalAmount, currencyCode) },
+        { Metric: "Net Amount", Value: fm(data.netAmount, currencyCode) },
         { Metric: "Refund Rate", Value: `${Number(data.refundRate ?? 0).toFixed(1)}%` },
         ...((data.paymentsByMethod as ReportRow[]) || []).map((p) => ({
           Method: p.method,
           Count: p.count,
-          Amount: `ZAR ${((p.amount as number) || 0).toLocaleString()}`,
+          Amount: fm(((p.amount as number) || 0), currencyCode),
         })),
       ];
 
@@ -479,7 +497,7 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
         ...((data.newClients as ReportRow[]) || []).map((c) => ({
           "Client Name": c.clientName,
           "First Visit": c.firstVisit,
-          "Total Spent": `ZAR ${((c.totalSpent as number) || 0).toLocaleString()}`,
+          "Total Spent": fm(((c.totalSpent as number) || 0), currencyCode),
           Returned: c.hasReturned ? "Yes" : "No",
         })),
       ];
@@ -497,10 +515,10 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
     case "lifetime-value":
       return [
         { Metric: "Total Clients", Value: data.totalClients || 0 },
-        { Metric: "Average LTV", Value: `ZAR ${data.averageLTV?.toLocaleString() || 0}` },
+        { Metric: "Average LTV", Value: fm(data.averageLTV, currencyCode) },
         ...((data.topClients as ReportRow[]) || (data.clientLTV as ReportRow[]) || []).slice(0, 50).map((c) => ({
           Client: c.clientName ?? c.customerId,
-          "Total Spent": `ZAR ${((c.totalSpent as number) || 0).toLocaleString()}`,
+          "Total Spent": fm(((c.totalSpent as number) || 0), currencyCode),
           Bookings: c.totalBookings || 0,
         })),
       ];
@@ -519,37 +537,37 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
     case "package-sales":
       return [
         { Metric: "Total Packages Sold", Value: data.totalPackagesSold || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         ...((data.packageSales as ReportRow[]) || []).map((p) => ({
           Package: p.packageName ?? p.name,
           Bookings: p.bookings || 0,
-          Revenue: `ZAR ${((p.revenue as number) || 0).toLocaleString()}`,
+          Revenue: fm(((p.revenue as number) || 0), currencyCode),
         })),
       ];
 
     case "payouts":
       return [
         { Metric: "Total Payouts", Value: data.totalPayouts || 0 },
-        { Metric: "Total Payout Amount", Value: `ZAR ${(data.totalPayoutAmount || 0).toLocaleString()}` },
+        { Metric: "Total Payout Amount", Value: fm((data.totalPayoutAmount || 0), currencyCode) },
         ...((data.monthlyBreakdown as ReportRow[]) || []).map((m) => ({
           Month: m.month,
           Count: m.count || 0,
-          Amount: `ZAR ${((m.amount as number) || 0).toLocaleString()}`,
+          Amount: fm(((m.amount as number) || 0), currencyCode),
         })),
         ...((data.recentPayouts as ReportRow[]) || []).map((p) => ({
           Date: p.createdAt,
-          Amount: `ZAR ${((p.payoutAmount as number) ?? (p.amount as number) ?? 0).toLocaleString()}`,
+          Amount: fm(((p.payoutAmount as number) ?? (p.amount as number) ?? 0), currencyCode),
         })),
       ];
 
     case "top-products":
       return [
         { Metric: "Total Products Sold", Value: data.totalProductsSold || 0 },
-        { Metric: "Total Revenue", Value: `ZAR ${data.totalRevenue?.toLocaleString() || 0}` },
+        { Metric: "Total Revenue", Value: fm(data.totalRevenue, currencyCode) },
         ...((data.topProducts as ReportRow[]) || []).map((p) => ({
           Product: p.productName ?? p.name,
           "Quantity Sold": p.totalQuantity ?? p.quantitySold ?? 0,
-          Revenue: `ZAR ${((p.totalRevenue as number) ?? (p.revenue as number) ?? 0).toLocaleString()}`,
+          Revenue: fm(((p.totalRevenue as number) ?? (p.revenue as number) ?? 0), currencyCode),
         })),
       ];
 
@@ -557,17 +575,17 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
       return ((data.methods as ReportRow[]) || []).map((m) => ({
         Method: m.method,
         "Total Count": m.totalCount || 0,
-        "Total Amount": `ZAR ${(m.totalAmount || 0).toLocaleString()}`,
+        "Total Amount": fm((m.totalAmount || 0), currencyCode),
       }));
 
     case "refunds":
       return [
         { Metric: "Total Refunds", Value: data.totalRefunds || 0 },
-        { Metric: "Total Refund Amount", Value: `ZAR ${data.totalRefundAmount?.toLocaleString() || 0}` },
+        { Metric: "Total Refund Amount", Value: fm(data.totalRefundAmount, currencyCode) },
         ...((data.methodBreakdown as ReportRow[]) || (data.refunds as ReportRow[]) || []).map((r) => ({
           Method: r.method,
           Count: r.count || 0,
-          Amount: `ZAR ${((r.amount as number) || 0).toLocaleString()}`,
+          Amount: fm(((r.amount as number) || 0), currencyCode),
         })),
       ];
 
@@ -592,20 +610,20 @@ export function formatReportDataForExport(data: ReportRow, reportType: string): 
     case "inventory":
       return [
         { Metric: "Total Products", Value: data.totalProducts || 0 },
-        { Metric: "Stock Value", Value: `ZAR ${(data.totalStockValue || 0).toLocaleString()}` },
+        { Metric: "Stock Value", Value: fm((data.totalStockValue || 0), currencyCode) },
         ...((data.lowStockProducts as ReportRow[]) || (data.allProducts as ReportRow[]) || []).map((p) => ({
           Product: p.name ?? p.productName,
           Stock: p.quantity || 0,
-          "Retail Price": `ZAR ${((p.retail_price as number) || 0).toLocaleString()}`,
-          Value: `ZAR ${(((p.quantity as number) || 0) * ((p.retail_price as number) || 0)).toLocaleString()}`,
+          "Retail Price": fm(((p.retail_price as number) || 0), currencyCode),
+          Value: fm((((p.quantity as number) || 0) * ((p.retail_price as number) || 0)), currencyCode),
         })),
       ];
 
     case "commission":
       return ((data.staffCommissions as ReportRow[]) || (data.commissionData as ReportRow[]) || []).map((s) => ({
         "Staff Name": s.staffName ?? s.name,
-        "Total Revenue": `ZAR ${((s.totalRevenue as number) || 0).toLocaleString()}`,
-        "Commission": `ZAR ${((s.totalCommission as number) ?? (s.commissionEarned as number) ?? 0).toLocaleString()}`,
+        "Total Revenue": fm(((s.totalRevenue as number) || 0), currencyCode),
+        "Commission": fm(((s.totalCommission as number) ?? (s.commissionEarned as number) ?? 0), currencyCode),
       }));
 
     case "staff-hours":

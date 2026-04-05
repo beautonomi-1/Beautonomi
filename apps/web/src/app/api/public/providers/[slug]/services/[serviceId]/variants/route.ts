@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/public/providers/[slug]/services/[serviceId]/variants
@@ -12,6 +15,12 @@ export async function GET(
   { params }: { params: Promise<{ slug: string; serviceId: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const { slug, serviceId } = await params;
     const supabase = await getSupabaseServer();
 
@@ -20,6 +29,7 @@ export async function GET(
       .from("providers")
       .select("id")
       .eq("slug", slug)
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {
@@ -75,7 +85,7 @@ export async function GET(
         description: v.description,
         price: parseFloat(v.price || 0),
         duration: v.duration_minutes,
-        currency: v.currency || "ZAR",
+        currency: v.currency || defaultCurrency,
       })),
       total_count: (variants || []).length,
     });

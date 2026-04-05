@@ -5,8 +5,10 @@ import {
   successResponse,
   handleApiError,
   getProviderIdForUser,
+  isValidUUID,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 /**
  * GET /api/provider/profile
@@ -14,10 +16,19 @@ import { requirePermission } from "@/lib/auth/requirePermission";
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const supabase = await getSupabaseServer(request);
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
+    let providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId && user.role === "superadmin") {
+      const qp = request.nextUrl.searchParams.get("provider_id");
+      if (qp && isValidUUID(qp)) {
+        providerId = qp;
+      }
+    }
     if (!providerId) {
       return handleApiError(
         new Error("Provider not found"),
@@ -29,7 +40,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url")
+      .select("id, business_name, description, business_type, phone, email, thumbnail_url, avatar_url, tenant_id, timezone")
       .eq("id", providerId)
       .single();
 
@@ -37,9 +48,12 @@ export async function GET(request: NextRequest) {
       throw error || new Error("Provider not found");
     }
 
+    const tenantId = (provider as { tenant_id?: string | null }).tenant_id ?? null;
+    const { currency, locale } = await getTenantMoneyFormatter(tenantId);
+
     const { data: locations } = await supabase
       .from("provider_locations")
-      .select("id, name, address_line1, city, location_type")
+      .select("id, name, address_line1, city, location_type, is_primary, working_hours")
       .eq("provider_id", providerId)
       .eq("is_active", true)
       .order("is_primary", { ascending: false })
@@ -48,12 +62,17 @@ export async function GET(request: NextRequest) {
     const response = {
       ...provider,
       avatar_url: (provider as any).avatar_url ?? (provider as any).thumbnail_url ?? null,
+      currency,
+      locale,
       locations: (locations || []).map((loc: any) => ({
         id: loc.id,
         name: loc.name,
         address_line1: loc.address_line1 || "",
         city: loc.city || "",
         location_type: loc.location_type || "salon",
+        is_primary: Boolean(loc.is_primary),
+        operating_hours: loc.working_hours ?? null,
+        working_hours: loc.working_hours ?? null,
       })),
     };
 

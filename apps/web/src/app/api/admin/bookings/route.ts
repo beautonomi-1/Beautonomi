@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/admin/bookings
@@ -13,12 +16,16 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
 
     // Get bookings without joins to avoid join issues
     let query = supabase
       .from("bookings")
-      .select("*");
+      .select("*")
+      .eq("tenant_id", tenantId);
 
     // Apply filters
     const status = searchParams.get("status");
@@ -89,6 +96,7 @@ export async function GET(request: NextRequest) {
         const { data, error: providersError } = await supabase
           .from("providers")
           .select("id, business_name")
+          .eq("tenant_id", tenantId)
           .in("id", providerIds);
         if (!providersError) {
           providersData = data || [];
@@ -138,7 +146,7 @@ export async function GET(request: NextRequest) {
       subtotal: booking.subtotal || 0,
       tip_amount: booking.tip_amount || 0,
       total_amount: booking.total_amount || 0,
-      currency: booking.currency || "ZAR",
+      currency: booking.currency || lastResortCurrency,
       payment_status: booking.payment_status,
       payment_method: booking.payment_method || null,
       special_requests: booking.special_requests || null,

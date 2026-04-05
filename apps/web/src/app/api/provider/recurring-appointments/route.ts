@@ -2,12 +2,14 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { checkRecurringAppointmentFeatureAccess } from "@/lib/subscriptions/feature-access";
+import { isAdvancedRecurrenceRule } from "@/lib/recurring/advanced-rrule";
 import { z } from "zod";
 
 const createRecurringSchema = z.object({
   customer_id: z.string().uuid(),
   service_id: z.string().uuid().optional(),
   staff_id: z.string().uuid().optional(),
+  location_id: z.string().uuid().optional().nullable(),
   recurrence_rule: z.string().min(1, "Recurrence rule is required"), // RRULE format
   start_date: z.string().date(), // DATE format
   end_date: z.string().date().optional(), // DATE format
@@ -45,20 +47,43 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = (page - 1) * limit;
+    const locationId = searchParams.get("location_id");
 
-    const { data: appointments, error, count } = await supabase
+    let listQuery = supabase
       .from("recurring_appointments")
-      .select("*", { count: "exact" })
+      .select(
+        `
+        *,
+        customer:users!recurring_appointments_customer_id_fkey(full_name),
+        offering:offerings!recurring_appointments_service_id_fkey(title),
+        staff:provider_staff!recurring_appointments_staff_id_fkey(name)
+      `,
+        { count: "exact" }
+      )
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
+
+    if (locationId) {
+      listQuery = listQuery.eq("location_id", locationId);
+    }
+
+    const { data: appointments, error, count } = await listQuery;
 
     if (error) {
       throw error;
     }
 
+    const rows = appointments || [];
+    const enriched = rows.map((row: any) => ({
+      ...row,
+      client_snapshot_name: row.customer?.full_name || "Client",
+      service_snapshot_title: row.offering?.title || "",
+      staff_snapshot_name: row.staff?.name || "",
+    }));
+
     return successResponse({
-      data: appointments || [],
+      data: enriched,
       total: count || 0,
       page,
       total_pages: Math.ceil((count || 0) / limit),
@@ -96,14 +121,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = createRecurringSchema.parse(body);
 
-    // Check if advanced patterns are required (custom RRULE patterns)
-    // Simple patterns: DAILY, WEEKLY, MONTHLY
-    // Advanced: Custom RRULE with complex rules
-    const isAdvancedPattern = validated.recurrence_rule.includes("BY") || 
-                               validated.recurrence_rule.includes("INTERVAL") ||
-                               validated.recurrence_rule.includes("COUNT") ||
-                               validated.recurrence_rule.includes("UNTIL");
-    
+    const isAdvancedPattern = isAdvancedRecurrenceRule(validated.recurrence_rule);
+
     if (isAdvancedPattern && !recurringAccess.advancedPatterns) {
       return errorResponse(
         "Custom recurring patterns require a Professional plan or higher. Please upgrade to use advanced patterns.",

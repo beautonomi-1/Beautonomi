@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
@@ -9,6 +11,8 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 const addonSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -16,7 +20,7 @@ const addonSchema = z.object({
   type: z.enum(["service", "product", "upgrade"]),
   category: z.string().optional().nullable(),
   price: z.number().min(0, "Price must be non-negative"),
-  currency: z.string().length(3).default("ZAR"),
+  currency: z.string().length(3).optional(),
   duration_minutes: z.number().int().min(0).optional().nullable(),
   is_active: z.boolean().default(true),
   is_recommended: z.boolean().default(false),
@@ -131,10 +135,21 @@ export async function POST(request: NextRequest) {
     }
 
     const { service_ids, ...addonData } = validationResult.data;
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: addon, error } = await (supabase.from("service_addons") as any)
       .insert({
         ...addonData,
+        currency: addonData.currency ?? lastResortCurrency,
         provider_id: providerId,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

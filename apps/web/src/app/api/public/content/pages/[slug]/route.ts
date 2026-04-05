@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/public/content/pages/[slug]
@@ -13,27 +15,21 @@ export async function GET(
 ) {
   try {
     const supabase = await getSupabaseServer();
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
     const { slug } = await params;
     
     // Fetch all active content for this page slug
-    const { data: pages, error } = await supabase
-      .from("page_content")
-      .select("*")
-      .eq("page_slug", slug)
-      .eq("is_active", true)
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error fetching page content:", error);
-      return NextResponse.json(
-        {
-          data: [],
-          error: null,
-        },
-        { status: 200 } // Return empty array instead of error
-      );
-    }
+    const scoped = await fetchScopedListMerged<Record<string, any>>({
+      supabase,
+      table: "page_content",
+      tenantId,
+      select: "*",
+      apply: (q) => q.eq("page_slug", slug).eq("is_active", true),
+      dedupeKey: (row) => String(row.section_key ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const pages = scoped.data;
 
     // Transform to frontend format
     const content = (pages || []).map((p: any) => ({

@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
@@ -6,6 +8,9 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const REFERRAL_SETTINGS_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -39,6 +44,29 @@ export async function POST(request: NextRequest) {
         400
       );
     }
+
+    const { data: bookingForTenant, error: bookingTenantErr } = await supabaseAdmin
+      .from("bookings")
+      .select("tenant_id")
+      .eq("id", booking_id)
+      .eq("customer_id", user.id)
+      .maybeSingle();
+    if (bookingTenantErr) {
+      return handleApiError(bookingTenantErr, "Failed to verify booking");
+    }
+    if (!bookingForTenant) {
+      return errorResponse(
+        "Booking not found or does not belong to you",
+        "NOT_FOUND",
+        404
+      );
+    }
+    const referralMarketTenantId =
+      (bookingForTenant as { tenant_id?: string | null }).tenant_id ?? null;
+    const tenantIdForCurrency =
+      referralMarketTenantId ?? (await resolveTenantIdWithZaFallback(request));
+    const marketCurrencyFallback =
+      (await getTenantRegionConfig(tenantIdForCurrency))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     let referrerUser: { id: string; handle: string } | null = null;
     let referralCode: string;
@@ -102,7 +130,7 @@ export async function POST(request: NextRequest) {
 
     // Load referral reward settings (single-row table; column is referral_amount not reward_amount)
     let rewardAmount = 50;
-    let rewardCurrency = "ZAR";
+    let rewardCurrency = marketCurrencyFallback;
     try {
       const { data: settings } = await supabaseAdmin
         .from("referral_settings")
@@ -112,7 +140,7 @@ export async function POST(request: NextRequest) {
 
       if (settings) {
         rewardAmount = Number((settings as any).referral_amount) || 50;
-        rewardCurrency = (settings as any).referral_currency || "ZAR";
+        rewardCurrency = (settings as any).referral_currency || marketCurrencyFallback;
       }
     } catch {
       // use defaults
@@ -187,6 +215,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const referralWalletTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
+      tenant_id: referralMarketTenantId,
+      provider_id: null,
+    });
+
     // Credit referrer's wallet (platform pays this; see revenue impact in admin referral settings)
     try {
       await supabaseAdmin.rpc("wallet_credit_admin", {
@@ -196,6 +229,7 @@ export async function POST(request: NextRequest) {
         p_description: `Referral reward — referred user completed first booking`,
         p_reference_id: referralRecord?.id ?? null,
         p_reference_type: "referral",
+        p_tenant_id: referralWalletTenantId,
       });
     } catch (walletErr) {
       console.warn("[referrals/track] Could not credit wallet:", walletErr);

@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,15 +23,15 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
 
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
+      fromDate = startOfDay(subDays(toDate, MAX_REPORT_DAYS));
     }
 
     // Get no-show bookings (simplified query to avoid deep nesting)
@@ -140,7 +140,9 @@ export async function GET(request: NextRequest) {
         supabaseAdmin,
         providerId,
         fromDate,
-        toDate
+        toDate,
+        null,
+        { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES }
       );
       // Sum revenue for no-show bookings (if they had finance_transactions)
       noShowBookingIds.forEach((bookingId) => {
@@ -172,11 +174,13 @@ export async function GET(request: NextRequest) {
       .filter((c) => c.count > 1)
       .sort((a, b) => b.count - a.count);
 
-    // Group by staff
+    // Group by staff — count distinct bookings per staff (not raw service lines)
     const staffBreakdownMap = new Map<string, { name: string; count: number }>();
     noShowBookings?.forEach((booking) => {
+      const seenStaff = new Set<string>();
       booking.booking_services?.forEach((bs: any) => {
-        if (bs.staff_id) {
+        if (bs.staff_id && !seenStaff.has(bs.staff_id)) {
+          seenStaff.add(bs.staff_id);
           const staffName = staffNameMap.get(bs.staff_id) || "Unknown";
           const existing = staffBreakdownMap.get(bs.staff_id) || { name: staffName, count: 0 };
           existing.count += 1;

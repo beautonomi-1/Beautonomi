@@ -25,6 +25,7 @@ interface StaffMemberRow {
   role?: string;
   is_active?: boolean;
   mobile_ready?: boolean;
+  commission_rate?: number | null;
   working_hours?: unknown;
   staff_locations?: StaffLocationItem[];
   users?: { full_name?: string; email?: string; phone?: string; avatar_url?: string } | null;
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
       .from("providers")
       .select("business_type")
       .eq("id", providerId)
-      .single();
+      .maybeSingle();
     
     const isFreelancer = providerData?.business_type === 'freelancer';
     
@@ -100,7 +101,7 @@ export async function GET(request: NextRequest) {
           .select("id")
           .eq("id", locationId)
           .eq("provider_id", providerId)
-          .single();
+          .maybeSingle();
         
         // If location belongs to freelancer, get their staff ID
         if (locationData) {
@@ -116,10 +117,24 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-      
-      // If still no staff found, return empty array
+
+      // Legacy data: provider_staff_locations was added after many tenants onboarded.
+      // If this location belongs to the provider but no junction rows exist yet, return
+      // all staff for the provider (same behaviour the calendar UI previously simulated
+      // by calling the API again without location_id).
       if (!staffIds || staffIds.length === 0) {
-        return successResponse([]);
+        const { data: locationRow } = await supabase
+          .from("provider_locations")
+          .select("id")
+          .eq("id", locationId)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+
+        if (locationRow) {
+          staffIds = null;
+        } else {
+          return successResponse([]);
+        }
       }
     }
     
@@ -139,6 +154,7 @@ export async function GET(request: NextRequest) {
         role,
         is_active,
         mobile_ready,
+        commission_rate,
         working_hours
       `
       )
@@ -154,6 +170,21 @@ export async function GET(request: NextRequest) {
     if (error) {
       console.error("Error fetching staff:", error);
       throw error;
+    }
+
+    const idsForServiceAssignments = (staff || []).map((m: StaffMemberRow) => m.id);
+    const serviceIdsByStaff = new Map<string, string[]>();
+    if (idsForServiceAssignments.length > 0) {
+      const { data: svcAssignRows } = await supabase
+        .from("staff_service_assignments")
+        .select("staff_id, service_id")
+        .in("staff_id", idsForServiceAssignments);
+      for (const row of svcAssignRows ?? []) {
+        const r = row as { staff_id: string; service_id: string };
+        const arr = serviceIdsByStaff.get(r.staff_id) ?? [];
+        arr.push(r.service_id);
+        serviceIdsByStaff.set(r.staff_id, arr);
+      }
     }
 
     // Fetch related data separately to avoid RLS issues
@@ -205,6 +236,7 @@ export async function GET(request: NextRequest) {
           ...member,
           users: userData,
           staff_locations: locations,
+          service_ids: serviceIdsByStaff.get(member.id) ?? [],
         };
       })
     );
@@ -212,7 +244,8 @@ export async function GET(request: NextRequest) {
     // Transform to match expected format
     // Use provider_staff data first (since we store it there), then fall back to users table
     // Map database role format to API format
-    const transformedStaff = (staffWithDetails || []).map((member: StaffMemberRow & { staff_locations?: StaffLocationItem[] }) => {
+    const transformedStaff = (staffWithDetails || []).map(
+      (member: StaffMemberRow & { staff_locations?: StaffLocationItem[]; service_ids?: string[] }) => {
       // Map database role (owner/manager/employee) to API format (provider_owner/provider_manager/provider_staff)
       const apiRole = member.role === "owner" ? "provider_owner"
                    : member.role === "manager" ? "provider_manager"
@@ -233,11 +266,14 @@ export async function GET(request: NextRequest) {
         role: apiRole,
         is_active: member.is_active ?? true,
         mobileReady: member.mobile_ready ?? false,
+        commission_rate: member.commission_rate ?? null,
         locations,
         primary_location_id: locations.find((l) => l.is_primary)?.location_id ?? null,
+        service_ids: member.service_ids ?? [],
         working_hours: member.working_hours ?? null,
       };
-    });
+      },
+    );
 
     return successResponse(transformedStaff as StaffMember[]);
   } catch (error: unknown) {
@@ -305,7 +341,7 @@ export async function POST(request: Request) {
     const staffLimitCheck = await checkStaffLimit(providerId);
     if (!staffLimitCheck.canProceed) {
       return errorResponse(
-        formatLimitError(staffLimitCheck),
+        formatLimitError(staffLimitCheck, "Plan"),
         "SUBSCRIPTION_LIMIT_EXCEEDED",
         403
       );
@@ -616,6 +652,10 @@ export async function POST(request: Request) {
       role: apiRole,
       is_active: newStaff.is_active ?? true,
     };
+
+    void import("@/lib/subscriptions/subscription-limit-notifications")
+      .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
+      .catch((e) => console.warn("Subscription usage notification:", e));
 
     return successResponse(transformedStaff as StaffMember);
   } catch (error: unknown) {

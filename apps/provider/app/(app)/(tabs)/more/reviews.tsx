@@ -40,6 +40,13 @@ interface ReviewsResponse {
   pagination?: { page: number; limit: number; total: number };
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 const STATUS_FILTERS = [
   { value: "all", label: "All" },
   { value: "pending_response", label: "To respond" },
@@ -186,8 +193,8 @@ export default function ReviewsScreen() {
               </Text>
               <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
                 {review.booking?.scheduled_at
-                  ? new Date(review.booking.scheduled_at).toLocaleDateString()
-                  : new Date(review.created_at).toLocaleDateString()}
+                  ? formatDateSafe(review.booking.scheduled_at)
+                  : formatDateSafe(review.created_at)}
               </Text>
               {review.comment ? (
                 <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[700] }} numberOfLines={3}>

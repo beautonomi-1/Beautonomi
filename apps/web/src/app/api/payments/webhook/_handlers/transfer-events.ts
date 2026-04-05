@@ -9,6 +9,8 @@
  */
 import { NextResponse } from "next/server";
 import type { PaystackEvent, SupabaseClient } from "./shared";
+import { formatCurrency } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // ─── Exported Handler ────────────────────────────────────────────────────────
 
@@ -95,12 +97,17 @@ export async function handleTransferEvent(
       const providerUserId = (provider as any)?.user_id;
       if (providerUserId) {
         const { sendToUser } = await import("@/lib/notifications/onesignal");
-        const amountStr = (payoutData.amount ?? payoutData.net_amount ?? 0).toLocaleString();
+        const raw = Number(payoutData.amount ?? payoutData.net_amount ?? 0);
+        const payoutCurrency =
+          typeof payoutData.currency === "string" && payoutData.currency.trim()
+            ? payoutData.currency.trim()
+            : LAST_RESORT_CURRENCY;
+        const amountFormatted = formatCurrency(raw, payoutCurrency);
         await sendToUser(
           providerUserId,
           {
             title: "Payout Processed",
-            message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+            message: `Your payout of ${amountFormatted} has been processed and paid.`,
             data: { type: "payout_paid", payout_id: payoutData.id },
             url: "/provider/finance",
           },
@@ -111,7 +118,7 @@ export async function handleTransferEvent(
           user_id: providerUserId,
           type: "system",
           title: "Payout Processed",
-          message: `Your payout of ZAR ${amountStr} has been processed and paid.`,
+          message: `Your payout of ${amountFormatted} has been processed and paid.`,
           data: { payout_id: payoutData.id, amount: payoutData.amount ?? payoutData.net_amount },
           action_url: "/provider/payouts",
         });
@@ -149,13 +156,18 @@ export async function handleTransferEvent(
       const providerUserId = (provider as any)?.user_id;
       if (providerUserId) {
         const { sendToUser } = await import("@/lib/notifications/onesignal");
-        const amountStr = (payoutData.amount ?? payoutData.net_amount ?? 0).toLocaleString();
+        const raw = Number(payoutData.amount ?? payoutData.net_amount ?? 0);
+        const payoutCurrency =
+          typeof payoutData.currency === "string" && payoutData.currency.trim()
+            ? payoutData.currency.trim()
+            : LAST_RESORT_CURRENCY;
+        const amountFormatted = formatCurrency(raw, payoutCurrency);
         const reason = String(failureReason).slice(0, 200);
         await sendToUser(
           providerUserId,
           {
             title: "Payout Failed",
-            message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+            message: `Your payout of ${amountFormatted} could not be processed. Reason: ${reason}`,
             data: { type: "payout_failed", payout_id: payoutData.id },
             url: "/provider/finance",
           },
@@ -166,7 +178,7 @@ export async function handleTransferEvent(
           user_id: providerUserId,
           type: "system",
           title: "Payout Failed",
-          message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+          message: `Your payout of ${amountFormatted} could not be processed. Reason: ${reason}`,
           data: { payout_id: payoutData.id, amount: payoutData.amount ?? payoutData.net_amount, failure_reason: reason },
           action_url: "/provider/payouts",
         });

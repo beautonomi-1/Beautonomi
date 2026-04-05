@@ -2,35 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const section = searchParams.get("section");
     const includeInactive = searchParams.get("include_inactive") === "true";
 
-    let query = supabase
-      .from("footer_links")
-      .select("*")
-      .order("display_order", { ascending: true });
-
-    if (section) {
-      query = query.eq("section", section);
-    }
-
-    if (!includeInactive) {
-      query = query.eq("is_active", true);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      console.error("Error fetching footer links:", error);
-      // Return empty array instead of 500 error
-      return NextResponse.json({ data: [], error: null });
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "footer_links",
+      tenantId,
+      select: "*",
+      apply: (q) => {
+        let r = q;
+        if (section) r = r.eq("section", section);
+        if (!includeInactive) r = r.eq("is_active", true);
+        return r;
+      },
+      dedupeKey: (row) => `${String(row.section ?? "")}::${String(row.title ?? "")}::${String(row.href ?? "")}`,
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const data = scoped.data;
 
     return NextResponse.json({ data: data || [], error: null });
   } catch (error) {
@@ -45,6 +43,7 @@ export async function POST(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const { section, title, href, display_order, is_external, is_active } = body;
@@ -59,6 +58,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("footer_links")
       .insert({
+        tenant_id: tenantId,
         section,
         title,
         href,

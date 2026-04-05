@@ -1,20 +1,6 @@
-import React from "react";
-import JobsGrid from "./components/job-grid";
-import JobSearch from "./components/job-search";
-import NonPermanentContractor from "./components/non-permanent-contractor";
-import Navbar3 from "@/components/global/Navbar3";
+import { redirect } from "next/navigation";
+import { getResolvedCareersPortalUrl } from "@/lib/cms/careers-page-server";
 
-const page = () => {
-  return (
-    <div>
-      <div className="">
-        <Navbar3 />
-      </div>
-      <JobSearch />
-      <JobsGrid />
-      <NonPermanentContractor />
-    </div>
-  );
-};
-
-export default page;
+export default async function CareerPositionsRedirectPage() {
+  redirect(await getResolvedCareersPortalUrl());
+}

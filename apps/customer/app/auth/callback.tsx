@@ -67,10 +67,9 @@ export default function AuthCallbackScreen() {
         if (!cancelled) {
           if (isWeb && window.opener) {
             window.close();
-          } else if (isWeb) {
-            router.replace("/(app)/(tabs)/home");
           } else {
-            router.replace("/(app)/(tabs)/home");
+            // Root index runs portal check, customer onboarding, and profile completion before home.
+            router.replace("/");
           }
         }
       } catch (err) {

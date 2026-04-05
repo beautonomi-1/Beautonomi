@@ -2,7 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
-import { requireRoleInApi } from "@/lib/supabase/api-helpers";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 const _SORT_OPTIONS = ["published_at_desc", "published_at_asc", "like_count_desc", "comment_count_desc", "created_at_desc"] as const;
 
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user: _user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
@@ -26,6 +28,13 @@ export async function GET(request: NextRequest) {
     const sort = (searchParams.get("sort") || "published_at_desc") as (typeof _SORT_OPTIONS)[number];
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
+
+    if (providerId) {
+      const prov = await fetchProviderInAdminTenant(supabaseAdmin, providerId, tenantId, "id");
+      if ("error" in prov) {
+        return prov.error;
+      }
+    }
 
     let query = supabaseAdmin
       .from("explore_posts")
@@ -44,10 +53,11 @@ export async function GET(request: NextRequest) {
         moderated_at,
         moderated_by,
         created_at,
-        providers:provider_id(business_name, slug)
+        providers:provider_id!inner(business_name, slug, tenant_id)
       `,
         { count: "exact" }
       )
+      .eq("providers.tenant_id", tenantId)
       .range(offset, offset + limit - 1);
 
     if (status) query = query.eq("status", status);
@@ -63,6 +73,7 @@ export async function GET(request: NextRequest) {
         const { data: providerRows } = await supabaseAdmin
           .from("providers")
           .select("id")
+          .eq("tenant_id", tenantId)
           .ilike("business_name", `%${safeSearch}%`);
         const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
         if (providerIds.length > 0) {
@@ -115,6 +126,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const body = await request.json();
     const { action, post_ids, moderation_notes } = body || {};
@@ -126,6 +138,16 @@ export async function POST(request: NextRequest) {
     const isHidden = action === "hide";
     const ids = post_ids.slice(0, 50).filter((id: unknown): id is string => typeof id === "string");
 
+    const { data: scopedRows } = await supabaseAdmin
+      .from("explore_posts")
+      .select("id, providers:provider_id!inner(tenant_id)")
+      .in("id", ids)
+      .eq("providers.tenant_id", tenantId);
+    const allowedIds = (scopedRows ?? []).map((r: { id: string }) => r.id);
+    if (allowedIds.length === 0) {
+      return successResponse({ updated: 0, post_ids: [] });
+    }
+
     const { data, error } = await supabaseAdmin
       .from("explore_posts")
       .update({
@@ -134,11 +156,11 @@ export async function POST(request: NextRequest) {
         moderated_at: new Date().toISOString(),
         moderated_by: user.id,
       })
-      .in("id", ids)
+      .in("id", allowedIds)
       .select("id");
 
     if (error) return handleApiError(error, "Failed to update posts");
-    return successResponse({ updated: data?.length ?? 0, post_ids: ids });
+    return successResponse({ updated: data?.length ?? 0, post_ids: allowedIds });
   } catch (error) {
     return handleApiError(error, "Failed to update posts");
   }

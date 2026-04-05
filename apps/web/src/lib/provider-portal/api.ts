@@ -4,7 +4,18 @@
  */
 
 import { format as formatDate } from "date-fns";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import {
+  FetchError,
+  FetchTimeoutError,
+  fetcher,
+  isHtmlRoutingFetchError,
+  isNotFoundHttpError,
+  isTransientNetworkFetchError,
+  PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+} from "@/lib/http/fetcher";
 import { APPOINTMENT_STATUS, DEFAULT_APPOINTMENT_STATUS } from "./constants";
+import { transformBookingRowsToAppointments } from "./transform-bookings-to-calendar-appointments";
 import type {
   Provider,
   Salon,
@@ -49,6 +60,8 @@ import type {
   CalendarDisplayPreferences,
   CalendarLink,
   RescheduleRequest,
+  RecurrenceRule,
+  RecurrencePattern,
 } from "./types";
 
 // Reference data item for dropdown options
@@ -64,8 +77,8 @@ export interface ReferenceDataItem {
 }
 
 export interface ProviderApi {
-  // Provider & Location
-  getProvider(): Promise<Provider>;
+  // Provider & Location (null when the user has a provider role but no providers row yet)
+  getProvider(): Promise<Provider | null>;
   getSalons(): Promise<Salon[]>;
   listLocations(): Promise<Salon[]>; // Alias for getSalons for consistency
   selectLocation(locationId: string): Promise<void>;
@@ -220,7 +233,7 @@ export interface ProviderApi {
   listAppointmentNotes(appointmentId: string): Promise<AppointmentNote[]>;
   createAppointmentNote(data: Partial<AppointmentNote>): Promise<AppointmentNote>;
   updateAppointmentNote(id: string, data: Partial<AppointmentNote>): Promise<AppointmentNote>;
-  deleteAppointmentNote(id: string): Promise<void>;
+  deleteAppointmentNote(noteId: string, appointmentId: string): Promise<void>;
   listNoteTemplates(): Promise<NoteTemplate[]>;
   createNoteTemplate(data: Partial<NoteTemplate>): Promise<NoteTemplate>;
   updateNoteTemplate(id: string, data: Partial<NoteTemplate>): Promise<NoteTemplate>;
@@ -264,6 +277,11 @@ export interface ProviderApi {
 
   // Availability blocks (closed periods, breaks – date-specific non-bookable time)
   listAvailabilityBlocks(params: { from: string; to: string }): Promise<AvailabilityBlockDisplay[]>;
+  /** staff_time_off + staff_days_off as calendar segments (matches public booking blockers). */
+  listStaffCalendarUnavailability(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]>;
   createBlockedTimeType(data: Partial<BlockedTimeType>): Promise<BlockedTimeType>;
   updateBlockedTimeType(id: string, data: Partial<BlockedTimeType>): Promise<BlockedTimeType>;
   deleteBlockedTimeType(id: string): Promise<void>;
@@ -306,13 +324,8 @@ export interface ProviderApi {
 }
 
 /**
- * Mock Provider API Implementation
- * Uses in-memory mock data
+ * Provider portal API client — calls `/api/provider/*` routes (no in-memory mock data).
  */
-import {
-  mockProvider,
-  mockAppointments,
-} from "./mock-data";
 
 /** Convert ISO start_at/end_at to calendar date + start_time/end_time, splitting blocks that span days. */
 function normalizeAvailabilityBlocksToDisplay(
@@ -351,22 +364,91 @@ function normalizeAvailabilityBlocksToDisplay(
   return result;
 }
 
-export class MockProviderApi implements ProviderApi {
-  private appointments: Appointment[] = [...mockAppointments];
+const DEFAULT_CALENDAR_DISPLAY_PREFERENCES: CalendarDisplayPreferences = {
+  id: "default",
+  week_starts_on: 1,
+  start_hour: 8,
+  end_hour: 20,
+  time_slot_interval: 30,
+  show_weekends: true,
+  show_time_labels: true,
+  show_duration: true,
+  default_view: "week",
+  appointment_height: "normal",
+  color_by: "service",
+  show_resource_assignments: true,
+  show_waitlist_entries: false,
+  show_time_blocks: true,
+};
 
-  // Helper method to log errors and throw
-  private async handleApiError(
+function rruleToRecurrenceRule(rr: string): RecurrenceRule {
+  const upper = (rr || "").toUpperCase();
+  let pattern: RecurrencePattern = "custom";
+  if (upper.includes("FREQ=DAILY")) pattern = "daily";
+  else if (upper.includes("FREQ=WEEKLY")) {
+    pattern = upper.includes("INTERVAL=2") ? "biweekly" : "weekly";
+  } else if (upper.includes("FREQ=MONTHLY")) pattern = "monthly";
+  const intervalMatch = upper.match(/INTERVAL=(\d+)/);
+  const interval = intervalMatch ? parseInt(intervalMatch[1]!, 10) : 1;
+  return { pattern, interval: Number.isFinite(interval) && interval > 0 ? interval : 1 };
+}
+
+function recurrenceRuleToRrule(rule: RecurrenceRule | string): string {
+  if (typeof rule === "string") return rule;
+  const i = rule.interval && rule.interval > 1 ? rule.interval : 1;
+  switch (rule.pattern) {
+    case "daily":
+      return i > 1 ? `FREQ=DAILY;INTERVAL=${i}` : "FREQ=DAILY";
+    case "biweekly":
+      return "FREQ=WEEKLY;INTERVAL=2";
+    case "monthly":
+      return i > 1 ? `FREQ=MONTHLY;INTERVAL=${i}` : "FREQ=MONTHLY";
+    case "weekly":
+      return i > 1 ? `FREQ=WEEKLY;INTERVAL=${i}` : "FREQ=WEEKLY";
+    default:
+      return "FREQ=WEEKLY;INTERVAL=1";
+  }
+}
+
+function toHhMmSs(time: string): string {
+  const t = (time || "10:00:00").trim();
+  if (/^\d{2}:\d{2}:\d{2}$/.test(t)) return t;
+  if (/^\d{2}:\d{2}$/.test(t)) return `${t}:00`;
+  return "10:00:00";
+}
+
+function mapWaitlistPriorityField(p: unknown): "high" | "normal" | "low" {
+  if (p === "high") return "high";
+  if (p === "low") return "low";
+  if (p === "normal") return "normal";
+  if (typeof p === "number") {
+    if (p > 0) return "high";
+    if (p < 0) return "low";
+    return "normal";
+  }
+  return "normal";
+}
+
+export class ProviderApiClient implements ProviderApi {
+  /**
+   * Log + health check. Skips logging for HTML routing failures (e.g. Turbopack dev missing /api/.../[id])
+   * so the user sees one clear FetchError message without duplicate console noise.
+   */
+  private async logProviderApiFailure(
     endpoint: string,
     method: string,
     error: any,
     userId?: string,
     providerId?: string,
-    requestData?: any
-  ): Promise<never> {
+    requestData?: any,
+    responseTimeMs = 0,
+  ): Promise<void> {
+    if (isHtmlRoutingFetchError(error)) return;
+
+    const statusCode = typeof error?.status === "number" ? error.status : 500;
     const { errorLogger } = await import("@/lib/monitoring/error-logger");
     const { healthCheckService } = await import("@/lib/monitoring/health-check");
-    
-    // Log error
+
     await errorLogger.logApiError(
       endpoint,
       method,
@@ -374,53 +456,115 @@ export class MockProviderApi implements ProviderApi {
       userId,
       providerId,
       requestData,
-      error?.status || 500
+      statusCode,
     );
-    
-    // Record health check failure
+
     await healthCheckService.recordHealthCheck({
       endpoint,
       method,
       status: "down",
-      response_time_ms: 0,
-      status_code: error?.status || 500,
+      response_time_ms: responseTimeMs,
+      status_code: statusCode,
       error: error?.message || String(error),
       checked_at: new Date().toISOString(),
     });
-    
+  }
+
+  private async handleApiError(
+    endpoint: string,
+    method: string,
+    error: any,
+    userId?: string,
+    providerId?: string,
+    requestData?: any,
+  ): Promise<never> {
+    await this.logProviderApiFailure(endpoint, method, error, userId, providerId, requestData);
     throw new Error(`API call failed: ${error?.message || String(error)}`);
   }
 
-  async getProvider(): Promise<Provider> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: any }>("/api/provider/profile", {
-        timeoutMs: 10000, // 10 second timeout
-      });
-      const profile = response.data;
-      
-      return {
-        id: profile.id,
-        business_name: profile.business_name || "",
-        owner_name: profile.owner_name || "",
-        email: profile.email || "",
-        phone: profile.phone || "",
-        setup_completion: profile.setup_completion || 0,
-        selected_location_id: profile.selected_location_id || null,
-        business_type: profile.business_type || undefined,
-      };
-    } catch (error) {
-      console.error("Failed to fetch real provider data:", error);
-      // Don't fall back to mock data - throw error so components can show proper loading/error states
-      throw new Error("Failed to load provider profile. Please refresh the page.");
+  async getProvider(): Promise<Provider | null> {
+    const retryDelaysMs = [400, 1200, 3000];
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= retryDelaysMs.length; attempt++) {
+      try {
+        const response = await fetcher.get<{ data: any }>("/api/provider/profile", {
+          timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+        });
+        const profile = response?.data;
+        if (profile == null || typeof profile !== "object" || profile.id == null || profile.id === "") {
+          return null;
+        }
+
+        return {
+          id: profile.id,
+          business_name: profile.business_name || "",
+          owner_name: profile.owner_name || "",
+          email: profile.email || "",
+          phone: profile.phone || "",
+          setup_completion: profile.setup_completion || 0,
+          selected_location_id: profile.selected_location_id ?? null,
+          business_type: profile.business_type || undefined,
+          currency: profile.currency || undefined,
+          locale: profile.locale || undefined,
+          timezone: profile.timezone || undefined,
+          locations: Array.isArray(profile.locations)
+            ? profile.locations.map((loc: any) => ({
+                id: loc.id,
+                name: loc.name || "",
+                address: loc.address_line1 || "",
+                city: loc.city || "",
+                is_primary: loc.is_primary ?? false,
+                location_type: loc.location_type ?? "salon",
+                operating_hours: loc.operating_hours ?? null,
+                working_hours: loc.working_hours ?? null,
+              }))
+            : undefined,
+        };
+      } catch (error) {
+        lastError = error;
+        if (isNotFoundHttpError(error)) {
+          return null;
+        }
+        if (attempt < retryDelaysMs.length && isTransientNetworkFetchError(error)) {
+          await new Promise((r) => setTimeout(r, retryDelaysMs[attempt]));
+          continue;
+        }
+        break;
+      }
     }
+
+    console.error("Failed to fetch real provider data:", lastError);
+    if (lastError instanceof FetchError) {
+      const hint =
+        lastError.status === 403
+          ? " Check that your account role is provider_owner or provider_staff and linked in providers / provider_staff."
+          : "";
+      throw new Error(
+        `${lastError.message} (HTTP ${lastError.status}${lastError.code ? `, ${lastError.code}` : ""}).${hint}`
+      );
+    }
+    if (
+      lastError instanceof FetchTimeoutError ||
+      (lastError instanceof Error && lastError.name === "FetchTimeoutError")
+    ) {
+      const msg = lastError instanceof Error ? lastError.message : String(lastError);
+      throw new Error(
+        `${msg} In local dev, Next.js often needs 30–90s on the first API hit while routes compile; this client now waits up to ${PROVIDER_BOOTSTRAP_TIMEOUT_MS / 1000}s. If it still fails, pause edits to avoid Fast Refresh competing with the server.`
+      );
+    }
+    if (lastError instanceof Error) {
+      throw new Error(
+        `${lastError.message} — If this persists after refresh, confirm Supabase migrations are applied (e.g. providers.tenant_id, providers.avatar_url, provider_locations.location_type).`
+      );
+    }
+    throw new Error("Failed to load provider profile. Please refresh the page.");
   }
 
   async getSalons(): Promise<Salon[]> {
     try {
-      const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.get<{ data: any[] }>("/api/provider/locations", {
-        timeoutMs: 10000, // 10 second timeout
+        timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS,
       });
       const locations = response.data || [];
       
@@ -431,10 +575,14 @@ export class MockProviderApi implements ProviderApi {
         city: loc.city || "",
         is_primary: loc.is_primary ?? false,
         location_type: loc.location_type ?? "salon",
+        operating_hours: loc.operating_hours ?? null,
+        working_hours: loc.working_hours ?? null,
       }));
     } catch (error) {
+      if (isNotFoundHttpError(error)) {
+        return [];
+      }
       console.error("Failed to fetch real locations:", error);
-      // Return empty array instead of mock data - let components handle empty state
       return [];
     }
   }
@@ -457,10 +605,9 @@ export class MockProviderApi implements ProviderApi {
     const startTime = Date.now();
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const { errorLogger: _errorLogger } = await import("@/lib/monitoring/error-logger");
       const { healthCheckService } = await import("@/lib/monitoring/health-check");
       
-      const response = await fetcher.get<{ data: any }>("/api/provider/dashboard");
+      const response = await fetcher.get<{ data: any }>("/api/provider/dashboard?include=insights");
       const responseTime = Date.now() - startTime;
       
       // Record health check
@@ -476,31 +623,15 @@ export class MockProviderApi implements ProviderApi {
       return response.data;
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      const { errorLogger } = await import("@/lib/monitoring/error-logger");
-      const { healthCheckService } = await import("@/lib/monitoring/health-check");
-      
-      // Log error
-      await errorLogger.logApiError(
+      await this.logProviderApiFailure(
         "/api/provider/dashboard",
         "GET",
         error,
         undefined,
         undefined,
         undefined,
-        error?.status || 500
+        responseTime,
       );
-      
-      // Record health check failure
-      await healthCheckService.recordHealthCheck({
-        endpoint: "/api/provider/dashboard",
-        method: "GET",
-        status: "down",
-        response_time_ms: responseTime,
-        status_code: error?.status || 500,
-        error: error?.message || String(error),
-        checked_at: new Date().toISOString(),
-      });
-      
       throw new Error(`Failed to fetch dashboard metrics: ${error?.message || String(error)}`);
     }
   }
@@ -523,6 +654,9 @@ export class MockProviderApi implements ProviderApi {
       if (filters?.status && filters.status !== "all") {
         params.append("status", filters.status);
       }
+      if (filters?.location_id) {
+        params.append("location_id", filters.location_id);
+      }
       if (pagination?.page) {
         params.append("page", pagination.page.toString());
       }
@@ -530,160 +664,21 @@ export class MockProviderApi implements ProviderApi {
         params.append("limit", pagination.limit.toString());
       }
 
-      const response = await fetcher.get<{ data: any[] }>(`/api/provider/bookings?${params.toString()}`, { timeoutMs: 20000 }); // 20s timeout for calendar
-      console.log("Fetched bookings:", response.data);
+      const response = await fetcher.get<{ data: any[] }>(
+        `/api/provider/bookings?${params.toString()}`,
+        { timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS }
+      );
       const bookings = response.data || [];
-      const expandForCalendar = !!filters?.expand_for_calendar;
-
-      // Helper to create appointment from booking and service
-      const createAppointment = (booking: any, svc: any, idx: number): Appointment => {
-        const scheduledAt = svc.scheduled_start_at ? new Date(svc.scheduled_start_at) : new Date(booking.scheduled_at);
-        const scheduledDate = formatDate(scheduledAt, "yyyy-MM-dd");
-        const scheduledTime = formatDate(scheduledAt, "HH:mm");
-        const serviceName = svc.offering_name || svc.name || "Service";
-        const serviceId = svc.offering_id || svc.id || "";
-        const durationMinutes = svc.duration_minutes || 60;
-        const staffId = svc.staff_id || booking.staff_id || "";
-        const staffName = svc.staff_name || svc.staff?.name || booking.staff_name || "";
-
-        const customer = booking.customers || {};
-        const clientName = customer.full_name || "Client";
-        const clientEmail = customer.email || "";
-        const clientPhone = customer.phone || "";
-
-        let status: Appointment["status"] = APPOINTMENT_STATUS.BOOKED;
-        if (booking.status === "completed") status = APPOINTMENT_STATUS.COMPLETED;
-        else if (booking.status === "cancelled") status = APPOINTMENT_STATUS.CANCELLED;
-        else if (booking.status === "in_progress") status = APPOINTMENT_STATUS.STARTED;
-
-        const location = booking.locations || {};
-        const locationName = location.name || "";
-        const address = booking.address || {};
-
-        const isExpanded = expandForCalendar && (booking.services?.length || 0) > 1;
-        const aptId = isExpanded ? `${booking.id}-svc-${idx}` : booking.id;
-
-        return {
-          id: aptId,
-          ...(isExpanded && { booking_id: booking.id }),
-          ref_number: booking.booking_number || booking.id,
-          client_id: booking.customer_id || customer.id || "",
-          client_name: clientName,
-          client_email: clientEmail,
-          client_phone: clientPhone,
-          service_id: serviceId,
-          service_name: serviceName,
-          team_member_id: staffId,
-          team_member_name: staffName,
-          scheduled_date: scheduledDate,
-          scheduled_time: scheduledTime,
-          duration_minutes: durationMinutes,
-          price: booking.total_amount || booking.subtotal || svc.price || 0,
-          status,
-          created_by: booking.created_by || "Online Booking",
-          created_date: booking.created_at || new Date().toISOString(),
-          notes: booking.special_requests || "",
-          cancellation_reason: booking.cancellation_reason,
-          location_type: booking.location_type || "at_salon",
-          location_id: booking.location_id || "",
-          location_name: locationName,
-          address_line1: address.line1 || booking.address_line1 || "",
-          address_line2: address.line2 || booking.address_line2 || "",
-          address_city: address.city || booking.address_city || "",
-          address_state: address.state || booking.address_state || "",
-          address_country: address.country || booking.address_country || "",
-          address_postal_code: address.postal_code || booking.address_postal_code || "",
-          current_stage: booking.current_stage,
-          travel_fee: booking.travel_fee || 0,
-          payment_status: booking.payment_status,
-          tip_amount: booking.tip_amount || 0,
-          original_price: svc.price || booking.subtotal || 0,
-          discount_amount: booking.discount_amount || 0,
-          discount_code: booking.discount_code || "",
-          discount_reason: booking.discount_reason || "",
-          subtotal: booking.subtotal || svc.price || 0,
-          tax_amount: booking.tax_amount || 0,
-          total_amount: booking.total_amount || booking.subtotal || svc.price || 0,
-          service_customization: booking.service_customization || svc.customization || "",
-          updated_date: booking.updated_at || "",
-          updated_by: booking.updated_by || "",
-          updated_by_name: booking.updated_by_name || "",
-          client_since: customer.created_at || "",
-          ...(booking.version !== undefined && { version: booking.version }),
-          ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
-        };
-      };
-
-      // Build appointments: one per service when expandForCalendar, else one per booking
-      const appointments: Appointment[] = [];
-      for (const booking of bookings) {
-        const services = booking.services || [];
-        if (expandForCalendar && services.length > 0) {
-          services.forEach((svc: any, idx: number) => {
-            appointments.push(createAppointment(booking, svc, idx));
-          });
-        } else {
-          const firstService = services[0] || {};
-          appointments.push(createAppointment(booking, firstService, 0));
-        }
-      }
-
-      // Apply additional filters that weren't handled by API
-      let filtered = appointments;
-      if (filters?.search) {
-        const search = (filters.search ?? "").toLowerCase();
-        filtered = filtered.filter(
-          (a) =>
-            (a?.client_name ?? "").toLowerCase().includes(search) ||
-            (a?.service_name ?? "").toLowerCase().includes(search) ||
-            (a?.ref_number ?? "").toLowerCase().includes(search)
-        );
-      }
-
-      // Only filter by team member if a specific member is selected (not "all")
-      if (filters?.team_member_id && filters.team_member_id !== "all") {
-        filtered = filtered.filter((a) => a.team_member_id === filters.team_member_id);
-      }
-      // When team_member_id is "all" or not provided, show all appointments (including unassigned)
-
-      const page = pagination?.page || 1;
-      const limit = pagination?.limit || 20;
-      const start = (page - 1) * limit;
-      const end = start + limit;
-
-      return {
-        data: filtered.slice(start, end),
-        total: filtered.length,
-        page,
-        limit,
-        total_pages: Math.ceil(filtered.length / limit),
-      };
+      return transformBookingRowsToAppointments(bookings, filters, pagination);
     } catch (error: any) {
-      const { errorLogger } = await import("@/lib/monitoring/error-logger");
-      const { healthCheckService } = await import("@/lib/monitoring/health-check");
-      
-      // Log error
-      await errorLogger.logApiError(
+      await this.logProviderApiFailure(
         "/api/provider/bookings",
         "GET",
         error,
         undefined,
         undefined,
         { filters, pagination },
-        error?.status || 500
       );
-      
-      // Record health check failure
-      await healthCheckService.recordHealthCheck({
-        endpoint: "/api/provider/bookings",
-        method: "GET",
-        status: "down",
-        response_time_ms: 0,
-        status_code: error?.status || 500,
-        error: error?.message || String(error),
-        checked_at: new Date().toISOString(),
-      });
-      
       throw new Error(`Failed to fetch appointments: ${error?.message || String(error)}`);
     }
   }
@@ -718,6 +713,33 @@ export class MockProviderApi implements ProviderApi {
     }
   }
 
+  /** Map API booking row to portal appointment status + optional DB status (for calendar / Mangomint adapter). */
+  private mapAppointmentStatusFromBooking(booking: {
+    status?: string;
+    db_status?: string;
+  }): { status: Appointment["status"]; db_status?: Appointment["db_status"] } {
+    let status: Appointment["status"] = APPOINTMENT_STATUS.BOOKED;
+    if (booking.status === "completed") status = APPOINTMENT_STATUS.COMPLETED;
+    else if (booking.status === "cancelled") status = APPOINTMENT_STATUS.CANCELLED;
+    else if (booking.status === "in_progress" || booking.status === "started") status = APPOINTMENT_STATUS.STARTED;
+    else if (booking.status === "no_show") status = APPOINTMENT_STATUS.NO_SHOW;
+    else if (booking.db_status === "pending") status = APPOINTMENT_STATUS.PENDING;
+    else if (booking.status === "pending") status = APPOINTMENT_STATUS.PENDING;
+
+    const out: { status: Appointment["status"]; db_status?: Appointment["db_status"] } = { status };
+    if (
+      booking.db_status === "pending" ||
+      booking.db_status === "confirmed" ||
+      booking.db_status === "in_progress" ||
+      booking.db_status === "completed" ||
+      booking.db_status === "cancelled" ||
+      booking.db_status === "no_show"
+    ) {
+      out.db_status = booking.db_status as Appointment["db_status"];
+    }
+    return out;
+  }
+
   /** Build Appointment from booking + service (shared by listAppointments and getAppointment) */
   private buildAppointmentFromBooking(booking: any, svc: any, _idx: number): Appointment {
     const scheduledAt = svc.scheduled_start_at ? new Date(svc.scheduled_start_at) : new Date(booking.scheduled_at);
@@ -726,10 +748,7 @@ export class MockProviderApi implements ProviderApi {
     const customer = booking.customers || {};
     const location = booking.locations || {};
     const address = booking.address || {};
-    let status: Appointment["status"] = APPOINTMENT_STATUS.BOOKED;
-    if (booking.status === "completed") status = APPOINTMENT_STATUS.COMPLETED;
-    else if (booking.status === "cancelled") status = APPOINTMENT_STATUS.CANCELLED;
-    else if (booking.status === "in_progress") status = APPOINTMENT_STATUS.STARTED;
+    const { status, db_status } = this.mapAppointmentStatusFromBooking(booking);
 
     return {
       id: booking.id,
@@ -760,6 +779,15 @@ export class MockProviderApi implements ProviderApi {
       address_state: address.state || booking.address_state || "",
       address_country: address.country || booking.address_country || "",
       address_postal_code: address.postal_code || booking.address_postal_code || "",
+      address_latitude: address.latitude ?? booking.address_latitude,
+      address_longitude: address.longitude ?? booking.address_longitude,
+      apartment_unit: address.apartment_unit ?? booking.apartment_unit ?? null,
+      building_name: address.building_name ?? booking.building_name ?? null,
+      floor_number: address.floor_number ?? booking.floor_number ?? null,
+      access_codes: address.access_codes ?? booking.access_codes ?? null,
+      parking_instructions: address.parking_instructions ?? booking.parking_instructions ?? null,
+      location_landmarks: address.location_landmarks ?? booking.location_landmarks ?? null,
+      house_call_instructions: booking.house_call_instructions ?? null,
       current_stage: booking.current_stage,
       travel_fee: booking.travel_fee || 0,
       payment_status: booking.payment_status,
@@ -779,6 +807,7 @@ export class MockProviderApi implements ProviderApi {
       ...(booking.version !== undefined && { version: booking.version }),
       ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
       ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
+      ...(db_status !== undefined ? { db_status } : {}),
     } as Appointment;
   }
 
@@ -832,7 +861,7 @@ export class MockProviderApi implements ProviderApi {
         tax_rate: (data as any).tax_rate || 0, // Pass tax rate
         tip_amount: data.tip_amount || 0,
         total_amount: data.total_amount || data.subtotal || data.price || 0,
-        currency: "ZAR",
+        currency: LAST_RESORT_CURRENCY,
         status: DEFAULT_APPOINTMENT_STATUS,
         special_requests: data.notes || null,
         travel_fee: data.travel_fee || 0,
@@ -941,10 +970,14 @@ export class MockProviderApi implements ProviderApi {
       
       // Schedule change - always include if date or time is provided
       if (data.scheduled_date || data.scheduled_time) {
-        // Combine date and time for scheduled_at
         const date = data.scheduled_date || new Date().toISOString().split('T')[0];
-        const time = data.scheduled_time || '09:00';
-        updateData.scheduled_at = `${date}T${time}:00`;
+        const timeRaw = (data.scheduled_time || "09:00").trim();
+        // Avoid "09:00:00:00" when time already includes seconds
+        const m = timeRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        const hh = (m?.[1] ?? "9").padStart(2, "0");
+        const mm = (m?.[2] ?? "00").padStart(2, "0");
+        const ss = (m?.[3] ?? "00").padStart(2, "0");
+        updateData.scheduled_at = `${date}T${hh}:${mm}:${ss}`;
       }
       
       // Notes/special requests - always send if provided (even if empty string)
@@ -1107,7 +1140,8 @@ export class MockProviderApi implements ProviderApi {
       
       // Get first service or default
       const firstService = booking.services?.[0] || {};
-      
+      const { status, db_status } = this.mapAppointmentStatusFromBooking(booking);
+
       return {
         id: booking.id,
         ref_number: booking.booking_number || booking.id,
@@ -1122,7 +1156,7 @@ export class MockProviderApi implements ProviderApi {
         scheduled_time: scheduledTime,
         duration_minutes: firstService.duration_minutes || 60,
         price: booking.total_amount || booking.subtotal || firstService.price || 0,
-        status: booking.status as Appointment["status"],
+        status,
         created_by: "system",
         created_date: booking.created_at || new Date().toISOString(),
         notes: booking.special_requests,
@@ -1145,6 +1179,7 @@ export class MockProviderApi implements ProviderApi {
         services: booking.services || [],
         // Products array if available
         products: booking.products || [],
+        ...(db_status !== undefined ? { db_status } : {}),
       } as Appointment;
     } catch (error: any) {
       await this.handleApiError(
@@ -1153,7 +1188,7 @@ export class MockProviderApi implements ProviderApi {
         error,
         undefined,
         undefined,
-        {}
+        { patchKeys: Object.keys(updateData) },
       );
       throw error;
     }
@@ -1218,28 +1253,14 @@ export class MockProviderApi implements ProviderApi {
         total_pages: response.total_pages ?? 1,
       };
     } catch (error: any) {
-      const { errorLogger } = await import("@/lib/monitoring/error-logger");
-      const { healthCheckService } = await import("@/lib/monitoring/health-check");
-      
-      await errorLogger.logApiError(
+      await this.logProviderApiFailure(
         "/api/provider/sales",
         "GET",
         error,
         undefined,
         undefined,
         { filters, pagination },
-        error?.status || 500
       );
-      
-      await healthCheckService.recordHealthCheck({
-        endpoint: "/api/provider/sales",
-        method: "GET",
-        status: "down",
-        response_time_ms: 0,
-        status_code: error?.status || 500,
-        error: error?.message || String(error),
-        checked_at: new Date().toISOString(),
-      });
       
       throw new Error(`Failed to fetch sales: ${error?.message || String(error)}`);
     }
@@ -2009,32 +2030,23 @@ export class MockProviderApi implements ProviderApi {
   }
 
   async listTeamMembers(locationId?: string): Promise<TeamMember[]> {
-    // Try to fetch from real API first
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      const url = locationId 
-        ? `/api/provider/staff?location_id=${locationId}`
+      const url = locationId
+        ? `/api/provider/staff?location_id=${encodeURIComponent(locationId)}`
         : "/api/provider/staff";
-      
-      console.log("Fetching team members from:", url);
-      const response = await fetcher.get<{ data: any[]; error: null }>(url, { timeoutMs: 20000 }); // 20s timeout for slow connections
-      console.log("Staff API response:", response);
-      
-      // Handle both direct array response and wrapped { data: [] } response
+
+      const response = await fetcher.get<{ data?: unknown; error?: unknown }>(url, {
+        timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS,
+      });
+
       let staff: any[] = [];
       if (Array.isArray(response)) {
-        // Direct array response (shouldn't happen with our API, but handle it)
         staff = response;
-      } else if (response?.data) {
-        // Wrapped response { data: [], error: null }
-        staff = Array.isArray(response.data) ? response.data : [];
-      } else if (response && typeof response === 'object' && !response.error) {
-        // Try to extract data if response structure is different
-        staff = [];
-        console.warn("Unexpected response format:", response);
+      } else if (response && typeof response === "object") {
+        const d = (response as { data?: unknown }).data;
+        staff = Array.isArray(d) ? d : [];
       }
-      
-      console.log("Staff count:", staff.length);
 
       // Transform staff to team members
       // Map API role format to frontend format
@@ -2051,17 +2063,12 @@ export class MockProviderApi implements ProviderApi {
         working_hours: member.working_hours ?? null,
       }));
 
-      console.log("Team members loaded:", teamMembers);
       return teamMembers;
-    } catch (error: any) {
-      console.error("Failed to fetch real team members:", error);
-      console.error("Error details:", {
-        message: error?.message,
-        status: error?.status,
-        code: error?.code,
-        details: error?.details,
-      });
-      // Return empty array instead of mock data
+    } catch (error: unknown) {
+      if (process.env.NODE_ENV === "development") {
+        const e = error as { message?: string; status?: number; code?: string };
+        console.warn("[listTeamMembers]", e?.message ?? error, e?.status, e?.code);
+      }
       return [];
     }
   }
@@ -2162,88 +2169,12 @@ export class MockProviderApi implements ProviderApi {
 
   // Reference Data
   async getReferenceData(types?: string[]): Promise<Record<string, ReferenceDataItem[]>> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const typesQuery = types?.length ? `?type=${types.join(",")}` : "";
-      const response = await fetcher.get<{ data: Record<string, ReferenceDataItem[]> }>(
-        `/api/provider/reference-data${typesQuery}`
-      );
-      return response.data || {};
-    } catch (error: any) {
-      // Log error but still return fallback data (reference data is acceptable to have fallback)
-      const { errorLogger } = await import("@/lib/monitoring/error-logger");
-      await errorLogger.logApiError(
-        "/api/provider/reference-data",
-        "GET",
-        error,
-        undefined,
-        undefined,
-        { types },
-        error?.status || 500
-      );
-      // Return fallback static data if API fails (acceptable for reference data)
-      return this.getFallbackReferenceData(types);
-    }
-  }
-
-  private getFallbackReferenceData(types?: string[]): Record<string, ReferenceDataItem[]> {
-    const allData: Record<string, ReferenceDataItem[]> = {
-      service_type: [
-        { id: "1", type: "service_type", value: "basic", label: "Basic Service", display_order: 1, is_active: true, metadata: {} },
-        { id: "2", type: "service_type", value: "package", label: "Package", display_order: 2, is_active: true, metadata: {} },
-        { id: "3", type: "service_type", value: "addon", label: "Add-on", display_order: 3, is_active: true, metadata: {} },
-        { id: "4", type: "service_type", value: "variant", label: "Variant", display_order: 4, is_active: true, metadata: {} },
-      ],
-      duration: [
-        { id: "1", type: "duration", value: "15", label: "15 minutes", display_order: 1, is_active: true, metadata: { minutes: 15 } },
-        { id: "2", type: "duration", value: "30", label: "30 minutes", display_order: 2, is_active: true, metadata: { minutes: 30 } },
-        { id: "3", type: "duration", value: "45", label: "45 minutes", display_order: 3, is_active: true, metadata: { minutes: 45 } },
-        { id: "4", type: "duration", value: "60", label: "1 hour", display_order: 4, is_active: true, metadata: { minutes: 60 } },
-        { id: "5", type: "duration", value: "90", label: "1 hour 30 minutes", display_order: 5, is_active: true, metadata: { minutes: 90 } },
-        { id: "6", type: "duration", value: "120", label: "2 hours", display_order: 6, is_active: true, metadata: { minutes: 120 } },
-        { id: "7", type: "duration", value: "180", label: "3 hours", display_order: 7, is_active: true, metadata: { minutes: 180 } },
-      ],
-      price_type: [
-        { id: "1", type: "price_type", value: "fixed", label: "Fixed price", display_order: 1, is_active: true, metadata: {} },
-        { id: "2", type: "price_type", value: "from", label: "Starting from", display_order: 2, is_active: true, metadata: {} },
-        { id: "3", type: "price_type", value: "free", label: "Free", display_order: 3, is_active: true, metadata: {} },
-        { id: "4", type: "price_type", value: "varies", label: "Price varies", display_order: 4, is_active: true, metadata: {} },
-      ],
-      availability: [
-        { id: "1", type: "availability", value: "everyone", label: "Everyone", display_order: 1, is_active: true, metadata: {} },
-        { id: "2", type: "availability", value: "women", label: "Women only", display_order: 2, is_active: true, metadata: {} },
-        { id: "3", type: "availability", value: "men", label: "Men only", display_order: 3, is_active: true, metadata: {} },
-      ],
-      tax_rate: [
-        { id: "1", type: "tax_rate", value: "0", label: "No Tax", display_order: 1, is_active: true, metadata: { rate: 0 } },
-        { id: "2", type: "tax_rate", value: "15", label: "Standard Tax (15%)", display_order: 2, is_active: true, metadata: { rate: 15 } },
-      ],
-      team_role: [
-        { id: "1", type: "team_role", value: "staff", label: "Staff", display_order: 1, is_active: true, metadata: {} },
-        { id: "2", type: "team_role", value: "manager", label: "Manager", display_order: 2, is_active: true, metadata: {} },
-        { id: "3", type: "team_role", value: "owner", label: "Owner", display_order: 3, is_active: true, metadata: {} },
-      ],
-      reminder_unit: [
-        { id: "1", type: "reminder_unit", value: "days", label: "Days after", display_order: 1, is_active: true, metadata: {} },
-        { id: "2", type: "reminder_unit", value: "weeks", label: "Weeks after", display_order: 2, is_active: true, metadata: {} },
-      ],
-      extra_time: [
-        { id: "1", type: "extra_time", value: "15", label: "15 min", display_order: 1, is_active: true, metadata: { minutes: 15 } },
-        { id: "2", type: "extra_time", value: "30", label: "30 min", display_order: 2, is_active: true, metadata: { minutes: 30 } },
-        { id: "3", type: "extra_time", value: "45", label: "45 min", display_order: 3, is_active: true, metadata: { minutes: 45 } },
-      ],
-    };
-
-    if (!types || types.length === 0) {
-      return allData;
-    }
-
-    return types.reduce((acc, type) => {
-      if (allData[type]) {
-        acc[type] = allData[type];
-      }
-      return acc;
-    }, {} as Record<string, ReferenceDataItem[]>);
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const typesQuery = types?.length ? `?type=${types.join(",")}` : "";
+    const response = await fetcher.get<{ data: Record<string, ReferenceDataItem[]> }>(
+      `/api/provider/reference-data${typesQuery}`
+    );
+    return response.data || {};
   }
 
   async listShifts(weekStart: string): Promise<Shift[]> {
@@ -2726,7 +2657,6 @@ export class MockProviderApi implements ProviderApi {
   }
 
   // Waitlist Methods
-  private waitlistEntries: WaitlistEntry[] = [];
 
   async listWaitlistEntries(
     filters?: FilterParams,
@@ -2736,37 +2666,43 @@ export class MockProviderApi implements ProviderApi {
       const { fetcher } = await import("@/lib/http/fetcher");
       const params = new URLSearchParams();
       if (filters?.status) params.append("status", filters.status);
+      if (filters?.location_id) params.append("location_id", filters.location_id);
       if (pagination?.page) params.append("page", pagination.page.toString());
       if (pagination?.limit) params.append("limit", pagination.limit.toString());
-      
-      const response = await fetcher.get<{ data: { items: any[]; total: number; page: number; limit: number } }>(
-        `/api/provider/waitlist?${params.toString()}`
-      );
-      
-      const { items, total, page, limit } = response.data;
+
+      const response = await fetcher.get<{
+        data: { entries: any[]; total?: number };
+      }>(`/api/provider/waitlist?${params.toString()}`);
+
+      const bundle = response.data;
+      const entries = bundle?.entries ?? [];
+      const total = bundle?.total ?? entries.length;
+      const limit = pagination?.limit || 100;
+      const page = pagination?.page || 1;
       return {
-        data: items.map((w: any) => ({
+        data: entries.map((w: any) => ({
           id: w.id,
           client_name: w.customer_name,
           client_email: w.customer_email,
           client_phone: w.customer_phone,
           service_id: w.service_id,
-          service_name: w.service_name || "",
+          service_name: w.service?.title || w.service_name || "",
           team_member_id: w.staff_id,
-          team_member_name: w.staff_name,
+          team_member_name: w.staff?.name || w.staff_name || "",
           preferred_date: w.preferred_date,
-          preferred_time: w.preferred_time || w.preferred_time_start, // Use preferred_time if available, fallback to start
+          preferred_time: w.preferred_time || w.preferred_time_start,
           preferred_time_start: w.preferred_time_start,
           preferred_time_end: w.preferred_time_end,
           notes: w.notes,
-          priority: w.priority === 0 ? "normal" : w.priority > 0 ? "high" : "low",
+          priority: mapWaitlistPriorityField(w.priority),
           status: w.status === "waiting" ? "active" : w.status,
           created_date: w.created_at || w.created_date,
+          location_id: w.location_id ?? null,
         })),
         total,
         page,
         limit,
-        total_pages: Math.ceil(total / limit),
+        total_pages: Math.max(1, Math.ceil(total / limit)),
       };
     } catch (error: any) {
       await this.handleApiError(
@@ -2793,6 +2729,7 @@ export class MockProviderApi implements ProviderApi {
         customer_phone: data.client_phone,
         service_id: data.service_id || null,
         staff_id: data.team_member_id || data.staff_id || null,
+        location_id: data.location_id ?? null,
         preferred_date: data.preferred_date,
         notes: data.notes,
         priority: data.priority === "high" ? 1 : data.priority === "low" ? -1 : 0,
@@ -2826,9 +2763,10 @@ export class MockProviderApi implements ProviderApi {
         preferred_time_start: w.preferred_time_start,
         preferred_time_end: w.preferred_time_end,
         notes: w.notes,
-        priority: w.priority === 0 ? "normal" : w.priority > 0 ? "high" : "low",
+        priority: mapWaitlistPriorityField(w.priority),
         status: w.status === "waiting" ? "active" : w.status,
         created_date: w.created_at || w.created_date,
+        location_id: w.location_id ?? data.location_id ?? null,
       };
     } catch (error) {
       const err = error as any;
@@ -2876,7 +2814,10 @@ export class MockProviderApi implements ProviderApi {
       if (data.preferred_time_end !== undefined) {
         apiData.preferred_time_end = data.preferred_time_end;
       }
-      
+      if (data.location_id !== undefined) {
+        apiData.location_id = data.location_id;
+      }
+
       const response = await fetcher.patch<{ data: any }>(`/api/provider/waitlist/${id}`, apiData);
       
       const w = response.data;
@@ -2886,25 +2827,23 @@ export class MockProviderApi implements ProviderApi {
         client_email: w.customer_email,
         client_phone: w.customer_phone,
         service_id: w.service_id,
-        service_name: data.service_name || "",
+        service_name: w.service_name || data.service_name || "",
         team_member_id: w.staff_id,
-        team_member_name: data.team_member_name || "",
+        team_member_name: w.staff_name || data.team_member_name || "",
         preferred_date: w.preferred_date,
         preferred_time: w.preferred_time || w.preferred_time_start,
         preferred_time_start: w.preferred_time_start,
         preferred_time_end: w.preferred_time_end,
         notes: w.notes,
-        priority: w.priority === 0 ? "normal" : w.priority > 0 ? "high" : "low",
+        priority: mapWaitlistPriorityField(w.priority),
         status: w.status === "waiting" ? "active" : w.status,
         created_date: w.created_at || w.created_date,
+        location_id: w.location_id ?? data.location_id ?? null,
       };
     } catch (error) {
-      console.warn("Failed to update waitlist entry via API, using mock:", error);
-      // Fallback to mock
-      const index = this.waitlistEntries.findIndex((w) => w.id === id);
-      if (index === -1) throw new Error("Waitlist entry not found");
-      this.waitlistEntries[index] = { ...this.waitlistEntries[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.waitlistEntries[index]), 300));
+      const err = error as any;
+      await this.handleApiError(`/api/provider/waitlist/${id}`, "PATCH", err, undefined, undefined, data);
+      throw err;
     }
   }
 
@@ -3004,346 +2943,336 @@ export class MockProviderApi implements ProviderApi {
 
       return newAppointment;
     } catch (error) {
-      console.warn("Failed to convert waitlist to appointment via API, using mock:", error);
-      // Fallback to mock
-      const waitlistEntry = this.waitlistEntries.find((w) => w.id === waitlistId);
-      if (!waitlistEntry) throw new Error("Waitlist entry not found");
-
-      const newAppointment = await this.createAppointment({
-        ...appointmentData,
-        client_name: waitlistEntry.client_name,
-        client_email: waitlistEntry.client_email,
-        client_phone: waitlistEntry.client_phone,
-        service_id: waitlistEntry.service_id,
-        service_name: waitlistEntry.service_name,
-        team_member_id: waitlistEntry.team_member_id || appointmentData.team_member_id,
-        team_member_name: waitlistEntry.team_member_name || appointmentData.team_member_name,
-      });
-
-      // Update waitlist entry status
-      await this.updateWaitlistEntry(waitlistId, { status: APPOINTMENT_STATUS.BOOKED });
-
-      return newAppointment;
+      console.error("Failed to convert waitlist to appointment:", error);
+      throw error;
     }
   }
 
   // Recurring Appointments Methods
-  private recurringAppointments: RecurringAppointment[] = [];
-
   async listRecurringAppointments(
     filters?: FilterParams,
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<RecurringAppointment>> {
-    let filtered = [...this.recurringAppointments];
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const page = pagination?.page || 1;
+    const limit = pagination?.limit || 20;
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("limit", String(limit));
+    if (filters?.location_id) params.set("location_id", filters.location_id);
+
+    const res = (await fetcher.get(
+      `/api/provider/recurring-appointments?${params.toString()}`
+    )) as {
+      data?: { data?: any[]; total?: number; page?: number; total_pages?: number };
+    };
+    const bundle = (res as any)?.data;
+    let rows: any[] = Array.isArray(bundle?.data) ? bundle.data : [];
+    const total = bundle?.total ?? rows.length;
+    const total_pages =
+      bundle?.total_pages ?? Math.max(1, Math.ceil((bundle?.total ?? rows.length) / limit));
 
     if (filters?.search) {
-      const search = (filters.search ?? "").toLowerCase();
-      filtered = filtered.filter(
-        (a) =>
-          (a?.client_name ?? "").toLowerCase().includes(search) ||
-          (a?.service_name ?? "").toLowerCase().includes(search)
+      const s = filters.search.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          (r.client_snapshot_name || "").toLowerCase().includes(s) ||
+          (r.service_snapshot_title || "").toLowerCase().includes(s)
       );
     }
 
-    const page = pagination?.page || 1;
-    const limit = pagination?.limit || 20;
-    const start = (page - 1) * limit;
+    const mapRow = (row: any): RecurringAppointment => {
+      const rr = rruleToRecurrenceRule(row.recurrence_rule || "");
+      const t = row.start_time ? String(row.start_time).slice(0, 5) : "10:00";
+      return {
+        id: row.id,
+        series_id: row.id,
+        client_id: row.customer_id || undefined,
+        client_name: row.client_snapshot_name || "Client",
+        service_id: row.service_id || "",
+        service_name: row.service_snapshot_title || "",
+        team_member_id: row.staff_id || "",
+        team_member_name: row.staff_snapshot_name || "",
+        scheduled_date: row.start_date || new Date().toISOString().slice(0, 10),
+        scheduled_time: t,
+        duration_minutes: row.duration_minutes || 60,
+        price: row.price ?? 0,
+        recurrence_rule: rr,
+        status: row.is_active === false ? "cancelled" : "booked",
+        is_exception: false,
+        created_date: row.created_at || new Date().toISOString(),
+        notes: row.notes || undefined,
+        location_id: row.location_id ?? null,
+      };
+    };
 
-    return new Promise((resolve) =>
-      setTimeout(
-        () =>
-          resolve({
-            data: filtered.slice(start, start + limit),
-            total: filtered.length,
-            page,
-            limit,
-            total_pages: Math.ceil(filtered.length / limit),
-          }),
-        300
-      )
-    );
+    const mapped = rows.map(mapRow);
+    return {
+      data: mapped,
+      total,
+      page,
+      limit,
+      total_pages,
+    };
   }
 
   async createRecurringAppointment(
-    data: Partial<RecurringAppointment>
+    data: Partial<RecurringAppointment> & { client_id?: string }
   ): Promise<RecurringAppointment> {
-    const seriesId = data.series_id || `series-${Date.now()}`;
-    const newAppointment: RecurringAppointment = {
-      id: `recur-${Date.now()}`,
-      series_id: seriesId,
-      client_name: data.client_name || "New Client",
-      service_id: data.service_id || "",
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const customerId = data.client_id || (data as any).customer_id;
+    if (!customerId) {
+      throw new Error("Customer is required for recurring appointments");
+    }
+    const rule = data.recurrence_rule as RecurrenceRule | string | undefined;
+    const rrule = recurrenceRuleToRrule(
+      (typeof rule === "object" && rule != null
+        ? rule
+        : { pattern: "weekly", interval: 1 }) as RecurrenceRule
+    );
+    const body = {
+      customer_id: customerId,
+      service_id: data.service_id || undefined,
+      staff_id: data.team_member_id || undefined,
+      location_id: data.location_id ?? (data as any).location_id ?? undefined,
+      recurrence_rule: rrule,
+      start_date: data.scheduled_date || new Date().toISOString().slice(0, 10),
+      end_date:
+        typeof rule === "object" && rule && "end_date" in rule
+          ? (rule as RecurrenceRule).end_date
+          : undefined,
+      start_time: toHhMmSs(data.scheduled_time || "10:00:00"),
+      notes: data.notes,
+      is_active: data.status !== "cancelled",
+    };
+    const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {
+      data?: any;
+    };
+    const row = res?.data ?? res;
+    const rr = rruleToRecurrenceRule(row.recurrence_rule || rrule);
+    const t = row.start_time ? String(row.start_time).slice(0, 5) : String(body.start_time).slice(0, 5);
+    return {
+      id: row.id,
+      series_id: row.id,
+      client_id: row.customer_id,
+      client_name: data.client_name || "Client",
+      service_id: row.service_id || data.service_id || "",
       service_name: data.service_name || "",
-      team_member_id: data.team_member_id || "",
+      team_member_id: row.staff_id || data.team_member_id || "",
       team_member_name: data.team_member_name || "",
-      scheduled_date: data.scheduled_date || new Date().toISOString().split("T")[0],
-      scheduled_time: data.scheduled_time || "10:00",
+      scheduled_date: row.start_date || body.start_date,
+      scheduled_time: t,
       duration_minutes: data.duration_minutes || 60,
       price: data.price || 0,
-      recurrence_rule: data.recurrence_rule || {
-        pattern: "weekly",
-        interval: 1,
-      },
-      status: DEFAULT_APPOINTMENT_STATUS,
+      recurrence_rule: rr,
+      status: row.is_active === false ? "cancelled" : "booked",
       is_exception: false,
-      created_date: new Date().toISOString(),
-      ...data,
+      created_date: row.created_at || new Date().toISOString(),
+      notes: row.notes,
+      location_id: row.location_id ?? data.location_id ?? null,
     };
-
-    this.recurringAppointments.push(newAppointment);
-    return new Promise((resolve) => setTimeout(() => resolve(newAppointment), 300));
   }
 
   async updateRecurringAppointment(
     id: string,
     data: Partial<RecurringAppointment>
   ): Promise<RecurringAppointment> {
-    const index = this.recurringAppointments.findIndex((a) => a.id === id);
-    if (index === -1) throw new Error("Recurring appointment not found");
-    this.recurringAppointments[index] = {
-      ...this.recurringAppointments[index],
-      ...data,
-      is_exception: true, // Mark as exception if modified
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const patch: Record<string, unknown> = {};
+    if (data.scheduled_date) patch.start_date = data.scheduled_date;
+    if (data.scheduled_time) patch.start_time = toHhMmSs(data.scheduled_time);
+    if (data.notes !== undefined) patch.notes = data.notes;
+    if (data.recurrence_rule)
+      patch.recurrence_rule = recurrenceRuleToRrule(data.recurrence_rule as RecurrenceRule);
+    if (data.status === "cancelled") patch.is_active = false;
+    if (data.status === "booked") patch.is_active = true;
+
+    const res = (await fetcher.patch(`/api/provider/recurring-appointments/${id}`, patch)) as {
+      data?: any;
     };
-    return new Promise((resolve) =>
-      setTimeout(() => resolve(this.recurringAppointments[index]), 300)
-    );
+    const row = res?.data ?? res;
+    const rr = rruleToRecurrenceRule(row.recurrence_rule || "");
+    const t = row.start_time ? String(row.start_time).slice(0, 5) : "10:00";
+    return {
+      id: row.id,
+      series_id: row.id,
+      client_id: row.customer_id,
+      client_name: data.client_name || "Client",
+      service_id: row.service_id || "",
+      service_name: data.service_name || "",
+      team_member_id: row.staff_id || "",
+      team_member_name: data.team_member_name || "",
+      scheduled_date: row.start_date,
+      scheduled_time: t,
+      duration_minutes: data.duration_minutes || 60,
+      price: data.price || 0,
+      recurrence_rule: rr,
+      status: row.is_active === false ? "cancelled" : "booked",
+      is_exception: true,
+      created_date: row.created_at,
+      notes: row.notes,
+      location_id: row.location_id ?? null,
+    };
   }
 
   async updateRecurringSeries(
     seriesId: string,
     data: Partial<RecurringAppointment>
   ): Promise<void> {
-    this.recurringAppointments = this.recurringAppointments.map((a) =>
-      a.series_id === seriesId ? { ...a, ...data } : a
-    );
-    return new Promise((resolve) => setTimeout(() => resolve(), 300));
+    await this.updateRecurringAppointment(seriesId, data);
   }
 
   async deleteRecurringAppointment(id: string, deleteSeries?: boolean): Promise<void> {
-    if (deleteSeries) {
-      const appointment = this.recurringAppointments.find((a) => a.id === id);
-      if (appointment) {
-        this.recurringAppointments = this.recurringAppointments.filter(
-          (a) => a.series_id !== appointment.series_id
-        );
-      }
-    } else {
-      this.recurringAppointments = this.recurringAppointments.filter((a) => a.id !== id);
-    }
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(
+      `/api/provider/recurring-appointments/${id}${deleteSeries ? "?series=true" : ""}`
+    );
   }
 
   // Resources Methods
-  private resources: Resource[] = [];
-  private resourceGroups: ResourceGroup[] = [];
 
   async listResources(filters?: FilterParams): Promise<Resource[]> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: any[] }>("/api/provider/resources");
-      return (response.data || []).map((r: any) => ({
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        type: r.resource_type || "other",
-        group_id: r.group_id,
-        capacity: r.capacity,
-        is_active: r.is_active,
-        color: r.calendar_color,
-      }));
-    } catch (error) {
-      console.warn("Failed to fetch resources via API, using mock:", error);
-      let filtered = [...this.resources];
-
-      if (filters?.search) {
-        const search = (filters.search ?? "").toLowerCase();
-        filtered = filtered.filter((r) => (r.name ?? "").toLowerCase().includes(search));
-      }
-
-      return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const params = new URLSearchParams();
+    if (filters?.location_id) params.set("location_id", filters.location_id);
+    const q = params.toString();
+    const response = await fetcher.get<{ data: any[] }>(
+      `/api/provider/resources${q ? `?${q}` : ""}`
+    );
+    let rows = response.data || [];
+    if (filters?.search) {
+      const search = (filters.search ?? "").toLowerCase();
+      rows = rows.filter((r) => (r.name ?? "").toLowerCase().includes(search));
     }
+    return rows.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      type: r.resource_type || "other",
+      group_id: r.group_id,
+      capacity: r.capacity,
+      is_active: r.is_active,
+      color: r.calendar_color,
+      location_id: r.location_id ?? null,
+    }));
   }
 
   async createResource(data: Partial<Resource>): Promise<Resource> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.post<{ data: any }>("/api/provider/resources", {
-        name: data.name,
-        description: data.description,
-        group_id: data.group_id || null,
-        capacity: data.capacity || 1,
-        is_active: data.is_active ?? true,
-        resource_type: data.type || "other",
-        calendar_color: data.color || undefined,
-      });
-      
-      const r = response.data;
-      return {
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        type: r.resource_type || data.type || "other",
-        group_id: r.group_id,
-        capacity: r.capacity,
-        is_active: r.is_active,
-        color: r.calendar_color,
-      };
-    } catch (error) {
-      console.warn("Failed to create resource via API, using mock:", error);
-      // Fallback to mock
-      const newResource: Resource = {
-        id: `resource-${Date.now()}`,
-        name: data.name || "New Resource",
-        type: data.type || "other",
-        is_active: true,
-        ...data,
-      };
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: any }>("/api/provider/resources", {
+      name: data.name,
+      description: data.description,
+      group_id: data.group_id || null,
+      location_id: data.location_id ?? null,
+      capacity: data.capacity || 1,
+      is_active: data.is_active ?? true,
+      resource_type: data.type || "other",
+      calendar_color: data.color || undefined,
+    });
 
-      this.resources.push(newResource);
-      return new Promise((resolve) => setTimeout(() => resolve(newResource), 300));
-    }
+    const r = response.data;
+    return {
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      type: r.resource_type || data.type || "other",
+      group_id: r.group_id,
+      capacity: r.capacity,
+      is_active: r.is_active,
+      color: r.calendar_color,
+      location_id: r.location_id ?? data.location_id ?? null,
+    };
   }
 
   async updateResource(id: string, data: Partial<Resource>): Promise<Resource> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.patch<{ data: any }>(`/api/provider/resources/${id}`, {
-        name: data.name,
-        description: data.description,
-        group_id: data.group_id,
-        capacity: data.capacity,
-        is_active: data.is_active,
-        resource_type: data.type,
-        calendar_color: data.color,
-      });
-      
-      const r = response.data;
-      return {
-        id: r.id,
-        name: r.name,
-        description: r.description,
-        type: r.resource_type || data.type || "other",
-        group_id: r.group_id,
-        capacity: r.capacity,
-        is_active: r.is_active,
-        color: r.calendar_color,
-      };
-    } catch (error) {
-      console.warn("Failed to update resource via API, using mock:", error);
-      // Fallback to mock
-      const index = this.resources.findIndex((r) => r.id === id);
-      if (index === -1) throw new Error("Resource not found");
-      this.resources[index] = { ...this.resources[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.resources[index]), 300));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.patch<{ data: any }>(`/api/provider/resources/${id}`, {
+      name: data.name,
+      description: data.description,
+      group_id: data.group_id,
+      location_id: data.location_id,
+      capacity: data.capacity,
+      is_active: data.is_active,
+      resource_type: data.type,
+      calendar_color: data.color,
+    });
+
+    const r = response.data;
+    return {
+      id: r.id,
+      name: r.name,
+      description: r.description,
+      type: r.resource_type || data.type || "other",
+      group_id: r.group_id,
+      capacity: r.capacity,
+      is_active: r.is_active,
+      color: r.calendar_color,
+      location_id: r.location_id ?? data.location_id ?? null,
+    };
   }
 
   async deleteResource(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/resources/${id}`);
-    } catch (error) {
-      console.warn("Failed to delete resource via API, using mock:", error);
-      // Fallback to mock
-      this.resources = this.resources.filter((r) => r.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/resources/${id}`);
   }
 
   async listResourceGroups(): Promise<ResourceGroup[]> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: any[] }>("/api/provider/resource-groups");
-      return (response.data || []).map((g: any) => ({
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        color: g.color,
-        is_active: g.is_active,
-        resource_ids: g.resource_ids ?? [],
-      }));
-    } catch (error) {
-      console.warn("Failed to fetch resource groups via API, using mock:", error);
-      return new Promise((resolve) => setTimeout(() => resolve(this.resourceGroups), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.get<{ data: any[] }>("/api/provider/resource-groups");
+    return (response.data || []).map((g: any) => ({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      color: g.color,
+      is_active: g.is_active,
+      resource_ids: g.resource_ids ?? [],
+    }));
   }
 
   async createResourceGroup(data: Partial<ResourceGroup>): Promise<ResourceGroup> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.post<{ data: any }>("/api/provider/resource-groups", {
-        name: data.name,
-        description: data.description,
-        color: data.color,
-        is_active: data.is_active ?? true,
-      });
-      
-      const g = response.data;
-      return {
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        color: g.color,
-        is_active: g.is_active,
-        resource_ids: data.resource_ids || [],
-      };
-    } catch (error) {
-      console.warn("Failed to create resource group via API, using mock:", error);
-      // Fallback to mock
-      const newGroup: ResourceGroup = {
-        id: `group-${Date.now()}`,
-        name: data.name || "New Group",
-        resource_ids: data.resource_ids || [],
-        is_active: true,
-        ...data,
-      };
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: any }>("/api/provider/resource-groups", {
+      name: data.name,
+      description: data.description,
+      color: data.color,
+      is_active: data.is_active ?? true,
+    });
 
-      this.resourceGroups.push(newGroup);
-      return new Promise((resolve) => setTimeout(() => resolve(newGroup), 300));
-    }
+    const g = response.data;
+    return {
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      color: g.color,
+      is_active: g.is_active,
+      resource_ids: data.resource_ids || [],
+    };
   }
 
   async updateResourceGroup(id: string, data: Partial<ResourceGroup>): Promise<ResourceGroup> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.patch<{ data: any }>(`/api/provider/resource-groups/${id}`, {
-        name: data.name,
-        description: data.description,
-        color: data.color,
-        is_active: data.is_active,
-        resource_ids: data.resource_ids,
-      });
-      
-      const g = response.data;
-      return {
-        id: g.id,
-        name: g.name,
-        description: g.description,
-        color: g.color,
-        is_active: g.is_active,
-        resource_ids: data.resource_ids ?? [],
-      };
-    } catch (error) {
-      console.warn("Failed to update resource group via API, using mock:", error);
-      // Fallback to mock
-      const index = this.resourceGroups.findIndex((g) => g.id === id);
-      if (index === -1) throw new Error("Resource group not found");
-      this.resourceGroups[index] = { ...this.resourceGroups[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.resourceGroups[index]), 300));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.patch<{ data: any }>(`/api/provider/resource-groups/${id}`, {
+      name: data.name,
+      description: data.description,
+      color: data.color,
+      is_active: data.is_active,
+      resource_ids: data.resource_ids,
+    });
+
+    const g = response.data;
+    return {
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      color: g.color,
+      is_active: g.is_active,
+      resource_ids: data.resource_ids ?? g.resource_ids ?? [],
+    };
   }
 
   async deleteResourceGroup(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/resource-groups/${id}`);
-    } catch (error) {
-      console.warn("Failed to delete resource group via API, using mock:", error);
-      // Fallback to mock
-      this.resourceGroups = this.resourceGroups.filter((g) => g.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/resource-groups/${id}`);
   }
 
   // Express Booking Links Methods — call real API and map to UI type
@@ -3447,96 +3376,109 @@ export class MockProviderApi implements ProviderApi {
   }
 
   // Cancellation Policies Methods
-  private cancellationPolicies: CancellationPolicy[] = [];
+  private mapCancellationPolicyFromApi(p: any): CancellationPolicy {
+    return {
+      id: p.id,
+      name: p.name || "",
+      description: p.policy_text || undefined,
+      cancellation_window_hours: p.hours_before ?? p.cancellation_window_hours ?? 24,
+      refund_percentage: p.refund_percentage ?? 0,
+      allow_reschedule: p.allow_reschedule ?? true,
+      reschedule_window_hours: p.reschedule_window_hours,
+      is_default: p.is_default ?? false,
+    };
+  }
 
   async listCancellationPolicies(): Promise<CancellationPolicy[]> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.cancellationPolicies), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(`/api/provider/cancellation-policies`)) as { data?: any[] };
+    const list = Array.isArray(res?.data) ? res.data : [];
+    return list.map((p) => this.mapCancellationPolicyFromApi(p));
   }
 
   async createCancellationPolicy(data: Partial<CancellationPolicy>): Promise<CancellationPolicy> {
-    const newPolicy: CancellationPolicy = {
-      id: `policy-${Date.now()}`,
-      name: data.name || "New Policy",
-      cancellation_window_hours: data.cancellation_window_hours || 24,
-      refund_percentage: data.refund_percentage || 100,
-      allow_reschedule: data.allow_reschedule ?? true,
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body = {
+      name: data.name || "Policy",
+      hours_before: data.cancellation_window_hours ?? 24,
+      refund_percentage: data.refund_percentage ?? 0,
       is_default: data.is_default ?? false,
-      ...data,
     };
-
-    this.cancellationPolicies.push(newPolicy);
-    return new Promise((resolve) => setTimeout(() => resolve(newPolicy), 300));
+    const res = (await fetcher.post(`/api/provider/cancellation-policies`, body)) as { data?: any };
+    const p = (res as any)?.data;
+    return this.mapCancellationPolicyFromApi(p);
   }
 
   async updateCancellationPolicy(
     id: string,
     data: Partial<CancellationPolicy>
   ): Promise<CancellationPolicy> {
-    const index = this.cancellationPolicies.findIndex((p) => p.id === id);
-    if (index === -1) throw new Error("Cancellation policy not found");
-    this.cancellationPolicies[index] = { ...this.cancellationPolicies[index], ...data };
-    return new Promise((resolve) =>
-      setTimeout(() => resolve(this.cancellationPolicies[index]), 300)
-    );
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body: Record<string, unknown> = {};
+    if (data.name !== undefined) body.name = data.name;
+    if (data.cancellation_window_hours !== undefined)
+      body.hours_before = data.cancellation_window_hours;
+    if (data.refund_percentage !== undefined) body.refund_percentage = data.refund_percentage;
+    if (data.is_default !== undefined) body.is_default = data.is_default;
+    const res = (await fetcher.patch(`/api/provider/cancellation-policies/${id}`, body)) as {
+      data?: any;
+    };
+    const p = (res as any)?.data;
+    return this.mapCancellationPolicyFromApi(p);
   }
 
   async deleteCancellationPolicy(id: string): Promise<void> {
-    this.cancellationPolicies = this.cancellationPolicies.filter((p) => p.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/cancellation-policies/${id}`);
   }
 
   async getCancellationPolicyForAppointment(
     _appointmentId: string
   ): Promise<CancellationPolicy | null> {
-    // Find default policy or first available
-    const defaultPolicy = this.cancellationPolicies.find((p) => p.is_default);
-    return new Promise((resolve) =>
-      setTimeout(() => resolve(defaultPolicy || null), 200)
-    );
+    const policies = await this.listCancellationPolicies();
+    return policies.find((p) => p.is_default) || policies[0] || null;
   }
 
   // Appointment Notes Methods
-  private appointmentNotes: AppointmentNote[] = [];
-  private noteTemplates: NoteTemplate[] = [];
-  private appointmentHistory: AppointmentHistoryEntry[] = [];
 
   async listAppointmentNotes(appointmentId: string): Promise<AppointmentNote[]> {
-    const notes = this.appointmentNotes.filter((n) => n.appointment_id === appointmentId);
-    return new Promise((resolve) => setTimeout(() => resolve(notes), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(
+      `/api/provider/bookings/${appointmentId}/notes`
+    )) as { data?: { notes?: AppointmentNote[] } };
+    const inner = (res as any)?.data;
+    return inner?.notes || [];
   }
 
   async createAppointmentNote(data: Partial<AppointmentNote>): Promise<AppointmentNote> {
-    const newNote: AppointmentNote = {
-      id: `note-${Date.now()}`,
-      appointment_id: data.appointment_id || "",
-      type: data.type || "internal",
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const aid = data.appointment_id || "";
+    if (!aid) throw new Error("appointment_id required");
+    const res = (await fetcher.post(`/api/provider/bookings/${aid}/notes`, {
       content: data.content || "",
-      created_by: "current_user",
-      created_by_name: "Current User",
-      created_date: new Date().toISOString(),
-      is_edited: false,
-      ...data,
-    };
-
-    this.appointmentNotes.push(newNote);
-    return new Promise((resolve) => setTimeout(() => resolve(newNote), 300));
+      is_internal: data.type !== "client_visible",
+    })) as { data?: { note?: AppointmentNote } };
+    const inner = (res as any)?.data;
+    if (!inner?.note) throw new Error("Failed to create note");
+    return inner.note;
   }
 
   async updateAppointmentNote(id: string, data: Partial<AppointmentNote>): Promise<AppointmentNote> {
-    const index = this.appointmentNotes.findIndex((n) => n.id === id);
-    if (index === -1) throw new Error("Note not found");
-    this.appointmentNotes[index] = {
-      ...this.appointmentNotes[index],
-      ...data,
-      is_edited: true,
-      edited_date: new Date().toISOString(),
-    };
-    return new Promise((resolve) => setTimeout(() => resolve(this.appointmentNotes[index]), 300));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const aid = data.appointment_id;
+    if (!aid) throw new Error("appointment_id required for update");
+    const res = (await fetcher.patch(`/api/provider/bookings/${aid}/notes/${id}`, {
+      content: data.content,
+      is_internal: data.type !== "client_visible" && data.type !== undefined ? data.type === "internal" : undefined,
+    })) as { data?: { note?: AppointmentNote } };
+    const inner = (res as any)?.data;
+    if (!inner?.note) throw new Error("Failed to update note");
+    return inner.note;
   }
 
-  async deleteAppointmentNote(id: string): Promise<void> {
-    this.appointmentNotes = this.appointmentNotes.filter((n) => n.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+  async deleteAppointmentNote(id: string, appointmentId: string): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/bookings/${appointmentId}/notes/${id}`);
   }
 
   async listNoteTemplates(): Promise<NoteTemplate[]> {
@@ -3623,352 +3565,259 @@ export class MockProviderApi implements ProviderApi {
   }
 
   async getAppointmentHistory(appointmentId: string): Promise<AppointmentHistoryEntry[]> {
-    const history = this.appointmentHistory.filter((h) => h.appointment_id === appointmentId);
-    return new Promise((resolve) => setTimeout(() => resolve(history), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(
+      `/api/provider/bookings/${appointmentId}/events`
+    )) as { data?: { events?: any[] } };
+    const events = (res as any)?.data?.events || [];
+    const mapAction = (t: string): AppointmentHistoryEntry["action"] => {
+      const x = (t || "").toLowerCase();
+      if (x.includes("cancel")) return "cancelled";
+      if (x.includes("resched")) return "rescheduled";
+      if (x.includes("status")) return "status_changed";
+      if (x.includes("payment")) return "payment_added";
+      if (x.includes("note")) return "note_added";
+      if (x.includes("create")) return "created";
+      return "updated";
+    };
+    return events.map((ev: any) => ({
+      id: ev.id,
+      appointment_id: appointmentId,
+      action: mapAction(ev.event_type || ""),
+      description: typeof ev.event_data === "string" ? ev.event_data : JSON.stringify(ev.event_data ?? {}),
+      performed_by: ev.created_by || "",
+      performed_by_name: ev.created_by_name || "System",
+      performed_date: ev.created_at,
+      metadata: ev.event_data && typeof ev.event_data === "object" ? ev.event_data : undefined,
+    }));
   }
 
-  // Calendar Integration Methods
-  private calendarSyncs: CalendarSync[] = [];
-  private calendarEvents: CalendarEvent[] = [];
+  private mapCalendarSyncRow(row: any): CalendarSync {
+    const dir = row.sync_direction || "bidirectional";
+    const sync_direction: CalendarSync["sync_direction"] =
+      dir === "bidirectional" ? "two_way" : "one_way";
+    return {
+      id: row.id,
+      provider: row.provider,
+      calendar_id: row.calendar_id || row.ical_url,
+      access_token: row.access_token,
+      refresh_token: row.refresh_token,
+      expires_at: row.expires_at,
+      is_active: row.is_active ?? true,
+      sync_direction,
+      last_sync_date: row.last_sync_at,
+      sync_errors: row.sync_error ? [row.sync_error] : undefined,
+      created_date: row.created_at,
+    };
+  }
 
   async listCalendarSyncs(): Promise<CalendarSync[]> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarSyncs), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(`/api/provider/calendar/sync`)) as { data?: any[] };
+    const rows = Array.isArray((res as any)?.data) ? (res as any).data : [];
+    return rows.map((r) => this.mapCalendarSyncRow(r));
   }
 
   async createCalendarSync(data: Partial<CalendarSync>): Promise<CalendarSync> {
-    const newSync: CalendarSync = {
-      id: `sync-${Date.now()}`,
-      provider: data.provider || "google",
-      sync_direction: data.sync_direction || "two_way",
-      is_active: true,
-      created_date: new Date().toISOString(),
-      ...data,
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body = {
+      provider: data.provider,
+      calendar_id: data.calendar_id,
+      calendar_name: (data as any).calendar_name,
+      access_token: data.access_token,
+      refresh_token: data.refresh_token,
+      ical_url: (data as any).ical_url,
+      sync_direction:
+        data.sync_direction === "two_way"
+          ? "bidirectional"
+          : data.sync_direction === "one_way"
+            ? "app_to_calendar"
+            : "bidirectional",
+      is_active: data.is_active ?? true,
     };
-
-    this.calendarSyncs.push(newSync);
-    return new Promise((resolve) => setTimeout(() => resolve(newSync), 300));
+    const res = (await fetcher.post(`/api/provider/calendar/sync`, body)) as { data?: any };
+    return this.mapCalendarSyncRow((res as any).data);
   }
 
   async updateCalendarSync(id: string, data: Partial<CalendarSync>): Promise<CalendarSync> {
-    const index = this.calendarSyncs.findIndex((s) => s.id === id);
-    if (index === -1) throw new Error("Calendar sync not found");
-    this.calendarSyncs[index] = { ...this.calendarSyncs[index], ...data };
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarSyncs[index]), 300));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body: Record<string, unknown> = { ...data };
+    if (data.sync_direction === "two_way") body.sync_direction = "bidirectional";
+    if (data.sync_direction === "one_way") body.sync_direction = "app_to_calendar";
+    const res = (await fetcher.patch(`/api/provider/calendar/sync/${id}`, body)) as { data?: any };
+    return this.mapCalendarSyncRow((res as any).data);
   }
 
   async deleteCalendarSync(id: string): Promise<void> {
-    this.calendarSyncs = this.calendarSyncs.filter((s) => s.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/calendar/sync/${id}`);
   }
 
   async syncAppointmentToCalendar(
     appointmentId: string,
     calendarSyncId: string
   ): Promise<CalendarEvent> {
-    const sync = this.calendarSyncs.find((s) => s.id === calendarSyncId);
+    const { CalendarSyncService } = await import("./calendar-sync");
+    const appointment = await this.getAppointment(appointmentId);
+    const syncs = await this.listCalendarSyncs();
+    const sync = syncs.find((s) => s.id === calendarSyncId);
     if (!sync) throw new Error("Calendar sync not found");
-
-    const newEvent: CalendarEvent = {
-      id: `event-${Date.now()}`,
-      appointment_id: appointmentId,
-      calendar_provider: sync.provider,
-      calendar_event_id: `ext-${Math.random().toString(36).substring(7)}`,
-      sync_status: "synced",
-      last_sync_date: new Date().toISOString(),
-    };
-
-    this.calendarEvents.push(newEvent);
-    return new Promise((resolve) => setTimeout(() => resolve(newEvent), 500));
+    return CalendarSyncService.syncAppointmentToCalendar(appointment, sync);
   }
 
   async syncCalendarToAppointments(_calendarSyncId: string): Promise<void> {
-    // Mock implementation - would sync external calendar events to appointments
-    return new Promise((resolve) => setTimeout(() => resolve(), 1000));
+    throw new Error("Calendar import from external calendars is not available yet.");
   }
 
   async getCalendarAuthUrl(provider: CalendarProvider): Promise<{ url: string }> {
-    try {
-      // Use real API route
-      const response = await fetch(`/api/provider/calendar/auth/${provider}`);
-      if (!response.ok) {
-        throw new Error("Failed to get auth URL");
-      }
-      const data = await response.json();
-      return { url: data.url };
-    } catch (error) {
-      // Fallback to mock for development
-      console.warn("Using mock calendar auth URL:", error);
-      const mockUrl = `https://accounts.google.com/o/oauth2/auth?client_id=mock&redirect_uri=${encodeURIComponent(
-        `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/api/provider/calendar/callback/${provider}`
-      )}&scope=calendar&response_type=code`;
-      return new Promise((resolve) => setTimeout(() => resolve({ url: mockUrl }), 200));
+    const response = await fetch(`/api/provider/calendar/auth/${provider}`, {
+      credentials: "include",
+    });
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(err || "Failed to get calendar authorization URL");
     }
+    const json = await response.json();
+    const url = json.url ?? json.data?.url;
+    if (!url) throw new Error("No authorization URL returned");
+    return { url };
   }
 
   async handleCalendarCallback(
-    provider: CalendarProvider,
+    _provider: CalendarProvider,
     _code: string,
     _state?: string
   ): Promise<CalendarSync> {
-    // Mock OAuth callback handling
-    const newSync: CalendarSync = {
-      id: `sync-${Date.now()}`,
-      provider,
-      sync_direction: "two_way",
-      is_active: true,
-      created_date: new Date().toISOString(),
-      last_sync_date: new Date().toISOString(),
-    };
-
-    this.calendarSyncs.push(newSync);
-    return new Promise((resolve) => setTimeout(() => resolve(newSync), 500));
+    throw new Error("OAuth completes via server redirect; refresh calendar connections after authorizing.");
   }
 
   // Group Booking Methods
-  private groupBookings: GroupBooking[] = [];
 
   async listGroupBookings(
     filters?: FilterParams,
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<GroupBooking>> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const params = new URLSearchParams();
-      if (filters?.status) params.append("status", filters.status);
-      if (filters?.date_from) params.append("date_from", filters.date_from);
-      if (filters?.date_to) params.append("date_to", filters.date_to);
-      if (pagination?.page) params.append("page", String(pagination.page));
-      if (pagination?.limit) params.append("limit", String(pagination.limit));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const params = new URLSearchParams();
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.date_from) params.append("date_from", filters.date_from);
+    if (filters?.date_to) params.append("date_to", filters.date_to);
+    if (pagination?.page) params.append("page", String(pagination.page));
+    if (pagination?.limit) params.append("limit", String(pagination.limit));
 
-      const response = await fetcher.get<{ data: GroupBooking[]; total: number; page: number; limit: number; total_pages: number }>(
-        `/api/provider/group-bookings?${params.toString()}`
-      );
-      return response;
-    } catch (error) {
-      console.warn("Failed to fetch group bookings via API, using mock:", error);
-      // Fallback to mock
-      let filtered = [...this.groupBookings];
-      
-      if (filters?.date_from) {
-        filtered = filtered.filter((gb) => gb.scheduled_date >= filters.date_from!);
-      }
-      if (filters?.date_to) {
-        filtered = filtered.filter((gb) => gb.scheduled_date <= filters.date_to!);
-      }
-      if (filters?.status) {
-        filtered = filtered.filter((gb) => gb.status === filters.status);
-      }
-
-      const page = pagination?.page || 1;
-      const limit = pagination?.limit || 20;
-      const start = (page - 1) * limit;
-      const end = start + limit;
-
-      return new Promise((resolve) =>
-        setTimeout(
-          () =>
-            resolve({
-              data: filtered.slice(start, end),
-              total: filtered.length,
-              page,
-              limit,
-              total_pages: Math.ceil(filtered.length / limit),
-            }),
-          200
-        )
-      );
-    }
+    const response = (await fetcher.get(
+      `/api/provider/group-bookings?${params.toString()}`
+    )) as {
+      data?: {
+        data: GroupBooking[];
+        total: number;
+        page: number;
+        limit: number;
+        total_pages: number;
+      };
+    };
+    const inner = (response as any)?.data;
+    return {
+      data: inner?.data || [],
+      total: inner?.total || 0,
+      page: inner?.page || pagination?.page || 1,
+      limit: inner?.limit || pagination?.limit || 20,
+      total_pages: inner?.total_pages || 1,
+    };
   }
 
   async getGroupBooking(id: string): Promise<GroupBooking> {
-    const booking = this.groupBookings.find((gb) => gb.id === id);
-    if (!booking) throw new Error("Group booking not found");
-    return new Promise((resolve) => setTimeout(() => resolve(booking), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(`/api/provider/group-bookings/${id}`)) as { data?: GroupBooking };
+    const row = (res as any)?.data;
+    if (!row) throw new Error("Group booking not found");
+    return row as GroupBooking;
   }
 
   async createGroupBooking(data: Partial<GroupBooking>): Promise<GroupBooking> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.post<{ data: GroupBooking }>(
-        "/api/provider/group-bookings",
-        data
-      );
-      return response.data;
-    } catch (error) {
-      console.warn("Failed to create group booking via API, using mock:", error);
-      // Fallback to mock
-      const newBooking: GroupBooking = {
-        id: `gb-${Date.now()}`,
-        ref_number: `GB-${Date.now().toString().slice(-6)}`,
-        scheduled_date: data.scheduled_date || new Date().toISOString().split("T")[0],
-        scheduled_time: data.scheduled_time || "10:00",
-        duration_minutes: data.duration_minutes || 60,
-        team_member_id: data.team_member_id || "",
-        team_member_name: data.team_member_name || "",
-        service_id: data.service_id || "",
-        service_name: data.service_name || "",
-        total_price: data.total_price || 0,
-        status: DEFAULT_APPOINTMENT_STATUS,
-        created_date: new Date().toISOString(),
-        participants: data.participants || [],
-        notes: data.notes,
-        location_type: data.location_type,
-        location_id: data.location_id,
-        address_line1: data.address_line1,
-        address_city: data.address_city,
-        address_postal_code: data.address_postal_code,
-        travel_fee: data.travel_fee,
-      };
-      this.groupBookings.push(newBooking);
-      return new Promise((resolve) => setTimeout(() => resolve(newBooking), 300));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: GroupBooking }>("/api/provider/group-bookings", data);
+    return (response as any).data;
   }
 
   async updateGroupBooking(id: string, data: Partial<GroupBooking>): Promise<GroupBooking> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.patch<{ data: GroupBooking }>(
-        `/api/provider/group-bookings/${id}`,
-        data
-      );
-      return response.data;
-    } catch (error) {
-      console.warn("Failed to update group booking via API, using mock:", error);
-      // Fallback to mock
-      const index = this.groupBookings.findIndex((gb) => gb.id === id);
-      if (index === -1) throw new Error("Group booking not found");
-      this.groupBookings[index] = { ...this.groupBookings[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.groupBookings[index]), 300));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.patch<{ data: GroupBooking }>(
+      `/api/provider/group-bookings/${id}`,
+      data
+    );
+    return (response as any).data;
   }
 
   async deleteGroupBooking(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/group-bookings/${id}`);
-    } catch (error) {
-      console.warn("Failed to delete group booking via API, using mock:", error);
-      // Fallback to mock
-      this.groupBookings = this.groupBookings.filter((gb) => gb.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/group-bookings/${id}`);
   }
 
   async addParticipantToGroupBooking(
     groupBookingId: string,
     participant: Partial<GroupBookingParticipant>
   ): Promise<GroupBookingParticipant> {
-    const booking = this.groupBookings.find((gb) => gb.id === groupBookingId);
-    if (!booking) throw new Error("Group booking not found");
-    
-    const newParticipant: GroupBookingParticipant = {
-      id: `part-${Date.now()}`,
+    const bookingId = (participant as any).booking_id;
+    if (!bookingId) {
+      throw new Error("booking_id is required to add a participant");
+    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.post(
+      `/api/provider/group-bookings/${groupBookingId}/participants`,
+      {
+        booking_id: bookingId,
+        participant_name: participant.client_name,
+        is_primary_contact: (participant as { is_primary_contact?: boolean }).is_primary_contact,
+      }
+    )) as { data?: { data?: any } };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return {
+      id: row.id,
       group_booking_id: groupBookingId,
-      client_name: participant.client_name || "",
-      client_email: participant.client_email,
-      client_phone: participant.client_phone,
+      client_name: row.participant_name,
+      client_email: row.participant_email,
+      client_phone: row.participant_phone,
       service_id: participant.service_id || "",
       service_name: participant.service_name || "",
       price: participant.price || 0,
       checked_in: false,
       checked_out: false,
-      ...participant,
     };
-    
-    booking.participants.push(newParticipant);
-    booking.total_price = booking.participants.reduce((sum, p) => sum + p.price, 0);
-    return new Promise((resolve) => setTimeout(() => resolve(newParticipant), 300));
   }
 
   async removeParticipantFromGroupBooking(groupBookingId: string, participantId: string): Promise<void> {
-    const booking = this.groupBookings.find((gb) => gb.id === groupBookingId);
-    if (!booking) throw new Error("Group booking not found");
-    booking.participants = booking.participants.filter((p) => p.id !== participantId);
-    booking.total_price = booking.participants.reduce((sum, p) => sum + p.price, 0);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(
+      `/api/provider/group-bookings/${groupBookingId}/participants/${participantId}`
+    );
   }
 
   async checkInGroupParticipant(groupBookingId: string, participantId: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.post(`/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-in`);
-    } catch (error) {
-      console.warn("Failed to check in participant via API, using mock:", error);
-      // Fallback to mock
-      const booking = this.groupBookings.find((gb) => gb.id === groupBookingId);
-      if (!booking) throw new Error("Group booking not found");
-      const participant = booking.participants.find((p) => p.id === participantId);
-      if (!participant) throw new Error("Participant not found");
-      participant.checked_in = true;
-      participant.checked_in_time = new Date().toISOString();
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.post(
+      `/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-in`
+    );
   }
 
   async checkOutGroupParticipant(groupBookingId: string, participantId: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.post(`/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-out`);
-    } catch (error) {
-      console.warn("Failed to check out participant via API, using mock:", error);
-      // Fallback to mock
-      const booking = this.groupBookings.find((gb) => gb.id === groupBookingId);
-      if (!booking) throw new Error("Group booking not found");
-      const participant = booking.participants.find((p) => p.id === participantId);
-      if (!participant) throw new Error("Participant not found");
-      participant.checked_out = true;
-      participant.checked_out_time = new Date().toISOString();
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.post(
+      `/api/provider/group-bookings/${groupBookingId}/participants/${participantId}/check-out`
+    );
   }
 
   async convertAppointmentsToGroupBooking(appointmentIds: string[]): Promise<GroupBooking> {
-    // This would convert multiple individual appointments into a group booking
-    const { data } = await this.listAppointments();
-    const appointments = data.filter((a: Appointment) => appointmentIds.includes(a.id));
-    if (appointments.length === 0) throw new Error("No appointments found");
-    
-    const firstAppt = appointments[0];
-    const newBooking: GroupBooking = {
-      id: `gb-${Date.now()}`,
-      ref_number: `GB-${Date.now().toString().slice(-6)}`,
-      scheduled_date: firstAppt.scheduled_date,
-      scheduled_time: firstAppt.scheduled_time,
-      duration_minutes: firstAppt.duration_minutes,
-      team_member_id: firstAppt.team_member_id,
-      team_member_name: firstAppt.team_member_name,
-      service_id: firstAppt.service_id,
-      service_name: firstAppt.service_name,
-      total_price: appointments.reduce((sum, a) => sum + a.price, 0),
-      status: DEFAULT_APPOINTMENT_STATUS,
-      created_date: new Date().toISOString(),
-      participants: appointments.map((a) => ({
-        id: `part-${a.id}`,
-        group_booking_id: `gb-${Date.now()}`,
-        client_name: a.client_name,
-        client_email: a.client_email,
-        client_phone: a.client_phone,
-        service_id: a.service_id,
-        service_name: a.service_name,
-        price: a.price,
-        checked_in: false,
-        checked_out: false,
-      })),
-    };
-    
-    this.groupBookings.push(newBooking);
-    // Mark appointments as group bookings
-    appointments.forEach((a) => {
-      a.is_group_booking = true;
-      a.group_booking_id = newBooking.id;
-    });
-    
-    return new Promise((resolve) => setTimeout(() => resolve(newBooking), 300));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.post(`/api/provider/group-bookings/from-bookings`, {
+      booking_ids: appointmentIds,
+    })) as { data?: GroupBooking };
+    const row = (res as any)?.data;
+    if (!row) throw new Error("Failed to create group booking");
+    return row as GroupBooking;
   }
 
   // Time Block Methods
-  private timeBlocks: TimeBlock[] = [];
-  private blockedTimeTypes: BlockedTimeType[] = [];
 
   async listAvailabilityBlocks(params: { from: string; to: string }): Promise<AvailabilityBlockDisplay[]> {
     try {
@@ -3983,6 +3832,25 @@ export class MockProviderApi implements ProviderApi {
       return normalizeAvailabilityBlocksToDisplay(raw);
     } catch (error) {
       console.warn("Failed to fetch availability blocks:", error);
+      return [];
+    }
+  }
+
+  async listStaffCalendarUnavailability(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]> {
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const searchParams = new URLSearchParams();
+      searchParams.set("date_from", params.date_from);
+      searchParams.set("date_to", params.date_to);
+      const response = await fetcher.get<{ data: AvailabilityBlockDisplay[] }>(
+        `/api/provider/calendar/staff-unavailability?${searchParams.toString()}`
+      );
+      return response.data || [];
+    } catch (error) {
+      console.warn("Failed to fetch staff calendar unavailability:", error);
       return [];
     }
   }
@@ -4013,15 +3881,8 @@ export class MockProviderApi implements ProviderApi {
         created_date: tb.created_at,
       }));
     } catch (error) {
-      console.warn("Failed to fetch time blocks via API, using mock:", error);
-      let filtered = [...this.timeBlocks];
-      if (filters?.date_from) {
-        filtered = filtered.filter((tb) => tb.date >= filters.date_from!);
-      }
-      if (filters?.team_member_id) {
-        filtered = filtered.filter((tb) => tb.team_member_id === filters.team_member_id);
-      }
-      return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
+      console.error("Failed to fetch time blocks:", error);
+      throw error;
     }
   }
 
@@ -4047,10 +3908,8 @@ export class MockProviderApi implements ProviderApi {
         created_date: tb.created_at,
       };
     } catch (error) {
-      console.warn("Failed to fetch time block via API, using mock:", error);
-      const block = this.timeBlocks.find((tb) => tb.id === id);
-      if (!block) throw new Error("Time block not found");
-      return new Promise((resolve) => setTimeout(() => resolve(block), 200));
+      console.error("Failed to fetch time block:", error);
+      throw error;
     }
   }
 
@@ -4088,26 +3947,8 @@ export class MockProviderApi implements ProviderApi {
         created_date: new Date().toISOString(),
       };
     } catch (error) {
-      console.warn("Failed to create time block via API, using mock:", error);
-      // Fallback to mock
-      const newBlock: TimeBlock = {
-        id: `tb-${Date.now()}`,
-        name: data.name || "Time Block",
-        description: data.description,
-        team_member_id: data.team_member_id,
-        team_member_name: data.team_member_name,
-        date: data.date || new Date().toISOString().split("T")[0],
-        start_time: data.start_time || "09:00",
-        end_time: data.end_time || "10:00",
-        is_recurring: data.is_recurring || false,
-        recurrence_rule: data.recurrence_rule,
-        blocked_time_type_id: data.blocked_time_type_id,
-        blocked_time_type_name: data.blocked_time_type_name,
-        is_active: true,
-        created_date: new Date().toISOString(),
-      };
-      this.timeBlocks.push(newBlock);
-      return new Promise((resolve) => setTimeout(() => resolve(newBlock), 300));
+      console.error("Failed to create time block:", error);
+      throw error;
     }
   }
 
@@ -4145,25 +3986,14 @@ export class MockProviderApi implements ProviderApi {
         created_date: tb.created_at,
       };
     } catch (error) {
-      console.warn("Failed to update time block via API, using mock:", error);
-      // Fallback to mock
-      const index = this.timeBlocks.findIndex((tb) => tb.id === id);
-      if (index === -1) throw new Error("Time block not found");
-      this.timeBlocks[index] = { ...this.timeBlocks[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.timeBlocks[index]), 300));
+      console.error("Failed to update time block:", error);
+      throw error;
     }
   }
 
   async deleteTimeBlock(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/time-blocks/${id}`);
-    } catch (error) {
-      console.warn("Failed to delete time block via API, using mock:", error);
-      // Fallback to mock
-      this.timeBlocks = this.timeBlocks.filter((tb) => tb.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/time-blocks/${id}`);
   }
 
   async listBlockedTimeTypes(): Promise<BlockedTimeType[]> {
@@ -4179,8 +4009,8 @@ export class MockProviderApi implements ProviderApi {
         created_date: t.created_at,
       }));
     } catch (error) {
-      console.warn("Failed to fetch blocked time types via API, using mock:", error);
-      return new Promise((resolve) => setTimeout(() => resolve(this.blockedTimeTypes), 200));
+      console.error("Failed to fetch blocked time types:", error);
+      throw error;
     }
   }
 
@@ -4204,19 +4034,8 @@ export class MockProviderApi implements ProviderApi {
         created_date: t.created_at,
       };
     } catch (error) {
-      console.warn("Failed to create blocked time type via API, using mock:", error);
-      // Fallback to mock
-      const newType: BlockedTimeType = {
-        id: `btt-${Date.now()}`,
-        name: data.name || "Blocked Time",
-        description: data.description,
-        color: data.color || "#FF0077",
-        icon: data.icon,
-        is_active: true,
-        created_date: new Date().toISOString(),
-      };
-      this.blockedTimeTypes.push(newType);
-      return new Promise((resolve) => setTimeout(() => resolve(newType), 300));
+      console.error("Failed to create blocked time type:", error);
+      throw error;
     }
   }
 
@@ -4240,337 +4059,276 @@ export class MockProviderApi implements ProviderApi {
         created_date: t.created_at,
       };
     } catch (error) {
-      console.warn("Failed to update blocked time type via API, using mock:", error);
-      // Fallback to mock
-      const index = this.blockedTimeTypes.findIndex((t) => t.id === id);
-      if (index === -1) throw new Error("Blocked time type not found");
-      this.blockedTimeTypes[index] = { ...this.blockedTimeTypes[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.blockedTimeTypes[index]), 300));
+      console.error("Failed to update blocked time type:", error);
+      throw error;
     }
   }
 
   async deleteBlockedTimeType(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/blocked-time-types/${id}`);
-    } catch (error) {
-      console.warn("Failed to delete blocked time type via API, using mock:", error);
-      // Fallback to mock
-      this.blockedTimeTypes = this.blockedTimeTypes.filter((t) => t.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/blocked-time-types/${id}`);
   }
 
   // Virtual Waiting Room Methods
-  private waitingRoomEntries: WaitingRoomEntry[] = [];
-
   async listWaitingRoomEntries(filters?: FilterParams): Promise<WaitingRoomEntry[]> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const params = new URLSearchParams();
-      if (filters?.status) {
-        params.append("status", filters.status);
-      }
-      const response = await fetcher.get<{ data: WaitingRoomEntry[] }>(
-        `/api/provider/waiting-room${params.toString() ? `?${params.toString()}` : ""}`
-      );
-      return response.data || [];
-    } catch (error) {
-      console.warn("Failed to load waiting room entries via API, using mock:", error);
-      // Fallback to mock
-      let filtered = [...this.waitingRoomEntries];
-      if (filters?.status) {
-        filtered = filtered.filter((e) => e.status === filters.status);
-      }
-      if (filters?.team_member_id) {
-        filtered = filtered.filter((e) => e.team_member_id === filters.team_member_id);
-      }
-      return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const params = new URLSearchParams();
+    if (filters?.status) params.append("status", filters.status);
+    if (filters?.location_id) params.append("location_id", filters.location_id);
+    const response = await fetcher.get<{ data: WaitingRoomEntry[] }>(
+      `/api/provider/waiting-room${params.toString() ? `?${params.toString()}` : ""}`
+    );
+    return response.data || [];
   }
 
   async getWaitingRoomEntry(id: string): Promise<WaitingRoomEntry> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.get<{ data: WaitingRoomEntry }>(
-        `/api/provider/waiting-room/${id}`
-      );
-      return response.data;
-    } catch (error) {
-      console.warn("Failed to get waiting room entry via API, using mock:", error);
-      // Fallback to mock
-      const entry = this.waitingRoomEntries.find((e) => e.id === id);
-      if (!entry) throw new Error("Waiting room entry not found");
-      return new Promise((resolve) => setTimeout(() => resolve(entry), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.get<{ data: WaitingRoomEntry }>(`/api/provider/waiting-room/${id}`);
+    return response.data;
   }
 
   async addToWaitingRoom(data: Partial<WaitingRoomEntry>): Promise<WaitingRoomEntry> {
-    const newEntry: WaitingRoomEntry = {
-      id: `wr-${Date.now()}`,
-      client_name: data.client_name || "",
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: WaitingRoomEntry }>(`/api/provider/waiting-room`, {
+      client_name: data.client_name,
       client_email: data.client_email,
       client_phone: data.client_phone,
       appointment_id: data.appointment_id,
       service_id: data.service_id,
-      service_name: data.service_name || "",
+      service_name: data.service_name,
       team_member_id: data.team_member_id,
       team_member_name: data.team_member_name,
-      checked_in_time: new Date().toISOString(),
       checked_in_method: data.checked_in_method || "staff",
       estimated_wait_time: data.estimated_wait_time,
-      status: "waiting",
       notes: data.notes,
-      position: this.waitingRoomEntries.length + 1,
-      ...data,
-    };
-    this.waitingRoomEntries.push(newEntry);
-    return new Promise((resolve) => setTimeout(() => resolve(newEntry), 300));
+    });
+    return response.data;
   }
 
   async updateWaitingRoomEntry(id: string, data: Partial<WaitingRoomEntry>): Promise<WaitingRoomEntry> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const response = await fetcher.patch<{ data: WaitingRoomEntry }>(
-        `/api/provider/waiting-room/${id}`,
-        data
-      );
-      return response.data;
-    } catch (error) {
-      console.warn("Failed to update waiting room entry via API, using mock:", error);
-      // Fallback to mock
-      const index = this.waitingRoomEntries.findIndex((e) => e.id === id);
-      if (index === -1) throw new Error("Waiting room entry not found");
-      this.waitingRoomEntries[index] = { ...this.waitingRoomEntries[index], ...data };
-      return new Promise((resolve) => setTimeout(() => resolve(this.waitingRoomEntries[index]), 300));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.patch<{ data: WaitingRoomEntry }>(
+      `/api/provider/waiting-room/${id}`,
+      data
+    );
+    return response.data;
   }
 
   async removeFromWaitingRoom(id: string): Promise<void> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      await fetcher.delete(`/api/provider/waiting-room/${id}`);
-    } catch (error) {
-      console.warn("Failed to remove from waiting room via API, using mock:", error);
-      // Fallback to mock
-      this.waitingRoomEntries = this.waitingRoomEntries.filter((e) => e.id !== id);
-      return new Promise((resolve) => setTimeout(() => resolve(), 200));
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/waiting-room/${id}`);
   }
 
   async checkInToWaitingRoom(data: Partial<WaitingRoomEntry>): Promise<WaitingRoomEntry> {
     return this.addToWaitingRoom({ ...data, checked_in_method: "self" });
   }
 
-  async moveWaitingRoomToService(entryId: string, appointmentId?: string): Promise<Appointment> {
-    const entry = this.waitingRoomEntries.find((e) => e.id === entryId);
-    if (!entry) throw new Error("Waiting room entry not found");
-    
-    // Create appointment from waiting room entry
-    const appointment: Appointment = {
-      id: appointmentId || `apt-${Date.now()}`,
-      ref_number: `APT-${Date.now().toString().slice(-6)}`,
-      client_name: entry.client_name,
-      client_email: entry.client_email,
-      client_phone: entry.client_phone,
-      service_id: entry.service_id || "",
-      service_name: entry.service_name || "Service",
-      team_member_id: entry.team_member_id || "",
-      team_member_name: entry.team_member_name || "",
-      scheduled_date: new Date().toISOString().split("T")[0],
-      scheduled_time: new Date().toTimeString().slice(0, 5),
-      duration_minutes: 60,
-      price: 0,
-      status: "started",
-      created_by: "system",
-      created_date: new Date().toISOString(),
+  async moveWaitingRoomToService(entryId: string, _appointmentId?: string): Promise<Appointment> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.patch(`/api/provider/waiting-room/${entryId}`, { status: "in_service" });
+    return this.getAppointment(entryId);
+  }
+
+  private mapColorSchemeRow(row: any): CalendarColorScheme {
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      color: row.color || "#FF0077",
+      applies_to: "custom",
+      is_default: row.is_default ?? false,
+      created_date: row.created_at,
     };
-    
-    this.appointments.push(appointment);
-    entry.status = "in_service";
-    entry.appointment_id = appointment.id;
-    
-    return new Promise((resolve) => setTimeout(() => resolve(appointment), 300));
   }
 
-  // Calendar Colors & Icons Methods
-  private calendarColorSchemes: CalendarColorScheme[] = [];
-  private calendarDisplayPreferences: CalendarDisplayPreferences = {
-    id: "default",
-    week_starts_on: 1, // Monday
-    start_hour: 8,
-    end_hour: 20,
-    time_slot_interval: 30,
-    show_weekends: true,
-    show_time_labels: true,
-    show_duration: true,
-    default_view: "week",
-    appointment_height: "normal",
-    color_by: "service",
-    show_resource_assignments: true,
-    show_waitlist_entries: false,
-    show_time_blocks: true,
-  };
-
-  async listCalendarColorSchemes(): Promise<CalendarColorScheme[]> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarColorSchemes), 200));
-  }
-
-  async createCalendarColorScheme(data: Partial<CalendarColorScheme>): Promise<CalendarColorScheme> {
-    const newScheme: CalendarColorScheme = {
-      id: `ccs-${Date.now()}`,
-      name: data.name || "Color Scheme",
-      description: data.description,
-      color: data.color || "#FF0077",
-      icon: data.icon,
-      applies_to: data.applies_to || "service",
-      service_id: data.service_id,
-      status: data.status,
-      team_member_id: data.team_member_id,
-      is_default: false,
-      created_date: new Date().toISOString(),
-    };
-    this.calendarColorSchemes.push(newScheme);
-    return new Promise((resolve) => setTimeout(() => resolve(newScheme), 300));
-  }
-
-  async updateCalendarColorScheme(id: string, data: Partial<CalendarColorScheme>): Promise<CalendarColorScheme> {
-    const index = this.calendarColorSchemes.findIndex((s) => s.id === id);
-    if (index === -1) throw new Error("Color scheme not found");
-    this.calendarColorSchemes[index] = { ...this.calendarColorSchemes[index], ...data };
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarColorSchemes[index]), 300));
-  }
-
-  async deleteCalendarColorScheme(id: string): Promise<void> {
-    this.calendarColorSchemes = this.calendarColorSchemes.filter((s) => s.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
-  }
-
-  async getCalendarDisplayPreferences(): Promise<CalendarDisplayPreferences> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarDisplayPreferences), 200));
-  }
-
-  async updateCalendarDisplayPreferences(data: Partial<CalendarDisplayPreferences>): Promise<CalendarDisplayPreferences> {
-    this.calendarDisplayPreferences = { ...this.calendarDisplayPreferences, ...data };
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarDisplayPreferences), 300));
-  }
-
-  // Calendar Link Sharing Methods
-  private calendarLinks: CalendarLink[] = [];
-
-  async listCalendarLinks(): Promise<CalendarLink[]> {
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarLinks), 200));
-  }
-
-  async createCalendarLink(data: Partial<CalendarLink>): Promise<CalendarLink> {
-    const token = `cal-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const newLink: CalendarLink = {
-      id: `cl-${Date.now()}`,
-      name: data.name || "Calendar Link",
-      link_token: token,
-      full_url: `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/calendar/${token}`,
-      calendar_type: data.calendar_type || "public",
-      provider: data.provider || "google",
-      is_active: true,
-      expires_at: data.expires_at,
+  private mapCalendarLinkRow(row: any): CalendarLink {
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    const feedPath = `/api/provider/calendar/links/${row.slug}/feed`;
+    return {
+      id: row.id,
+      name: row.name,
+      link_token: row.slug,
+      full_url: origin ? `${origin}${feedPath}` : feedPath,
+      calendar_type: "public",
+      provider: "google",
+      is_active: row.is_active ?? true,
+      expires_at: row.expires_at || undefined,
       access_count: 0,
-      created_date: new Date().toISOString(),
+      created_date: row.created_at,
       settings: {
         show_client_names: true,
         show_service_details: true,
         show_team_member_names: true,
         include_cancelled: false,
-        ...data.settings,
+        ...(typeof row.settings === "object" && row.settings ? row.settings : {}),
       },
     };
-    this.calendarLinks.push(newLink);
-    return new Promise((resolve) => setTimeout(() => resolve(newLink), 300));
+  }
+
+  private mapRescheduleRow(row: any): RescheduleRequest {
+    const os = new Date(row.original_start);
+    const ns = new Date(row.new_start);
+    return {
+      id: row.id,
+      appointment_id: row.booking_id,
+      original_date: os.toISOString().slice(0, 10),
+      original_time: os.toTimeString().slice(0, 5),
+      new_date: ns.toISOString().slice(0, 10),
+      new_time: ns.toTimeString().slice(0, 5),
+      requested_by: row.requested_by || "",
+      requested_by_name: "",
+      reason: row.reason,
+      status: row.status,
+      created_date: row.created_at,
+      processed_date: row.responded_at,
+    };
+  }
+
+  // Calendar Colors & Icons Methods
+  async listCalendarColorSchemes(): Promise<CalendarColorScheme[]> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(`/api/provider/calendar/color-schemes`)) as { data?: { data?: any[] } };
+    const rows = (res as any)?.data?.data ?? (res as any)?.data ?? [];
+    return (Array.isArray(rows) ? rows : []).map((r) => this.mapColorSchemeRow(r));
+  }
+
+  async createCalendarColorScheme(data: Partial<CalendarColorScheme>): Promise<CalendarColorScheme> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.post(`/api/provider/calendar/color-schemes`, {
+      name: data.name,
+      color: data.color,
+      description: data.description,
+      is_default: data.is_default,
+    })) as { data?: { data?: any } };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return this.mapColorSchemeRow(row);
+  }
+
+  async updateCalendarColorScheme(id: string, data: Partial<CalendarColorScheme>): Promise<CalendarColorScheme> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.patch(`/api/provider/calendar/color-schemes/${id}`, {
+      name: data.name,
+      color: data.color,
+      description: data.description,
+      is_default: data.is_default,
+    })) as { data?: { data?: any } };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return this.mapColorSchemeRow(row);
+  }
+
+  async deleteCalendarColorScheme(id: string): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/calendar/color-schemes/${id}`);
+  }
+
+  async getCalendarDisplayPreferences(): Promise<CalendarDisplayPreferences> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.get<{ data: any }>("/api/provider/settings/calendar-preferences");
+    const prefs = response.data ?? response;
+    return { ...DEFAULT_CALENDAR_DISPLAY_PREFERENCES, ...prefs } as CalendarDisplayPreferences;
+  }
+
+  async updateCalendarDisplayPreferences(
+    data: Partial<CalendarDisplayPreferences>
+  ): Promise<CalendarDisplayPreferences> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.patch<{ data: any }>(
+      "/api/provider/settings/calendar-preferences",
+      data
+    );
+    const prefs = response.data ?? response;
+    return { ...DEFAULT_CALENDAR_DISPLAY_PREFERENCES, ...prefs } as CalendarDisplayPreferences;
+  }
+
+  // Calendar Link Sharing Methods
+  async listCalendarLinks(): Promise<CalendarLink[]> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.get(`/api/provider/calendar/links`)) as { data?: { data?: any[] } };
+    const rows = (res as any)?.data?.data ?? (res as any)?.data ?? [];
+    return (Array.isArray(rows) ? rows : []).map((r) => this.mapCalendarLinkRow(r));
+  }
+
+  async createCalendarLink(data: Partial<CalendarLink>): Promise<CalendarLink> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = (await fetcher.post(`/api/provider/calendar/links`, {
+      name: data.name || "Calendar link",
+      slug: data.link_token,
+      is_active: data.is_active ?? true,
+      expires_at: data.expires_at,
+      settings: data.settings || {},
+    })) as { data?: { data?: any } };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return this.mapCalendarLinkRow(row);
   }
 
   async updateCalendarLink(id: string, data: Partial<CalendarLink>): Promise<CalendarLink> {
-    const index = this.calendarLinks.findIndex((l) => l.id === id);
-    if (index === -1) throw new Error("Calendar link not found");
-    this.calendarLinks[index] = { ...this.calendarLinks[index], ...data };
-    return new Promise((resolve) => setTimeout(() => resolve(this.calendarLinks[index]), 300));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const body: Record<string, unknown> = {};
+    if (data.name !== undefined) body.name = data.name;
+    if (data.link_token !== undefined) body.slug = data.link_token;
+    if (data.is_active !== undefined) body.is_active = data.is_active;
+    if (data.expires_at !== undefined) body.expires_at = data.expires_at;
+    if (data.settings !== undefined) body.settings = data.settings;
+    const res = (await fetcher.patch(`/api/provider/calendar/links/${id}`, body)) as {
+      data?: { data?: any };
+    };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return this.mapCalendarLinkRow(row);
   }
 
   async deleteCalendarLink(id: string): Promise<void> {
-    this.calendarLinks = this.calendarLinks.filter((l) => l.id !== id);
-    return new Promise((resolve) => setTimeout(() => resolve(), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/calendar/links/${id}`);
   }
 
   async getPublicCalendarFeed(linkToken: string): Promise<any> {
-    // This would return iCal format or Google Calendar format
-    const link = this.calendarLinks.find((l) => l.link_token === linkToken);
-    if (!link || !link.is_active) throw new Error("Calendar link not found or inactive");
-    
-    // Mock iCal format
-    return new Promise((resolve) =>
-      setTimeout(
-        () =>
-          resolve({
-            format: "ical",
-            content: `BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//Beautonomi//Calendar//EN\nEND:VCALENDAR`,
-          }),
-        200
-      )
-    );
+    const res = await fetch(`/api/provider/calendar/links/${encodeURIComponent(linkToken)}/feed`);
+    if (!res.ok) throw new Error("Calendar feed not available");
+    const content = await res.text();
+    return { format: "ical", content };
   }
 
   // Rescheduling Methods
-  private rescheduleRequests: RescheduleRequest[] = [];
-
   async requestReschedule(appointmentId: string, data: Partial<RescheduleRequest>): Promise<RescheduleRequest> {
+    const { fetcher } = await import("@/lib/http/fetcher");
     const appointment = await this.getAppointment(appointmentId);
-    
-    const newRequest: RescheduleRequest = {
-      id: `rr-${Date.now()}`,
-      appointment_id: appointmentId,
-      original_date: appointment.scheduled_date,
-      original_time: appointment.scheduled_time,
-      new_date: data.new_date || appointment.scheduled_date,
-      new_time: data.new_time || appointment.scheduled_time,
-      requested_by: data.requested_by || "client",
-      requested_by_name: data.requested_by_name || appointment.client_name,
+    const newDate = data.new_date || appointment.scheduled_date;
+    const nt = data.new_time || appointment.scheduled_time;
+    const newTime = nt.length === 5 ? `${nt}:00` : nt;
+    const ost = appointment.scheduled_time.length === 5 ? `${appointment.scheduled_time}:00` : appointment.scheduled_time;
+    const origStart = new Date(`${appointment.scheduled_date}T${ost}`);
+    const origEnd = new Date(origStart.getTime() + appointment.duration_minutes * 60_000);
+    const newStart = new Date(`${newDate}T${newTime}`);
+    const newEnd = new Date(newStart.getTime() + appointment.duration_minutes * 60_000);
+    const res = (await fetcher.post(`/api/provider/reschedule-requests`, {
+      booking_id: appointmentId,
+      new_start: newStart.toISOString(),
+      new_end: newEnd.toISOString(),
       reason: data.reason,
-      status: "pending",
-      created_date: new Date().toISOString(),
-    };
-    
-    this.rescheduleRequests.push(newRequest);
-    return new Promise((resolve) => setTimeout(() => resolve(newRequest), 300));
+    })) as { data?: any };
+    const row = (res as any)?.data?.data ?? (res as any)?.data;
+    return this.mapRescheduleRow(row);
   }
 
   async listRescheduleRequests(filters?: FilterParams): Promise<RescheduleRequest[]> {
-    let filtered = [...this.rescheduleRequests];
-    
-    if (filters?.status) {
-      filtered = filtered.filter((r) => r.status === filters.status);
-    }
-    
-    return new Promise((resolve) => setTimeout(() => resolve(filtered), 200));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const params = new URLSearchParams();
+    if (filters?.status) params.set("status", filters.status);
+    const res = (await fetcher.get(`/api/provider/reschedule-requests?${params.toString()}`)) as {
+      data?: { data?: any[] };
+    };
+    const rows = (res as any)?.data?.data ?? (res as any)?.data ?? [];
+    return (Array.isArray(rows) ? rows : []).map((r) => this.mapRescheduleRow(r));
   }
 
   async approveRescheduleRequest(requestId: string): Promise<void> {
-    const request = this.rescheduleRequests.find((r) => r.id === requestId);
-    if (!request) throw new Error("Reschedule request not found");
-    
-    await this.rescheduleAppointment(request.appointment_id, request.new_date, request.new_time);
-    request.status = "approved";
-    request.processed_date = new Date().toISOString();
-    
-    return new Promise((resolve) => setTimeout(() => resolve(), 300));
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.patch(`/api/provider/reschedule-requests/${requestId}`, { status: "approved" });
   }
 
-  async rejectRescheduleRequest(requestId: string, reason?: string): Promise<void> {
-    const request = this.rescheduleRequests.find((r) => r.id === requestId);
-    if (!request) throw new Error("Reschedule request not found");
-    
-    request.status = "rejected";
-    request.processed_date = new Date().toISOString();
-    if (reason) request.reason = reason;
-    
-    return new Promise((resolve) => setTimeout(() => resolve(), 300));
+  async rejectRescheduleRequest(requestId: string, _reason?: string): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.patch(`/api/provider/reschedule-requests/${requestId}`, { status: "rejected" });
   }
 
   async rescheduleAppointment(appointmentId: string, newDate: string, newTime: string): Promise<Appointment> {
@@ -4638,6 +4396,10 @@ export class MockProviderApi implements ProviderApi {
   }
 
   private transformBookingToAppointment(booking: any): Appointment {
+    const { status, db_status } = this.mapAppointmentStatusFromBooking({
+      status: booking.status,
+      db_status: booking.db_status,
+    });
     return {
       id: booking.id,
       ref_number: booking.booking_number,
@@ -4650,7 +4412,7 @@ export class MockProviderApi implements ProviderApi {
       scheduled_time: booking.scheduled_at?.split("T")[1]?.substring(0, 5) || "",
       duration_minutes: booking.duration_minutes || 60,
       price: parseFloat(booking.total_amount || booking.subtotal || 0),
-      status: booking.status === "confirmed" ? APPOINTMENT_STATUS.BOOKED : booking.status === "in_progress" ? APPOINTMENT_STATUS.STARTED : booking.status === "completed" ? APPOINTMENT_STATUS.COMPLETED : booking.status === "cancelled" ? APPOINTMENT_STATUS.CANCELLED : DEFAULT_APPOINTMENT_STATUS,
+      status,
       created_by: booking.created_by || "",
       created_date: booking.created_at || new Date().toISOString(),
       location_type: booking.location_type,
@@ -4674,6 +4436,7 @@ export class MockProviderApi implements ProviderApi {
       qr_code_expires_at: booking.qr_code_expires_at,
       qr_code_verified: booking.qr_code_verified,
       otp_enabled: booking.otp_enabled !== false, // Default to true if not set
+      ...(db_status !== undefined ? { db_status } : {}),
     } as Appointment;
   }
 
@@ -4841,20 +4604,34 @@ export class MockProviderApi implements ProviderApi {
 
   // Print Methods
   async getAppointmentPrintData(appointmentId: string): Promise<any> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const bookingId = appointmentId.includes("-svc-")
+      ? appointmentId.split("-svc-")[0]!
+      : appointmentId;
     const appointment = await this.getAppointment(appointmentId);
-    
-    return new Promise((resolve) =>
-      setTimeout(
-        () =>
-          resolve({
-            appointment,
-            print_date: new Date().toISOString(),
-            business_name: mockProvider.business_name,
-            format: "pdf",
-          }),
-        200
-      )
-    );
+    const res = (await fetcher.get<{ data: Record<string, unknown> }>(
+      `/api/provider/bookings/${bookingId}/receipt`
+    )) as { data?: Record<string, unknown> };
+    const receipt = (res && res.data) || {};
+    const providerBlock = receipt.provider as { name?: string } | undefined;
+    const businessName =
+      (providerBlock?.name as string) || (await this.getProvider())?.business_name || "";
+    const totalAmount = receipt.total_amount as number | undefined;
+    const invoiceNumber = receipt.invoice_number as string | undefined;
+    return {
+      appointment: {
+        ...appointment,
+        ref_number: invoiceNumber ?? appointment.ref_number,
+        price:
+          typeof totalAmount === "number" && !Number.isNaN(totalAmount)
+            ? totalAmount
+            : appointment.price,
+      },
+      receipt,
+      print_date: new Date().toISOString(),
+      business_name: businessName,
+      format: "pdf",
+    };
   }
 
   // Marketing Campaigns
@@ -4931,4 +4708,4 @@ export class MockProviderApi implements ProviderApi {
 }
 
 // Export singleton instance
-export const providerApi: ProviderApi = new MockProviderApi();
+export const providerApi: ProviderApi = new ProviderApiClient();

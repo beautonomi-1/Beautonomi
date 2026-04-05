@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { BookingState, BookingStep } from "./booking-flow";
 import { formatCurrency } from "@/lib/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface BookingActionBarProps {
   bookingState: BookingState;
@@ -21,6 +23,8 @@ export default function BookingActionBar({
   onNext,
   onBack: _onBack,
 }: BookingActionBarProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const totals = useMemo(() => {
     // For group bookings, calculate from participants
     const servicesTotal = bookingState.isGroupBooking && bookingState.groupParticipants
@@ -58,7 +62,7 @@ export default function BookingActionBar({
     const serviceFeePercentage = bookingState.serviceFeePercentage || 0;
     const tipAmount = bookingState.tipAmount || 0;
     const total = subtotalAfterDiscounts + taxAmount + serviceFeeAmount + tipAmount;
-    const currency = bookingState.selectedServices[0]?.currency || "ZAR";
+    const currency = bookingState.selectedServices[0]?.currency || tenantCurrency;
     
     return {
       servicesTotal,
@@ -76,7 +80,7 @@ export default function BookingActionBar({
       total,
       currency,
     };
-  }, [bookingState]);
+  }, [bookingState, tenantCurrency]);
 
   if (currentStep === "payment") {
     return null; // Payment step handles its own action bar

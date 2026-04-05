@@ -7,6 +7,57 @@ import {
   CreateTransferRecipientRequest,
 } from "@/lib/payments/paystack-complete";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+
+/**
+ * When we have a DB row for this Paystack recipient, ensure its provider is on the Host tenant.
+ */
+async function tenantGuardForRecipient(
+  request: Request,
+  tenantId: string,
+  id: string,
+): Promise<Response | null> {
+  const supabase = await getSupabaseServer(request);
+  const { data: byCode } = await supabase
+    .from("provider_payout_accounts")
+    .select("provider_id")
+    .eq("recipient_code", id)
+    .maybeSingle();
+  let providerId = (byCode as { provider_id?: string } | null)?.provider_id;
+  if (!providerId && /^\d+$/.test(id)) {
+    const { data: byRid } = await supabase
+      .from("provider_payout_accounts")
+      .select("provider_id")
+      .eq("recipient_id", Number(id))
+      .maybeSingle();
+    providerId = (byRid as { provider_id?: string } | null)?.provider_id;
+  }
+  if (!providerId) return null;
+  const { data: prov } = await supabase
+    .from("providers")
+    .select("tenant_id")
+    .eq("id", providerId)
+    .maybeSingle();
+  if (
+    !resourceTenantMatchesHostTenant(
+      tenantId,
+      (prov as { tenant_id?: string | null } | null)?.tenant_id,
+    )
+  ) {
+    return NextResponse.json(
+      {
+        data: null,
+        error: {
+          message: "Recipient is not in this market.",
+          code: "TENANT_MISMATCH",
+        },
+      },
+      { status: 403 },
+    );
+  }
+  return null;
+}
 
 /**
  * GET /api/paystack/transfer-recipients/[id]
@@ -25,8 +76,12 @@ export async function GET(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
-    const response = await fetchTransferRecipient(id);
+    const tenantBlock = await tenantGuardForRecipient(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
+    const response = await fetchTransferRecipient(id, { tenantId });
 
     return NextResponse.json({
       data: response.data,
@@ -64,7 +119,11 @@ export async function PUT(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
+    const tenantBlock = await tenantGuardForRecipient(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
     const body = await request.json();
     const updates: Partial<CreateTransferRecipientRequest> = {};
 
@@ -75,10 +134,10 @@ export async function PUT(
     if (body.email) updates.email = body.email;
     if (body.metadata) updates.metadata = body.metadata;
 
-    const response = await updateTransferRecipient(id, updates);
+    const response = await updateTransferRecipient(id, updates, { tenantId });
 
     // Update database
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     const accountNumber = response.data.details.account_number || "";
     const last4 = accountNumber ? accountNumber.slice(-4) : null;
     await (supabase.from("provider_payout_accounts") as any)
@@ -127,11 +186,15 @@ export async function DELETE(
       );
     }
 
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const { id } = await params;
-    await deleteTransferRecipient(id);
+    const tenantBlock = await tenantGuardForRecipient(request, tenantId, id);
+    if (tenantBlock) return tenantBlock;
+
+    await deleteTransferRecipient(id, { tenantId });
 
     // Update database
-    const supabase = await getSupabaseServer();
+    const supabase = await getSupabaseServer(request);
     await (supabase.from("provider_payout_accounts") as any)
       .update({
         active: false,

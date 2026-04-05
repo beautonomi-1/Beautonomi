@@ -20,9 +20,12 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 
 interface Participant {
   id: string;
@@ -90,7 +93,7 @@ export default function GroupBookingsScreen() {
   const [editForm, setEditForm] = useState({ date: "", time: "", duration: "", notes: "", maxParticipants: "" });
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
-  const { data: groupData, loading, refresh } = useApi<GroupBookingsResponse>(
+  const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=50${statusParam}`
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
@@ -197,6 +200,11 @@ export default function GroupBookingsScreen() {
       Alert.alert("Required", "Participant name is required");
       return;
     }
+    const phoneErr = validateE164Phone(participantForm.phone);
+    if (phoneErr) {
+      Alert.alert("Invalid phone", phoneErr);
+      return;
+    }
     const { error } = await addParticipant(
       `/api/provider/group-bookings/${selectedGroup.id}/participants`,
       {
@@ -258,6 +266,8 @@ export default function GroupBookingsScreen() {
 
       {loading && !groups.length ? (
         <SkeletonList rows={4} />
+      ) : groupError && !groups.length ? (
+        <ErrorState message={groupError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState icon="people-outline" title="No group bookings" description="Group sessions will appear here" />
       ) : (
@@ -536,14 +546,12 @@ export default function GroupBookingsScreen() {
             placeholder="Client name"
             placeholderTextColor="#9ca3af"
           />
-          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Phone</Text>
-          <TextInput
-            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-            value={participantForm.phone}
-            onChangeText={(t) => setParticipantForm((p) => ({ ...p, phone: t }))}
-            placeholder="Optional"
-            placeholderTextColor="#9ca3af"
-            keyboardType="phone-pad"
+          <E164PhoneField
+            label="Phone"
+            valueE164={participantForm.phone}
+            onChangeE164={(e164) => setParticipantForm((p) => ({ ...p, phone: e164 }))}
+            muted
+            accessibilityLabel="Participant phone"
           />
           <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Email</Text>
           <TextInput

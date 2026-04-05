@@ -3,6 +3,13 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
+import {
+  computeCancellationRefundAmount,
+  describeCancellationRefund,
+  roundCurrency2,
+} from "@/lib/bookings/refund-processing";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_BOOKING_CANCELLED } from "@/lib/analytics/amplitude/types";
 
@@ -22,10 +29,12 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const adminSupabase = getSupabaseAdmin();
 
-    // Load booking (include version for conflict detection)
+    // Load booking (include version + pricing for cancellation fee / total validation trigger)
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
-      .select('id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number')
+      .select(
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, currency, cancellation_fee'
+      )
       .eq('id', bookingId)
       .single();
 
@@ -48,13 +57,22 @@ export async function POST(
       );
     }
 
-    // Check if booking is already cancelled
-    if (booking.status === 'cancelled') {
+    // Terminal / in-service states: no self-serve cancel (matches customer app)
+    const noSelfServeCancel = new Set([
+      "cancelled",
+      "completed",
+      "no_show",
+      "in_progress",
+      "started",
+    ]);
+    if (noSelfServeCancel.has(booking.status as string)) {
       return handleApiError(
-        new Error("Booking already cancelled"),
-        "This booking has already been cancelled",
-        "ALREADY_CANCELLED",
-        400
+        new Error("Booking cannot be cancelled online"),
+        booking.status === "cancelled"
+          ? "This booking has already been cancelled"
+          : "This booking can no longer be cancelled online. Please contact your provider.",
+        booking.status === "cancelled" ? "ALREADY_CANCELLED" : "CANCELLATION_BLOCKED",
+        booking.status === "cancelled" ? 400 : 403
       );
     }
 
@@ -74,7 +92,7 @@ export async function POST(
       );
     }
 
-    // Check if cancellation is allowed
+    // Late window: allow cancel here (wallet refund follows policy); reschedule routes keep forbidLateSelfService default
     const checkResult = canCancelBooking(
       {
         id: booking.id,
@@ -82,7 +100,9 @@ export async function POST(
         scheduled_at: booking.scheduled_at,
         location_type: booking.location_type as 'at_salon' | 'at_home',
       },
-      policy
+      policy,
+      new Date(),
+      { forbidLateSelfService: false }
     );
 
     if (!checkResult.allowed) {
@@ -112,6 +132,41 @@ export async function POST(
       );
     }
 
+    type FinancialBooking = {
+      subtotal?: number | null;
+      discount_amount?: number | null;
+      tax_amount?: number | null;
+      service_fee_amount?: number | null;
+      travel_fee?: number | null;
+      tip_amount?: number | null;
+      total_amount?: number | null;
+      currency?: string | null;
+    };
+    const bFin = booking as FinancialBooking;
+    const { data: provForCurrency } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", booking.provider_id)
+      .maybeSingle();
+    const tenantRegionForCancel = provForCurrency?.tenant_id
+      ? await getTenantRegionConfig(provForCurrency.tenant_id)
+      : null;
+    const cancelCurrency =
+      (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
+    const bookingTotal = Number(bFin.total_amount ?? 0);
+    const isLate = checkResult.isLateCancellation === true;
+    const refundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
+    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - refundAmount));
+    const newTotalAmount = roundCurrency2(
+      Number(bFin.subtotal ?? 0) -
+        Number(bFin.discount_amount ?? 0) +
+        Number(bFin.tax_amount ?? 0) +
+        Number(bFin.service_fee_amount ?? 0) +
+        Number(bFin.travel_fee ?? 0) +
+        Number(bFin.tip_amount ?? 0) -
+        cancellationFeeApplied
+    );
+
     const currentVersion = (booking as BookingRow).version ?? 0;
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from('bookings')
@@ -120,6 +175,8 @@ export async function POST(
         cancelled_at: new Date().toISOString(),
         cancelled_by: user.id,
         cancellation_reason: body.reason || 'Customer cancellation',
+        cancellation_fee: cancellationFeeApplied,
+        total_amount: newTotalAmount,
         version: currentVersion + 1, // Increment version
         updated_at: new Date().toISOString(),
       })
@@ -139,6 +196,9 @@ export async function POST(
         cancelled_by: user.id,
         policy_applied: policy.id,
         grace_window_used: checkResult.allowed && new Date(booking.created_at).getTime() + policy.grace_window_minutes * 60000 >= new Date().getTime(),
+        is_late_cancellation: isLate,
+        cancellation_fee_applied: cancellationFeeApplied,
+        wallet_refund_amount: refundAmount,
       },
       created_by: user.id,
     });
@@ -165,6 +225,8 @@ export async function POST(
             cancelled_by: "customer",
             cancellation_reason: body.reason || 'Customer cancellation',
             policy_applied: policy.id,
+            is_late_cancellation: isLate,
+            cancellation_fee_applied: cancellationFeeApplied,
           },
           created_by: user.id,
           created_by_name: userData?.full_name || userData?.email || "Customer",
@@ -185,11 +247,13 @@ export async function POST(
 
     // Send cancellation notification
     const { sendCancellationNotification } = await import('@/lib/bookings/notifications');
-    const refundInfo = policy.late_cancellation_type === 'full_refund' 
-      ? 'Full refund will be processed'
-      : policy.late_cancellation_type === 'partial_refund'
-      ? 'Partial refund will be processed'
-      : 'No refund applicable per cancellation policy';
+    const refundInfo = describeCancellationRefund(
+      policy,
+      isLate,
+      refundAmount,
+      bookingTotal,
+      cancelCurrency
+    );
     
     await sendCancellationNotification(bookingId, {
       cancelledBy: 'customer',
@@ -254,32 +318,23 @@ export async function POST(
       console.error('Error matching waitlist on cancellation:', waitlistError);
     }
 
-    // Process refunds if applicable (based on late_cancellation_type)
-    if (checkResult.allowed && policy.late_cancellation_type !== 'no_refund') {
+    // Wallet credit (uses pre-adjustment total so percentages match what the customer paid)
+    if (checkResult.allowed) {
       try {
-        const { processBookingRefund } = await import('@/lib/bookings/refund-processing');
-        const { data: bookingForRefund } = await supabase
-          .from('bookings')
-          .select('total_amount, currency')
-          .eq('id', bookingId)
-          .single();
+        const { processBookingRefund } = await import("@/lib/bookings/refund-processing");
+        const refundResult = await processBookingRefund(
+          bookingId,
+          bookingTotal,
+          cancelCurrency,
+          policy,
+          { isLateCancellation: isLate }
+        );
 
-        if (bookingForRefund) {
-          const refundResult = await processBookingRefund(
-            bookingId,
-            bookingForRefund.total_amount,
-            bookingForRefund.currency || 'ZAR',
-            policy
-          );
-
-          if (refundResult.success && refundResult.amount && refundResult.amount > 0) {
-            // Refund processed successfully
-            console.log(`Refund processed: ${refundResult.amount} ${bookingForRefund.currency}`);
-          }
+        if (refundResult.success && refundResult.amount && refundResult.amount > 0) {
+          console.log(`Refund processed: ${refundResult.amount} ${bFin.currency}`);
         }
       } catch (refundError) {
-        // Log but don't fail cancellation if refund fails
-        console.error('Error processing refund during cancellation:', refundError);
+        console.error("Error processing refund during cancellation:", refundError);
       }
     }
 

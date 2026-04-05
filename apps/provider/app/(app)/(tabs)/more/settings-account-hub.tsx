@@ -22,8 +22,6 @@ type SettingsItem = {
   href: string;
   /** Native screen route (all settings are native). */
   mobileRoute?: string;
-  /** Open this path in the in-app browser (web portal). Used for web-only settings. */
-  webPath?: string;
   isUpgrade?: boolean;
   /** Special action instead of navigation (e.g. signOut) */
   action?: "signOut";
@@ -193,13 +191,6 @@ export default function SettingsAccountHubScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (item.action === "signOut") {
         handleSignOut();
-        return;
-      }
-      if (item.webPath) {
-        router.push({
-          pathname: "/(app)/(tabs)/more/portal",
-          params: { path: item.webPath, title: item.title },
-        } as never);
         return;
       }
       if (item.mobileRoute) {

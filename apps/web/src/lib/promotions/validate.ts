@@ -9,6 +9,7 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { percentOf } from "@beautonomi/utils";
 
 export interface PromoValidationInput {
   code: string;
@@ -165,7 +166,7 @@ export async function validatePromoCode(
   let discountAmount = 0;
   if (amount > 0) {
     if (promo.type === "percentage") {
-      discountAmount = (amount * Number(promo.value ?? 0)) / 100;
+      discountAmount = percentOf(amount, Number(promo.value ?? 0));
     } else {
       discountAmount = Number(promo.value ?? 0);
     }

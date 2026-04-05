@@ -5,6 +5,7 @@
 
 import { describe, it, expect } from "vitest";
 import crypto from "crypto";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // ─── Paystack webhook signature verification (unit) ─────────────────────────
 
@@ -101,7 +102,7 @@ describe("Charge saved card flow", () => {
       payment_method_id: "pm-uuid-123",
       amount: 150,
       email: "customer@example.com",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     };
 
     expect(validParams.payment_method_id).toBeTruthy();
@@ -116,10 +117,10 @@ describe("Charge saved card flow", () => {
     }
   });
 
-  it("defaults currency to ZAR when not provided", () => {
+  it("defaults currency to last-resort when not provided", () => {
     const params = { payment_method_id: "pm-123", amount: 100, email: "a@b.com" };
-    const currency = (params as Record<string, any>).currency || "ZAR";
-    expect(currency).toBe("ZAR");
+    const currency = (params as Record<string, any>).currency || LAST_RESORT_CURRENCY;
+    expect(currency).toBe(LAST_RESORT_CURRENCY);
   });
 });
 

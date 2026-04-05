@@ -202,7 +202,8 @@ export async function POST(request: NextRequest) {
     await supabase.auth.signOut();
 
     return successResponse({
-      message: "Your account deletion request has been submitted. Your account will be permanently deleted in accordance with our data retention policies.",
+      message:
+        "Your account has been deleted and you have been signed out. Thank you for using Beautonomi.",
     });
   } catch (error) {
     return handleApiError(error, "Failed to delete account");

@@ -13,7 +13,7 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type MessagingChannel = "email" | "sms" | "whatsapp";
+export type MessagingChannel = "email" | "sms" | "whatsapp" | "notification";
 export type EmailProvider = "sendgrid" | "mailchimp";
 
 export interface SendCampaignOptions {
@@ -150,10 +150,77 @@ export async function sendMessage(
     }
   }
   
+  if (channel === "notification") {
+    return await sendViaPushNotification(options);
+  }
+
   return {
     success: false,
     error: `Unsupported channel: ${channel}`,
   };
+}
+
+/**
+ * Send push notification via OneSignal REST API.
+ * `options.to` should be the user_id (external_id) or a OneSignal player_id.
+ */
+async function sendViaPushNotification(
+  options: SendCampaignOptions
+): Promise<SendCampaignResult> {
+  const appId = process.env.ONESIGNAL_APP_ID;
+  const apiKey = process.env.ONESIGNAL_REST_API_KEY;
+
+  if (!appId || !apiKey) {
+    return {
+      success: false,
+      error: "OneSignal is not configured. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY.",
+    };
+  }
+
+  try {
+    const recipients = Array.isArray(options.to) ? options.to : [options.to];
+
+    const body: Record<string, unknown> = {
+      app_id: appId,
+      contents: { en: options.content },
+      headings: { en: options.subject || options.fromName || "New message" },
+    };
+
+    // Use external_user_ids (user UUIDs) if the recipient looks like a UUID,
+    // otherwise fall back to player_ids.
+    const isUuid = (s: string) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+
+    if (recipients.every(isUuid)) {
+      body.include_aliases = { external_id: recipients };
+      body.target_channel = "push";
+    } else {
+      body.include_player_ids = recipients;
+    }
+
+    const response = await fetch("https://onesignal.com/api/v1/notifications", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Basic ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      return { success: false, error: `OneSignal error: ${errText}` };
+    }
+
+    const result = await response.json() as { id?: string; errors?: unknown };
+    if (result.errors) {
+      return { success: false, error: `OneSignal: ${JSON.stringify(result.errors)}` };
+    }
+
+    return { success: true, messageId: result.id, provider: "onesignal" };
+  } catch (err: any) {
+    return { success: false, error: err?.message || "Push notification failed" };
+  }
 }
 
 // Email Provider Implementations

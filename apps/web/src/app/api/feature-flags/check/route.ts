@@ -1,5 +1,6 @@
-import { getSupabaseServer } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
+import { isFeatureEnabledServer, checkMultipleFeaturesServer } from '@/lib/server/feature-flags';
 
 /**
  * GET /api/feature-flags/check?key=feature_key
@@ -7,7 +8,6 @@ import { NextRequest, NextResponse } from 'next/server';
  */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
     const { searchParams } = new URL(request.url);
     const featureKey = searchParams.get('key');
 
@@ -18,22 +18,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Check if feature is enabled
-    const { data: featureFlag, error } = await supabase
-      .from('feature_flags')
-      .select('enabled, feature_key')
-      .eq('feature_key', featureKey)
-      .single();
-
-    if (error || !featureFlag) {
-      // If feature doesn't exist, default to false
-      return NextResponse.json({ enabled: false }, { status: 200 });
+    let tenantId: string | null = null;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch {
+      tenantId = null;
     }
 
-    return NextResponse.json(
-      { enabled: featureFlag.enabled },
-      { status: 200 }
-    );
+    const enabled = await isFeatureEnabledServer(featureKey, tenantId);
+
+    return NextResponse.json({ enabled }, { status: 200 });
   } catch (error) {
     console.error('Unexpected error:', error);
     return NextResponse.json(
@@ -50,7 +44,6 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await getSupabaseServer();
     const body = await request.json();
     const { keys } = body;
 
@@ -61,26 +54,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch all requested feature flags
-    const { data: featureFlags, error } = await supabase
-      .from('feature_flags')
-      .select('feature_key, enabled')
-      .in('feature_key', keys);
-
-    if (error) {
-      console.error('Error fetching feature flags:', error);
-      return NextResponse.json(
-        { error: 'Failed to check feature flags' },
-        { status: 500 }
-      );
+    let tenantId: string | null = null;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch {
+      tenantId = null;
     }
 
-    // Build response object with all requested keys
-    const result: Record<string, boolean> = {};
-    keys.forEach((key: string) => {
-      const flag = featureFlags?.find((f: { feature_key?: string; enabled?: boolean }) => f.feature_key === key);
-      result[key] = flag?.enabled ?? false;
-    });
+    const result = await checkMultipleFeaturesServer(keys as string[], tenantId);
 
     return NextResponse.json({ features: result }, { status: 200 });
   } catch (error) {

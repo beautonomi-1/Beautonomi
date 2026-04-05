@@ -23,7 +23,7 @@ export async function GET(
     // Verify booking belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, provider_id")
+      .select("id, provider_id, tenant_id")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -32,8 +32,8 @@ export async function GET(
       return badRequestResponse("Booking not found or not accessible");
     }
 
-    // Get all payments
-    const { data: payments, error: paymentsError } = await supabase
+    const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
+    let paymentsQuery = supabase
       .from("booking_payments")
       .select(`
         *,
@@ -42,8 +42,14 @@ export async function GET(
           full_name
         )
       `)
-      .eq("booking_id", bookingId)
-      .order("created_at", { ascending: false });
+      .eq("booking_id", bookingId);
+    if (bookingTenantId) {
+      paymentsQuery = paymentsQuery.eq("tenant_id", bookingTenantId);
+    }
+    const { data: payments, error: paymentsError } = await paymentsQuery.order(
+      "created_at",
+      { ascending: false },
+    );
 
     if (paymentsError) {
       throw paymentsError;

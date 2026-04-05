@@ -1,7 +1,10 @@
-import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { normalizePublicStaffIdForDatabase } from "@beautonomi/utils";
+import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
 
 const createWaitlistSchema = z.object({
   provider_id: z.string().uuid(),
@@ -9,7 +12,7 @@ const createWaitlistSchema = z.object({
   customer_email: z.string().email().optional(),
   customer_phone: z.string().optional(),
   service_id: z.string().uuid().optional(),
-  staff_id: z.string().uuid().optional(),
+  staff_id: z.preprocess((v) => (v === "" ? undefined : v), zPublicBookingStaffIdOptional),
   preferred_date: z.string().date().optional(),
   preferred_time_start: z.string().regex(/^\d{2}:\d{2}$/).optional(), // HH:MM format
   preferred_time_end: z.string().regex(/^\d{2}:\d{2}$/).optional(), // HH:MM format
@@ -22,6 +25,14 @@ const createWaitlistSchema = z.object({
  * Add self to waitlist (public endpoint, no auth required)
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkPublicMutationRateLimit(request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } },
+    );
+  }
+
   try {
     const body = await request.json();
     const validationResult = createWaitlistSchema.safeParse(body);
@@ -36,6 +47,9 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validationResult.data;
+    const staffForDb = data.staff_id
+      ? normalizePublicStaffIdForDatabase(data.staff_id).dbStaffId
+      : null;
     const supabase = await getSupabaseServer();
 
     // Check if provider allows online waitlist
@@ -95,7 +109,7 @@ export async function POST(request: NextRequest) {
         customer_email: data.customer_email || null,
         customer_phone: data.customer_phone || null,
         service_id: data.service_id || null,
-        staff_id: data.staff_id || null,
+        staff_id: staffForDb,
         preferred_date: data.preferred_date || null,
         preferred_time_start: data.preferred_time_start || null,
         preferred_time_end: data.preferred_time_end || null,

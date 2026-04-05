@@ -80,7 +80,7 @@ export default function ProviderReviewsPage() {
     try {
       setIsResponding(true);
       const endpoint = `/api/provider/reviews/${reviewId}/respond`;
-      await fetcher[isEdit ? "PATCH" : "POST"](endpoint, {
+      await fetcher[isEdit ? "patch" : "post"](endpoint, {
         response: responseText.trim(),
       });
 

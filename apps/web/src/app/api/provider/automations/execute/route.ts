@@ -24,11 +24,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 export async function POST(request: NextRequest) {
   try {
-    // Verify this is called from an authorized source (cron job, background service)
     const authHeader = request.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET || process.env.INTERNAL_API_SECRET;
     
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+    if (!cronSecret) {
+      console.error("CRON_SECRET / INTERNAL_API_SECRET not configured — refusing automation execution");
+      return handleApiError(
+        new Error("Server misconfiguration"),
+        "Service unavailable",
+        "SERVICE_UNAVAILABLE",
+        503
+      );
+    }
+
+    if (authHeader !== `Bearer ${cronSecret}`) {
       return handleApiError(
         new Error("Unauthorized - This endpoint requires cron secret"),
         "Unauthorized",
@@ -122,11 +131,16 @@ export async function POST(request: NextRequest) {
               shouldExecute.context
             );
 
+            const channel = automation.action_type as "email" | "sms" | "whatsapp" | "notification";
+            // For push notifications, use the customer's user_id (external_id) rather than phone/email.
+            const contactTo =
+              channel === "notification" ? customer.id : customer.contact;
+
             const result = await sendMessage(
               automation.provider_id,
-              automation.action_type as "email" | "sms" | "whatsapp",
+              channel,
               {
-                to: customer.contact,
+                to: contactTo,
                 subject: personalizedSubject || undefined,
                 content: personalizedContent,
                 fromName: messageContent.fromName,
@@ -184,7 +198,24 @@ async function shouldExecuteAutomation(
   automation: any,
   now: Date
 ): Promise<{ shouldRun: boolean; context?: any }> {
-  const triggerType = automation.trigger_type;
+  // Normalise legacy / mobile trigger names to the canonical engine names.
+  const TRIGGER_ALIASES: Record<string, string> = {
+    no_show: "appointment_no_show",
+    birthday: "client_birthday",
+    booking_confirmed: "booking_completed", // treat confirmed the same as completed follow-up
+    appointment_confirmation: "booking_completed",
+    inactive: "client_inactive",
+    win_back: "client_inactive",
+    rescheduled: "appointment_rescheduled",
+    milestone: "visit_milestone",
+    anniversary: "client_anniversary",
+    referral: "referral_received",
+    seasonal: "seasonal_promotion",
+    custom: "seasonal_promotion", // fallback for custom: send to active clients
+  };
+
+  const rawTrigger = automation.trigger_type;
+  const triggerType = TRIGGER_ALIASES[rawTrigger] ?? rawTrigger;
   const triggerConfig = automation.trigger_config || {};
   const delayMinutes = automation.delay_minutes || 0;
 

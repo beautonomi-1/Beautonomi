@@ -1,12 +1,16 @@
 "use client";
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { formatCurrency } from "@/lib/locale/currency";
 
 type Service = {
   title: string;
   duration: string;
-  price: string;
+  /** Minor units / display amount as number for tenant currency formatting */
+  priceAmount: number;
   category: string;
   emoji?: string;
   featured?: boolean;
@@ -26,14 +30,14 @@ const serviceCategories: ServiceCategory[] = [
       {
         title: "SOAK OFF (No Other Treatment)",
         duration: "30 min",
-        price: "ZAR 85",
+        priceAmount: 85,
         category: "SOAK OFF",
         emoji: "💧",
       },
       {
         title: "SOAK OFF (Booked With Treatments)",
         duration: "30 min",
-        price: "ZAR 80",
+        priceAmount: 80,
         category: "SOAK OFF",
         emoji: "💦",
       },
@@ -46,7 +50,7 @@ const serviceCategories: ServiceCategory[] = [
       {
         title: "Nail Consultation",
         duration: "15 min",
-        price: "ZAR 50",
+        priceAmount: 50,
         category: "CONSULTATION",
         emoji: "✍️",
       },
@@ -59,14 +63,14 @@ const serviceCategories: ServiceCategory[] = [
       {
         title: "Gel Removal (Feet)",
         duration: "30 min",
-        price: "ZAR 85",
+        priceAmount: 85,
         category: "GEL NAILS",
         emoji: "😍",
       },
       {
         title: "Royal Treatment Gel Overlay (Feet)",
         duration: "1 hr, 15 min",
-        price: "ZAR 360",
+        priceAmount: 360,
         category: "GEL NAILS",
         emoji: "😍",
         featured: true,
@@ -74,14 +78,14 @@ const serviceCategories: ServiceCategory[] = [
       {
         title: "Rubber Base/Supreme Base Removal (Hands)",
         duration: "30 min",
-        price: "ZAR 80",
+        priceAmount: 80,
         category: "GEL NAILS",
         emoji: "😍",
       },
       {
         title: "Rubber Base Overlay Fill With Gel Polish (Hands)",
         duration: "1 hr, 10 min",
-        price: "ZAR 290",
+        priceAmount: 290,
         category: "GEL NAILS",
         emoji: "😍",
       },
@@ -94,14 +98,14 @@ const serviceCategories: ServiceCategory[] = [
       {
         title: "Classic Manicure",
         duration: "45 min",
-        price: "ZAR 150",
+        priceAmount: 150,
         category: "MANI & PEDI",
         emoji: "💖",
       },
       {
         title: "Classic Pedicure",
         duration: "1 hr",
-        price: "ZAR 200",
+        priceAmount: 200,
         category: "MANI & PEDI",
         emoji: "💖",
       },
@@ -110,6 +114,13 @@ const serviceCategories: ServiceCategory[] = [
 ];
 
 const PartnerServices: React.FC = () => {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency =
+    bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const fmtPrice = useMemo(
+    () => (amount: number) => formatCurrency(amount, tenantCurrency),
+    [tenantCurrency],
+  );
   const [activeCategory, setActiveCategory] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -181,7 +192,7 @@ const PartnerServices: React.FC = () => {
                   <h3 className="text-lg font-medium">{service.title}</h3>
                 </div>
                 <p className="text-gray-500 text-sm mb-2">{service.duration}</p>
-                <p className="text-lg font-semibold">{service.price}</p>
+                <p className="text-lg font-semibold">{fmtPrice(service.priceAmount)}</p>
               </div>
               <Link href="/booking">
                 <button className="w-full md:w-auto px-6 py-2 bg-gray-900 text-white rounded-full hover:bg-gray-800 transition-colors text-sm font-medium">

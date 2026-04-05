@@ -4,7 +4,12 @@ import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const processRefundSchema = z.object({
   refund_amount: z.number().positive(),
@@ -28,6 +33,7 @@ export async function GET(
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const { data: refund, error } = await supabase
@@ -44,19 +50,21 @@ export async function GET(
         refunded_by,
         status,
         created_at,
-        booking:bookings(
+        booking:bookings!inner(
           id,
           booking_number,
           status,
           total_amount,
           customer_id,
           provider_id,
+          tenant_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
           provider:providers!bookings_provider_id_fkey(id, business_name)
         ),
         refunded_by_user:users!payment_transactions_refunded_by_fkey(id, full_name, email)
       `)
       .eq("id", id)
+      .eq("booking.tenant_id", tenantId)
       .single();
 
     if (error || !refund) {
@@ -87,6 +95,7 @@ export async function POST(
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -127,19 +136,34 @@ export async function POST(
       );
     }
 
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("id, customer_id, booking_number, currency")
-      .eq("id", transaction.booking_id)
-      .single();
+    const loaded = await fetchBookingInAdminTenant(
+      supabase,
+      transaction.booking_id,
+      tenantId,
+      "id, customer_id, booking_number, currency, tenant_id, provider_id"
+    );
+    if ("error" in loaded) return loaded.error;
 
-    if (!booking) {
-      return notFoundResponse("Booking not found");
-    }
+    const bookingRow = loaded.booking as {
+      customer_id: string;
+      booking_number: string;
+      currency?: string;
+      tenant_id?: string | null;
+      provider_id?: string | null;
+    };
+    const effectiveTenantId = bookingRow.tenant_id ?? tenantId;
+    const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    const customerId = (booking as { customer_id: string }).customer_id;
-    const bookingNumber = (booking as { booking_number: string }).booking_number;
-    const currency = (booking as { currency?: string }).currency || "ZAR";
+    const customerId = bookingRow.customer_id;
+    const bookingNumber = bookingRow.booking_number;
+    const currency = bookingRow.currency || lastResortCurrency;
+    const providerId = bookingRow.provider_id ?? null;
+
+    const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: bookingRow.tenant_id ?? tenantId,
+      provider_id: providerId,
+    });
 
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
     const { error: walletError } = await rpc("wallet_credit_admin", {
@@ -149,6 +173,7 @@ export async function POST(
       p_description: `Refund for booking ${bookingNumber}: ${refund_reason}`,
       p_reference_id: id,
       p_reference_type: "refund",
+      p_tenant_id: financeTenantId,
     });
 
     if (walletError) {
@@ -188,6 +213,19 @@ export async function POST(
       refund_method: "store_credit",
       status: "completed",
       created_by: user.id,
+    });
+
+    await supabase.from("finance_transactions").insert({
+      tenant_id: financeTenantId,
+      booking_id: transaction.booking_id,
+      provider_id: providerId,
+      transaction_type: "refund",
+      amount: -refund_amount,
+      fees: 0,
+      commission: 0,
+      net: -refund_amount,
+      description: `Refund for booking ${bookingNumber}: ${refund_reason}`,
+      created_at: new Date().toISOString(),
     });
 
     await writeAuditLog({

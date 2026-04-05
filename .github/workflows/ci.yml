@@ -10,20 +10,28 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Faster, deterministic Turbo in CI; less noise; Next telemetry off in automated runs.
+env:
+  TURBO_DAEMON: "false"
+  TURBO_TELEMETRY_DISABLED: "1"
+  NEXT_TELEMETRY_DISABLED: "1"
+  CI: "true"
+
 jobs:
   install:
     name: Install Dependencies
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -43,16 +51,17 @@ jobs:
     name: TypeScript Check
     needs: install
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Restore node_modules
         uses: actions/cache/restore@v4
@@ -64,35 +73,24 @@ jobs:
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Build packages
-        run: pnpm --filter './packages/*' build
-
-      - name: Typecheck packages
-        run: pnpm --filter './packages/*' typecheck
-
-      - name: Typecheck web
-        run: pnpm --filter web typecheck
-
-      - name: Typecheck customer
-        run: pnpm --filter customer typecheck
-
-      - name: Typecheck provider
-        run: pnpm --filter provider typecheck
+      - name: Typecheck (turbo)
+        run: pnpm exec turbo run typecheck --filter="./packages/*" --filter=web --filter=customer --filter=provider
 
   lint:
     name: Lint
     needs: install
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Restore node_modules
         uses: actions/cache/restore@v4
@@ -104,22 +102,14 @@ jobs:
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Build packages
-        run: pnpm --filter './packages/*' build
-
-      - name: Lint web
-        run: pnpm --filter web lint
-
-      - name: Lint customer
-        run: pnpm --filter customer lint
-
-      - name: Lint provider
-        run: pnpm --filter provider lint
+      - name: Lint (turbo)
+        run: pnpm exec turbo run lint --filter=web --filter=customer --filter=provider
 
   build-web:
     name: Build Web App
     needs: [typecheck, lint]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
@@ -129,11 +119,11 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Restore node_modules
         uses: actions/cache/restore@v4
@@ -145,16 +135,28 @@ jobs:
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Build packages
-        run: pnpm --filter './packages/*' build
+      - name: Restore Turbo & Next.js compile cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .turbo
+            apps/web/.next/cache
+          key: ${{ runner.os }}-web-${{ hashFiles('pnpm-lock.yaml', 'turbo.json', 'apps/web/package.json', 'apps/web/next.config.mjs') }}
+          restore-keys: |
+            ${{ runner.os }}-web-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
+            ${{ runner.os }}-web-
 
-      - name: Build web
-        run: pnpm --filter web build
+      - name: Build web (turbo)
+        run: pnpm exec turbo run build --filter=web
+
+      - name: Check bundle size budget
+        run: pnpm --filter web check-bundle
 
   build-mobile:
     name: Build Mobile Apps (Typecheck)
     needs: [typecheck, lint]
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
@@ -164,11 +166,11 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Restore node_modules
         uses: actions/cache/restore@v4
@@ -180,31 +182,31 @@ jobs:
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
-      - name: Build packages
-        run: pnpm --filter './packages/*' build
+      - name: Build packages (turbo)
+        run: pnpm exec turbo run build --filter="./packages/*"
 
-      - name: Export customer app
-        run: pnpm --filter customer export
-        continue-on-error: true
+      # Validates app.json / plugins / env (no EAS binary export in this repo)
+      - name: Validate Expo config (customer)
+        run: pnpm --filter customer exec expo config --type public
 
-      - name: Export provider app
-        run: pnpm --filter provider export
-        continue-on-error: true
+      - name: Validate Expo config (provider)
+        run: pnpm --filter provider exec expo config --type public
 
-  test:
-    name: Test
+  security:
+    name: Dependency Audit
     needs: install
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9.15.0
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Restore node_modules
         uses: actions/cache/restore@v4
@@ -215,6 +217,38 @@ jobs:
             packages/*/node_modules
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Audit dependencies (high + critical)
+        run: pnpm audit --audit-level=high
+
+  test:
+    name: Test
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            tooling/*/node_modules
+          key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Run multi-tenant audits (strict tenant hints)
+        run: pnpm audit:multi-tenant:strict
 
       - name: Run tests
         run: pnpm test

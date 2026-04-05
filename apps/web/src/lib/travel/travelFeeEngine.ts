@@ -11,6 +11,7 @@
  */
 
 import { haversineDistanceKm } from "@/lib/geo/distance";
+import { roundCurrency } from "@beautonomi/utils";
 
 // ============================================================================
 // TYPES
@@ -403,7 +404,7 @@ export function computeTravelFee(
     );
     
     return {
-      fee: Math.min(Math.round(totalFee), rules.maximumFee || Infinity),
+      fee: Math.min(roundCurrency(totalFee), rules.maximumFee || Infinity),
       travelTimeMinutes: Math.round(travelTime),
       totalTravelTimeMinutes: Math.round(travelTime * 2),
       withinServiceArea: true,

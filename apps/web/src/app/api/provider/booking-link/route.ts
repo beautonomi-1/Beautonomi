@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getTenantDomainEnvironment } from "@/lib/tenant/tenant-domain-environment";
 import {
   requireRoleInApi,
   successResponse,
@@ -8,6 +9,21 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+
+function getRequestOrigin(request: NextRequest): string {
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const proto = forwardedProto === "http" ? "http" : "https";
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const host = (forwardedHost || request.headers.get("host") || "").trim();
+
+  if (host) {
+    return `${proto}://${host}`;
+  }
+
+  return process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+    "https://app.beautonomi.com";
+}
 
 /**
  * GET /api/provider/booking-link
@@ -33,7 +49,7 @@ export async function GET(request: NextRequest) {
 
     const { data: provider, error } = await supabase
       .from("providers")
-      .select("id, slug, business_name, online_booking_enabled")
+      .select("id, tenant_id, slug, business_name, online_booking_enabled")
       .eq("id", providerId)
       .single();
 
@@ -41,17 +57,50 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      (typeof request.url === "string" ? new URL(request.url).origin : null) ||
-      "https://app.beautonomi.com";
-    const bookingUrl = `${baseUrl}/book/${encodeURIComponent(provider.slug || provider.id)}`;
+    let baseUrl = getRequestOrigin(request);
+
+    // Prefer tenant primary domain for generated public links when available.
+    if (provider.tenant_id) {
+      const env = getTenantDomainEnvironment();
+      let domainRow: { hostname?: string } | null = null;
+
+      const { data: envDomain } = await supabase
+        .from("tenant_domains")
+        .select("hostname")
+        .eq("tenant_id", provider.tenant_id)
+        .eq("is_active", true)
+        .eq("is_primary", true)
+        .eq("environment", env)
+        .maybeSingle();
+      domainRow = envDomain as { hostname?: string } | null;
+
+      if (!domainRow?.hostname && env !== "production") {
+        const { data: prodDomain } = await supabase
+          .from("tenant_domains")
+          .select("hostname")
+          .eq("tenant_id", provider.tenant_id)
+          .eq("is_active", true)
+          .eq("is_primary", true)
+          .eq("environment", "production")
+          .maybeSingle();
+        domainRow = prodDomain as { hostname?: string } | null;
+      }
+
+      if (domainRow?.hostname) {
+        baseUrl = `https://${domainRow.hostname}`;
+      }
+    }
+
+    const slug = encodeURIComponent(provider.slug || provider.id);
+    const bookingUrl = `${baseUrl}/book/${slug}`;
+    const embedUrl = `${bookingUrl}?embed=1`;
 
     return successResponse({
       id: provider.id,
       slug: provider.slug || provider.id,
       url: bookingUrl,
-      embed_url: `${bookingUrl}?embed=1`,
+      embed_url: embedUrl,
+      script_url: `${baseUrl}/embed/booking-button.js`,
       business_name: provider.business_name,
       is_active: provider.online_booking_enabled ?? true,
       online_booking_enabled: provider.online_booking_enabled ?? true,
@@ -116,20 +165,52 @@ export async function PATCH(request: NextRequest) {
       .from("providers")
       .update(updateData)
       .eq("id", providerId)
-      .select("id, slug, business_name, online_booking_enabled")
+      .select("id, tenant_id, slug, business_name, online_booking_enabled")
       .single();
 
     if (error) throw error;
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      "https://app.beautonomi.com";
-    const bookingUrl = `${baseUrl}/book/${encodeURIComponent(provider.slug || provider.id)}`;
+    let baseUrl = getRequestOrigin(request);
+
+    if (provider.tenant_id) {
+      const env = getTenantDomainEnvironment();
+      let domainRow: { hostname?: string } | null = null;
+      const { data: envDomain } = await supabase
+        .from("tenant_domains")
+        .select("hostname")
+        .eq("tenant_id", provider.tenant_id)
+        .eq("is_active", true)
+        .eq("is_primary", true)
+        .eq("environment", env)
+        .maybeSingle();
+      domainRow = envDomain as { hostname?: string } | null;
+
+      if (!domainRow?.hostname && env !== "production") {
+        const { data: prodDomain } = await supabase
+          .from("tenant_domains")
+          .select("hostname")
+          .eq("tenant_id", provider.tenant_id)
+          .eq("is_active", true)
+          .eq("is_primary", true)
+          .eq("environment", "production")
+          .maybeSingle();
+        domainRow = prodDomain as { hostname?: string } | null;
+      }
+
+      if (domainRow?.hostname) {
+        baseUrl = `https://${domainRow.hostname}`;
+      }
+    }
+
+    const slug = encodeURIComponent(provider.slug || provider.id);
+    const bookingUrl = `${baseUrl}/book/${slug}`;
 
     return successResponse({
       id: provider.id,
       slug: provider.slug || provider.id,
       url: bookingUrl,
+      embed_url: `${bookingUrl}?embed=1`,
+      script_url: `${baseUrl}/embed/booking-button.js`,
       is_active: provider.online_booking_enabled ?? true,
     });
   } catch (error) {

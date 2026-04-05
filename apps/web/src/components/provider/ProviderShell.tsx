@@ -1,17 +1,43 @@
 "use client";
 
-import React from "react";
-import { usePathname } from "next/navigation";
-import { ProviderSidebar } from "./ProviderSidebar";
+import React, { useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter } from "next/navigation";
+
+const ProviderSidebar = dynamic(
+  () => import("./ProviderSidebar").then(m => ({ default: m.ProviderSidebar })),
+  { ssr: false, loading: () => null }
+);
 import { ProviderTopbar } from "./ProviderTopbar";
 import { ProviderBottomNav } from "./ProviderBottomNav";
 import { OnDemandIncomingOverlay } from "@/components/provider-portal/OnDemandIncomingOverlay";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
 import { cn } from "@/lib/utils";
 
+const PRIMARY_ROUTES = [
+  "/provider/dashboard",
+  "/provider/calendar",
+  "/provider/appointments",
+  "/provider/bookings",
+  "/provider/clients",
+  "/provider/messaging",
+  "/provider/more",
+  "/provider/finance",
+  "/provider/catalogue",
+  "/provider/settings",
+];
+
 export function ProviderShell({ children }: { children: React.ReactNode }) {
   const { isExpanded } = useProviderSidebar();
   const pathname = usePathname();
+  const router = useRouter();
+  const hasPrefetched = useRef(false);
+
+  useEffect(() => {
+    if (hasPrefetched.current) return;
+    hasPrefetched.current = true;
+    PRIMARY_ROUTES.forEach((route) => router.prefetch(route));
+  }, [router]);
 
   // Pages that need special full-height treatment
   const isCalendarPage = pathname?.startsWith("/provider/calendar");

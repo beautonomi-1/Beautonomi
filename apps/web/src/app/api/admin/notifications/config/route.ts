@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { verifyOneSignalConfig } from "@/lib/notifications/onesignal";
-import { getOneSignalRestApiKey } from "@/lib/platform/secrets";
+import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 
 /**
@@ -18,14 +18,14 @@ export async function GET(request: NextRequest) {
     }
 
     const config = await verifyOneSignalConfig();
-    const restKey = await getOneSignalRestApiKey();
+    const resolved = await resolveOneSignalCredentials(undefined);
 
     return NextResponse.json({
       data: {
         configured: config.configured,
         missing: config.missing,
-        app_id: config.configured ? process.env.ONESIGNAL_APP_ID : null,
-        api_key_configured: !!restKey,
+        app_id: resolved.appId,
+        api_key_configured: !!resolved.restKey,
       },
       error: null,
     });

@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface Payout {
   id: string;
@@ -35,6 +36,13 @@ interface PayoutAccount {
   account_name?: string;
   bank_name?: string;
   account_number?: string;
+}
+
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
 }
 
 /** Content-only for use in Finance hub (Payouts tab). */
@@ -154,7 +162,7 @@ export function PayoutsContent() {
                 </Text>
                 <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>{p.status}</Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                  {new Date(p.requested_at ?? p.created_at).toLocaleDateString()}
+                  {formatDateSafe(p.requested_at ?? p.created_at)}
                 </Text>
               </View>
               <View
@@ -182,7 +190,9 @@ export function PayoutsContent() {
         title="Request payout"
         subtitle="Withdraw to your bank account"
       >
-        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Amount (ZAR) *</Text>
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
+          Amount ({getTenantDefaultCurrency()}) *
+        </Text>
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
           placeholder="0.00"

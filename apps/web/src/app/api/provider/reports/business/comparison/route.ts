@@ -3,6 +3,7 @@ import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespo
 import { createClient } from "@supabase/supabase-js";
 import { subMonths } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -70,19 +71,24 @@ export async function GET(request: NextRequest) {
         previousFromDate = subMonths(previousToDate, 1);
     }
 
-    // Get provider revenue from finance_transactions for both periods
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     const { totalRevenue: currentRevenue } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       currentFromDate,
-      currentToDate
+      currentToDate,
+      null,
+      dashOpts
     );
 
     const { totalRevenue: previousRevenue } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       previousFromDate,
-      previousToDate
+      previousToDate,
+      null,
+      dashOpts
     );
 
     // Get current period bookings (for counts and status)

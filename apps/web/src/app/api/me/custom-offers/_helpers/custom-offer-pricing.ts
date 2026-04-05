@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
+import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
 
 export interface CustomOfferPricingInput {
   offerPrice: number;
@@ -86,7 +87,7 @@ export async function computeCustomOfferPricing(
 
       if (promo.is_active && withinWindow && underLimit && meetsMin && locationOk) {
         if (promo.type === "percentage") {
-          promotionDiscountAmount = (subtotalBeforeDiscount * Number(promo.value || 0)) / 100;
+          promotionDiscountAmount = percentOf(subtotalBeforeDiscount, Number(promo.value || 0));
         } else {
           promotionDiscountAmount = Number(promo.value || 0);
         }
@@ -105,7 +106,7 @@ export async function computeCustomOfferPricing(
   // Tax: provider rate or platform default
   const taxRate = await getEffectiveTaxRate(providerId, (provider as any)?.tax_rate_percent ?? null);
   const taxAmount =
-    taxRate > 0 ? Number(((subtotalAfterDiscount * taxRate) / 100).toFixed(2)) : 0;
+    taxRate > 0 ? roundCurrency(percentOf(subtotalAfterDiscount, taxRate)) : 0;
 
   // Platform service fee: provider fee config or platform settings
   let serviceFeeAmount = 0;
@@ -124,7 +125,7 @@ export async function computeCustomOfferPricing(
       if (subtotalAfterDiscount >= minBookingAmount) {
         if (feeConfig.fee_type === "percentage") {
           serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
-          serviceFeeAmount = Number(((subtotalAfterDiscount * serviceFeePercentage) / 100).toFixed(2));
+          serviceFeeAmount = roundCurrency(percentOf(subtotalAfterDiscount, serviceFeePercentage));
           if (feeConfig.max_fee_amount) {
             serviceFeeAmount = Math.min(serviceFeeAmount, Number(feeConfig.max_fee_amount));
           }
@@ -150,15 +151,13 @@ export async function computeCustomOfferPricing(
 
     if (feeType === "percentage") {
       serviceFeePercentage = feePct;
-      serviceFeeAmount = Number(((subtotalAfterDiscount * serviceFeePercentage) / 100).toFixed(2));
+      serviceFeeAmount = roundCurrency(percentOf(subtotalAfterDiscount, serviceFeePercentage));
     } else {
       serviceFeeAmount = feeFixed;
     }
   }
 
-  const totalAmount = Number(
-    (subtotalAfterDiscount + taxAmount + serviceFeeAmount + tipAmount).toFixed(2)
-  );
+  const totalAmount = sumMoney(subtotalAfterDiscount, taxAmount, serviceFeeAmount, tipAmount);
   const commissionBase = subtotalAfterDiscount;
 
   return {

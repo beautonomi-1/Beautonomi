@@ -1,29 +1,39 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 import { Button } from "@/components/ui/button";
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, MapPin, Check } from "lucide-react";
 import { toast } from "sonner";
 
-interface ServiceZone {
-  id?: string;
+interface PlatformZone {
+  id: string;
   name: string;
-  zone_type: "postal_code" | "city" | "polygon" | "radius";
-  polygon_coordinates?: any;
-  center_latitude?: number;
-  center_longitude?: number;
-  radius_km?: number;
-  travel_fee: number;
-  is_active: boolean;
+  /** GeoJSON geometry stored on platform_zones.geometry */
+  geometry?: {
+    type: string;
+    coordinates: unknown;
+  } | null;
+  bbox?: number[] | { minLng: number; minLat: number; maxLng: number; maxLat: number } | null;
+  is_active?: boolean;
 }
 
 interface ServiceZoneMapProps {
-  zones: ServiceZone[];
+  /** Active platform zones to display as read-only coverage layers */
+  zones: PlatformZone[];
+  /** Provider's primary location for initial map center */
   providerLocation?: { latitude: number; longitude: number };
-  onZoneCreate?: (zone: Partial<ServiceZone>) => void;
-  onZoneUpdate?: (zoneId: string, zone: Partial<ServiceZone>) => void;
-  onZoneDelete?: (zoneId: string) => void;
+  /**
+   * Called when the provider clicks "Select this zone" on a zone popup.
+   * Replaces the old onZoneCreate (polygon drawing) callback.
+   */
+  onZoneSelect?: (platformZoneId: string) => void;
+  /**
+   * IDs of zones this provider has already joined — used to render a
+   * "Joined" badge instead of a "Select" button.
+   */
+  selectedZoneIds?: string[];
+  /** When true, "Select this zone" buttons are shown on zone popups. */
   editable?: boolean;
   height?: string;
 }
@@ -31,105 +41,50 @@ interface ServiceZoneMapProps {
 export default function ServiceZoneMap({
   zones,
   providerLocation,
-  onZoneCreate,
-  onZoneUpdate: _onZoneUpdate,
-  onZoneDelete: _onZoneDelete,
+  onZoneSelect,
+  selectedZoneIds = [],
   editable = false,
   height = "500px",
 }: ServiceZoneMapProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
+  const popupsRef = useRef<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [_isDrawing, _setIsDrawing] = useState(false);
-  const [drawingPolygon, setDrawingPolygon] = useState<any[]>([]);
-  const [_selectedZone, _setSelectedZone] = useState<ServiceZone | null>(null);
+  const [selectingId, setSelectingId] = useState<string | null>(null);
+
+  const selectedSet = new Set(selectedZoneIds);
 
   useEffect(() => {
     if (!mapContainerRef.current) return;
 
     let mapInstance: any = null;
-    let mapboxgl: any = null;
 
     const initMap = async () => {
       try {
-        // Dynamically import mapbox-gl
-        mapboxgl = (await import("mapbox-gl")).default;
-        // @ts-expect-error - @mapbox/mapbox-gl-draw has no type declarations
-        const MapboxDraw = (await import("@mapbox/mapbox-gl-draw")).default;
+        const mapboxgl = (await import("mapbox-gl")).default;
+        await import("mapbox-gl/dist/mapbox-gl.css");
 
-        // Get Mapbox access token
-        const mapbox = await getMapboxService();
-        const accessToken = (mapbox as any).config.accessToken;
-
-        if (!accessToken) {
-          throw new Error("Mapbox access token not configured");
+        const cfg = await fetchMapboxPublicMapConfig();
+        if (!cfg.accessToken) {
+          throw new Error("Mapbox public token not configured (Admin → Mapbox)");
         }
 
-        // Set access token
-        mapboxgl.accessToken = accessToken;
+        mapboxgl.accessToken = cfg.accessToken;
 
-        // Initialize map
         mapInstance = new mapboxgl.Map({
           container: mapContainerRef.current!,
-          style: "mapbox://styles/mapbox/streets-v12",
+          style: cfg.styleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
           center: providerLocation
             ? [providerLocation.longitude, providerLocation.latitude]
-            : [28.0473, -26.2041], // Default to Johannesburg
+            : [28.0473, -26.2041],
           zoom: providerLocation ? 12 : 10,
         });
 
         mapRef.current = mapInstance;
-
-        // Add navigation controls
         mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
 
-        // Initialize draw control if editable
-        let draw: any = null;
-        if (editable) {
-          draw = new MapboxDraw({
-            displayControlsDefault: false,
-            controls: {
-              polygon: true,
-              trash: true,
-            },
-          });
-          mapInstance.addControl(draw, "top-left");
-
-          // Handle polygon creation
-          mapInstance.on("draw.create", (e: any) => {
-            const feature = e.features[0];
-            if (feature.geometry.type === "Polygon") {
-              const coordinates = feature.geometry.coordinates[0];
-              setDrawingPolygon(
-                coordinates.map(([lng, lat]: [number, number]) => ({
-                  longitude: lng,
-                  latitude: lat,
-                }))
-              );
-            }
-          });
-
-          mapInstance.on("draw.update", (e: any) => {
-            const feature = e.features[0];
-            if (feature.geometry.type === "Polygon") {
-              const coordinates = feature.geometry.coordinates[0];
-              setDrawingPolygon(
-                coordinates.map(([lng, lat]: [number, number]) => ({
-                  longitude: lng,
-                  latitude: lat,
-                }))
-              );
-            }
-          });
-
-          mapInstance.on("draw.delete", () => {
-            setDrawingPolygon([]);
-          });
-        }
-
-        // Wait for map to load
         mapInstance.on("load", () => {
-          // Add provider location marker
+          // Provider location marker
           if (providerLocation) {
             new mapboxgl.Marker({ color: "#FF0077" })
               .setLngLat([providerLocation.longitude, providerLocation.latitude])
@@ -137,69 +92,163 @@ export default function ServiceZoneMap({
               .addTo(mapInstance);
           }
 
-          // Add zone polygons
-          zones.forEach((zone) => {
-            if (zone.zone_type === "polygon" && zone.polygon_coordinates) {
-              const coordinates = zone.polygon_coordinates[0] || zone.polygon_coordinates;
-              const polygonCoords = coordinates.map((coord: any) => {
-                if (Array.isArray(coord)) {
-                  return coord;
-                }
-                return [coord.longitude, coord.latitude];
-              });
+          // Render each platform zone as a read-only fill + outline layer
+          const bounds = new mapboxgl.LngLatBounds();
+          let hasBounds = false;
 
-              // Close the polygon
-              if (polygonCoords.length > 0) {
-                polygonCoords.push(polygonCoords[0]);
-              }
+          zones.forEach((zone, idx) => {
+            const isJoined = selectedSet.has(zone.id);
 
-              mapInstance.addSource(`zone-${zone.id}`, {
-                type: "geojson",
-                data: {
-                  type: "Feature",
-                  geometry: {
-                    type: "Polygon",
-                    coordinates: [polygonCoords],
-                  },
-                },
-              });
+            // Determine geometry source
+            let geomFeature: any = null;
+            if (zone.geometry && zone.geometry.type) {
+              geomFeature = {
+                type: "Feature",
+                properties: { id: zone.id, name: zone.name, joined: isJoined },
+                geometry: zone.geometry,
+              };
+            }
 
+            if (geomFeature) {
+              const srcId = `pz-src-${idx}`;
+              const fillId = `pz-fill-${idx}`;
+              const lineId = `pz-line-${idx}`;
+
+              mapInstance.addSource(srcId, { type: "geojson", data: geomFeature });
               mapInstance.addLayer({
-                id: `zone-${zone.id}-fill`,
+                id: fillId,
                 type: "fill",
-                source: `zone-${zone.id}`,
+                source: srcId,
                 paint: {
-                  "fill-color": zone.is_active ? "#FF0077" : "#999999",
-                  "fill-opacity": 0.3,
+                  "fill-color": isJoined ? "#059669" : "#FF0077",
+                  "fill-opacity": 0.15,
                 },
               });
-
               mapInstance.addLayer({
-                id: `zone-${zone.id}-outline`,
+                id: lineId,
                 type: "line",
-                source: `zone-${zone.id}`,
+                source: srcId,
                 paint: {
-                  "line-color": zone.is_active ? "#FF0077" : "#999999",
+                  "line-color": isJoined ? "#047857" : "#D60565",
                   "line-width": 2,
                 },
               });
-            } else if (zone.zone_type === "radius" && zone.center_latitude && zone.center_longitude && zone.radius_km) {
-              // Add radius circle
-              const center = [zone.center_longitude, zone.center_latitude];
-              const _radiusMeters = zone.radius_km * 1000;
 
-              // Create circle using turf.js (would need to import)
-              // For now, add a marker at center
-              new mapboxgl.Marker({ color: zone.is_active ? "#FF0077" : "#999999" })
-                .setLngLat(center)
-                .setPopup(
-                  new mapboxgl.Popup().setHTML(
-                    `<b>${zone.name}</b><br/>Radius: ${zone.radius_km}km`
-                  )
-                )
+              // Extend map bounds
+              try {
+                const g = geomFeature.geometry;
+                const flatCoords: [number, number][] =
+                  g.type === "MultiPolygon"
+                    ? g.coordinates.flat(2)
+                    : g.type === "Polygon"
+                    ? g.coordinates[0]
+                    : [];
+                for (const c of flatCoords) {
+                  bounds.extend(c as [number, number]);
+                  hasBounds = true;
+                }
+              } catch { /* ignore */ }
+
+              // Click on zone fill to show popup
+              mapInstance.on("click", fillId, (e: any) => {
+                const popup = new mapboxgl.Popup({ offset: 8 });
+                const content = document.createElement("div");
+                content.style.cssText = "padding:4px 2px;min-width:160px;font-family:inherit";
+
+                const title = document.createElement("p");
+                title.style.cssText = "font-weight:700;font-size:13px;color:#0f172a;margin:0 0 6px";
+                title.textContent = zone.name;
+                content.appendChild(title);
+
+                if (isJoined) {
+                  const badge = document.createElement("span");
+                  badge.style.cssText =
+                    "display:inline-flex;align-items:center;gap:4px;background:#d1fae5;color:#065f46;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px";
+                  badge.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Joined`;
+                  content.appendChild(badge);
+                } else if (editable && onZoneSelect) {
+                  const btn = document.createElement("button");
+                  btn.textContent = "Select this zone";
+                  btn.style.cssText =
+                    "background:#FF0077;color:#fff;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;width:100%";
+                  btn.onmouseenter = () => { btn.style.background = "#D60565"; };
+                  btn.onmouseleave = () => { btn.style.background = "#FF0077"; };
+                  btn.onclick = () => {
+                    popup.remove();
+                    setSelectingId(zone.id);
+                    Promise.resolve(onZoneSelect(zone.id)).finally(() => setSelectingId(null));
+                  };
+                  content.appendChild(btn);
+                } else {
+                  const note = document.createElement("p");
+                  note.style.cssText = "font-size:11px;color:#64748b;margin:0";
+                  note.textContent = "Platform coverage area";
+                  content.appendChild(note);
+                }
+
+                popup
+                  .setLngLat(e.lngLat)
+                  .setDOMContent(content)
+                  .addTo(mapInstance);
+                popupsRef.current.push(popup);
+              });
+
+              mapInstance.on("mouseenter", fillId, () => {
+                mapInstance.getCanvas().style.cursor = "pointer";
+              });
+              mapInstance.on("mouseleave", fillId, () => {
+                mapInstance.getCanvas().style.cursor = "";
+              });
+            } else if (zone.bbox) {
+              // Fallback: render bbox rectangle when full geometry isn't available
+              const bbox = zone.bbox;
+              let minLng: number, minLat: number, maxLng: number, maxLat: number;
+              if (Array.isArray(bbox) && bbox.length >= 4) {
+                [minLng, minLat, maxLng, maxLat] = bbox as [number, number, number, number];
+              } else if (typeof bbox === "object" && "minLng" in bbox) {
+                ({ minLng, minLat, maxLng, maxLat } = bbox as {
+                  minLng: number; minLat: number; maxLng: number; maxLat: number;
+                });
+              } else {
+                return;
+              }
+
+              const bboxFeature = {
+                type: "Feature",
+                properties: {},
+                geometry: {
+                  type: "Polygon",
+                  coordinates: [[[minLng, minLat], [maxLng, minLat], [maxLng, maxLat], [minLng, maxLat], [minLng, minLat]]],
+                },
+              };
+              const srcId = `pz-bbox-${idx}`;
+              const lineId = `pz-bbox-line-${idx}`;
+              mapInstance.addSource(srcId, { type: "geojson", data: bboxFeature });
+              mapInstance.addLayer({
+                id: lineId,
+                type: "line",
+                source: srcId,
+                paint: { "line-color": "#94a3b8", "line-width": 1.5, "line-dasharray": [4, 3] },
+              });
+
+              bounds.extend([minLng, minLat]);
+              bounds.extend([maxLng, maxLat]);
+              hasBounds = true;
+
+              // Add a marker for the zone name
+              const el = document.createElement("div");
+              el.style.cssText =
+                "background:#fff;border:1.5px solid #94a3b8;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:600;color:#334155;white-space:nowrap;box-shadow:0 1px 4px rgba(0,0,0,.1)";
+              el.textContent = zone.name;
+              new mapboxgl.Marker({ element: el, anchor: "center" })
+                .setLngLat([(minLng + maxLng) / 2, (minLat + maxLat) / 2])
                 .addTo(mapInstance);
             }
           });
+
+          if (hasBounds && !providerLocation) {
+            mapInstance.fitBounds(bounds, { padding: 60, maxZoom: 12 });
+          }
 
           setIsLoading(false);
         });
@@ -209,78 +258,74 @@ export default function ServiceZoneMap({
           setIsLoading(false);
         });
       } catch (error: any) {
-        console.error("Failed to initialize map:", error);
+        console.error("Failed to initialize ServiceZoneMap:", error);
         toast.error("Failed to load map. Please check Mapbox configuration.");
         setIsLoading(false);
       }
     };
 
-    initMap();
+    void initMap();
 
     return () => {
-      if (mapInstance) {
-        mapInstance.remove();
-      }
+      popupsRef.current.forEach((p) => { try { p.remove(); } catch { /* ignore */ } });
+      popupsRef.current = [];
+      if (mapInstance) mapInstance.remove();
     };
   }, [zones, providerLocation, editable]);
 
-  const handleSavePolygon = () => {
-    if (drawingPolygon.length < 3) {
-      toast.error("Polygon must have at least 3 points");
-      return;
-    }
-
-    if (onZoneCreate) {
-      onZoneCreate({
-        zone_type: "polygon",
-        polygon_coordinates: [drawingPolygon.map((p) => [p.longitude, p.latitude])],
-        name: `Zone ${zones.length + 1}`,
-        travel_fee: 0,
-        is_active: true,
-      });
-      setDrawingPolygon([]);
-      toast.success("Polygon zone created");
-    }
-  };
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center" style={{ height }}>
-        <Loader2 className="w-6 h-6 animate-spin text-[#FF0077]" />
-      </div>
-    );
-  }
-
   return (
-    <div className="relative">
-      <div ref={mapContainerRef} style={{ height, width: "100%" }} className="rounded-lg" />
-      
-      {editable && drawingPolygon.length > 0 && (
-        <div className="absolute top-4 left-4 bg-white p-4 rounded-lg shadow-lg z-10">
-          <p className="text-sm mb-2">Drawing polygon ({drawingPolygon.length} points)</p>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={handleSavePolygon} className="bg-[#FF0077] hover:bg-[#D60565]">
-              <Save className="w-4 h-4 mr-1" />
-              Save Zone
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => {
-                setDrawingPolygon([]);
-                if (mapRef.current) {
-                  // Clear draw control
-                  const draw = mapRef.current.getDraw();
-                  if (draw) {
-                    draw.deleteAll();
-                  }
-                }
-              }}
-            >
-              <X className="w-4 h-4 mr-1" />
-              Cancel
-            </Button>
-          </div>
+    <div className="relative" style={{ height }}>
+      <div ref={mapContainerRef} style={{ height: "100%", width: "100%" }} className="rounded-lg" />
+
+      {isLoading && (
+        <div
+          className="absolute inset-0 flex items-center justify-center rounded-lg bg-slate-100"
+        >
+          <Loader2 className="h-6 w-6 animate-spin text-[#FF0077]" />
+        </div>
+      )}
+
+      {/* Zone legend */}
+      {!isLoading && zones.length > 0 && (
+        <div className="absolute bottom-3 left-3 z-10 rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur-sm">
+          <ul className="space-y-1">
+            <li className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "rgba(255,0,119,0.5)", border: "1.5px solid #D60565" }} />
+              <span className="text-slate-700">Available zones</span>
+            </li>
+            {selectedSet.size > 0 && (
+              <li className="flex items-center gap-2">
+                <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: "rgba(5,150,105,0.4)", border: "1.5px solid #047857" }} />
+                <span className="text-slate-700">Joined zones</span>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      {/* Summary bar */}
+      {!isLoading && zones.length > 0 && (
+        <div className="absolute right-3 top-3 z-10 flex flex-col gap-1.5">
+          {selectedSet.size > 0 && (
+            <div className="flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm">
+              <Check className="h-3 w-3" />
+              {selectedSet.size} zone{selectedSet.size > 1 ? "s" : ""} joined
+            </div>
+          )}
+          {selectingId && (
+            <div className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/95 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Joining zone…
+            </div>
+          )}
+        </div>
+      )}
+
+      {!isLoading && zones.length === 0 && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 rounded-lg bg-slate-50/90">
+          <MapPin className="h-7 w-7 text-slate-400" />
+          <p className="text-sm font-medium text-slate-600">No coverage zones available yet</p>
+          <p className="text-xs text-slate-500">Check back once markets have been published.</p>
         </div>
       )}
     </div>

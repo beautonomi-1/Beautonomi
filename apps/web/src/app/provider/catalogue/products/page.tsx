@@ -27,6 +27,15 @@ import { fetcher } from "@/lib/http/fetcher";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
 
+/** In-stock total: variant sum when has_variants, else product.quantity (see GET /api/provider/products effective_quantity). */
+function productStockQty(p: ProductItem): number {
+  if (typeof p.effective_quantity === "number") return p.effective_quantity;
+  if (p.has_variants && p.variants?.length) {
+    return p.variants.reduce((s, v) => s + (v.quantity || 0), 0);
+  }
+  return p.quantity ?? 0;
+}
+
 export default function ProviderProducts() {
   const [products, setProducts] = useState<ProductItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -178,6 +187,10 @@ export default function ProviderProducts() {
   };
 
   const handleAdjustStock = (product: ProductItem, action: "add" | "remove") => {
+    if (product.has_variants) {
+      toast.info("Edit this product to change stock and supply price per variant.");
+      return;
+    }
     setSelectedProduct(product);
     setStockAction(action);
     setIsStockDialogOpen(true);
@@ -428,10 +441,10 @@ export default function ProviderProducts() {
                       <p className="text-gray-500">Quantity</p>
                       <p className={cn(
                         "font-medium",
-                        product.quantity === 0 && "text-red-600",
-                        product.quantity > 0 && product.quantity <= 5 && "text-yellow-600"
+                        productStockQty(product) === 0 && "text-red-600",
+                        productStockQty(product) > 0 && productStockQty(product) <= (product.low_stock_level || 5) && "text-yellow-600"
                       )}>
-                        {product.quantity}
+                        {product.has_variants ? `${productStockQty(product)} (variants)` : productStockQty(product)}
                       </p>
                     </div>
                     <div>
@@ -492,20 +505,20 @@ export default function ProviderProducts() {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span className={
-                            product.quantity === 0 
+                            productStockQty(product) === 0 
                               ? "text-red-600 font-medium" 
-                              : product.quantity <= (product.low_stock_level || 5)
+                              : productStockQty(product) <= (product.low_stock_level || 5)
                                 ? "text-yellow-600 font-medium" 
                                 : ""
                           }>
-                            {product.quantity}
+                            {product.has_variants ? `${productStockQty(product)} (all variants)` : productStockQty(product)}
                           </span>
-                          {product.quantity === 0 && (
+                          {productStockQty(product) === 0 && (
                             <span className="px-1.5 py-0.5 text-xs bg-red-100 text-red-700 rounded">
                               Out
                             </span>
                           )}
-                          {product.quantity > 0 && product.quantity <= (product.low_stock_level || 5) && (
+                          {productStockQty(product) > 0 && productStockQty(product) <= (product.low_stock_level || 5) && (
                             <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded">
                               Low
                             </span>

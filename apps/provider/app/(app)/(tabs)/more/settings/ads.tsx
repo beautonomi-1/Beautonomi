@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
+import * as Linking from "expo-linking";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
@@ -26,6 +27,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { useResponsive } from "@/hooks/useResponsive";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type Campaign = {
   id: string;
@@ -55,6 +57,8 @@ type ImpressionPack = {
   display_order?: number;
 };
 
+type GlobalCategory = { id: string; name: string; slug: string };
+
 const STATUS_COLOR: Record<string, string> = {
   draft: "#6b7280",
   active: "#22c55e",
@@ -64,6 +68,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 export default function AdsSettingsScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
   const adsConfig = useModuleConfig("ads") as { enabled?: boolean } | undefined;
   const adsEnabled = useFeatureFlag("ads.enabled");
@@ -72,6 +77,7 @@ export default function AdsSettingsScreen() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
+  const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -81,8 +87,18 @@ export default function AdsSettingsScreen() {
   const [creatingPackId, setCreatingPackId] = useState<string | null>(null);
   const appStateRef = useRef(AppState.currentState);
 
-  const [createForm, setCreateForm] = useState({ budget: "", daily_budget: "", bid_cpc: "" });
-  const [editForm, setEditForm] = useState({ budget: "", daily_budget: "", bid_cpc: "" });
+  const [createForm, setCreateForm] = useState({
+    budget: "",
+    daily_budget: "",
+    bid_cpc: "",
+    global_category_ids: [] as string[],
+  });
+  const [editForm, setEditForm] = useState({
+    budget: "",
+    daily_budget: "",
+    bid_cpc: "",
+    global_category_ids: [] as string[],
+  });
 
   const loadAll = useCallback(async () => {
     if (!enabled) {
@@ -90,18 +106,21 @@ export default function AdsSettingsScreen() {
       return;
     }
     try {
-      const [campRes, perfRes, packsRes] = await Promise.all([
+      const [campRes, perfRes, packsRes, catRes] = await Promise.all([
         api.get<Campaign[]>("/api/provider/ads/campaigns"),
         api.get<{ summary: PerformanceSummary }>("/api/provider/ads/performance"),
         api.get<ImpressionPack[]>("/api/provider/ads/packs"),
+        api.get<GlobalCategory[]>("/api/public/categories/global?all=true"),
       ]);
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
       setPacks(Array.isArray(packsRes.data) ? packsRes.data : []);
+      setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
     } catch {
       setCampaigns([]);
       setPerformance(null);
       setPacks([]);
+      setGlobalCategories([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -131,7 +150,7 @@ export default function AdsSettingsScreen() {
   const handleCreateCampaign = useCallback(async () => {
     const budgetNum = parseFloat(createForm.budget.replace(/,/g, "."));
     if (!Number.isFinite(budgetNum) || budgetNum < 0) {
-      Alert.alert("Invalid", "Enter a valid total budget (ZAR).");
+      Alert.alert("Invalid", `Enter a valid total budget (${tenantCurrency}).`);
       return;
     }
     setCreating(true);
@@ -142,19 +161,19 @@ export default function AdsSettingsScreen() {
           budget: budgetNum,
           daily_budget: createForm.daily_budget ? parseFloat(createForm.daily_budget.replace(/,/g, ".")) : null,
           bid_cpc: createForm.bid_cpc ? parseFloat(createForm.bid_cpc.replace(/,/g, ".")) : 0,
+          targeting: createForm.global_category_ids.length > 0
+            ? { global_category_ids: createForm.global_category_ids }
+            : undefined,
         }
       );
       const data = res.data as any;
       const campaign = data?.campaign ?? data;
       if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
       setCreateOpen(false);
-      setCreateForm({ budget: "", daily_budget: "", bid_cpc: "" });
+      setCreateForm({ budget: "", daily_budget: "", bid_cpc: "", global_category_ids: [] });
       if (data?.requires_payment && data?.payment_url) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        router.push({
-          pathname: "/(app)/(tabs)/more/in-app-browser",
-          params: { url: encodeURIComponent(data.payment_url), title: encodeURIComponent("Pay for ads") },
-        } as never);
+        await Linking.openURL(data.payment_url);
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -165,7 +184,7 @@ export default function AdsSettingsScreen() {
     } finally {
       setCreating(false);
     }
-  }, [createForm, router, loadAll]);
+  }, [createForm, loadAll, tenantCurrency]);
 
   const handleBuyPack = useCallback(
     async (pack: ImpressionPack) => {
@@ -182,10 +201,7 @@ export default function AdsSettingsScreen() {
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
         if (data?.requires_payment && data?.payment_url) {
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          router.push({
-            pathname: "/(app)/(tabs)/more/in-app-browser",
-            params: { url: encodeURIComponent(data.payment_url), title: encodeURIComponent(`Pay – ${pack.impressions} impressions`) },
-          } as never);
+          await Linking.openURL(data.payment_url);
           return;
         }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -197,7 +213,7 @@ export default function AdsSettingsScreen() {
         setCreatingPackId(null);
       }
     },
-    [router, loadAll]
+    [loadAll]
   );
 
   const handleUpdateCampaign = useCallback(async () => {
@@ -208,6 +224,7 @@ export default function AdsSettingsScreen() {
         budget: editForm.budget ? parseFloat(editForm.budget.replace(/,/g, ".")) : undefined,
         daily_budget: editForm.daily_budget === "" ? null : editForm.daily_budget ? parseFloat(editForm.daily_budget.replace(/,/g, ".")) : undefined,
         bid_cpc: editForm.bid_cpc ? parseFloat(editForm.bid_cpc.replace(/,/g, ".")) : undefined,
+        targeting: { global_category_ids: editForm.global_category_ids },
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
@@ -242,6 +259,7 @@ export default function AdsSettingsScreen() {
       budget: String(c.budget ?? ""),
       daily_budget: c.daily_budget != null ? String(c.daily_budget) : "",
       bid_cpc: c.bid_cpc != null ? String(c.bid_cpc) : "",
+      global_category_ids: c.targeting?.global_category_ids ?? [],
     });
   };
 
@@ -298,7 +316,7 @@ export default function AdsSettingsScreen() {
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mr-2 mb-2"), { minWidth: "45%" }]}>
                   <Ionicons name="wallet-outline" size={20} color="#6b7280" />
-                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>ZAR {Number(performance.spend).toFixed(2)}</Text>
+                  <Text style={twStyle("text-2xl font-bold text-gray-900 mt-1")}>{tenantCurrency} {Number(performance.spend).toFixed(2)}</Text>
                   <Text style={twStyle("text-xs text-gray-500")}>Spend</Text>
                 </View>
                 <View style={[twStyle("rounded-2xl border border-gray-200 bg-white p-4 flex-1 min-w-[45%] mb-2"), { minWidth: "45%" }]}>
@@ -325,7 +343,7 @@ export default function AdsSettingsScreen() {
                   >
                     <Text style={twStyle("text-lg font-bold text-gray-900")}>{pack.impressions}</Text>
                     <Text style={twStyle("text-xs text-gray-500")}>impressions</Text>
-                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>ZAR {Number(pack.price_zar).toFixed(2)}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>{tenantCurrency} {Number(pack.price_zar).toFixed(2)}</Text>
                     {creatingPackId === pack.id ? (
                       <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
                     ) : (
@@ -388,11 +406,16 @@ export default function AdsSettingsScreen() {
                         </View>
                       )}
                     </View>
-                    <View style={twStyle("flex-row mt-3 gap-4")}>
-                      <Text style={twStyle("text-sm text-gray-600")}>Budget: ZAR {Number(c.budget).toFixed(2)}</Text>
-                      <Text style={twStyle("text-sm text-gray-600")}>Spent: ZAR {Number(c.spent).toFixed(2)}</Text>
-                      {c.daily_budget != null && <Text style={twStyle("text-sm text-gray-600")}>Daily: ZAR {Number(c.daily_budget).toFixed(2)}</Text>}
+                    <View style={twStyle("flex-row mt-3 gap-4 flex-wrap")}>
+                      <Text style={twStyle("text-sm text-gray-600")}>Budget: {tenantCurrency} {Number(c.budget).toFixed(2)}</Text>
+                      <Text style={twStyle("text-sm text-gray-600")}>Spent: {tenantCurrency} {Number(c.spent).toFixed(2)}</Text>
+                      {c.daily_budget != null && <Text style={twStyle("text-sm text-gray-600")}>Daily: {tenantCurrency} {Number(c.daily_budget).toFixed(2)}</Text>}
                     </View>
+                    {(c.targeting?.global_category_ids?.length ?? 0) > 0 && (
+                      <Text style={twStyle("text-xs text-gray-400 mt-1")}>
+                        Targeting: {c.targeting!.global_category_ids!.length} categor{c.targeting!.global_category_ids!.length === 1 ? "y" : "ies"}
+                      </Text>
+                    )}
                   </View>
                 ))}
               </View>
@@ -402,10 +425,10 @@ export default function AdsSettingsScreen() {
       </ScrollView>
 
       {/* Create campaign sheet */}
-      <BottomSheet visible={createOpen} onClose={() => !creating && setCreateOpen(false)} title="Create campaign" subtitle="Set a total budget (ZAR). You can pay now or add budget later.">
+      <BottomSheet visible={createOpen} onClose={() => !creating && setCreateOpen(false)} title="Create campaign" subtitle={`Set a total budget (${tenantCurrency}). You can pay now or add budget later.`} snapHeight="full">
         <View style={twStyle("gap-4 pb-6")}>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget (ZAR)</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
             <TextInput
               value={createForm.budget}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, budget: t }))}
@@ -415,7 +438,7 @@ export default function AdsSettingsScreen() {
             />
           </View>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget (ZAR, optional)</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency}, optional)</Text>
             <TextInput
               value={createForm.daily_budget}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, daily_budget: t }))}
@@ -425,7 +448,7 @@ export default function AdsSettingsScreen() {
             />
           </View>
           <View>
-            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click (ZAR, optional)</Text>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency}, optional)</Text>
             <TextInput
               value={createForm.bid_cpc}
               onChangeText={(t) => setCreateForm((p) => ({ ...p, bid_cpc: t }))}
@@ -434,16 +457,62 @@ export default function AdsSettingsScreen() {
               style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
             />
           </View>
+          {globalCategories.length > 0 && (
+            <View>
+              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>
+                Target categories{" "}
+                <Text style={twStyle("text-xs text-gray-400 font-normal")}>(optional)</Text>
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+                Leave blank to reach all searches. Select to target specific categories.
+              </Text>
+              <View style={twStyle("flex-row flex-wrap gap-2")}>
+                {globalCategories.map((cat) => {
+                  const selected = createForm.global_category_ids.includes(cat.id);
+                  return (
+                    <TouchableOpacity
+                      key={cat.id}
+                      onPress={() =>
+                        setCreateForm((p) => ({
+                          ...p,
+                          global_category_ids: selected
+                            ? p.global_category_ids.filter((x) => x !== cat.id)
+                            : [...p.global_category_ids, cat.id],
+                        }))
+                      }
+                      style={[
+                        twStyle(
+                          `rounded-full px-3 py-1.5 border ${
+                            selected
+                              ? "bg-gray-900 border-gray-900"
+                              : "bg-white border-gray-200"
+                          }`
+                        ),
+                      ]}
+                    >
+                      <Text
+                        style={twStyle(
+                          `text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`
+                        )}
+                      >
+                        {cat.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
           <ActionButton label={creating ? "Creating…" : "Create campaign"} onPress={handleCreateCampaign} loading={creating} disabled={creating} fullWidth />
         </View>
       </BottomSheet>
 
       {/* Edit campaign sheet */}
-      <BottomSheet visible={!!editCampaign} onClose={() => !updating && setEditCampaign(null)} title="Edit campaign" subtitle="Update budget and bid.">
+      <BottomSheet visible={!!editCampaign} onClose={() => !updating && setEditCampaign(null)} title="Edit campaign" subtitle="Update budget and bid." snapHeight="full">
         {editCampaign && (
           <View style={twStyle("gap-4 pb-6")}>
             <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget (ZAR)</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Total budget ({tenantCurrency})</Text>
               <TextInput
                 value={editForm.budget}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, budget: t }))}
@@ -453,7 +522,7 @@ export default function AdsSettingsScreen() {
               />
             </View>
             <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget (ZAR)</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Daily budget ({tenantCurrency})</Text>
               <TextInput
                 value={editForm.daily_budget}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, daily_budget: t }))}
@@ -463,7 +532,7 @@ export default function AdsSettingsScreen() {
               />
             </View>
             <View>
-              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click (ZAR)</Text>
+              <Text style={twStyle("text-sm font-medium text-gray-700 mb-1")}>Bid per click ({tenantCurrency})</Text>
               <TextInput
                 value={editForm.bid_cpc}
                 onChangeText={(t) => setEditForm((p) => ({ ...p, bid_cpc: t }))}
@@ -472,6 +541,42 @@ export default function AdsSettingsScreen() {
                 style={twStyle("border border-gray-200 rounded-xl px-4 py-3 text-base")}
               />
             </View>
+            {globalCategories.length > 0 && (
+              <View>
+                <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Target categories</Text>
+                <View style={twStyle("flex-row flex-wrap gap-2")}>
+                  {globalCategories.map((cat) => {
+                    const selected = editForm.global_category_ids.includes(cat.id);
+                    return (
+                      <TouchableOpacity
+                        key={cat.id}
+                        onPress={() =>
+                          setEditForm((p) => ({
+                            ...p,
+                            global_category_ids: selected
+                              ? p.global_category_ids.filter((x) => x !== cat.id)
+                              : [...p.global_category_ids, cat.id],
+                          }))
+                        }
+                        style={twStyle(
+                          `rounded-full px-3 py-1.5 border ${
+                            selected ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"
+                          }`
+                        )}
+                      >
+                        <Text
+                          style={twStyle(
+                            `text-sm ${selected ? "text-white font-medium" : "text-gray-600"}`
+                          )}
+                        >
+                          {cat.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
             <ActionButton label={updating === editCampaign.id ? "Saving…" : "Save"} onPress={handleUpdateCampaign} loading={updating === editCampaign.id} disabled={!!updating} fullWidth />
           </View>
         )}

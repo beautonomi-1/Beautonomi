@@ -94,18 +94,19 @@ export async function matchWaitlistOnCancellation(supabase: any, cancelledBookin
 
       try {
         // Create notification
-        await supabaseAdmin.from("notifications").insert({
+        const { insertNotification: insertWaitlistNotif } = await import("@/lib/notifications/insert-notification");
+        await insertWaitlistNotif({
           user_id: customer.id,
           type: "waitlist_available",
           title: "Booking Slot Available!",
           message: `A booking slot has become available! Date: ${dateStr}, Time: ${timeStr}`,
-          metadata: {
+          data: {
             waitlist_id: entry.id,
             booking_id: cancelledBookingId,
             available_date: dateStr,
             available_time: timeStr,
           },
-          link: `/booking?provider=${booking.provider_id}&date=${dateStr}&time=${timeStr}`,
+          action_url: `/booking?provider=${booking.provider_id}&date=${dateStr}&time=${timeStr}`,
         });
 
         // Send push/email notification
@@ -207,17 +208,18 @@ export async function checkWaitlistForAvailability(
       if (!customer?.id) continue;
 
       try {
-        await supabaseAdmin.from("notifications").insert({
+        const { insertNotification: insertSlotNotif } = await import("@/lib/notifications/insert-notification");
+        await insertSlotNotif({
           user_id: customer.id,
           type: "waitlist_available",
           title: "Booking Slot Available!",
           message: `A booking slot has become available! Date: ${date}, Time: ${time}`,
-          metadata: {
+          data: {
             waitlist_id: entry.id,
             available_date: date,
             available_time: time,
           },
-          link: `/booking?provider=${providerId}&date=${date}&time=${time}`,
+          action_url: `/booking?provider=${providerId}&date=${date}&time=${time}`,
         });
 
         await sendTemplateNotification(

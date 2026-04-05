@@ -5,6 +5,8 @@ import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
 import { Ionicons } from "@expo/vector-icons";
+import { trackReferralShared } from "@/lib/analytics";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface ReferralStats {
   total_referrals: number;
@@ -54,7 +56,7 @@ export default function ReferralsScreen() {
   const settings = data?.settings;
   const isEnabled = settings?.is_enabled !== false;
   const amount = settings?.referral_amount ?? 50;
-  const currency = settings?.referral_currency ?? "ZAR";
+  const currency = settings?.referral_currency ?? getTenantDefaultCurrency();
 
   const handleCopy = async () => {
     if (!link) return;
@@ -62,6 +64,7 @@ export default function ReferralsScreen() {
       await Clipboard.setStringAsync(link);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      trackReferralShared("referrals_copy");
     } catch {
       Alert.alert("Error", "Could not copy link");
     }
@@ -75,6 +78,7 @@ export default function ReferralsScreen() {
         url: link,
         title: "Join Beautonomi",
       });
+      trackReferralShared("referrals_screen");
     } catch {
       // User cancelled or error
     }

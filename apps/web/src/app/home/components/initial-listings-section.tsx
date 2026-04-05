@@ -6,6 +6,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useUserLocation } from "@/hooks/useUserLocation";
+import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
 
 /**
  * Initial Service Listings Section
@@ -40,7 +41,7 @@ const InitialListingsSection = () => {
         const response = await fetcher.get<{
           data: { all: PublicProviderCard[] };
           error: null;
-        }>(url, { timeoutMs: 10000 });
+        }>(url, { timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS });
         setProviders(response.data.all || []);
       } catch (_err) {
         // Only set error for actual failures, not empty data

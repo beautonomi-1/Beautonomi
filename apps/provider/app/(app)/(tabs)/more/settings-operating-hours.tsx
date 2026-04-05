@@ -29,7 +29,9 @@ import { twStyle } from "@/lib/twStyle";
 
 /** Parse "HH:mm" to Date (use fixed date for time-only). */
 function timeStringToDate(s: string): Date {
-  const [h = 9, m = 0] = s.split(":").map((x) => parseInt(x, 10) || 0);
+  const [parsedH = 9, parsedM = 0] = s.split(":").map((x) => parseInt(x, 10) || 0);
+  const h = Math.max(0, Math.min(23, parsedH));
+  const m = Math.max(0, Math.min(59, parsedM));
   return new Date(2000, 0, 1, h, m);
 }
 

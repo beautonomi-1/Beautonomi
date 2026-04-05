@@ -164,6 +164,40 @@
       100% 88%, 88% 100%, 12% 100%, 0% 88%
     );
   }
+
+  /* Regional-indicator flag sequences (🇿🇦) — use emoji-capable fonts (Windows often needs explicit stack). */
+  .emoji-flag {
+    font-family: "Segoe UI Emoji", "Segoe UI Symbol", "Apple Color Emoji", "Noto Color Emoji",
+      "Twemoji Mozilla", "EmojiOne Color", "Android Emoji", sans-serif;
+    font-style: normal;
+    font-weight: normal;
+    line-height: 1;
+    display: inline-block;
+  }
+
+  /* Radix Select list: obvious scroll + touch momentum on iOS */
+  .select-scroll-viewport {
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225 / 0.9) transparent;
+  }
+
+  .select-scroll-viewport::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .select-scroll-viewport::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .select-scroll-viewport::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background-color: rgb(203 213 225 / 0.95);
+  }
+
+  .select-scroll-viewport::-webkit-scrollbar-thumb:hover {
+    background-color: rgb(148 163 184 / 0.95);
+  }
 }
 
 /* On-demand waiting illustration animations */
@@ -180,4 +214,11 @@
 }
 .on-demand-finger-tap {
   animation: on-demand-finger-tap 0.9s ease-in-out infinite;
+}
+
+/* Home header: nudge global categories slightly lower on mobile */
+@media (max-width: 767px) {
+  header.relative.bg-white.border-b.shadow-sm.sticky.top-0.z-50 > div.border-t.bg-white {
+    margin-top: 0.25rem;
+  }
 }

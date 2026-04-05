@@ -114,8 +114,8 @@ async function sendPushReminder(
         // iPad-specific notification handling
         new Notification("Subscription Reminder", {
           body: message,
-          icon: "/favicon.ico",
-          badge: "/favicon.ico",
+          icon: "/icon.svg",
+          badge: "/icon.svg",
           tag: `subscription-reminder-${daysUntilExpiry}`,
           requireInteraction: false,
         });
@@ -123,8 +123,8 @@ async function sendPushReminder(
         // Standard notification for other devices
         new Notification("Subscription Reminder", {
           body: message,
-          icon: "/favicon.ico",
-          badge: "/favicon.ico",
+          icon: "/icon.svg",
+          badge: "/icon.svg",
           tag: `subscription-reminder-${daysUntilExpiry}`,
         });
       }

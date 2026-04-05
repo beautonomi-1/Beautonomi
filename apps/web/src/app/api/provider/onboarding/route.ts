@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
+import {  requireRoleInApi, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { geocodeProviderLocation } from "@/lib/mapbox/geocodeProviderLocation";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const onboardingSchema = z.object({
   // New fields
@@ -80,7 +83,7 @@ const onboardingSchema = z.object({
     description: z.string().optional().nullable(),
     duration_minutes: z.number().min(1, "Duration must be at least 1 minute"),
     price: z.number().min(0, "Price must be non-negative"),
-    currency: z.string().default("ZAR"),
+    currency: z.string().optional(),
     supports_at_home: z.boolean().default(false),
     supports_at_salon: z.boolean().default(true),
     category_id: z.string().uuid().optional().nullable(),
@@ -88,7 +91,7 @@ const onboardingSchema = z.object({
       name: z.string().min(1, "Addon name is required"),
       description: z.string().optional().nullable(),
       price: z.number().min(0, "Price must be non-negative"),
-      currency: z.string().default("ZAR"),
+      currency: z.string().optional(),
       duration_minutes: z.number().optional().nullable(),
     })).optional().default([]),
   })).optional().default([]),
@@ -204,10 +207,7 @@ export async function POST(request: NextRequest) {
         },
       }
     );
-
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
-    if (!providerId) return notFoundResponse("Provider not found");
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
 
     // Check if provider already exists using admin client to avoid RLS recursion
@@ -225,6 +225,17 @@ export async function POST(request: NextRequest) {
     if (existingProvider) {
       return errorResponse("Provider profile already exists", "ALREADY_EXISTS", 409);
     }
+
+    const { data: tenantRow } = await supabaseAdmin
+      .from("tenants")
+      .select("default_currency")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const tenantDefaultCurrency = String(
+      (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY,
+    )
+      .trim()
+      .toUpperCase();
 
     // Generate slug from business name
     const generateSlug = (name: string): string => {
@@ -253,20 +264,26 @@ export async function POST(request: NextRequest) {
       slugSuffix++;
     }
 
-    // Fetch platform settings for auto-approve
-    const { data: platformSettings } = await supabaseAdmin
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .single();
+    // Fetch platform settings for this tenant with global fallback.
+    const scopedPlatformSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabaseAdmin,
+      table: "platform_settings",
+      tenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const platformSettings =
+      (scopedPlatformSettings.data as { settings?: Record<string, unknown> } | null)?.settings ?? null;
 
-    const autoApprove = (platformSettings?.settings as any)?.features?.auto_approve_providers === true;
+    const autoApprove = (platformSettings as any)?.features?.auto_approve_providers === true;
 
     // Create provider profile using admin client to avoid RLS issues
     // Note: Address and operating_hours are stored in provider_locations, not providers table
     const { data: provider, error: providerError } = await (supabaseAdmin
       .from("providers") as any)
       .insert({
+        tenant_id: tenantId,
         user_id: user.id,
         business_name,
         business_type: business_type === "mobile" ? "freelancer" : "salon", // Map: "mobile" -> "freelancer", "salon"/"both" -> "salon"
@@ -319,6 +336,7 @@ export async function POST(request: NextRequest) {
     if (!provider) {
       return errorResponse("Failed to create provider profile", "PROVIDER_CREATION_ERROR", 500);
     }
+    const providerId = provider.id as string;
 
     // Upload thumbnail, avatar (profile circle), and gallery images to storage
     let uploadedThumbnailUrl: string | null = null;
@@ -573,7 +591,7 @@ export async function POST(request: NextRequest) {
               description: `Professional ${template.title.toLowerCase()} service`,
               duration_minutes: template.duration_minutes,
               price: template.price,
-              currency: "ZAR",
+              currency: tenantDefaultCurrency,
               supports_at_home: template.supports_at_home || false,
               supports_at_salon: business_type === "salon" || business_type === "both",
               category_id: category.id,
@@ -586,7 +604,7 @@ export async function POST(request: NextRequest) {
             description: `Professional ${category.name.toLowerCase()} service`,
             duration_minutes: 60,
             price: 200,
-            currency: "ZAR",
+            currency: tenantDefaultCurrency,
             supports_at_home: business_type === "mobile" || business_type === "both",
             supports_at_salon: business_type === "salon" || business_type === "both",
             category_id: category.id,
@@ -606,7 +624,7 @@ export async function POST(request: NextRequest) {
         description: service.description || null,
         duration_minutes: service.duration_minutes,
         price: service.price,
-        currency: service.currency || "ZAR",
+        currency: service.currency || tenantDefaultCurrency,
         supports_at_home: service.supports_at_home || false,
         supports_at_salon: service.supports_at_salon !== false, // Default to true
         category_id: service.category_id || null,
@@ -635,7 +653,7 @@ export async function POST(request: NextRequest) {
               name: addon.name,
               description: addon.description || null,
               price: addon.price,
-              currency: addon.currency || "ZAR",
+              currency: addon.currency || tenantDefaultCurrency,
               duration_minutes: addon.duration_minutes || 0,
               is_active: true,
             });
@@ -673,18 +691,11 @@ export async function POST(request: NextRequest) {
 
     // Auto-select service zones if provided
     if (selected_zone_ids && selected_zone_ids.length > 0) {
-      // Get platform default travel fee settings
-      const { data: platformSettings } = await supabaseAdmin
-        .from("platform_settings")
-        .select("settings")
-        .eq("is_active", true)
-        .single();
-
-      const platformTravelFees = platformSettings?.settings?.travel_fees || {
+      const platformTravelFees = (platformSettings as any)?.travel_fees || {
         default_rate_per_km: 8.00,
         default_minimum_fee: 20.00,
         default_maximum_fee: null,
-        default_currency: "ZAR",
+        default_currency: tenantDefaultCurrency,
       };
 
       // Create zone selections with default pricing
@@ -692,7 +703,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         platform_zone_id: zoneId,
         travel_fee: platformTravelFees.default_minimum_fee || 20.00,
-        currency: platformTravelFees.default_currency || "ZAR",
+        currency: platformTravelFees.default_currency || tenantDefaultCurrency,
         travel_time_minutes: 30,
         is_active: true,
       }));
@@ -811,6 +822,15 @@ export async function POST(request: NextRequest) {
       .from("provider_onboarding_drafts")
       .delete()
       .eq("user_id", user.id);
+
+    try {
+      const { ensureProviderFreeSubscriptionRow } = await import(
+        "@/lib/subscriptions/ensure-provider-free-subscription"
+      );
+      await ensureProviderFreeSubscriptionRow(supabaseAdmin, providerId, tenantId);
+    } catch (subErr) {
+      console.warn("ensureProviderFreeSubscriptionRow (non-fatal):", subErr);
+    }
 
     // Note: Subscription creation requires payment authorization via Paystack
     // The selected_plan_id is passed in the response so the frontend can handle

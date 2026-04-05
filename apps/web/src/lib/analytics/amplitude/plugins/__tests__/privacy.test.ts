@@ -5,6 +5,7 @@
 import { PrivacyPlugin } from "../privacy";
 import { PluginContext } from "../types";
 import { AmplitudeEvent } from "../../types";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 describe("PrivacyPlugin", () => {
   const createContext = (debugMode = false): PluginContext => ({
@@ -95,7 +96,7 @@ describe("PrivacyPlugin", () => {
         booking_id: "123",
         provider_id: "456",
         amount: 100,
-        currency: "ZAR",
+        currency: LAST_RESORT_CURRENCY,
         status: "confirmed",
       },
     };

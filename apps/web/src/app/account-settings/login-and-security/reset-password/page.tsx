@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { updatePassword } from "@/lib/supabase/auth";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -12,32 +12,53 @@ import { motion } from "framer-motion";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [verifyError, setVerifyError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabaseClient();
+    const tokenHash = searchParams.get("token_hash");
+    const type = searchParams.get("type");
+
+    const tryReady = () => setIsReady(true);
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event) => {
         if (event === "PASSWORD_RECOVERY") {
-          setIsReady(true);
+          tryReady();
         }
       }
     );
 
-    supabase.auth.getSession().then(({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
       if (data.session) {
-        setIsReady(true);
+        tryReady();
+        return;
       }
-    });
+      if (tokenHash && type === "recovery") {
+        const { error: verifyErr } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: "recovery",
+        });
+        if (verifyErr) {
+          setVerifyError(verifyErr.message);
+          return;
+        }
+        tryReady();
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    })();
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [searchParams]);
 
   const passwordStrength = (pwd: string): { label: string; color: string; score: number } => {
     let score = 0;
@@ -98,6 +119,26 @@ export default function ResetPasswordPage() {
             Your password has been reset successfully. Redirecting you to the
             home page…
           </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (verifyError) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-8 text-center shadow-lg"
+        >
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+            <AlertCircle className="h-7 w-7 text-red-600" />
+          </div>
+          <h2 className="mb-2 text-lg font-semibold text-gray-900">Invalid or expired link</h2>
+          <p className="mb-6 text-sm text-gray-500">{verifyError}</p>
+          <Button onClick={() => router.push("/forgot-password")} className="w-full mb-2">Request new link</Button>
+          <button type="button" onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700">Back to home</button>
         </motion.div>
       </div>
     );

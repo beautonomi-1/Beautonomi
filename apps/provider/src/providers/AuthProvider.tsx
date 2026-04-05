@@ -4,6 +4,8 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { Platform } from "react-native";
@@ -12,7 +14,16 @@ import * as WebBrowser from "expo-web-browser";
 import * as AuthSession from "expo-auth-session";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
+import { scheduleRetentionSyncOnSession } from "@/lib/retention-sync";
 import { APP_URL } from "@/config/public-env";
+import { setSentryUser, clearSentryUser } from "@/lib/sentry";
+import { clearApiCache } from "@/hooks/useApi";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+} from "@/lib/supabase-sms-otp";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -33,6 +44,8 @@ interface AuthContextType {
   resendVerificationEmail: () => Promise<void>;
   signInWithOtp: (phone: string) => Promise<{ error: Error | null }>;
   verifyOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
+  signInWithOtpEmail: (email: string) => Promise<{ error: Error | null }>;
+  verifyOtpEmail: (email: string, token: string) => Promise<{ error: Error | null }>;
   signInWithOAuth: (
     provider: OAuthProvider,
   ) => Promise<{ error: Error | null }>;
@@ -64,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const updateSession = useCallback((newSession: Session | null) => {
     setSession(newSession);
@@ -90,6 +104,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       updateSession(s);
       setLoading(false);
+      if (s?.user) scheduleRetentionSyncOnSession();
     }).catch((err) => {
       console.warn("[AUTH] getSession failed", err);
       if (timeoutId) {
@@ -101,8 +116,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    } = supabase.auth.onAuthStateChange((event, newSession) => {
+      const nextUserId = newSession?.user?.id ?? null;
+      const prevUserId = lastUserIdRef.current;
+      if ((prevUserId && prevUserId !== nextUserId) || event === "SIGNED_OUT") {
+        clearApiCache();
+      }
+      lastUserIdRef.current = nextUserId;
       updateSession(newSession);
+      if (
+        newSession?.user &&
+        (event === "INITIAL_SESSION" || event === "SIGNED_IN")
+      ) {
+        scheduleRetentionSyncOnSession();
+      }
     });
 
     return () => {
@@ -111,6 +138,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, [updateSession, AUTH_SESSION_TIMEOUT_MS]);
+
+  useEffect(() => {
+    if (user?.id) {
+      setSentryUser(user.id, user.email ?? undefined);
+    } else {
+      clearSentryUser();
+    }
+  }, [user?.id, user?.email]);
 
   // Keep session fresh when app comes to foreground (native only; web always "active")
   useEffect(() => {
@@ -126,21 +161,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithOtp = useCallback(async (phone: string) => {
+    const raw = phone.startsWith("+") ? phone : `+${phone}`;
+    const e164 = normalizeSupabaseAuthPhone(raw);
     const { error } = await supabase.auth.signInWithOtp({
-      phone: phone.startsWith("+") ? phone : `+${phone}`,
+      phone: e164,
+      options: { channel: "sms", shouldCreateUser: false },
     });
     return { error: error ? new Error(error.message) : null };
   }, []);
 
   const verifyOtp = useCallback(async (phone: string, token: string) => {
-    const normalizedPhone = phone.startsWith("+") ? phone : `+${phone}`;
+    const otpToken = normalizeSupabaseSmsOtpToken(token);
+    if (!isCompleteSupabaseSmsOtp(otpToken)) {
+      return { error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`) };
+    }
+    const raw = phone.startsWith("+") ? phone : `+${phone}`;
+    const e164 = normalizeSupabaseAuthPhone(raw);
     const { error } = await supabase.auth.verifyOtp({
-      phone: normalizedPhone,
-      token,
+      phone: e164,
+      token: otpToken,
       type: "sms",
     });
     return { error: error ? new Error(error.message) : null };
   }, []);
+
+  const signInWithOtpEmail = useCallback(async (email: string) => {
+    const trimmed = email.trim();
+    if (!trimmed || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      return { error: new Error("Enter a valid email address") };
+    }
+    const { error } = await supabase.auth.signInWithOtp({
+      email: trimmed,
+      options: { emailRedirectTo: getRedirectUrl(), shouldCreateUser: false },
+    });
+    return { error: error ? new Error(error.message) : null };
+  }, []);
+
+  const verifyOtpEmail = useCallback(
+    async (email: string, token: string) => {
+      const trimmed = email.trim();
+      const otpToken = normalizeSupabaseSmsOtpToken(token);
+      if (!isCompleteSupabaseSmsOtp(otpToken)) {
+        return { error: new Error(`Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your email`) };
+      }
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: trimmed,
+        token: otpToken,
+        type: "email",
+      });
+      if (error) return { error: new Error(error.message) };
+      if (data.session) updateSession(data.session);
+      return { error: null };
+    },
+    [updateSession],
+  );
 
   const signInWithOAuth = useCallback(
     async (provider: OAuthProvider): Promise<{ error: Error | null }> => {
@@ -250,13 +324,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    console.log("[AUTH] signOut start");
+    if (__DEV__) {
+      console.log("[AUTH] signOut start");
+    }
     try {
       await supabase.auth.signOut();
-      console.log("[AUTH] signOut supabase done, calling updateSession(null)");
+      clearApiCache();
+      if (__DEV__) {
+        console.log("[AUTH] signOut supabase done, calling updateSession(null)");
+      }
       updateSession(null);
     } catch (e) {
       console.warn("[AUTH] signOut error", e);
+      clearApiCache();
       updateSession(null);
     }
   }, [updateSession]);
@@ -273,22 +353,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }, [user?.email]);
 
+  const contextValue = useMemo<AuthContextType>(
+    () => ({
+      session,
+      user,
+      loading,
+      isEmailVerified,
+      resendVerificationEmail,
+      signInWithOtp,
+      verifyOtp,
+      signInWithOtpEmail,
+      verifyOtpEmail,
+      signInWithOAuth,
+      signUpWithEmail,
+      signInWithEmail,
+      signOut,
+    }),
+    [
+      session,
+      user,
+      loading,
+      isEmailVerified,
+      resendVerificationEmail,
+      signInWithOtp,
+      verifyOtp,
+      signInWithOtpEmail,
+      verifyOtpEmail,
+      signInWithOAuth,
+      signUpWithEmail,
+      signInWithEmail,
+      signOut,
+    ],
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        session,
-        user,
-        loading,
-        isEmailVerified,
-        resendVerificationEmail,
-        signInWithOtp,
-        verifyOtp,
-        signInWithOAuth,
-        signUpWithEmail,
-        signInWithEmail,
-        signOut,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

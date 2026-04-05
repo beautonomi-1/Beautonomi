@@ -5,7 +5,7 @@
  * - AccountStatusGuard: signs out and redirects if account is suspended or deactivated.
  * - Every API call from useApi / api uses Bearer token from Supabase; 401 triggers refresh then retry, then sign out so this layout redirects.
  */
-import { Fragment, useEffect } from "react";
+import { Fragment, useEffect, useMemo } from "react";
 import { View, Text, ActivityIndicator, Linking, Platform } from "react-native";
 import { Redirect, Stack, useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -16,14 +16,23 @@ import { NotificationsCountProvider } from "@/providers/NotificationsCountContex
 import { OnDemandIncomingListener } from "@/components/OnDemandIncomingListener";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
+import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
 
 const SUBSCRIPTION_SUCCESS_DEEP_LINK = "provider://subscription/success";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
   const router = useRouter();
+  const stackScreenOptions = useMemo(
+    () => ({
+      headerShown: false,
+      contentStyle: { flex: 1, backgroundColor: "#ffffff" },
+    }),
+    [],
+  );
 
   // Deep link: open native subscription screen (e.g. after payment in browser, if user taps Return to app)
   useEffect(() => {
@@ -53,19 +62,18 @@ export default function AppLayout() {
   return (
     <MaintenanceGate>
     <AccountStatusGuard>
-    <RoleGate>
       <ProviderProvider>
+      <RoleGate>
         <NotificationsCountProvider>
         <Fragment>
+        <NativePermissionsOnboarding />
         <OnDemandIncomingListener />
         <SingularLinkHandler />
         <View style={{ flex: 1 }}>
           <EmailVerificationBanner />
+          <ProfileLoadErrorBanner />
           <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { flex: 1, backgroundColor: "#ffffff" },
-          }}
+          screenOptions={stackScreenOptions}
         >
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="chat/[id]" options={{ headerShown: false }} />
@@ -77,8 +85,8 @@ export default function AppLayout() {
         </View>
         </Fragment>
         </NotificationsCountProvider>
+      </RoleGate>
       </ProviderProvider>
-    </RoleGate>
     </AccountStatusGuard>
     </MaintenanceGate>
   );

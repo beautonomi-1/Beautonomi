@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 
 /**
@@ -14,7 +14,7 @@ export async function POST(
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     // Verify notification belongs to user
     const { data: notification, error: fetchError } = await supabase

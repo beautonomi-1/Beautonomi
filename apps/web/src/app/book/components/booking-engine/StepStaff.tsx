@@ -130,13 +130,15 @@ export function StepStaff({ data, staff, onSelectStaff, onNext }: StepStaffProps
       <button
         type="button"
         onClick={onNext}
+        disabled={selectedId === null}
         className={cn(
           "w-full rounded-2xl h-12 font-semibold text-white touch-manipulation transition-all duration-300",
           MIN_TAP,
-          BOOKING_ACTIVE_SCALE
+          BOOKING_ACTIVE_SCALE,
+          selectedId === null && "opacity-50 cursor-not-allowed"
         )}
         style={{
-          backgroundColor: BOOKING_ACCENT,
+          backgroundColor: selectedId === null ? "#9CA3AF" : BOOKING_ACCENT,
           borderRadius: BOOKING_RADIUS_BUTTON,
           boxShadow: BOOKING_SHADOW_CARD,
         }}

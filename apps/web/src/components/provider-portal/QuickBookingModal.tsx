@@ -71,7 +71,11 @@ export default function QuickBookingModal({
       setSelectedSlot("");
       onSuccess?.();
     } catch (error: unknown) {
-      toast.error(error instanceof Error ? error.message : "Failed to create booking. Please try again.");
+      const msg =
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Failed to create booking. Ensure you have create_appointments permission.";
+      toast.error(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -89,7 +93,9 @@ export default function QuickBookingModal({
         <DialogHeader>
           <DialogTitle>Quick Book from Waitlist</DialogTitle>
           <DialogDescription>
-            Create a booking for {clientName} from the waitlist.
+            Create a booking for {clientName} from the waitlist. Requires{" "}
+            <span className="font-medium text-foreground">create_appointments</span>. If you lack
+            permission, the error toast shows the server message (403).
           </DialogDescription>
         </DialogHeader>
 

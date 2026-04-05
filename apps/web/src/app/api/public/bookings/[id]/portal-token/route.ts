@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createPortalToken, getPortalUrl } from "@/lib/portal/token";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * POST /api/public/bookings/[id]/portal-token
@@ -14,17 +15,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const { id: bookingId } = await params;
     const body = await request.json().catch(() => ({}));
     const { expiresInDays, maxUses } = body;
 
     const adminSupabase = getSupabaseAdmin();
 
-    // Verify booking exists
+    // Verify booking exists in this market (avoid cross-tenant portal token minting by UUID guess)
     const { data: booking, error: bookingError } = await adminSupabase
       .from('bookings')
       .select('id, customer_id')
       .eq('id', bookingId)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (bookingError || !booking) {

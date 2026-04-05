@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
  * GET /api/provider/finance/vat-reports
@@ -23,7 +27,7 @@ export async function GET(request: NextRequest) {
     // Check if provider is VAT-registered
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("is_vat_registered, vat_number")
+      .select("is_vat_registered, vat_number, tenant_id")
       .eq("id", providerId)
       .single();
 
@@ -41,6 +45,13 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const effectiveTenantId =
+      (provider as { tenant_id?: string | null }).tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const intlLocale = getTenantLocaleTagFromRegionConfig(tenantRegion);
+
     // Get year filter (default: current year)
     const year = parseInt(searchParams.get("year") || new Date().getFullYear().toString());
 
@@ -55,7 +66,7 @@ export async function GET(request: NextRequest) {
         period_start: periodStart.toISOString().split('T')[0],
         period_end: periodEnd.toISOString().split('T')[0],
         deadline_date: deadlineDate.toISOString().split('T')[0],
-        period_label: `${periodStart.toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })} - ${periodEnd.toLocaleDateString('en-ZA', { month: 'short', year: 'numeric' })}`,
+        period_label: `${periodStart.toLocaleDateString(intlLocale, { month: 'short', year: 'numeric' })} - ${periodEnd.toLocaleDateString(intlLocale, { month: 'short', year: 'numeric' })}`,
       });
     }
 
@@ -116,9 +127,9 @@ export async function GET(request: NextRequest) {
         return {
           ...period,
           vat_collected: vatCollected,
-          vat_collected_formatted: new Intl.NumberFormat('en-ZA', {
+          vat_collected_formatted: new Intl.NumberFormat(intlLocale, {
             style: 'currency',
-            currency: 'ZAR',
+            currency: lastResortCurrency,
           }).format(vatCollected),
           transaction_count: vatTransactions?.length || 0,
           transactions: (vatTransactions || []).map(t => {

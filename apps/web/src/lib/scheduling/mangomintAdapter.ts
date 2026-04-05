@@ -166,8 +166,17 @@ export interface MangomintBlock {
  * the client has checked in → WAITING (ready for service).
  */
 export function mapStatus(
-  statusOrAppointment: Appointment["status"] | Pick<Appointment, "status" | "current_stage" | "location_type">
+  statusOrAppointment:
+    | Appointment["status"]
+    | Pick<Appointment, "status" | "current_stage" | "location_type" | "db_status">
 ): AppointmentStatus {
+  if (typeof statusOrAppointment === "object" && statusOrAppointment !== null) {
+    const db = (statusOrAppointment as Appointment).db_status;
+    if (db === "pending") {
+      return AppointmentStatus.UNCONFIRMED;
+    }
+  }
+
   const status = typeof statusOrAppointment === "string"
     ? statusOrAppointment
     : statusOrAppointment.status;

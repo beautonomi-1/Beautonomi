@@ -3,6 +3,13 @@
  * EXPO_PUBLIC_* vars are injected at build time from .env / .env.local.
  */
 import Constants from "expo-constants";
+import { LAST_RESORT_CURRENCY } from "@beautonomi/utils";
+import {
+  getActiveMarketHostSync,
+  initializeActiveMarketHost,
+  setActiveMarketHost as setRuntimeActiveMarketHost,
+  startActiveMarketHostLinkListener,
+} from "@/lib/market/active-market-host";
 
 /** Use dot notation so Expo inlines EXPO_PUBLIC_* at build time (bracket notation is not supported). */
 function getEnv(key: string): string {
@@ -15,7 +22,25 @@ function getEnv(key: string): string {
           ? process.env.EXPO_PUBLIC_APP_URL
           : key === "EXPO_PUBLIC_ONESIGNAL_APP_ID"
             ? process.env.EXPO_PUBLIC_ONESIGNAL_APP_ID
-            : undefined;
+            : key === "EXPO_PUBLIC_IOS_APP_STORE_ID"
+              ? process.env.EXPO_PUBLIC_IOS_APP_STORE_ID
+              : key === "EXPO_PUBLIC_WEB_API_TENANT_HOST"
+              ? process.env.EXPO_PUBLIC_WEB_API_TENANT_HOST
+              : key === "EXPO_PUBLIC_GLOBAL_ENTRY_HOST"
+                ? process.env.EXPO_PUBLIC_GLOBAL_ENTRY_HOST
+                : key === "EXPO_PUBLIC_DEFAULT_MARKET_HOST"
+                  ? process.env.EXPO_PUBLIC_DEFAULT_MARKET_HOST
+                  : key === "EXPO_PUBLIC_MARKET_HOST_OPTIONS"
+                    ? process.env.EXPO_PUBLIC_MARKET_HOST_OPTIONS
+                    : key === "EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS"
+                      ? process.env.EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS
+                      : key === "EXPO_PUBLIC_DEFAULT_REGION_CURRENCY"
+                        ? process.env.EXPO_PUBLIC_DEFAULT_REGION_CURRENCY
+                        : key === "EXPO_PUBLIC_SCREENSHOT_MODE"
+                          ? process.env.EXPO_PUBLIC_SCREENSHOT_MODE
+                          : key === "EXPO_PUBLIC_SCREENSHOT_BOOKING_ID"
+                            ? process.env.EXPO_PUBLIC_SCREENSHOT_BOOKING_ID
+                            : undefined;
   const fromExtra = (
     Constants.expoConfig?.extra as Record<string, string> | undefined
   )?.[key];
@@ -51,3 +76,49 @@ export const APP_URL = getEnv("EXPO_PUBLIC_APP_URL") ?? "";
 
 /** OneSignal App ID – optional; push notifications disabled if unset */
 export const ONE_SIGNAL_APP_ID = getEnv("EXPO_PUBLIC_ONESIGNAL_APP_ID");
+
+/** iOS App Store ID (numeric) – optional; used for force-update store link. Set when app is published. */
+export const IOS_APP_STORE_ID = getEnv("EXPO_PUBLIC_IOS_APP_STORE_ID") || "0000000000";
+
+/** Hostname for `tenant_domains` when calling Next.js web APIs from the app (spec §12). */
+export const WEB_API_TENANT_HOST = getEnv("EXPO_PUBLIC_WEB_API_TENANT_HOST") ?? "";
+export const GLOBAL_ENTRY_HOST = getEnv("EXPO_PUBLIC_GLOBAL_ENTRY_HOST") ?? "";
+export const DEFAULT_MARKET_HOST = getEnv("EXPO_PUBLIC_DEFAULT_MARKET_HOST") ?? "";
+export const MARKET_HOST_OPTIONS = getEnv("EXPO_PUBLIC_MARKET_HOST_OPTIONS") ?? "";
+export const MARKET_OVERRIDE_TTL_HOURS = Number(getEnv("EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS") || "24");
+
+/** ISO 4217 fallback when config bundle has not loaded yet (must match build market). */
+export const DEFAULT_REGION_CURRENCY = (() => {
+  const raw = getEnv("EXPO_PUBLIC_DEFAULT_REGION_CURRENCY").trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(raw) ? raw : LAST_RESORT_CURRENCY;
+})();
+
+/** Store / automation only — set via EXPO_PUBLIC_SCREENSHOT_MODE in local capture builds; omit in production EAS profiles. */
+export function isScreenshotMode(): boolean {
+  const v = getEnv("EXPO_PUBLIC_SCREENSHOT_MODE").trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
+export const SCREENSHOT_BOOKING_ID = getEnv("EXPO_PUBLIC_SCREENSHOT_BOOKING_ID");
+
+export function webApiTenantHeaders(): Record<string, string> {
+  const host = getActiveMarketHostSync().trim() || WEB_API_TENANT_HOST.trim();
+  return host ? { "x-forwarded-host": host } : {};
+}
+
+/** Merge `x-forwarded-host` for Next.js tenant resolution on raw `fetch` calls (spec §7.1, §12). */
+export function withWebApiTenantHeaders(init?: RequestInit): RequestInit {
+  const tenant = webApiTenantHeaders();
+  if (Object.keys(tenant).length === 0) return init ?? {};
+  const h = new Headers(init?.headers as HeadersInit | undefined);
+  for (const [k, v] of Object.entries(tenant)) {
+    if (!h.has(k)) h.set(k, v);
+  }
+  return { ...init, headers: h };
+}
+
+/** Runtime market host controls tenant routing for global-ready single builds. */
+export const initializeRuntimeMarketHost = initializeActiveMarketHost;
+export const setRuntimeMarketHost = setRuntimeActiveMarketHost;
+export const startRuntimeMarketHostLinkListener = startActiveMarketHostLinkListener;
+export const getRuntimeMarketHost = getActiveMarketHostSync;

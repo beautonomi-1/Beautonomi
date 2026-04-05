@@ -2,6 +2,8 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface MoneyProps {
   amount: number;
@@ -10,8 +12,9 @@ interface MoneyProps {
   className?: string;
 }
 
-export function Money({ amount, currency = "ZAR", showSymbol = true, className }: MoneyProps) {
-  const formatted = new Intl.NumberFormat("en-ZA", {
+export function Money({ amount, currency = LAST_RESORT_CURRENCY, showSymbol = true, className }: MoneyProps) {
+  const locale = useTenantLocaleTag();
+  const formatted = new Intl.NumberFormat(locale, {
     style: showSymbol ? "currency" : "decimal",
     currency,
     minimumFractionDigits: 2,

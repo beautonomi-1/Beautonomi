@@ -60,7 +60,7 @@ export default function AuthGuard({
             setIsLoginModalOpen(true);
           } else {
             const redirectPath = redirectTo || window.location.pathname;
-            router.push(`/?login=true&redirect=${encodeURIComponent(redirectPath)}`);
+            router.replace(`/?login=true&redirect=${encodeURIComponent(redirectPath)}`);
           }
         }
       }, delay);
@@ -98,22 +98,26 @@ export default function AuthGuard({
             You need to be logged in to access this page.
           </p>
         </div>
-        <LoginModal 
-          open={isLoginModalOpen} 
-          setOpen={(loggedIn) => {
-            setIsLoginModalOpen(false);
-            if (loggedIn) {
-              // Stay on the same page after login
-            }
-          }} 
+        <LoginModal
+          open={isLoginModalOpen}
+          initialMode="login"
+          setOpen={setIsLoginModalOpen}
         />
       </>
     );
   }
 
-  // If not authenticated, don't render children (redirect will happen)
+  // If not authenticated, render a lightweight fallback while redirect happens.
+  // Returning null here causes a blank white screen during logout transitions.
   if (!user) {
-    return null;
+    return (
+      <div className="w-full max-w-7xl mx-auto px-4 md:px-6 lg:px-8 py-8 md:py-12 lg:py-16 text-center">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-8 h-8 border-4 border-[#FF0077] border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-500">Redirecting to sign in...</p>
+        </div>
+      </div>
+    );
   }
 
   // User is authenticated, render children

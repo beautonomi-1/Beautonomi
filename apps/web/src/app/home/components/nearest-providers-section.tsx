@@ -11,25 +11,38 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
 
-const NearestProvidersSection = () => {
-  const [providers, setProviders] = useState<PublicProviderCard[]>([]);
-  const [isLoading, setIsLoading] = useState(false); // Start false to render immediately
+type NearestProvidersSectionProps = {
+  categorySlug?: string;
+  initialProviders?: PublicProviderCard[];
+  initialHydrated?: boolean;
+};
+
+const NearestProvidersSection = ({
+  categorySlug = "all",
+  initialProviders,
+  initialHydrated = false,
+}: NearestProvidersSectionProps) => {
+  const [providers, setProviders] = useState<PublicProviderCard[]>(() =>
+    initialHydrated ? (initialProviders ?? []) : [],
+  );
+  const [isLoading, setIsLoading] = useState(() => !initialHydrated);
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation, isLoading: locationLoading } = useUserLocation();
   const distanceConfig = useModuleConfig("distance") as { enabled?: boolean; default_radius_km?: number; max_radius_km?: number; step_km?: number } | undefined;
   const distanceFilterEnabled = useFeatureFlag("distance.filter.enabled");
   const useRadius = Boolean(distanceConfig?.enabled) || distanceFilterEnabled;
-  const defaultRadius = distanceConfig?.default_radius_km ?? 25;
   const maxRadius = distanceConfig?.max_radius_km ?? 50;
-  const [radiusKm, setRadiusKm] = useState(defaultRadius);
+  /** "all" = no distance filter (country-wide / tenant-wide); numeric = filter nearest list */
+  const [radiusKm, setRadiusKm] = useState<number | "all">("all");
 
   useEffect(() => {
-    const loadData = async () => {
+    const loadData = async (silent: boolean) => {
       try {
-        setIsLoading(true);
+        if (!silent) setIsLoading(true);
         setError(null);
-        
+
         // Get user location from localStorage (set by header, including IP-based location)
         let lat: number | null = null;
         let lng: number | null = null;
@@ -41,7 +54,7 @@ const NearestProvidersSection = () => {
           lat = userLocation.latitude;
           lng = userLocation.longitude;
           // Try to extract city and country from address string
-          const addressParts = userLocation.address.split(",").map(s => s.trim());
+          const addressParts = userLocation.address.split(",").map((s) => s.trim());
           if (addressParts.length > 1) {
             city = addressParts[0];
             country = addressParts[addressParts.length - 1];
@@ -51,14 +64,21 @@ const NearestProvidersSection = () => {
           // Note: The browser may use Google's network location service; a 403 in the console is from the browser, not our app.
           if (navigator.geolocation) {
             try {
+              const perms = navigator.permissions as Permissions | undefined;
+              if (perms?.query) {
+                const geolocationPermission = await perms.query({ name: "geolocation" as PermissionName });
+                if (geolocationPermission.state === "denied") {
+                  // Skip geolocation call entirely when browser already denied; avoids repeated browser console warnings.
+                  throw new Error("geolocation_permission_denied");
+                }
+              }
               const position = await new Promise<GeolocationPosition>((resolve, reject) => {
                 navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
               });
               lat = position.coords.latitude;
               lng = position.coords.longitude;
             } catch {
-              // Geolocation failed, continue without it
-              console.log("Geolocation not available or denied");
+              // Geolocation failed or denied — continue without coords (expected in many browsers)
             }
           }
         }
@@ -71,12 +91,19 @@ const NearestProvidersSection = () => {
         }
         if (city) params.set("city", city);
         if (country) params.set("country", country || "ZA");
-        if (useRadius) params.set("radius_km", String(radiusKm));
+        if (useRadius && radiusKm !== "all" && typeof radiusKm === "number" && radiusKm > 0) {
+          params.set("radius_km", String(radiusKm));
+        }
+        if (categorySlug && categorySlug !== "all") {
+          params.set("category", categorySlug);
+        }
 
         const response = await fetcher.get<{
           data: { nearest: PublicProviderCard[] };
           error: null;
-        }>(`/api/public/home?${params.toString()}`, { timeoutMs: 10000 });
+        }>(`/api/public/home?${params.toString()}`, {
+          timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS,
+        });
         setProviders(response.data.nearest || []);
       } catch (err) {
         // Only set error for actual failures, not empty data
@@ -85,8 +112,14 @@ const NearestProvidersSection = () => {
             err instanceof FetchTimeoutError
               ? "Request timed out. Please try again."
               : err.message;
-          setError(errorMessage);
-          console.error("Error loading nearest providers:", err);
+          if (!silent) {
+            setError(errorMessage);
+          } else {
+            console.warn("Home nearest refetch failed (keeping SSR data):", err);
+          }
+          if (!silent) {
+            console.error("Error loading nearest providers:", err);
+          }
         } else {
           // For other errors, just log and show empty state
           console.error("Error loading nearest providers:", err);
@@ -97,11 +130,22 @@ const NearestProvidersSection = () => {
       }
     };
 
-    // Wait for location to load before fetching providers
+    // Wait for location resolution before first client fetch; RSC may already seed `nearest`
     if (!locationLoading) {
-      loadData();
+      if (initialHydrated) {
+        void loadData(true);
+      } else {
+        void loadData(false);
+      }
     }
-  }, [userLocation, locationLoading, useRadius, radiusKm]);
+  }, [
+    userLocation,
+    locationLoading,
+    useRadius,
+    radiusKm,
+    categorySlug,
+    initialHydrated,
+  ]);
 
   const handleRetry = () => {
     setError(null);
@@ -161,17 +205,25 @@ const NearestProvidersSection = () => {
             {useRadius && (
               <div className="flex items-center gap-2">
                 <Label htmlFor="radius-select" className="text-sm text-muted-foreground whitespace-nowrap">Within</Label>
-                <Select value={String(radiusKm)} onValueChange={(v) => setRadiusKm(Number(v))}>
+                <Select
+                  value={radiusKm === "all" ? "all" : String(radiusKm)}
+                  onValueChange={(v) => setRadiusKm(v === "all" ? "all" : Number(v))}
+                >
                   <SelectTrigger
                     id="radius-select"
-                    className="w-[100px] rounded-full bg-gray-100 border-0 px-4 py-2 h-9 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:ring-2 focus:ring-primary/30"
+                    className="w-[140px] rounded-full bg-gray-100 border-0 px-4 py-2 h-9 text-sm font-medium text-gray-700 hover:bg-gray-200 focus:ring-2 focus:ring-primary/30"
                   >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[5, 10, 15, 25, 50].filter((r) => r <= maxRadius).map((r) => (
-                      <SelectItem key={r} value={String(r)}>{r} km</SelectItem>
-                    ))}
+                    <SelectItem value="all">Country-wide</SelectItem>
+                    {[5, 10, 15, 25, 50]
+                      .filter((r) => r <= maxRadius)
+                      .map((r) => (
+                        <SelectItem key={r} value={String(r)}>
+                          {r} km
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

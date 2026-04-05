@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
 const DEFAULT_CENTER = { latitude: 25.2775, longitude: 55.2978 }; // Downtown Dubai
 
@@ -11,11 +12,9 @@ export default function Location() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/public/directions-config");
-        const json = await res.json().catch(() => ({}));
-        const data = json?.data;
-        const token = data?.mapboxPublicToken;
-        const styleUrl = data?.mapboxStyleUrl;
+        const cfg = await fetchMapboxPublicMapConfig();
+        const token = cfg.accessToken;
+        const styleUrl = cfg.styleUrl;
         if (cancelled || !token) return;
         const stylePath = styleUrl
           ? (styleUrl.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")

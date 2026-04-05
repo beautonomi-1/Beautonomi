@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  useWindowDimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -24,9 +25,16 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, formatCurrency } from "@/lib/format";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
+import { StaticMapImage } from "@/components/ui/StaticMapImage";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -134,6 +142,14 @@ export default function NewBookingScreen() {
   const params = useLocalSearchParams<{ date?: string; time?: string; defaultStatus?: string; clientId?: string; client_id?: string }>();
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
+  const tenantCurrency = getTenantDefaultCurrency();
+  const { width: windowWidth } = useWindowDimensions();
+  const { bundle } = useConfigBundle();
+  const defaultPhoneDial = useDefaultPhoneDial();
+  const mapboxCountryIso =
+    bundle?.meta?.active_market_country?.trim().length === 2
+      ? bundle.meta.active_market_country.trim().toUpperCase()
+      : "ZA";
 
   // --- API data ---
   const { data: services, loading: servicesLoading } = useApi<Service[]>("/api/provider/services");
@@ -170,7 +186,7 @@ export default function NewBookingScreen() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [newClientFirst, setNewClientFirst] = useState("");
   const [newClientLast, setNewClientLast] = useState("");
-  const [newClientPhone, setNewClientPhone] = useState("");
+  const [newClientPhoneE164, setNewClientPhoneE164] = useState("");
   const [newClientEmail, setNewClientEmail] = useState("");
 
   // --- Date / Time ---
@@ -219,9 +235,15 @@ export default function NewBookingScreen() {
 
   // --- Other ---
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
+  const [addressSearchValue, setAddressSearchValue] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
   const [addressCity, setAddressCity] = useState("");
+  const [addressStateProv, setAddressStateProv] = useState("");
+  const [addressPostalCode, setAddressPostalCode] = useState("");
   const [addressCountry, setAddressCountry] = useState("");
+  const [addressLatitude, setAddressLatitude] = useState<number | null>(null);
+  const [addressLongitude, setAddressLongitude] = useState<number | null>(null);
   const [travelFee, setTravelFee] = useState("");
   const [tipAmount, setTipAmount] = useState("");
   const [notes, setNotes] = useState("");
@@ -320,9 +342,19 @@ export default function NewBookingScreen() {
   function validate(): string | null {
     if (clientMode === "search" && !selectedClient) return "Please select a client";
     if (clientMode === "new" && !newClientFirst.trim()) return "Please enter client first name";
+    if (clientMode === "new") {
+      const phoneErr = validateE164Phone(newClientPhoneE164);
+      if (phoneErr) return phoneErr;
+    }
     if (!selectedDate) return "Please select a date";
     if (!selectedTime) return "Please select a time";
     if (selectedServices.length === 0) return "Please select at least one service";
+    if (locationType === "at_home") {
+      if (!addressLine1.trim()) return "Search and select the client's address";
+      if (addressLatitude == null || addressLongitude == null) {
+        return "Choose an address from the search suggestions so the map pin and travel distance are accurate.";
+      }
+    }
     return null;
   }
 
@@ -392,7 +424,7 @@ export default function NewBookingScreen() {
         ? { customer_id: selectedClient.customer_id }
         : {
             customer_name: `${newClientFirst.trim()} ${newClientLast.trim()}`.trim(),
-            customer_phone: newClientPhone.trim() || undefined,
+            customer_phone: newClientPhoneE164.trim() || undefined,
             customer_email: newClientEmail.trim() || undefined,
           };
 
@@ -409,7 +441,7 @@ export default function NewBookingScreen() {
           add_on_ids: s.addOnIds.length > 0 ? s.addOnIds : undefined,
           price: svc?.price || 0,
           duration_minutes: svc?.duration_minutes || 60,
-          currency: "ZAR",
+          currency: svc?.currency || getTenantDefaultCurrency(),
         };
       }),
       location_type: locationType,
@@ -423,7 +455,7 @@ export default function NewBookingScreen() {
       tax_amount: summary.tax,
       tax_rate: summary.taxRatePercent,
       total_amount: summary.total,
-      currency: "ZAR",
+      currency: getTenantDefaultCurrency(),
       status: params.defaultStatus || undefined,
       referral_source_id: referralSourceId.trim() || undefined,
     };
@@ -431,13 +463,41 @@ export default function NewBookingScreen() {
     if (locationType === "at_home") {
       if (summary.travelFeeNum > 0) payload.travel_fee = summary.travelFeeNum;
       if (addressLine1.trim()) payload.address_line1 = addressLine1.trim();
+      if (addressLine2.trim()) payload.address_line2 = addressLine2.trim();
       if (addressCity.trim()) payload.address_city = addressCity.trim();
+      if (addressStateProv.trim()) payload.address_state = addressStateProv.trim();
+      if (addressPostalCode.trim()) payload.address_postal_code = addressPostalCode.trim();
       if (addressCountry.trim()) payload.address_country = addressCountry.trim();
+      if (addressLatitude != null && addressLongitude != null) {
+        payload.address_latitude = addressLatitude;
+        payload.address_longitude = addressLongitude;
+      }
     }
 
     const { error } = await createBooking(payload);
     if (error) {
-      Alert.alert("Error", error);
+      // Detect subscription limit errors and offer an upgrade path
+      const isLimitError =
+        typeof error === "string" &&
+        (error.toLowerCase().includes("booking limit") ||
+          error.toLowerCase().includes("upgrade your plan") ||
+          error.toLowerCase().includes("limit_reached"));
+      if (isLimitError) {
+        Alert.alert(
+          "Booking limit reached",
+          error,
+          [
+            { text: "Cancel", style: "cancel" },
+            {
+              text: "View subscription",
+              onPress: () =>
+                router.push("/(app)/(tabs)/more/subscription" as any),
+            },
+          ]
+        );
+      } else {
+        Alert.alert("Error", error);
+      }
       return;
     }
     Alert.alert("Success", "Booking created successfully");
@@ -460,6 +520,7 @@ export default function NewBookingScreen() {
         {showConfirmation ? (
           <ConfirmationView
             summary={summary}
+            currency={tenantCurrency}
             selectedDate={selectedDate}
             selectedTime={selectedTime}
             clientName={
@@ -467,6 +528,13 @@ export default function NewBookingScreen() {
               `${newClientFirst} ${newClientLast}`.trim()
             }
             locationType={locationType}
+            serviceAddressSummary={
+              locationType === "at_home" && addressLine1.trim()
+                ? [addressLine1, addressLine2, addressCity, addressStateProv, addressPostalCode, addressCountry]
+                    .filter((s) => typeof s === "string" && s.trim())
+                    .join(", ")
+                : undefined
+            }
             paymentMethod={paymentMethod}
             creating={creating}
             onConfirm={handleCreate}
@@ -610,15 +678,13 @@ export default function NewBookingScreen() {
                       </View>
                     </View>
                     <View style={{ marginTop: 12 }}>
-                      <Text style={twStyle("mb-1 text-xs text-gray-500")}>Phone</Text>
-                      <TextInput
-                        style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
-                        placeholder="+27 xxx xxx xxxx"
-                        placeholderTextColor="#9ca3af"
-                        value={newClientPhone}
-                        onChangeText={setNewClientPhone}
-                        keyboardType="phone-pad"
-                        accessibilityLabel="Client phone"
+                      <E164PhoneField
+                        label="Phone"
+                        valueE164={newClientPhoneE164}
+                        onChangeE164={setNewClientPhoneE164}
+                        defaultCountryDial={defaultPhoneDial}
+                        muted
+                        accessibilityLabel="New client phone"
                       />
                     </View>
                     <View style={{ marginTop: 12 }}>
@@ -736,13 +802,56 @@ export default function NewBookingScreen() {
               </View>
               {locationType === "at_home" && (
                 <View style={twStyle("mb-4")}>
-                  <Text style={twStyle("text-xs text-gray-500")}>Address (for at home)</Text>
+                  <SectionLabel label="Client address" required />
+                  <Text style={twStyle("mb-2 text-xs text-gray-500")}>
+                    Search with Mapbox, then pick a result so the pin and travel distance are correct.
+                  </Text>
+                  <AddressAutocomplete
+                    label="Search address"
+                    value={addressSearchValue}
+                    countryCode={mapboxCountryIso}
+                    placeholder="Start typing street or place…"
+                    onSelect={(parsed) => {
+                      setAddressSearchValue(parsed.full_address);
+                      setAddressLine1(parsed.address_line1);
+                      setAddressCity(parsed.city);
+                      setAddressStateProv(parsed.state);
+                      setAddressPostalCode(parsed.postal_code);
+                      setAddressCountry(parsed.country);
+                      setAddressLatitude(parsed.latitude);
+                      setAddressLongitude(parsed.longitude);
+                    }}
+                    onBlur={(q) => {
+                      if (!addressLine1.trim() && q) setAddressLine1(q);
+                    }}
+                  />
+                  {addressLatitude != null && addressLongitude != null && (
+                    <View style={{ marginTop: 12, alignItems: "center" }}>
+                      <StaticMapImage
+                        latitude={addressLatitude}
+                        longitude={addressLongitude}
+                        width={Math.min(windowWidth - 48, 400)}
+                        height={160}
+                        zoom={15}
+                      />
+                      <Text style={twStyle("mt-1.5 text-center text-xs text-gray-500")}>Selected map location</Text>
+                    </View>
+                  )}
+                  <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Street line (from search — editable)</Text>
                   <TextInput
-                    style={[twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginTop: 8 }]}
-                    placeholder="Street address"
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                    placeholder="Street and number"
                     placeholderTextColor="#9ca3af"
                     value={addressLine1}
                     onChangeText={setAddressLine1}
+                  />
+                  <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Unit / apartment (optional)</Text>
+                  <TextInput
+                    style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                    placeholder="e.g. Unit 4B"
+                    placeholderTextColor="#9ca3af"
+                    value={addressLine2}
+                    onChangeText={setAddressLine2}
                   />
                   <View style={[twStyle("flex-row"), { marginTop: 12 }]}>
                     <TextInput
@@ -754,14 +863,30 @@ export default function NewBookingScreen() {
                     />
                     <TextInput
                       style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                      placeholder="Province / state"
+                      placeholderTextColor="#9ca3af"
+                      value={addressStateProv}
+                      onChangeText={setAddressStateProv}
+                    />
+                  </View>
+                  <View style={[twStyle("flex-row"), { marginTop: 12 }]}>
+                    <TextInput
+                      style={[twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900"), { marginRight: 8 }]}
+                      placeholder="Postal code"
+                      placeholderTextColor="#9ca3af"
+                      value={addressPostalCode}
+                      onChangeText={setAddressPostalCode}
+                    />
+                    <TextInput
+                      style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                       placeholder="Country"
                       placeholderTextColor="#9ca3af"
                       value={addressCountry}
                       onChangeText={setAddressCountry}
                     />
                   </View>
-                  <View>
-                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>Travel fee (ZAR, optional)</Text>
+                  <View style={{ marginTop: 12 }}>
+                    <Text style={twStyle("mb-1 text-xs text-gray-500")}>Travel fee ({tenantCurrency}, optional)</Text>
                     <TextInput
                       style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                       placeholder="0"
@@ -775,7 +900,7 @@ export default function NewBookingScreen() {
               )}
 
               {/* -------- TIP -------- */}
-              <SectionLabel label="Tip (optional, ZAR)" />
+              <SectionLabel label={`Tip (optional, ${tenantCurrency})`} />
               <TextInput
                 style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
                 placeholder="0"
@@ -809,7 +934,7 @@ export default function NewBookingScreen() {
                           onPress={() => toggleService(service.id)}
                           accessibilityRole="checkbox"
                           accessibilityState={{ checked: isSelected }}
-                          accessibilityLabel={`${service.title}, ${service.duration_minutes} minutes, R${service.price}`}
+                          accessibilityLabel={`${service.title}, ${service.duration_minutes} minutes, ${formatCurrency(service.price, service.currency)}`}
                         >
                           <View style={twStyle("flex-1")}>
                             <Text
@@ -829,7 +954,7 @@ export default function NewBookingScreen() {
                                 isSelected ? "text-indigo-700" : "text-gray-900"
                               }`)}
                             >
-                              R{service.price.toFixed(2)}
+                              {formatCurrency(service.price, service.currency)}
                             </Text>
                             <View
                               style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
@@ -1001,39 +1126,39 @@ export default function NewBookingScreen() {
                   {item.name}
                   {item.staffName ? ` (${item.staffName})` : ""}
                 </Text>
-                <Text style={twStyle("text-sm text-gray-600")}>R{item.price.toFixed(2)}</Text>
+                <Text style={twStyle("text-sm text-gray-600")}>{formatCurrency(item.price, tenantCurrency)}</Text>
               </View>
             ))}
             <View style={twStyle("my-2 h-px bg-gray-200")} />
             <View style={twStyle("flex-row justify-between")}>
               <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
-              <Text style={twStyle("text-sm text-gray-700")}>R{summary.subtotal.toFixed(2)}</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.subtotal, tenantCurrency)}</Text>
             </View>
             {summary.discountAmt > 0 && (
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
-                <Text style={twStyle("text-sm text-green-600")}>-R{summary.discountAmt.toFixed(2)}</Text>
+                <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.discountAmt, tenantCurrency)}</Text>
               </View>
             )}
             <View style={twStyle("flex-row justify-between")}>
               <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
-              <Text style={twStyle("text-sm text-gray-700")}>R{summary.tax.toFixed(2)}</Text>
+              <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, tenantCurrency)}</Text>
             </View>
             {summary.travelFeeNum > 0 && (
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Travel fee</Text>
-                <Text style={twStyle("text-sm text-gray-700")}>R{summary.travelFeeNum.toFixed(2)}</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.travelFeeNum, tenantCurrency)}</Text>
               </View>
             )}
             {summary.tipNum > 0 && (
               <View style={twStyle("flex-row justify-between")}>
                 <Text style={twStyle("text-sm text-gray-500")}>Tip</Text>
-                <Text style={twStyle("text-sm text-gray-700")}>R{summary.tipNum.toFixed(2)}</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tipNum, tenantCurrency)}</Text>
               </View>
             )}
             <View style={twStyle("mt-1 flex-row justify-between")}>
               <Text style={twStyle("text-base font-bold text-gray-900")}>Total</Text>
-              <Text style={twStyle("text-base font-bold text-gray-900")}>R{summary.total.toFixed(2)}</Text>
+              <Text style={twStyle("text-base font-bold text-gray-900")}>{formatCurrency(summary.total, tenantCurrency)}</Text>
             </View>
             <Text style={twStyle("mt-1 text-xs text-gray-400")}>
               {formatDuration(summary.totalMinutes)} total duration
@@ -1146,7 +1271,7 @@ export default function NewBookingScreen() {
                     </View>
                     <View style={twStyle("flex-row items-center")}>
                       <Text style={twStyle("mr-2 text-sm font-semibold text-gray-800")}>
-                        R{ao.price.toFixed(2)}
+                        {formatCurrency(ao.price, tenantCurrency)}
                       </Text>
                       <View
                         style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
@@ -1173,10 +1298,12 @@ export default function NewBookingScreen() {
 
 function ConfirmationView({
   summary,
+  currency,
   selectedDate,
   selectedTime,
   clientName,
   locationType,
+  serviceAddressSummary,
   paymentMethod,
   creating,
   onConfirm,
@@ -1192,10 +1319,12 @@ function ConfirmationView({
     travelFeeNum?: number;
     tipNum?: number;
   };
+  currency: string;
   selectedDate: Date;
   selectedTime: string;
   clientName: string;
   locationType: string;
+  serviceAddressSummary?: string;
   paymentMethod: string;
   creating: boolean;
   onConfirm: () => void;
@@ -1216,6 +1345,12 @@ function ConfirmationView({
         <ConfirmRow label="Date" value={format(selectedDate, "EEE, MMM d, yyyy")} />
         <ConfirmRow label="Time" value={selectedTime} />
         <ConfirmRow label="Location" value={locationType === "at_home" ? "At Home" : "At Salon"} />
+        {serviceAddressSummary ? (
+          <View style={twStyle("border-b border-gray-50 py-2")}>
+            <Text style={twStyle("text-sm text-gray-500")}>Service address</Text>
+            <Text style={twStyle("mt-1 text-sm font-medium text-gray-900")}>{serviceAddressSummary}</Text>
+          </View>
+        ) : null}
         <ConfirmRow label="Payment" value={paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)} />
         <ConfirmRow label="Duration" value={formatDuration(summary.totalMinutes)} />
       </View>
@@ -1226,39 +1361,39 @@ function ConfirmationView({
             <Text style={twStyle("flex-1 text-sm text-gray-600")} numberOfLines={1}>
               {item.name}{item.staffName ? ` (${item.staffName})` : ""}
             </Text>
-            <Text style={twStyle("text-sm text-gray-600")}>R{item.price.toFixed(2)}</Text>
+            <Text style={twStyle("text-sm text-gray-600")}>{formatCurrency(item.price, currency)}</Text>
           </View>
         ))}
         <View style={twStyle("my-2 h-px bg-gray-200")} />
         <View style={twStyle("flex-row justify-between")}>
           <Text style={twStyle("text-sm text-gray-500")}>Subtotal</Text>
-          <Text style={twStyle("text-sm text-gray-700")}>R{summary.subtotal.toFixed(2)}</Text>
+          <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.subtotal, currency)}</Text>
         </View>
         {summary.discountAmt > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-green-600")}>Discount</Text>
-            <Text style={twStyle("text-sm text-green-600")}>-R{summary.discountAmt.toFixed(2)}</Text>
+            <Text style={twStyle("text-sm text-green-600")}>{formatCurrency(-summary.discountAmt, currency)}</Text>
           </View>
         )}
         <View style={twStyle("flex-row justify-between")}>
           <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
-          <Text style={twStyle("text-sm text-gray-700")}>R{summary.tax.toFixed(2)}</Text>
+          <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, currency)}</Text>
         </View>
         {(summary.travelFeeNum ?? 0) > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-gray-500")}>Travel fee</Text>
-            <Text style={twStyle("text-sm text-gray-700")}>R{(summary.travelFeeNum ?? 0).toFixed(2)}</Text>
+            <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.travelFeeNum ?? 0, currency)}</Text>
           </View>
         )}
         {(summary.tipNum ?? 0) > 0 && (
           <View style={twStyle("flex-row justify-between")}>
             <Text style={twStyle("text-sm text-gray-500")}>Tip</Text>
-            <Text style={twStyle("text-sm text-gray-700")}>R{(summary.tipNum ?? 0).toFixed(2)}</Text>
+            <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tipNum ?? 0, currency)}</Text>
           </View>
         )}
         <View style={twStyle("mt-2 flex-row justify-between")}>
           <Text style={twStyle("text-lg font-bold text-gray-900")}>Total</Text>
-          <Text style={twStyle("text-lg font-bold text-gray-900")}>R{summary.total.toFixed(2)}</Text>
+          <Text style={twStyle("text-lg font-bold text-gray-900")}>{formatCurrency(summary.total, currency)}</Text>
         </View>
       </View>
 

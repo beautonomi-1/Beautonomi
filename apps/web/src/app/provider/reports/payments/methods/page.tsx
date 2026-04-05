@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -31,6 +32,7 @@ interface PaymentMethodsData {
 }
 
 export default function PaymentMethodsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -77,7 +79,7 @@ export default function PaymentMethodsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "payment-methods");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "payment-methods", exportCurrency);
     exportToCSV(exportData, "payment-methods-report");
   };
 
@@ -163,7 +165,7 @@ export default function PaymentMethodsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalAmount.toLocaleString()}
+                  {fmt(data.totalAmount)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -208,10 +210,10 @@ export default function PaymentMethodsReport() {
                     </div>
                     <div className="text-right ml-4">
                       <p className="font-semibold text-gray-900">
-                        ZAR {method.totalAmount.toLocaleString()}
+                        {fmt(method.totalAmount)}
                       </p>
                       <p className="text-sm text-gray-600">
-                        Avg: ZAR {method.averageAmount.toLocaleString()}
+                        Avg: {fmt(method.averageAmount)}
                       </p>
                     </div>
                   </div>

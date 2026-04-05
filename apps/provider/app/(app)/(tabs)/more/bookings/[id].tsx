@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import {
   Platform,
@@ -25,40 +25,155 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
+import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import {
+  ARRIVAL_PIN_LENGTH_HINT,
+  ARRIVAL_PIN_PLACEHOLDER,
+  ARRIVAL_PIN_PROVIDER_HEADING,
+  ARRIVAL_PIN_PROVIDER_SUBTEXT,
+  ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
+} from "@beautonomi/utils";
+
+function extractIsoDatePart(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const [datePart] = value.split("T");
+  if (!datePart || !/^\d{4}-\d{2}-\d{2}$/.test(datePart)) return null;
+  return datePart;
+}
+
+function extractIsoTimePart(value: unknown): string {
+  if (typeof value !== "string" || value.length < 16) return "";
+  const timePart = value.slice(11, 16);
+  return /^\d{2}:\d{2}$/.test(timePart) ? timePart : "";
+}
+
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
+function formatTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleTimeString();
+}
+
+function formatProductVariantLabel(variant: unknown): string | null {
+  if (variant == null || typeof variant !== "object") return null;
+  const ov = (variant as { option_values?: unknown }).option_values;
+  if (ov == null) return null;
+  if (typeof ov === "string") return ov;
+  try {
+    return JSON.stringify(ov);
+  } catch {
+    return null;
+  }
+}
 
 type BookingDetail = {
   id: string;
   booking_number?: string | null;
   status: string;
+  /** Raw DB status when API sends it (pending vs confirmed). */
+  db_status?: string;
   scheduled_at: string;
   total_amount?: number;
   currency?: string;
   location_type?: "at_salon" | "at_home";
   current_stage?: string | null;
   arrival_otp_verified?: boolean;
-  customers?: { full_name?: string | null } | null;
+  qr_code_verified?: boolean;
+  /** From GET /api/provider/bookings/[id] — whether customer still has an active OTP to read out */
+  arrival_otp_pending?: boolean;
+  /** Whether customer should show QR / 8-char code for this booking */
+  qr_arrival_pending?: boolean;
+  customer_id?: string | null;
+  customers?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
   locations?: { name?: string | null } | null;
-  address?: { line1?: string; city?: string; latitude?: number; longitude?: number } | null;
+  location_id?: string | null;
+  custom_field_values?: Record<string, string | number | boolean | null>;
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
+  address?: {
+    line1?: string;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postal_code?: string | null;
+    country?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+    apartment_unit?: string | null;
+    building_name?: string | null;
+    floor_number?: string | null;
+    access_codes?: { gate?: string; buzzer?: string; door?: string } | null;
+    parking_instructions?: string | null;
+    location_landmarks?: string | null;
+  } | null;
   special_requests?: string | null;
+  house_call_instructions?: string | null;
   version?: number;
   total_paid?: number;
   total_refunded?: number;
+  payment_status?: string;
+  subtotal?: number;
+  discount_amount?: number;
+  discount_code?: string | null;
+  discount_reason?: string | null;
+  tax_amount?: number;
+  tax_rate?: number;
+  service_fee_amount?: number;
+  tip_amount?: number;
+  travel_fee_amount?: number;
+  package_id?: string | null;
+  package_name?: string | null;
+  is_group_booking?: boolean;
+  group_booking_id?: string | null;
+  group_booking_ref?: string | null;
+  participants?: {
+    id?: string;
+    participant_name?: string | null;
+    participant_email?: string | null;
+    participant_phone?: string | null;
+    is_primary_contact?: boolean | null;
+  }[];
+  products?: {
+    id?: string;
+    product_id?: string;
+    product_name?: string;
+    quantity?: number;
+    unit_price?: number;
+    total_price?: number;
+    product_variant?: { option_values?: unknown } | unknown;
+  }[];
   services?: {
     offering_name?: string;
     staff_name?: string | null;
     scheduled_start_at?: string;
     duration_minutes?: number;
     price?: number;
+    guest_name?: string | null;
   }[];
   /** Points earned for this booking (when completed); from provider_point_transactions */
   provider_points_earned?: number | null;
+};
+
+type BookingResourceRow = {
+  id: string;
+  resource_id: string;
+  resource_name: string;
+  resource_group_name: string | null;
 };
 
 type AdditionalCharge = {
@@ -138,6 +253,7 @@ export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
+  const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -187,6 +303,12 @@ export default function BookingDetailScreen() {
   );
   const additionalCharges: AdditionalCharge[] = additionalChargesData?.charges ?? [];
 
+  const { data: bookingResourcesData } = useApi<{ resources: BookingResourceRow[] }>(
+    `/api/provider/bookings/${id}/resources`,
+    { enabled: !!id }
+  );
+  const bookingResources = bookingResourcesData?.resources ?? [];
+
   // Request payment (additional charge + notify customer)
   const [showRequestPayment, setShowRequestPayment] = useState(false);
   const [requestPaymentDescription, setRequestPaymentDescription] = useState("");
@@ -207,6 +329,10 @@ export default function BookingDetailScreen() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
+  const [qrPasteJson, setQrPasteJson] = useState("");
+  const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
+  const [showArrivalQrScanner, setShowArrivalQrScanner] = useState(false);
 
   // At-salon check-in (Client arrived)
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -216,12 +342,25 @@ export default function BookingDetailScreen() {
   const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
   const [loadingAuditLog, setLoadingAuditLog] = useState(false);
 
+  type CustomerProfileData = {
+    customer: { id: string; full_name?: string | null; email?: string | null; phone?: string | null; avatar_url?: string | null };
+    profile: Record<string, unknown> | null;
+    bookings: { id: string; booking_number?: string; status?: string; scheduled_at?: string; total_amount?: number; currency?: string }[];
+    reviews: { id: string; rating?: number; comment?: string | null; created_at?: string }[];
+  };
+  // Customer profile sheet (view full profile from booking)
+  const [showCustomerProfile, setShowCustomerProfile] = useState(false);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfileData | null>(null);
+  const [loadingCustomerProfile, setLoadingCustomerProfile] = useState(false);
+
   // Post-completion modal (once per booking when opening a completed booking)
   const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
   const [showRateClientSheet, setShowRateClientSheet] = useState(false);
   const [rateClientStars, setRateClientStars] = useState(0);
   const [rateClientComment, setRateClientComment] = useState("");
   const [submittingRateClient, setSubmittingRateClient] = useState(false);
+  /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
+  const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
 
   const isAtHomeFromData = data?.location_type === "at_home";
   const isEnRouteFromData = data?.current_stage === "provider_on_way";
@@ -258,8 +397,11 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     if (data?.scheduled_at && showReschedule) {
       try {
-        setRescheduleDate(parseISO(data.scheduled_at.split("T")[0] ?? ""));
-        setRescheduleTime(data.scheduled_at.slice(11, 16) ?? "");
+        const datePart = extractIsoDatePart(data.scheduled_at);
+        if (datePart) {
+          setRescheduleDate(parseISO(datePart));
+        }
+        setRescheduleTime(extractIsoTimePart(data.scheduled_at));
       } catch {
         // keep current
       }
@@ -287,8 +429,29 @@ export default function BookingDetailScreen() {
     };
   }, [showAuditLog, id]);
 
-  // Normalize id (Expo params can be string | string[])
-  const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] : "";
+  // Load whether provider already submitted a client rating (provider_client_ratings)
+  useEffect(() => {
+    if (!bookingIdStr || !data) return;
+    if (data.status !== "completed" && data.status !== "no_show") {
+      setHasProviderClientRating(null);
+      return;
+    }
+    let cancelled = false;
+    setHasProviderClientRating(null);
+    api
+      .get<{ has_rating?: boolean }>(`/api/provider/ratings?booking_id=${encodeURIComponent(bookingIdStr)}`)
+      .then((res) => {
+        if (cancelled) return;
+        const d = res.data;
+        setHasProviderClientRating(!!d?.has_rating);
+      })
+      .catch(() => {
+        if (!cancelled) setHasProviderClientRating(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingIdStr, data]);
 
   // Show provider post-completion modal once per booking when opening a completed booking
   useEffect(() => {
@@ -319,21 +482,24 @@ export default function BookingDetailScreen() {
     if (submittingRateClient) return;
     setSubmittingRateClient(true);
     try {
-      const reviewRes = await api.get<{ data?: { id?: string }; id?: string }>(`/api/me/reviews?booking_id=${encodeURIComponent(bookingIdStr)}`);
-      const body = reviewRes?.data ?? reviewRes;
-      const reviewId = typeof body?.data?.id === "string" ? body.data.id : typeof (body as { id?: string })?.id === "string" ? (body as { id: string }).id : null;
-      if (!reviewId) {
-        Alert.alert("Review not found", "The customer must leave a review first. You can rate them after they review.");
+      const comment = typeof rateClientComment === "string" ? rateClientComment.trim() : "";
+      const bookingRow = data as BookingDetail | undefined;
+      const locId =
+        typeof bookingRow?.location_id === "string" && bookingRow.location_id ? bookingRow.location_id : undefined;
+      const res = await api.post<{ id?: string }>("/api/provider/ratings", {
+        booking_id: bookingIdStr,
+        rating: Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0)),
+        comment: comment || undefined,
+        ...(locId ? { location_id: locId } : {}),
+      });
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Failed to submit rating.");
         return;
       }
-      const comment = typeof rateClientComment === "string" ? rateClientComment.trim() : "";
-      await api.patch(`/api/reviews/${reviewId}`, {
-        customer_rating: Math.min(5, Math.max(1, Math.floor(Number(rateClientStars)) || 0)),
-        customer_comment: comment || null,
-      });
       setShowRateClientSheet(false);
       setRateClientStars(0);
       setRateClientComment("");
+      setHasProviderClientRating(true);
       if (typeof refresh === "function") refresh();
       Alert.alert("Done", "Thanks for rating this client.");
     } catch (e: unknown) {
@@ -348,6 +514,24 @@ export default function BookingDetailScreen() {
       setSubmittingRateClient(false);
     }
   };
+
+  const openCustomerProfile = useCallback(async () => {
+    const b = data as BookingDetail | null | undefined;
+    const cid = b?.customer_id ?? (b?.customers as { id?: string } | undefined)?.id ?? null;
+    if (!cid) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setShowCustomerProfile(true);
+    setCustomerProfile(null);
+    setLoadingCustomerProfile(true);
+    try {
+      const res = await api.get<CustomerProfileData>(`/api/provider/customers/${cid}/profile`);
+      if (res.data) setCustomerProfile(res.data);
+    } catch {
+      setCustomerProfile(null);
+    } finally {
+      setLoadingCustomerProfile(false);
+    }
+  }, [data]);
 
   if (loading && !data) {
     return (
@@ -374,20 +558,45 @@ export default function BookingDetailScreen() {
   const b = data as BookingDetail;
   const services = b.services ?? [];
   const customerName = b.customers?.full_name ?? "Guest";
+  const customerId = b.customer_id ?? (b.customers as { id?: string } | undefined)?.id ?? null;
   const locationName = b.locations?.name ?? null;
   const addressLine = b.address
-    ? [b.address.line1, b.address.city].filter(Boolean).join(", ")
+    ? [b.address.line1, b.address.line2, b.address.city, b.address.postal_code].filter(Boolean).join(", ")
     : locationName;
 
   const isAtHome = b.location_type === "at_home";
+  const addr = b.address;
+  const accessCodes = addr?.access_codes;
+  const hasAccessCodes =
+    !!accessCodes &&
+    typeof accessCodes === "object" &&
+    Boolean(
+      accessCodes.gate?.trim() || accessCodes.buzzer?.trim() || accessCodes.door?.trim()
+    );
+  const hasAdditionalLocationDetails =
+    isAtHome &&
+    !!addr &&
+    Boolean(
+      addr.apartment_unit?.trim() ||
+        addr.building_name?.trim() ||
+        addr.floor_number?.trim() ||
+        addr.parking_instructions?.trim() ||
+        addr.location_landmarks?.trim() ||
+        b.house_call_instructions?.trim() ||
+        hasAccessCodes
+    );
   const isAtSalon = b.location_type === "at_salon";
   const canStartJourney =
     isAtHome &&
-    (b.status === "confirmed" || b.status === "pending") &&
+    (b.status === "confirmed" || b.status === "pending" || b.status === "booked") &&
     (b.current_stage == null || b.current_stage === "confirmed");
   const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
   const isEnRoute = b.current_stage === "provider_on_way";
   const isArrived = b.current_stage === "provider_arrived";
+  const arrivalVerified =
+    b.arrival_otp_verified === true || b.qr_code_verified === true;
+  const arrivalOtpPending = b.arrival_otp_pending === true;
+  const qrArrivalPending = b.qr_arrival_pending === true;
 
   const isActive = ["pending", "booked", "confirmed"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
@@ -626,8 +835,8 @@ export default function BookingDetailScreen() {
   const handleVerifyArrival = async () => {
     if (!id) return;
     const code = arrivalPinInput.replace(/\D/g, "");
-    if (code.length < 4) {
-      Alert.alert("Required", "Enter the 4 or 6 digit code from the customer.");
+    if (code.length !== 4 && code.length !== 6) {
+      Alert.alert("Required", ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -660,6 +869,46 @@ export default function BookingDetailScreen() {
     } finally {
       setIsResendingArrivalOtp(false);
     }
+  };
+
+  const submitVerifyQrBody = async (body: { verification_code?: string; qr_data?: string }) => {
+    if (!id) return false;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setIsVerifyingQrArrival(true);
+    try {
+      const res = await postMutation(`/api/provider/bookings/${id}/verify-qr`, body);
+      if (res.error) {
+        Alert.alert("Error", res.error);
+        return false;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setQrArrivalCodeInput("");
+      setQrPasteJson("");
+      setShowArrivalQrScanner(false);
+      await refresh();
+      return true;
+    } finally {
+      setIsVerifyingQrArrival(false);
+    }
+  };
+
+  const handleVerifyQrArrival = async () => {
+    if (!id) return;
+    const trimmedPaste = qrPasteJson.trim();
+    const code = qrArrivalCodeInput.replace(/\s/g, "").toUpperCase();
+    const body: { verification_code?: string; qr_data?: string } = {};
+    if (trimmedPaste.startsWith("{")) {
+      body.qr_data = trimmedPaste;
+    } else if (code.length >= 8) {
+      body.verification_code = code;
+    } else {
+      Alert.alert(
+        "Required",
+        "Enter the 8-character code from the customer’s QR, paste the full scanned JSON, or use Scan QR."
+      );
+      return;
+    }
+    await submitVerifyQrBody(body);
   };
 
   const handleClientArrived = async () => {
@@ -815,25 +1064,173 @@ export default function BookingDetailScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
+        {isAtHome ? (
+          <View style={twStyle("rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 mb-3")}>
+            <View style={twStyle("flex-row items-center justify-between mb-2")}>
+              <View style={twStyle("flex-row items-center flex-1")}>
+                <Ionicons name="home" size={22} color="#5B21B6" />
+                <Text style={twStyle("ml-2 text-base font-bold text-violet-950")}>House call</Text>
+              </View>
+              {b.db_status === "pending" ? (
+                <View style={twStyle("rounded-full bg-amber-200 px-2 py-1")}>
+                  <Text style={twStyle("text-xs font-bold text-amber-900")}>Confirm first</Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={twStyle("text-sm text-violet-900 leading-5 mb-3")}>
+              You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then start service.
+            </Text>
+            {addressLine ? (
+              <TouchableOpacity
+                onPress={openMapsUrl}
+                style={twStyle("flex-row items-center rounded-xl border border-violet-200 bg-white px-3 py-2.5")}
+                accessibilityRole="button"
+                accessibilityLabel="Open directions to client address"
+              >
+                <Ionicons name="navigate" size={18} color="#6D28D9" />
+                <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")} numberOfLines={3}>
+                  {addressLine}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={twStyle("text-xs text-violet-800")}>No address on file — check notes or contact the client.</Text>
+            )}
+          </View>
+        ) : null}
+
         <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
           <View style={twStyle("flex-row items-center justify-between mb-3")}>
-            <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+            <View style={twStyle("flex-row items-center flex-1")}>
+              <Text style={twStyle("font-semibold text-gray-900")}>{customerName}</Text>
+              {customerId ? (
+                <TouchableOpacity
+                  onPress={openCustomerProfile}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityLabel="View customer profile"
+                  accessibilityRole="button"
+                >
+                  <Ionicons name="person-circle-outline" size={24} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
+            </View>
             <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
               <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
-            {b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "—"}
+            {formatDateTimeSafe(b.scheduled_at)}
           </Text>
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
           ) : null}
           {typeof b.total_amount === "number" && (
             <Text style={twStyle("mt-2 text-base font-medium text-gray-900")}>
-              {b.currency ?? "ZAR"} {b.total_amount.toLocaleString()}
+              {b.currency ?? getTenantDefaultCurrency()} {b.total_amount.toLocaleString()}
             </Text>
           )}
+          {b.is_group_booking && b.group_booking_ref ? (
+            <Text style={twStyle("mt-2 text-xs font-medium text-indigo-700")}>
+              Group booking · {b.group_booking_ref}
+            </Text>
+          ) : null}
         </View>
+
+        {hasAdditionalLocationDetails ? (
+          <View style={twStyle("rounded-xl border border-slate-200 bg-slate-50 p-4 mb-3")}>
+            <Text style={twStyle("text-sm font-semibold text-slate-900")}>Additional location details</Text>
+            <Text style={twStyle("text-xs text-slate-600 mt-1 mb-3")}>
+              Helpful info from the customer so you can find them easily.
+            </Text>
+            {addr?.apartment_unit?.trim() ? (
+              <Text style={twStyle("text-sm text-gray-800 mb-1")}>
+                <Text style={twStyle("text-gray-500")}>Unit: </Text>
+                {addr.apartment_unit}
+              </Text>
+            ) : null}
+            {addr?.building_name?.trim() ? (
+              <Text style={twStyle("text-sm text-gray-800 mb-1")}>
+                <Text style={twStyle("text-gray-500")}>Building: </Text>
+                {addr.building_name}
+              </Text>
+            ) : null}
+            {addr?.floor_number?.trim() ? (
+              <Text style={twStyle("text-sm text-gray-800 mb-1")}>
+                <Text style={twStyle("text-gray-500")}>Floor: </Text>
+                {addr.floor_number}
+              </Text>
+            ) : null}
+            {hasAccessCodes && accessCodes ? (
+              <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Access</Text>
+                {accessCodes.gate?.trim() ? (
+                  <Text style={twStyle("text-sm text-gray-800")}>Gate: {accessCodes.gate}</Text>
+                ) : null}
+                {accessCodes.buzzer?.trim() ? (
+                  <Text style={twStyle("text-sm text-gray-800")}>Buzzer: {accessCodes.buzzer}</Text>
+                ) : null}
+                {accessCodes.door?.trim() ? (
+                  <Text style={twStyle("text-sm text-gray-800")}>Door: {accessCodes.door}</Text>
+                ) : null}
+              </View>
+            ) : null}
+            {addr?.parking_instructions?.trim() ? (
+              <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Parking</Text>
+                <Text style={twStyle("text-sm text-gray-800")}>{addr.parking_instructions}</Text>
+              </View>
+            ) : null}
+            {addr?.location_landmarks?.trim() ? (
+              <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>Landmarks</Text>
+                <Text style={twStyle("text-sm text-gray-800")}>{addr.location_landmarks}</Text>
+              </View>
+            ) : null}
+            {b.house_call_instructions?.trim() ? (
+              <View style={twStyle("mt-2 pt-2 border-t border-slate-200")}>
+                <Text style={twStyle("text-xs font-medium text-gray-700 mb-1")}>House call instructions</Text>
+                <Text style={twStyle("text-sm text-gray-800")}>{b.house_call_instructions}</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {((b.participants?.length ?? 0) > 0 || (b.package_name ?? b.package_id)) ? (
+          <View style={twStyle("mb-3")}>
+            {(b.participants?.length ?? 0) > 0 ? (
+              <View style={twStyle("rounded-xl border border-indigo-100 bg-indigo-50/80 p-4")}>
+                <Text style={twStyle("text-sm font-medium text-indigo-900 mb-2")}>Group participants</Text>
+                {(b.participants ?? []).map((p, idx) => (
+                  <View
+                    key={p.id ?? `${p.participant_name ?? "p"}-${idx}`}
+                    style={twStyle("mb-2 rounded-lg border border-indigo-100 bg-white px-3 py-2 last:mb-0")}
+                  >
+                    <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                      {p.participant_name?.trim() || "Participant"}
+                      {p.is_primary_contact ? " · Primary" : ""}
+                    </Text>
+                    {p.participant_phone ? (
+                      <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{p.participant_phone}</Text>
+                    ) : null}
+                    {p.participant_email ? (
+                      <Text style={twStyle("text-xs text-gray-600")}>{p.participant_email}</Text>
+                    ) : null}
+                  </View>
+                ))}
+              </View>
+            ) : null}
+            {b.package_name ? (
+              <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
+                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>Package</Text>
+                <Text style={twStyle("text-base font-semibold text-gray-900")}>{b.package_name}</Text>
+              </View>
+            ) : b.package_id ? (
+              <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4")}>
+                <Text style={twStyle("text-xs font-medium uppercase tracking-wide text-gray-500 mb-1")}>Package</Text>
+                <Text style={twStyle("text-sm text-gray-700")}>Package booking (ID on file)</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
 
         <SafetyPanicButton bookingId={id ?? null} />
 
@@ -856,25 +1253,30 @@ export default function BookingDetailScreen() {
               <>
                 <View style={twStyle("rounded-lg bg-green-50 border border-green-100 py-2 px-3 mb-3")}>
                   <Text style={twStyle("text-sm font-medium text-green-800")}>
-                    {b.arrival_otp_verified ? "Customer verified – you can start service" : "Provider arrived"}
+                    {arrivalVerified ? "Customer verified – you can start service" : "Provider arrived"}
                   </Text>
                 </View>
-                {isArrived && !b.arrival_otp_verified && (
+                {isArrived && !arrivalVerified && arrivalOtpPending && (
                   <View style={twStyle("rounded-lg bg-blue-50 border border-blue-200 p-3 mb-3")}>
-                    <Text style={twStyle("text-sm font-medium text-blue-900 mb-2")}>Enter the verification code from the customer</Text>
+                    <Text style={twStyle("text-sm font-medium text-blue-900 mb-1")}>{ARRIVAL_PIN_PROVIDER_HEADING}</Text>
+                    <Text style={twStyle("text-xs text-blue-800 mb-1")}>{ARRIVAL_PIN_PROVIDER_SUBTEXT}</Text>
+                    <Text style={twStyle("text-xs text-blue-800 mb-2")}>{ARRIVAL_PIN_LENGTH_HINT}</Text>
                     <TextInput
                       value={arrivalPinInput}
                       onChangeText={(t) => setArrivalPinInput(t.replace(/\D/g, "").slice(0, 6))}
-                      placeholder="1234"
+                      placeholder={ARRIVAL_PIN_PLACEHOLDER}
                       keyboardType="number-pad"
                       maxLength={6}
                       style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white")}
-                      accessibilityLabel="Verification code from customer"
+                      accessibilityLabel={ARRIVAL_PIN_PROVIDER_HEADING}
                     />
                     <View style={twStyle("flex-row gap-2")}>
                       <TouchableOpacity
                         onPress={handleVerifyArrival}
-                        disabled={isVerifyingArrival || arrivalPinInput.replace(/\D/g, "").length < 4}
+                        disabled={
+                          isVerifyingArrival ||
+                          ![4, 6].includes(arrivalPinInput.replace(/\D/g, "").length)
+                        }
                         style={twStyle("flex-1 rounded-lg bg-primary py-2.5 items-center")}
                         accessibilityRole="button"
                         accessibilityLabel="Verify arrival"
@@ -899,6 +1301,62 @@ export default function BookingDetailScreen() {
                         )}
                       </TouchableOpacity>
                     </View>
+                  </View>
+                )}
+                {isArrived && !arrivalVerified && qrArrivalPending && (
+                  <View style={twStyle("rounded-lg bg-violet-50 border border-violet-200 p-3 mb-3")}>
+                    <Text style={twStyle("text-sm font-medium text-violet-950 mb-1")}>Scan the customer&apos;s QR or enter their code</Text>
+                    <Text style={twStyle("text-xs text-violet-800 mb-2")}>
+                      Ask them to open this booking — they&apos;ll see an arrival QR. You can scan it or type the 8-character code.
+                    </Text>
+                    <TextInput
+                      value={qrArrivalCodeInput}
+                      onChangeText={(t) => setQrArrivalCodeInput(t.replace(/\s/g, "").toUpperCase().slice(0, 12))}
+                      placeholder="e.g. AB12CD34"
+                      autoCapitalize="characters"
+                      autoCorrect={false}
+                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2.5 text-base mb-2 bg-white font-mono")}
+                      accessibilityLabel="QR verification code from customer"
+                    />
+                    <Text style={twStyle("text-xs text-violet-800 mb-1")}>Or paste raw scan result (JSON)</Text>
+                    <TextInput
+                      value={qrPasteJson}
+                      onChangeText={setQrPasteJson}
+                      placeholder='{"booking_id":"…"'
+                      multiline
+                      style={twStyle("border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2 bg-white min-h-[72px]")}
+                      accessibilityLabel="Pasted QR JSON"
+                    />
+                    <TouchableOpacity
+                      onPress={() => setShowArrivalQrScanner(true)}
+                      disabled={isVerifyingQrArrival || Platform.OS === "web"}
+                      style={twStyle(
+                        `rounded-lg border-2 border-violet-600 py-2.5 items-center mb-2 ${Platform.OS === "web" ? "opacity-50" : ""}`
+                      )}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open QR scanner"
+                    >
+                      <Text style={twStyle("text-violet-800 font-semibold")}>
+                        {Platform.OS === "web" ? "Scan QR (use mobile app)" : "Scan QR"}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleVerifyQrArrival}
+                      disabled={
+                        isVerifyingQrArrival ||
+                        (qrPasteJson.trim().length === 0 &&
+                          qrArrivalCodeInput.replace(/\s/g, "").length < 8)
+                      }
+                      style={twStyle("rounded-lg bg-violet-700 py-2.5 items-center")}
+                      accessibilityRole="button"
+                      accessibilityLabel="Verify QR arrival"
+                    >
+                      {isVerifyingQrArrival ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={twStyle("text-white font-semibold")}>Verify QR</Text>
+                      )}
+                    </TouchableOpacity>
                   </View>
                 )}
               </>
@@ -1021,8 +1479,11 @@ export default function BookingDetailScreen() {
                 <TouchableOpacity
                   onPress={() => {
                     try {
-                      setRescheduleDate(parseISO(b.scheduled_at.split("T")[0] ?? ""));
-                      setRescheduleTime(b.scheduled_at.slice(11, 16) ?? "");
+                      const datePart = extractIsoDatePart(b.scheduled_at);
+                      if (datePart) {
+                        setRescheduleDate(parseISO(datePart));
+                      }
+                      setRescheduleTime(extractIsoTimePart(b.scheduled_at));
                     } catch {
                       setRescheduleDate(new Date());
                       setRescheduleTime("");
@@ -1038,23 +1499,94 @@ export default function BookingDetailScreen() {
           </View>
         )}
 
+        {/* Client rating (provider → customer via provider_client_ratings) */}
+        {(b.status === "completed" || b.status === "no_show") && hasProviderClientRating !== null && (
+          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Client rating</Text>
+            {hasProviderClientRating ? (
+              <Text style={twStyle("text-sm text-gray-600")}>You have rated this client for this booking.</Text>
+            ) : (
+              <TouchableOpacity
+                onPress={() => setShowRateClientSheet(true)}
+                style={twStyle("rounded-xl py-3 px-4 self-start")}
+                activeOpacity={0.85}
+              >
+                <Text style={twStyle("font-semibold text-primary")}>Rate this client</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
         {/* Payment summary & Mark paid / Refund */}
         {(totalAmount > 0 || totalPaid > 0) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment</Text>
+            {b.payment_status ? (
+              <Text style={twStyle("text-xs text-gray-500 mb-2")}>Status: {b.payment_status}</Text>
+            ) : null}
+            {(typeof b.subtotal === "number" && b.subtotal > 0) ||
+            (typeof b.discount_amount === "number" && b.discount_amount > 0) ||
+            (typeof b.tax_amount === "number" && b.tax_amount > 0) ||
+            (typeof b.service_fee_amount === "number" && b.service_fee_amount > 0) ||
+            (typeof b.tip_amount === "number" && b.tip_amount > 0) ||
+            (typeof b.travel_fee_amount === "number" && b.travel_fee_amount > 0) ? (
+              <View style={twStyle("mb-2 border-b border-gray-100 pb-2")}>
+                {typeof b.subtotal === "number" && b.subtotal > 0 ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>
+                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {b.subtotal.toLocaleString()}
+                  </Text>
+                ) : null}
+                {typeof b.discount_amount === "number" && b.discount_amount > 0 ? (
+                  <Text style={twStyle("text-sm text-green-700 mt-0.5")}>
+                    Discount
+                    {b.discount_code ? ` (${b.discount_code})` : ""}
+                    {b.discount_reason ? ` — ${b.discount_reason}` : ""}: −{b.currency ?? getTenantDefaultCurrency()}{" "}
+                    {b.discount_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+                {typeof b.tax_amount === "number" && b.tax_amount > 0 ? (
+                  <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                    Tax
+                    {b.tax_rate != null && Number(b.tax_rate) > 0
+                      ? (() => {
+                          const tr = Number(b.tax_rate);
+                          const pct = tr > 0 && tr <= 1 ? tr * 100 : tr;
+                          return ` (${pct.toFixed(pct % 1 === 0 ? 0 : 1)}%)`;
+                        })()
+                      : ""}
+                    : {b.currency ?? getTenantDefaultCurrency()} {b.tax_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+                {typeof b.service_fee_amount === "number" && b.service_fee_amount > 0 ? (
+                  <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                    Service fee: {b.currency ?? getTenantDefaultCurrency()} {b.service_fee_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+                {typeof b.tip_amount === "number" && b.tip_amount > 0 ? (
+                  <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                    Tip: {b.currency ?? getTenantDefaultCurrency()} {b.tip_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+                {typeof b.travel_fee_amount === "number" && b.travel_fee_amount > 0 ? (
+                  <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                    Travel: {b.currency ?? getTenantDefaultCurrency()} {b.travel_fee_amount.toLocaleString()}
+                  </Text>
+                ) : null}
+              </View>
+            ) : null}
             {totalAmount > 0 && (
               <Text style={twStyle("text-sm text-gray-600")}>
-                Total: {b.currency ?? "ZAR"} {totalAmount.toLocaleString()}
+                Total: {b.currency ?? getTenantDefaultCurrency()} {totalAmount.toLocaleString()}
               </Text>
             )}
             {totalPaid > 0 && (
               <Text style={twStyle("text-sm text-green-600 mt-0.5")}>
-                Paid: {b.currency ?? "ZAR"} {totalPaid.toLocaleString()}
+                Paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toLocaleString()}
               </Text>
             )}
             {outstanding > 0 && (
               <Text style={twStyle("text-sm font-medium text-amber-600 mt-0.5")}>
-                Outstanding: {b.currency ?? "ZAR"} {outstanding.toLocaleString()}
+                Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toLocaleString()}
               </Text>
             )}
             <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
@@ -1164,19 +1696,62 @@ export default function BookingDetailScreen() {
               <View key={i} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
                 <Text style={twStyle("font-medium text-gray-900")}>
                   {s.offering_name ?? "Service"}
+                  {s.guest_name ? ` · ${s.guest_name}` : ""}
                 </Text>
                 {s.staff_name && (
                   <Text style={twStyle("text-sm text-gray-500")}>{s.staff_name}</Text>
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {new Date(s.scheduled_start_at).toLocaleTimeString()}
+                    {formatTimeSafe(s.scheduled_start_at)}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}
                 {typeof s.price === "number" && (
-                  <Text style={twStyle("text-sm text-gray-600 mt-1")}>ZAR {s.price.toLocaleString()}</Text>
+                  <Text style={twStyle("text-sm text-gray-600 mt-1")}>
+                    {b.currency ?? getTenantDefaultCurrency()} {s.price.toLocaleString()}
+                  </Text>
                 )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {(b.products?.length ?? 0) > 0 && (
+          <View style={twStyle("mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Products</Text>
+            {(b.products ?? []).map((p, i) => {
+              const vLabel = formatProductVariantLabel(p.product_variant);
+              return (
+                <View key={p.id ?? `prod-${i}`} style={twStyle("rounded-xl border border-gray-200 bg-white p-3 mb-2")}>
+                  <Text style={twStyle("font-medium text-gray-900")}>{p.product_name ?? "Product"}</Text>
+                  {vLabel ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{vLabel}</Text> : null}
+                  <Text style={twStyle("text-sm text-gray-600 mt-1")}>
+                    Qty {p.quantity ?? 1}
+                    {typeof p.unit_price === "number"
+                      ? ` · ${b.currency ?? getTenantDefaultCurrency()} ${p.unit_price.toLocaleString()} ea`
+                      : ""}
+                  </Text>
+                  {typeof p.total_price === "number" ? (
+                    <Text style={twStyle("text-sm font-medium text-gray-900 mt-1")}>
+                      {b.currency ?? getTenantDefaultCurrency()} {p.total_price.toLocaleString()}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {bookingResources.length > 0 && (
+          <View style={twStyle("mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Resources</Text>
+            {bookingResources.map((r) => (
+              <View key={r.id} style={twStyle("rounded-xl border border-gray-200 bg-white px-3 py-2 mb-2")}>
+                <Text style={twStyle("text-sm font-medium text-gray-900")}>{r.resource_name}</Text>
+                {r.resource_group_name ? (
+                  <Text style={twStyle("text-xs text-gray-500")}>{r.resource_group_name}</Text>
+                ) : null}
               </View>
             ))}
           </View>
@@ -1295,7 +1870,7 @@ export default function BookingDetailScreen() {
       {/* Mark paid modal */}
       <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Mark as paid">
         <View>
-          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Outstanding: {b.currency ?? "ZAR"} {outstanding.toFixed(2)}</Text>
+          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}</Text>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
             {PAYMENT_METHODS.map((pm) => (
@@ -1315,7 +1890,7 @@ export default function BookingDetailScreen() {
       {/* Refund modal */}
       <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title="Issue refund">
         <View>
-          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Total paid: {b.currency ?? "ZAR"} {totalPaid.toFixed(2)}</Text>
+          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Total paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toFixed(2)}</Text>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund amount</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
@@ -1358,7 +1933,7 @@ export default function BookingDetailScreen() {
             value={requestPaymentDescription}
             onChangeText={setRequestPaymentDescription}
           />
-          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Amount ({b.currency ?? "ZAR"})</Text>
+          <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Amount ({b.currency ?? getTenantDefaultCurrency()})</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
             placeholder="0.00"
@@ -1384,7 +1959,7 @@ export default function BookingDetailScreen() {
       >
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-3")}>
-            Send a link to the customer so they can pay online (Paystack). Outstanding: {b.currency ?? "ZAR"} {outstanding.toFixed(2)}
+            Send a link to the customer so they can pay online (Paystack). Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}
           </Text>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Send via</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
@@ -1451,7 +2026,7 @@ export default function BookingDetailScreen() {
         visible={showYocoPayment}
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(outstanding * 100)}
-        currency={b.currency ?? "ZAR"}
+        currency={b.currency ?? getTenantDefaultCurrency()}
         bookingId={id}
         description={`Booking ${b.booking_number ?? id}`}
         onPaymentSuccess={async (result) => {
@@ -1508,16 +2083,18 @@ export default function BookingDetailScreen() {
             <Text style={{ fontSize: 13, color: Colors.gray[500], textAlign: "center", marginBottom: 20 }}>
               Your client can leave a review. Reviews help you get more bookings and earn extra points.
             </Text>
-            <TouchableOpacity
-              onPress={() => {
-                dismissProviderCompletionModal(true);
-                setShowRateClientSheet(true);
-              }}
-              style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
-              activeOpacity={0.8}
-            >
-              <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Rate this client</Text>
-            </TouchableOpacity>
+            {hasProviderClientRating !== true ? (
+              <TouchableOpacity
+                onPress={() => {
+                  dismissProviderCompletionModal(true);
+                  setShowRateClientSheet(true);
+                }}
+                style={{ backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: 12, alignItems: "center", marginBottom: 10 }}
+                activeOpacity={0.8}
+              >
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 16 }}>Rate this client</Text>
+              </TouchableOpacity>
+            ) : null}
             <TouchableOpacity
               onPress={() => {
                 dismissProviderCompletionModal(true);
@@ -1551,7 +2128,10 @@ export default function BookingDetailScreen() {
         snapHeight="half"
       >
         <View style={twStyle("p-4")}>
-          <Text style={twStyle("text-sm text-gray-600 mb-3")}>How was your experience with this client?</Text>
+          <Text style={twStyle("text-sm text-gray-600 mb-3")}>
+            How was your experience with this client? You can submit a rating as soon as the booking is completed or marked
+            no-show — the customer does not need to leave a review first.
+          </Text>
           <View style={twStyle("flex-row justify-center gap-2 mb-4")}>
             {[1, 2, 3, 4, 5].map((star) => (
               <TouchableOpacity
@@ -1588,6 +2168,97 @@ export default function BookingDetailScreen() {
         </View>
       </BottomSheet>
 
+      {/* Customer profile (view from booking) */}
+      <BottomSheet
+        visible={showCustomerProfile}
+        onClose={() => { setShowCustomerProfile(false); setCustomerProfile(null); }}
+        title="Customer profile"
+        snapHeight="half"
+      >
+        {loadingCustomerProfile ? (
+          <View style={twStyle("py-8 items-center")}>
+            <ActivityIndicator size="large" color="#6366f1" />
+          </View>
+        ) : customerProfile ? (
+          <View style={twStyle("pb-4")}>
+            <View style={twStyle("flex-row items-center mb-4")}>
+              <Avatar
+                name={customerProfile.customer.full_name ?? "Customer"}
+                imageUrl={customerProfile.customer.avatar_url}
+                size="xl"
+              />
+              <View style={twStyle("ml-4 flex-1")}>
+                <Text style={twStyle("text-lg font-semibold text-gray-900")}>{customerProfile.customer.full_name ?? "Customer"}</Text>
+                {customerProfile.customer.email ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>{customerProfile.customer.email}</Text>
+                ) : null}
+                {customerProfile.customer.phone ? (
+                  <Text style={twStyle("text-sm text-gray-600")}>{customerProfile.customer.phone}</Text>
+                ) : null}
+              </View>
+            </View>
+            {customerProfile.profile && Object.keys(customerProfile.profile).length > 0 ? (
+              <View style={twStyle("mb-4")}>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Profile details</Text>
+                <View style={twStyle("rounded-lg border border-gray-200 bg-gray-50 p-3")}>
+                  {Object.entries(customerProfile.profile).map(([key, value]) => (
+                    value != null && value !== "" && key !== "user_id" ? (
+                      <View key={key} style={twStyle("flex-row justify-between py-1.5 border-b border-gray-100")}>
+                        <Text style={twStyle("text-sm text-gray-600")}>{key.replace(/_/g, " ")}</Text>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(value)}</Text>
+                      </View>
+                    ) : null
+                  ))}
+                </View>
+              </View>
+            ) : null}
+            {(b.custom_field_values && Object.keys(b.custom_field_values).length > 0) || (b.provider_form_responses && Object.keys(b.provider_form_responses).length > 0) ? (
+              <View style={twStyle("mb-4")}>
+                <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase mb-2")}>Answers for this booking</Text>
+                <View style={twStyle("rounded-lg border border-gray-200 bg-amber-50/50 p-3")}>
+                  {b.custom_field_values ? Object.entries(b.custom_field_values).map(([key, value]) => (
+                    value != null && value !== "" ? (
+                      <View key={key} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                        <Text style={twStyle("text-sm text-gray-600")}>{key.replace(/_/g, " ")}</Text>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(value)}</Text>
+                      </View>
+                    ) : null
+                  )) : null}
+                  {b.provider_form_responses ? Object.entries(b.provider_form_responses).map(([formId, answers]) =>
+                    typeof answers === "object" && answers !== null ? Object.entries(answers as Record<string, unknown>).map(([fieldId, val]) => (
+                      val != null && val !== "" ? (
+                        <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                          <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
+                        </View>
+                      ) : null
+                    )) : null
+                  ) : null}
+                </View>
+              </View>
+            ) : null}
+            <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+              {customerProfile.bookings?.length ?? 0} booking(s) with you
+              {(customerProfile.reviews?.length ?? 0) > 0 ? ` · ${customerProfile.reviews.length} review(s)` : ""}
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                setShowCustomerProfile(false);
+                setCustomerProfile(null);
+                if (customerId) router.push(`/(app)/(tabs)/more/clients/${customerId}` as never);
+              }}
+              style={twStyle("rounded-lg border-2 border-primary bg-primary/5 py-3 items-center")}
+              accessibilityRole="button"
+              accessibilityLabel="See full profile"
+            >
+              <Text style={twStyle("font-semibold text-primary")}>See full profile</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={twStyle("text-center text-gray-500 py-8")}>Could not load profile</Text>
+        )}
+      </BottomSheet>
+
       {/* Booking audit log / history */}
       <BottomSheet
         visible={showAuditLog}
@@ -1618,13 +2289,21 @@ export default function BookingDetailScreen() {
                 ) : null}
                 <Text style={twStyle("text-xs text-gray-500 mt-2")}>
                   {entry.created_by_name ?? "System"} ·{" "}
-                  {new Date(entry.created_at).toLocaleString()}
+                  {formatDateTimeSafe(entry.created_at)}
                 </Text>
               </View>
             ))}
           </ScrollView>
         )}
       </BottomSheet>
+
+      <ArrivalQrScannerModal
+        visible={showArrivalQrScanner}
+        onClose={() => setShowArrivalQrScanner(false)}
+        onValidScan={(jsonPayload) => {
+          void submitVerifyQrBody({ qr_data: jsonPayload });
+        }}
+      />
     </ScreenContainer>
   );
 }

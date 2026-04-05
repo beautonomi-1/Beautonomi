@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { Download, ArrowLeft, CheckCircle2, Clock, AlertCircle, FileText } from "lucide-react";
 import {
   Table,
@@ -41,6 +43,7 @@ interface Invoice {
 export default function InvoiceDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const locale = useTenantLocaleTag();
   const invoiceId = params.id as string;
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,14 +68,14 @@ export default function InvoiceDetailPage() {
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: "ZAR",
+      currency: LAST_RESORT_CURRENCY,
     }).format(amount);
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-ZA", {
+    return new Date(date).toLocaleDateString(locale, {
       year: "numeric",
       month: "long",
       day: "numeric",

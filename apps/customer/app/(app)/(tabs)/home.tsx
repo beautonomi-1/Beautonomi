@@ -1,4 +1,5 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import {
   View,
   Text,
@@ -21,8 +22,9 @@ import { useLocation } from "@/hooks/useLocation";
 import { useAddresses } from "@/hooks/useAddresses";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
+import { trackHomeView } from "@/lib/analytics";
 import { useHomeData } from "@/features/home/useHomeData";
-import { useGlobalCategories, getCategoryIcon } from "@/features/home/useGlobalCategories";
+import { useGlobalCategories, getCategoryIcon, getGlobalCategoryImageUri } from "@/features/home/useGlobalCategories";
 import { ProviderCard } from "@/components/ProviderCard";
 import { AddressPicker } from "@/components/AddressPicker";
 import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
@@ -321,12 +323,15 @@ function ProviderSection({
 
 function CategoryPill({
   label,
-  icon,
+  imageUri,
+  ionIcon,
   active = false,
   onPress,
 }: {
   label: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  /** Remote icon from API (`EXPO_PUBLIC_APP_URL` + `/images/...`) */
+  imageUri?: string | null;
+  ionIcon?: keyof typeof Ionicons.glyphMap;
   active?: boolean;
   onPress?: () => void;
 }) {
@@ -348,9 +353,21 @@ function CategoryPill({
       accessibilityState={{ selected: active }}
       accessibilityHint={`Filter providers by ${label} category`}
     >
-      {icon ? (
+      {imageUri ? (
+        <Image
+          source={{ uri: imageUri }}
+          style={{
+            width: 18,
+            height: 18,
+            marginRight: 6,
+            opacity: active ? 1 : 0.52,
+          }}
+          contentFit="contain"
+          accessibilityIgnoresInvertColors
+        />
+      ) : ionIcon ? (
         <Ionicons
-          name={icon}
+          name={ionIcon}
           size={16}
           color={active ? Colors.primary : Colors.gray[500]}
           style={{ marginRight: 6 }}
@@ -371,6 +388,9 @@ function CategoryPill({
 
 export default function HomeScreen() {
   useScreenTracking("Home");
+  useEffect(() => {
+    trackHomeView();
+  }, []);
   const { user } = useAuth();
   const { unreadCount } = useNotifications();
   const { coords, loading: locationLoading } = useLocation();
@@ -387,6 +407,7 @@ export default function HomeScreen() {
   const { categories: globalCategories } = useGlobalCategories();
 
   const [addressPickerVisible, setAddressPickerVisible] = useState(false);
+  const [notificationsDropdownVisible, setNotificationsDropdownVisible] = useState(false);
 
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
@@ -484,6 +505,10 @@ export default function HomeScreen() {
   return (
     <View style={styles.root}>
       <StatusBar barStyle="dark-content" backgroundColor={Colors.white} />
+      <NotificationsDropdown
+        visible={notificationsDropdownVisible}
+        onClose={() => setNotificationsDropdownVisible(false)}
+      />
 
       <View style={contentWrapperDynamic}>
         <SafeAreaView edges={["top"]} style={styles.addressBar}>
@@ -561,10 +586,13 @@ export default function HomeScreen() {
               <Ionicons name="heart-outline" size={24} color="#333" />
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/notifications")}
+              onPress={() => {
+                haptic.selection();
+                setNotificationsDropdownVisible(true);
+              }}
               accessibilityRole="button"
               accessibilityLabel="Notifications"
-              accessibilityHint="Open notifications"
+              accessibilityHint="Show recent notifications"
               style={{ position: "relative" }}
             >
               <Ionicons name="notifications-outline" size={24} color="#333" />
@@ -604,18 +632,26 @@ export default function HomeScreen() {
             <CategoryPill
               label="All"
               active={activeCategory === "All"}
-              icon="apps-outline"
+              ionIcon="apps-outline"
               onPress={() => handleCategoryPress("All")}
             />
-            {globalCategories.map((cat) => (
-              <CategoryPill
-                key={cat.id}
-                label={cat.name}
-                active={activeCategory === cat.name}
-                icon={getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap}
-                onPress={() => handleCategoryPress(cat.name)}
-              />
-            ))}
+            {globalCategories.map((cat) => {
+              const remote = getGlobalCategoryImageUri(cat.icon ?? cat.icon_name);
+              return (
+                <CategoryPill
+                  key={cat.id}
+                  label={cat.name}
+                  active={activeCategory === cat.name}
+                  imageUri={remote}
+                  ionIcon={
+                    remote
+                      ? undefined
+                      : (getCategoryIcon(cat.slug) as keyof typeof Ionicons.glyphMap)
+                  }
+                  onPress={() => handleCategoryPress(cat.name)}
+                />
+              );
+            })}
           </ScrollView>
         </View>
 

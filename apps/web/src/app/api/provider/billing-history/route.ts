@@ -1,6 +1,9 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,6 +17,17 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const { data: prow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: invoices } = await supabaseAdmin
       .from("subscription_invoices")
@@ -34,7 +48,7 @@ export async function GET(request: NextRequest) {
       const items = (txns || []).map((t: any) => ({
         id: t.id,
         amount: Number(t.amount || 0),
-        currency: "ZAR",
+        currency: lastResortCurrency,
         status: "paid",
         description: "Subscription payment",
         created_at: t.created_at,

@@ -4,6 +4,8 @@
  * Provides functions to format currency and get platform locale settings
  */
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 export interface CurrencyInfo {
   code: string;
   symbol: string;
@@ -65,13 +67,13 @@ export async function getPlatformLocale(): Promise<LocaleSettings> {
  */
 function getDefaultLocale(): LocaleSettings {
   return {
-    default_currency: "ZAR",
+    default_currency: LAST_RESORT_CURRENCY,
     default_language: "en",
     timezone: "Africa/Johannesburg",
-    supported_currencies: ["ZAR", "USD", "EUR"],
+    supported_currencies: [LAST_RESORT_CURRENCY, "USD", "EUR"],
     supported_languages: ["en", "af", "zu"],
     currency_info: {
-      code: "ZAR",
+      code: LAST_RESORT_CURRENCY,
       symbol: "R",
       name: "South African Rand",
       decimal_places: 2,
@@ -97,7 +99,7 @@ export function formatCurrency(
   }
 
   // If currency code provided, use it; otherwise get from platform settings
-  const code = currencyCode || cachedSettings?.default_currency || "ZAR";
+  const code = currencyCode || cachedSettings?.default_currency || LAST_RESORT_CURRENCY;
   
   // Currency symbols map
   const currencySymbols: { [key: string]: string } = {
@@ -182,6 +184,30 @@ export function getCurrencySymbol(currencyCode: string): string {
 export function clearLocaleCache(): void {
   cachedSettings = null;
   settingsPromise = null;
+}
+
+/**
+ * De-duplicated ISO codes for currency `<Select>`: tenant default plus common options.
+ * Pass extra codes (e.g. current offer currency when editing) so the value stays selectable.
+ */
+export function mergeCurrencyChoiceCodes(primary: string, ...alsoInclude: string[]): string[] {
+  const p = (primary || LAST_RESORT_CURRENCY).trim().toUpperCase();
+  const extras = ["USD", "EUR", "GBP", LAST_RESORT_CURRENCY];
+  const more = alsoInclude.map((c) => c.trim().toUpperCase()).filter(Boolean);
+  return [...new Set([p, ...extras, ...more])];
+}
+
+/**
+ * Short label for currency dropdowns, e.g. `ZAR (South African Rand)`.
+ */
+export function currencySelectLabel(code: string): string {
+  const c = (code || LAST_RESORT_CURRENCY).trim().toUpperCase();
+  try {
+    const name = new Intl.DisplayNames(undefined, { type: "currency" }).of(c);
+    return name ? `${c} (${name})` : c;
+  } catch {
+    return c;
+  }
 }
 
 // Listen for settings updates from admin portal

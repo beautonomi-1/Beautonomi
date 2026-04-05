@@ -1,9 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
-import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES, MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
 
     const locationId = searchParams.get("location_id");
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
@@ -78,18 +78,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get provider revenue from finance_transactions
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     const { totalRevenue, revenueByBooking, revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
       toDate,
-      locationId || undefined
+      locationId || undefined,
+      dashOpts
     );
 
-    // Calculate summary metrics
     const totalBookings = bookings?.length || 0;
-    const averageBookingValue = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+    const bookingsWithLedgerRevenue = [...revenueByBooking.values()].filter((v) => v > 0).length;
+    const averageBookingValue =
+      bookingsWithLedgerRevenue > 0 ? totalRevenue / bookingsWithLedgerRevenue : 0;
 
     // Group by status
     const statusCounts: Record<string, number> = {};
@@ -121,8 +124,8 @@ export async function GET(request: NextRequest) {
       .map(([date, data]) => ({ date, count: data.count, revenue: data.revenue }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Group by service - use finance_transactions revenue (consistent with status breakdown)
-    const serviceMap = new Map<string, { serviceName: string; bookings: number; revenue: number }>();
+    // Group by service — distinct bookings per service name (not raw line rows)
+    const serviceMap = new Map<string, { serviceName: string; bookingIds: Set<string>; revenue: number }>();
     (bookings || []).forEach((booking) => {
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       if (!booking.booking_services || !Array.isArray(booking.booking_services)) return;
@@ -135,8 +138,12 @@ export async function GET(request: NextRequest) {
       booking.booking_services.forEach((bs: BookingServiceRow) => {
         const off = bs.offerings != null ? (Array.isArray(bs.offerings) ? bs.offerings[0] : bs.offerings) : undefined;
         const serviceName = off?.title ?? "Unknown";
-        const existing = serviceMap.get(serviceName) || { serviceName, bookings: 0, revenue: 0 };
-        existing.bookings += 1;
+        const existing = serviceMap.get(serviceName) || {
+          serviceName,
+          bookingIds: new Set<string>(),
+          revenue: 0,
+        };
+        existing.bookingIds.add(booking.id);
         const serviceProportion = totalServicePrice > 0
           ? Number(bs.price || 0) / totalServicePrice
           : 1 / booking.booking_services.length;
@@ -146,6 +153,11 @@ export async function GET(request: NextRequest) {
     });
 
     const topServices = Array.from(serviceMap.values())
+      .map((s) => ({
+        serviceName: s.serviceName,
+        bookings: s.bookingIds.size,
+        revenue: s.revenue,
+      }))
       .sort((a, b) => b.bookings - a.bookings)
       .slice(0, 10);
 

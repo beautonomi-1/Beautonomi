@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import { generateOTP, getOTPExpiry } from "@/lib/otp/generator";
 import { sendOTPToCustomer } from "@/lib/otp/notifications";
 import { generateVerificationCode, getQRCodeExpiry, type QRCodeData } from "@/lib/qr/generator";
@@ -53,6 +55,18 @@ export async function POST(
 
     if (bookingError || !booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const supabaseAdminArrive = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminArrive,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
     }
 
     const bookingData = booking as any;

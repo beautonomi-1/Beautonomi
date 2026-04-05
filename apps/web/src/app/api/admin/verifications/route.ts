@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/verifications
@@ -11,6 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status") || "pending"; // Filter by status
 
@@ -22,6 +24,7 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from("user_verifications")
       .select("*")
+      .eq("tenant_id", tenantId)
       .order("submitted_at", { ascending: false });
 
     if (status !== "all") {

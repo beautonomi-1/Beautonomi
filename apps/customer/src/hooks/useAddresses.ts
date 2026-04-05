@@ -9,7 +9,8 @@
  */
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
+import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
 export interface SavedAddress {
   id: string;
@@ -47,36 +48,75 @@ function normalizeGeocodeFeature(f: any): GeocodeSuggestion {
 
 export function useAddresses(enabled: boolean) {
   const [addresses, setAddresses] = useState<SavedAddress[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(() => !!enabled);
+  const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    if (!enabled) return;
-    setLoading(true);
-    try {
-      const res = await api.get<SavedAddress[] | { data?: SavedAddress[] }>("/api/me/addresses");
-      const raw = res.data;
-      const list = Array.isArray(raw) ? raw : (raw as any)?.data ?? [];
-      setAddresses(Array.isArray(list) ? list : []);
-    } catch {
-      setAddresses([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled]);
+  const load = useCallback(
+    async (attempt = 0) => {
+      if (!enabled) {
+        setAddresses([]);
+        setLoading(false);
+        setError(null);
+        return;
+      }
+
+      setLoading(true);
+      if (attempt === 0) setError(null);
+
+      try {
+        const res = await api.get<SavedAddress[] | { data?: SavedAddress[] }>("/api/me/addresses");
+        if (res.error) {
+          const status = (res.error as { status?: number }).status;
+          if (status === 401 || status === 403) {
+            setAddresses([]);
+            setError(null);
+          } else {
+            if (attempt < 1) {
+              await new Promise((r) => setTimeout(r, 450));
+              await load(attempt + 1);
+              return;
+            }
+            setError(res.error.message ?? "Failed to load addresses");
+          }
+        } else {
+          const raw = res.data;
+          const list = Array.isArray(raw) ? raw : (raw as { data?: SavedAddress[] })?.data ?? [];
+          setAddresses(Array.isArray(list) ? list : []);
+          setError(null);
+        }
+      } catch {
+        if (attempt < 1 && enabled) {
+          await new Promise((r) => setTimeout(r, 450));
+          await load(attempt + 1);
+          return;
+        }
+        setError("Failed to load addresses");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [enabled],
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!enabled) {
+      setAddresses([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+    void load();
+  }, [enabled, load]);
 
   const defaultAddress = addresses.find((a) => a.is_default) ?? addresses[0] ?? null;
 
-  return { addresses, loading, reload: load, defaultAddress };
+  return { addresses, loading, error, reload: load, defaultAddress };
 }
 
 export interface SearchAddressOptions {
   /** Bias results near this point (longitude, latitude). */
   proximity?: { longitude: number; latitude: number };
-  /** ISO 3166-1 alpha-2 (default "ZA"). */
+  /** ISO 3166-1 alpha-2 (default from device locale). */
   country?: string;
 }
 
@@ -89,7 +129,7 @@ export async function searchAddress(
   try {
     const body: Record<string, unknown> = {
       query: query.trim(),
-      country: options?.country ?? "ZA",
+      country: options?.country ?? getDeviceRegionCountryIso(),
       types: ["address", "place", "poi"],
       limit: 5,
     };
@@ -99,11 +139,14 @@ export async function searchAddress(
         latitude: options.proximity.latitude,
       };
     }
-    const res = await fetch(`${APP_URL}/api/mapbox/geocode`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
+    const res = await fetch(
+      `${APP_URL}/api/mapbox/geocode`,
+      withWebApiTenantHeaders({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
     const json = await res.json().catch(() => ({}));
     const data = json.data ?? json;
     const list = Array.isArray(data) ? data : [];
@@ -120,11 +163,14 @@ export async function reverseGeocode(
 ): Promise<GeocodeSuggestion | null> {
   if (!APP_URL?.trim()) return null;
   try {
-    const res = await fetch(`${APP_URL}/api/mapbox/reverse-geocode`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ longitude, latitude }),
-    });
+    const res = await fetch(
+      `${APP_URL}/api/mapbox/reverse-geocode`,
+      withWebApiTenantHeaders({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ longitude, latitude }),
+      }),
+    );
     const json = await res.json().catch(() => ({}));
     const feature = json?.data ?? null;
     if (!feature?.place_name || !Array.isArray(feature?.center) || feature.center.length < 2) return null;

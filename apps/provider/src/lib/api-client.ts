@@ -3,20 +3,23 @@
  * Session recovery: on 401, refresh and retry once; sign out only when session is invalid,
  * not on network errors, so the app won't randomly logout.
  */
-import { createApiClient } from "@beautonomi/api";
+import { createApiClient, type ApiClientExtraOptions } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
 import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
-import { APP_URL } from "@/config/public-env";
+import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
+import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
-/** When Expo web runs at localhost:8081/8082 (or APP_URL unset on web), use Next.js at :3000. */
+/** Resolve API base URL with strict production safeguards. */
 function getApiBaseUrl(): string {
+  const configured = APP_URL?.trim() ?? "";
   if (Platform.OS === "web" && typeof window !== "undefined") {
     const origin = window.location.origin;
+    const isLocalExpoWeb =
+      origin === "http://localhost:8081" || origin === "http://localhost:8082";
     if (
-      origin === "http://localhost:8081" ||
-      origin === "http://localhost:8082" ||
-      !APP_URL?.trim()
+      __DEV__ &&
+      (isLocalExpoWeb || !configured)
     ) {
       if (__DEV__) {
         console.log("[API] Using backend URL http://localhost:3000 (Expo web local dev)");
@@ -24,7 +27,12 @@ function getApiBaseUrl(): string {
       return "http://localhost:3000";
     }
   }
-  return APP_URL?.trim() || "http://localhost:3000";
+  if (!configured) {
+    throw new Error(
+      "Missing EXPO_PUBLIC_APP_URL for provider API client. Configure apps/provider/.env.local.",
+    );
+  }
+  return configured;
 }
 
 async function getAccessToken(): Promise<string | null> {
@@ -48,6 +56,10 @@ function getApi(): ReturnType<typeof createApiClient> {
       baseUrl,
       getAccessToken,
       headers: { "X-App": "provider" },
+      getDefaultHeaders: () => ({
+        ...webApiTenantHeaders(),
+        "X-Active-Market-Country": getDeviceRegionCountryIso(),
+      }),
     });
   }
   return _api;
@@ -100,15 +112,15 @@ async function withSessionRecovery<T>(
 
 /** API client – baseUrl is resolved on first use; session recovery on 401. */
 export const api = {
-  get: <T>(path: string, init?: RequestInit) =>
+  get: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => getApi().get<T>(path, init)),
-  post: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => getApi().post<T>(path, body, init)),
-  put: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => getApi().put<T>(path, body, init)),
-  patch: <T>(path: string, body?: Record<string, unknown>, init?: RequestInit) =>
+  patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => getApi().patch<T>(path, body, init)),
-  delete: <T>(path: string, init?: RequestInit) =>
+  delete: <T>(path: string, init?: ApiClientExtraOptions) =>
     withSessionRecovery<T>(() => getApi().delete<T>(path, init)),
   fetch: <T>(path: string, options?: Record<string, unknown>) =>
     withSessionRecovery<T>(() => getApi().fetch<T>(path, options)),

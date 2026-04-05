@@ -1,11 +1,11 @@
 import React from "react";
 import User from "./component/user";
-import HostPageNavbar from "./component/hostpage-navbar";
+import PartnerOwnerNavbar from "./component/partner-owner-navbar";
 
 const page = () => {
   return (
     <div>
-      <HostPageNavbar />
+      <PartnerOwnerNavbar />
       <User />
     </div>
   );

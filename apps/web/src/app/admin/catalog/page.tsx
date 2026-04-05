@@ -78,7 +78,25 @@ import {
   Triangle,
   Diamond,
   Shirt,
+  ScanFace,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  BeautonomiAll,
+  BeautonomiBarber,
+  BeautonomiBraids,
+  BeautonomiBrowsLashes,
+  BeautonomiDreadlocks,
+  BeautonomiHair,
+  BeautonomiHairRemoval,
+  BeautonomiMakeup,
+  BeautonomiMassage,
+  BeautonomiNails,
+  BeautonomiNaturalHair,
+  BeautonomiSkinFacials,
+  BeautonomiSpa,
+  BeautonomiWigsWeaves,
+} from "@/components/icons/categories/beautonomi-category-icons";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -245,6 +263,22 @@ export default function AdminCatalog() {
 
 // Comprehensive beauty and wellness icons from Lucide
 const BEAUTY_ICONS = [
+  // Bespoke global-category line icons (preferred)
+  { name: "BeautonomiAll", icon: BeautonomiAll as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiHair", icon: BeautonomiHair as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiNails", icon: BeautonomiNails as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiBraids", icon: BeautonomiBraids as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiMakeup", icon: BeautonomiMakeup as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiMassage", icon: BeautonomiMassage as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiDreadlocks", icon: BeautonomiDreadlocks as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiBrowsLashes", icon: BeautonomiBrowsLashes as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiNaturalHair", icon: BeautonomiNaturalHair as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiWigsWeaves", icon: BeautonomiWigsWeaves as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiSkinFacials", icon: BeautonomiSkinFacials as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiHairRemoval", icon: BeautonomiHairRemoval as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiBarber", icon: BeautonomiBarber as LucideIcon, category: "Beautonomi" },
+  { name: "BeautonomiSpa", icon: BeautonomiSpa as LucideIcon, category: "Beautonomi" },
+
   // Hair & Styling (including African hairstyles - using GitBranch/GitMerge for braids/twists)
   { name: "Scissors", icon: Scissors, category: "Hair" },
   { name: "Waves", icon: Waves, category: "Hair" },
@@ -259,6 +293,7 @@ const BEAUTY_ICONS = [
   { name: "SprayCan", icon: SprayCan, category: "Makeup" },
   { name: "Wand2", icon: Wand2, category: "Makeup" },
   { name: "Sparkle", icon: Sparkle, category: "Makeup" },
+  { name: "Sparkles", icon: Sparkles, category: "Makeup" },
   
   // Nails
   { name: "Hand", icon: Hand, category: "Nails" },
@@ -280,6 +315,7 @@ const BEAUTY_ICONS = [
   
   // Skincare & Facial
   { name: "Droplet", icon: Droplet, category: "Skincare" },
+  { name: "ScanFace", icon: ScanFace, category: "Skincare" },
   { name: "Eye", icon: Eye, category: "Skincare" },
   { name: "Smile", icon: Smile, category: "Skincare" },
   { name: "Flower2", icon: Flower2, category: "Skincare" },
@@ -346,7 +382,13 @@ function GlobalCategoryCard({
           <div className="p-2 bg-purple-100 rounded-lg w-10 h-10 flex items-center justify-center">
             {(() => {
               // Check if icon is an image URL
-              if (category.icon && (category.icon.startsWith("http") || category.icon.startsWith("data:"))) {
+              if (
+                category.icon &&
+                (category.icon.startsWith("http://") ||
+                  category.icon.startsWith("https://") ||
+                  category.icon.startsWith("data:") ||
+                  category.icon.startsWith("/"))
+              ) {
                 return (
                   <img
                     src={category.icon}

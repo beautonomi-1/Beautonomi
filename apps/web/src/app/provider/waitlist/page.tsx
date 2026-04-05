@@ -38,7 +38,7 @@ interface WaitlistEntry {
 }
 
 export default function ProviderWaitlistPage() {
-  const { provider } = useProviderPortal();
+  const { provider, selectedLocationId } = useProviderPortal();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +46,15 @@ export default function ProviderWaitlistPage() {
 
   useEffect(() => {
     loadWaitlist();
-  }, [statusFilter]);
+  }, [statusFilter, selectedLocationId]);
 
   const loadWaitlist = async () => {
     try {
       setIsLoading(true);
       setError(null);
+      const loc = selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : "";
       const response = await fetcher.get<{ data: { entries: WaitlistEntry[]; total?: number } }>(
-        `/api/provider/waitlist?status=${statusFilter}`,
+        `/api/provider/waitlist?status=${statusFilter}${loc}`,
         { timeoutMs: 30000 } // 30 second timeout
       );
       setEntries(response.data.entries || []);

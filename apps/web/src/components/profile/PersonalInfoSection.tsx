@@ -8,6 +8,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import VerificationStatusCard from "./VerificationStatusCard";
+import { getCachedDefaultPhoneDial } from "@/lib/user-default-phone-dial";
 
 interface PersonalInfoData {
   legalName: { first: string; last: string };
@@ -145,7 +146,13 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [defaultCountryCode, setDefaultCountryCode] = useState<string>("+27");
+  const [defaultCountryCode, setDefaultCountryCode] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const d = getCachedDefaultPhoneDial();
+      if (d) return d;
+    }
+    return "+27";
+  });
   const [defaultCountry, setDefaultCountry] = useState<string>("South Africa");
   const [languages, _setLanguages] = useState<string[]>(['English']);
   const [emailVerified, setEmailVerified] = useState(false);
@@ -173,7 +180,8 @@ export default function PersonalInfoSection({ onUpdate }: PersonalInfoSectionPro
         
         if (settingsResponse.ok) {
           const settingsData = await settingsResponse.json();
-          const defaultCountryCodeFromSettings = settingsData.data?.default_country_code || "+27";
+          const defaultCountryCodeFromSettings =
+            settingsData.data?.default_country_code || getCachedDefaultPhoneDial() || "+27";
           setDefaultCountryCode(defaultCountryCodeFromSettings);
           
           const country = loadedCountries.find(c => c.phone_country_code === defaultCountryCodeFromSettings);

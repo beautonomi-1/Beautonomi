@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -36,6 +37,7 @@ interface PaymentSummaryData {
 }
 
 export default function PaymentSummaryReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -133,7 +135,7 @@ export default function PaymentSummaryReport() {
             variant="outline" 
             onClick={() => {
               if (!data) return;
-              const exportData = formatReportDataForExport(data as unknown as ReportRow, "payment-summary");
+              const exportData = formatReportDataForExport(data as unknown as ReportRow, "payment-summary", exportCurrency);
               exportToCSV(exportData, "payment-summary-report");
             }} 
             className="gap-2 min-h-[44px] touch-manipulation"
@@ -178,7 +180,7 @@ export default function PaymentSummaryReport() {
               <div className="flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-green-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalAmount.toLocaleString()}
+                  {fmt(data.totalAmount)}
                 </p>
               </div>
             </CardContent>
@@ -194,7 +196,7 @@ export default function PaymentSummaryReport() {
               <div className="flex items-center gap-2">
                 <ArrowUpRight className="w-5 h-5 text-purple-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.netAmount.toLocaleString()}
+                  {fmt(data.netAmount)}
                 </p>
               </div>
             </CardContent>
@@ -210,7 +212,7 @@ export default function PaymentSummaryReport() {
               <div className="flex items-center gap-2">
                 <ArrowDownRight className="w-5 h-5 text-red-600" />
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.refundedAmount.toLocaleString()}
+                  {fmt(data.refundedAmount)}
                 </p>
               </div>
             </CardContent>
@@ -273,7 +275,7 @@ export default function PaymentSummaryReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageTransactionValue.toLocaleString()}
+                  {fmt(data.averageTransactionValue)}
                 </p>
                 <div className="p-2 bg-blue-50 rounded-lg">
                   <DollarSign className="w-4 h-4 text-blue-600" />
@@ -311,7 +313,7 @@ export default function PaymentSummaryReport() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-gray-900">
-                      ZAR {method.amount.toLocaleString()}
+                      {fmt(method.amount)}
                     </p>
                     <p className="text-xs text-gray-500">
                       {method.percentage.toFixed(1)}%
@@ -355,7 +357,7 @@ export default function PaymentSummaryReport() {
                     {status.count}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    ZAR {status.amount.toLocaleString()}
+                    {fmt(status.amount)}
                   </p>
                 </div>
                 ))}

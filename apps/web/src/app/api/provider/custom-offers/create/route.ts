@@ -3,6 +3,9 @@ import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createCustomOfferSchema = z.object({
   customer_id: z.string().uuid(),
@@ -12,7 +15,7 @@ const createCustomOfferSchema = z.object({
   location_type: z.enum(["at_home", "at_salon"]).default("at_salon"),
   description: z.string().min(10).max(4000),
   price: z.number().min(0),
-  currency: z.string().min(3).max(5).default("ZAR"),
+  currency: z.string().min(3).max(5).optional(),
   duration_minutes: z.number().int().min(15).max(8 * 60),
   expiration_at: z.string(), // ISO
   notes: z.string().max(4000).optional().nullable(),
@@ -46,7 +49,19 @@ export async function POST(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const body = createCustomOfferSchema.parse(await request.json());
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    const parsed = createCustomOfferSchema.parse(await request.json());
+    const body = { ...parsed, currency: parsed.currency ?? lastResortCurrency };
 
     // Verify customer exists (admin client bypasses RLS so provider can resolve customer_id)
     const supabaseAdmin = getSupabaseAdmin();

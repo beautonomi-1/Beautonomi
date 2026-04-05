@@ -1,6 +1,10 @@
-# Supabase Migrations
+# Supabase Migrations (Legacy)
 
-This directory contains database migrations for the Beautonomi platform.
+> **DEPRECATED:** The canonical migration directory is `<repo-root>/supabase/migrations/`.
+> This copy exists for historical reasons. All new migrations MUST be added to the root
+> `supabase/migrations/` directory. Do NOT add new files here.
+
+This directory contains a legacy copy of database migrations for the Beautonomi platform.
 
 ## Migration Order
 

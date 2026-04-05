@@ -293,7 +293,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   alt={post.caption || "Post"}
                   fill
                   className="object-cover"
-                  sizes="100vw"
+                  sizes="(max-width: 768px) 100vw, 50vw"
                   priority
                 />
               )}
@@ -775,7 +775,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
                   alt={post.caption || "Post"}
                   fill
                   className="object-contain"
-                  sizes="100vw"
+                  sizes="(max-width: 768px) 100vw, 80vw"
                   onClick={(e) => e.stopPropagation()}
                 />
               )}
@@ -859,7 +859,11 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
         </>
       )}
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </div>
   );
 }

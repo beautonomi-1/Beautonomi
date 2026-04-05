@@ -1,6 +1,12 @@
 "use client";
 
+import { useCallback } from "react";
 import { useAmplitudeContext } from "@/providers/AmplitudeProvider";
+import { useAuth } from "@/providers/AuthProvider";
+import {
+  fetchIdentifyProperties,
+  getDeviceTypeForAttribution,
+} from "@/lib/analytics/amplitude/identify-client";
 
 /**
  * Hook to access Amplitude analytics client
@@ -45,4 +51,29 @@ export function useAmplitude(): {
     reset,
     isReady: isInitialized && !!amplitude,
   };
+}
+
+/**
+ * Hook to refresh Amplitude identify (e.g. after profile or booking change).
+ * Fetches latest properties from the server and calls identify. No-op if not ready or no user.
+ */
+export function useRefreshAmplitudeIdentify(portal: "client" | "provider" | "admin") {
+  const { amplitude, isInitialized } = useAmplitudeContext();
+  const { user, role } = useAuth();
+
+  const refreshIdentify = useCallback(async () => {
+    if (!amplitude || !isInitialized || !user) return;
+    try {
+      const properties = await fetchIdentifyProperties(user, role || "customer", {
+        portal,
+        platform: "web",
+        device_type: getDeviceTypeForAttribution(),
+      });
+      amplitude.identify(user.id, properties);
+    } catch {
+      // Non-blocking
+    }
+  }, [amplitude, isInitialized, user, role, portal]);
+
+  return refreshIdentify;
 }

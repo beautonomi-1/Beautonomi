@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export const dynamic = "force-dynamic";
-// Cache services for 2 minutes (they don't change often during booking)
-export const revalidate = 120;
 
 /**
  * GET /api/services
@@ -14,6 +15,16 @@ export const revalidate = 120;
  */
 export async function GET(request: NextRequest) {
   try {
+    let lastResortCurrency: string = LAST_RESORT_CURRENCY;
+    let resolvedTenantId: string | null = null;
+    try {
+      const tid = await resolveTenantIdWithZaFallback(request);
+      resolvedTenantId = tid;
+      const tr = await getTenantRegionConfig(tid);
+      lastResortCurrency = tr?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    } catch {
+      // misconfigured host — keep ZAR, no tenant scope
+    }
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type"); // "salon" or "mobile"
     const providerSlug = searchParams.get("providerSlug");
@@ -34,18 +45,7 @@ export async function GET(request: NextRequest) {
       return response;
     }
 
-    // Log some sample providers to help debug slug issues
-    const { data: sampleProviders, error: sampleError } = await supabase
-      .from("providers")
-      .select("id, business_name, slug, status")
-      .limit(5);
-    if (sampleError) {
-      console.error("[Services API] Error fetching sample providers:", sampleError);
-    } else {
-      console.log("[Services API] Sample active providers:", sampleProviders?.filter(p => p.status === 'active').map(p => ({ id: p.id, slug: p.slug, status: p.status })));
-    }
-
-    console.log(`[Services API] Searching for providerSlug: ${providerSlug}, or serviceId: ${serviceIdFromBooking}`);
+    console.log(`[Services API] Loading for providerSlug: ${providerSlug}, serviceId: ${serviceIdFromBooking || "none"}`);
 
     let provider;
     
@@ -82,33 +82,34 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // If provider not found via serviceId, try slug-based lookup
-    // Match the exact logic from /api/public/providers/[slug]/offerings which works
+    // If provider not found via serviceId, try slug-based lookup.
+    // All queries are scoped to the resolved tenant to prevent cross-tenant slug collisions.
     if (!provider && providerSlug) {
       try {
         const decodedSlug = decodeURIComponent(providerSlug);
         console.log(`[Services API] Looking for provider with slug: "${decodedSlug}" (original: "${providerSlug}")`);
+
+        /** Apply tenant scope when we have a resolved tenant ID */
+        function applyTenantScope(query: any) {
+          return resolvedTenantId ? query.eq("tenant_id", resolvedTenantId) : query;
+        }
         
-        // First try: exact match with decoded slug and active status (matches partner profile endpoint)
-        const { data: providerData, error: decodeError } = await supabase
-          .from("providers")
-          .select("id, slug, status")
-          .eq("slug", decodedSlug)
-          .eq("status", "active")
-          .single();
+        // First try: exact match with decoded slug, active status, tenant-scoped
+        const q1 = applyTenantScope(
+          supabase.from("providers").select("id, slug, status").eq("slug", decodedSlug).eq("status", "active")
+        );
+        const { data: providerData, error: decodeError } = await q1.single();
         
         console.log(`[Services API] First lookup result:`, { providerData, error: decodeError });
         
         if (providerData && !decodeError) {
           provider = providerData;
         } else {
-          // Try with original slug (no decoding)
-          const { data: providerData2, error: originalError } = await supabase
-            .from("providers")
-            .select("id, slug, status")
-            .eq("slug", providerSlug)
-            .eq("status", "active")
-            .single();
+          // Try with original slug (no decoding), tenant-scoped
+          const q2 = applyTenantScope(
+            supabase.from("providers").select("id, slug, status").eq("slug", providerSlug).eq("status", "active")
+          );
+          const { data: providerData2, error: originalError } = await q2.single();
           
           console.log(`[Services API] Second lookup result:`, { providerData: providerData2, error: originalError });
           
@@ -116,22 +117,16 @@ export async function GET(request: NextRequest) {
             provider = providerData2;
           } else {
             // Last resort: try without status filter (in case provider exists but status is different)
-            // This matches the fallback in partner profile endpoint
-            const { data: providerData3 } = await supabase
-              .from("providers")
-              .select("id, slug, status")
-              .eq("slug", decodedSlug)
-              .limit(1)
-              .maybeSingle();
+            const q3 = applyTenantScope(
+              supabase.from("providers").select("id, slug, status").eq("slug", decodedSlug).limit(1)
+            );
+            const { data: providerData3 } = await q3.maybeSingle();
             
             if (!providerData3) {
-              // Try original slug without status
-              const { data: providerData4 } = await supabase
-                .from("providers")
-                .select("id, slug, status")
-                .eq("slug", providerSlug)
-                .limit(1)
-                .maybeSingle();
+              const q4 = applyTenantScope(
+                supabase.from("providers").select("id, slug, status").eq("slug", providerSlug).limit(1)
+              );
+              const { data: providerData4 } = await q4.maybeSingle();
               
               if (providerData4) {
                 console.log(`[Services API] Found provider without status filter: ${providerData4.slug}, status: ${providerData4.status}`);
@@ -170,7 +165,7 @@ export async function GET(request: NextRequest) {
               description: lastResortService.description,
               duration: lastResortService.duration_minutes,
               price: parseFloat(lastResortService.price || 0),
-              currency: lastResortService.currency || "ZAR",
+              currency: lastResortService.currency || lastResortCurrency,
               category: "Other", // Will be resolved from provider_category_id later
               hasAddons: false,
               hasVariants: false,
@@ -232,23 +227,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // First, let's check ALL offerings for this provider (without filters) for debugging
-    const { data: allOfferingsDebug, error: _debugError } = await supabase
-      .from("offerings")
-      .select("id, title, service_type, is_active, provider_id")
-      .eq("provider_id", provider.id);
-    
-    console.log(`[Services API] DEBUG: Total offerings for provider ${provider.id} (no filters): ${allOfferingsDebug?.length || 0}`);
-    if (allOfferingsDebug && allOfferingsDebug.length > 0) {
-      console.log(`[Services API] DEBUG: Sample offerings:`, allOfferingsDebug.slice(0, 5).map((o: any) => ({
-        id: o.id,
-        title: o.title,
-        service_type: o.service_type,
-        is_active: o.is_active
-      })));
-    }
-
-    // Query offerings directly - we know the service exists here
+    // Query offerings
     // Filter out variants (only show base services) unless a specific serviceId is requested
     const { data: offeringsData, error } = await supabase
       .from("offerings")
@@ -328,27 +307,46 @@ export async function GET(request: NextRequest) {
       })));
     }
 
-    // Filter offerings: exclude variants (unless specifically requested), and filter by online_booking_enabled
+    // If the requested serviceId is actually a VARIANT, find its parent service instead.
+    // We don't want to surface variants as standalone services in the list; the pre-selection
+    // logic in the booking flow handles selecting the right variant once the parent is visible.
+    let resolvedServiceId = serviceIdFromBooking;
+    if (resolvedServiceId && requestedService?.service_type === "variant" && requestedService.parent_service_id) {
+      console.log(`[Services API] Requested service ${resolvedServiceId} is a variant; resolving parent ${requestedService.parent_service_id}`);
+      resolvedServiceId = requestedService.parent_service_id;
+    }
+
+    // Filter offerings: exclude variants, and filter by online_booking_enabled.
+    // The parent service for the requested variant will be present in the normal results.
     let filteredOfferings = (offerings || []).filter((o: any) => {
-      // Always include the service that was clicked (if serviceId provided) - even if it's a variant
-      if (serviceIdFromBooking && o.id === serviceIdFromBooking) {
-        console.log(`[Services API] Including requested service ${serviceIdFromBooking} (type: ${o.service_type})`);
-        return true;
-      }
-      
-      // Exclude variants (service_type = "variant")
+      // Exclude all variants — the booking flow fetches them separately per service
       if (o.service_type === "variant") {
         return false;
       }
-      
+
       // Include if online_booking_enabled is true or not set (null/undefined)
-      // Only exclude if explicitly false
       if (o.online_booking_enabled === false) {
         return false;
       }
-      
+
       return true;
     });
+
+    // If the parent of the requested variant is not already included, add it
+    if (resolvedServiceId && resolvedServiceId !== serviceIdFromBooking) {
+      const parentIncluded = filteredOfferings.some((o: any) => o.id === resolvedServiceId);
+      if (!parentIncluded) {
+        const { data: parentService } = await supabase
+          .from("offerings")
+          .select("id, title, description, duration_minutes, price, currency, supports_at_home, supports_at_salon, provider_category_id, parent_service_id, service_type, is_active, display_order, online_booking_enabled")
+          .eq("id", resolvedServiceId)
+          .eq("provider_id", provider.id)
+          .single();
+        if (parentService && parentService.is_active) {
+          filteredOfferings = [parentService, ...filteredOfferings];
+        }
+      }
+    }
 
     console.log(`[Services API] After filtering: ${filteredOfferings.length} offerings`);
     if (filteredOfferings.length > 0) {
@@ -361,48 +359,9 @@ export async function GET(request: NextRequest) {
       })));
     }
     
-    // If we have a serviceId from booking but it's not in the filtered results, fetch it directly
-    if (serviceIdFromBooking && !filteredOfferings.find((o: any) => o.id === serviceIdFromBooking)) {
-      console.log(`[Services API] Requested service ${serviceIdFromBooking} not in filtered results, fetching directly...`);
-      const { data: directService, error: directError } = await supabase
-        .from("offerings")
-        .select(`
-          id,
-          title,
-          description,
-          duration_minutes,
-          price,
-          currency,
-          supports_at_home,
-          supports_at_salon,
-          provider_category_id,
-          parent_service_id,
-          service_type,
-          is_active,
-          display_order,
-          online_booking_enabled
-        `)
-        .eq("id", serviceIdFromBooking)
-        .eq("provider_id", provider.id)
-        .single();
-      
-      if (directError) {
-        console.error(`[Services API] Error fetching direct service:`, directError);
-      } else if (directService) {
-        console.log(`[Services API] Found direct service:`, {
-          id: directService.id,
-          title: directService.title,
-          service_type: directService.service_type,
-          is_active: directService.is_active,
-          online_booking_enabled: directService.online_booking_enabled
-        });
-        // Only add if it's active (we'll check online_booking_enabled in the filter)
-        if (directService.is_active) {
-          filteredOfferings = [directService, ...filteredOfferings];
-          console.log(`[Services API] Added requested service ${serviceIdFromBooking} to results.`);
-        }
-      }
-    }
+    // No longer need to force-include a variant as a standalone service since the pre-selection
+    // logic in the booking flow handles it by searching within variants of parent services.
+    // The parent service is already ensured to be in filteredOfferings above.
 
     if (filteredOfferings.length === 0) {
       console.log(`[Services API] No active, non-variant offerings found for provider ${provider.id}.`);
@@ -440,7 +399,7 @@ export async function GET(request: NextRequest) {
             description: specificService.description,
             duration: specificService.duration_minutes,
             price: parseFloat(specificService.price || 0),
-            currency: specificService.currency || "ZAR",
+            currency: specificService.currency || lastResortCurrency,
             category: "Other", // Will be resolved from provider_category_id later
             hasAddons: false,
             hasVariants: false,
@@ -553,7 +512,7 @@ export async function GET(request: NextRequest) {
       description: offering.description,
       duration: offering.duration_minutes,
       price: parseFloat(offering.price || 0),
-      currency: offering.currency || "ZAR",
+      currency: offering.currency || lastResortCurrency,
       category: categoryMap[offering.provider_category_id] || "Other",
       hasAddons: servicesWithAddons.has(offering.id),
       hasVariants: servicesWithVariants.has(offering.id),

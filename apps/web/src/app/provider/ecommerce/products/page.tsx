@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ interface Product {
 }
 
 export default function ProviderProductsPage() {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -61,8 +63,8 @@ export default function ProviderProductsPage() {
   const outOfStockCount = products.filter((p) => p.quantity === 0).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Products</h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -71,7 +73,7 @@ export default function ProviderProductsPage() {
         </div>
         <Link
           href="/provider/catalogue/products"
-          className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-lg text-sm font-medium hover:bg-pink-700"
+          className="flex items-center justify-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-lg text-sm font-medium hover:bg-pink-700 shrink-0"
         >
           <Plus className="w-4 h-4" />
           Add Product
@@ -118,7 +120,8 @@ export default function ProviderProductsPage() {
             <p className="text-gray-500">No products found</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto min-w-0 -mx-px">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b bg-gray-50">
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Product</th>
@@ -154,7 +157,7 @@ export default function ProviderProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.category ?? "—"}</td>
-                  <td className="px-4 py-3 font-semibold">R{Number(p.retail_price).toFixed(2)}</td>
+                  <td className="px-4 py-3 font-semibold">{formatMoney(Number(p.retail_price))}</td>
                   <td className="px-4 py-3">
                     <span
                       className={
@@ -184,6 +187,7 @@ export default function ProviderProductsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

@@ -4,6 +4,7 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 const updatePageContentSchema = z.object({
   page_slug: z.string().min(1).optional(),
@@ -33,11 +34,13 @@ export async function GET(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: pageContent, error } = await supabase
       .from("page_content")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error || !pageContent) {
@@ -90,6 +93,7 @@ export async function PUT(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -133,6 +137,7 @@ export async function PUT(
       .from("page_content")
       .update(updateData)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -187,11 +192,13 @@ export async function DELETE(
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: pageContent, error } = await supabase
       .from("page_content")
       .update({ is_active: false, updated_at: new Date().toISOString() })
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 

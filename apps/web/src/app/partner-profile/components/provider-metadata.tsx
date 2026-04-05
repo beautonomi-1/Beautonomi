@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { openGraphLocaleTagForHost } from "@/lib/seo/host-config";
 
 /**
  * Client component to inject dynamic Open Graph meta tags for provider profiles
@@ -28,8 +29,10 @@ export default function ProviderMetadata({
   useEffect(() => {
     if (!provider || !slug) return;
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 
-                    (typeof window !== "undefined" ? window.location.origin : "https://beautonomi.com");
+    const siteUrl =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : (process.env.NEXT_PUBLIC_SITE_URL?.trim() || "https://beautonomi.com");
     const profileUrl = `${siteUrl}/partner-profile?slug=${encodeURIComponent(slug)}`;
     
     // Get thumbnail image - use absolute URL for Open Graph
@@ -79,7 +82,12 @@ export default function ProviderMetadata({
     updateMetaTag("og:image:alt", `${provider.business_name || "Provider"} on Beautonomi`);
     updateMetaTag("og:type", "website");
     updateMetaTag("og:site_name", "Beautonomi");
-    updateMetaTag("og:locale", "en_US");
+    updateMetaTag(
+      "og:locale",
+      typeof window !== "undefined"
+        ? openGraphLocaleTagForHost(window.location.hostname)
+        : "en_US",
+    );
 
     // Twitter Card tags
     updateMetaTag("twitter:card", "summary_large_image", false);

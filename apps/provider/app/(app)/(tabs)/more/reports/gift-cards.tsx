@@ -15,6 +15,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -55,7 +56,7 @@ export default function GiftCardReportScreen() {
   const [period, setPeriod] = useState("month");
 
   const giftCardsUrl = `/api/provider/reports/gift-cards?period=${period}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data: reportData, loading, refresh } = useApi<{
+  const { data: reportData, loading, error: dataError, refresh } = useApi<{
     stats: GiftCardStats;
     cards: GiftCardReport[];
   }>(giftCardsUrl);
@@ -169,6 +170,8 @@ export default function GiftCardReportScreen() {
 
       {loading && !reportData ? (
         <SkeletonList rows={5} />
+      ) : !loading && dataError && !reportData ? (
+        <ErrorState message={dataError} onRetry={refresh} />
       ) : cards.length === 0 ? (
         <EmptyState icon="gift-outline" title="No gift card data" description="Gift card transactions will appear here" />
       ) : (

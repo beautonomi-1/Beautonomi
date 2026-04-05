@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, getPaginationParams, createPaginatedResponse } from "@/lib/supabase/api-helpers";
 import type { Booking, PaginatedResponse } from "@/types/beautonomi";
 import { mapStatusFromCustomer, mapStatusToCustomer } from "@/lib/utils/booking-status";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/me/bookings
@@ -21,7 +24,12 @@ export async function GET(request: NextRequest) {
       return handleApiError(authError, "Authentication failed");
     }
 
-    const supabase = await getSupabaseServer(request);
+    // Service-role read scoped to this user — avoids RLS/embed edge cases (e.g. inactive providers)
+    // that return zero rows with the anon JWT client even when bookings exist.
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status");
@@ -40,7 +48,7 @@ export async function GET(request: NextRequest) {
           business_name,
           slug
         ),
-        group_bookings (
+        group_bookings!bookings_group_booking_id_fkey (
           ref_number
         ),
         booking_services (
@@ -65,12 +73,7 @@ export async function GET(request: NextRequest) {
           id,
           addon_id,
           quantity,
-          price,
-          offering:offerings (
-            id,
-            title,
-            price
-          )
+          price
         ),
         booking_products (
           id,
@@ -96,11 +99,13 @@ export async function GET(request: NextRequest) {
     
     // Apply status filters using centralized mapping
     if (status === "upcoming") {
-      // Upcoming: pending, confirmed, or in_progress bookings scheduled in the future
+      // Upcoming: pending / confirmed / in_progress. Must include in_progress even when
+      // scheduled_at is already in the past (service started — same row the provider marked started).
       const dbStatuses = mapStatusFromCustomer("upcoming");
+      const nowQuoted = `"${now}"`;
       query = query
         .in("status", dbStatuses)
-        .gte("scheduled_at", now);
+        .or(`scheduled_at.gte.${nowQuoted},status.eq.in_progress`);
     } else if (status === "past") {
       // Past: fetch all non-cancelled bookings, we'll filter in memory
       query = query.neq("status", "cancelled");
@@ -120,65 +125,43 @@ export async function GET(request: NextRequest) {
     let totalCount = 0;
     
     if (needsInMemoryFilter) {
-      // Fetch all bookings without pagination to filter properly
-      try {
-        const { data: allData, error: allError, count: allCount } = await query;
-        if (allError) {
-          console.error("Bookings query error (all):", {
-            error: allError,
-            message: allError.message,
-            details: allError.details,
-            hint: allError.hint,
-            code: allError.code,
-          });
-          // Return empty results for any query error
-          allBookings = [];
-          totalCount = 0;
-        } else {
-          allBookings = allData || [];
-          totalCount = allCount || 0;
-        }
-      } catch (queryException) {
-        console.error("Exception during bookings query (all):", queryException);
-        allBookings = [];
-        totalCount = 0;
+      const { data: allData, error: allError, count: allCount } = await query;
+      if (allError) {
+        console.error("Bookings query error (all):", {
+          code: allError.code,
+          message: allError.message,
+          details: allError.details,
+          hint: allError.hint,
+        });
+        throw allError;
       }
+      allBookings = allData || [];
+      totalCount = allCount || 0;
     } else {
-      // For other statuses, use pagination
-      try {
-        const { data, error, count } = await query.range(offset, offset + limit - 1);
-        if (error) {
-          console.error("Bookings query error:", {
-            error,
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          });
-          // For any query error when there might be no bookings, return empty results
-          // This handles RLS issues, missing tables, etc. gracefully
-          allBookings = [];
-          totalCount = 0;
-        } else {
-          allBookings = data || [];
-          totalCount = count || 0;
-        }
-      } catch (queryError) {
-        console.error("Exception during bookings query:", queryError);
-        // Return empty results instead of failing
-        allBookings = [];
-        totalCount = 0;
+      const { data, error, count } = await query.range(offset, offset + limit - 1);
+      if (error) {
+        console.error("Bookings query error:", {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+        throw error;
       }
+      allBookings = data || [];
+      totalCount = count || 0;
     }
 
     // Filter "past" bookings in memory
     let filteredBookings = allBookings;
     if (needsInMemoryFilter) {
-      filteredBookings = allBookings.filter(
-        (booking) =>
+      filteredBookings = allBookings.filter((booking) => {
+        if (booking.status === "in_progress") return false;
+        return (
           booking.status === "completed" ||
           (booking.scheduled_at && new Date(booking.scheduled_at) < new Date(now))
-      );
+        );
+      });
       totalCount = filteredBookings.length;
       
       // Apply pagination after filtering
@@ -205,9 +188,9 @@ export async function GET(request: NextRequest) {
       // Transform booking_addons to BookingAddon format
       const addons = (booking.booking_addons || []).map((ba: any) => ({
         id: ba.id,
-        offering_id: ba.addon_id, // Note: addon_id references offerings table
-        offering_name: ba.offering?.title || "Addon",
-        price: ba.price || ba.offering?.price || 0,
+        offering_id: ba.addon_id,
+        offering_name: ba.addon_name || "Add-on",
+        price: ba.price || 0,
       }));
 
       // Transform booking_products
@@ -250,7 +233,7 @@ export async function GET(request: NextRequest) {
         tip_amount: booking.tip_amount || 0,
         discount_amount: booking.discount_amount || 0,
         total_amount: booking.total_amount || 0,
-        currency: booking.currency || "ZAR",
+        currency: booking.currency || lastResortCurrency,
         payment_status: booking.payment_status || "pending",
         loyalty_points_earned: booking.loyalty_points_earned || 0,
         loyalty_points_used: booking.loyalty_points_used || 0,
@@ -277,16 +260,6 @@ export async function GET(request: NextRequest) {
       message: error instanceof Error ? error.message : String(error),
       stack: error instanceof Error ? error.stack : undefined,
     });
-    
-    // Return empty results instead of error to prevent 500
-    // This allows the UI to show "no bookings" instead of an error
-    const emptyResult: PaginatedResponse<Booking> = createPaginatedResponse(
-      [] as Booking[],
-      0,
-      1,
-      20
-    );
-    
-    return successResponse(emptyResult);
+    return handleApiError(error, "Failed to load bookings");
   }
 }

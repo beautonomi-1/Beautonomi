@@ -5,6 +5,7 @@ import { requireAdminSection,
   handleApiError,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET/PATCH /api/admin/providers/[id]/distance-settings
@@ -18,11 +19,13 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const { data: provider, error } = await supabase
       .from("providers")
       .select("id, business_name, max_service_distance_km, is_distance_filter_enabled")
+      .eq("tenant_id", tenantId)
       .eq("id", id)
       .single();
 
@@ -64,6 +67,7 @@ export async function PATCH(
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
     const body = await request.json();
 
@@ -90,6 +94,7 @@ export async function PATCH(
       .from("providers")
       .update(updates)
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .select("id, business_name, max_service_distance_km, is_distance_filter_enabled")
       .single();
 

@@ -1,15 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, MessageCircle } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import type { Booking, BookingEvent, AdditionalCharge } from "@/types/beautonomi";
 import { formatOTP } from "@/lib/otp/generator";
+import {
+  ARRIVAL_PIN_CUSTOMER_HEADING,
+  ARRIVAL_PIN_CUSTOMER_SUBTITLE,
+  ARRIVAL_PIN_FALLBACK_LABEL,
+  ARRIVAL_PIN_LENGTH_HINT,
+  ARRIVAL_PIN_PLACEHOLDER,
+  ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
+} from "@beautonomi/utils";
+
+function isCompleteArrivalOtpInput(raw: string): boolean {
+  const c = raw.replace(/\D/g, "");
+  return c.length === 4 || c.length === 6;
+}
 
 interface OrderDetailsDynamicProps {
   bookingId: string;
@@ -25,6 +39,7 @@ interface BookingStep {
 }
 
 export default function OrderDetailsDynamic({ bookingId, booking: initialBooking }: OrderDetailsDynamicProps) {
+  const router = useRouter();
   const [booking, setBooking] = useState<Booking | null>(initialBooking || null);
   const [events, setEvents] = useState<BookingEvent[]>([]);
   const [additionalCharges, setAdditionalCharges] = useState<AdditionalCharge[]>([]);
@@ -89,8 +104,8 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
 
   const handleVerifyOTP = async () => {
     const code = otp.replace(/\D/g, "");
-    if (!code || code.length < 4) {
-      toast.error("Please enter a valid 4 or 6 digit code");
+    if (!isCompleteArrivalOtpInput(code)) {
+      toast.error(ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE);
       return;
     }
 
@@ -322,10 +337,8 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
           <div className="flex items-start gap-3 mb-3">
             <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 shrink-0" />
             <div className="flex-1">
-              <h3 className="font-semibold text-blue-900 mb-1">Your verification code</h3>
-              <p className="text-sm text-blue-700">
-                Give this code to your provider when they arrive.
-              </p>
+              <h3 className="font-semibold text-blue-900 mb-1">{ARRIVAL_PIN_CUSTOMER_HEADING}</h3>
+              <p className="text-sm text-blue-700">{ARRIVAL_PIN_CUSTOMER_SUBTITLE}</p>
             </div>
           </div>
           {booking.arrival_otp ? (
@@ -356,20 +369,21 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
                   </Button>
                 ) : (
                   <div className="w-full pt-3 mt-3 border-t border-blue-200 space-y-3">
-                    <Label htmlFor="otp-fallback" className="text-sm font-medium">Enter code (fallback)</Label>
+                    <Label htmlFor="otp-fallback" className="text-sm font-medium">{ARRIVAL_PIN_FALLBACK_LABEL}</Label>
+                    <p className="text-xs text-blue-800/90 mb-2">{ARRIVAL_PIN_LENGTH_HINT}</p>
                     <Input
                       id="otp-fallback"
                       type="text"
                       maxLength={6}
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                      placeholder="1234"
+                      placeholder={ARRIVAL_PIN_PLACEHOLDER}
                       className="text-center text-xl tracking-widest"
                     />
                     <div className="flex gap-2">
                       <Button
                         onClick={handleVerifyOTP}
-                        disabled={isVerifying || otp.replace(/\D/g, "").length < 4}
+                        disabled={isVerifying || !isCompleteArrivalOtpInput(otp)}
                         className="flex-1"
                       >
                         {isVerifying ? "Verifying…" : "Verify"}
@@ -389,16 +403,17 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
               <Button variant="outline" onClick={() => setShowOTPInput(true)}>Enter code here</Button>
               {showOTPInput && (
                 <div className="pt-3 space-y-3">
+                  <p className="text-xs text-blue-800/90 mb-2">{ARRIVAL_PIN_LENGTH_HINT}</p>
                   <Input
                     type="text"
                     maxLength={6}
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
-                    placeholder="1234"
+                    placeholder={ARRIVAL_PIN_PLACEHOLDER}
                     className="text-center text-xl tracking-widest"
                   />
                   <div className="flex gap-2">
-                    <Button onClick={handleVerifyOTP} disabled={isVerifying || otp.replace(/\D/g, "").length < 4}>
+                    <Button onClick={handleVerifyOTP} disabled={isVerifying || !isCompleteArrivalOtpInput(otp)}>
                       {isVerifying ? "Verifying…" : "Verify"}
                     </Button>
                     <Button variant="outline" onClick={() => { setShowOTPInput(false); setOtp(""); }}>Cancel</Button>
@@ -514,14 +529,27 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
         <div className="flex items-center">
           <Avatar className="h-12 w-12">
             <AvatarImage src="/placeholder.svg?height=40&width=40" alt="Provider" />
-            <AvatarFallback>P</AvatarFallback>
+            <AvatarFallback>
+              {booking.provider?.business_name?.charAt(0)?.toUpperCase() ?? "P"}
+            </AvatarFallback>
           </Avatar>
           <div className="ml-3">
-            <div className="font-medium">Provider</div>
+            <div className="font-medium">{booking.provider?.business_name ?? "Provider"}</div>
             <div className="text-yellow-500">★★★★★</div>
           </div>
         </div>
-        <Button variant="secondary">Message</Button>
+        <Button
+          variant="secondary"
+          onClick={() => {
+            const providerId = booking.provider?.id;
+            if (providerId) {
+              router.push(`/account-settings/messages?provider=${providerId}&bookingId=${bookingId}`);
+            }
+          }}
+        >
+          <MessageCircle className="w-4 h-4 mr-2" />
+          Message
+        </Button>
       </div>
     </div>
   );

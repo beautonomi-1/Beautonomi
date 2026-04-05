@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/providers/[slug]/membership-plans
@@ -9,6 +10,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { slug } = await params;
 
@@ -18,6 +23,7 @@ export async function GET(
       .select("id")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {
@@ -56,7 +62,9 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ data: { plans: plans || [] }, error: null });
+    const res = NextResponse.json({ data: { plans: plans || [] }, error: null });
+    res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
+    return res;
   } catch (error) {
     console.error("Unexpected error in /api/public/providers/[slug]/membership-plans:", error);
     return NextResponse.json(

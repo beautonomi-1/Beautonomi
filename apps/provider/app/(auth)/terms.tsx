@@ -2,10 +2,11 @@
  * Native React Native Terms of Service screen. 100% in-app, no WebView or browser.
  */
 import { useRouter } from "expo-router";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
 
 export default function TermsScreen() {
   const router = useRouter();
@@ -30,6 +31,26 @@ export default function TermsScreen() {
         <Text style={{ marginBottom: 16, fontSize: 14, lineHeight: 24, color: Colors.gray[700] }}>
           Key points include: compliance with local laws, accurate service and business information, handling of client data and cancellations, and our right to update these terms with notice.
         </Text>
+        <Text style={{ marginBottom: 8, fontSize: 13, fontWeight: "600", color: Colors.gray[900] }}>
+          Full terms on the web
+        </Text>
+        <TouchableOpacity
+          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/terms-and-condition`).catch(() => {})}
+          style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
+          accessibilityRole="button"
+          accessibilityLabel="Open full terms of service in browser"
+        >
+          <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>Open Terms of Service</Text>
+          <Text style={{ fontSize: 12, color: Colors.gray[600], marginTop: 4 }}>Complete marketplace terms, payments, and dispute sections.</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/privacy-policy`).catch(() => {})}
+          style={{ marginBottom: 12, paddingVertical: 12, paddingHorizontal: 14, backgroundColor: Colors.gray[50], borderRadius: 10, borderWidth: 1, borderColor: Colors.gray[200] }}
+          accessibilityRole="button"
+          accessibilityLabel="Open privacy policy in browser"
+        >
+          <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "600" }}>Privacy Policy</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

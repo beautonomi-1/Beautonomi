@@ -121,7 +121,7 @@ export default function RevenueReport() {
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const { from, to } = getDateParams(dateRange);
   const revenueReportUrl = `/api/provider/reports/revenue?from=${from}&to=${to}${selectedLocationId ? `&location_id=${encodeURIComponent(selectedLocationId)}` : ""}`;
-  const { data, loading, error, timedOut, refresh } = useApi<RevenueData>(
+  const { data, loading, error: dataError, timedOut, refresh } = useApi<RevenueData>(
     revenueReportUrl,
     { timeoutMs: 15000 }
   );
@@ -167,11 +167,11 @@ export default function RevenueReport() {
         />
       )}
 
-      {error && !data && <ErrorState message={error} onRetry={refresh} />}
+      {dataError && !data && <ErrorState message={dataError} onRetry={refresh} />}
 
-      {loading && !data && !timedOut && !error && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
+      {loading && !data && !timedOut && !dataError && <ActivityIndicator style={twStyle("my-8")} color="#22c55e" />}
 
-      {!loading && !data && !timedOut && !error && (
+      {!loading && !data && !timedOut && !dataError && (
         <EmptyState icon="cash-outline" title="No revenue data" description="Revenue data will appear once you have transactions" />
       )}
 

@@ -3,6 +3,8 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 // Schema for validating profile question updates
 const profileQuestionSchema = z.object({
@@ -27,14 +29,17 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: questions, error } = await supabase
-      .from("profile_questions")
-      .select("*")
-      .order("section", { ascending: true })
-      .order("display_order", { ascending: true });
-
-    if (error) throw error;
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "profile_questions",
+      tenantId,
+      select: "*",
+      dedupeKey: (row) => String(row.question_key ?? row.id ?? ""),
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const questions = scoped.data;
 
     return successResponse(questions);
   } catch (error) {
@@ -51,6 +56,7 @@ export async function POST(request: NextRequest) {
     const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const body = await request.json();
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const validationResult = profileQuestionSchema.safeParse(body);
     if (!validationResult.success) {
@@ -62,6 +68,7 @@ export async function POST(request: NextRequest) {
 
     const questionData = {
       ...validationResult.data,
+      tenant_id: tenantId,
       created_by: user.id,
       updated_by: user.id,
     };

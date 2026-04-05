@@ -242,7 +242,7 @@ export function ExplorePostCard({
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {post.offering?.id && post.provider?.slug ? (
             <Link
-              href={`/book/${encodeURIComponent(post.provider.slug)}?service=${encodeURIComponent(post.offering.id)}`}
+              href={`/booking?slug=${encodeURIComponent(post.provider.slug)}&service=${encodeURIComponent(post.offering.id)}`}
               onClick={(e) => e.stopPropagation()}
               className="text-sm font-medium text-[#FF0077] hover:underline"
             >
@@ -275,7 +275,11 @@ export function ExplorePostCard({
         </div>
       </div>
 
-      <LoginModal open={isLoginModalOpen} setOpen={setIsLoginModalOpen} />
+      <LoginModal
+        open={isLoginModalOpen}
+        setOpen={setIsLoginModalOpen}
+        initialMode="login"
+      />
     </article>
   );
 }

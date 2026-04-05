@@ -6,9 +6,9 @@ import { z } from "zod";
 
 const createAutomationSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  trigger_type: z.string().min(1, "Trigger type is required"), // e.g., 'booking_completed', 'no_show', 'birthday'
+  trigger_type: z.string().min(1, "Trigger type is required"),
   trigger_config: z.record(z.string(), z.any()).optional().default({}),
-  action_type: z.enum(["email", "sms", "notification"]),
+  action_type: z.enum(["email", "sms", "notification", "whatsapp"]),
   action_config: z.record(z.string(), z.any()).optional().default({}),
   delay_minutes: z.number().int().nonnegative().optional().default(0),
   is_active: z.boolean().optional().default(true),

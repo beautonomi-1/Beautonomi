@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/provider/payouts/statements
@@ -16,15 +19,30 @@ export async function GET(request: NextRequest) {
 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
+      const tenantRegion = await getTenantRegionConfig(
+        await resolveTenantIdWithZaFallback(request)
+      );
+      const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
       return successResponse({
         period: { from: null, to: null },
         total_earnings: 0,
         total_payouts: 0,
         total_platform_fees: 0,
         payouts: [],
-        currency: "ZAR",
+        currency: lastResortCurrency,
       });
     }
+
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { searchParams } = new URL(request.url);
     const now = new Date();
@@ -57,7 +75,7 @@ export async function GET(request: NextRequest) {
       payout_number: p.payout_number,
       amount: Number(p.amount ?? 0),
       net_amount: Number(p.net_amount ?? p.amount ?? 0),
-      currency: p.currency || "ZAR",
+      currency: p.currency || lastResortCurrency,
       status: p.status,
       requested_at: p.created_at,
       processed_at: p.processed_at ?? null,
@@ -77,7 +95,7 @@ export async function GET(request: NextRequest) {
       total_payouts: totalPayouts,
       total_platform_fees: totalPlatformFees,
       payouts,
-      currency: "ZAR",
+      currency: lastResortCurrency,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch payout statement");

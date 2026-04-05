@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { useEffect, useState } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import AuthGuard from "@/components/auth/auth-guard";
@@ -13,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -24,10 +27,12 @@ import {
 
 export default function LoyaltyRedeemPage() {
   const router = useRouter();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { format } = usePlatformCurrency();
   const [pointsBalance, setPointsBalance] = useState(0);
   const [redemptionRate, setRedemptionRate] = useState(100);
-  const [currency, setCurrency] = useState("ZAR");
+  const [currency, setCurrency] = useState(tenantCurrency);
   const [pointsToRedeem, setPointsToRedeem] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRedeeming, setIsRedeeming] = useState(false);

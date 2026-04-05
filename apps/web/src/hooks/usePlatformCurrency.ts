@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { getPlatformLocale, formatCurrency, parseCurrency, getCurrencySymbol, type LocaleSettings } from "@/lib/locale/currency";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * React hook to get platform currency settings
@@ -26,7 +27,7 @@ export function usePlatformCurrency() {
   };
 
   const symbol = locale ? getCurrencySymbol(locale.default_currency) : "R";
-  const code = locale?.default_currency || "ZAR";
+  const code = locale?.default_currency || LAST_RESORT_CURRENCY;
 
   return {
     locale,

@@ -1,7 +1,7 @@
 /**
  * Single source of truth for role and portal resolution.
  * Role comes from public.users.role; provider linkage from providers / provider_staff.
- * Use for server-side routing (/portal page, middleware) and for /api/me/portal.
+ * Use for server-side routing (/portal page, proxy) and for /api/me/portal.
  */
 
 import type { UserRole } from "@/types/beautonomi";

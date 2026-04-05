@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 
 interface SegmentCriteria {
   min_bookings?: number;
@@ -90,14 +91,23 @@ export default function SegmentBuilder({ criteria, onCriteriaChange, availableTa
       <div>
         <Label htmlFor="last_booking_days" className="text-sm font-medium mb-2 block">Last Booking</Label>
         <Select
-          value={criteria.last_booking_days?.toString() || ""}
-          onValueChange={(value) => updateCriteria("last_booking_days", value ? parseInt(value) : undefined)}
+          value={
+            criteria.last_booking_days != null
+              ? String(criteria.last_booking_days)
+              : RADIX_SELECT_ANY
+          }
+          onValueChange={(value) =>
+            updateCriteria(
+              "last_booking_days",
+              value === RADIX_SELECT_ANY ? undefined : parseInt(value, 10)
+            )
+          }
         >
           <SelectTrigger>
             <SelectValue placeholder="Any time" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Any time</SelectItem>
+            <SelectItem value={RADIX_SELECT_ANY}>Any time</SelectItem>
             <SelectItem value="7">Last 7 days</SelectItem>
             <SelectItem value="30">Last 30 days</SelectItem>
             <SelectItem value="60">Last 60 days</SelectItem>

@@ -1,6 +1,6 @@
 /**
- * Calendar colors & icons – native screen.
- * Create and edit color schemes on the web; this screen explains and links to the portal.
+ * Calendar colors & icons – native handoff.
+ * Calendar visual customization is handled in native calendar preferences.
  */
 import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
@@ -13,15 +13,9 @@ import { twStyle } from "@/lib/twStyle";
 export default function CalendarColorsIconsScreen() {
   const router = useRouter();
 
-  const openOnWeb = () => {
+  const openNativePreferences = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push({
-      pathname: "/(app)/(tabs)/more/portal",
-      params: {
-        path: "/provider/settings/calendar/colors-icons",
-        title: "Calendar colors & icons",
-      },
-    } as never);
+    router.push("/(app)/(tabs)/more/settings/calendar-preferences" as never);
   };
 
   return (
@@ -34,15 +28,15 @@ export default function CalendarColorsIconsScreen() {
           </View>
           <Text style={twStyle("text-base font-semibold text-gray-900")}>Color schemes</Text>
           <Text style={twStyle("mt-2 text-sm text-gray-600 leading-5")}>
-            Create color schemes to visually organize appointments on your calendar by service, status, or team member. Add and edit schemes in the provider dashboard on the web.
+            Customize how appointments look by status, service, and team member in the native calendar preferences screen.
           </Text>
           <TouchableOpacity
-            onPress={openOnWeb}
+            onPress={openNativePreferences}
             style={twStyle("mt-5 flex-row items-center justify-center rounded-xl border border-indigo-200 bg-indigo-50 py-3.5")}
             activeOpacity={0.8}
           >
-            <Ionicons name="open-outline" size={20} color="#6366f1" />
-            <Text style={twStyle("ml-2 font-semibold text-indigo-700")}>Open on web</Text>
+            <Ionicons name="color-palette-outline" size={20} color="#6366f1" />
+            <Text style={twStyle("ml-2 font-semibold text-indigo-700")}>Open preferences</Text>
           </TouchableOpacity>
         </View>
       </View>

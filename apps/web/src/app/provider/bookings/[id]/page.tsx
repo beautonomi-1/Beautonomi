@@ -17,6 +17,7 @@ import {
   XCircle,
   Navigation,
   Star,
+  Link2,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -38,6 +39,10 @@ type ProviderBookingDetail = Booking & {
   location_name?: string;
   staff_name?: string;
   provider_points_earned?: number;
+  arrival_otp_verified?: boolean;
+  qr_code_verified?: boolean;
+  arrival_otp_pending?: boolean;
+  qr_arrival_pending?: boolean;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -45,6 +50,16 @@ import { BookingAuditLog } from "@/components/provider/BookingAuditLog";
 import { BookingConflictAlert } from "@/components/provider/BookingConflictAlert";
 import { SafetyPanicButton } from "@/components/safety/SafetyPanicButton";
 import ProviderLocationTracker from "@/components/provider/ProviderLocationTracker";
+import { QRCodeDisplay } from "@/components/provider-portal/QRCodeDisplay";
+import { ArrivalQrScanDialog } from "@/components/provider/ArrivalQrScanDialog";
+import type { QRCodeData } from "@/lib/qr/generator";
+import {
+  ARRIVAL_PIN_LENGTH_HINT,
+  ARRIVAL_PIN_PLACEHOLDER,
+  ARRIVAL_PIN_PROVIDER_HEADING,
+  ARRIVAL_PIN_PROVIDER_SUBTEXT,
+  ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
+} from "@beautonomi/utils";
 import {
   Dialog,
   DialogContent,
@@ -56,10 +71,39 @@ import {
 import { Trophy } from "lucide-react";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import RateCustomerModal from "@/components/reviews/rate-customer-modal";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
+/** Aligned with provider mobile + POST /mark-paid */
+const PAYMENT_METHODS_MAIN = [
+  { label: "Cash", value: "cash" as const },
+  { label: "Card (in-salon / terminal)", value: "card" as const },
+  { label: "EFT", value: "bank_transfer" as const },
+  { label: "Other", value: "other" as const },
+];
+
+/** Aligned with POST .../additional-charges/[chargeId]/mark-paid */
+const PAYMENT_METHODS_CHARGE = [
+  { label: "Cash", value: "cash" as const },
+  { label: "Card (in-salon / terminal)", value: "card" as const },
+  { label: "Mobile", value: "mobile" as const },
+  { label: "EFT", value: "bank_transfer" as const },
+  { label: "Other", value: "other" as const },
+];
+
+const SEND_LINK_OPTIONS = [
+  { label: "Email", value: "email" as const },
+  { label: "SMS", value: "sms" as const },
+  { label: "Email & SMS", value: "both" as const },
+];
+
+type PaymentMethodMain = (typeof PAYMENT_METHODS_MAIN)[number]["value"];
+type PaymentMethodCharge = (typeof PAYMENT_METHODS_CHARGE)[number]["value"];
+type SendLinkDelivery = (typeof SEND_LINK_OPTIONS)[number]["value"];
+
 export default function ProviderBookingDetail() {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const params = useParams();
   const router = useRouter();
   const bookingId = params.id as string;
@@ -82,8 +126,18 @@ export default function ProviderBookingDetail() {
 
   // Mark paid state
   const [showMarkPaid, setShowMarkPaid] = useState(false);
-  const [markPaidMethod, setMarkPaidMethod] = useState("cash");
+  const [markPaidMethod, setMarkPaidMethod] = useState<PaymentMethodMain>("cash");
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
+
+  // Send payment link (main booking)
+  const [showSendPaymentLink, setShowSendPaymentLink] = useState(false);
+  const [sendPaymentLinkMethod, setSendPaymentLinkMethod] = useState<SendLinkDelivery>("email");
+  const [sendingPaymentLink, setSendingPaymentLink] = useState(false);
+
+  // Mark additional charge paid
+  const [chargeMarkPaidId, setChargeMarkPaidId] = useState<string | null>(null);
+  const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<PaymentMethodCharge>("card");
+  const [markingChargePaid, setMarkingChargePaid] = useState(false);
 
   // Refund state
   const [showRefund, setShowRefund] = useState(false);
@@ -105,6 +159,11 @@ export default function ProviderBookingDetail() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  const [backupArrivalQr, setBackupArrivalQr] = useState<QRCodeData | null>(null);
+  const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
+  const [qrPasteJson, setQrPasteJson] = useState("");
+  const [isVerifyingQrArrival, setIsVerifyingQrArrival] = useState(false);
+  const [qrScanDialogOpen, setQrScanDialogOpen] = useState(false);
 
   // Post-completion modal: once per booking when opening a completed booking
   const [showProviderCompletionModal, setShowProviderCompletionModal] = useState(false);
@@ -160,6 +219,12 @@ export default function ProviderBookingDetail() {
       // ignore storage errors
     }
   }, [bookingId, booking?.id, booking?.status]);
+
+  useEffect(() => {
+    if (booking?.arrival_otp_verified || booking?.qr_code_verified) {
+      setBackupArrivalQr(null);
+    }
+  }, [booking?.arrival_otp_verified, booking?.qr_code_verified]);
 
   const dismissProviderCompletionModal = (markSeen: boolean) => {
     setShowProviderCompletionModal(false);
@@ -288,6 +353,62 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const handleSendPaymentLink = async () => {
+    if (!booking) return;
+    if (
+      (sendPaymentLinkMethod === "email" || sendPaymentLinkMethod === "both") &&
+      !booking.customer_email
+    ) {
+      toast.error("Customer email is required for email delivery");
+      return;
+    }
+    if (
+      (sendPaymentLinkMethod === "sms" || sendPaymentLinkMethod === "both") &&
+      !booking.customer_phone
+    ) {
+      toast.error("Customer phone number is required for SMS delivery");
+      return;
+    }
+    try {
+      setSendingPaymentLink(true);
+      await fetcher.post(`/api/provider/bookings/${bookingId}/send-payment-link`, {
+        delivery_method: sendPaymentLinkMethod,
+      });
+      toast.success(
+        sendPaymentLinkMethod === "both"
+          ? "Payment link sent via email and SMS"
+          : `Payment link sent via ${sendPaymentLinkMethod === "email" ? "email" : "SMS"}`
+      );
+      setShowSendPaymentLink(false);
+      loadBooking();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to send payment link");
+    } finally {
+      setSendingPaymentLink(false);
+    }
+  };
+
+  const handleChargeMarkPaid = async () => {
+    if (!chargeMarkPaidId) return;
+    try {
+      setMarkingChargePaid(true);
+      await fetcher.post(
+        `/api/provider/bookings/${bookingId}/additional-charges/${chargeMarkPaidId}/mark-paid`,
+        {
+          payment_method: chargeMarkPaidMethod,
+          notes: `Marked as paid by provider via ${chargeMarkPaidMethod}`,
+        }
+      );
+      toast.success("Charge marked as paid");
+      setChargeMarkPaidId(null);
+      await Promise.all([loadAdditionalCharges(), loadBooking()]);
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
+    } finally {
+      setMarkingChargePaid(false);
+    }
+  };
+
   const handleRefund = async () => {
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -361,10 +482,15 @@ export default function ProviderBookingDetail() {
         latitude = pos.coords.latitude;
         longitude = pos.coords.longitude;
       }
-      await fetcher.post(`/api/provider/bookings/${bookingId}/arrive`, {
-        ...(latitude != null && { latitude }),
-        ...(longitude != null && { longitude }),
-      });
+      const arriveRes = await fetcher.post<{ data: { qr_code?: QRCodeData | null } }>(
+        `/api/provider/bookings/${bookingId}/arrive`,
+        {
+          ...(latitude != null && { latitude }),
+          ...(longitude != null && { longitude }),
+        }
+      );
+      const qr = arriveRes.data?.qr_code;
+      setBackupArrivalQr(qr && typeof qr === "object" && "verification_code" in qr ? qr : null);
       toast.success("Marked as arrived.");
       loadBooking();
     } catch (err) {
@@ -376,8 +502,8 @@ export default function ProviderBookingDetail() {
 
   const handleVerifyArrival = async () => {
     const code = arrivalPinInput.replace(/\D/g, "");
-    if (code.length < 4) {
-      toast.error("Enter the 4 or 6 digit code from the customer.");
+    if (code.length !== 4 && code.length !== 6) {
+      toast.error(ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE);
       return;
     }
     setIsVerifyingArrival(true);
@@ -406,6 +532,43 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const submitVerifyQrBody = async (body: {
+    verification_code?: string;
+    qr_data?: string;
+  }): Promise<boolean> => {
+    setIsVerifyingQrArrival(true);
+    try {
+      await fetcher.post(`/api/provider/bookings/${bookingId}/verify-qr`, body);
+      toast.success("Verified. You can start the service.");
+      setQrArrivalCodeInput("");
+      setQrPasteJson("");
+      loadBooking();
+      return true;
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to verify QR");
+      return false;
+    } finally {
+      setIsVerifyingQrArrival(false);
+    }
+  };
+
+  const handleVerifyQrArrival = async () => {
+    const trimmedPaste = qrPasteJson.trim();
+    const code = qrArrivalCodeInput.replace(/\s/g, "").toUpperCase();
+    const body: { verification_code?: string; qr_data?: string } = {};
+    if (trimmedPaste.startsWith("{")) {
+      body.qr_data = trimmedPaste;
+    } else if (code.length >= 8) {
+      body.verification_code = code;
+    } else {
+      toast.error(
+        "Enter the 8-character code from the customer’s QR, paste the full scanned JSON, or use Scan with camera."
+      );
+      return;
+    }
+    await submitVerifyQrBody(body);
+  };
+
   const isActive = ["pending", "booked", "confirmed"].includes(booking?.status ?? "");
   const isStarted = ["started", "in_progress"].includes(booking?.status ?? "");
   const isAtHome = booking?.location_type === "at_home";
@@ -416,13 +579,22 @@ export default function ProviderBookingDetail() {
   const canMarkArrived = isAtHome && booking?.current_stage === "provider_on_way";
   const isEnRoute = isAtHome && booking?.current_stage === "provider_on_way";
   const isArrived = isAtHome && booking?.current_stage === "provider_arrived";
-  const arrivalVerified = booking.arrival_otp_verified === true;
+  const arrivalVerified =
+    booking.arrival_otp_verified === true || booking.qr_code_verified === true;
+  const arrivalOtpPending = booking.arrival_otp_pending === true;
+  const qrArrivalPending = booking.qr_arrival_pending === true;
   const totalPaid = booking.total_paid ?? 0;
   const totalRefunded = booking.total_refunded ?? 0;
   const totalAmount = booking.total_amount ?? 0;
   const outstanding = totalAmount - totalPaid + totalRefunded;
   const canMarkPaid = outstanding > 0 && (booking?.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
+  /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
+  const canSendPaymentLink =
+    outstanding > 0 &&
+    booking?.status !== "cancelled" &&
+    booking?.payment_status !== "paid" &&
+    !!(booking?.customer_email || booking?.customer_phone);
 
   if (isLoading) {
     return (
@@ -721,36 +893,111 @@ export default function ProviderBookingDetail() {
                       Customer verified – you can start the service.
                     </p>
                   ) : (
-                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
-                      <p className="text-sm font-medium text-blue-900">Enter the verification code from the customer</p>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={6}
-                        value={arrivalPinInput}
-                        onChange={(e) => setArrivalPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                        placeholder="1234"
-                        className="w-full max-w-[140px] border border-gray-300 rounded-lg px-3 py-2 text-lg tracking-widest"
-                        aria-label="Verification code from customer"
-                      />
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          onClick={handleVerifyArrival}
-                          disabled={isVerifyingArrival || arrivalPinInput.replace(/\D/g, "").length < 4}
-                          className="min-h-[44px]"
-                        >
-                          {isVerifyingArrival ? "Verifying…" : "Verify"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={handleResendArrivalOtp}
-                          disabled={isResendingArrivalOtp}
-                          className="min-h-[44px]"
-                        >
-                          {isResendingArrivalOtp ? "Sending…" : "Resend code"}
-                        </Button>
-                      </div>
-                    </div>
+                    <>
+                      {arrivalOtpPending && (
+                        <div className="rounded-lg bg-blue-50 border border-blue-200 p-4 space-y-3">
+                          <p className="text-sm font-medium text-blue-900">{ARRIVAL_PIN_PROVIDER_HEADING}</p>
+                          <p className="text-xs text-blue-800/90">{ARRIVAL_PIN_PROVIDER_SUBTEXT}</p>
+                          <p className="text-xs text-blue-800/90">{ARRIVAL_PIN_LENGTH_HINT}</p>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={arrivalPinInput}
+                            onChange={(e) => setArrivalPinInput(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            placeholder={ARRIVAL_PIN_PLACEHOLDER}
+                            className="w-full max-w-[140px] border border-gray-300 rounded-lg px-3 py-2 text-lg tracking-widest"
+                            aria-label={ARRIVAL_PIN_PROVIDER_HEADING}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              onClick={handleVerifyArrival}
+                              disabled={
+                                isVerifyingArrival ||
+                                ![4, 6].includes(arrivalPinInput.replace(/\D/g, "").length)
+                              }
+                              className="min-h-[44px]"
+                            >
+                              {isVerifyingArrival ? "Verifying…" : "Verify"}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              onClick={handleResendArrivalOtp}
+                              disabled={isResendingArrivalOtp}
+                              className="min-h-[44px]"
+                            >
+                              {isResendingArrivalOtp ? "Sending…" : "Resend code"}
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      {qrArrivalPending && (
+                        <div className="rounded-lg bg-violet-50 border border-violet-200 p-4 space-y-3">
+                          <p className="text-sm font-medium text-violet-950">Scan the customer&apos;s QR or enter their code</p>
+                          <p className="text-xs text-violet-800">
+                            They open this booking on their phone to show the arrival QR, or read the 8-character code aloud.
+                          </p>
+                          <input
+                            type="text"
+                            value={qrArrivalCodeInput}
+                            onChange={(e) =>
+                              setQrArrivalCodeInput(
+                                e.target.value.replace(/\s/g, "").toUpperCase().slice(0, 12)
+                              )
+                            }
+                            placeholder="e.g. AB12CD34"
+                            autoCapitalize="characters"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            className="w-full max-w-xs border border-gray-300 rounded-lg px-3 py-2 font-mono text-base"
+                            aria-label="QR verification code from customer"
+                          />
+                          <label className="block text-xs font-medium text-violet-900">Or paste raw scan (JSON)</label>
+                          <textarea
+                            value={qrPasteJson}
+                            onChange={(e) => setQrPasteJson(e.target.value)}
+                            placeholder='{"booking_id":"…"'
+                            rows={3}
+                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono"
+                            aria-label="Pasted QR JSON"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setQrScanDialogOpen(true)}
+                            disabled={isVerifyingQrArrival}
+                            className="min-h-[44px] w-full border-violet-600 text-violet-900 mb-2"
+                          >
+                            Scan with camera
+                          </Button>
+                          <Button
+                            type="button"
+                            onClick={() => void handleVerifyQrArrival()}
+                            disabled={
+                              isVerifyingQrArrival ||
+                              (qrPasteJson.trim().length === 0 &&
+                                qrArrivalCodeInput.replace(/\s/g, "").length < 8)
+                            }
+                            className="min-h-[44px] bg-violet-700 hover:bg-violet-800"
+                          >
+                            {isVerifyingQrArrival ? "Verifying…" : "Verify QR"}
+                          </Button>
+                        </div>
+                      )}
+                      {backupArrivalQr && (
+                        <div className="rounded-lg border border-dashed border-gray-300 p-3 bg-gray-50/80">
+                          <p className="text-xs text-gray-600 mb-2">
+                            Backup: same QR the customer sees (e.g. if they can&apos;t open the app).
+                          </p>
+                          <QRCodeDisplay
+                            qrData={backupArrivalQr}
+                            onRefresh={() => loadBooking()}
+                            title="Customer arrival QR (backup)"
+                            description="Prefer the customer’s app when possible."
+                          />
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -1078,49 +1325,16 @@ export default function ProviderBookingDetail() {
                   {(c.status === 'pending' || c.status === 'approved') && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
                       <p className="text-xs text-gray-600 mb-2">
-                        Customer can pay online, or mark as paid if received payment:
+                        Customer can pay online, or mark as paid if you received payment in person:
                       </p>
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={async () => {
-                          const paymentMethod = prompt(
-                            "Payment method:\n1. cash\n2. card\n3. mobile\n4. bank_transfer\n5. other\n\nEnter number or method name:"
-                          );
-                          if (!paymentMethod) return;
-                          
-                          const methodMap: Record<string, string> = {
-                            '1': 'cash',
-                            '2': 'card',
-                            '3': 'mobile',
-                            '4': 'bank_transfer',
-                            '5': 'other',
-                          };
-                          
-                          const finalMethod = methodMap[paymentMethod.toLowerCase()] || paymentMethod.toLowerCase();
-                          
-                          if (!['cash', 'card', 'mobile', 'bank_transfer', 'other'].includes(finalMethod)) {
-                            toast.error("Invalid payment method");
-                            return;
-                          }
-                          
-                          if (!confirm(`Mark charge of ${c.currency} ${Number(c.amount).toFixed(2)} as paid via ${finalMethod}?`)) return;
-                          
-                          try {
-                            await fetcher.post(
-                              `/api/provider/bookings/${bookingId}/additional-charges/${c.id}/mark-paid`,
-                              {
-                                payment_method: finalMethod,
-                                notes: `Marked as paid by provider via ${finalMethod}`,
-                              }
-                            );
-                            toast.success("Charge marked as paid");
-                            loadAdditionalCharges();
-                            loadBooking();
-                          } catch (err) {
-                            toast.error(err instanceof FetchError ? err.message : "Failed to mark as paid");
-                          }
+                        onClick={() => {
+                          setChargeMarkPaidId(c.id);
+                          setChargeMarkPaidMethod("card");
                         }}
+                        disabled={markingChargePaid}
                       >
                         Mark as Paid (Walk-in/In-Salon)
                       </Button>
@@ -1165,24 +1379,24 @@ export default function ProviderBookingDetail() {
             <h3 className="text-sm font-semibold text-gray-900">Payment Details</h3>
             <div className="flex justify-between text-sm">
               <span className="text-gray-600">Total</span>
-              <span className="font-medium">R {totalAmount.toFixed(2)}</span>
+              <span className="font-medium">{formatMoney(totalAmount)}</span>
             </div>
             {totalPaid > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Paid</span>
-                <span className="font-medium text-green-600">R {totalPaid.toFixed(2)}</span>
+                <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
               </div>
             )}
             {totalRefunded > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Refunded</span>
-                <span className="font-medium text-red-600">-R {totalRefunded.toFixed(2)}</span>
+                <span className="font-medium text-red-600">{formatMoney(-totalRefunded)}</span>
               </div>
             )}
             {outstanding > 0 && (
               <div className="flex justify-between text-sm border-t pt-2">
                 <span className="text-gray-700 font-medium">Outstanding</span>
-                <span className="font-bold text-amber-600">R {outstanding.toFixed(2)}</span>
+                <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
               </div>
             )}
           </div>
@@ -1231,6 +1445,21 @@ export default function ProviderBookingDetail() {
             >
               <DollarSign className="w-4 h-4 mr-2" />
               Mark as Paid
+            </Button>
+          )}
+          {canSendPaymentLink && (
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (booking.customer_email) setSendPaymentLinkMethod("email");
+                else if (booking.customer_phone) setSendPaymentLinkMethod("sms");
+                setShowSendPaymentLink(true);
+              }}
+              disabled={isUpdating || sendingPaymentLink}
+              className="flex-1 min-h-[44px] border-primary text-primary hover:bg-primary/10"
+            >
+              <Link2 className="w-4 h-4 mr-2" />
+              {sendingPaymentLink ? "Sending…" : "Send payment link"}
             </Button>
           )}
           {canRefund && (
@@ -1359,19 +1588,20 @@ export default function ProviderBookingDetail() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
               <h3 className="text-lg font-semibold">Mark as Paid</h3>
-              <p className="text-sm text-gray-600">Outstanding: R {outstanding.toFixed(2)}</p>
+              <p className="text-sm text-gray-600">Outstanding: {formatMoney(outstanding)}</p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Payment Method</label>
-                <div className="flex gap-2">
-                  {["cash", "card", "eft"].map((m) => (
+                <label className="text-sm font-medium mb-1 block">Payment method</label>
+                <div className="flex flex-wrap gap-2">
+                  {PAYMENT_METHODS_MAIN.map((pm) => (
                     <Button
-                      key={m}
-                      variant={markPaidMethod === m ? "default" : "outline"}
+                      key={pm.value}
+                      type="button"
+                      variant={markPaidMethod === pm.value ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setMarkPaidMethod(m)}
-                      className="flex-1 capitalize"
+                      onClick={() => setMarkPaidMethod(pm.value)}
+                      className="flex-1 min-w-[7rem] max-w-full text-sm leading-snug h-auto min-h-[2.75rem] py-2 whitespace-normal"
                     >
-                      {m === "eft" ? "EFT" : m}
+                      {pm.label}
                     </Button>
                   ))}
                 </div>
@@ -1388,12 +1618,119 @@ export default function ProviderBookingDetail() {
           </div>
         )}
 
+        {/* Send payment link */}
+        {showSendPaymentLink && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold">Send payment link</h3>
+              <p className="text-sm text-gray-600">
+                Send a link so the customer can pay online. Outstanding: {formatMoney(outstanding)}
+              </p>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Send via</label>
+                <div className="flex flex-wrap gap-2">
+                  {SEND_LINK_OPTIONS.map((opt) => {
+                    const disabled =
+                      (opt.value === "email" && !booking.customer_email) ||
+                      (opt.value === "sms" && !booking.customer_phone) ||
+                      (opt.value === "both" && (!booking.customer_email || !booking.customer_phone));
+                    return (
+                      <Button
+                        key={opt.value}
+                        type="button"
+                        variant={sendPaymentLinkMethod === opt.value ? "default" : "outline"}
+                        size="sm"
+                        disabled={disabled}
+                        title={disabled ? "Add customer email/phone on the customer profile" : undefined}
+                        onClick={() => setSendPaymentLinkMethod(opt.value)}
+                        className="flex-1 min-w-[5rem]"
+                      >
+                        {opt.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+                {(!booking.customer_email || !booking.customer_phone) && (
+                  <p className="text-xs text-amber-700 mt-2">
+                    Email and SMS options require the customer&apos;s contact details on file.
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleSendPaymentLink}
+                  disabled={sendingPaymentLink}
+                  className="flex-1 bg-primary hover:bg-primary/90"
+                >
+                  {sendingPaymentLink ? "Sending…" : "Send link"}
+                </Button>
+                <Button variant="outline" onClick={() => setShowSendPaymentLink(false)} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Mark additional charge as paid */}
+        {chargeMarkPaidId && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold">Mark charge as paid</h3>
+              {(() => {
+                const c = additionalCharges.find((x) => x.id === chargeMarkPaidId);
+                if (!c) {
+                  return (
+                    <p className="text-sm text-gray-600">Charge not found.</p>
+                  );
+                }
+                return (
+                  <>
+                    <p className="text-sm text-gray-600">
+                      {c.description} · {c.currency} {Number(c.amount).toFixed(2)}
+                    </p>
+                    <div>
+                      <label className="text-sm font-medium mb-1 block">Payment method</label>
+                      <div className="flex flex-wrap gap-2">
+                        {PAYMENT_METHODS_CHARGE.map((pm) => (
+                          <Button
+                            key={pm.value}
+                            type="button"
+                            variant={chargeMarkPaidMethod === pm.value ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setChargeMarkPaidMethod(pm.value)}
+                            className="flex-1 min-w-[7rem] max-w-full text-sm leading-snug h-auto min-h-[2.75rem] py-2 whitespace-normal"
+                          >
+                            {pm.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleChargeMarkPaid}
+                  disabled={markingChargePaid || !additionalCharges.some((x) => x.id === chargeMarkPaidId)}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {markingChargePaid ? "Processing…" : "Confirm"}
+                </Button>
+                <Button variant="outline" onClick={() => setChargeMarkPaidId(null)} className="flex-1">
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Refund Dialog */}
         {showRefund && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
               <h3 className="text-lg font-semibold">Issue Refund</h3>
-              <p className="text-sm text-gray-600">Total paid: R {totalPaid.toFixed(2)}</p>
+              <p className="text-sm text-gray-600">Total paid: {formatMoney(totalPaid)}</p>
               <div>
                 <label className="text-sm font-medium mb-1 block">Refund Amount (R)</label>
                 <Input
@@ -1472,7 +1809,7 @@ export default function ProviderBookingDetail() {
         )}
 
         {/* Rate customer modal (opened from completion modal or from button below) */}
-        {booking?.status === "completed" && bookingId && (
+        {(booking?.status === "completed" || booking?.status === "no_show") && bookingId && (
           <RateCustomerModal
             open={showRateCustomerFromModal}
             onOpenChange={setShowRateCustomerFromModal}
@@ -1481,6 +1818,14 @@ export default function ProviderBookingDetail() {
             onSuccess={() => setShowRateCustomerFromModal(false)}
           />
         )}
+
+        {bookingId ? (
+          <ArrivalQrScanDialog
+            open={qrScanDialogOpen}
+            onOpenChange={setQrScanDialogOpen}
+            onValidScan={(jsonPayload) => submitVerifyQrBody({ qr_data: jsonPayload })}
+          />
+        ) : null}
       </div>
     </RoleGuard>
   );

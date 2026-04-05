@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/public/provider-online-booking-settings?provider_id=xxx
@@ -8,6 +9,16 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   try {
     const supabase = await getSupabaseServer();
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in /api/public/provider-online-booking-settings:", tenantErr);
+      return Response.json(
+        { data: null, error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" } },
+        { status: 503 }
+      );
+    }
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
 
@@ -22,6 +33,7 @@ export async function GET(request: NextRequest) {
       .from("providers")
       .select("id, online_booking_enabled")
       .eq("id", providerId)
+      .eq("tenant_id", tenantId)
       .eq("status", "active")
       .single();
 

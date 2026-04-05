@@ -12,6 +12,9 @@ import {
  * GET /api/me/on-demand/requests/[id]
  * Get a single on-demand request (customer only, RLS enforced).
  * Lazy expiry: if status is requested and expires_at has passed, mark expired and return updated row.
+ *
+ * @tenant-hint Row is loaded with the user-scoped Supabase client (RLS). Service role is only used for
+ * the idempotent expiry update and to read provider display name by provider_id.
  */
 export async function GET(
   request: NextRequest,

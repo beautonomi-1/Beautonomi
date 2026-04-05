@@ -8,6 +8,10 @@ import { requireRoleInApi, successResponse, handleApiError, errorResponse } from
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
 async function getProviderId(request: NextRequest): Promise<string | null> {
   const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
@@ -40,11 +44,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderId(request);
     if (!providerId) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
-    const body = await request.json();
     const supabase = getSupabaseAdmin();
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
+    const body = await request.json();
     const impressionPackId = body.impression_pack_id ?? null;
     let budget = Number(body.budget) || 0;
     let packImpressions: number | null = null;
@@ -71,7 +94,8 @@ export async function POST(request: NextRequest) {
     const { data: config } = await supabase.from("ads_module_config").select("enabled").eq("environment", process.env.NODE_ENV === "production" ? "production" : "development").maybeSingle();
     if (!config?.enabled) return errorResponse("Ads module is disabled", "DISABLED", 403);
 
-    const currency = "ZAR";
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const currency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const insertBudget = budget > 0 ? 0 : budget;
 
     const { data: campaign, error: campaignError } = await supabase
@@ -131,6 +155,7 @@ export async function POST(request: NextRequest) {
         provider_id: providerId,
         campaign_id: campaign.id,
       },
+      tenantId,
     });
 
     await supabase

@@ -13,6 +13,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
 import { CalendarLinkDialog } from "@/components/provider-portal/CalendarLinkDialog";
 import { toast } from "sonner";
+import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
 export default function CalendarLinksPage() {
   const [links, setLinks] = useState<CalendarLink[]>([]);
@@ -60,9 +61,13 @@ export default function CalendarLinksPage() {
     }
   };
 
-  const handleCopyLink = (link: CalendarLink) => {
-    navigator.clipboard.writeText(link.full_url);
-    toast.success("Link copied to clipboard");
+  const handleCopyLink = async (link: CalendarLink) => {
+    const copied = await copyTextToClipboard(link.full_url);
+    if (copied) {
+      toast.success("Link copied to clipboard");
+      return;
+    }
+    toast.error("Unable to copy link on this browser");
   };
 
   const handleViewLink = (link: CalendarLink) => {
@@ -98,7 +103,6 @@ export default function CalendarLinksPage() {
     <SettingsDetailLayout
       title="Calendar Links"
       subtitle="Share your calendar with clients via public links or subscriptions"
-      onSave={() => console.log("Save calendar links")}
       breadcrumbs={breadcrumbs}
     >
       <div className="mb-4 flex justify-end">

@@ -5,11 +5,20 @@ import { createClient } from "@supabase/supabase-js";
 import { calculatePayRun } from "@/lib/payroll/pay-run-engine";
 import { z } from "zod";
 
-const createSchema = z.object({
-  pay_period_start: z.string(),
-  pay_period_end: z.string(),
-  period_type: z.enum(["weekly", "monthly"]).optional().default("weekly"),
-});
+const createSchema = z
+  .object({
+    pay_period_start: z.string(),
+    pay_period_end: z.string(),
+    period_type: z.enum(["weekly", "monthly"]).optional().default("weekly"),
+  })
+  .refine(
+    (b) => {
+      const a = new Date(b.pay_period_start).getTime();
+      const e = new Date(b.pay_period_end).getTime();
+      return Number.isFinite(a) && Number.isFinite(e) && e >= a;
+    },
+    { message: "pay_period_end must be on or after pay_period_start" }
+  );
 
 /**
  * GET /api/provider/pay-runs
@@ -76,6 +85,25 @@ export async function POST(request: NextRequest) {
     const periodEnd = new Date(body.pay_period_end);
     const periodType = body.period_type || "weekly";
 
+    const { data: overlapping } = await supabaseAdmin
+      .from("provider_pay_runs")
+      .select("id")
+      .eq("provider_id", providerId)
+      .lte("pay_period_start", body.pay_period_end)
+      .gte("pay_period_end", body.pay_period_start)
+      .limit(1);
+
+    if (overlapping?.length) {
+      return handleApiError(
+        new Error(
+          "A pay run already exists for an overlapping period. Adjust dates or use the existing run."
+        ),
+        "Failed to create pay run",
+        "OVERLAPPING_PAY_RUN",
+        409
+      );
+    }
+
     const items = await calculatePayRun(
       supabaseAdmin,
       providerId,
@@ -116,7 +144,10 @@ export async function POST(request: NextRequest) {
       const { error: itemsError } = await supabaseAdmin
         .from("provider_pay_run_items")
         .insert(itemsToInsert);
-      if (itemsError) throw itemsError;
+      if (itemsError) {
+        await supabaseAdmin.from("provider_pay_runs").delete().eq("id", payRun.id);
+        throw itemsError;
+      }
     }
 
     return successResponse({ id: payRun.id, items: items.length });

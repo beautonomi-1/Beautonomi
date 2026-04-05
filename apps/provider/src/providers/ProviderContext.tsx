@@ -1,14 +1,17 @@
 /**
  * Provider context - holds provider profile, selected location, and role info.
  * Wraps the app after authentication.
+ * Loads when the Supabase user id is present; clears on sign-out / user change.
  */
-import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef, useMemo, type ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "@/lib/api-client";
-import { identifyProvider } from "@/lib/analytics";
 import { useAuth } from "./AuthProvider";
+import { captureError, addBreadcrumb } from "@/lib/sentry";
 
 const LOCATION_STORAGE_KEY = "provider_selected_location_id";
+/** Persisted when user chooses org-wide view (no branch filter). */
+const LOCATION_ALL_SENTINEL = "__all__";
 
 interface Location {
   id: string;
@@ -27,6 +30,10 @@ interface ProviderProfile {
   phone: string;
   avatar_url: string | null;
   locations: Location[];
+  /** Tenant-aligned ISO 4217 code from GET /api/provider/profile (matches web). */
+  currency?: string;
+  /** BCP 47 locale for formatting when present. */
+  locale?: string;
 }
 
 interface ProviderContextType {
@@ -35,17 +42,24 @@ interface ProviderContextType {
   selectedLocationId: string | null;
   setSelectedLocationId: (id: string | null) => void;
   loading: boolean;
+  /** Set when /api/provider/profile fails; cleared on successful load or refresh. */
+  profileLoadError: string | null;
   refresh: () => Promise<void>;
 }
 
 const ProviderContext = createContext<ProviderContextType | undefined>(undefined);
 
+const PROFILE_LOAD_TIMEOUT_MS = 15 * 1000;
+
 export function ProviderProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const userId = user?.id ?? null;
+
   const [provider, setProvider] = useState<ProviderProfile | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationIdState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const restoredRef = useRef(false);
 
   const setSelectedLocationId = useCallback((id: string | null) => {
@@ -53,11 +67,9 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     if (id) {
       AsyncStorage.setItem(LOCATION_STORAGE_KEY, id).catch(() => {});
     } else {
-      AsyncStorage.removeItem(LOCATION_STORAGE_KEY).catch(() => {});
+      AsyncStorage.setItem(LOCATION_STORAGE_KEY, LOCATION_ALL_SENTINEL).catch(() => {});
     }
   }, []);
-
-  const PROFILE_LOAD_TIMEOUT_MS = 15 * 1000; // avoid infinite loading if API/getAccessToken hangs
 
   const fetchProfile = useCallback(async () => {
     const timeoutId = setTimeout(() => setLoading(false), PROFILE_LOAD_TIMEOUT_MS);
@@ -65,65 +77,99 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       const [profileRes, roleRes, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
-        restoredRef.current ? Promise.resolve(null) : AsyncStorage.getItem(LOCATION_STORAGE_KEY),
+        restoredRef.current ? Promise.resolve<string | null>(null) : AsyncStorage.getItem(LOCATION_STORAGE_KEY),
       ]);
       restoredRef.current = true;
 
-      if (profileRes.data) {
+      if (profileRes.error) {
+        captureError(new Error(profileRes.error.message), {
+          area: "ProviderContext.profile",
+          code: profileRes.error.code,
+          status: (profileRes.error as { status?: number }).status,
+        });
+        setProfileLoadError(profileRes.error.message);
+        setProvider(null);
+        setRole(null);
+      } else if (profileRes.data) {
+        setProfileLoadError(null);
         setProvider(profileRes.data);
         const locations = profileRes.data.locations ?? [];
         const validIds = locations.map((l) => l.id);
 
-        if (storedId && validIds.includes(storedId)) {
-          setSelectedLocationIdState(storedId);
-        } else if (!selectedLocationId || !validIds.includes(selectedLocationId)) {
-          // Prefer first salon location for at_salon bookings (e.g. new booking screen)
-          const salonFirst = locations.find((l) => (l as Location).location_type !== "base");
-          const fallback = (salonFirst ?? locations[0])?.id ?? null;
-          setSelectedLocationIdState(fallback);
-          if (fallback) AsyncStorage.setItem(LOCATION_STORAGE_KEY, fallback).catch(() => {});
+        setSelectedLocationIdState((prev) => {
+          if (storedId === LOCATION_ALL_SENTINEL) return null;
+          if (storedId && validIds.includes(storedId)) return storedId;
+          if (prev && validIds.includes(prev)) return prev;
+          // No saved branch: org-wide (omit location_id on APIs). User picks a branch in LocationSwitcher if needed.
+          return null;
+        });
+        addBreadcrumb("Provider profile loaded", "provider", {
+          providerId: profileRes.data.id,
+        });
+
+        if (roleRes.error) {
+          captureError(new Error(roleRes.error.message), {
+            area: "ProviderContext.role",
+            code: roleRes.error.code,
+            status: (roleRes.error as { status?: number }).status,
+          });
+          setRole(null);
+        } else if (roleRes.data?.role) {
+          setRole(roleRes.data.role);
+        } else {
+          setRole(null);
         }
+      } else {
+        setProvider(null);
+        setRole(null);
       }
-      if (roleRes.data) {
-        setRole(roleRes.data.role);
-      }
-    } catch {
-      // Profile endpoint may not exist yet
+    } catch (e) {
+      captureError(e, { area: "ProviderContext.fetchProfile" });
+      setProfileLoadError(e instanceof Error ? e.message : "Something went wrong");
+      setProvider(null);
+      setRole(null);
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, [selectedLocationId, PROFILE_LOAD_TIMEOUT_MS]);
-
-  useEffect(() => {
-    fetchProfile();
-    // Run once on mount; fetchProfile identity would cause repeated runs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Enrich analytics identify when provider profile is available
   useEffect(() => {
-    if (user?.id && provider) {
-      identifyProvider(user.id, {
-        provider_id: provider.id,
-        role: role ?? undefined,
-        business_type: provider.business_type,
-        locations_count: provider.locations?.length ?? 0,
-      });
+    if (!userId) {
+      setProvider(null);
+      setRole(null);
+      setSelectedLocationIdState(null);
+      setProfileLoadError(null);
+      setLoading(false);
+      restoredRef.current = false;
+      AsyncStorage.removeItem(LOCATION_STORAGE_KEY).catch(() => {});
+      return;
     }
-  }, [user?.id, provider, role]);
+
+    setProvider(null);
+    setRole(null);
+    setSelectedLocationIdState(null);
+    setProfileLoadError(null);
+    setLoading(true);
+    restoredRef.current = false;
+    void fetchProfile();
+  }, [userId, fetchProfile]);
+
+  const contextValue = useMemo<ProviderContextType>(
+    () => ({
+      provider,
+      role,
+      selectedLocationId,
+      setSelectedLocationId,
+      loading,
+      profileLoadError,
+      refresh: fetchProfile,
+    }),
+    [provider, role, selectedLocationId, setSelectedLocationId, loading, profileLoadError, fetchProfile],
+  );
 
   return (
-    <ProviderContext.Provider
-      value={{
-        provider,
-        role,
-        selectedLocationId,
-        setSelectedLocationId,
-        loading,
-        refresh: fetchProfile,
-      }}
-    >
+    <ProviderContext.Provider value={contextValue}>
       {children}
     </ProviderContext.Provider>
   );

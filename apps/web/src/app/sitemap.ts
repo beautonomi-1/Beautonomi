@@ -1,10 +1,20 @@
 import { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { buildSeoRequestFromHeaders } from "@/lib/seo/build-seo-request";
+import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { buildLocationHubSitemapEntries } from "@/lib/seo/location-sitemap-helpers";
 
 /**
- * Sitemap must be statically generated (no cookies()). Use a plain anon client
- * for public read-only data so the route can be built at deploy time.
+ * Request-time sitemap: each host lists its own absolute URLs.
+ * Provider URLs are filtered by `tenant_id` when `SUPABASE_SERVICE_ROLE_KEY` is set (Host → tenant via resolveTenantIdWithZaFallback).
+ * Without the service role key, provider URLs stay unfiltered (legacy local/dev behaviour).
+ */
+export const dynamic = "force-dynamic";
+
+/**
+ * Use a plain anon client for public read-only data (no cookies).
  */
 function getSupabaseForSitemap() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,8 +25,24 @@ function getSupabaseForSitemap() {
   return createClient<Database>(url, key);
 }
 
+type ProviderTenantScope = { mode: "all" } | { mode: "none" } | { mode: "scoped"; tenantId: string };
+
+async function resolveProviderTenantScope(): Promise<ProviderTenantScope> {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()) {
+    return { mode: "all" };
+  }
+  try {
+    const seoReq = await buildSeoRequestFromHeaders();
+    const tenantId = await resolveTenantIdWithZaFallback(seoReq);
+    return { mode: "scoped", tenantId };
+  } catch {
+    return { mode: "none" };
+  }
+}
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://beautonomi.com";
+  const baseUrl = await getPublicSiteOriginFromHeaders();
+  const providerScope = await resolveProviderTenantScope();
 
   // Static routes
   const staticRoutes: MetadataRoute.Sitemap = [
@@ -31,6 +57,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       lastModified: new Date(),
       changeFrequency: "monthly",
       priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/locations`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.82,
     },
     {
       url: `${baseUrl}/resources`,
@@ -68,6 +100,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "yearly",
       priority: 0.4,
     },
+    {
+      url: `${baseUrl}/cookie-policy`,
+      lastModified: new Date(),
+      changeFrequency: "yearly",
+      priority: 0.35,
+    },
   ];
 
   try {
@@ -91,14 +129,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.8,
       })) || [];
 
+    // Provider profile URLs: tenant-scoped when service role + resolution succeed (multi-market).
+    if (providerScope.mode === "none") {
+      return [...staticRoutes, ...categoryRoutes];
+    }
+
     // Fetch active providers that have include_in_search_engines enabled
     // We need to join with users table to check the privacy setting
     // First, get all active providers with their user_id
-    const { data: allProviders } = await supabase
+    let providersQuery = supabase
       .from("providers")
       .select("slug, updated_at, user_id")
       .eq("status", "active")
       .limit(1000);
+    if (providerScope.mode === "scoped") {
+      providersQuery = providersQuery.eq("tenant_id", providerScope.tenantId);
+    }
+    const { data: allProviders } = await providersQuery;
 
     if (!allProviders || allProviders.length === 0) {
       return [...staticRoutes, ...categoryRoutes];
@@ -131,7 +178,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         priority: 0.7,
       })) || [];
 
-    return [...staticRoutes, ...categoryRoutes, ...providerRoutes];
+    let locationHubRoutes: MetadataRoute.Sitemap = [];
+    if (providerScope.mode === "scoped") {
+      try {
+        locationHubRoutes = await buildLocationHubSitemapEntries(
+          supabase,
+          providerScope.tenantId,
+          baseUrl,
+        );
+      } catch (locErr) {
+        console.warn("Sitemap: location hub entries skipped:", locErr);
+      }
+    }
+
+    return [...staticRoutes, ...categoryRoutes, ...providerRoutes, ...locationHubRoutes];
   } catch (error) {
     console.error("Error generating sitemap:", error);
     // Return static routes if database fetch fails

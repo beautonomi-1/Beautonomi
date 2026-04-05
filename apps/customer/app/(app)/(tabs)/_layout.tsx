@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import type { ComponentProps } from "react";
 import { Tabs, router, useFocusEffect } from "expo-router";
 import { Platform, TouchableOpacity, View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -9,16 +10,29 @@ import { useTranslation } from "@beautonomi/i18n";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { onCartUpdated } from "@/lib/cart-events";
+import { haptic } from "@/lib/haptics";
+import { guestCartItemCount, loadGuestCartLines } from "@/lib/guest-cart";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
-    setCount(0);
+    loadGuestCartLines()
+      .then((lines) => setCount(guestCartItemCount(lines)))
+      .catch(() => setCount(0));
     return;
   }
-  api.get<{ items: unknown[] }>("/api/me/cart").then((res) => {
-    const data = res.data as { items?: unknown[] } | null;
-    setCount(Array.isArray(data?.items) ? data.items.length : 0);
-  }).catch(() => setCount(0));
+  api
+    .get<{ items: { quantity?: number }[] }>("/api/me/cart")
+    .then((res) => {
+      const items = (res.data as { items?: { quantity?: number }[] } | null)?.items;
+      const total = Array.isArray(items)
+        ? items.reduce(
+            (sum, item) => sum + (typeof item.quantity === "number" && item.quantity > 0 ? item.quantity : 1),
+            0,
+          )
+        : 0;
+      setCount(total);
+    })
+    .catch(() => setCount(0));
 }
 
 export default function TabsLayout() {
@@ -85,6 +99,22 @@ export default function TabsLayout() {
           // On web, avoid position:fixed (broken with RNW flexbox); keep tab bar in flow at bottom.
           ...(Platform.OS === "web" ? { width: "100%" } : {}),
         },
+        tabBarButton: (props) => {
+          const { onPress, ...rest } = props;
+          const touchableProps = {
+            ...rest,
+            onPress: (e: Parameters<NonNullable<typeof onPress>>[0]) => {
+              haptic.selection();
+              onPress?.(e);
+            },
+            activeOpacity: 0.7,
+            delayLongPress: rest.delayLongPress ?? undefined,
+            disabled: rest.disabled ?? undefined,
+            onBlur: rest.onBlur ?? undefined,
+            onFocus: rest.onFocus ?? undefined,
+          } as ComponentProps<typeof TouchableOpacity>;
+          return <TouchableOpacity {...touchableProps} />;
+        },
       }}
     >
       <Tabs.Screen
@@ -94,17 +124,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused, color }) => (
             <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
-            </View>
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="explore"
-        options={{
-          title: t("customer.explore"),
-          tabBarIcon: ({ focused, color }) => (
-            <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
             </View>
           ),
         }}
@@ -153,7 +172,11 @@ export default function TabsLayout() {
           tabBarButton: (props) => (
             <TouchableOpacity
               {...(props as React.ComponentProps<typeof TouchableOpacity>)}
-              onPress={() => router.push("/(app)/cart" as any)}
+              onPress={() => {
+                haptic.selection();
+                router.push("/(app)/cart" as any);
+              }}
+              activeOpacity={0.7}
             />
           ),
         }}
@@ -181,7 +204,8 @@ export default function TabsLayout() {
         }}
       />
 
-      {/* Hidden tabs */}
+      {/* Hidden tabs (reachable from home top nav / deep links) */}
+      <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
       </Tabs>

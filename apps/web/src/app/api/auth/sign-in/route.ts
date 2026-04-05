@@ -8,8 +8,23 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { checkSignInRateLimit, incrementSignInAttempts } from "@/lib/rate-limit/sign-in";
 
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkSignInRateLimit(request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many sign-in attempts. Please try again later." },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(rateLimit.retryAfterSeconds ?? 60),
+          "X-RateLimit-Remaining": "0",
+        },
+      }
+    );
+  }
+
   try {
     const body = await request.json();
     const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -29,6 +44,7 @@ export async function POST(request: NextRequest) {
     });
 
     if (error) {
+      incrementSignInAttempts(request);
       const code = (error as { code?: string }).code;
       if (
         code === "email_not_confirmed" ||

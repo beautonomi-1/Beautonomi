@@ -19,6 +19,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { OfferingCard } from "@/types/beautonomi";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 export default function ProviderServices() {
   const [services, setServices] = useState<OfferingCard[]>([]);
@@ -239,6 +240,7 @@ function ServiceModal({
   onClose: () => void;
   onSave: () => void;
 }) {
+  const { currencyCode } = useReportCurrency();
   const [formData, setFormData] = useState({
     title: service?.title || "",
     description: service?.description || "",
@@ -303,7 +305,7 @@ function ServiceModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="price">Price (ZAR) *</Label>
+              <Label htmlFor="price">Price ({currencyCode}) *</Label>
               <Input
                 id="price"
                 type="number"

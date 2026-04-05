@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api-client";
 import type { HomeApiResponse, PublicProviderCard } from "@/types/api";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
   const o = p as Record<string, unknown>;
@@ -22,7 +23,7 @@ function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
     is_featured: Boolean(o.is_featured ?? o.isFeatured ?? false),
     is_verified: Boolean(o.is_verified ?? o.isVerified ?? false),
     starting_price: o.starting_price != null ? Number(o.starting_price) : (o.startingPrice != null ? Number(o.startingPrice) : undefined),
-    currency: String(o.currency ?? "ZAR"),
+    currency: String(o.currency ?? getTenantDefaultCurrency()),
     description: (o.description ?? null) as string | null | undefined,
     distance_km: o.distance_km != null ? Number(o.distance_km) : (o.distanceKm != null ? Number(o.distanceKm) : null),
     supports_house_calls: Boolean(o.supports_house_calls ?? o.supportsHouseCalls ?? false),

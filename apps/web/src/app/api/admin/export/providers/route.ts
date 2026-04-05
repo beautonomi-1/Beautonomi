@@ -5,6 +5,7 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { arrayToCSV, generateCSVFilename } from "@/lib/utils/csv";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/export/providers
@@ -36,6 +37,7 @@ export async function GET(request: Request) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status");
@@ -50,7 +52,8 @@ export async function GET(request: Request) {
         is_verified,
         created_at,
         owner:users!providers_user_id_fkey(id, email, full_name)
-      `);
+      `)
+      .eq("tenant_id", tenantId);
 
     // Apply filters
     if (status) {

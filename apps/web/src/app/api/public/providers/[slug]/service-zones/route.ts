@@ -1,5 +1,6 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/providers/[slug]/service-zones
@@ -11,6 +12,10 @@ export async function GET(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) return tenantRes;
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { slug: rawSlug } = await params;
     
@@ -28,6 +33,7 @@ export async function GET(
       .select("id")
       .eq("slug", slug)
       .eq("status", "active")
+      .eq("tenant_id", tenantId)
       .single();
 
     if (providerError || !provider) {

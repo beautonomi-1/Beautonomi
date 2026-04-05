@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, handleApiError, successResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
   request: NextRequest,
@@ -11,11 +12,13 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data, error } = await supabase
       .from('footer_settings')
       .select('*')
       .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error) throw error;
@@ -34,6 +37,7 @@ export async function PUT(
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const { value, description } = body;
@@ -52,6 +56,7 @@ export async function PUT(
         description: description !== undefined ? description : undefined,
       })
       .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -71,11 +76,13 @@ export async function DELETE(
     await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { error } = await supabase
       .from('footer_settings')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) throw error;
 

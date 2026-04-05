@@ -19,6 +19,7 @@ import {
   canAccessSection,
   type AdminSection,
 } from '@/lib/admin-sections';
+import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
 
 export interface ApiError {
   message: string;
@@ -343,6 +344,26 @@ export async function requireAdminSection(
   if (!canAccessSection(user.role as UserRole, section, effectiveRoles)) {
     throw new Error(`Insufficient permissions: access to section '${section}' required`);
   }
+
+  if (request && (user.role as string) !== 'superadmin') {
+    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
+    const { data: memberships } = await supabase
+      .from('user_tenant_roles')
+      .select('tenant_id')
+      .eq('user_id', user.id)
+      .eq('is_active', true);
+    if (!memberships || memberships.length === 0) {
+      throw new Error(
+        'Admin user has no active tenant assignment (user_tenant_roles). Superadmins are exempt.'
+      );
+    }
+    const allowed = memberships.some((m: { tenant_id: string }) => m.tenant_id === tenantId);
+    if (!allowed) {
+      throw new Error('Admin is not assigned to this tenant for the current host');
+    }
+  }
+
   return { user };
 }
 
@@ -400,21 +421,23 @@ export async function getProviderIdForUser(
     return provider.id;
   }
   
-  // Check if user is provider staff
-  const { data: staff, error: staffError } = await supabase
+  // Staff may have multiple active rows (e.g. several providers); maybeSingle() errors in that case.
+  const { data: staffRows, error: staffError } = await supabase
     .from('provider_staff')
     .select('provider_id')
     .eq('user_id', userId)
     .eq('is_active', true)
-    .maybeSingle();
+    .order('created_at', { ascending: true })
+    .limit(1);
   
   if (staffError) {
     console.error('Error fetching provider ID from staff:', staffError);
     return null;
   }
   
-  if (staff) {
-    return staff.provider_id;
+  const staffPid = staffRows?.[0]?.provider_id;
+  if (staffPid) {
+    return staffPid;
   }
   
   return null;
@@ -475,48 +498,5 @@ export function formatDateForDb(date: Date): string {
   return date.toISOString();
 }
 
-/**
- * Normalize phone number for Supabase Auth (without + prefix)
- * Validates phone number format but removes + prefix if present
- * Handles numbers starting with 0 by removing the 0 and using country code
- * 
- * @param phone - Phone number to normalize (can be with or without + prefix)
- * @param countryCode - Optional country code (e.g., "27" for South Africa) to use if phone starts with 0
- * @returns Normalized phone number without + prefix, or undefined if invalid
- */
-export function normalizePhoneToE164(phone: string | null | undefined, countryCode?: string): string | undefined {
-  if (!phone) {
-    return undefined;
-  }
-  
-  // Remove all spaces, dashes, parentheses, and other formatting
-  let cleaned = phone.trim().replace(/[\s\-\(\)]/g, '');
-  
-  if (!cleaned) {
-    return undefined;
-  }
-  
-  // Remove + prefix if present
-  if (cleaned.startsWith('+')) {
-    cleaned = cleaned.substring(1);
-  }
-  
-  // If phone starts with 0 and we have a country code, remove the 0 and prepend country code
-  if (cleaned.startsWith('0') && countryCode) {
-    // Remove the leading 0
-    cleaned = cleaned.substring(1);
-    // Remove + from country code if present
-    const cleanCountryCode = countryCode.replace(/^\+/, '');
-    // Combine country code with phone number
-    cleaned = cleanCountryCode + cleaned;
-  }
-  
-  // Validate format: should start with 1-9 and have 8-15 digits total (E.164 standard)
-  if (/^[1-9]\d{7,14}$/.test(cleaned)) {
-    // Return with + prefix for E.164 compliance (required by Supabase Auth)
-    return '+' + cleaned;
-  }
-  
-  // Invalid format
-  return undefined;
-}
+/** E.164 normalization for API routes (shared with web client via @beautonomi/phone). */
+export { normalizePhoneToE164 } from "@beautonomi/phone";

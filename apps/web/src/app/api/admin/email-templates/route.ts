@@ -2,34 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const { currentTenantId } = await resolveAdminTenantContext(request, undefined, user.role ?? null);
 
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
     const enabled = searchParams.get("enabled");
 
-    let query = supabase
-      .from("email_templates")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "email_templates",
+      tenantId: currentTenantId,
+      select: "*",
+      apply: (q) => {
+        let r = q;
+        if (category) r = r.eq("category", category);
+        if (enabled !== null) r = r.eq("enabled", enabled === "true");
+        return r;
+      },
+      dedupeKey: (row) => String(row.name ?? row.id ?? ""),
+      orderBy: { column: "created_at", ascending: false },
+    });
 
-    if (category) {
-      query = query.eq("category", category);
-    }
-
-    if (enabled !== null) {
-      query = query.eq("enabled", enabled === "true");
-    }
-
-    const { data, error } = await query;
-
-    if (error) throw error;
-
-    return NextResponse.json({ templates: data || [] });
+    return NextResponse.json({ templates: scoped.data || [] });
   } catch (error: unknown) {
     console.error("Error fetching email templates:", error);
     const message = error instanceof Error ? error.message : "Failed to fetch email templates";
@@ -44,8 +44,14 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
-
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      user.role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
+
     const {
       name,
       subject_template,
@@ -66,6 +72,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase
       .from("email_templates")
       .insert({
+        tenant_id: scopeTenantId,
         name,
         subject_template,
         body_template,

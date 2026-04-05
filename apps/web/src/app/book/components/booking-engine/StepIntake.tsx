@@ -18,12 +18,8 @@ import {
   MIN_TAP,
   BOOKING_ACTIVE_SCALE,
 } from "../../constants";
-import {
-  normalizePhoneToE164,
-  DEFAULT_PHONE_COUNTRY_CODE,
-  PHONE_COUNTRY_OPTIONS,
-  getFlagEmoji,
-} from "@/lib/phone";
+import { isCompleteE164 } from "@/lib/phone";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Check, X } from "lucide-react";
 
 // Lazy-load to avoid pulling Radix Select into initial bundle and prevent HMR/React module conflicts
@@ -87,20 +83,17 @@ export function StepIntake({
   onNext,
 }: StepIntakeProps) {
   const [validationError, setValidationError] = useState<string | null>(null);
-  const [phoneCountryCode, setPhoneCountryCode] = useState(DEFAULT_PHONE_COUNTRY_CODE);
   const c = data.client;
   const providerFormValues = data.provider_form_responses ?? {};
   const customFieldValues = data.custom_field_values ?? {};
 
   const trimmedEmail = c.email.trim();
   const validEmail = trimmedEmail !== "" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail);
-  const normalizedPhone = normalizePhoneToE164(c.phone, phoneCountryCode);
-
   const baseValid =
     c.firstName.trim() !== "" &&
     c.lastName.trim() !== "" &&
     validEmail &&
-    !!normalizedPhone;
+    isCompleteE164(c.phone);
 
   // Validate required provider form fields
   let providerFormsValid = true;
@@ -138,17 +131,16 @@ export function StepIntake({
       setValidationError("Please enter a valid email address.");
       return;
     }
-    const e164 = normalizePhoneToE164(c.phone, phoneCountryCode);
-    if (!e164) {
-      setValidationError("Please enter a valid phone number with country code (e.g. 082 123 4567 for South Africa).");
+    const trimmedPhone = c.phone.trim();
+    if (!isCompleteE164(trimmedPhone)) {
+      setValidationError("Please enter a valid phone number with country code.");
       return;
     }
     if (!baseValid) {
       setValidationError("Please fill in your name, email, and phone.");
       return;
     }
-    // Store E.164 so downstream and Supabase get consistent format (with or without leading 0)
-    onChange({ phone: e164 });
+    onChange({ phone: trimmedPhone });
     if (!providerFormsValid) {
       setValidationError("Please complete all required provider forms.");
       return;
@@ -228,46 +220,25 @@ export function StepIntake({
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="phone" className="text-sm font-medium text-gray-700">Phone (with country code)</Label>
-          <div className="flex gap-2">
-            <select
-              id="phone-country"
-              aria-label="Country code"
-              value={phoneCountryCode}
-              onChange={(e) => setPhoneCountryCode(e.target.value)}
-              className="rounded-xl h-12 pl-2 pr-8 border bg-gray-50/50 text-sm font-medium min-w-[110px] focus:outline-none focus:ring-2"
-              style={{ borderColor: BOOKING_BORDER, outlineColor: BOOKING_ACCENT }}
-            >
-              {PHONE_COUNTRY_OPTIONS.map((opt) => (
-                <option key={opt.code} value={opt.code}>
-                  {getFlagEmoji(opt.iso2)} {opt.dial}
-                </option>
-              ))}
-            </select>
-            <div className="relative flex-1">
-              <Input
-                id="phone"
-                type="tel"
-                placeholder={phoneCountryCode === "27" ? "82 123 4567" : "Phone number"}
-                value={c.phone}
-                onChange={(e) => onChange({ phone: e.target.value })}
-                className="rounded-xl h-12 border-gray-200 bg-gray-50/50 flex-1 pr-10"
-                autoComplete="tel-national"
-              />
-              {c.phone.trim() !== "" && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                  {normalizedPhone ? (
-                    <Check className="h-5 w-5" style={{ color: "#16a34a" }} aria-hidden />
-                  ) : (
-                    <X className="h-5 w-5" style={{ color: "#dc2626" }} aria-hidden />
-                  )}
-                </span>
+          <PhoneInput
+            inputId="booking-engine-intake-phone"
+            label="Phone"
+            value={c.phone}
+            onChange={(e164) => onChange({ phone: e164 })}
+            placeholder="Phone number"
+            required
+            className="[&_label]:text-sm [&_label]:font-medium [&_label]:text-gray-700"
+          />
+          {c.phone.trim() !== "" && (
+            <p className="text-xs flex items-center gap-1" style={{ color: BOOKING_TEXT_SECONDARY }}>
+              {isCompleteE164(c.phone) ? (
+                <Check className="h-4 w-4" style={{ color: "#16a34a" }} aria-hidden />
+              ) : (
+                <X className="h-4 w-4" style={{ color: "#dc2626" }} aria-hidden />
               )}
-            </div>
-          </div>
-          <p className="text-xs" style={{ color: BOOKING_TEXT_SECONDARY }}>
-            Include country code or use 0 for local (e.g. 082 for South Africa).
-          </p>
+              {isCompleteE164(c.phone) ? "Looks good" : "Complete the number with country code"}
+            </p>
+          )}
         </div>
 
         <div className="space-y-2">

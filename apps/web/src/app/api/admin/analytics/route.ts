@@ -2,12 +2,19 @@ import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  fetchFinanceLedgerExportRowsForTenant,
+  fetchFinanceLedgerRowsForTenant,
+  resolveFinanceLedgerRowProviderId,
+} from "@/lib/admin/finance-ledger-tenant";
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
-    
+    const tenantId = await resolveAdminApiTenantId(request);
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d, 1y
 
@@ -76,15 +83,16 @@ export async function GET(request: NextRequest) {
 
     // Get revenue time series
     const getRevenueTimeSeries = async () => {
-      const { data, error } = await supabase
-        .from('finance_transactions')
-        .select('created_at, net, transaction_type')
-        .gte('created_at', startDate.toISOString())
-        .in('transaction_type', ['payment', 'additional_charge_payment', 'refund'])
-        .order('created_at', { ascending: true });
-
-      if (error) {
-        console.error('Error fetching revenue:', error);
+      let data: Awaited<ReturnType<typeof fetchFinanceLedgerRowsForTenant>> = [];
+      try {
+        data = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+          start: startDate.toISOString(),
+          end: now.toISOString(),
+        }, {
+          transactionTypes: ['payment', 'additional_charge_payment', 'refund'],
+        });
+      } catch (e) {
+        console.error('Error fetching revenue:', e);
         return [];
       }
 
@@ -114,7 +122,8 @@ export async function GET(request: NextRequest) {
     const getProviderStatusBreakdown = async () => {
       const { data, error } = await supabase
         .from('providers')
-        .select('status');
+        .select('status')
+        .eq('tenant_id', tenantId);
 
       if (error) {
         console.error('Error fetching provider status:', error);
@@ -144,6 +153,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabase
         .from('bookings')
         .select('status')
+        .eq('tenant_id', tenantId)
         .gte('created_at', startDate.toISOString());
 
       if (error) {
@@ -169,27 +179,28 @@ export async function GET(request: NextRequest) {
       return breakdown;
     };
 
-    // Get top providers by revenue (provider earnings: provider_earnings, travel_fee, tip)
+    // Get top providers by revenue (merged ledger: provider in tenant OR booking in tenant)
     const getTopProviders = async () => {
-      const { data, error } = await supabase
-        .from('finance_transactions')
-        .select('provider_id, net, amount')
-        .gte('created_at', startDate.toISOString())
-        .in('transaction_type', ['provider_earnings', 'travel_fee', 'tip']);
-
-      if (error) {
-        console.error('Error fetching top providers:', error);
+      let merged: Awaited<ReturnType<typeof fetchFinanceLedgerExportRowsForTenant>>;
+      try {
+        merged = await fetchFinanceLedgerExportRowsForTenant(
+          supabase,
+          tenantId,
+          { start: startDate.toISOString() },
+          { transactionTypes: ["provider_earnings", "travel_fee", "tip"] },
+        );
+      } catch (err) {
+        console.error("Error fetching top providers ledger:", err);
         return [];
       }
 
       const providerRevenue: Record<string, number> = {};
-      type TxRow = { provider_id?: string; net?: number; amount?: number };
-      (data || []).forEach((t: TxRow) => {
-        if (t.provider_id) {
-          const amt = Number(t.net ?? t.amount ?? 0);
-          providerRevenue[t.provider_id] = (providerRevenue[t.provider_id] || 0) + amt;
-        }
-      });
+      for (const row of merged) {
+        const pid = resolveFinanceLedgerRowProviderId(row);
+        if (!pid) continue;
+        const amt = Number(row.net ?? row.amount ?? 0);
+        providerRevenue[pid] = (providerRevenue[pid] || 0) + amt;
+      }
 
       const topProviders = Object.entries(providerRevenue)
         .sort((a, b) => b[1] - a[1])
@@ -202,6 +213,7 @@ export async function GET(request: NextRequest) {
         const { data: providers } = await supabase
           .from('providers')
           .select('id, business_name')
+          .eq('tenant_id', tenantId)
           .in('id', providerIds);
 
         const providerMap = new Map((providers || []).map((p: { id: string; business_name?: string }) => [p.id, p.business_name]));

@@ -2,9 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
-import { isFeatureEnabledServer } from "@/lib/server/feature-flags";
+import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { checkPublicMutationRateLimit } from "@/lib/rate-limit/public-mutation";
+import { multiplyMoney } from "@beautonomi/utils";
 
 const purchaseSchema = z.object({
   amount: z.number().positive(),
@@ -20,15 +25,31 @@ const purchaseSchema = z.object({
  * Initializes Paystack payment for purchasing a gift card. Webhook will issue the code + fund balance.
  */
 export async function POST(request: NextRequest) {
+  const rateLimit = await checkPublicMutationRateLimit(request);
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many requests. Please try again later." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds ?? 60) } },
+    );
+  }
+
   try {
-    const [giftCardsEnabled, paystackEnabled] = await Promise.all([
-      isFeatureEnabledServer("gift_cards"),
-      isFeatureEnabledServer("payment_paystack"),
-    ]);
-    if (!giftCardsEnabled) {
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in POST /api/public/gift-cards/purchase:", tenantErr);
+      return NextResponse.json(
+        { data: null, error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" } },
+        { status: 503 }
+      );
+    }
+
+    const flags = await getPaymentFeatureFlagsForTenant(tenantId);
+    if (!flags.gift_cards) {
       return errorResponse("Gift cards are currently unavailable.", "FEATURE_DISABLED", 403);
     }
-    if (!paystackEnabled) {
+    if (!flags.payment_paystack) {
       return errorResponse("Online payment for gift cards is currently unavailable.", "FEATURE_DISABLED", 403);
     }
 
@@ -54,10 +75,12 @@ export async function POST(request: NextRequest) {
 
     const purchaserUserId = user.id;
 
-    const currency = parsed.data.currency || "ZAR";
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const currency = parsed.data.currency || lastResortCurrency;
     const amount = parsed.data.amount;
     const quantity = parsed.data.quantity || 1;
-    const totalAmount = amount * quantity;
+    const totalAmount = multiplyMoney(amount, quantity);
 
     const email = user?.email || parsed.data.recipient_email;
     if (!email) {
@@ -69,6 +92,7 @@ export async function POST(request: NextRequest) {
         purchaser_user_id: purchaserUserId,
         recipient_email: parsed.data.recipient_email || null,
         provider_id: null, // Platform-only gift cards (no provider_id)
+        tenant_id: tenantId,
         amount,
         quantity,
         total_amount: totalAmount,
@@ -96,6 +120,7 @@ export async function POST(request: NextRequest) {
         quantity: quantity,
         // provider_id removed - platform-only gift cards
       },
+      tenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

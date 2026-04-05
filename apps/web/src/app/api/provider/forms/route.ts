@@ -6,8 +6,13 @@ import {
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  isProviderSubscriptionFeatureEnabled,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 
 /**
  * GET /api/provider/forms
@@ -78,6 +83,18 @@ export async function POST(request: NextRequest) {
 
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const formsOk = await isProviderSubscriptionFeatureEnabled(
+      providerId,
+      SUBSCRIPTION_FEATURE_KEYS.intakeForms
+    );
+    if (!formsOk) {
+      return errorResponse(
+        "Intake, consent, and waiver forms are not included in your current subscription plan. Upgrade to create or edit forms.",
+        "SUBSCRIPTION_FEATURE_DISABLED",
+        403
+      );
     }
 
     const { title, description, form_type, is_required } = body;

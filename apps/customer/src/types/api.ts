@@ -84,6 +84,8 @@ export interface PublicProviderDetail {
   response_rate?: number;
   response_time_hours?: number;
   languages_spoken?: string[];
+  /** Gamification / points badge (same as listing cards when API includes it). */
+  current_badge?: ProviderBadge | null;
   policies?: {
     cancellation_window_hours?: number;
     requires_deposit?: boolean;
@@ -100,6 +102,8 @@ export interface ProviderService {
   description?: string | null;
   price: number;
   duration_minutes: number;
+  /** Turn-down / cleanup buffer after service (public availability + holds). */
+  buffer_minutes?: number;
   currency: string;
   supports_at_home: boolean;
   supports_at_salon: boolean;
@@ -110,6 +114,7 @@ export interface ProviderService {
     variant_name?: string;
     price: number;
     duration_minutes: number;
+    buffer_minutes?: number;
   }[];
 }
 
@@ -136,6 +141,9 @@ export interface StaffMember {
 export interface AvailabilitySlot {
   start: string;
   end: string;
+  /** Set when `staff_id=any` — which professional this slot was assigned to. */
+  staff_id?: string;
+  is_available?: boolean;
 }
 
 export interface ExplorePost {
@@ -243,6 +251,8 @@ export interface PublicProviderProduct {
   id: string;
   name: string;
   description?: string;
+  /** Product shelf category from provider catalogue (grouping on profile / booking) */
+  category?: string | null;
   price: number;
   currency: string;
   imageUrl: string | null;
@@ -258,7 +268,8 @@ export interface PublicProviderProduct {
 export interface CartItem {
   id: string;
   quantity: number;
-  effective_price: number;
+  /** Server may omit; fall back to variant or product retail_price in UI. */
+  effective_price?: number;
   in_stock: boolean;
   stock_available: number;
   product_variant_id?: string | null;

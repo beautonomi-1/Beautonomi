@@ -1,149 +1,117 @@
-"use client";
-import React, { useState, useEffect, Suspense } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import PartnerHero from "./components/partner-hero";
-import PartnerHeroMobile from "./components/partner-hero-mobile";
-import PartnerPhotos from "./components/partner-photos";
-import PartnerServices from "./components/partner-services";
-import PartnerProducts from "./components/partner-products";
-import PartnerTeam from "./components/partner-team";
-import PartnerReviews from "./components/partner-reviews";
-import PartnerBuy from "./components/partner-buy";
-import PartnerMemberships from "./components/partner-memberships";
-import PartnerAbout from "./components/partner-about";
-import RequestCustomServicePage from "./components/request-custom-service-page";
-import Footer from "@/components/layout/footer";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getPublicProviderDetail } from "@/lib/data/getPublicProviderDetail";
+import {
+  getPublicSiteOriginFromHeaders,
+  openGraphLocaleForHost,
+} from "@/lib/seo/public-site-origin";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
+import { headers } from "next/headers";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
+import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import LoadingTimeout from "@/components/ui/loading-timeout";
-import EmptyState from "@/components/ui/empty-state";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
-import type { PublicProviderDetail } from "@/types/beautonomi";
-import Link from "next/link";
-import { useAuth } from "@/providers/AuthProvider";
-import ProviderMetadata from "./components/provider-metadata";
+import PartnerProfileClient from "./partner-profile-client";
+import ProviderJsonLd from "./components/provider-json-ld";
+import { parseCoord, parsePartnerProfileSlug } from "./search-params-helpers";
+import { fetchPublicProviderServicesInitial } from "./fetch-public-provider-services";
 
-const PageContent = () => {
-  const [activeTab, setActiveTab] = useState("services");
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const { user, isLoading: authLoading } = useAuth();
-  
-  // Get slug from URL params - decode if needed
-  const slugParam = searchParams.get("slug") || searchParams.get("partnerId");
-  const slug = slugParam ? decodeURIComponent(slugParam) : null;
-  const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export const revalidate = 300;
 
-  useEffect(() => {
-    const loadProvider = async () => {
-      if (!slug) {
-        setError("Provider slug is required");
-        setIsLoading(false);
-        return;
-      }
+type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-      try {
-        setIsLoading(true);
-        setError(null);
-        // Pass user lat/lng when available so provider detail can return distance_km (same Haversine as home/cards)
-        let lat: number | undefined;
-        let lng: number | undefined;
-        const urlLat = searchParams.get("lat");
-        const urlLng = searchParams.get("lng");
-        if (urlLat != null && urlLng != null) {
-          const a = parseFloat(urlLat), b = parseFloat(urlLng);
-          if (!Number.isNaN(a) && !Number.isNaN(b) && a >= -90 && a <= 90 && b >= -180 && b <= 180) {
-            lat = a;
-            lng = b;
-          }
-        }
-        if (lat == null && typeof window !== "undefined") {
-          try {
-            const saved = localStorage.getItem("userLocation");
-            if (saved) {
-              const parsed = JSON.parse(saved) as { latitude?: number; longitude?: number };
-              if (parsed?.latitude != null && parsed?.longitude != null) {
-                lat = parsed.latitude;
-                lng = parsed.longitude;
-              }
-            }
-          } catch {
-            // ignore
-          }
-        }
-        const providerUrl =
-          lat != null && lng != null
-            ? `/api/public/providers/${encodeURIComponent(slug)}?lat=${lat}&lng=${lng}`
-            : `/api/public/providers/${encodeURIComponent(slug)}`;
-        const response = await fetcher.get<{
-          data: PublicProviderDetail;
-          error: null;
-        }>(providerUrl, {
-          timeoutMs: 15000, // 15 seconds for provider detail page
-        });
-        setProvider(response.data);
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const slugDecoded = parsePartnerProfileSlug(sp);
+  const origin = await getPublicSiteOriginFromHeaders();
+  const h = await headers();
+  const hostRaw = (h.get("x-forwarded-host") || h.get("host") || "").split(":")[0] || "";
+  const path = "/partner-profile";
 
-        // Track view only when logged in (avoids 403 for guests)
-        if (user) {
-          fetcher.post("/api/me/recently-viewed", { provider_id: response.data.id }).catch(() => {});
-        }
-      } catch (err) {
-        let errorMessage = "Failed to load provider";
-        
-        if (err instanceof FetchTimeoutError) {
-          errorMessage = "Request timed out. Please try again.";
-        } else if (err instanceof FetchError) {
-          errorMessage = err.message;
-          // Add more context for debugging
-          console.error("Error loading provider:", {
-            message: err.message,
-            status: err.status,
-            code: err.code,
-            slug: slug,
-            details: err.details,
-          });
-        } else {
-          console.error("Unexpected error loading provider:", err);
-        }
-        
-        setError(errorMessage);
-      } finally {
-        setIsLoading(false);
-      }
+  if (!slugDecoded) {
+    return {
+      title: "Provider Profile | Beautonomi",
+      description: "Discover beauty services from verified providers on Beautonomi",
     };
-
-    loadProvider();
-  }, [slug, searchParams]);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
-        <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading provider..." />
-        </div>
-        <Footer />
-        <BottomNav />
-      </div>
-    );
   }
 
-  if (error || !provider) {
+  const lat = parseCoord(sp.lat);
+  const lng = parseCoord(sp.lng);
+  const { provider } = await getPublicProviderDetail(slugDecoded, lat, lng);
+  if (!provider) {
+    return {
+      title: "Provider Not Found | Beautonomi",
+      description: "The provider you're looking for doesn't exist on Beautonomi.",
+    };
+  }
+
+  const title = `${provider.business_name} | Beautonomi`;
+  const locationText =
+    provider.city && provider.country
+      ? `${provider.city}, ${provider.country}`
+      : provider.city || provider.country || "";
+  const description = provider.description
+    ? `${provider.description.substring(0, 155)}${provider.description.length > 155 ? "..." : ""}`
+    : `Discover ${provider.business_name} on Beautonomi${locationText ? ` in ${locationText}` : ""}. ${
+        provider.rating ? `Rated ${provider.rating.toFixed(1)}/5` : ""
+      }${provider.review_count ? ` with ${provider.review_count} reviews` : ""}.`;
+
+  const profileUrl = `${origin}${path}?slug=${encodeURIComponent(slugDecoded)}`;
+  let ogImage = `${origin}/images/logo-beatonomi.svg`;
+  if (provider.thumbnail_url) {
+    ogImage =
+      provider.thumbnail_url.startsWith("http://") || provider.thumbnail_url.startsWith("https://")
+        ? provider.thumbnail_url
+        : provider.thumbnail_url.startsWith("/")
+          ? `${origin}${provider.thumbnail_url}`
+          : provider.thumbnail_url;
+  }
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: profileUrl,
+      languages: getHreflangAlternateUrls(`${path}?slug=${encodeURIComponent(slugDecoded)}`),
+    },
+    openGraph: {
+      title,
+      description,
+      siteName: "Beautonomi",
+      url: profileUrl,
+      images: [{ url: ogImage, width: 1200, height: 630, alt: `${provider.business_name} on Beautonomi` }],
+      locale: openGraphLocaleForHost(hostRaw),
+      type: "website",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [ogImage],
+    },
+    robots: (provider as any).seo_indexable === false ? { index: false, follow: false } : undefined,
+  };
+}
+
+export default async function PartnerProfilePage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const sp = await searchParams;
+  const slug = parsePartnerProfileSlug(sp);
+
+  if (!slug) {
     return (
       <div className="min-h-screen bg-white pb-20 md:pb-0">
         <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-8">
-          <EmptyState
-            title="Provider not found"
-            description={error || "The provider you're looking for doesn't exist"}
-            action={{
-              label: "Go Home",
-              onClick: () => router.push("/"),
-            }}
-          />
+        <div className="container mx-auto px-4 py-16 text-center">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">Provider not found</h1>
+          <p className="text-gray-500 mb-4">Please provide a provider slug.</p>
+          <a href="/" className="text-[#FF0077] hover:underline">Go Home</a>
         </div>
         <Footer />
         <BottomNav />
@@ -151,211 +119,30 @@ const PageContent = () => {
     );
   }
 
+  const lat = parseCoord(sp.lat);
+  const lng = parseCoord(sp.lng);
+
+  const [{ provider }, initialServiceCategories] = await Promise.all([
+    getPublicProviderDetail(slug, lat, lng),
+    fetchPublicProviderServicesInitial(slug),
+  ]);
+
+  if (!provider) {
+    notFound();
+  }
+
+  const origin = await getPublicSiteOriginFromHeaders();
+
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
-      <ProviderMetadata provider={provider} />
+      <ProviderJsonLd provider={provider} origin={origin} slug={provider.slug} />
       <BeautonomiHeader />
-      
-      {/* Mobile Hero */}
-      <PartnerHeroMobile
-        id={provider.id}
-        slug={provider.slug}
-        businessName={provider.business_name}
-        rating={provider.rating}
-        review_count={provider.review_count}
-        city={provider.city}
-        country={provider.country}
-        is_featured={provider.is_featured}
-        is_verified={provider.is_verified}
-        gallery={provider.gallery}
-        description={provider.description}
-        distance_km={(provider as any).distance_km}
-        thumbnail_url={provider.thumbnail_url}
-        owner_name={(provider as any).owner_name}
-        business_type={provider.business_type}
-        supports_house_calls={provider.supports_house_calls}
-        supports_salon={provider.supports_salon}
-        current_badge={provider.current_badge}
+      <PartnerProfileClient
+        provider={provider}
+        initialServiceCategories={initialServiceCategories}
       />
-      
-      {/* Desktop Hero */}
-      <div className="hidden md:block">
-        <PartnerHero 
-          id={provider.id} 
-          slug={provider.slug}
-          businessName={provider.business_name}
-          rating={provider.rating}
-          review_count={provider.review_count}
-          city={provider.city}
-          country={provider.country}
-          is_featured={provider.is_featured}
-          is_verified={provider.is_verified}
-          gallery={provider.gallery}
-          description={provider.description}
-          distance_km={(provider as any).distance_km}
-          thumbnail_url={provider.thumbnail_url}
-          owner_name={(provider as any).owner_name}
-          business_type={provider.business_type}
-          supports_house_calls={provider.supports_house_calls}
-          supports_salon={provider.supports_salon}
-          current_badge={provider.current_badge}
-        />
-      </div>
-      
-      {/* Tab Navigation - Sticky with Backdrop Blur */}
-      <div className="max-w-[2340px] mx-auto border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur-md z-40 md:bg-white md:backdrop-blur-none">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="w-full justify-start h-auto bg-transparent p-0 border-0 rounded-none">
-            <div className="flex overflow-x-auto scrollbar-hide px-4 md:px-10 w-full" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
-              <TabsTrigger
-                value="services"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Services
-              </TabsTrigger>
-              <TabsTrigger
-                value="shop"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Shop
-              </TabsTrigger>
-              <TabsTrigger
-                value="photos"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Photos
-              </TabsTrigger>
-              {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
-                <TabsTrigger
-                  value="team"
-                  className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-                >
-                  Team
-                </TabsTrigger>
-              )}
-              <TabsTrigger
-                value="reviews"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Reviews
-              </TabsTrigger>
-              <TabsTrigger
-                value="memberships"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Memberships
-              </TabsTrigger>
-              <TabsTrigger
-                value="giftcard"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Giftcard
-              </TabsTrigger>
-              <TabsTrigger
-                value="custom-service"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                Request Custom Service
-              </TabsTrigger>
-              <TabsTrigger
-                value="about"
-                className="data-[state=active]:border-b-2 data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary rounded-none px-3 md:px-4 py-4 text-xs md:text-sm font-medium whitespace-nowrap text-gray-500 transition-colors"
-              >
-                About
-              </TabsTrigger>
-            </div>
-          </TabsList>
-
-          <TabsContent value="services" className="mt-0">
-            <PartnerServices slug={provider.slug} id={provider.id} />
-          </TabsContent>
-
-          <TabsContent value="shop" className="mt-0">
-            <PartnerProducts slug={provider.slug} />
-          </TabsContent>
-
-          <TabsContent value="photos" className="mt-0">
-            <PartnerPhotos gallery={provider.gallery} businessName={provider.business_name} slug={provider.slug} />
-          </TabsContent>
-
-          {provider.business_type === "salon" && provider.staff_count && provider.staff_count > 0 && (
-            <TabsContent value="team" className="mt-0">
-              <PartnerTeam slug={provider.slug} id={provider.id} />
-            </TabsContent>
-          )}
-
-          <TabsContent value="reviews" className="mt-0">
-            <PartnerReviews slug={provider.slug} rating={provider.rating} review_count={provider.review_count} />
-          </TabsContent>
-
-          <TabsContent value="memberships" className="mt-0">
-            <PartnerMemberships providerSlug={provider.slug} />
-          </TabsContent>
-
-          <TabsContent value="giftcard" className="mt-0">
-            <PartnerBuy id={provider.id} slug={provider.slug} />
-          </TabsContent>
-
-          <TabsContent value="custom-service" className="mt-0">
-            <RequestCustomServicePage 
-              providerId={provider.id} 
-              acceptsCustomRequests={(provider as any).accepts_custom_requests !== false}
-              businessName={provider.business_name}
-            />
-          </TabsContent>
-
-          <TabsContent value="about" className="mt-0">
-            <PartnerAbout 
-              description={provider.description}
-              locations={provider.locations}
-              operating_hours={(provider as any).operating_hours || (provider.locations?.[0]?.working_hours ? (typeof provider.locations[0].working_hours === 'string' ? JSON.parse(provider.locations[0].working_hours) : provider.locations[0].working_hours) : undefined)}
-            />
-          </TabsContent>
-        </Tabs>
-      </div>
-
-      {/* Sticky Conversion Footer for mobile - Message Only */}
-      {!authLoading && user && provider.id && (
-        <div className="sticky bottom-0 w-full md:hidden bg-white border-t border-gray-200 shadow-lg z-50">
-          <div className="px-4 py-3">
-            <Link
-              href={`/account-settings/messages?provider=${provider.id}`}
-              className="flex items-center justify-center gap-2 w-full bg-gray-100 hover:bg-gray-200 transition-colors rounded-xl py-3 px-4"
-              aria-label="Message provider"
-            >
-              <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
-              <span className="text-sm font-medium text-gray-700">Message Provider</span>
-            </Link>
-          </div>
-        </div>
-      )}
-
       <Footer />
       <BottomNav />
     </div>
   );
-};
-
-// Note: Metadata generation is handled via middleware/headers since this is a client component
-// The X-Robots-Tag header is set in the API response
-
-const Page = () => {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-white pb-20 md:pb-0">
-        <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-8">
-          <LoadingTimeout loadingMessage="Loading provider..." />
-        </div>
-        <Footer />
-        <BottomNav />
-      </div>
-    }>
-      <PageContent />
-    </Suspense>
-  );
-};
-
-export default Page;
+}

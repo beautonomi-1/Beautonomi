@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -36,11 +36,11 @@ export async function GET(request: NextRequest) {
     }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
     // Get bookings with packages (both via package_id and via booking_services with service_type='package')
     const { data: bookings, error: bookingsError } = await supabaseAdmin
@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     }>();
 
     packageBookings.forEach((booking) => {
-      // Handle bookings with package_id (newer approach)
+      // Prefer package_id row (one booking = one sale); avoid double-counting legacy rows
       if (booking.package_id && (booking as any).service_packages) {
         const pkg = (booking as any).service_packages;
         const packageId = pkg.id;
@@ -112,11 +112,12 @@ export async function GET(request: NextRequest) {
         existing.bookings += 1;
         existing.revenue += Number(booking.total_amount || 0);
         packageMap.set(packageId, existing);
+        return;
       }
-      
-      // Handle bookings with package services (legacy approach)
+
+      // Legacy: package represented only as line items
       booking.booking_services?.forEach((bs: any) => {
-        if (bs.offerings?.service_type === 'package') {
+        if (bs.offerings?.service_type === "package") {
           const packageId = bs.offerings.id;
           const existing = packageMap.get(packageId) || {
             packageId,

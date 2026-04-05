@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
@@ -17,6 +19,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Copy, Share2, Gift, Users, TrendingUp, Loader2, Check } from "lucide-react";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface ReferralStats {
   total_referrals: number;
@@ -34,6 +37,8 @@ interface ReferralSettings {
 
 const ReferralsPage = () => {
   const { user } = useAuth();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { format } = usePlatformCurrency();
   const [referralCode, setReferralCode] = useState<string>("");
   const [referralLink, setReferralLink] = useState<string>("");
@@ -83,7 +88,7 @@ const ReferralsPage = () => {
       setSettings({
         referral_amount: 50,
         referral_message: "Join Beautonomi and get rewarded! Use my referral link to get started.",
-        referral_currency: "ZAR",
+        referral_currency: tenantCurrency,
         is_enabled: true,
       });
     } finally {
@@ -151,7 +156,7 @@ const ReferralsPage = () => {
               // Replace placeholder with actual amount
               answer = answer.replace(
                 /\$\{referral_amount\}/g,
-                `${settings?.referral_amount || 50} ${settings?.referral_currency || "ZAR"}`
+                `${settings?.referral_amount || 50} ${settings?.referral_currency || tenantCurrency}`
               );
             }
             
@@ -180,7 +185,7 @@ const ReferralsPage = () => {
             {
               id: "item-2",
               question: "How much can I earn from referrals?",
-              answer: `You earn ${settings?.referral_amount || 50} ${settings?.referral_currency || "ZAR"} for each successful referral. The amount may vary based on current promotions. Check your referral dashboard for the latest reward amounts.`,
+              answer: `You earn ${settings?.referral_amount || 50} ${settings?.referral_currency || tenantCurrency} for each successful referral. The amount may vary based on current promotions. Check your referral dashboard for the latest reward amounts.`,
               isList: false,
             },
             {

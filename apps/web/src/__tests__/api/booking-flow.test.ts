@@ -9,55 +9,10 @@
 
 import { describe, it, expect } from "vitest";
 import crypto from "crypto";
-import { z } from "zod";
-
-// ---------------------------------------------------------------------------
-// Re-declare the bookingDraftSchema inline so tests stay self-contained and
-// compile even if the route file has transient syntax issues. The shape is
-// kept in sync with apps/web/src/app/api/public/bookings/route.ts.
-// ---------------------------------------------------------------------------
-
-const bookingDraftSchema = z.object({
-  provider_id: z.string().uuid("Invalid provider ID"),
-  services: z
-    .array(
-      z.object({
-        offering_id: z.string().uuid("Invalid offering ID"),
-        staff_id: z.string().uuid("Invalid staff ID").optional().nullable(),
-      })
-    )
-    .min(1, "At least one service is required"),
-  selected_datetime: z.string().datetime("Invalid datetime format"),
-  location_type: z.enum(["at_home", "at_salon"]),
-  location_id: z.string().uuid().optional().nullable(),
-  address: z
-    .object({
-      line1: z.string().min(1),
-      line2: z.string().optional(),
-      city: z.string().min(1),
-      state: z.string().optional(),
-      country: z.string().min(1),
-      postal_code: z.string().optional(),
-    })
-    .optional()
-    .nullable(),
-  addons: z.array(z.string().uuid("Invalid addon ID")).optional(),
-  package_id: z.string().uuid().optional().nullable(),
-  tip_amount: z.number().min(0).optional(),
-  travel_fee: z.number().min(0).optional(),
-  special_requests: z.string().optional().nullable(),
-  payment_method: z.enum(["card", "cash", "giftcard"]).optional(),
-  payment_method_id: z.string().uuid().optional().nullable(),
-  payment_option: z.enum(["deposit", "full"]).optional(),
-  promotion_code: z.string().optional().nullable(),
-  gift_card_code: z.string().optional().nullable(),
-  membership_plan_id: z.string().uuid().optional().nullable(),
-  use_wallet: z.boolean().optional(),
-  is_group_booking: z.boolean().optional(),
-  hold_id: z.string().uuid().optional().nullable(),
-});
-
-type BookingDraft = z.infer<typeof bookingDraftSchema>;
+import {
+  bookingDraftSchema,
+  type PublicBookingValidatedBody,
+} from "@/lib/public-booking/booking-draft-schema";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -69,7 +24,7 @@ const TEST_OFFERING_ID = "00000000-0000-4000-8000-000000000010";
 const TEST_LOCATION_ID = "00000000-0000-4000-8000-000000000020";
 
 /** A minimal valid booking draft. */
-function validBookingDraft(overrides: Partial<BookingDraft> = {}): BookingDraft {
+function validBookingDraft(overrides: Partial<PublicBookingValidatedBody> = {}): PublicBookingValidatedBody {
   return {
     provider_id: TEST_PROVIDER_ID,
     services: [
@@ -109,6 +64,53 @@ describe("bookingDraftSchema – validation", () => {
       })
     );
     expect(result.success).toBe(true);
+  });
+
+  it("accepts optional resource_ids (UUID array)", () => {
+    const resourceId = "00000000-0000-4000-8000-000000000030";
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({ resource_ids: [resourceId] })
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.resource_ids).toEqual([resourceId]);
+    }
+  });
+
+  it("accepts product lines with product_id and string-coerced numbers", () => {
+    const pid = "00000000-0000-4000-8000-000000000040";
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        products: [
+          {
+            product_id: pid,
+            quantity: "2",
+            unitPrice: "10",
+            totalPrice: "20",
+          },
+        ] as unknown as PublicBookingValidatedBody["products"],
+      })
+    );
+    expect(result.success).toBe(true);
+    if (result.success && result.data.products?.[0]) {
+      expect(result.data.products[0].productId).toBe(pid);
+      expect(result.data.products[0].quantity).toBe(2);
+    }
+  });
+
+  it("rejects product lines without productId or product_id", () => {
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        products: [
+          {
+            quantity: 1,
+            unitPrice: 10,
+            totalPrice: 10,
+          },
+        ] as unknown as PublicBookingValidatedBody["products"],
+      })
+    );
+    expect(result.success).toBe(false);
   });
 
   it("rejects when provider_id is missing", () => {

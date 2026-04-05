@@ -66,7 +66,9 @@ export async function PATCH(
 
     const { data: existingZone, error: fetchError } = await supabase
       .from("platform_zones")
-      .select("id, zone_type")
+      .select(
+        "id, zone_type, postal_codes, cities, polygon_coordinates, center_latitude, center_longitude, radius_km"
+      )
       .eq("id", id)
       .single();
 
@@ -84,23 +86,47 @@ export async function PATCH(
     }
 
     const data = validationResult.data;
-    const zoneType = data.zone_type || existingZone.zone_type;
+    const zoneType = data.zone_type ?? existingZone.zone_type;
+    const postal_codes =
+      data.postal_codes !== undefined ? data.postal_codes : existingZone.postal_codes;
+    const cities = data.cities !== undefined ? data.cities : existingZone.cities;
+    const polygon_coordinates =
+      data.polygon_coordinates !== undefined
+        ? data.polygon_coordinates
+        : existingZone.polygon_coordinates;
+    const center_latitude =
+      data.center_latitude !== undefined ? data.center_latitude : existingZone.center_latitude;
+    const center_longitude =
+      data.center_longitude !== undefined ? data.center_longitude : existingZone.center_longitude;
+    const radius_km = data.radius_km !== undefined ? data.radius_km : existingZone.radius_km;
 
-    // Validate zone type specific fields if zone_type is being updated
-    if (data.zone_type) {
-      if (zoneType === "postal_code" && (!data.postal_codes || data.postal_codes.length === 0)) {
+    // Match POST rules against merged row (PATCH may omit zone_type or only send partial fields)
+    if (zoneType === "postal_code") {
+      const list = postal_codes ?? [];
+      if (!Array.isArray(list) || list.length === 0) {
         return errorResponse("Postal codes are required for postal_code zones");
       }
-      if (zoneType === "city" && (!data.cities || data.cities.length === 0)) {
+    }
+    if (zoneType === "city") {
+      const list = cities ?? [];
+      if (!Array.isArray(list) || list.length === 0) {
         return errorResponse("Cities are required for city zones");
       }
-      if (zoneType === "polygon" && !data.polygon_coordinates) {
-        return errorResponse("Polygon coordinates are required for polygon zones");
-      }
-      if (zoneType === "radius") {
-        if (!data.center_latitude || !data.center_longitude || !data.radius_km) {
-          return errorResponse("Center coordinates and radius are required for radius zones");
-        }
+    }
+    if (zoneType === "polygon" && (polygon_coordinates === null || polygon_coordinates === undefined)) {
+      return errorResponse("Polygon coordinates are required for polygon zones");
+    }
+    if (zoneType === "radius") {
+      if (
+        center_latitude == null ||
+        center_longitude == null ||
+        radius_km == null ||
+        !Number.isFinite(Number(center_latitude)) ||
+        !Number.isFinite(Number(center_longitude)) ||
+        !Number.isFinite(Number(radius_km)) ||
+        Number(radius_km) <= 0
+      ) {
+        return errorResponse("Center coordinates and a positive radius are required for radius zones");
       }
     }
 

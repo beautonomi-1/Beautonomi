@@ -15,8 +15,22 @@ import { useRouter } from "expo-router";
 import { Colors, Shadows } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProductOrders, type ProductOrder } from "@/features/shop/useProductOrders";
+import { getTenantLocaleTag } from "@/lib/locale";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 
 const PRIMARY = Colors.primary;
+
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   pending: { label: "Pending", color: "#F59E0B", icon: "time-outline" },
@@ -52,13 +66,11 @@ function StatusBadge({ status }: { status: string }) {
 
 function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => void }) {
   const { contentPadding } = useResponsive();
+  const fb = getTenantDefaultCurrency();
+  const totalLabel = formatMoney(Number(order.total_amount), order.currency ?? fb);
   const firstImage = order.items?.[0]?.product_image_url;
   const itemCount = order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0;
-  const date = new Date(order.created_at).toLocaleDateString("en-ZA", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const date = formatDateSafe(order.created_at);
 
   return (
     <TouchableOpacity
@@ -106,7 +118,7 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
               {itemCount} item{itemCount !== 1 ? "s" : ""} · {date}
             </Text>
             <Text style={{ fontSize: 16, fontWeight: "700", color: PRIMARY }}>
-              R{Number(order.total_amount).toFixed(2)}
+              {totalLabel}
             </Text>
           </View>
           {order.tracking_number && (

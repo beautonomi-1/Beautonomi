@@ -8,6 +8,8 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface GiftCard {
   id: string;
@@ -21,6 +23,8 @@ interface GiftCard {
 }
 
 function GiftCardsSection() {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [giftCards, setGiftCards] = useState<GiftCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -50,9 +54,9 @@ function GiftCardsSection() {
   };
 
   const formatCurrency = (amount: number, currency: string) => {
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: currency || "ZAR",
+      currency: currency || tenantCurrency,
     }).format(amount);
   };
 

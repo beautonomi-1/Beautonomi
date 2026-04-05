@@ -4,6 +4,8 @@ import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
 const pageContentSchema = z.object({
   page_slug: z.string().min(1, "Page slug is required"),
@@ -31,30 +33,20 @@ export async function GET(request: Request) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const pageSlug = searchParams.get("page_slug");
 
-    let query = supabase
-      .from("page_content")
-      .select("*")
-      .order("page_slug", { ascending: true })
-      .order("display_order", { ascending: true })
-      .order("created_at", { ascending: false });
-
-    if (pageSlug) {
-      query = query.eq("page_slug", pageSlug);
-    }
-
-    const { data: pages, error } = await query;
-
-    if (error) {
-      console.error("Error fetching page content:", error);
-      // Return empty array instead of 500 error
-      return NextResponse.json({
-        data: [],
-        error: null,
-      });
-    }
+    const scoped = await fetchScopedListMerged<Record<string, unknown>>({
+      supabase,
+      table: "page_content",
+      tenantId,
+      select: "*",
+      apply: (q) => (pageSlug ? q.eq("page_slug", pageSlug) : q),
+      dedupeKey: (row) => `${String(row.page_slug ?? "")}::${String(row.section_key ?? "")}`,
+      orderBy: { column: "display_order", ascending: true },
+    });
+    const pages = scoped.data;
 
     type PageRow = { display_order?: number; [key: string]: unknown };
     const transformedPages = (pages || []).map((p: PageRow) => ({
@@ -94,6 +86,7 @@ export async function POST(request: Request) {
     }
 
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -122,6 +115,7 @@ export async function POST(request: Request) {
     const { data: existing } = await supabase
       .from("page_content")
       .select("id")
+      .eq("tenant_id", tenantId)
       .eq("page_slug", page_slug)
       .eq("section_key", section_key)
       .single();
@@ -142,6 +136,7 @@ export async function POST(request: Request) {
     const { data: pageContent, error } = await supabase
       .from("page_content")
       .insert({
+        tenant_id: tenantId,
         page_slug,
         section_key,
         content_type,

@@ -5,10 +5,14 @@ import {
   handleApiError,
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
  * GET /api/provider/invoices/[id]/download
- * Generate and download invoice as PDF (or HTML for now)
+ * Generate and download invoice as a PDF file (HTML-based payload).
  */
 export async function GET(
   request: NextRequest,
@@ -38,7 +42,7 @@ export async function GET(
       .select(
         `
         *,
-        providers(id, business_name, billing_email, billing_phone, billing_address),
+        providers(id, business_name, billing_email, billing_phone, billing_address, currency, tenant_id),
         line_items:provider_invoice_line_items(*),
         payments:provider_invoice_payments(*)
       `
@@ -60,14 +64,23 @@ export async function GET(
       );
     }
 
-    // Generate HTML invoice
-    const invoiceHTML = generateInvoiceHTML(invoice);
+    const inv = invoice as {
+      tenant_id?: string | null;
+      providers?: { tenant_id?: string | null; currency?: string | null } | null;
+    };
+    const tenantForConfig =
+      inv.tenant_id ?? inv.providers?.tenant_id ?? null;
+    const tenantRegionConfig = await getTenantRegionConfig(
+      tenantForConfig ?? (await resolveTenantIdWithZaFallback(request))
+    );
 
-    // Return as HTML (can be converted to PDF later)
+    const invoiceHTML = generateInvoiceHTML(invoice, tenantRegionConfig);
+
+    // Return HTML payload as a downloadable .pdf file for printing/sharing
     return new Response(invoiceHTML, {
       headers: {
-        "Content-Type": "text/html",
-        "Content-Disposition": `attachment; filename="invoice-${invoice.invoice_number}.html"`,
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="invoice-${invoice.invoice_number}.pdf"`,
       },
     });
   } catch (error) {
@@ -75,16 +88,23 @@ export async function GET(
   }
 }
 
-function generateInvoiceHTML(invoice: any) {
+function generateInvoiceHTML(invoice: any, tenantRegionConfig: import("@/lib/regions/config").TenantRegionConfig | null) {
+  const fallbackCurrency =
+    tenantRegionConfig?.defaultCurrency ||
+    (invoice?.providers as { currency?: string } | undefined)?.currency?.trim() ||
+    LAST_RESORT_CURRENCY;
+  const fallbackLocale = getTenantLocaleTagFromRegionConfig(tenantRegionConfig);
+  const currency = fallbackCurrency;
+
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(fallbackLocale, {
       style: "currency",
-      currency: "ZAR",
+      currency: currency.length === 3 ? currency : fallbackCurrency,
     }).format(amount);
   };
 
   const formatDate = (date: string) => {
-    return new Date(date).toLocaleDateString("en-ZA", {
+    return new Date(date).toLocaleDateString(fallbackLocale, {
       year: "numeric",
       month: "long",
       day: "numeric",

@@ -21,6 +21,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 
 interface MembershipPlan {
   id: string;
@@ -35,6 +37,7 @@ interface MembershipPlan {
 }
 
 export default function MembershipsSettings() {
+  const locale = useTenantLocaleTag();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -163,8 +166,8 @@ export default function MembershipsSettings() {
     }
   };
 
-  const formatCurrency = (amount: number, currency: string = "ZAR") => {
-    return new Intl.NumberFormat("en-ZA", {
+  const formatCurrency = (amount: number, currency: string = LAST_RESORT_CURRENCY) => {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: currency,
     }).format(amount);

@@ -1,39 +1,75 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { HelpPageContent } from "../page";
 
-export default function SearchBox() {
+const DEFAULT_SUGGESTIONS = [
+  "Canceling your booking",
+  "Change the date or time of your appointment",
+  "If your provider cancels your booking",
+];
+
+function sectionText(content: HelpPageContent | null | undefined, key: string) {
+  return content?.[key]?.content?.trim() ?? "";
+}
+
+interface SearchBoxProps {
+  content?: HelpPageContent | null;
+}
+
+export default function SearchBox({ content = null }: SearchBoxProps) {
   const [isSearchActive, setIsSearchActive] = useState(false);
 
-  // Define an array of search suggestions
-  const searchSuggestions = [
-    "Canceling your booking",
-    "Change the date or time of your appointment",
-    "If your provider cancels your booking"
-  ];
+  const heroTitle = sectionText(content, "hero_title") || "Hi, how can we help?";
+  const searchPlaceholder =
+    sectionText(content, "search_placeholder") || "Search how-tos and more";
+
+  const [query, setQuery] = useState("");
+  const rawSuggestions = sectionText(content, "search_suggestions");
+  const searchSuggestions = useMemo(() => {
+    if (!rawSuggestions) return DEFAULT_SUGGESTIONS;
+    try {
+      const parsed = JSON.parse(rawSuggestions) as unknown;
+      if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+        return parsed as string[];
+      }
+    } catch {
+      // keep defaults
+    }
+    return DEFAULT_SUGGESTIONS;
+  }, [rawSuggestions]);
 
   return (
     <div className="mb-8">
     <div className="flex flex-col items-center gap-4 p-8">
-      <h1 className="text-5xl font-normal  mb-3">
-        Hi, how can we help?
+      <h1 className="text-5xl font-normal mb-3">
+        {heroTitle}
       </h1>
       <div className="relative w-full max-w-2xl">
         <div
-          className={`relative flex items-center max-w-sm mx-auto py-3 pl-3 pr-2 border rounded-full ${
-            isSearchActive ? "bg-white shadow-2xl" : "bg-primary"
+          className={`relative flex items-center max-w-sm mx-auto py-3 pl-3 pr-2 border rounded-full transition-colors ${
+            isSearchActive
+              ? "bg-white border-zinc-300 shadow-xl"
+              : "bg-zinc-100 border-zinc-300"
           }`}
           onFocus={() => setIsSearchActive(true)}
           onBlur={() => setIsSearchActive(false)}
         >
           <Input
             type="text"
-            placeholder="Search how-tos and more"
-            className="flex-grow outline-none text-base font-light  px-4 border-none bg-transparent rounded-full transition-colors duration-300"
+            placeholder={searchPlaceholder}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && query.trim()) {
+                window.location.href = `/search?q=${encodeURIComponent(query.trim())}`;
+              }
+            }}
+            className="flex-grow outline-none text-[14px] font-normal text-zinc-800 placeholder:text-zinc-500 px-4 border-none bg-transparent rounded-full transition-colors duration-300"
           />
           {!isSearchActive && (
             <div className="absolute inset-y-0 right-0 flex items-center pr-2">
@@ -51,10 +87,8 @@ export default function SearchBox() {
                 <Button
                   className="flex items-center gap-2 rounded-full bg-transparent"
                   onClick={() => {
-                    // Navigate to search results or perform search
-                    const input = document.querySelector('input[type="text"]') as HTMLInputElement;
-                    if (input && input.value.trim()) {
-                      window.location.href = `/search?q=${encodeURIComponent(input.value.trim())}`;
+                    if (query.trim()) {
+                      window.location.href = `/search?q=${encodeURIComponent(query.trim())}`;
                     }
                   }}
                 >

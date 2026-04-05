@@ -72,8 +72,8 @@ export function CommandBar({
   };
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
-      <div className="flex flex-1 gap-3 min-w-0">
+    <div className="flex flex-col sm:flex-row gap-4 flex-wrap w-full min-w-0">
+      <div className="flex flex-1 flex-col sm:flex-row gap-3 min-w-0 w-full">
         {locations.length > 1 && (
           <LocationSwitcher
             locations={locations}

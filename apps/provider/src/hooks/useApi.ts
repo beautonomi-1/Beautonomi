@@ -4,13 +4,50 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
+import { getRuntimeMarketHost } from "@/config/public-env";
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
+const DEFAULT_STALE_TIME_MS = 20000;
+const MAX_CACHE_ENTRIES = 200;
+
+interface CacheEntry<T> {
+  data: T | null;
+  error: string | null;
+  expiresAt: number;
+}
+
+const responseCache = new Map<string, CacheEntry<unknown>>();
+const inflightRequests = new Map<string, Promise<{ data: unknown | null; error: string | null }>>();
+
+export function clearApiCache(): void {
+  responseCache.clear();
+  inflightRequests.clear();
+}
+
+function pruneResponseCache(now: number): void {
+  for (const [key, entry] of responseCache.entries()) {
+    if (entry.expiresAt <= now) {
+      responseCache.delete(key);
+    }
+  }
+
+  if (responseCache.size <= MAX_CACHE_ENTRIES) return;
+
+  const overflow = responseCache.size - MAX_CACHE_ENTRIES;
+  let removed = 0;
+  for (const key of responseCache.keys()) {
+    responseCache.delete(key);
+    removed += 1;
+    if (removed >= overflow) break;
+  }
+}
 
 interface UseApiOptions {
   enabled?: boolean;
   /** After this many ms while loading, timedOut becomes true so UI can show "Retry" */
   timeoutMs?: number;
+  /** Keep response in memory for this duration to reduce remount refetch churn. */
+  staleTimeMs?: number;
 }
 
 interface UseApiResult<T> {
@@ -24,13 +61,20 @@ interface UseApiResult<T> {
 }
 
 export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResult<T> {
-  const { enabled = true, timeoutMs = DEFAULT_LOADING_TIMEOUT_MS } = options;
+  const {
+    enabled = true,
+    timeoutMs = DEFAULT_LOADING_TIMEOUT_MS,
+    staleTimeMs = DEFAULT_STALE_TIME_MS,
+  } = options;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
+
+  const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
+  const cacheKey = `${runtimeMarketHost}::${path}`;
 
   const fetchData = useCallback(async () => {
     if (!enabled) {
@@ -42,13 +86,54 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       setLoading(true);
       setError(null);
       setTimedOut(false);
-      const result = await api.get<T>(path);
+
+      const now = Date.now();
+      const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      if (cached && cached.expiresAt > now) {
+        if (!mountedRef.current || id !== requestIdRef.current) return;
+        setData(cached.data);
+        setError(cached.error);
+        return;
+      }
+
+      const inflight = inflightRequests.get(cacheKey) as Promise<{ data: T | null; error: string | null }> | undefined;
+      const requestPromise =
+        inflight ??
+        (async () => {
+          const result = await api.get<T>(path);
+          if (result.error) {
+            return { data: null, error: getApiErrorMessage(result.error, "Request failed") };
+          }
+          return { data: result.data, error: null };
+        })();
+
+      if (!inflight) {
+        inflightRequests.set(cacheKey, requestPromise as Promise<{ data: unknown | null; error: string | null }>);
+      }
+
+      let payload: { data: T | null; error: string | null };
+      try {
+        payload = await requestPromise;
+      } finally {
+        // Only the request creator clears the inflight map entry.
+        if (!inflight) {
+          inflightRequests.delete(cacheKey);
+        }
+      }
       if (!mountedRef.current || id !== requestIdRef.current) return;
-      if (result.error) {
-        setError(getApiErrorMessage(result.error, "Request failed"));
+
+      responseCache.set(cacheKey, {
+        data: payload.data,
+        error: payload.error,
+        expiresAt: Date.now() + staleTimeMs,
+      });
+      pruneResponseCache(Date.now());
+
+      if (payload.error) {
+        setError(payload.error);
         setData(null);
       } else {
-        setData(result.data);
+        setData(payload.data);
       }
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
@@ -56,7 +141,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
-  }, [path, enabled]);
+  }, [cacheKey, path, enabled, staleTimeMs]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -78,8 +163,9 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   }, [loading, timeoutMs]);
 
   const refresh = useCallback(async () => {
+    responseCache.delete(cacheKey);
     await fetchData();
-  }, [fetchData]);
+  }, [cacheKey, fetchData]);
 
   const mutate = useCallback((newData: T) => {
     setData(newData);

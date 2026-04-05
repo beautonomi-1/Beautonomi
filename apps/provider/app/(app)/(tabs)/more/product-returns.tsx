@@ -17,6 +17,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
+import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
 
 interface ReturnRequest {
@@ -172,7 +173,7 @@ export function ProductReturnsContent() {
                 </Text>
                 <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                   {r.customer?.full_name ?? "Customer"}
-                  {r.refund_amount != null ? ` · R ${Number(r.refund_amount).toFixed(2)}` : ""}
+                  {r.refund_amount != null ? ` · ${formatCurrency(Number(r.refund_amount))}` : ""}
                 </Text>
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>{r.status}</Text>
               </View>

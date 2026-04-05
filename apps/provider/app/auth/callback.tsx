@@ -1,7 +1,7 @@
 /**
  * OAuth callback – receives redirect from OAuth providers (Google, Apple).
  * Web: reads code/tokens from window.location, sets session, redirects to app root.
- * Native: reads code/error from URL params (deep link), exchanges code, then redirects to (app)/(tabs) so user stays in app.
+ * Native: reads code/error from URL params (deep link), exchanges code, then redirects to app root so portal/profile routing runs (new providers → onboarding).
  */
 import { useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, Platform } from "react-native";
@@ -86,9 +86,9 @@ export default function AuthCallbackScreen() {
           } else if (isWeb) {
             router.replace("/" as never);
           } else {
-            // Defer navigation so AuthProvider's onAuthStateChange can run and (app) layout sees session
+            // Root index runs portal + provider profile check → onboarding when no profile (same as email login).
             setTimeout(() => {
-              if (!cancelled) router.replace("/(app)/(tabs)" as never);
+              if (!cancelled) router.replace("/" as never);
             }, 50);
           }
         }

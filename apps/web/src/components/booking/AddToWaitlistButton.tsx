@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -76,11 +78,17 @@ export default function AddToWaitlistButton({
       return;
     }
 
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await fetcher.post("/api/public/waitlist", {
         provider_id: providerId,
         ...formData,
+        phone: formData.phone?.trim() || "",
       });
 
       toast.success("Added to waitlist! We'll notify you when a spot becomes available.");
@@ -149,13 +157,12 @@ export default function AddToWaitlistButton({
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
+                <PhoneInput
+                  inputId="public-waitlist-phone"
+                  label="Phone"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+27 123 456 789"
+                  onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                  placeholder="Phone number"
                 />
               </div>
             </div>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, TouchableOpacity, Alert, Pressable, ScrollView } from "react-native";
+import { View, Text, TextInput, TouchableOpacity, Alert, Pressable, ScrollView, Modal, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import { Image } from "expo-image";
+import { Ionicons } from "@expo/vector-icons";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -9,7 +10,17 @@ import { useImagePicker } from "@/hooks/useImagePicker";
 import { Colors } from "@/constants/colors";
 import { SCREEN_PADDING, RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON, STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { PhoneInputWithCountry } from "@/components/PhoneInputWithCountry";
+import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
+import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { parsePhoneToCountryAndNational, getNationalFromStored } from "@/constants/phone";
+import { supabase } from "@/lib/supabase/client";
+import {
+  normalizeSupabaseAuthPhone,
+  normalizeSupabaseSmsOtpToken,
+  isCompleteSupabaseSmsOtp,
+  SUPABASE_AUTH_OTP_LENGTH,
+  SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS,
+} from "@/lib/supabase-sms-otp";
 
 export default function PersonalInfoScreen() {
   useScreenTracking("Personal Info");
@@ -18,14 +29,27 @@ export default function PersonalInfoScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [fullName, setFullName] = useState("");
-  const [phoneCountryCode, setPhoneCountryCode] = useState("+27");
+  const [phoneCountryCode, setPhoneCountryCode] = useState(getDeviceDefaultCountryDial);
   const [phoneNational, setPhoneNational] = useState("");
   const [emergencyName, setEmergencyName] = useState("");
-  const [emergencyCountryCode, setEmergencyCountryCode] = useState("+27");
+  const [emergencyCountryCode, setEmergencyCountryCode] = useState(getDeviceDefaultCountryDial);
   const [emergencyPhoneNational, setEmergencyPhoneNational] = useState("");
   const [emergencyRelationship, setEmergencyRelationship] = useState("");
   const [about, setAbout] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [newEmail, setNewEmail] = useState("");
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailChangePending, setEmailChangePending] = useState(false);
+  const [phoneStep, setPhoneStep] = useState<"enter_phone" | "enter_otp" | null>(null);
+  const [phoneModalCountryCode, setPhoneModalCountryCode] = useState(getDeviceDefaultCountryDial);
+  const [phoneModalNational, setPhoneModalNational] = useState("");
+  const [pendingPhoneE164, setPendingPhoneE164] = useState("");
+  const [phoneOtpCode, setPhoneOtpCode] = useState("");
+  const [phoneSending, setPhoneSending] = useState(false);
+  const [phoneVerifying, setPhoneVerifying] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -43,13 +67,15 @@ export default function PersonalInfoScreen() {
       } else {
         const p = profileRes.data;
         setProfile(p);
+        setEmailChangePending(!!(p as { email_change_pending?: boolean })?.email_change_pending);
         setFullName(p?.full_name || [p?.first_name, p?.last_name].filter(Boolean).join(" ") || "");
-        const main = parsePhoneToCountryAndNational(p?.phone);
+        const deviceDial = getDeviceDefaultCountryDial();
+        const main = parsePhoneToCountryAndNational(p?.phone, deviceDial);
         setPhoneCountryCode(main.countryCode);
         setPhoneNational(main.national);
         const ec = p?.emergency_contact;
         setEmergencyName(ec?.name ?? "");
-        setEmergencyCountryCode(ec?.country_code || "+27");
+        setEmergencyCountryCode(ec?.country_code || deviceDial);
         setEmergencyPhoneNational(getNationalFromStored(ec?.country_code, ec?.phone));
         setEmergencyRelationship(ec?.relationship ?? "");
       }
@@ -66,6 +92,95 @@ export default function PersonalInfoScreen() {
   useEffect(() => {
     load();
   }, []);
+
+  const handleChangeEmail = async () => {
+    const email = newEmail.trim().toLowerCase();
+    if (!email) {
+      Alert.alert("Error", "Enter your new email address");
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      Alert.alert("Error", "Please enter a valid email address");
+      return;
+    }
+    setEmailSending(true);
+    try {
+      const res = await api.patch<any>("/api/me/profile", { email });
+      if (res.error) {
+        Alert.alert("Error", res.error.message ?? "Failed to send verification");
+      } else {
+        setEmailChangePending(true);
+        setNewEmail("");
+        setShowEmailModal(false);
+        Alert.alert(
+          "Check your email",
+          "We sent a confirmation link to your new email. Open it to complete the change."
+        );
+        load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e, "Failed to send verification"));
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const handleSendPhoneOtp = async () => {
+    const fullPhone = `${phoneModalCountryCode}${phoneModalNational.replace(/\D/g, "")}`.trim();
+    const raw = fullPhone.startsWith("+") ? fullPhone : `+${fullPhone}`;
+    const e164 = normalizeSupabaseAuthPhone(raw);
+    if (e164.replace(/\D/g, "").length < 10) {
+      Alert.alert("Error", "Enter a valid phone number");
+      return;
+    }
+    setPhoneSending(true);
+    try {
+      const { error: updateError } = await supabase.auth.updateUser({ phone: e164 });
+      if (updateError) throw updateError;
+      setPendingPhoneE164(e164);
+      setPhoneStep("enter_otp");
+      setPhoneOtpCode("");
+      Alert.alert(
+        "Code sent",
+        `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code sent to your phone (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
+      );
+    } catch (e: unknown) {
+      Alert.alert("Error", (e as { message?: string })?.message ?? "Failed to send code. Please try again.");
+    } finally {
+      setPhoneSending(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async (otpOverride?: string) => {
+    const token = normalizeSupabaseSmsOtpToken(otpOverride ?? phoneOtpCode);
+    if (!pendingPhoneE164 || !isCompleteSupabaseSmsOtp(token)) {
+      Alert.alert("Error", `Enter the ${SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS`);
+      return;
+    }
+    setPhoneVerifying(true);
+    try {
+      const { error: verifyError } = await supabase.auth.verifyOtp({
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+        token,
+        type: "phone_change",
+      });
+      if (verifyError) throw verifyError;
+      const res = await api.patch<any>("/api/me/profile", {
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+      });
+      if (res.error) throw new Error(res.error.message ?? "Failed to save phone");
+      setShowPhoneModal(false);
+      setPhoneStep(null);
+      setPendingPhoneE164("");
+      setPhoneOtpCode("");
+      Alert.alert("Saved", "Your phone number has been updated.");
+      load();
+    } catch (e: unknown) {
+      Alert.alert("Verification failed", (e as { message?: string })?.message ?? "Invalid or expired code. Request a new one.");
+    } finally {
+      setPhoneVerifying(false);
+    }
+  };
 
   const uploadAvatar = async () => {
     const result = await pickWithOptions();
@@ -201,14 +316,30 @@ export default function PersonalInfoScreen() {
               />
             </View>
             <View style={{ marginBottom: 16 }}>
-              <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 8 }}>Email</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Email</Text>
+                <TouchableOpacity onPress={() => { setNewEmail(""); setShowEmailModal(true); }} accessibilityLabel="Change email" accessibilityRole="button">
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Change email</Text>
+                </TouchableOpacity>
+              </View>
               <View style={{ borderRadius: RADIUS_INPUT, backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14 }}>
                 <Text style={{ fontSize: 16, color: Colors.gray[600] }}>{profile.email || "-"}</Text>
               </View>
+              {emailChangePending && (
+                <View style={{ backgroundColor: "#FEF3C7", padding: 12, borderRadius: RADIUS_INPUT, marginTop: 8 }}>
+                  <Text style={{ fontSize: 13, color: "#92400E" }}>Check your new email and open the confirmation link to complete the change.</Text>
+                </View>
+              )}
             </View>
             <View>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Phone</Text>
+                <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneModalNational(""); setPhoneOtpCode(""); setPendingPhoneE164(""); setShowPhoneModal(true); }} accessibilityLabel="Change phone" accessibilityRole="button">
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>Change phone</Text>
+                </TouchableOpacity>
+              </View>
               <PhoneInputWithCountry
-                label="Phone"
+                label=""
                 countryCode={phoneCountryCode}
                 onCountryCodeChange={setPhoneCountryCode}
                 nationalValue={phoneNational}
@@ -289,6 +420,106 @@ export default function PersonalInfoScreen() {
           </TouchableOpacity>
         </ScrollView>
       )}
+
+      {/* Change email modal */}
+      <Modal visible={showEmailModal} transparent animationType="fade">
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} onPress={() => setShowEmailModal(false)}>
+          <Pressable style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 24 }} onPress={(e) => e.stopPropagation()}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Change email</Text>
+              <TouchableOpacity onPress={() => setShowEmailModal(false)} hitSlop={12} accessibilityLabel="Close">
+                <Ionicons name="close" size={24} color={Colors.gray[500]} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>We&apos;ll send a confirmation link to your new email. Open it to complete the change.</Text>
+            <TextInput
+              style={{ borderRadius: RADIUS_INPUT, borderWidth: 1, borderColor: Colors.gray[300], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: Colors.gray[900], marginBottom: 16 }}
+              value={newEmail}
+              onChangeText={setNewEmail}
+              placeholder="New email address"
+              placeholderTextColor={Colors.gray[400]}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <View style={{ flexDirection: "row", marginTop: 4 }}>
+              <TouchableOpacity onPress={() => setShowEmailModal(false)} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleChangeEmail} disabled={emailSending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                {emailSending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>Send verification email</Text>}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Change phone modal */}
+      <Modal visible={showPhoneModal} transparent animationType="fade">
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 24 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <Pressable style={{ flex: 1 }} onPress={() => setShowPhoneModal(false)}>
+            <Pressable style={{ backgroundColor: Colors.white, borderRadius: 16, padding: 24 }} onPress={(e) => e.stopPropagation()}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Change phone number</Text>
+                <TouchableOpacity onPress={() => { setShowPhoneModal(false); setPhoneStep(null); }} hitSlop={12} accessibilityLabel="Close">
+                  <Ionicons name="close" size={24} color={Colors.gray[500]} />
+                </TouchableOpacity>
+              </View>
+              {phoneStep === "enter_phone" ? (
+                <>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
+                    We&apos;ll SMS a {SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about{" "}
+                    {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))}{" "}
+                    {Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}). Your number only updates after you verify.
+                  </Text>
+                  <PhoneInputWithCountry
+                    countryCode={phoneModalCountryCode}
+                    onCountryCodeChange={setPhoneModalCountryCode}
+                    nationalValue={phoneModalNational}
+                    onNationalChange={setPhoneModalNational}
+                    placeholder="New phone number"
+                    accessibilityLabel="New phone number"
+                  />
+                  <View style={{ flexDirection: "row", marginTop: 16 }}>
+                    <TouchableOpacity onPress={() => setShowPhoneModal(false)} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                      <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleSendPhoneOtp} disabled={phoneSending} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                      {phoneSending ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>Send code</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 8 }}>Code sent to {pendingPhoneE164.replace(/(\+\d{2,3})(\d{3})(\d+)(\d{4})/, "$1 $2 *** $4")}</Text>
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 10 }}>
+                    Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+                  </Text>
+                  <View style={{ marginBottom: 16 }}>
+                    <OtpDigitRow
+                      value={phoneOtpCode}
+                      onChange={setPhoneOtpCode}
+                      onComplete={(code) => {
+                        if (!phoneVerifying && isCompleteSupabaseSmsOtp(code)) void handleVerifyPhoneOtp(code);
+                      }}
+                      disabled={phoneVerifying}
+                      autoFocus
+                      accessibilityLabelPrefix="Phone change verification code"
+                    />
+                  </View>
+                  <View style={{ flexDirection: "row" }}>
+                    <TouchableOpacity onPress={() => { setPhoneStep("enter_phone"); setPhoneOtpCode(""); setPendingPhoneE164(""); }} style={{ flex: 1, marginRight: 12, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center", borderWidth: 1, borderColor: Colors.gray[300] }}>
+                      <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>Back</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => void handleVerifyPhoneOtp()} disabled={phoneVerifying || !isCompleteSupabaseSmsOtp(phoneOtpCode)} style={{ flex: 1, backgroundColor: Colors.primary, paddingVertical: 14, borderRadius: RADIUS_BUTTON, alignItems: "center" }}>
+                      {phoneVerifying ? <ActivityIndicator size="small" color="#fff" /> : <Text style={{ fontWeight: "600", color: Colors.white }}>Verify & save</Text>}
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScreenFrame>
   );
 }

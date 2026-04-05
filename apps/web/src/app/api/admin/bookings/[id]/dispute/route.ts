@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { sendToUser } from "@/lib/notifications/onesignal";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
 const disputeSchema = z.object({
   reason: z.string().min(1, "Reason is required"),
@@ -29,7 +31,14 @@ export async function POST(
     }
 
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json(
+        { data: null, error: { message: "Database unavailable", code: "SERVER_ERROR" } },
+        { status: 500 }
+      );
+    }
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     // Validate request body
@@ -51,25 +60,26 @@ export async function POST(
       );
     }
 
-    // Verify booking exists
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("id, customer_id, provider_id")
-      .eq("id", id)
-      .single();
-
-    if (!booking) {
+    const loaded = await fetchBookingInAdminTenant(
+      supabase,
+      id,
+      tenantId,
+      "id, customer_id, provider_id, tenant_id"
+    );
+    if ("error" in loaded) {
+      const st = loaded.error.status;
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Booking not found",
-            code: "NOT_FOUND",
+            message: st === 403 ? "Booking belongs to another market" : "Booking not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "NOT_FOUND",
           },
         },
-        { status: 404 }
+        { status: st }
       );
     }
+    const booking = loaded.booking;
 
     // Check if dispute already exists
     const { data: existingDispute } = await supabase

@@ -1,5 +1,7 @@
 "use client";
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import React, { useState, useEffect } from "react";
 import {
   Dialog,
@@ -30,7 +32,20 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import type { UserRole } from "@/types/beautonomi";
+
+const SIGNUP_SOURCE_LABELS: Record<string, string> = {
+  google: "Google",
+  social_instagram: "Instagram",
+  social_facebook: "Facebook",
+  social_twitter: "Twitter/X",
+  friend_or_family: "Friend or family",
+  blog_or_article: "Blog or article",
+  app_store: "App Store",
+  provider_referral: "Provider referral",
+  other: "Other",
+};
 
 interface UserData {
   id: string;
@@ -45,6 +60,8 @@ interface UserData {
   is_active?: boolean;
   deactivated_at?: string | null;
   deactivation_reason?: string | null;
+  signup_source?: string | null;
+  preferred_language?: string | null;
   stats?: {
     booking_count?: number;
     provider_count?: number;
@@ -75,6 +92,8 @@ export default function UserDetailModal({
   onClose,
   onUpdate,
 }: UserDetailModalProps) {
+  const { bundle } = useConfigBundle();
+  const displayCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [activeTab, setActiveTab] = useState("overview");
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoadingBookings, setIsLoadingBookings] = useState(false);
@@ -297,9 +316,9 @@ export default function UserDetailModal({
   };
 
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("en-ZA", {
+    return new Intl.NumberFormat(undefined, {
       style: "currency",
-      currency: "ZAR",
+      currency: displayCurrency,
     }).format(amount);
   };
 
@@ -369,6 +388,20 @@ export default function UserDetailModal({
                   <span className="text-gray-500">Created:</span>
                   <span className="font-medium">{formatDate(displayUser.created_at)}</span>
                 </div>
+                {displayUser.signup_source && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500">Signup source:</span>
+                    <span className="font-medium">
+                      {SIGNUP_SOURCE_LABELS[displayUser.signup_source] ?? displayUser.signup_source}
+                    </span>
+                  </div>
+                )}
+                {displayUser.preferred_language && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500">Preferred language:</span>
+                    <span className="font-medium">{displayUser.preferred_language}</span>
+                  </div>
+                )}
                 {displayUser.last_login && (
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-gray-500" />

@@ -2,6 +2,9 @@ import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const packageItemSchema = z.object({
   offering_id: z.string().uuid().optional(),
@@ -18,7 +21,7 @@ const packageSchema = z.object({
   name: z.string().min(1, "Name is required"),
   description: z.string().optional(),
   price: z.number().positive("Price must be positive"),
-  currency: z.string().default("ZAR"),
+  currency: z.string().optional(),
   discount_percentage: z.number().min(0).max(100).optional(),
   is_active: z.boolean().default(true),
   items: z.array(packageItemSchema).min(1, "At least one service or product is required"),
@@ -173,12 +176,24 @@ export async function POST(request: NextRequest) {
     
     const body = await request.json();
 
-    const validated = packageSchema.parse(body);
-
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return errorResponse("Provider not found", "PROVIDER_NOT_FOUND", 404);
     }
+
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
+    const validated = packageSchema.parse(body);
+    const packageCurrency = validated.currency ?? lastResortCurrency;
 
     // Create package
     const { data: packageData, error: packageError } = await supabase
@@ -188,7 +203,7 @@ export async function POST(request: NextRequest) {
         name: validated.name,
         description: validated.description,
         price: validated.price,
-        currency: validated.currency,
+        currency: packageCurrency,
         discount_percentage: validated.discount_percentage,
         is_active: validated.is_active,
       })

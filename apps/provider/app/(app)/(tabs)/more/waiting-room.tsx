@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { useEffect, useRef, useMemo, useCallback } from "react";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useApi } from "@/hooks/useApi";
+import { format, parseISO, isSameDay } from "date-fns";
+import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useProvider } from "@/providers/ProviderContext";
 import { useModuleConfig } from "@/providers/ConfigBundleProvider";
@@ -11,7 +12,6 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { format } from "date-fns";
 import { twStyle } from "@/lib/twStyle";
 
 interface WaitingRoomEntry {
@@ -23,20 +23,60 @@ interface WaitingRoomEntry {
   checked_in_time: string;
 }
 
+interface TodayBookingRow {
+  id: string;
+  booking_number?: string;
+  status: string;
+  db_status?: string;
+  scheduled_at: string;
+  location_type?: string;
+  customers?: { full_name?: string; phone?: string } | null;
+  services?: { name?: string; offering_name?: string; duration_minutes?: number }[];
+}
+
+function serviceLine(s?: { name?: string; offering_name?: string; duration_minutes?: number }): string {
+  const n = s?.name || s?.offering_name || "Service";
+  const d = s?.duration_minutes;
+  return d ? `${n} · ${d} min` : n;
+}
+
+function isActiveScheduleBooking(b: TodayBookingRow): boolean {
+  return !["cancelled", "no_show", "completed"].includes(b.status);
+}
+
 export default function WaitingRoomScreen() {
-  useRouter();
+  const router = useRouter();
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const onDemandConfig = useModuleConfig("on_demand");
-  const prevWaitingCountRef = useRef<number | null>(null);
+  const prevWaitingQueueCountRef = useRef<number | null>(null);
+  const prevPendingConfirmCountRef = useRef<number | null>(null);
   const ringtoneStopRef = useRef<(() => void) | null>(null);
 
+  const todayStr = format(new Date(), "yyyy-MM-dd");
   const waitingRoomUrl = selectedLocationId
     ? `/api/provider/waiting-room?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/waiting-room";
-  const { data: entries, loading, error, refresh } = useApi<WaitingRoomEntry[]>(
-    waitingRoomUrl
-  );
+  const { data: entries, loading: waitingLoading, refresh: refreshWaiting } =
+    useApi<WaitingRoomEntry[]>(waitingRoomUrl);
+
+  const bookingsUrl =
+    selectedLocationId != null
+      ? `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500&location_id=${encodeURIComponent(selectedLocationId)}`
+      : `/api/provider/bookings?start_date=${todayStr}&end_date=${todayStr}&limit=500`;
+  const {
+    data: rawBookings,
+    loading: bookingsLoading,
+    error: bookingsError,
+    refresh: refreshBookings,
+  } = useApi<TodayBookingRow[]>(bookingsUrl);
+
+  const { execute: patchWaitingRoom } = useApiMutation("patch");
+
+  const onRefresh = useCallback(() => {
+    refreshWaiting();
+    refreshBookings();
+  }, [refreshWaiting, refreshBookings]);
 
   useEffect(() => {
     return () => {
@@ -50,24 +90,74 @@ export default function WaitingRoomScreen() {
     if (
       onDemandConfig.enabled &&
       onDemandConfig.ringtone_asset_path &&
-      prevWaitingCountRef.current !== null &&
-      waitingCount > prevWaitingCountRef.current
+      prevWaitingQueueCountRef.current !== null &&
+      waitingCount > prevWaitingQueueCountRef.current
     ) {
       ringtoneStopRef.current?.();
       playRingtone(onDemandConfig).then((ctrl) => {
         ringtoneStopRef.current = ctrl.stop;
       });
     }
-    prevWaitingCountRef.current = waitingCount;
+    prevWaitingQueueCountRef.current = waitingCount;
   }, [entries, onDemandConfig]);
 
   const waitingList = (entries ?? []).filter((e) => e.status === "waiting");
   const inServiceList = (entries ?? []).filter((e) => e.status === "in_service");
 
-  if (loading && !entries) {
+  const { pendingToday, scheduleToday, bookedCount, pendingCount } = useMemo(() => {
+    const list = Array.isArray(rawBookings) ? rawBookings : [];
+    const today = new Date();
+    const onToday = list.filter((b) => {
+      const d = parseISO(b.scheduled_at);
+      return Number.isFinite(d.getTime()) && isSameDay(d, today);
+    });
+    const pending = onToday.filter((b) => b.db_status === "pending").sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
+    const schedule = onToday
+      .filter((b) => b.db_status !== "pending" && isActiveScheduleBooking(b))
+      .sort((a, b) => parseISO(a.scheduled_at).getTime() - parseISO(b.scheduled_at).getTime());
+    return {
+      pendingToday: pending,
+      scheduleToday: schedule,
+      bookedCount: onToday.filter(isActiveScheduleBooking).length,
+      pendingCount: pending.length,
+    };
+  }, [rawBookings]);
+
+  useEffect(() => {
+    if (
+      onDemandConfig.enabled &&
+      onDemandConfig.ringtone_asset_path &&
+      prevPendingConfirmCountRef.current !== null &&
+      pendingCount > prevPendingConfirmCountRef.current
+    ) {
+      ringtoneStopRef.current?.();
+      playRingtone(onDemandConfig).then((ctrl) => {
+        ringtoneStopRef.current = ctrl.stop;
+      });
+    }
+    prevPendingConfirmCountRef.current = pendingCount;
+  }, [pendingCount, onDemandConfig]);
+
+  const setWrStatus = useCallback(
+    async (bookingId: string, status: "waiting" | "in_service" | "completed") => {
+      const { error } = await patchWaitingRoom(`/api/provider/waiting-room/${bookingId}`, { status });
+      if (error) {
+        Alert.alert("Could not update", error);
+        return;
+      }
+      refreshWaiting();
+    },
+    [patchWaitingRoom, refreshWaiting],
+  );
+
+  /** Today's schedule comes from the same endpoint as Calendar — primary load. */
+  const scheduleStillLoading = bookingsLoading && rawBookings === null;
+  const scheduleLoadError = bookingsError && rawBookings === null;
+
+  if (scheduleStillLoading) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -75,12 +165,12 @@ export default function WaitingRoomScreen() {
     );
   }
 
-  if (error && !entries) {
+  if (scheduleLoadError) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Front Desk" showBack />
+        <ScreenHeader title="Front Desk" subtitle="Today · schedule & check-ins" showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error} onRetry={refresh} />
+          <ErrorState message={bookingsError ?? "Could not load today's bookings"} onRetry={onRefresh} />
         </View>
       </ScreenContainer>
     );
@@ -88,51 +178,158 @@ export default function WaitingRoomScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Front Desk" showBack />
+      <ScreenHeader title="Front Desk" subtitle="Same data as calendar — today" showBack />
 
       <ScrollView
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 32 }}
         refreshControl={
-          <RefreshControl refreshing={loading} onRefresh={refresh} tintColor="#1a1f3c" />
+          <RefreshControl refreshing={waitingLoading || bookingsLoading} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
-        <View style={twStyle("mx-4 mb-4 flex-row")}>
-          <View style={[twStyle("flex-1 rounded-xl border border-gray-100 bg-amber-50 p-3"), { marginRight: 12 }]}>
-            <Text style={twStyle("text-xs text-amber-700")}>Waiting</Text>
-            <Text style={twStyle("text-xl font-semibold text-amber-800")}>{waitingList.length}</Text>
+        {/* Attention row */}
+        <View style={twStyle("mx-4 mb-4 flex-row flex-wrap")}>
+          <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-amber-200 bg-amber-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
+            <Text style={twStyle("text-xs font-semibold text-amber-800")}>Needs action</Text>
+            <Text style={twStyle("text-2xl font-bold text-amber-900")}>{pendingCount}</Text>
+            <Text style={twStyle("text-[10px] text-amber-700")}>Pending confirm</Text>
           </View>
-          <View style={twStyle("flex-1 rounded-xl border border-gray-100 bg-blue-50 p-3")}>
-            <Text style={twStyle("text-xs text-blue-700")}>In service</Text>
-            <Text style={twStyle("text-xl font-semibold text-blue-800")}>{inServiceList.length}</Text>
+          <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-teal-200 bg-teal-50 p-3"), { marginRight: 8, marginBottom: 8 }]}>
+            <Text style={twStyle("text-xs font-semibold text-teal-800")}>Booked today</Text>
+            <Text style={twStyle("text-2xl font-bold text-teal-900")}>{bookedCount}</Text>
+            <Text style={twStyle("text-[10px] text-teal-700")}>Active appts</Text>
+          </View>
+          <View style={[twStyle("min-w-[30%] flex-1 rounded-xl border border-gray-200 bg-gray-50 p-3"), { marginBottom: 8 }]}>
+            <Text style={twStyle("text-xs font-semibold text-gray-700")}>Check-in queue</Text>
+            <Text style={twStyle("text-2xl font-bold text-gray-900")}>{waitingList.length}</Text>
+            <Text style={twStyle("text-[10px] text-gray-600")}>Waiting now</Text>
           </View>
         </View>
 
+        {pendingCount > 0 && (
+          <View style={twStyle("mx-4 mb-4 rounded-xl border border-amber-300 bg-amber-100/80 p-3")}>
+            <View style={twStyle("flex-row items-center")}>
+              <Ionicons name="flash" size={20} color="#B45309" />
+              <Text style={twStyle("ml-2 flex-1 text-sm font-bold text-amber-900")}>
+                Confirm these on the booking screen so clients know they are approved.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Pending confirmations */}
+        <View style={twStyle("px-4 mb-6")}>
+          <Text style={twStyle("mb-2 text-sm font-bold text-gray-900")}>Pending confirmation</Text>
+          {pendingToday.length === 0 ? (
+            <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
+              <Text style={twStyle("text-center text-sm text-gray-500")}>None — you’re caught up.</Text>
+            </View>
+          ) : (
+            pendingToday.map((b) => {
+              const t = format(parseISO(b.scheduled_at), "HH:mm");
+              const name = b.customers?.full_name ?? "Guest";
+              const svc = b.services?.[0];
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)}
+                  style={twStyle("mb-2 flex-row items-center rounded-xl border-2 border-amber-300 bg-amber-50/90 p-4")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Pending booking ${name} at ${t}`}
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-200")}>
+                    <Ionicons name="alert-circle" size={22} color="#92400E" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-semibold text-gray-900")}>{name}</Text>
+                    <Text style={twStyle("text-xs text-amber-900 font-medium")}>{t} · Tap to confirm</Text>
+                    {svc ? <Text style={twStyle("text-xs text-gray-600 mt-0.5")}>{serviceLine(svc)}</Text> : null}
+                    {b.location_type === "at_home" ? (
+                      <Text style={twStyle("text-[10px] text-violet-700 font-semibold mt-1")}>HOUSE CALL</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#92400E" />
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Today's schedule (matches calendar for this date) */}
+        <View style={twStyle("px-4 mb-6")}>
+          <Text style={twStyle("mb-2 text-sm font-bold text-gray-900")}>Today&apos;s schedule</Text>
+          {scheduleToday.length === 0 ? (
+            <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
+              <Text style={twStyle("text-center text-sm text-gray-500")}>No other active appointments today.</Text>
+            </View>
+          ) : (
+            scheduleToday.map((b) => {
+              const t = format(parseISO(b.scheduled_at), "HH:mm");
+              const name = b.customers?.full_name ?? "Guest";
+              const svc = b.services?.[0];
+              return (
+                <TouchableOpacity
+                  key={b.id}
+                  onPress={() => router.push(`/(app)/(tabs)/more/bookings/${b.id}` as never)}
+                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
+                  accessibilityRole="button"
+                >
+                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-slate-100")}>
+                    <Ionicons name="calendar" size={18} color="#475569" />
+                  </View>
+                  <View style={twStyle("flex-1")}>
+                    <Text style={twStyle("font-medium text-gray-900")}>{name}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>
+                      {t} · {b.status.replace(/_/g, " ")}
+                    </Text>
+                    {svc ? <Text style={twStyle("text-xs text-gray-500 mt-0.5")}>{serviceLine(svc)}</Text> : null}
+                    {b.location_type === "at_home" ? (
+                      <Text style={twStyle("text-[10px] text-violet-600 font-medium mt-1")}>At client location</Text>
+                    ) : null}
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        {/* Physical check-in queue (checked in at salon) */}
         <View style={twStyle(isTablet ? "flex-row px-4" : "px-4")}>
           <View style={twStyle(isTablet ? "flex-1 pr-2" : "")}>
-            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Waiting</Text>
+            <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>Waiting (checked in)</Text>
             {waitingList.length === 0 ? (
               <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
-                <Text style={twStyle("text-center text-sm text-gray-500")}>No one waiting</Text>
+                <Text style={twStyle("text-center text-sm text-gray-500")}>No one in the waiting queue.</Text>
               </View>
             ) : (
               waitingList.map((entry) => (
-                <View
-                  key={entry.id}
-                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
-                >
-                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-100")}>
-                    <Ionicons name="person" size={20} color="#b45309" />
-                  </View>
-                  <View style={twStyle("flex-1")}>
-                    <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
-                    {entry.service_name ? (
-                      <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
-                    ) : null}
-                    <Text style={twStyle("text-xs text-gray-400")}>
-                      Checked in {format(new Date(entry.checked_in_time), "HH:mm")}
-                    </Text>
-                  </View>
+                <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
+                  <TouchableOpacity
+                    onPress={() => router.push(`/(app)/(tabs)/more/bookings/${entry.id}` as never)}
+                    style={twStyle("min-w-0 flex-1 flex-row items-center")}
+                    accessibilityRole="button"
+                  >
+                    <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-amber-100")}>
+                      <Ionicons name="person" size={20} color="#b45309" />
+                    </View>
+                    <View style={twStyle("min-w-0 flex-1")}>
+                      <Text style={twStyle("font-medium text-gray-900")} numberOfLines={1}>
+                        {entry.client_name}
+                      </Text>
+                      {entry.service_name ? <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text> : null}
+                      <Text style={twStyle("text-xs text-gray-400")}>Checked in {format(new Date(entry.checked_in_time), "HH:mm")}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setWrStatus(entry.id, "in_service")}
+                    style={twStyle("ml-2 rounded-lg bg-teal-600 px-3 py-2.5")}
+                    accessibilityLabel="Start service"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="play" size={18} color="#fff" />
+                  </TouchableOpacity>
                 </View>
               ))
             )}
@@ -142,23 +339,35 @@ export default function WaitingRoomScreen() {
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-900")}>In service</Text>
             {inServiceList.length === 0 ? (
               <View style={twStyle("rounded-xl border border-gray-100 bg-gray-50 p-4")}>
-                <Text style={twStyle("text-center text-sm text-gray-500")}>No one in service</Text>
+                <Text style={twStyle("text-center text-sm text-gray-500")}>No one marked in service.</Text>
               </View>
             ) : (
               inServiceList.map((entry) => (
-                <View
-                  key={entry.id}
-                  style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
-                >
-                  <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100")}>
-                    <Ionicons name="person" size={20} color="#1d4ed8" />
-                  </View>
-                  <View style={twStyle("flex-1")}>
-                    <Text style={twStyle("font-medium text-gray-900")}>{entry.client_name}</Text>
-                    {entry.service_name ? (
-                      <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text>
-                    ) : null}
-                  </View>
+                <View key={entry.id} style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-3")}>
+                  <TouchableOpacity
+                    onPress={() => router.push(`/(app)/(tabs)/more/bookings/${entry.id}` as never)}
+                    style={twStyle("min-w-0 flex-1 flex-row items-center")}
+                    accessibilityRole="button"
+                  >
+                    <View style={twStyle("mr-3 h-10 w-10 items-center justify-center rounded-full bg-blue-100")}>
+                      <Ionicons name="person" size={20} color="#1d4ed8" />
+                    </View>
+                    <View style={twStyle("min-w-0 flex-1")}>
+                      <Text style={twStyle("font-medium text-gray-900")} numberOfLines={1}>
+                        {entry.client_name}
+                      </Text>
+                      {entry.service_name ? <Text style={twStyle("text-xs text-gray-500")}>{entry.service_name}</Text> : null}
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setWrStatus(entry.id, "completed")}
+                    style={twStyle("ml-2 rounded-lg bg-slate-700 px-3 py-2.5")}
+                    accessibilityLabel="Complete appointment"
+                    accessibilityRole="button"
+                  >
+                    <Ionicons name="checkmark-done" size={18} color="#fff" />
+                  </TouchableOpacity>
                 </View>
               ))
             )}

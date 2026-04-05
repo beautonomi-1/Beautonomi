@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
   request: NextRequest,
@@ -10,12 +11,14 @@ export async function GET(
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { id } = await params;
     const { data, error } = await supabase
       .from("email_templates")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (error) throw error;
@@ -48,6 +51,7 @@ export async function PATCH(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const body = await request.json();
@@ -66,6 +70,7 @@ export async function PATCH(
       .from("email_templates")
       .select("*")
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .single();
 
     if (!currentTemplate) {
@@ -89,6 +94,7 @@ export async function PATCH(
       .from("email_templates")
       .update(updateData)
       .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`)
       .select()
       .single();
 
@@ -130,12 +136,14 @@ export async function DELETE(
   try {
     await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
 
     const { error } = await supabase
       .from("email_templates")
       .delete()
-      .eq("id", id);
+      .eq("id", id)
+      .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) throw error;
 

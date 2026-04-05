@@ -34,6 +34,13 @@ const PROVIDERS = [
   { label: "Mailchimp", value: "mailchimp", icon: "megaphone-outline" as const, color: "#f59e0b" },
 ];
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function EmailIntegrationScreen() {
   const { data: integration, loading, refresh } = useApi<EmailIntegration | null>(
     "/api/provider/email-integration"
@@ -133,7 +140,7 @@ export default function EmailIntegrationScreen() {
           <View style={twStyle("flex-row items-center")}>
             <Ionicons name="checkmark-circle" size={16} color="#22c55e" />
             <Text style={twStyle("ml-1.5 text-sm text-green-700")}>
-              Connected since {new Date(integration.connected_date).toLocaleDateString()}
+              Connected since {formatDateSafe(integration.connected_date)}
             </Text>
           </View>
         </View>

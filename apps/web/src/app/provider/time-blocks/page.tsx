@@ -137,7 +137,67 @@ export default function TimeBlocksPage() {
             </SectionCard>
           ) : (
             <SectionCard className="p-0 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Mobile card layout */}
+              <div className="md:hidden divide-y">
+                {timeBlocks.map((block) => (
+                  <div key={block.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium">{block.name}</p>
+                        <p className="text-sm text-gray-600 mt-0.5">
+                          {block.team_member_name || "All team members"}
+                        </p>
+                      </div>
+                      {block.is_active ? (
+                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        {block.date}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        {block.start_time} - {block.end_time}
+                      </span>
+                      {block.is_recurring && (
+                        <span className="flex items-center gap-1">
+                          <Repeat className="w-3.5 h-3.5 text-gray-400" />
+                          Recurring
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] flex-1"
+                        onClick={() => handleEditBlock(block)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteBlock(block.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table layout */}
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -237,7 +297,56 @@ export default function TimeBlocksPage() {
             </SectionCard>
           ) : (
             <SectionCard className="p-0 overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Mobile card layout */}
+              <div className="md:hidden divide-y">
+                {blockedTimeTypes.map((type) => (
+                  <div key={type.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <div
+                          className="w-5 h-5 rounded border shrink-0"
+                          style={{ backgroundColor: type.color || "#FF0077" }}
+                        />
+                        <div className="min-w-0">
+                          <p className="font-medium">{type.name}</p>
+                          {type.description && (
+                            <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">{type.description}</p>
+                          )}
+                        </div>
+                      </div>
+                      {type.is_active ? (
+                        <Badge className="bg-green-100 text-green-800 shrink-0">Active</Badge>
+                      ) : (
+                        <Badge className="bg-gray-100 text-gray-800 shrink-0">Inactive</Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] flex-1"
+                        onClick={() => handleEditType(type)}
+                      >
+                        <Edit className="w-4 h-4 mr-1" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="min-h-[44px] text-red-600 hover:text-red-700"
+                        onClick={() => handleDeleteType(type.id)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop table layout */}
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>

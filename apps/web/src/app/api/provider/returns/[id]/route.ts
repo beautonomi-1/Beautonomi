@@ -9,6 +9,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 
 const updateSchema = z.object({
   action: z.enum(["approve", "reject", "mark_received", "process_refund"]),
@@ -169,6 +170,29 @@ export async function PATCH(
     if (error) throw error;
 
     const orderNumber = (data as { order?: { order_number?: string } })?.order?.order_number;
+    const refundAmt = Number(update.refund_processed_amount ?? reqRow.refund_amount);
+    let processRefundMessage = "";
+    if (parsed.action === "process_refund") {
+      let refundTenantId: string | null | undefined;
+      if (reqRow.order_id) {
+        const { data: ord } = await supabase
+          .from("product_orders")
+          .select("tenant_id")
+          .eq("id", reqRow.order_id)
+          .maybeSingle();
+        refundTenantId = (ord as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
+      }
+      if (!refundTenantId) {
+        const { data: pr } = await supabase
+          .from("providers")
+          .select("tenant_id")
+          .eq("id", providerId)
+          .maybeSingle();
+        refundTenantId = (pr as { tenant_id?: string | null } | null)?.tenant_id ?? undefined;
+      }
+      const { format } = await getTenantMoneyFormatter(refundTenantId);
+      processRefundMessage = `Your refund of ${format(refundAmt)} for order ${orderNumber} has been processed.`;
+    }
     // Notify customer of return status change
     const notifMap: Record<string, { type: string; title: string; message: string }> = {
       approve: {
@@ -184,20 +208,22 @@ export async function PATCH(
       process_refund: {
         type: "product_return_refunded",
         title: "Refund Processed",
-        message: `Your refund of R${Number(update.refund_processed_amount ?? reqRow.refund_amount).toFixed(2)} for order ${orderNumber} has been processed.`,
+        message: processRefundMessage,
       },
     };
 
     const notif = notifMap[parsed.action];
     if (notif && reqRow.customer_id) {
-      await supabase.from("notifications").insert({
-        user_id: reqRow.customer_id,
-        type: notif.type,
-        title: notif.title,
-        message: notif.message,
-        metadata: { return_request_id: id },
-        link: "/product-orders",
-      }).then(() => {}, () => {});
+      void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
+        insertNotification({
+          user_id: reqRow.customer_id,
+          type: notif.type,
+          title: notif.title,
+          message: notif.message,
+          data: { return_request_id: id },
+          action_url: "/product-orders",
+        })
+      );
     }
 
     return successResponse({ return_request: data });

@@ -19,7 +19,11 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 
 interface Product {
   id: string;
@@ -55,17 +59,25 @@ interface SalesResponse {
   total: number;
 }
 
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
+
 export default function WalkInSaleScreen() {
+  const tenantCurrency = getTenantDefaultCurrency();
   const { screenPadding } = useResponsive();
   const [refreshing, setRefreshing] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [cart, setCart] = useState<{ product_id: string; name: string; price: number; quantity: number }[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "yoco">("cash");
   const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerPhoneE164, setCustomerPhoneE164] = useState("");
   const [showYocoPayment, setShowYocoPayment] = useState(false);
 
-  const { data: productsData, loading: loadingProducts } = useApi<ProductsResponse>(
+  const { data: productsData, loading: loadingProducts, refresh: refreshProducts } = useApi<ProductsResponse>(
     "/api/provider/products?limit=200"
   );
   const { data: salesData, loading: loadingSales, error, refresh } = useApi<SalesResponse>(
@@ -80,9 +92,9 @@ export default function WalkInSaleScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
+    await Promise.all([refresh(), refreshProducts()]);
     setRefreshing(false);
-  }, [refresh]);
+  }, [refresh, refreshProducts]);
 
   const addToCart = useCallback((p: Product) => {
     const qty = Number(p.quantity ?? 0);
@@ -118,13 +130,18 @@ export default function WalkInSaleScreen() {
 
   const submitSale = useCallback(
     async (paymentRef?: string) => {
+      const phoneErr = validateE164Phone(customerPhoneE164);
+      if (phoneErr) {
+        Alert.alert("Invalid phone", phoneErr);
+        return;
+      }
       const items = cart.map((c) => ({ product_id: c.product_id, quantity: c.quantity }));
       const { error: err } = await postSale("/api/provider/product-sales", {
         items,
         payment_method: paymentMethod,
         payment_reference: paymentRef,
         customer_name: customerName.trim() || undefined,
-        customer_phone: customerPhone.trim() || undefined,
+        customer_phone: customerPhoneE164.trim() || undefined,
       });
       if (err) {
         Alert.alert("Error", err);
@@ -135,11 +152,11 @@ export default function WalkInSaleScreen() {
       setShowYocoPayment(false);
       setCart([]);
       setCustomerName("");
-      setCustomerPhone("");
+      setCustomerPhoneE164("");
       setPaymentMethod("cash");
       refresh();
     },
-    [cart, paymentMethod, customerName, customerPhone, postSale, refresh]
+    [cart, paymentMethod, customerName, customerPhoneE164, postSale, refresh]
   );
 
   const handleCompleteSale = useCallback(async () => {
@@ -188,7 +205,7 @@ export default function WalkInSaleScreen() {
             onPress={() => {
               setCart([]);
               setCustomerName("");
-              setCustomerPhone("");
+              setCustomerPhoneE164("");
               setPaymentMethod("cash");
               setCreateOpen(true);
             }}
@@ -235,10 +252,10 @@ export default function WalkInSaleScreen() {
               <View style={{ marginLeft: 12, flex: 1, minWidth: 0 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{sale.order_number}</Text>
                 <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }}>
-                  R {Number(sale.total_amount).toFixed(2)} · {sale.payment_method}
+                  {formatCurrency(Number(sale.total_amount), tenantCurrency)} · {sale.payment_method}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
-                  {new Date(sale.created_at).toLocaleDateString()}
+                  {formatDateSafe(sale.created_at)}
                 </Text>
               </View>
             </View>
@@ -284,7 +301,7 @@ export default function WalkInSaleScreen() {
                           {p.name}
                         </Text>
                         <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
-                          R {Number(p.retail_price).toFixed(2)}
+                          {formatCurrency(Number(p.retail_price), tenantCurrency)}
                           {stock >= 0 && ` · ${stock} in stock`}
                         </Text>
                       </View>
@@ -330,13 +347,13 @@ export default function WalkInSaleScreen() {
                         {c.name} × {c.quantity}
                       </Text>
                       <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>
-                        R {(c.price * c.quantity).toFixed(2)}
+                        {formatCurrency(c.price * c.quantity, tenantCurrency)}
                       </Text>
                     </View>
                   ))}
                   <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
                     <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Total</Text>
-                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>R {cartTotal.toFixed(2)}</Text>
+                    <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{formatCurrency(cartTotal, tenantCurrency)}</Text>
                   </View>
                 </View>
 
@@ -368,17 +385,16 @@ export default function WalkInSaleScreen() {
                   value={customerName}
                   onChangeText={setCustomerName}
                 />
-                <TextInput
-                  style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 10, fontSize: 16, color: Colors.gray[900] }}
-                  placeholder="Phone"
-                  placeholderTextColor="#9ca3af"
-                  value={customerPhone}
-                  onChangeText={setCustomerPhone}
-                  keyboardType="phone-pad"
+                <E164PhoneField
+                  valueE164={customerPhoneE164}
+                  onChangeE164={setCustomerPhoneE164}
+                  compact
+                  muted
+                  accessibilityLabel="Customer phone"
                 />
 
                 <ActionButton
-                  label={creating ? "Completing…" : `Complete sale · R ${cartTotal.toFixed(2)}`}
+                  label={creating ? "Completing…" : `Complete sale · ${formatCurrency(cartTotal)}`}
                   onPress={handleCompleteSale}
                   loading={creating}
                   fullWidth
@@ -397,7 +413,7 @@ export default function WalkInSaleScreen() {
         visible={showYocoPayment}
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(cartTotal * 100)}
-        currency="ZAR"
+        currency={tenantCurrency}
         description="Walk-in sale"
         onPaymentSuccess={async (result) => {
           await submitSale(result.reference);

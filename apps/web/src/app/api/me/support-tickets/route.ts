@@ -4,12 +4,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
 import { notifySupportTicketCreated } from "@/lib/notifications/notification-service";
 import { z } from "zod";
+import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
 
 const createTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long"),
   message: z.string().min(1, "Message is required").max(5000, "Message too long"),
   priority: z.enum(["low", "medium", "high"]).optional().default("medium"),
-  category: z.string().optional(),
+  category: z.string().max(120).optional(),
 });
 
 /**
@@ -22,6 +23,7 @@ export async function POST(request: NextRequest) {
     const { user } = await requireAuthInApi(request);
     const body = await request.json();
     const validated = createTicketSchema.parse(body);
+    const category = normalizeSupportTicketCategory(validated.category);
 
     const adminSupabase = getSupabaseAdmin();
 
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
         description: validated.message.slice(0, 10000) || "(No description)",
         priority: validated.priority,
         status: "open",
-        category: validated.category || "general",
+        category,
       })
       .select()
       .single();

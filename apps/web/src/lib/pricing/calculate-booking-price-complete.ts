@@ -13,6 +13,9 @@
  * - Tips
  */
 
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { percentOf, subtractMoney, sumMoney, roundCurrency } from "@beautonomi/utils";
+
 export interface ServiceItem {
   id: string;
   price: number;
@@ -218,7 +221,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
     travelFee = null,
     platformFeeConfig = null,
     tipPercentage = 0,
-    currency = 'ZAR',
+    currency = LAST_RESORT_CURRENCY,
   } = input;
 
   const warnings: string[] = [];
@@ -235,13 +238,13 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
   if (membership && membership.discount_percentage > 0) {
     if (membership.discount_type === 'percentage') {
       // Apply to services only (typically products excluded)
-      membership_discount_amount = (services_subtotal + addons_subtotal) * (membership.discount_percentage / 100);
+      membership_discount_amount = percentOf(services_subtotal + addons_subtotal, membership.discount_percentage);
     } else {
       // Fixed amount discount
       membership_discount_amount = Math.min(membership.discount_percentage, services_subtotal + addons_subtotal);
     }
   }
-  const subtotal_after_membership = base_subtotal - membership_discount_amount;
+  const subtotal_after_membership = subtractMoney(base_subtotal, membership_discount_amount);
 
   // STEP 3: Apply Loyalty Points
   let loyalty_discount_amount = 0;
@@ -258,7 +261,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
         loyalty_discount_amount = loyaltyPoints.points_to_redeem / loyaltyPoints.redemption_rate;
         
         // Check max redemption limit (% of subtotal)
-        const max_loyalty_discount = subtotal_after_membership * (max_percentage / 100);
+        const max_loyalty_discount = percentOf(subtotal_after_membership, max_percentage);
         if (loyalty_discount_amount > max_loyalty_discount) {
           loyalty_discount_amount = max_loyalty_discount;
           loyalty_points_redeemed = Math.floor(max_loyalty_discount * loyaltyPoints.redemption_rate);
@@ -275,7 +278,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
       warnings.push(`Minimum ${min_points} points required for redemption`);
     }
   }
-  const subtotal_after_loyalty = subtotal_after_membership - loyalty_discount_amount;
+  const subtotal_after_loyalty = subtractMoney(subtotal_after_membership, loyalty_discount_amount);
 
   // STEP 4: Apply Promo Code
   let promo_discount_amount = 0;
@@ -284,17 +287,17 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
       warnings.push(`Promo requires minimum booking of ${currency} ${promotion.min_booking_amount}`);
     } else {
       if (promotion.discount_type === 'percentage') {
-        promo_discount_amount = subtotal_after_loyalty * (promotion.discount_value / 100);
+        promo_discount_amount = percentOf(subtotal_after_loyalty, promotion.discount_value);
       } else {
         promo_discount_amount = Math.min(promotion.discount_value, subtotal_after_loyalty);
       }
     }
   }
-  const subtotal_after_promo = subtotal_after_loyalty - promo_discount_amount;
+  const subtotal_after_promo = subtractMoney(subtotal_after_loyalty, promo_discount_amount);
 
   // STEP 5: Apply Manual Discount
   const manual_discount_amount = Math.min(manualDiscount?.amount || 0, subtotal_after_promo);
-  const taxable_amount = subtotal_after_promo - manual_discount_amount;
+  const taxable_amount = subtractMoney(subtotal_after_promo, manual_discount_amount);
 
   // STEP 6: Calculate Tax
   let total_tax_rate = 0;
@@ -308,8 +311,8 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
   });
   
   const effective_tax_rate = taxable_items_count > 0 ? total_tax_rate / taxable_items_count : 0;
-  const tax_amount = taxable_amount * (effective_tax_rate / 100);
-  const subtotal_with_tax = taxable_amount + tax_amount;
+  const tax_amount = percentOf(taxable_amount, effective_tax_rate);
+  const subtotal_with_tax = sumMoney(taxable_amount, tax_amount);
 
   // STEP 7: Calculate Travel Fee
   let travel_fee_amount = 0;
@@ -340,7 +343,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
     
     travel_savings = standard_travel_fee - travel_fee_amount;
   }
-  const subtotal_with_travel = subtotal_with_tax + travel_fee_amount;
+  const subtotal_with_travel = sumMoney(subtotal_with_tax, travel_fee_amount);
 
   // STEP 8: Calculate Platform Fee
   let platform_fee_amount = 0;
@@ -349,7 +352,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
     
     if (!platformFeeConfig.min_booking_amount || fee_base >= platformFeeConfig.min_booking_amount) {
       if (platformFeeConfig.fee_type === 'percentage' && platformFeeConfig.fee_percentage) {
-        platform_fee_amount = fee_base * (platformFeeConfig.fee_percentage / 100);
+        platform_fee_amount = percentOf(fee_base, platformFeeConfig.fee_percentage);
       } else if (platformFeeConfig.fee_type === 'fixed_amount' && platformFeeConfig.fee_fixed_amount) {
         platform_fee_amount = platformFeeConfig.fee_fixed_amount;
       } else if (platformFeeConfig.fee_type === 'tiered' && platformFeeConfig.tiered_config) {
@@ -358,7 +361,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
         );
         if (tier) {
           if (tier.fee_percentage) {
-            platform_fee_amount = fee_base * (tier.fee_percentage / 100);
+            platform_fee_amount = percentOf(fee_base, tier.fee_percentage);
           } else if (tier.fee_fixed_amount) {
             platform_fee_amount = tier.fee_fixed_amount;
           }
@@ -371,13 +374,13 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
       }
     }
   }
-  const subtotal_with_fee = subtotal_with_travel + platform_fee_amount;
+  const subtotal_with_fee = sumMoney(subtotal_with_travel, platform_fee_amount);
 
   // STEP 9: Calculate Tip
-  const tip_amount = tipPercentage > 0 ? (taxable_amount * (tipPercentage / 100)) : 0;
+  const tip_amount = tipPercentage > 0 ? percentOf(taxable_amount, tipPercentage) : 0;
   
   // FINAL TOTAL
-  const total_amount = subtotal_with_fee + tip_amount;
+  const total_amount = sumMoney(subtotal_with_fee, tip_amount);
 
   // Calculate points earned (1 point per currency unit spent on taxable amount)
   const points_earned = Math.floor(taxable_amount);
@@ -389,7 +392,7 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
     promo: promo_discount_amount,
     manual: manual_discount_amount,
     travel_optimization: travel_savings,
-    total: membership_discount_amount + loyalty_discount_amount + promo_discount_amount + manual_discount_amount + travel_savings,
+    total: sumMoney(membership_discount_amount, loyalty_discount_amount, promo_discount_amount, manual_discount_amount, travel_savings),
   };
 
   // Add suggestions
@@ -493,8 +496,8 @@ export function calculateBookingPrice(input: CalculateBookingPriceInput): PriceB
 /**
  * Format currency for display
  */
-export function formatCurrency(amount: number, currency: string = 'ZAR'): string {
-  return new Intl.NumberFormat('en-ZA', {
+export function formatCurrency(amount: number, currency: string = LAST_RESORT_CURRENCY): string {
+  return new Intl.NumberFormat(undefined, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,
@@ -519,7 +522,7 @@ export function validateLoyaltyRedemption(
     return { valid: false, error: 'Insufficient points balance' };
   }
   
-  const maxAllowedPoints = Math.floor((subtotal * (maxPercentage / 100)) * 10); // Assuming 10 points per unit
+  const maxAllowedPoints = Math.floor(percentOf(subtotal, maxPercentage) * 10);
   if (pointsToRedeem > maxAllowedPoints) {
     return { valid: false, error: `Maximum ${maxPercentage}% of subtotal can be paid with points`, maxAllowed: maxAllowedPoints };
   }

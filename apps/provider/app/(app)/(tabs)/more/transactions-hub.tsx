@@ -8,13 +8,15 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type Transaction = {
   id: string;
   transaction_type: string;
   amount?: number;
   net?: number;
-  created_at: string;
+  date: string;
+  created_at?: string;
   description?: string | null;
 };
 
@@ -23,8 +25,16 @@ type FinanceResponse = {
   transactions?: Transaction[];
 };
 
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
 export default function TransactionsHubScreen() {
   const router = useRouter();
+  const tenantCurrency = getTenantDefaultCurrency();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<FinanceResponse>("/api/provider/finance");
 
@@ -103,11 +113,11 @@ export default function TransactionsHubScreen() {
                       </Text>
                     )}
                     <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[400] }}>
-                      {new Date(t.created_at).toLocaleString()}
+                      {formatDateTimeSafe(t.date ?? t.created_at)}
                     </Text>
                   </View>
                   <Text style={{ fontSize: 16, fontWeight: "600", color: isNegative ? "#dc2626" : Colors.gray[900] }}>
-                    {isNegative ? "" : "+"}ZAR {Math.abs(net).toLocaleString()}
+                    {isNegative ? "" : "+"}{tenantCurrency} {Math.abs(net).toLocaleString()}
                   </Text>
                 </View>
               );

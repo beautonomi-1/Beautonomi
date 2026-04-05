@@ -13,10 +13,13 @@ import {
   CreditCard,
   X,
   User,
-  Phone,
   History,
 } from "lucide-react";
 import { BarcodeLookup } from "@/components/provider-portal/BarcodeLookup";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { Label } from "@/components/ui/label";
+import { isCompleteE164 } from "@/lib/phone";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface Product {
   id: string;
@@ -44,6 +47,7 @@ interface WalkInOrder {
 }
 
 export default function WalkInSalePage() {
+  const { format: formatMoney, locale } = useProviderMoneyFormat();
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -57,13 +61,21 @@ export default function WalkInSalePage() {
   const [recentSales, setRecentSales] = useState<WalkInOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
 
+  const [loadError, setLoadError] = useState("");
   const fetchProducts = useCallback(async () => {
     setLoading(true);
-    const res = await fetcher.get<{ data: { products: Product[] } }>("/api/provider/products?limit=200");
-    if (res?.data?.products) {
-      setProducts(res.data.products.filter((p) => p.is_active && p.quantity > 0));
+    setLoadError("");
+    try {
+      const res = await fetcher.get<{ data: { products: Product[] } }>("/api/provider/products?limit=200");
+      if (res?.data?.products) {
+        setProducts(res.data.products.filter((p) => p.is_active && p.quantity > 0));
+      }
+    } catch (err: any) {
+      console.error("Failed to load products:", err);
+      setLoadError(err?.message || "Failed to load products");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
   const fetchHistory = useCallback(async () => {
@@ -119,6 +131,10 @@ export default function WalkInSalePage() {
 
   const handleSale = async () => {
     if (cart.length === 0 || processing) return;
+    if (customerPhone.trim() && !isCompleteE164(customerPhone)) {
+      setError("Enter a valid phone number or clear the phone field.");
+      return;
+    }
     setProcessing(true);
     setError("");
 
@@ -158,7 +174,7 @@ export default function WalkInSalePage() {
         <h2 className="mb-2 text-2xl font-bold text-gray-900">Sale Complete!</h2>
         <p className="mb-1 text-gray-600">Order: {success.orderNumber}</p>
         <p className="mb-6 text-2xl font-bold text-pink-600">
-          R{success.total.toFixed(2)}
+          {formatMoney(success.total)}
         </p>
         <button
           onClick={() => setSuccess(null)}
@@ -171,8 +187,8 @@ export default function WalkInSalePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 min-w-0 max-w-full overflow-x-hidden">
+      <div className="mx-auto max-w-7xl px-3 py-4 sm:px-6 sm:py-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Walk-in Sale</h1>
@@ -208,9 +224,11 @@ export default function WalkInSalePage() {
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-pink-600">R{Number(sale.total_amount).toFixed(2)}</p>
+                      <p className="font-bold text-pink-600">
+                        {formatMoney(Number(sale.total_amount))}
+                      </p>
                       <p className="text-xs text-gray-400">
-                        {new Date(sale.created_at).toLocaleString("en-ZA")}
+                        {new Date(sale.created_at).toLocaleString(locale)}
                       </p>
                     </div>
                   </div>
@@ -266,6 +284,16 @@ export default function WalkInSalePage() {
                 <div className="flex items-center justify-center py-16">
                   <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
                 </div>
+              ) : loadError ? (
+                <div className="py-16 text-center">
+                  <p className="text-sm text-red-600 mb-3">{loadError}</p>
+                  <button
+                    onClick={fetchProducts}
+                    className="rounded-lg bg-pink-500 px-4 py-2 text-sm font-medium text-white hover:bg-pink-600 min-h-[44px] touch-manipulation"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : filtered.length === 0 ? (
                 <div className="py-16 text-center text-gray-400">No products in stock</div>
               ) : (
@@ -291,7 +319,7 @@ export default function WalkInSalePage() {
                         )}
                         <div className="mt-2 flex items-center justify-between">
                           <span className="font-bold text-pink-600">
-                            R{product.retail_price.toFixed(2)}
+                            {formatMoney(product.retail_price)}
                           </span>
                           <span className="text-xs text-gray-400">
                             {product.quantity} in stock
@@ -327,7 +355,7 @@ export default function WalkInSalePage() {
                             {item.product.name}
                           </p>
                           <p className="text-xs text-gray-400">
-                            R{item.product.retail_price.toFixed(2)} each
+                            {formatMoney(item.product.retail_price)} each
                           </p>
                         </div>
                         <div className="flex items-center gap-1.5">
@@ -346,7 +374,7 @@ export default function WalkInSalePage() {
                           </button>
                         </div>
                         <span className="w-20 text-right text-sm font-semibold text-gray-900">
-                          R{(item.product.retail_price * item.qty).toFixed(2)}
+                          {formatMoney(item.product.retail_price * item.qty)}
                         </span>
                         <button
                           onClick={() => removeFromCart(item.product.id)}
@@ -361,27 +389,30 @@ export default function WalkInSalePage() {
 
                 {/* Customer info (optional) */}
                 <div className="border-t px-5 py-4 space-y-3">
-                  <div className="flex gap-3">
-                    <div className="relative flex-1">
-                      <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={customerName}
-                        onChange={(e) => setCustomerName(e.target.value)}
-                        placeholder="Customer name (optional)"
-                        className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-pink-500 focus:outline-none"
-                      />
-                    </div>
-                    <div className="relative flex-1">
-                      <Phone className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                      <input
-                        type="tel"
-                        value={customerPhone}
-                        onChange={(e) => setCustomerPhone(e.target.value)}
-                        placeholder="Phone (optional)"
-                        className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-pink-500 focus:outline-none"
-                      />
-                    </div>
+                  <div className="relative">
+                    <User className="absolute left-3 top-2.5 h-4 w-4 text-gray-400 z-10" />
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Customer name (optional)"
+                      className="w-full rounded-lg border border-gray-200 py-2 pl-9 pr-3 text-sm focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="walk-in-sale-customer-phone"
+                      className="text-xs font-medium text-gray-600"
+                    >
+                      Phone (optional)
+                    </Label>
+                    <PhoneInput
+                      label=""
+                      inputId="walk-in-sale-customer-phone"
+                      value={customerPhone}
+                      onChange={setCustomerPhone}
+                      className="space-y-1"
+                    />
                   </div>
 
                   {/* Payment method */}
@@ -416,7 +447,7 @@ export default function WalkInSalePage() {
                   <div className="mb-4 flex items-center justify-between">
                     <span className="text-lg font-semibold text-gray-900">Total</span>
                     <span className="text-2xl font-extrabold text-pink-600">
-                      R{total.toFixed(2)}
+                      {formatMoney(total)}
                     </span>
                   </div>
 
@@ -437,7 +468,7 @@ export default function WalkInSalePage() {
                         Processing...
                       </>
                     ) : (
-                      `Complete Sale — R${total.toFixed(2)}`
+                      `Complete Sale — ${formatMoney(total)}`
                     )}
                   </button>
                 </div>

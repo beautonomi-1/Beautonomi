@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -10,7 +9,8 @@ import {
   Platform,
   StyleSheet,
 } from "react-native";
-import { Stack, router } from "expo-router";
+import { FlashList } from "@shopify/flash-list";
+import { Stack } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useNotifications } from "@/providers/NotificationsContext";
 import { api } from "@/lib/api-client";
@@ -18,83 +18,11 @@ import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-
-interface Notification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  is_read: boolean;
-  created_at: string;
-  data?: {
-    conversation_id?: string;
-    booking_id?: string;
-    [key: string]: unknown;
-  };
-  link?: string;
-  action_url?: string;
-}
-
-function formatTime(iso: string) {
-  const d = new Date(iso);
-  const now = new Date();
-  const diff = now.getTime() - d.getTime();
-  if (diff < 60000) return "Just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-  return d.toLocaleDateString();
-}
-
-/** Map notification to app route and navigate. Handles conversation_id, booking_id, and link/action_url. */
-function navigateFromNotification(n: Notification) {
-  const link = n.link ?? n.action_url ?? "";
-  const data = n.data ?? {};
-
-  if (data.conversation_id) {
-    router.push({ pathname: "/(app)/chat", params: { id: data.conversation_id } });
-    return;
-  }
-  if (data.booking_id) {
-    router.push({ pathname: "/(app)/booking-detail", params: { id: data.booking_id } });
-    return;
-  }
-
-  if (link) {
-    if (link.includes("/account-settings/bookings/") || link.includes("/bookings/")) {
-      const id = link.split("/").filter(Boolean).pop();
-      if (id) router.push({ pathname: "/(app)/booking-detail", params: { id } });
-      return;
-    }
-    if (link.includes("waitlist")) {
-      router.push("/(app)/account-settings/waitlist");
-      return;
-    }
-    if (link.includes("returns") || link.includes("product-orders") || link.includes("/orders")) {
-      router.push("/(app)/product-orders");
-      return;
-    }
-    if (link.includes("my-returns")) {
-      router.push("/(app)/my-returns");
-      return;
-    }
-    if (link.includes("referrals")) {
-      router.push("/(app)/account-settings/referrals");
-      return;
-    }
-    if (link.includes("loyalty")) {
-      router.push("/(app)/account-settings/loyalty");
-      return;
-    }
-    if (link.includes("payments") || link.includes("payments")) {
-      router.push("/(app)/account-settings/payments");
-      return;
-    }
-    if (link.includes("bookings")) {
-      router.push("/(app)/account-settings/bookings");
-      return;
-    }
-  }
-}
+import {
+  type Notification,
+  formatNotificationTime,
+  navigateFromNotification,
+} from "@/lib/notifications";
 
 export default function NotificationsScreen() {
   useScreenTracking("Notifications");
@@ -165,7 +93,7 @@ export default function NotificationsScreen() {
     };
   }, [user?.id, refetchUnreadCount]);
 
-  const markRead = async (id: string) => {
+  const markRead = useCallback(async (id: string) => {
     try {
       await api.post(`/api/me/notifications/${id}/read`);
       setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
@@ -173,7 +101,7 @@ export default function NotificationsScreen() {
     } catch {
       // ignore
     }
-  };
+  }, [refetchUnreadCount]);
 
   const markAllRead = async () => {
     try {
@@ -185,10 +113,31 @@ export default function NotificationsScreen() {
     }
   };
 
-  const onPress = (n: Notification) => {
+  const onPress = useCallback((n: Notification) => {
     if (!n.is_read) markRead(n.id);
     navigateFromNotification(n);
-  };
+  }, [markRead]);
+
+  const notifKeyExtractor = useCallback((n: Notification) => n.id, []);
+
+  const renderNotificationItem = useCallback(
+    ({ item }: { item: Notification }) => (
+      <Pressable
+        onPress={() => onPress(item)}
+        style={{
+          paddingVertical: 16,
+          borderBottomWidth: 1,
+          borderBottomColor: Colors.gray[100],
+          backgroundColor: !item.is_read ? Colors.primaryLight : undefined,
+        }}
+      >
+        <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.title}</Text>
+        <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{item.message}</Text>
+        <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 8 }}>{formatNotificationTime(item.created_at)}</Text>
+      </Pressable>
+    ),
+    [onPress],
+  );
 
   if (!user) {
     return (
@@ -230,9 +179,10 @@ export default function NotificationsScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
       ) : (
-        <FlatList
+        <FlashList
           data={list}
-          keyExtractor={(n) => n.id}
+          keyExtractor={notifKeyExtractor}
+          renderItem={renderNotificationItem}
           contentContainerStyle={{ padding: contentPadding, paddingTop: 8, paddingBottom: 48, ...constraint }}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
           ListEmptyComponent={
@@ -242,21 +192,6 @@ export default function NotificationsScreen() {
               </Text>
             </View>
           }
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => onPress(item)}
-              style={{
-                paddingVertical: 16,
-                borderBottomWidth: 1,
-                borderBottomColor: Colors.gray[100],
-                backgroundColor: !item.is_read ? Colors.primaryLight : undefined,
-              }}
-            >
-              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>{item.title}</Text>
-              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{item.message}</Text>
-              <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 8 }}>{formatTime(item.created_at)}</Text>
-            </Pressable>
-          )}
         />
       )}
     </>

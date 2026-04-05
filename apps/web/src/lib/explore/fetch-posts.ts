@@ -9,16 +9,24 @@ function getMediaPublicUrl(path: string): string {
   return `${url}/storage/v1/object/public/${BUCKET}/${path}`;
 }
 
+export type ExplorePostsInitial = {
+  posts: ExplorePost[];
+  next_cursor?: string;
+  has_more: boolean;
+};
+
 /**
- * Server-side fetch of published explore posts. Use for initial page load.
+ * Server-side first page + cursor for infinite scroll (matches GET /api/explore/posts pagination).
  */
-export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
+export async function fetchExplorePostsInitial(pageSize = 20): Promise<ExplorePostsInitial> {
   let supabase;
   try {
     supabase = getSupabaseAdmin();
   } catch {
-    return [];
+    return { posts: [], has_more: false };
   }
+
+  const fetchLimit = pageSize + 1;
   const { data: rows, error } = await supabase
     .from("explore_posts")
     .select(
@@ -28,11 +36,17 @@ export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
     .eq("is_hidden", false)
     .order("published_at", { ascending: false })
     .order("id", { ascending: false })
-    .limit(limit);
+    .limit(fetchLimit);
 
-  if (error || !rows?.length) return [];
+  if (error || !rows?.length) {
+    return { posts: [], has_more: false };
+  }
 
-  const providerIds = [...new Set(rows.map((r: any) => r.provider_id))];
+  const hasMore = rows.length > pageSize;
+  const slice = hasMore ? rows.slice(0, pageSize) : rows;
+  const last = slice[slice.length - 1];
+
+  const providerIds = [...new Set(slice.map((r: any) => r.provider_id))];
   const { data: provData } = await supabase
     .from("providers")
     .select("id, business_name, slug")
@@ -40,7 +54,7 @@ export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
   type ProvRow = { id: string; business_name?: string; slug?: string };
   const provMap = new Map<string, ProvRow>((provData || []).map((p: ProvRow) => [p.id, p]));
 
-  return rows.map((r: any) => {
+  const posts = slice.map((r: any) => {
     const p = provMap.get(r.provider_id);
     return {
       id: r.id,
@@ -62,6 +76,23 @@ export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
       is_liked: false,
     } as ExplorePost;
   });
+
+  let next_cursor: string | undefined;
+  if (hasMore && last) {
+    next_cursor = Buffer.from(
+      JSON.stringify({ published_at: last.published_at, id: last.id })
+    ).toString("base64url");
+  }
+
+  return { posts, next_cursor, has_more: hasMore };
+}
+
+/**
+ * Server-side fetch of published explore posts. Use for initial page load (posts only).
+ */
+export async function fetchExplorePosts(limit = 20): Promise<ExplorePost[]> {
+  const r = await fetchExplorePostsInitial(limit);
+  return r.posts;
 }
 
 /**

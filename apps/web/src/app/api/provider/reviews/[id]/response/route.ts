@@ -130,12 +130,13 @@ export async function POST(
     const customerId = reviewWithCustomer?.customer_id || (reviewWithCustomer as any)?.bookings?.customer_id;
     if (customerId) {
       try {
-        await supabase.from("notifications").insert({
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
           user_id: customerId,
           type: "review_response",
           title: "Provider Responded to Your Review",
           message: `The provider has responded to your review. Check it out!`,
-          metadata: {
+          data: {
             review_id: id,
             booking_id: reviewWithCustomer?.booking_id || (reviewWithCustomer as any)?.bookings?.id,
             provider_id: providerData.id,
@@ -308,12 +309,13 @@ export async function PATCH(
     const customerId = reviewWithCustomer?.customer_id || (reviewWithCustomer as any)?.bookings?.customer_id;
     if (customerId) {
       try {
-        await supabase.from("notifications").insert({
+        const { insertNotification: insertReviewUpdateNotif } = await import("@/lib/notifications/insert-notification");
+        await insertReviewUpdateNotif({
           user_id: customerId,
-          type: "review_response_updated",
+          type: "review_response",
           title: "Provider Updated Their Response",
           message: `The provider has updated their response to your review.`,
-          metadata: {
+          data: {
             review_id: id,
             booking_id: reviewWithCustomer?.booking_id || (reviewWithCustomer as any)?.bookings?.id,
             provider_id: providerData.id,

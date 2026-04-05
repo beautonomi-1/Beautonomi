@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { formatCurrency } from "@/lib/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const markFailedSchema = z.object({
   failure_reason: z.string().min(1, "Failure reason is required"),
@@ -21,7 +25,8 @@ export async function POST(
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     if (!supabase) {
       return NextResponse.json(
@@ -73,8 +78,25 @@ export async function POST(
       );
     }
 
-    type PayoutRow = { status: string; provider_id: string; amount: number };
+    type PayoutRow = { status: string; provider_id: string; amount: number; currency?: string | null };
     const payoutData = payout as PayoutRow;
+    const payoutCurrency = payoutData.currency?.trim() || LAST_RESORT_CURRENCY;
+    const amountFormatted = formatCurrency(Number(payoutData.amount), payoutCurrency);
+
+    const prov = await fetchProviderInAdminTenant(supabase, payoutData.provider_id, tenantId, "id");
+    if ("error" in prov) {
+      const st = prov.error.status;
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: st === 403 ? "Payout belongs to another market" : "Provider not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "NOT_FOUND",
+          },
+        },
+        { status: st }
+      );
+    }
 
     if (payoutData.status === "completed") {
       return NextResponse.json(
@@ -137,14 +159,13 @@ export async function POST(
       if (provider) {
         const providerRow = provider as { user_id?: string };
         const providerUserId = providerRow.user_id;
-        const amountStr = payoutData.amount.toLocaleString();
         const reason = validationResult.data.failure_reason;
         if (providerUserId) {
           await sendToUser(
             providerUserId,
             {
               title: "Payout Failed",
-              message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+              message: `Your payout of ${amountFormatted} could not be processed. Reason: ${reason}`,
               data: {
                 type: "payout_failed",
                 payout_id: id,
@@ -158,7 +179,7 @@ export async function POST(
             user_id: providerUserId,
             type: "system",
             title: "Payout Failed",
-            message: `Your payout of ZAR ${amountStr} could not be processed. Reason: ${reason}`,
+            message: `Your payout of ${amountFormatted} could not be processed. Reason: ${reason}`,
             data: { payout_id: id, amount: payoutData.amount, failure_reason: reason },
             action_url: "/provider/payouts",
           });

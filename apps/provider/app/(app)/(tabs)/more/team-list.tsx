@@ -11,7 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useApi, useApiPost } from "@/hooks/useApi";
+import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -26,6 +26,8 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { StatCard } from "@/components/ui/StatCard";
 import { capitalizeFirst } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
+import { E164PhoneField } from "@/components/E164PhoneField";
+import { validateE164Phone } from "@/lib/phone-country-codes";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -41,6 +43,8 @@ interface StaffMember {
   is_active: boolean;
   /** From API when available (e.g. from reviews); may be omitted. */
   average_rating?: number | null;
+  commission_rate?: number | null;
+  service_ids?: string[];
   locations?: {
     location_id: string;
     location_name: string | null;
@@ -93,13 +97,18 @@ export default function TeamListScreen() {
     Record<string, unknown>,
     StaffMember
   >("/api/provider/staff");
+  const { execute: updateMember, loading: updating } = useApiMutation("patch");
+  const { execute: deleteMember } = useApiMutation("delete");
 
   // --- Local state ---
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<StaffMember | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const [editForm, setEditForm] = useState({ ...EMPTY_FORM });
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -158,9 +167,119 @@ export default function TeamListScreen() {
     }));
   }
 
+  function toggleEditFormService(svcId: string) {
+    setEditForm((prev) => ({
+      ...prev,
+      service_ids: prev.service_ids.includes(svcId)
+        ? prev.service_ids.filter((x) => x !== svcId)
+        : [...prev.service_ids, svcId],
+    }));
+  }
+
+  function openEditSheet(member: StaffMember) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditingMember(member);
+    setEditForm({
+      name: member.name,
+      email: member.email,
+      phone: member.phone ?? "",
+      role: member.role,
+      commission_rate:
+        member.commission_rate != null && !Number.isNaN(Number(member.commission_rate))
+          ? String(member.commission_rate)
+          : "",
+      invite_email: false,
+      location_ids: member.locations?.map((l) => l.location_id) ?? [],
+      service_ids: member.service_ids?.length ? [...member.service_ids] : [],
+    });
+    setEditSheetOpen(true);
+  }
+
+  async function handleEditSubmit() {
+    if (!editingMember) return;
+    if (!editForm.name.trim()) {
+      Alert.alert("Validation", "Name is required.");
+      return;
+    }
+    const phoneErr = editForm.phone ? validateE164Phone(editForm.phone) : null;
+    if (phoneErr) {
+      Alert.alert("Invalid phone", phoneErr);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const payload: Record<string, unknown> = {
+      name: editForm.name.trim(),
+      phone: editForm.phone.trim() || null,
+      role: editForm.role,
+      location_ids: editForm.location_ids,
+      service_ids: editForm.service_ids,
+    };
+    if (editForm.commission_rate.trim()) {
+      payload.commission_rate = parseFloat(editForm.commission_rate);
+    } else if (
+      editingMember.commission_rate != null &&
+      editingMember.commission_rate !== undefined
+    ) {
+      payload.commission_rate = null;
+    }
+    const { error } = await updateMember(`/api/provider/staff/${editingMember.id}`, payload);
+    if (error) {
+      Alert.alert("Error", error);
+    } else {
+      setEditSheetOpen(false);
+      setEditingMember(null);
+      refresh();
+    }
+  }
+
+  function handleLongPress(member: StaffMember) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Alert.alert(member.name, "What would you like to do?", [
+      { text: "Edit", onPress: () => openEditSheet(member) },
+      {
+        text: member.is_active ? "Deactivate" : "Activate",
+        onPress: async () => {
+          const { error } = await updateMember(`/api/provider/staff/${member.id}`, {
+            is_active: !member.is_active,
+          });
+          if (error) Alert.alert("Error", error);
+          else refresh();
+        },
+      },
+      {
+        text: "Remove",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert(
+            "Remove team member",
+            `Remove ${member.name} from your team? This cannot be undone.`,
+            [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Remove",
+                style: "destructive",
+                onPress: async () => {
+                  const { error } = await deleteMember(`/api/provider/staff/${member.id}`, {});
+                  if (error) Alert.alert("Error", error);
+                  else refresh();
+                },
+              },
+            ]
+          );
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
+  }
+
   async function handleSubmit() {
     if (!form.name.trim() || !form.email.trim()) {
       Alert.alert("Validation", "Name and email are required.");
+      return;
+    }
+    const phoneErr = validateE164Phone(form.phone);
+    if (phoneErr) {
+      Alert.alert("Invalid phone", phoneErr);
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -295,6 +414,8 @@ export default function TeamListScreen() {
               onPress={() =>
                 router.push(`/(app)/(tabs)/more/team-member/${member.id}` as any)
               }
+              onLongPress={() => handleLongPress(member)}
+              delayLongPress={400}
               accessibilityLabel={`View ${member.name}`}
             >
               {isTablet ? (
@@ -399,12 +520,13 @@ export default function TeamListScreen() {
           placeholder="email@example.com"
           keyboardType="email-address"
         />
-        <FormField
+        <E164PhoneField
           label="Phone"
-          value={form.phone}
-          onChangeText={(t) => setForm((p) => ({ ...p, phone: t }))}
-          placeholder="+27 xxx xxx xxxx"
-          keyboardType="phone-pad"
+          valueE164={form.phone}
+          onChangeE164={(e164) => setForm((p) => ({ ...p, phone: e164 }))}
+          compact
+          muted
+          accessibilityLabel="Team member phone"
         />
 
         {/* Role Selector */}
@@ -517,6 +639,131 @@ export default function TeamListScreen() {
           label="Add Team Member"
           onPress={handleSubmit}
           loading={creating}
+          fullWidth
+        />
+      </BottomSheet>
+
+      {/* ════════════════════════════════════════════════════════════ */}
+      {/*  Edit Team Member Bottom Sheet                              */}
+      {/* ════════════════════════════════════════════════════════════ */}
+      <BottomSheet
+        visible={editSheetOpen}
+        onClose={() => { setEditSheetOpen(false); setEditingMember(null); }}
+        title={`Edit ${editingMember?.name ?? "team member"}`}
+        snapHeight="auto"
+      >
+        <FormField
+          label="Full Name *"
+          value={editForm.name}
+          onChangeText={(t) => setEditForm((p) => ({ ...p, name: t }))}
+          placeholder="Full name"
+        />
+
+        <E164PhoneField
+          label="Phone"
+          valueE164={editForm.phone}
+          onChangeE164={(e164) => setEditForm((p) => ({ ...p, phone: e164 }))}
+          compact
+          muted
+          accessibilityLabel="Team member phone"
+        />
+
+        {/* Role */}
+        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+        <View style={twStyle("mb-3 flex-row flex-wrap")}>
+          {ROLES.map((r) => (
+            <TouchableOpacity
+              key={r.value}
+              style={[
+                twStyle(`rounded-full px-4 py-2 ${editForm.role === r.value ? "bg-gray-900" : "border border-gray-200 bg-white"}`),
+                { marginRight: 8, marginBottom: 8 },
+              ]}
+              onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
+              accessibilityLabel={`Select role ${r.label}`}
+            >
+              <Text style={twStyle(`text-sm font-medium ${editForm.role === r.value ? "text-white" : "text-gray-600"}`)}>
+                {r.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <FormField
+          label="Commission Rate (%)"
+          value={editForm.commission_rate}
+          onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
+          placeholder="e.g. 30"
+          keyboardType="numeric"
+        />
+
+        {/* Location Assignment */}
+        {locations && locations.length > 0 && (
+          <>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Locations</Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
+              {locations.map((loc, i) => {
+                const isSelected = editForm.location_ids.includes(loc.id);
+                return (
+                  <TouchableOpacity
+                    key={loc.id}
+                    style={twStyle(`flex-row items-center px-4 py-3 ${i < locations.length - 1 ? "border-b border-gray-100" : ""}`)}
+                    onPress={() =>
+                      setEditForm((p) => ({
+                        ...p,
+                        location_ids: isSelected
+                          ? p.location_ids.filter((x) => x !== loc.id)
+                          : [...p.location_ids, loc.id],
+                      }))
+                    }
+                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${loc.name}`}
+                  >
+                    <Ionicons
+                      name={isSelected ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={isSelected ? "#6366f1" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{loc.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        {services && services.length > 0 && (
+          <>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>
+              Assign Services
+            </Text>
+            <View style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50")}>
+              {services.map((svc, i) => {
+                const isSelected = editForm.service_ids.includes(svc.id);
+                return (
+                  <TouchableOpacity
+                    key={svc.id}
+                    style={twStyle(
+                      `flex-row items-center px-4 py-3 ${i < services.length - 1 ? "border-b border-gray-100" : ""}`,
+                    )}
+                    onPress={() => toggleEditFormService(svc.id)}
+                    accessibilityLabel={`${isSelected ? "Deselect" : "Select"} ${svc.title}`}
+                  >
+                    <Ionicons
+                      name={isSelected ? "checkbox" : "square-outline"}
+                      size={20}
+                      color={isSelected ? "#6366f1" : "#9ca3af"}
+                    />
+                    <Text style={twStyle("ml-3 text-sm text-gray-900")}>{svc.title}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </>
+        )}
+
+        <ActionButton
+          label="Save changes"
+          onPress={handleEditSubmit}
+          loading={updating}
           fullWidth
         />
       </BottomSheet>

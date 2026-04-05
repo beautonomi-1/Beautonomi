@@ -29,6 +29,18 @@ interface Conversation {
   booking_number: string | null;
 }
 
+function formatDateTimeSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function MessagingListScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
@@ -133,12 +145,7 @@ export default function MessagingListScreen() {
                   {conv.last_message_preview || "No messages yet"}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>
-                  {new Date(conv.last_message_at).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
+                  {formatDateTimeSafe(conv.last_message_at)}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={20} color="#9ca3af" />

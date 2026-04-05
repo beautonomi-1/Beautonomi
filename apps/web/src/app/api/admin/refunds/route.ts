@@ -1,14 +1,37 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
+
+const REFUND_ELIGIBLE_OR =
+  "transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success";
+
+/** Merged refund list row (PostgREST shapes vary for embeds). */
+type RefundListRow = {
+  id: string;
+  booking_id?: string | null;
+  transaction_type?: string;
+  amount?: number | string | null;
+  refund_amount?: string | number | null;
+  refund_reference?: string | null;
+  refund_reason?: string | null;
+  refunded_at?: string | null;
+  refunded_by?: string | null;
+  status?: string;
+  created_at?: string;
+  booking?: unknown;
+  refunded_by_user?: unknown;
+};
 
 /**
  * GET /api/admin/refunds
  *
  * Fetch payment_transactions that are either refund-related (type refund or already have refund_amount)
- * or successful charges (status=success) so superadmin can process refunds. Uses admin client to bypass RLS.
+ * or successful charges (status=success) so admins can process refunds. Merges booking-linked rows
+ * for the tenant with non-booking gateway rows attributed via metadata (gift, membership, subscriptions).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,17 +41,21 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get("status"); // all, success, failed, pending, refunded, partially_refunded
     const transactionType = searchParams.get("transaction_type"); // refund
-    const page = parseInt(searchParams.get("page") || "1");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
     const offset = (page - 1) * limit;
+    const startDate = searchParams.get("start_date");
+    const endDate = searchParams.get("end_date");
 
-    let query = supabase
+    let bookingQuery = supabase
       .from("payment_transactions")
-      .select(`
+      .select(
+        `
         id,
         booking_id,
         transaction_type,
@@ -40,82 +67,96 @@ export async function GET(request: NextRequest) {
         refunded_by,
         status,
         created_at,
-        booking:bookings(
+        booking:bookings!inner(
           id,
           booking_number,
           status,
           total_amount,
           customer_id,
           provider_id,
+          tenant_id,
           customer:users!bookings_customer_id_fkey(id, full_name, email),
           provider:providers!bookings_provider_id_fkey(id, business_name)
         ),
         refunded_by_user:users!payment_transactions_refunded_by_fkey(id, full_name, email)
-      `)
-      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success")
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    // Apply filters
-    if (status && status !== "all") {
-      query = query.eq("status", status);
-    }
-
-    if (transactionType) {
-      query = query.eq("transaction_type", transactionType);
-    }
-
-    const { data: refunds, error } = await query;
-
-    if (error) {
-      throw error;
-    }
-
-    // Get total count for pagination
-    let countQuery = supabase
-      .from("payment_transactions")
-      .select("*", { count: "exact", head: true })
-      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success");
+      `,
+      )
+      .or(REFUND_ELIGIBLE_OR)
+      .eq("booking.tenant_id", tenantId)
+      .order("created_at", { ascending: false });
 
     if (status && status !== "all") {
-      countQuery = countQuery.eq("status", status);
+      bookingQuery = bookingQuery.eq("status", status);
     }
-
     if (transactionType) {
-      countQuery = countQuery.eq("transaction_type", transactionType);
+      bookingQuery = bookingQuery.eq("transaction_type", transactionType);
+    }
+    if (startDate) bookingQuery = bookingQuery.gte("created_at", startDate);
+    if (endDate) bookingQuery = bookingQuery.lte("created_at", endDate);
+
+    const [bookingResult, orphanRows] = await Promise.all([
+      bookingQuery,
+      fetchOrphanRefundPaymentTxsForTenant(supabase, tenantId, {
+        startDate,
+        endDate,
+        status,
+        transactionType,
+      }),
+    ]);
+
+    if (bookingResult.error) {
+      throw bookingResult.error;
     }
 
-    const { count } = await countQuery;
+    const bookingLinked = (bookingResult.data || []) as RefundListRow[];
 
-    // Get statistics
-    const { data: stats } = await supabase
-      .from("payment_transactions")
-      .select("status, transaction_type, refund_amount, amount")
-      .or("transaction_type.eq.refund,refund_amount.not.is.null,status.eq.success");
+    const orphansWithBookingNull: RefundListRow[] = orphanRows.map((row) => ({
+      ...row,
+      booking: null,
+    }));
 
-    const totalRefunded = stats?.reduce((sum, t) => sum + (parseFloat(t.refund_amount || "0") || 0), 0) || 0;
-    const totalRefundCount = stats?.length || 0;
+    const byId = new Map<string, RefundListRow>();
+    for (const r of bookingLinked) {
+      byId.set(r.id, r);
+    }
+    for (const r of orphansWithBookingNull) {
+      if (!byId.has(r.id)) byId.set(r.id, r);
+    }
+
+    const merged = Array.from(byId.values()).sort((a, b) => {
+      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return tb - ta;
+    });
+
+    const total = merged.length;
+    const refunds = merged.slice(offset, offset + limit);
+
+    const totalRefunded = merged.reduce(
+      (sum, t) => sum + (parseFloat(String(t.refund_amount || "0")) || 0),
+      0,
+    );
 
     const statistics = {
-      total: totalRefundCount,
+      total,
       total_refunded: totalRefunded,
       by_status: {
-        success: stats?.filter((r) => r.status === "success").length || 0,
-        failed: stats?.filter((r) => r.status === "failed").length || 0,
-        pending: stats?.filter((r) => r.status === "pending").length || 0,
-        refunded: stats?.filter((r) => r.status === "refunded").length || 0,
-        partially_refunded: stats?.filter((r) => r.status === "partially_refunded").length || 0,
+        success: merged.filter((r) => r.status === "success").length,
+        failed: merged.filter((r) => r.status === "failed").length,
+        pending: merged.filter((r) => r.status === "pending").length,
+        refunded: merged.filter((r) => r.status === "refunded").length,
+        partially_refunded: merged.filter((r) => r.status === "partially_refunded").length,
       },
-      average_refund: totalRefundCount > 0 ? (totalRefunded / totalRefundCount).toFixed(2) : "0.00",
+      average_refund: total > 0 ? (totalRefunded / total).toFixed(2) : "0.00",
     };
 
     return successResponse({
-      refunds: refunds || [],
+      refunds,
       pagination: {
         page,
         limit,
-        total: count || 0,
-        total_pages: Math.ceil((count || 0) / limit),
+        total,
+        total_pages: Math.ceil(total / limit) || 0,
       },
       statistics,
     });

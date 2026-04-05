@@ -5,7 +5,7 @@ import { requireAdminSection,
   handleApiError,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -15,22 +15,56 @@ const createSchema = z.object({
 
 /**
  * GET /api/admin/service-zones
- * List platform zones (draft + active) for control plane.
+ * List platform zones for control plane.
+ * Query: include_archived=1 | true — include archived rows (default: draft + active only).
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
+    const { searchParams } = new URL(request.url);
+    const raw = searchParams.get("include_archived")?.toLowerCase();
+    const includeArchived = raw === "1" || raw === "true" || raw === "yes";
+    const statuses = includeArchived ? (["draft", "active", "archived"] as const) : (["draft", "active"] as const);
 
     const { data, error } = await supabase
       .from("platform_zones")
-      .select("id, name, country_code, status, version, geometry, centroid, bbox, created_at, updated_at")
-      .in("status", ["draft", "active"])
+      .select(
+        "id, name, country_code, status, version, geometry, centroid, bbox, created_at, updated_at, published_at, ops_metadata"
+      )
+      .in("status", [...statuses])
       .order("updated_at", { ascending: false });
 
     if (error) throw error;
 
-    type ZoneRow = { id: string; name?: string; country_code?: string; status?: string; version?: number; bbox?: unknown; created_at?: string; updated_at?: string; geometry?: unknown };
+    const zoneIds = (data || []).map((r) => r.id as string);
+
+    // Fetch per-zone inclusion counts in a single query
+    const inclusionCountMap = new Map<string, number>();
+    if (zoneIds.length > 0) {
+      const { data: incRows } = await supabase
+        .from("platform_zone_inclusions")
+        .select("zone_id")
+        .in("zone_id", zoneIds);
+      for (const row of incRows ?? []) {
+        const id = row.zone_id as string;
+        inclusionCountMap.set(id, (inclusionCountMap.get(id) ?? 0) + 1);
+      }
+    }
+
+    type ZoneRow = {
+      id: string;
+      name?: string;
+      country_code?: string;
+      status?: string;
+      version?: number;
+      bbox?: unknown;
+      created_at?: string;
+      updated_at?: string;
+      geometry?: unknown;
+      published_at?: string | null;
+      ops_metadata?: Record<string, unknown> | null;
+    };
     const zones = (data || []).map((row: ZoneRow) => ({
       id: row.id,
       name: row.name,
@@ -41,6 +75,9 @@ export async function GET(request: NextRequest) {
       created_at: row.created_at,
       updated_at: row.updated_at,
       has_geometry: !!row.geometry,
+      published_at: row.published_at ?? null,
+      ops_metadata: row.ops_metadata ?? null,
+      inclusion_count: inclusionCountMap.get(row.id) ?? 0,
     }));
 
     return successResponse(zones);
@@ -55,7 +92,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parse = createSchema.safeParse(body);
@@ -74,8 +111,19 @@ export async function POST(request: NextRequest) {
         country_code: parse.data.country_code.toUpperCase(),
         status: "draft",
         is_active: false,
+        /**
+         * Legacy schema compatibility:
+         * platform_zones still has constraint `valid_polygon_zone` from the
+         * original two-tier zone system, requiring polygon_coordinates to be
+         * non-null when zone_type='polygon'.
+         *
+         * Control-plane coverage uses platform_zone_inclusions/exclusions +
+         * computed PostGIS geometry, not this JSON field. We therefore store a
+         * harmless empty JSON object here so draft creation does not fail with:
+         *   23514 valid_polygon_zone
+         */
         zone_type: "polygon",
-        polygon_coordinates: null,
+        polygon_coordinates: {},
         created_by: user.id,
       })
       .select("id, name, country_code, status, version, created_at")

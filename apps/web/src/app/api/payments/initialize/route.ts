@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
@@ -7,6 +9,8 @@ import {
   generateTransactionReference,
 } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 
 /**
  * POST /api/payments/initialize
@@ -39,10 +43,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Verify booking belongs to user
+    // Verify booking belongs to user; use booking tenant for PSP + currency (immutable market for this booking).
     const { data: booking } = await supabase
       .from("bookings")
-      .select("id, customer_id, total_amount, status")
+      .select("id, customer_id, total_amount, status, tenant_id")
       .eq("id", booking_id)
       .eq("customer_id", auth.user.id)
       .single();
@@ -60,7 +64,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const bookingData = booking as any;
+    const bookingData = booking as { tenant_id?: string | null; status?: string };
+    const tenantResolved = await resolvePaymentTenantForBookingRequest(
+      request,
+      bookingData.tenant_id,
+    );
+    if (tenantResolved.ok === false) {
+      return tenantResolved.response;
+    }
+    const { paymentTenantId } = tenantResolved;
+    const tenantRegion = await getTenantRegionConfig(paymentTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     if (bookingData.status !== "pending") {
       return NextResponse.json(
@@ -109,7 +123,7 @@ export async function POST(request: Request) {
         .from("paystack_splits") as any)
         .select("split_code")
         .eq("active", true)
-        .eq("currency", currency || "ZAR")
+        .eq("currency", currency || lastResortCurrency)
         .single();
 
       if (activeSplit) {
@@ -142,7 +156,7 @@ export async function POST(request: Request) {
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit,
-      currency: currency || "ZAR",
+      currency: currency || lastResortCurrency,
       reference: transactionReference,
       callback_url: callback_url || `${process.env.NEXT_PUBLIC_APP_URL || ""}/checkout/success`,
       metadata: {
@@ -160,6 +174,7 @@ export async function POST(request: Request) {
       },
       ...(splitCode ? { split_code: splitCode } : {}),
       ...(subaccount ? { subaccount } : {}),
+      tenantId: paymentTenantId,
     });
 
     // Store payment reference in booking

@@ -6,11 +6,48 @@
 export type Platform = "web" | "customer" | "provider";
 export type Environment = "production" | "staging" | "development";
 
+/** When `meta.tenant_region` is present, these fields are required (web + mobile parity). */
+export interface TenantRegionMeta {
+  code: string;
+  name: string;
+  default_currency: string;
+  default_language: string;
+  timezone: string;
+  phone_country_code: string;
+  /** `public.regions.id` when migration 377 is applied and region_code matches. */
+  region_id?: string;
+}
+
+/** Stable list for contract tests — keep in sync with `TenantRegionMeta` required fields. */
+export const TENANT_REGION_META_KEYS = [
+  "code",
+  "name",
+  "default_currency",
+  "default_language",
+  "timezone",
+  "phone_country_code",
+] as const satisfies readonly (keyof TenantRegionMeta)[];
+
 export interface ConfigBundleMeta {
   env: Environment;
   platform: Platform;
   version: string | null;
   fetched_at: string;
+  /** ISO 3166-1 alpha-2 — resolved from Host / headers / geo (spec §11.6 discovery). */
+  active_market_country?: string;
+  active_market_source?: "query" | "host" | "header_hint" | "geo_header" | "default";
+  /** DB tenant when Host maps to tenant_domains (spec §6). */
+  tenant_id?: string;
+  tenant_slug?: string;
+  /** Shallow overlay from tenant_settings.settings (public-safe keys only; server composes bundle). */
+  tenant_settings_overlay?: Record<string, unknown>;
+  /** Resolved region/market info for the active tenant (currency, locale, phone defaults). */
+  tenant_region?: TenantRegionMeta;
+  /**
+   * Non-secret subset of `region_settings.settings` (allowlisted keys only; see getPublicConfigBundle).
+   * Used for market-specific URLs/copy without exposing control-plane keys.
+   */
+  region_settings_public?: Record<string, unknown>;
 }
 
 export interface SafeAmplitudeConfig {
@@ -130,6 +167,8 @@ export interface GetPublicConfigBundleParams {
   role?: string | null;
   userId?: string | null;
   providerId?: string | null;
+  /** When set, merges tenant_settings.settings into bundle meta (§20). */
+  tenantId?: string | null;
 }
 
 export interface ResolveFlagsForUserParams {

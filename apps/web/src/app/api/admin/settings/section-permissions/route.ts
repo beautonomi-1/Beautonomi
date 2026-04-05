@@ -11,6 +11,7 @@ import { ALL_SECTIONS, ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import type { AdminSection } from "@/lib/admin-sections";
 import type { UserRole } from "@/types/beautonomi";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/admin/settings/section-permissions
@@ -36,6 +37,12 @@ export async function PUT(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["superadmin"], request);
     const body = await request.json();
+    const { currentTenantId, requestedScope } = await resolveAdminTenantContext(
+      request,
+      body as Record<string, unknown>,
+      (user as { role?: string }).role ?? null
+    );
+    const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
     const raw = body.sectionRoles as Record<string, string[] | undefined> | undefined;
 
     if (!raw || typeof raw !== "object") {
@@ -55,12 +62,14 @@ export async function PUT(request: NextRequest) {
     }
 
     const supabase = await getSupabaseServer(request);
-    const { data: row, error: fetchError } = await supabase
+    let rowQuery = supabase
       .from("platform_settings")
       .select("id, settings")
       .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    rowQuery = scopeTenantId == null ? rowQuery.is("tenant_id", null) : rowQuery.eq("tenant_id", scopeTenantId);
+    const { data: row, error: fetchError } = await rowQuery.maybeSingle();
 
     if (fetchError) throw fetchError;
 
@@ -73,7 +82,7 @@ export async function PUT(request: NextRequest) {
     } else {
       const { data: inserted, error: insertError } = await supabase
         .from("platform_settings")
-        .insert({ settings: {}, is_active: true })
+        .insert({ settings: {}, is_active: true, tenant_id: scopeTenantId })
         .select("id")
         .single();
       if (insertError || !inserted) throw insertError ?? new Error("Failed to create platform settings row");
@@ -107,7 +116,7 @@ export async function PUT(request: NextRequest) {
       actor_role: (user as { role?: string }).role ?? null,
       action: "section_permissions_updated",
       entity_type: "platform_settings",
-      metadata: {},
+      metadata: { scope: requestedScope.scope, tenant_id: scopeTenantId },
     });
 
     return successResponse({ message: "Section permissions updated" });

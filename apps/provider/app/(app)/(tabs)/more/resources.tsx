@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
+import { useProvider } from "@/providers/ProviderContext";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -69,6 +70,7 @@ function typeInfo(type: string | null) {
 }
 
 export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {}) {
+  const { selectedLocationId } = useProvider();
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState("resources");
   const [search, setSearch] = useState("");
@@ -90,7 +92,10 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
   const [editingGroup, setEditingGroup] = useState<ResourceGroup | null>(null);
   const [groupForm, setGroupForm] = useState({ name: "", color: "#6366f1" });
 
-  const { data: resources, loading, error: resourcesError, refresh } = useApi<Resource[]>("/api/provider/resources");
+  const resourcesUrl = selectedLocationId
+    ? `/api/provider/resources?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/resources";
+  const { data: resources, loading, error: resourcesError, refresh } = useApi<Resource[]>(resourcesUrl);
   const { data: groups, loading: loadingGroups, error: groupsError, refresh: refreshGroups } = useApi<ResourceGroup[]>(
     "/api/provider/resource-groups"
   );
@@ -175,7 +180,10 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
       const { error } = await updateResource(`/api/provider/resources/${editing.id}`, payload);
       if (error) { Alert.alert("Error", error); return; }
     } else {
-      const { error } = await createResource(payload);
+      const { error } = await createResource({
+        ...payload,
+        ...(selectedLocationId ? { location_id: selectedLocationId } : {}),
+      });
       if (error) { Alert.alert("Error", error); return; }
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);

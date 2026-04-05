@@ -32,7 +32,9 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
         setIsLoading(true);
         setError(null);
 
-        const params = status ? `?status=${status}` : "";
+        const params = status
+          ? `?status=${encodeURIComponent(status)}&limit=100&page=1`
+          : "?limit=100&page=1";
         const response = await fetcher.get<{
           data: {
             items: Booking[];
@@ -105,6 +107,27 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
   }
 
   if (bookings.length === 0) {
+    const empty =
+      status === "past"
+        ? {
+            title: "No past appointments yet",
+            description:
+              "Completed visits will appear here once you've attended them.",
+            cta: "Find providers",
+          }
+        : status === "cancelled"
+          ? {
+              title: "No cancelled bookings",
+              description: "When you cancel an appointment, it will show in this list.",
+              cta: "Find providers",
+            }
+          : {
+              title: "No appointments scheduled...yet!",
+              description:
+                "Unveil your radiance and step into a world of luxury. It's time to pamper yourself and embrace your true beauty with our expert care.",
+              cta: "Start Searching",
+            };
+
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -121,11 +144,10 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
           <Sparkles className="w-10 h-10 md:w-12 md:h-12 text-[#FF0077]" />
         </motion.div>
         <h3 className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 mb-3">
-          No appointments scheduled...yet!
+          {empty.title}
         </h3>
         <p className="text-base md:text-lg font-light text-gray-600 mb-8 max-w-md mx-auto leading-relaxed">
-          Unveil your radiance and step into a world of luxury. It&apos;s time to
-          pamper yourself and embrace your true beauty with our expert care.
+          {empty.description}
         </p>
         <Link href="/search" className="inline-block">
           <motion.div
@@ -135,7 +157,7 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
             <Button 
               className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold px-8 py-6 text-base shadow-lg hover:shadow-xl transition-all"
             >
-              Start Searching
+              {empty.cta}
             </Button>
           </motion.div>
         </Link>

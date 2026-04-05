@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { coerceSelectedDate } from "@beautonomi/utils";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
@@ -11,6 +13,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { ChevronLeft, Loader2 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -89,6 +92,11 @@ export default function OnlineBookingFlow({
 }: OnlineBookingFlowProps) {
   const router = useRouter();
   const { user } = useAuth();
+  const { bundle } = useConfigBundle();
+  const tenantRegionCode = useMemo(
+    () => bundle?.meta?.tenant_region?.code ?? "ZA",
+    [bundle?.meta?.tenant_region?.code],
+  );
   const [step, setStep] = useState<Step>("services");
   const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<Staff[]>([]);
@@ -102,7 +110,7 @@ export default function OnlineBookingFlow({
   const [atHomeAddress, setAtHomeAddress] = useState<AtHomeAddress>({
     line1: "",
     city: "",
-    country: "ZA",
+    country: tenantRegionCode,
   });
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [slots, setSlots] = useState<{ time: string; start: string; end: string }[]>([]);
@@ -113,6 +121,19 @@ export default function OnlineBookingFlow({
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [settings, setSettings] = useState<OnlineBookingSettings>(defaultSettings);
+
+  /** When config-bundle resolves after first paint, replace stale ZA default with `tenant_region.code`. */
+  useEffect(() => {
+    const code = bundle?.meta?.tenant_region?.code?.trim();
+    if (!code) return;
+    setAtHomeAddress((prev) => {
+      if (prev.country === code) return prev;
+      if (prev.country !== "ZA") return prev;
+      return { ...prev, country: code };
+    });
+  }, [bundle?.meta?.tenant_region?.code]);
+
+  const selectedDay = coerceSelectedDate(selectedDate);
 
   const goToCalendarOrAuth = () => {
     if (authBeforeSlots && !user) {
@@ -254,14 +275,19 @@ export default function OnlineBookingFlow({
     }
   }, [queryParams.auth_return, user, services, staff, locations]);
 
+  const excludeHoldParam = holdId
+    ? `&excludeHoldId=${encodeURIComponent(holdId)}`
+    : "";
+
   useEffect(() => {
-    if (step !== "slots" || !selectedDate || !selectedService || !selectedStaff) return;
+    if (step !== "slots" || !selectedDay || !selectedService || !selectedStaff) return;
     setLoadingSlots(true);
-    const dateStr = selectedDate.toISOString().split("T")[0];
+    const dateStr = formatLocalDateYYYYMMDD(selectedDay);
     const staffParam = selectedStaff.id === "any" ? "any" : selectedStaff.id;
     fetcher
       .get<{ data: { slots?: any[] } }>(
-        `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${selectedService.id}&staff_id=${staffParam}&duration_minutes=${selectedService.duration_minutes}&location_id=${selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}`
+        `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${selectedService.id}&staff_id=${staffParam}&duration_minutes=${selectedService.duration_minutes}&location_id=${selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${excludeHoldParam}`,
+        { staleTimeMs: 0 }
       )
       .then((res) => {
         const s = (res.data as any)?.slots ?? res.data ?? [];
@@ -269,7 +295,7 @@ export default function OnlineBookingFlow({
       })
       .catch(() => setSlots([]))
       .finally(() => setLoadingSlots(false));
-  }, [step, selectedDate, selectedService, selectedStaff, selectedLocation, provider.slug, settings.min_notice_minutes, settings.max_advance_days]);
+  }, [step, selectedDay, selectedService, selectedStaff, selectedLocation, provider.slug, settings.min_notice_minutes, settings.max_advance_days, excludeHoldParam]);
 
   const handleSecureSlot = async (
     slotStart: string,
@@ -308,13 +334,13 @@ export default function OnlineBookingFlow({
         addressPayload = {
           line1: atHomeAddress.line1.trim(),
           city: atHomeAddress.city.trim(),
-          country: atHomeAddress.country.trim() || "ZA",
+          country: atHomeAddress.country.trim() || tenantRegionCode,
           line2: atHomeAddress.line2,
           state: atHomeAddress.state,
           postal_code: atHomeAddress.postal_code,
         };
         try {
-          const query = [atHomeAddress.line1.trim(), atHomeAddress.city.trim(), atHomeAddress.country.trim() || "ZA"].filter(Boolean).join(", ");
+          const query = [atHomeAddress.line1.trim(), atHomeAddress.city.trim(), atHomeAddress.country.trim() || tenantRegionCode].filter(Boolean).join(", ");
           const geocodeRes = await fetcher.post<{ data: Array<{ center: [number, number] }> }>("/api/mapbox/geocode", { query, limit: 1 });
           const results = (geocodeRes as any)?.data ?? [];
           if (results.length > 0 && results[0].center) {
@@ -544,7 +570,7 @@ export default function OnlineBookingFlow({
                 const d = new Date();
                 d.setDate(d.getDate() + i);
                 const isSelected =
-                  selectedDate?.toDateString() === d.toDateString();
+                  selectedDay?.toDateString() === d.toDateString();
                 return (
                   <button
                     key={i}
@@ -560,7 +586,7 @@ export default function OnlineBookingFlow({
             </div>
             <Button
               onClick={() => setStep("slots")}
-              disabled={!selectedDate}
+              disabled={!selectedDay}
             >
               Next
             </Button>
@@ -626,7 +652,7 @@ export default function OnlineBookingFlow({
         }}
         redirectUrl={
           preAuthGateOpen
-            ? `${typeof window !== "undefined" ? window.location.origin : ""}/book/${provider.slug}?auth_return=calendar&location_type=${locationType}${selectedService ? `&service=${selectedService.id}` : ""}${selectedStaff ? (selectedStaff.id === "any" ? "&anyone=true" : `&staff=${selectedStaff.id}`) : ""}${selectedLocation ? `&location=${selectedLocation.id}` : ""}`
+            ? `${typeof window !== "undefined" ? window.location.origin : ""}/booking?slug=${encodeURIComponent(provider.slug)}&auth_return=calendar&location_type=${locationType}${selectedService ? `&service=${selectedService.id}` : ""}${selectedStaff ? (selectedStaff.id === "any" ? "&anyone=true" : `&staff=${selectedStaff.id}`) : ""}${selectedLocation ? `&location=${selectedLocation.id}` : ""}`
             : undefined
         }
       />

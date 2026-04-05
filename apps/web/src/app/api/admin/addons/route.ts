@@ -4,6 +4,9 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse } f
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const addonSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -11,7 +14,7 @@ const addonSchema = z.object({
   type: z.enum(["service", "product", "upgrade"]),
   category: z.string().optional().nullable(),
   price: z.number().min(0, "Price must be non-negative"),
-  currency: z.string().length(3).default("ZAR"),
+  currency: z.string().length(3).optional(),
   duration_minutes: z.number().int().min(0).optional().nullable(),
   is_active: z.boolean().default(true),
   is_recommended: z.boolean().default(false),
@@ -53,22 +56,6 @@ export async function GET(request: NextRequest) {
 
     if (providerId) {
       query = query.eq("provider_id", providerId);
-    } else if (authUser.role === "provider_owner") {
-      // Providers can only see their own addons; superadmin sees all
-      const { data: provider } = await supabase
-        .from("providers")
-        .select("id")
-        .eq("user_id", authUser.id)
-        .single();
-
-      if (provider) {
-        query = query.eq("provider_id", (provider as { id: string }).id);
-      } else {
-        return NextResponse.json({
-          data: [],
-          error: null,
-        });
-      }
     }
 
     if (type) {
@@ -141,58 +128,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Superadmin can set provider_id = null (global addon); provider_owner must use their provider
-    if (authUser.role === "provider_owner") {
-      if (validationResult.data.provider_id) {
-        const { data: provider } = await supabase
-          .from("providers")
-          .select("id")
-          .eq("id", validationResult.data.provider_id)
-          .eq("user_id", authUser.id)
-          .single();
-
-        if (!provider) {
-          return NextResponse.json(
-            {
-              data: null,
-              error: {
-                message: "Provider not found or access denied",
-                code: "FORBIDDEN",
-              },
-            },
-            { status: 403 }
-          );
-        }
-      } else {
-        const { data: provider } = await supabase
-          .from("providers")
-          .select("id")
-          .eq("user_id", authUser.id)
-          .single();
-
-        if (provider) {
-          validationResult.data.provider_id = (provider as { id: string }).id;
-        } else {
-          return NextResponse.json(
-            {
-              data: null,
-              error: {
-                message: "Provider not found",
-                code: "NOT_FOUND",
-              },
-            },
-            { status: 404 }
-          );
-        }
-      }
-    }
+    // Admin route: provider_id is optional for global or provider-scoped addons.
 
     const { service_ids, ...addonData } = validationResult.data;
+    const tenantId = await resolveAdminApiTenantId(request);
+    const lastResortCurrency =
+      (await getTenantRegionConfig(tenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const { data: addon, error } = await supabase
       .from("service_addons")
       .insert({
         ...addonData,
+        currency: addonData.currency ?? lastResortCurrency,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })

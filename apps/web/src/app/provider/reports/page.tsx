@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 const reportCategories = [
   {
@@ -143,6 +144,7 @@ interface QuickStats {
 }
 
 export default function ReportsPage() {
+  const { format: fmt } = useReportCurrency();
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
@@ -215,7 +217,7 @@ export default function ReportsPage() {
                     {isLoadingStats ? (
                       <span className="text-gray-400">Loading...</span>
                     ) : (
-                      `ZAR ${(quickStats?.totalRevenue || 0).toLocaleString()}`
+                      fmt(quickStats?.totalRevenue || 0)
                     )}
                   </p>
                 </div>

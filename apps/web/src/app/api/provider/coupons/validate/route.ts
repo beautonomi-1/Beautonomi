@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, errorResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { percentOf } from "@beautonomi/utils";
 
 /**
  * GET /api/provider/coupons/validate
@@ -24,9 +28,21 @@ export async function GET(request: NextRequest) {
           persistSession: false,
         },
       }
-    );    const { searchParams } = new URL(request.url);
+    );
+    const { searchParams } = new URL(request.url);
     const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const { data: prow } = await supabaseAdmin
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     const code = searchParams.get('code');
     const subtotalParam = searchParams.get('subtotal');
@@ -93,7 +109,7 @@ export async function GET(request: NextRequest) {
     if (subtotal !== null && coupon.min_purchase_amount > 0) {
       if (subtotal < coupon.min_purchase_amount) {
         return errorResponse(
-          `Minimum purchase amount of ${coupon.currency || 'ZAR'} ${coupon.min_purchase_amount.toFixed(2)} required`,
+          `Minimum purchase amount of ${coupon.currency || lastResortCurrency} ${coupon.min_purchase_amount.toFixed(2)} required`,
           "MIN_PURCHASE_NOT_MET",
           400
         );
@@ -105,7 +121,7 @@ export async function GET(request: NextRequest) {
     if (subtotal !== null && subtotal > 0) {
       if (coupon.discount_type === 'percentage') {
         // Calculate percentage discount
-        discountAmount = subtotal * (Number(coupon.discount_value) / 100);
+        discountAmount = percentOf(subtotal, Number(coupon.discount_value));
         // Apply max discount cap if set
         if (coupon.max_discount_amount !== null && discountAmount > Number(coupon.max_discount_amount)) {
           discountAmount = Number(coupon.max_discount_amount);
@@ -132,7 +148,7 @@ export async function GET(request: NextRequest) {
         description: coupon.description,
         discount_type: coupon.discount_type,
         discount_value: coupon.discount_value,
-        currency: coupon.currency || 'ZAR',
+        currency: coupon.currency || lastResortCurrency,
         max_discount_amount: coupon.max_discount_amount,
       },
       discount: discountAmount, // Return calculated discount amount (0 if subtotal not provided)
@@ -140,8 +156,8 @@ export async function GET(request: NextRequest) {
       discount_fixed: coupon.discount_type === 'fixed' ? coupon.discount_value : null,
       min_purchase_amount: coupon.min_purchase_amount,
       message: subtotal !== null && subtotal > 0
-        ? `Discount of ${coupon.currency || 'ZAR'} ${discountAmount.toFixed(2)} applied`
-        : `Valid coupon: ${coupon.discount_type === 'percentage' ? `${coupon.discount_value}%` : `${coupon.currency || 'ZAR'} ${coupon.discount_value}`} discount`,
+        ? `Discount of ${coupon.currency || lastResortCurrency} ${discountAmount.toFixed(2)} applied`
+        : `Valid coupon: ${coupon.discount_type === 'percentage' ? `${coupon.discount_value}%` : `${coupon.currency || lastResortCurrency} ${coupon.discount_value}`} discount`,
     });
   } catch (error) {
     return handleApiError(error, "Failed to validate coupon");

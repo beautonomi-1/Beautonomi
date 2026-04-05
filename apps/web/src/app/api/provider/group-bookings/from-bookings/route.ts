@@ -1,0 +1,105 @@
+import { NextRequest } from "next/server";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { z } from "zod";
+
+const bodySchema = z.object({
+  booking_ids: z.array(z.string().uuid()).min(2),
+});
+
+/**
+ * POST /api/provider/group-bookings/from-bookings
+ * Link existing bookings into one group_booking (creates group + participant rows).
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
+    const supabase = await getSupabaseServer(request);
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+
+    const { booking_ids } = bodySchema.parse(await request.json());
+
+    const { data: bookings, error: bErr } = await supabase
+      .from("bookings")
+      .select(
+        "id, customer_id, provider_id, scheduled_at, booking_number, customer_name, customer_email, customer_phone, service_id, service_name, group_booking_id"
+      )
+      .in("id", booking_ids)
+      .eq("provider_id", providerId);
+
+    if (bErr || !bookings || bookings.length !== booking_ids.length) {
+      return errorResponse("One or more bookings not found", "NOT_FOUND", 404);
+    }
+
+    for (const b of bookings) {
+      if (b.group_booking_id) {
+        return errorResponse("A booking is already in a group", "CONFLICT", 409);
+      }
+    }
+
+    const scheduledAt = bookings[0]?.scheduled_at || new Date().toISOString();
+
+    const { data: group, error: gErr } = await supabase
+      .from("group_bookings")
+      .insert({
+        provider_id: providerId,
+        primary_contact_booking_id: bookings[0]!.id,
+        scheduled_at: scheduledAt,
+        status: "confirmed",
+      })
+      .select("*")
+      .single();
+
+    if (gErr || !group) {
+      throw gErr || new Error("Failed to create group");
+    }
+
+    for (let i = 0; i < bookings.length; i++) {
+      const b = bookings[i]!;
+      const { error: pErr } = await supabase.from("booking_participants").insert({
+        booking_id: b.id,
+        group_booking_id: group.id,
+        participant_name: b.customer_name || `Guest ${i + 1}`,
+        participant_email: b.customer_email,
+        participant_phone: b.customer_phone,
+        is_primary_contact: i === 0,
+      });
+      if (pErr) {
+        throw pErr;
+      }
+      const { error: uErr } = await supabase
+        .from("bookings")
+        .update({ group_booking_id: group.id, updated_at: new Date().toISOString() })
+        .eq("id", b.id)
+        .eq("provider_id", providerId);
+      if (uErr) {
+        throw uErr;
+      }
+    }
+
+    const { data: full } = await supabase
+      .from("group_bookings")
+      .select(
+        `*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, booking_id)`
+      )
+      .eq("id", group.id)
+      .single();
+
+    return successResponse(full || group);
+  } catch (error) {
+    return handleApiError(error, "Failed to create group from bookings");
+  }
+}

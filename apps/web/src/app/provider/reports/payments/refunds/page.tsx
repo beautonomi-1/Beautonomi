@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -41,6 +42,7 @@ interface RefundsData {
 }
 
 export default function RefundsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -87,7 +89,7 @@ export default function RefundsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "refunds");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "refunds", exportCurrency);
     exportToCSV(exportData, "refunds-report");
   };
 
@@ -173,7 +175,7 @@ export default function RefundsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRefundAmount.toLocaleString()}
+                  {fmt(data.totalRefundAmount)}
                 </p>
                 <DollarSign className="w-5 h-5 text-red-600" />
               </div>
@@ -201,7 +203,7 @@ export default function RefundsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageRefundAmount.toLocaleString()}
+                  {fmt(data.averageRefundAmount)}
                 </p>
                 <TrendingDown className="w-5 h-5 text-gray-600" />
               </div>
@@ -232,7 +234,7 @@ export default function RefundsReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        ZAR {method.amount.toLocaleString()}
+                        {fmt(method.amount)}
                       </p>
                       <p className="text-sm text-gray-600">{method.count} refunds</p>
                     </div>
@@ -266,10 +268,10 @@ export default function RefundsReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-red-600">
-                        -ZAR {Number(refund.refunded_amount || 0).toLocaleString()}
+                        -{fmt(Number(refund.refunded_amount || 0))}
                       </p>
                       <p className="text-sm text-gray-600">
-                        from ZAR {Number(refund.amount || 0).toLocaleString()}
+                        from {fmt(Number(refund.amount || 0))}
                       </p>
                     </div>
                   </div>

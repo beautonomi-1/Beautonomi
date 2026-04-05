@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 
 const DEFAULT_COPY = {
   title: "Keeping your account secure",
@@ -14,15 +15,30 @@ export type AccountSecurityCopy = typeof DEFAULT_COPY;
  * GET /api/public/account-security-copy
  * Returns the "Keeping your account secure" sidebar copy (managed by superadmin).
  */
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const supabase = await getSupabaseServer();
-    const { data: row } = await supabase
+    const tenant = await resolveTenantFromRequest(request);
+    const tenantId = tenant?.id ?? "";
+    let tenantRow: { settings?: unknown } | null = null;
+    if (tenantId) {
+      const { data } = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .eq("tenant_id", tenantId)
+        .limit(1)
+        .maybeSingle();
+      tenantRow = (data as { settings?: unknown } | null) ?? null;
+    }
+    const { data: globalRow } = await supabase
       .from("platform_settings")
       .select("settings")
       .eq("is_active", true)
+      .is("tenant_id", null)
       .limit(1)
       .maybeSingle();
+    const row = tenantRow ?? globalRow;
 
     const settings = (row as any)?.settings;
     const copy = settings?.account_security_copy;

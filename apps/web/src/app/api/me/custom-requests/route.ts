@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 const createSchema = z.object({
   provider_id: z.string().uuid(),
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data, error } = await supabase
       .from("custom_requests")
@@ -42,7 +44,17 @@ export async function GET(request: NextRequest) {
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false });
     if (error) throw error;
-    return successResponse(data || []);
+    const rows = data ?? [];
+    const providerIds = [...new Set(rows.map((r: any) => r.provider_id).filter(Boolean))];
+    const { data: tenantProviders } = providerIds.length
+      ? await supabase
+          .from("providers")
+          .select("id")
+          .in("id", providerIds)
+          .eq("tenant_id", tenantId)
+      : { data: [] as Array<{ id: string }> };
+    const allowedProviderIds = new Set((tenantProviders ?? []).map((p) => p.id));
+    return successResponse(rows.filter((r: any) => allowedProviderIds.has(r.provider_id)));
   } catch (error) {
     return handleApiError(error, "Failed to fetch custom requests");
   }
@@ -52,8 +64,18 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const body = createSchema.parse(await request.json());
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", body.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!provider?.id) {
+      return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
+    }
 
     const preferredIso = body.preferred_start_at ? new Date(body.preferred_start_at).toISOString() : null;
     const expiresAt = new Date();

@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/provider/finance
@@ -38,6 +42,17 @@ export async function GET(request: NextRequest) {
         transactions: [],
       });
     }
+
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get date range
     const range = searchParams.get("range") || "month";
@@ -99,12 +114,17 @@ export async function GET(request: NextRequest) {
         .in("id", bookingIds);
       
       // Fetch payment provider from booking_payments (to check if walk-in paid via Paystack)
-      const { data: bookingPayments } = await supabase
+      let bookingPaymentsQuery = supabase
         .from("booking_payments")
         .select("booking_id, payment_provider")
         .in("booking_id", bookingIds)
         .eq("status", "completed")
         .order("created_at", { ascending: false });
+      const providerTenantForBp = (prow as { tenant_id?: string | null } | null)?.tenant_id;
+      if (providerTenantForBp) {
+        bookingPaymentsQuery = bookingPaymentsQuery.eq("tenant_id", providerTenantForBp);
+      }
+      const { data: bookingPayments } = await bookingPaymentsQuery;
       
       if (bookings) {
         bookingMap = bookings.reduce((acc: any, b: any) => {
@@ -195,16 +215,25 @@ export async function GET(request: NextRequest) {
     const growthPercentage =
       lastMonthTotal !== 0 ? ((thisMonthTotal - lastMonthTotal) / Math.abs(lastMonthTotal)) * 100 : (thisMonthTotal > 0 ? 100 : 0);
 
-    const { data: platformRowForBalance } = await (supabase as any)
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    const holdDays = (platformRowForBalance?.settings as any)?.payouts?.payout_hold_days ?? 0;
+    // Resolve payout settings tenant-scoped (aligned with payouts POST and dashboard).
+    const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
+    const scopedPayoutSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabase as any,
+      table: "platform_settings",
+      tenantId: providerTenantId ?? effectiveTenantId,
+      select: "settings",
+      apply: (q: any) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const payoutSettingsData = ((scopedPayoutSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)?.payouts ?? {};
+    const holdDays = Number(payoutSettingsData.payout_hold_days ?? 0);
+    const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
 
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId, { holdDays });
+    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId, {
+      holdDays,
+      tenantId: providerTenantId,
+    });
     const pendingPayouts = pendingPayoutsSum;
 
     // Filter out internal transaction types that providers shouldn't see
@@ -240,12 +269,10 @@ export async function GET(request: NextRequest) {
         net: Number(r.net ?? r.amount ?? 0),
         fees: Number(r.fees || 0),
         commission: Number(r.commission || 0),
-        currency: "ZAR",
+        currency: lastResortCurrency,
         status: "completed" as const,
         description: r.description || r.transaction_type,
       }));
-
-    const minimumPayoutAmount = (platformRowForBalance?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
 
     return successResponse({
       earnings: {

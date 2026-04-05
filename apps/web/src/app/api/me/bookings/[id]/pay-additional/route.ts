@@ -1,3 +1,5 @@
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
@@ -10,6 +12,8 @@ import { z } from "zod";
 import type { Booking } from "@/types/beautonomi";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 
 const payAdditionalSchema = z.object({
   charge_id: z.string().uuid(),
@@ -57,6 +61,16 @@ export async function POST(
     }
 
     const bookingData = booking as any;
+    const tenantResolved = await resolvePaymentTenantForBookingRequest(
+      request,
+      bookingData.tenant_id as string | null | undefined,
+    );
+    if (tenantResolved.ok === false) {
+      return tenantResolved.response;
+    }
+    const { paymentTenantId } = tenantResolved;
+    const tenantRegion = await getTenantRegionConfig(paymentTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Get charge row from real table
     const { data: charge, error: chargeError } = await (supabase
@@ -97,7 +111,7 @@ export async function POST(
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(Number((charge as any).amount || 0)),
-      currency: (charge as any).currency || bookingData.currency || "ZAR",
+      currency: (charge as any).currency || bookingData.currency || lastResortCurrency,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -105,6 +119,7 @@ export async function POST(
         additional_charge_id: charge_id,
         customer_id: bookingData.customer_id,
       },
+      tenantId: paymentTenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;
@@ -116,7 +131,7 @@ export async function POST(
       provider_id: bookingData.provider_id,
       payment_number: "",
       amount: Number((charge as any).amount || 0),
-      currency: (charge as any).currency || bookingData.currency || "ZAR",
+      currency: (charge as any).currency || bookingData.currency || lastResortCurrency,
       status: "pending",
       payment_provider: "paystack",
       payment_provider_transaction_id: reference,

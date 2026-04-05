@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -36,6 +37,7 @@ interface BusinessComparisonData {
 }
 
 export default function BusinessComparisonReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<BusinessComparisonData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +69,7 @@ export default function BusinessComparisonReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-comparison");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "business-comparison", exportCurrency);
     exportToCSV(exportData, "business-comparison-report");
   };
 
@@ -165,13 +167,13 @@ export default function BusinessComparisonReport() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Current {formatPeriod(period)}</p>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ZAR {data.current.revenue.toLocaleString()}
+                    {fmt(data.current.revenue)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Previous {formatPeriod(period)}</p>
                   <p className="text-xl font-medium text-gray-700">
-                    ZAR {data.previous.revenue.toLocaleString()}
+                    {fmt(data.previous.revenue)}
                   </p>
                 </div>
                 <div className="flex items-center gap-2 pt-2 border-t">
@@ -256,13 +258,13 @@ export default function BusinessComparisonReport() {
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Current {formatPeriod(period)}</p>
                   <p className="text-2xl font-semibold text-gray-900">
-                    ZAR {data.current.averageValue.toLocaleString()}
+                    {fmt(data.current.averageValue)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Previous {formatPeriod(period)}</p>
                   <p className="text-xl font-medium text-gray-700">
-                    ZAR {data.previous.averageValue.toLocaleString()}
+                    {fmt(data.previous.averageValue)}
                   </p>
                 </div>
                 <div className="pt-2 border-t">

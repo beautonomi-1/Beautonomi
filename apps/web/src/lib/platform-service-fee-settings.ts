@@ -8,6 +8,7 @@
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { percentOf, roundCurrency } from "@beautonomi/utils";
 
 const DEFAULT_SERVICE_FEE_PERCENTAGE = 10.00; // 10% fallback
 
@@ -142,14 +143,13 @@ export function calculateServiceFeeAmount(
   }
   
   if (config.feeType === "percentage" && config.percentage > 0) {
-    let amount = (subtotal * config.percentage) / 100;
+    let amount = percentOf(subtotal, config.percentage);
     
-    // Apply max fee cap if set
     if (config.maxFeeAmount) {
       amount = Math.min(amount, config.maxFeeAmount);
     }
     
-    return Number(amount.toFixed(2));
+    return roundCurrency(amount);
   }
   
   return 0;

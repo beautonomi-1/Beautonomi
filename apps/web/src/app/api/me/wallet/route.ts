@@ -1,11 +1,18 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = tenantId ? await getTenantRegionConfig(tenantId) : null;
+    const walletCurrencyDefault = tenantRegion?.defaultCurrency || LAST_RESORT_CURRENCY;
 
     // Ensure wallet exists (created on signup, but be defensive)
     const { data: walletExisting } = await supabase
@@ -14,7 +21,7 @@ export async function GET(request: NextRequest) {
       .eq("user_id", user.id)
       .maybeSingle();
     if (!walletExisting) {
-      await supabase.from("user_wallets").insert({ user_id: user.id, currency: "ZAR" });
+      await supabase.from("user_wallets").insert({ user_id: user.id, currency: walletCurrencyDefault });
     }
 
     const { data: wallet, error: walletError } = await supabase
@@ -26,7 +33,7 @@ export async function GET(request: NextRequest) {
 
     const { data: txs, error: txError } = await supabase
       .from("wallet_transactions")
-      .select("id, wallet_id, type, amount, description, reference_id, reference_type, created_at")
+      .select("id, wallet_id, type, amount, description, reference_id, reference_type, tenant_id, created_at")
       .eq("wallet_id", wallet.id)
       .order("created_at", { ascending: false })
       .limit(50);

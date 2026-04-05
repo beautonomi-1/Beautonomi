@@ -87,7 +87,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       const response = await fetcher.get<{
         data: { slots: APIAvailabilitySlot[] };
         error: null;
-      }>(`/api/public/providers/${providerSlug}/availability?${params.toString()}`);
+      }>(`/api/public/providers/${providerSlug}/availability?${params.toString()}`, { staleTimeMs: 0 });
 
       const slots = response.data?.slots || [];
       

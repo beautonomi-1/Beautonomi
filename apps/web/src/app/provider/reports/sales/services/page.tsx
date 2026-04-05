@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -45,6 +46,7 @@ interface ServicePerformanceData {
 }
 
 export default function ServicePerformanceReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date(),
@@ -91,7 +93,7 @@ export default function ServicePerformanceReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "service-performance");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "service-performance", exportCurrency);
     exportToCSV(exportData, "service-performance-report");
   };
 
@@ -189,7 +191,7 @@ export default function ServicePerformanceReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -203,7 +205,7 @@ export default function ServicePerformanceReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageServiceRevenue.toLocaleString()}
+                  {fmt(data.averageServiceRevenue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-orange-600" />
               </div>
@@ -237,7 +239,7 @@ export default function ServicePerformanceReport() {
                     </div>
                     <div className="text-right">
                       <p className="font-semibold text-gray-900">
-                        ZAR {service.revenue.toLocaleString()}
+                        {fmt(service.revenue)}
                       </p>
                       <p className="text-sm text-gray-600">
                         {service.bookings} booking{service.bookings !== 1 ? "s" : ""}
@@ -272,7 +274,7 @@ export default function ServicePerformanceReport() {
                       </p>
                     </div>
                     <p className="font-semibold text-gray-900">
-                      ZAR {category.revenue.toLocaleString()}
+                      {fmt(category.revenue)}
                     </p>
                   </div>
                 ))}

@@ -77,7 +77,7 @@ export async function getSupabaseServer(req?: { headers: { get: (n: string) => s
           );
         } catch {
           // The `setAll` method was called from a Server Component.
-          // This can be ignored if you have middleware refreshing
+          // This can be ignored if you have proxy refreshing cookies
           // user sessions.
         }
       },

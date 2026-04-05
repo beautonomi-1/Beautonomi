@@ -1,13 +1,18 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
+import { useAmplitude } from "@/hooks/useAmplitude";
+import { EVENT_CHECKOUT_START } from "@/lib/analytics/amplitude/types";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Loader2, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
+import { rememberBookingDraftTenant } from "@/lib/booking/booking-draft-tenant";
 import {
   BookingNav,
   StepVenue,
@@ -34,6 +39,9 @@ import type {
   ProviderCategoryOption,
 } from "../types/booking-engine";
 
+import { coerceSelectedDate } from "@beautonomi/utils";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseProductsQueryParam } from "@/lib/express-booking/prefill";
 import {
   BOOKING_ACCENT,
   BOOKING_BG,
@@ -45,6 +53,109 @@ import {
   BOOKING_TEXT_SECONDARY,
   BOOKING_TEXT_PRIMARY,
 } from "../constants";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+
+/** `fetcher.get` defaults to 15s client cache — availability must always be fresh (tab switches, holds, concurrent bookings). */
+const AVAILABILITY_FETCH_OPTS = { staleTimeMs: 0 } as const;
+
+/** Express / URL pre-selection: resolve offering ids — always match a concrete variant id before treating id as parent (avoids wrong first-variant selection). */
+function buildPreselectedServiceEntries(
+  rawIds: string[],
+  baseServices: ServiceOption[],
+  variantsByServiceId: Record<string, ServiceVariant[]>,
+  isAtHomePricing: boolean,
+  fallbackCurrency: string
+): BookingServiceEntry[] {
+  const entries: BookingServiceEntry[] = [];
+  for (const raw of rawIds) {
+    const id = raw.trim();
+    if (!id) continue;
+
+    // 1) Explicit variant UUID / id (must win over parent match)
+    let variantHit: ServiceVariant | null = null;
+    for (const svc of baseServices) {
+      const variants = variantsByServiceId[svc.id] ?? [];
+      const v = variants.find((x) => x.id === id);
+      if (v) {
+        variantHit = v;
+        break;
+      }
+    }
+    if (variantHit) {
+      entries.push({
+        offering_id: variantHit.id,
+        title: variantHit.title,
+        duration_minutes: variantHit.duration,
+        price: variantHit.price,
+        currency: variantHit.currency ?? fallbackCurrency,
+      });
+      continue;
+    }
+
+    // 2) Parent / base service (slug or id), no variant row matched
+    const base = baseServices.find((s) => s.id === id || (s as { slug?: string }).slug === id);
+    if (!base) continue;
+
+    const variants = variantsByServiceId[base.id] ?? [];
+    if (variants.length > 0) {
+      // Deep link used parent id only: keep legacy behaviour (first variant) for old links
+      const v = variants[0];
+      entries.push({
+        offering_id: v.id,
+        title: v.title,
+        duration_minutes: v.duration,
+        price: v.price,
+        currency: v.currency ?? fallbackCurrency,
+      });
+    } else {
+      const price =
+        isAtHomePricing && base.at_home_price_adjustment
+          ? base.price + (base.at_home_price_adjustment ?? 0)
+          : base.price;
+      entries.push({
+        offering_id: base.id,
+        title: base.title,
+        duration_minutes: base.duration_minutes,
+        price,
+        currency: base.currency ?? fallbackCurrency,
+      });
+    }
+  }
+  return entries;
+}
+
+function inferCategoryForPreselected(
+  entries: BookingServiceEntry[],
+  baseServices: ServiceOption[],
+  variantsByServiceId: Record<string, ServiceVariant[]>
+): ProviderCategoryOption | null {
+  if (entries.length === 0) return null;
+  const oid = entries[0].offering_id;
+  const offering =
+    baseServices.find((o) => o.id === oid) ??
+    baseServices.find((o) => (variantsByServiceId[o.id] ?? []).some((v) => v.id === oid));
+  if (!offering) return null;
+  const o = offering as ServiceOption & {
+    provider_categories?: { id: string; name: string; description?: string | null; display_order?: number; color?: string | null };
+  };
+  const cat = o.provider_categories;
+  if (cat?.id && cat?.name) {
+    return {
+      id: cat.id,
+      name: cat.name,
+      description: cat.description ?? null,
+      color: cat.color ?? null,
+      display_order: cat.display_order ?? 0,
+    };
+  }
+  return {
+    id: "_other",
+    name: "Other Services",
+    description: null,
+    color: null,
+    display_order: 999,
+  };
+}
 
 const defaultBookingData: BookingData = {
   venueType: "at_salon",
@@ -66,10 +177,37 @@ const defaultBookingData: BookingData = {
     phone: "",
     specialRequests: "",
   },
-  currency: "ZAR",
+  currency: LAST_RESORT_CURRENCY,
   servicesSubtotal: 0,
   totalDurationMinutes: 0,
 };
+
+function packageOfferingIdSet(pkg: {
+  services?: Array<{ id?: string | null } | null>;
+  items?: Array<{ type?: string | null; id?: string | null } | null>;
+}): Set<string> {
+  const fromSvc = (pkg.services ?? []).map((s) => s?.id).filter(Boolean) as string[];
+  if (fromSvc.length > 0) return new Set(fromSvc);
+  const fromItems = (pkg.items ?? [])
+    .filter((x) => x && (x.type === "service" || !x.type))
+    .map((x) => x!.id)
+    .filter(Boolean) as string[];
+  return new Set(fromItems);
+}
+
+/** True when line-item offering IDs exactly match the package definition (order-independent). */
+function selectedServicesMatchPackage(
+  entries: Array<{ offering_id: string }>,
+  pkg: { services?: Array<{ id?: string | null } | null>; items?: Array<{ type?: string | null; id?: string | null } | null> } | null
+): boolean {
+  if (!pkg) return false;
+  const want = packageOfferingIdSet(pkg);
+  if (want.size === 0) return false;
+  const got = new Set(entries.map((e) => e.offering_id).filter(Boolean));
+  if (got.size !== want.size) return false;
+  for (const id of want) if (!got.has(id)) return false;
+  return true;
+}
 
 interface Provider {
   id: string;
@@ -122,16 +260,29 @@ interface CancellationPolicy {
 
 interface OnlineBookingFlowNewProps {
   provider: Provider;
+  /**
+   * Deep-link / express-booking query string (see `/book/l/[slug]` → `/book/[slug]?...`).
+   * After hold creation, checkout extras (promo codes, tips, payment choice, wallet when enabled) live on `/book/continue`.
+   */
   queryParams?: {
     service?: string;
-    /** Comma-separated service IDs (e.g. from express link with multiple services) */
+    /** Comma-separated offering IDs (express link). Variants: parent id → first variant; explicit variant id supported. */
     services?: string;
     staff?: string;
     location?: string;
     location_type?: "at_home" | "at_salon";
     anyone?: boolean;
+    /** Suggested day for schedule step (e.g. `YYYY-MM-DD`) */
     date?: string;
     auth_return?: string;
+    /** Comma-separated addon offering UUIDs (express prefill) */
+    addons?: string;
+    promo?: string;
+    gift_card?: string;
+    /** URL-encoded JSON: `[{ product_id, quantity, product_variant_id? }]` */
+    products?: string;
+    /** Active `service_packages.id` — preselects bundle and line items */
+    package?: string;
   };
   embed?: boolean;
 }
@@ -149,11 +300,20 @@ export default function OnlineBookingFlowNew({
   // #endregion
   const router = useRouter();
   const { user } = useAuth();
+  const { track, isReady } = useAmplitude();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
+  const tenantRegionCode = bundle?.meta?.tenant_region?.code ?? "ZA";
+  const checkoutTrackedRef = useRef(false);
+  const appliedQueryAddonsRef = useRef(false);
+  const prevStepRef = useRef<BookingStep | null>(null);
 
   const [step, setStep] = useState<BookingStep>("venue");
   const [bookingData, setBookingData] = useState<BookingData>(() => ({
     ...defaultBookingData,
     venueType: (queryParams.location_type as "at_salon" | "at_home") ?? "at_salon",
+    currency: tenantCurrency,
+    atHomeAddress: { ...defaultBookingData.atHomeAddress, country: tenantRegionCode },
   }));
 
   // #region agent log
@@ -165,17 +325,69 @@ export default function OnlineBookingFlowNew({
   const updateDataImpl = useCallback((patch: Partial<BookingData>) => {
     setBookingData((prev) => {
       const next = { ...prev, ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, "selectedDate")) {
+        next.selectedDate = coerceSelectedDate(patch.selectedDate);
+      }
       const servicesSubtotal = next.selectedServices.reduce((s, e) => s + e.price, 0);
       return {
         ...next,
         servicesSubtotal: next.selectedPackage ? (next.selectedPackage.price ?? servicesSubtotal) : servicesSubtotal,
         totalDurationMinutes: next.selectedServices.reduce((s, e) => s + e.duration_minutes, 0),
-        currency: next.selectedServices[0]?.currency ?? next.currency ?? "ZAR",
+        currency: next.selectedServices[0]?.currency ?? next.currency ?? tenantCurrency,
       };
     });
-  }, []);
+  }, [tenantCurrency]);
   updateDataRef.current = updateDataImpl;
   const updateData = useCallback((patch: Partial<BookingData>) => updateDataRef.current(patch), []);
+
+  /** Checkout reads these from sessionStorage (see `/book/continue`). */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (queryParams.promo?.trim()) {
+        sessionStorage.setItem("beautonomi_booking_promotion_code", queryParams.promo.trim());
+      }
+      if (queryParams.gift_card?.trim()) {
+        sessionStorage.setItem("beautonomi_booking_gift_card_code", queryParams.gift_card.trim());
+      }
+      const cartLines = parseProductsQueryParam(queryParams.products);
+      if (cartLines.length > 0) {
+        sessionStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(cartLines));
+      }
+    } catch {
+      // ignore
+    }
+  }, [queryParams.promo, queryParams.gift_card, queryParams.products]);
+
+  /** When config-bundle resolves after first paint, replace stale ZA default with `tenant_region.code` (user edits preserved). */
+  useEffect(() => {
+    const code = bundle?.meta?.tenant_region?.code?.trim();
+    if (!code) return;
+    setBookingData((prev) => {
+      if (prev.atHomeAddress.country === code) return prev;
+      if (prev.atHomeAddress.country !== "ZA") return prev;
+      return {
+        ...prev,
+        atHomeAddress: { ...prev.atHomeAddress, country: code },
+      };
+    });
+  }, [bundle?.meta?.tenant_region?.code]);
+
+  /** Drop stale package context if the user changed services after `?package=` / bundle prefill (keeps consume `package_id` honest). */
+  useEffect(() => {
+    setBookingData((prev) => {
+      const pkg = prev.selectedPackage;
+      if (!pkg) return prev;
+      if (selectedServicesMatchPackage(prev.selectedServices, pkg)) return prev;
+      const servicesSubtotal = prev.selectedServices.reduce((s, e) => s + e.price, 0);
+      return {
+        ...prev,
+        selectedPackage: null,
+        servicesSubtotal,
+        totalDurationMinutes: prev.selectedServices.reduce((s, e) => s + e.duration_minutes, 0),
+      };
+    });
+  }, [bookingData.selectedServices, bookingData.selectedPackage]);
 
   // #region agent log
   if (debugIngestUrl) {
@@ -216,6 +428,26 @@ export default function OnlineBookingFlowNew({
   const showGroupStep = groupBookingSettings.enabled === true;
   const authBeforeSlots = settings.require_auth_step === "before_time_selection";
 
+  /** Avoid null staff + ambiguous slots: default to “any” so availability + hold use anyone-mode (matches StepStaff). */
+  useEffect(() => {
+    if (step !== "staff" || !showStaffStep) return;
+    if (bookingData.selectedStaff != null) return;
+    updateData({
+      selectedStaff: {
+        id: "any",
+        name: "Any Professional",
+        role: "Fastest availability",
+      },
+    });
+  }, [step, showStaffStep, bookingData.selectedStaff, updateData]);
+
+  useEffect(() => {
+    if (isReady && step === "review" && provider?.id && !checkoutTrackedRef.current) {
+      checkoutTrackedRef.current = true;
+      track(EVENT_CHECKOUT_START, { provider_id: provider.id, provider_name: provider.business_name });
+    }
+  }, [isReady, step, provider?.id, provider?.business_name, track]);
+
   // Derive provider categories from offerings (unique by provider_category_id)
   const categories: ProviderCategoryOption[] = (() => {
     const seen = new Map<string, ProviderCategoryOption>();
@@ -249,17 +481,94 @@ export default function OnlineBookingFlowNew({
     );
   })();
 
+  /** `?package=` deep link: bundle applied and line items still match — skip redundant category + packages UI. */
+  const packageQueryId = queryParams.package?.trim() ?? "";
+  const prefillFromPackageDeepLink =
+    Boolean(
+      packageQueryId &&
+        bookingData.selectedPackage &&
+        bookingData.selectedPackage.id === packageQueryId &&
+        bookingData.selectedServices.length > 0 &&
+        selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)
+    );
+
+  const serviceDeepLinkParam = (queryParams.service?.trim() || queryParams.services?.trim()) ?? "";
+  const hasServiceDeepLinkPrefill =
+    Boolean(serviceDeepLinkParam) &&
+    bookingData.selectedServices.length > 0 &&
+    bookingData.selectedCategory != null;
+
+  const handleVenueNext = () => {
+    if (prefillFromPackageDeepLink && bookingData.selectedCategory) {
+      setStep("services");
+      return;
+    }
+    if (hasServiceDeepLinkPrefill) {
+      setStep("services");
+      return;
+    }
+    setStep("category");
+  };
+
+  /** If async prefill completes while user is still on category, jump to services. */
+  useEffect(() => {
+    if (step !== "category") return;
+    if (!packageQueryId || !bookingData.selectedPackage || bookingData.selectedPackage.id !== packageQueryId) return;
+    if (!selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)) return;
+    if (!bookingData.selectedCategory) return;
+    setStep("services");
+  }, [
+    step,
+    packageQueryId,
+    bookingData.selectedPackage,
+    bookingData.selectedServices,
+    bookingData.selectedCategory,
+  ]);
+
+  /** Same as package: when ?service= / ?services= prefill lands after venue, skip category so selection stays aligned with the link. */
+  useEffect(() => {
+    if (step !== "category") return;
+    if (!serviceDeepLinkParam) return;
+    if (bookingData.selectedServices.length === 0) return;
+    if (!bookingData.selectedCategory) return;
+    setStep("services");
+  }, [
+    step,
+    serviceDeepLinkParam,
+    bookingData.selectedServices.length,
+    bookingData.selectedCategory?.id,
+  ]);
+
   // Auto-select single category when only one exists
   useEffect(() => {
-    // #region agent log
-    if (debugIngestUrl) {
-      fetch(debugIngestUrl, { method: "POST", headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "9fda2d" }, body: JSON.stringify({ sessionId: "9fda2d", location: "OnlineBookingFlowNew.tsx:effect-category", message: "effect runs", data: { step, categoriesLen: categories?.length, runId: "post-fix" }, timestamp: Date.now(), hypothesisId: "H4" }) }).catch(() => {});
-    }
-    // #endregion
     if (step === "category" && categories.length === 1 && !bookingData.selectedCategory) {
       updateDataRef.current({ selectedCategory: categories[0] });
     }
   }, [step, categories, bookingData.selectedCategory]);
+
+  /**
+   * When the user arrives at the "services" step with pre-selected services but no selectedCategory
+   * (e.g. navigating directly from the partner profile without a URL ?service= param), infer and
+   * apply the correct category so the offerings list is filtered correctly.
+   */
+  useEffect(() => {
+    if (step !== "services") return;
+    if (bookingData.selectedCategory) return;
+    if (bookingData.selectedServices.length === 0) return;
+    if (offerings.length === 0) return;
+    const firstId = bookingData.selectedServices[0]?.offering_id;
+    if (!firstId) return;
+    const matchingOffering = (offerings as any[]).find(
+      (o) => o.id === firstId || o.provider_category_id === firstId
+    );
+    if (!matchingOffering) return;
+    const catId = matchingOffering.provider_categories?.id ?? matchingOffering.provider_category_id;
+    if (!catId) return;
+    const cat = categories.find((c) => c.id === catId);
+    if (cat) {
+      updateDataRef.current({ selectedCategory: cat });
+    }
+  }, [step, bookingData.selectedCategory, bookingData.selectedServices, offerings, categories]);
 
   useEffect(() => {
     setBookingData((prev) => {
@@ -315,12 +624,35 @@ export default function OnlineBookingFlowNew({
         const staffArray = Array.isArray(staffList) ? staffList : [];
         setStaff(staffArray);
 
+        // Inject noindex if provider opted out of search engine indexing
+        if ((providerRes as any)?.data?.seo_indexable === false) {
+          let robotsMeta = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
+          if (!robotsMeta) {
+            robotsMeta = document.createElement("meta");
+            robotsMeta.name = "robots";
+            document.head.appendChild(robotsMeta);
+          }
+          robotsMeta.content = "noindex, nofollow";
+        }
+
         const locs = (providerRes as any)?.data?.locations ?? [];
         setLocations(Array.isArray(locs) ? locs : []);
         const salonLocs = Array.isArray(locs) ? locs.filter((l: any) => (l.location_type || "salon") === "salon") : [];
-        if (salonLocs.length > 0) {
+        /** Express links pass location_type=at_home; must not be overwritten when provider also has salon locations. */
+        const expressAtHome = queryParams.location_type === "at_home";
+        const treatAsAtHomeForPricing = expressAtHome || salonLocs.length === 0;
+
+        if (expressAtHome) {
+          setBookingData((prev) => ({
+            ...prev,
+            venueType: "at_home",
+            selectedLocation: null,
+          }));
+        } else if (salonLocs.length > 0) {
           const primary = salonLocs.find((l: LocationOption) => l.is_primary) ?? salonLocs[0];
-          const fromQuery = queryParams.location ? salonLocs.find((l: any) => l.id === queryParams.location || (l as any).slug === queryParams.location) : null;
+          const fromQuery = queryParams.location
+            ? salonLocs.find((l: any) => l.id === queryParams.location || (l as any).slug === queryParams.location)
+            : null;
           setBookingData((prev) => ({
             ...prev,
             venueType: "at_salon",
@@ -340,48 +672,120 @@ export default function OnlineBookingFlowNew({
         const pkgList = (packagesRes as any)?.data ?? packagesRes ?? [];
         setPackages(Array.isArray(pkgList) ? pkgList : []);
 
-        const variantPromises = baseServices.map((svc: any) =>
-          fetcher.get(`/api/public/providers/${provider.slug}/services/${svc.id}/variants`).catch(() => ({ data: { variants: [] } }))
-        );
-        const variantResults = await Promise.all(variantPromises);
-        const map: Record<string, ServiceVariant[]> = {};
-        baseServices.forEach((svc: any, i: number) => {
-          const res = variantResults[i] as any;
-          const variants = res?.data?.variants ?? res?.variants ?? [];
-          if (variants.length > 0) map[svc.id] = variants;
+        // Build the variant map from the flat offerings list first — this avoids N separate API
+        // calls and is always available since the /offerings endpoint already returns all rows.
+        const embeddedVariantMap: Record<string, ServiceVariant[]> = {};
+        list.forEach((o: any) => {
+          if (o.parent_service_id && (o.service_type === "variant" || o.variant_name)) {
+            if (!embeddedVariantMap[o.parent_service_id]) embeddedVariantMap[o.parent_service_id] = [];
+            embeddedVariantMap[o.parent_service_id].push({
+              id: o.id,
+              title: o.title ?? o.variant_name ?? "",
+              variant_name: o.variant_name ?? o.title ?? "",
+              description: o.description ?? null,
+              price: Number(o.price) || 0,
+              // The separate variants API returns 'duration'; the offerings list uses 'duration_minutes'.
+              duration: o.duration_minutes ?? o.duration ?? 60,
+              currency: o.currency ?? tenantCurrency,
+              variant_sort_order: o.variant_sort_order ?? 0,
+            } as ServiceVariant);
+          }
         });
+        // Sort each group by variant_sort_order then price
+        Object.values(embeddedVariantMap).forEach((arr) =>
+          arr.sort((a: any, b: any) => (a.variant_sort_order - b.variant_sort_order) || (a.price - b.price))
+        );
+
+        // Also fire the dedicated variants API for any parent whose variant list was empty in the
+        // flat response (e.g. pagination gaps), but skip ones we already have.
+        const needsVariantFetch = baseServices.filter((svc: any) => !embeddedVariantMap[svc.id]);
+        let fetchedMap: Record<string, ServiceVariant[]> = {};
+        if (needsVariantFetch.length > 0) {
+          const variantResults = await Promise.all(
+            needsVariantFetch.map((svc: any) =>
+              fetcher.get(`/api/public/providers/${provider.slug}/services/${svc.id}/variants`).catch(() => ({ data: { variants: [] } }))
+            )
+          );
+          needsVariantFetch.forEach((svc: any, i: number) => {
+            const res = variantResults[i] as any;
+            const vs: any[] = res?.data?.variants ?? res?.variants ?? [];
+            if (vs.length > 0) fetchedMap[svc.id] = vs;
+          });
+        }
+
+        const map: Record<string, ServiceVariant[]> = { ...embeddedVariantMap, ...fetchedMap };
         setVariantsByServiceId(map);
 
         if (queryParams.services) {
           const ids = queryParams.services.split(",").map((id) => id.trim()).filter(Boolean);
-          const entries = ids
-            .map((id) => list.find((s: any) => s.id === id || (s as any).slug === id))
-            .filter(Boolean)
-            .map((match: any) => ({
-              offering_id: match.id,
-              title: match.title,
-              duration_minutes: match.duration_minutes,
-              price: match.price,
-              currency: match.currency ?? "ZAR",
-            }));
+          const entries = buildPreselectedServiceEntries(ids, baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
           if (entries.length > 0) {
-            setBookingData((prev) => ({ ...prev, selectedServices: entries }));
-          }
-        } else if (queryParams.service) {
-          const match = list.find((s: any) => s.id === queryParams.service || (s as any).slug === queryParams.service);
-          if (match) {
+            const inferred = inferCategoryForPreselected(entries, baseServices, map);
             setBookingData((prev) => ({
               ...prev,
-              selectedServices: [
-                {
-                  offering_id: match.id,
-                  title: match.title,
-                  duration_minutes: match.duration_minutes,
-                  price: match.price,
-                  currency: match.currency ?? "ZAR",
-                },
-              ],
+              selectedPackage: null,
+              selectedServices: entries,
+              selectedCategory: inferred ?? prev.selectedCategory,
+              servicesSubtotal: entries.reduce((sum, e) => sum + e.price, 0),
+              totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
+              currency: entries[0]?.currency ?? prev.currency ?? tenantCurrency,
             }));
+          }
+        } else if (queryParams.service) {
+          const entries = buildPreselectedServiceEntries([queryParams.service], baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
+          if (entries.length > 0) {
+            const inferred = inferCategoryForPreselected(entries, baseServices, map);
+            setBookingData((prev) => ({
+              ...prev,
+              selectedPackage: null,
+              selectedServices: entries,
+              selectedCategory: inferred ?? prev.selectedCategory,
+              servicesSubtotal: entries.reduce((sum, e) => sum + e.price, 0),
+              totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
+              currency: entries[0]?.currency ?? prev.currency ?? tenantCurrency,
+            }));
+          }
+        } else if (queryParams.package?.trim()) {
+          const pkgId = queryParams.package.trim();
+          const pkgListArr = Array.isArray(pkgList) ? pkgList : [];
+          const pkg = pkgListArr.find((p: { id?: string }) => p.id === pkgId) as
+            | {
+                id: string;
+                name?: string;
+                price?: number;
+                currency?: string;
+                services?: Array<{ id: string; title?: string; duration_minutes?: number }>;
+                items?: Array<{ type?: string; id?: string; title?: string; duration_minutes?: number }>;
+              }
+            | undefined;
+          if (pkg) {
+            const svcItems =
+              pkg.services && pkg.services.length > 0
+                ? pkg.services
+                : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
+            const ids = svcItems.map((it) => it.id).filter(Boolean);
+            const entries = buildPreselectedServiceEntries(ids, baseServices, map, treatAsAtHomeForPricing, tenantCurrency);
+            if (entries.length > 0) {
+              const inferred = inferCategoryForPreselected(entries, baseServices, map);
+              const subtotal =
+                typeof pkg.price === "number" ? pkg.price : entries.reduce((sum, e) => sum + e.price, 0);
+              setBookingData((prev) => ({
+                ...prev,
+                selectedPackage: pkg as unknown as BookingData["selectedPackage"],
+                selectedServices: entries,
+                selectedCategory: inferred ?? prev.selectedCategory,
+                servicesSubtotal: subtotal,
+                totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
+                currency: entries[0]?.currency ?? pkg.currency ?? prev.currency ?? tenantCurrency,
+              }));
+            }
+          }
+        }
+
+        if (queryParams.date) {
+          const d = coerceSelectedDate(queryParams.date);
+          if (d) {
+            setBookingData((prev) => ({ ...prev, selectedDate: d, selectedSlot: null, selectedResourceIds: [] }));
           }
         }
         if (queryParams.anyone || s?.staff_selection_mode === "anyone_default") {
@@ -427,7 +831,18 @@ export default function OnlineBookingFlowNew({
       }
     };
     load();
-  }, [provider.slug, provider.id, queryParams.service, queryParams.services, queryParams.staff, queryParams.anyone, queryParams.location]);
+  }, [
+    provider.slug,
+    provider.id,
+    queryParams.service,
+    queryParams.services,
+    queryParams.staff,
+    queryParams.anyone,
+    queryParams.location,
+    queryParams.location_type,
+    queryParams.date,
+    queryParams.package,
+  ]);
 
   // Load cancellation policy when we have provider and venue (for review step)
   useEffect(() => {
@@ -487,6 +902,18 @@ export default function OnlineBookingFlowNew({
     });
   }, [provider.slug, serviceIdsForAddons.join(",")]);
 
+  useEffect(() => {
+    if (appliedQueryAddonsRef.current) return;
+    const raw = queryParams.addons?.trim();
+    if (!raw) return;
+    if (addons.length === 0) return;
+    const want = raw.split(",").map((x) => x.trim()).filter(Boolean);
+    const valid = want.filter((id) => addons.some((a) => a.id === id));
+    if (valid.length === 0) return;
+    appliedQueryAddonsRef.current = true;
+    updateData({ selectedAddonIds: valid });
+  }, [queryParams.addons, addons, updateData]);
+
   // Total slot span = sum(durations) + sum(buffers) so slots match hold/booking block. For group booking use max across primary and all participants.
   const slotParams = (() => {
     const offeringsList = offerings as Array<{ id: string; duration_minutes?: number; buffer_minutes?: number }>;
@@ -521,16 +948,34 @@ export default function OnlineBookingFlowNew({
     return { durationMinutes: maxSpan || 60, bufferMinutes: 0 };
   })();
 
+  const primaryOfferingIds = useMemo(
+    () =>
+      bookingData.selectedServices
+        .map((s) => s.offering_id || (s as { id?: string }).id)
+        .filter(Boolean) as string[],
+    [bookingData.selectedServices]
+  );
+
+  const multiServiceIdsParam =
+    primaryOfferingIds.length >= 2
+      ? `&service_ids=${encodeURIComponent(primaryOfferingIds.join(","))}`
+      : "";
+
+  const excludeHoldParam = holdId
+    ? `&excludeHoldId=${encodeURIComponent(holdId)}`
+    : "";
+
   useEffect(() => {
-    if (step !== "schedule" || !bookingData.selectedDate || bookingData.selectedServices.length === 0) return;
+    const day = coerceSelectedDate(bookingData.selectedDate);
+    if (step !== "schedule" || !day || bookingData.selectedServices.length === 0) return;
     const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
-    const dateStr = bookingData.selectedDate.toISOString().split("T")[0];
+    const dateStr = formatLocalDateYYYYMMDD(day);
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0].offering_id;
     setLoadingSlots(true);
-    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}`;
+    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
     fetcher
-      .get<{ data: any[] }>(url)
+      .get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS)
       .then((res) => {
         const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? res ?? [];
         const list = Array.isArray(raw) ? raw : [];
@@ -556,6 +1001,76 @@ export default function OnlineBookingFlowNew({
     settings.max_advance_days,
     slotParams.durationMinutes,
     slotParams.bufferMinutes,
+    multiServiceIdsParam,
+    excludeHoldParam,
+  ]);
+
+  /** When entering the schedule step with no date, pick the earliest day that has a future bookable slot. */
+  useEffect(() => {
+    const prev = prevStepRef.current;
+    prevStepRef.current = step;
+    if (step !== "schedule") return;
+    if (bookingData.selectedDate != null) return;
+    const enteredSchedule = prev !== "schedule";
+    if (!enteredSchedule) return;
+    if (bookingData.selectedServices.length === 0) return;
+    const serviceId = bookingData.selectedServices[0]?.offering_id;
+    if (!serviceId) return;
+
+    let cancelled = false;
+    (async () => {
+      const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
+      const { durationMinutes, bufferMinutes } = slotParams;
+      const now = new Date();
+      const dateStr = (d: Date) => formatLocalDateYYYYMMDD(d);
+      for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
+        const d = new Date();
+        d.setHours(0, 0, 0, 0);
+        d.setDate(d.getDate() + offset);
+        try {
+          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
+          const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS);
+          if (cancelled) return;
+          const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
+          const list = Array.isArray(raw) ? raw : [];
+          const isToday = offset === 0;
+          const hasBookable = list.some((s: any) => {
+            if (s.is_available === false) return false;
+            const start = s.start ?? s.time;
+            if (!start) return false;
+            if (isToday) return new Date(start).getTime() > now.getTime();
+            return true;
+          });
+          if (hasBookable) {
+            if (cancelled) return;
+            setBookingData((prev) => ({ ...prev, selectedDate: d, selectedSlot: null, selectedResourceIds: [] }));
+            return;
+          }
+        } catch {
+          // try next day
+        }
+      }
+      if (!cancelled) {
+        const fallback = new Date();
+        fallback.setHours(0, 0, 0, 0);
+        setBookingData((prev) => ({ ...prev, selectedDate: fallback, selectedSlot: null, selectedResourceIds: [] }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    step,
+    bookingData.selectedDate,
+    bookingData.selectedServices,
+    bookingData.selectedStaff,
+    bookingData.selectedLocation,
+    provider.slug,
+    settings.max_advance_days,
+    settings.min_notice_minutes,
+    slotParams,
+    multiServiceIdsParam,
+    excludeHoldParam,
   ]);
 
   const stepsOrder: BookingStep[] = (() => {
@@ -572,21 +1087,30 @@ export default function OnlineBookingFlowNew({
   };
 
   const handleNextAvailable = async () => {
-    const dateStr = (d: Date) => d.toISOString().split("T")[0];
+    const dateStr = (d: Date) => formatLocalDateYYYYMMDD(d);
     const staffId = bookingData.selectedStaff?.id === "any" ? "any" : bookingData.selectedStaff?.id ?? "any";
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0]?.offering_id;
     if (!serviceId) return;
+    const now = new Date();
     for (let offset = 0; offset < Math.min(14, settings.max_advance_days); offset++) {
       const d = new Date();
+      d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() + offset);
-      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}`;
-      const res = await fetcher.get<{ data: any[] }>(url).catch(() => ({ data: [] }));
+      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
+      const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS).catch(() => ({ data: [] }));
       const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
       const list = Array.isArray(raw) ? raw : [];
-      const available = list.filter((s: any) => s.is_available !== false);
+      const isToday = offset === 0;
+      const available = list.filter((s: any) => {
+        if (s.is_available === false) return false;
+        const start = s.start ?? s.time;
+        if (!start) return false;
+        if (isToday) return new Date(start).getTime() > now.getTime();
+        return true;
+      });
       if (available.length > 0) {
-        setBookingData((prev) => ({ ...prev, selectedDate: d, selectedSlot: null }));
+        setBookingData((prev) => ({ ...prev, selectedDate: d, selectedSlot: null, selectedResourceIds: [] }));
         setSlots(
           list.map((s: any) => ({
             start: s.start ?? s.time,
@@ -603,7 +1127,11 @@ export default function OnlineBookingFlowNew({
   };
 
   const handleConfirm = async () => {
-    if (bookingData.selectedServices.length === 0 || !bookingData.selectedSlot) return;
+    if (bookingData.selectedServices.length === 0) return;
+    if (!bookingData.selectedSlot || !bookingData.selectedDate) {
+      toast.error("Please choose a date and time to continue.");
+      return;
+    }
     if (bookingData.policyAccepted !== true) {
       toast.error("Please accept the cancellation policy to continue.");
       return;
@@ -638,7 +1166,7 @@ export default function OnlineBookingFlowNew({
         addressPayload = {
           line1: bookingData.atHomeAddress.line1.trim(),
           city: bookingData.atHomeAddress.city.trim(),
-          country: bookingData.atHomeAddress.country || "ZA",
+          country: bookingData.atHomeAddress.country || tenantRegionCode,
           line2: bookingData.atHomeAddress.line2,
           state: bookingData.atHomeAddress.state,
           postal_code: bookingData.atHomeAddress.postal_code,
@@ -653,7 +1181,7 @@ export default function OnlineBookingFlowNew({
           addressPayload.longitude = bookingData.atHomeAddress.longitude!;
         } else {
           try {
-            const query = [bookingData.atHomeAddress.line1.trim(), bookingData.atHomeAddress.city.trim(), bookingData.atHomeAddress.country || "ZA"].filter(Boolean).join(", ");
+            const query = [bookingData.atHomeAddress.line1.trim(), bookingData.atHomeAddress.city.trim(), bookingData.atHomeAddress.country || tenantRegionCode].filter(Boolean).join(", ");
             const geocodeRes = await fetcher.post<{ data: Array<{ center: [number, number] }> }>("/api/mapbox/geocode", { query, limit: 1 });
             const results = (geocodeRes as any)?.data ?? [];
             if (results.length > 0 && results[0].center) {
@@ -671,6 +1199,11 @@ export default function OnlineBookingFlowNew({
         offering_id: s.offering_id,
         staff_id: staffIdForHold,
       }));
+      const pkgForHold =
+        bookingData.selectedPackage?.id?.trim() &&
+        selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)
+          ? bookingData.selectedPackage.id.trim()
+          : undefined;
       const res = await fetcher.post<{ data: { hold_id: string } }>("/api/public/booking-holds", {
         provider_id: provider.id,
         staff_id: staffIdForHold,
@@ -681,13 +1214,35 @@ export default function OnlineBookingFlowNew({
         location_id: bookingData.venueType === "at_salon" ? bookingData.selectedLocation?.id ?? null : null,
         address: addressPayload,
         resource_ids: bookingData.selectedResourceIds?.length ? bookingData.selectedResourceIds : undefined,
+        ...(pkgForHold ? { package_id: pkgForHold } : {}),
       });
       const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;
       if (id) {
         setHoldId(id);
         try {
+          const tc = await fetch("/api/public/tenant-context", { credentials: "same-origin", cache: "no-store" }).then((r) =>
+            r.json().catch(() => null)
+          );
+          const tid = (tc as { data?: { tenant?: { id?: string } } })?.data?.tenant?.id;
+          if (tid) rememberBookingDraftTenant(tid);
           sessionStorage.setItem("beautonomi_booking_client", JSON.stringify(bookingData.client));
           sessionStorage.setItem("beautonomi_booking_addons", JSON.stringify(bookingData.selectedAddonIds));
+          if (queryParams.promo?.trim()) {
+            sessionStorage.setItem("beautonomi_booking_promotion_code", queryParams.promo.trim());
+          }
+          if (queryParams.gift_card?.trim()) {
+            sessionStorage.setItem("beautonomi_booking_gift_card_code", queryParams.gift_card.trim());
+          }
+          const cartLines = parseProductsQueryParam(queryParams.products);
+          if (cartLines.length > 0) {
+            sessionStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(cartLines));
+          }
+          const pkg = bookingData.selectedPackage;
+          if (pkg?.id?.trim() && selectedServicesMatchPackage(bookingData.selectedServices, pkg)) {
+            sessionStorage.setItem("beautonomi_booking_package_id", pkg.id.trim());
+          } else {
+            sessionStorage.removeItem("beautonomi_booking_package_id");
+          }
           sessionStorage.setItem("beautonomi_booking_special_requests", bookingData.client.specialRequests || "");
           sessionStorage.setItem("beautonomi_booking_provider_form_responses", JSON.stringify(bookingData.provider_form_responses ?? {}));
           sessionStorage.setItem("beautonomi_booking_custom_field_values", JSON.stringify(bookingData.custom_field_values ?? {}));
@@ -768,8 +1323,9 @@ export default function OnlineBookingFlowNew({
             data={bookingData}
             locations={locations.filter((l) => (l.location_type || "salon") === "salon")}
             onChange={updateData}
-            onNext={() => setStep("category")}
+            onNext={handleVenueNext}
             providerName={provider.business_name}
+            defaultCountryCode={tenantRegionCode}
           />
         )}
 
@@ -778,6 +1334,7 @@ export default function OnlineBookingFlowNew({
             data={bookingData}
             offerings={offeringsForStep}
             categoryName={bookingData.selectedCategory?.name}
+            hidePackagesSection={prefillFromPackageDeepLink}
             packages={packages}
             variantsByServiceId={variantsByServiceId}
             onSelectPackage={(pkg) => {
@@ -871,11 +1428,14 @@ export default function OnlineBookingFlowNew({
             slots={slots}
             loadingSlots={loadingSlots}
             selectedDate={bookingData.selectedDate}
-            onSelectDate={(date) => updateData({ selectedDate: date, selectedSlot: null })}
-            onSelectSlot={(slot) => updateData({ selectedSlot: slot })}
+            onSelectDate={(date) =>
+              updateData({ selectedDate: date, selectedSlot: null, selectedResourceIds: [] })
+            }
+            onSelectSlot={(slot) => updateData({ selectedSlot: slot, selectedResourceIds: [] })}
             onNextAvailable={handleNextAvailable}
             onNext={() => setStep("resources")}
             maxAdvanceDays={settings.max_advance_days}
+            minNoticeMinutes={settings.min_notice_minutes}
             providerId={provider.id}
             serviceId={bookingData.selectedServices[0]?.offering_id ?? null}
             waitlistEnabled={settings.allow_online_waitlist !== false}
@@ -1010,7 +1570,7 @@ export default function OnlineBookingFlowNew({
         }}
         redirectUrl={
           preAuthGateOpen
-            ? `${typeof window !== "undefined" ? window.location.origin : ""}/book/${provider.slug}?auth_return=calendar`
+            ? `${typeof window !== "undefined" ? window.location.origin : ""}/booking?slug=${encodeURIComponent(provider.slug)}&auth_return=calendar`
             : undefined
         }
       />

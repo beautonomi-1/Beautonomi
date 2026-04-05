@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 
 const TABS: { id: string; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "needs_confirmation", label: "To confirm" },
   { id: "arrivals", label: "Arrivals" },
   { id: "in_service", label: "In Service" },
   { id: "ready_to_pay", label: "Ready to Pay" },
@@ -22,7 +23,7 @@ interface QueueTabsProps {
 export function QueueTabs({ activeTab, onTabChange, counts }: QueueTabsProps) {
   return (
     <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-      <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-flex h-auto p-1 bg-muted/50">
+      <TabsList className="grid w-full grid-cols-3 sm:grid-cols-6 lg:w-auto lg:inline-flex h-auto p-1 bg-muted/50">
         {TABS.map((tab) => {
           const count = counts[tab.id] ?? 0;
           return (

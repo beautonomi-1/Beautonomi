@@ -21,6 +21,13 @@ type Booking = {
   currency?: string;
 };
 
+function formatScheduledAt(value: string | null | undefined): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleString();
+}
+
 function statusBgColor(status: string): string {
   switch (status) {
     case "confirmed":
@@ -131,7 +138,7 @@ export default function BookingsScreen() {
                 onPress={() => onBookingPress(b.id)}
                 activeOpacity={0.7}
                 style={{ marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
-                accessibilityLabel={`Booking: ${b.customer_name || "Guest"}, ${b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "no date"}, ${b.status}`}
+                accessibilityLabel={`Booking: ${b.customer_name || "Guest"}, ${formatScheduledAt(b.scheduled_at)}, ${b.status}`}
                 accessibilityRole="button"
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
@@ -143,7 +150,7 @@ export default function BookingsScreen() {
                   </View>
                 </View>
                 <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
-                  {b.scheduled_at ? new Date(b.scheduled_at).toLocaleString() : "—"}
+                  {formatScheduledAt(b.scheduled_at)}
                 </Text>
                 {(b.location_name || b.staff_name) && (
                   <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>

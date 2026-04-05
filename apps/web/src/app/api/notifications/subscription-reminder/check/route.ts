@@ -1,8 +1,14 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
+import { verifyCronRequest } from '@/lib/cron-auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const cronCheck = verifyCronRequest(request);
+    if (!cronCheck.valid) {
+      return NextResponse.json({ error: cronCheck.error ?? 'Unauthorized' }, { status: 401 });
+    }
+
     const supabase = await getSupabaseServer();
 
     // Get all active subscriptions expiring in the next 30 days

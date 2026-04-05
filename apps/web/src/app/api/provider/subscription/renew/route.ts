@@ -1,8 +1,19 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse } from '@/lib/supabase/api-helpers';
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  getProviderIdForUser,
+  notFoundResponse,
+  errorResponse,
+} from '@/lib/supabase/api-helpers';
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { convertToSmallestUnit, generateTransactionReference } from "@/lib/payments/paystack";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * POST /api/provider/subscription/renew
@@ -13,7 +24,31 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+    const { data: providerTenantRow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    if (
+      !resourceTenantMatchesHostTenant(
+        tenantId,
+        (providerTenantRow as { tenant_id?: string | null } | null)?.tenant_id,
+      )
+    ) {
+      return errorResponse(
+        "Your provider account is not on this market. Use the site or app for the correct region.",
+        "TENANT_MISMATCH",
+        403,
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const in_app = !!((body as { in_app?: boolean }).in_app);
 
@@ -56,7 +91,7 @@ export async function POST(request: NextRequest) {
         plan_id: sub.plan_id,
         billing_period: billingPeriod,
         amount,
-        currency: planData.currency ?? "ZAR",
+        currency: planData.currency ?? lastResortCurrency,
         status: "pending",
       })
       .select("*")
@@ -80,7 +115,7 @@ export async function POST(request: NextRequest) {
     const paystackData = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: convertToSmallestUnit(amount),
-      currency: planData.currency ?? "ZAR",
+      currency: planData.currency ?? lastResortCurrency,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -89,6 +124,7 @@ export async function POST(request: NextRequest) {
         plan_id: sub.plan_id,
         billing_period: billingPeriod,
       },
+      tenantId,
     });
 
     const paymentUrl = paystackData?.data?.authorization_url || null;

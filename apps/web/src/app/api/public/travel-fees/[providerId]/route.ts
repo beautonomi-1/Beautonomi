@@ -1,6 +1,9 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseServer } from '@/lib/supabase/server';
 import { successResponse, handleApiError } from '@/lib/supabase/api-helpers';
+import { requirePublicTenant } from '@/lib/tenant/require-public-tenant';
+import { getTenantRegionConfig } from '@/lib/regions/config';
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 /**
  * GET /api/public/travel-fees/[providerId]
@@ -13,8 +16,24 @@ export async function GET(
   { params }: { params: Promise<{ providerId: string }> }
 ) {
   try {
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) {
+      return tenantRes;
+    }
+    const { tenantId } = tenantRes;
+
     const supabase = await getSupabaseServer();
     const { providerId } = await params;
+
+    const { data: provOk } = await supabase
+      .from('providers')
+      .select('id')
+      .eq('id', providerId)
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    if (!provOk) {
+      return handleApiError(new Error('Provider not found'), 'Provider not found', 'NOT_FOUND', 404);
+    }
 
     // Get provider settings
     const { data: providerSettings } = await supabase
@@ -31,11 +50,14 @@ export async function GET(
       .eq('is_active', true)
       .single();
 
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const regionDefaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const travelFees = platformSettings?.settings?.travel_fees || {
       default_rate_per_km: 8.00,
       default_minimum_fee: 20.00,
       default_maximum_fee: null,
-      default_currency: 'ZAR',
+      default_currency: regionDefaultCurrency,
     };
 
     // If provider has custom settings and not using platform default

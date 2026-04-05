@@ -84,16 +84,17 @@ export async function POST(
         .single();
 
       if (reviewData) {
-        await supabase.from("notifications").insert({
+        const { insertNotification } = await import("@/lib/notifications/insert-notification");
+        await insertNotification({
           user_id: reviewData.customer_id,
-          type: "provider_review_response",
+          type: "review_response",
           title: "Provider Responded to Your Review",
           message: `The provider has responded to your review for booking ${(reviewData.bookings as any)?.booking_number || ''}.`,
-          metadata: {
+          data: {
             review_id: reviewId,
             booking_id: reviewData.booking_id,
           },
-          link: `/account-settings/bookings/${reviewData.booking_id}`,
+          action_url: `/account-settings/bookings/${reviewData.booking_id}`,
         });
       }
     } catch (notifError) {

@@ -1,9 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { initializePaystackTransactionWithPlan } from "@/lib/payments/paystack-server";
 import { z } from "zod";
 import { createClient } from "@supabase/supabase-js";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createSubscriptionSchema = z.object({
   plan_id: z.string().uuid("Invalid plan ID"),
@@ -22,6 +25,7 @@ const createSubscriptionSchema = z.object({
 export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     if (!user) {
       return errorResponse("Authentication required", "UNAUTHORIZED", 401);
     }
@@ -54,31 +58,37 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const providerId = await getProviderIdForUser(user.id, supabaseAdmin);
-
-    if (!providerId) return notFoundResponse("Provider not found");
-
-
-    // Get provider
-    const { data: provider, error: providerError } = await supabaseAdmin
-      .from("providers")
-      .select("id, user_id, business_name, email, phone")
-      .eq("user_id", user.id)
-      .single();
-
-    if (providerError || !provider) {
+    const scopedProvider = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabaseAdmin,
+      table: "providers",
+      tenantId,
+      select: "id, user_id, business_name, email, phone",
+      apply: (q) => q.eq("user_id", user.id),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const provider = scopedProvider.data as { id: string; email?: string | null } | null;
+    if (!provider?.id) {
       return errorResponse("Provider not found", "NOT_FOUND", 404);
     }
+    const providerId = provider.id;
 
-    // Get pricing plan
-    const { data: pricingPlan, error: planError } = await supabaseAdmin
-      .from("pricing_plans")
-      .select("id, name, price, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id")
-      .eq("id", plan_id)
-      .eq("is_active", true)
-      .single();
-
-    if (planError || !pricingPlan) {
+    const scopedPlan = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabaseAdmin,
+      table: "pricing_plans",
+      tenantId,
+      select: "id, name, price, paystack_plan_code_monthly, paystack_plan_code_yearly, subscription_plan_id",
+      apply: (q) => q.eq("id", plan_id).eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const pricingPlan = scopedPlan.data as
+      | {
+          id: string;
+          paystack_plan_code_monthly?: string | null;
+          paystack_plan_code_yearly?: string | null;
+          subscription_plan_id?: string | null;
+        }
+      | null;
+    if (!pricingPlan) {
       return errorResponse("Pricing plan not found or inactive", "NOT_FOUND", 404);
     }
 
@@ -133,6 +143,16 @@ export async function POST(request: NextRequest) {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
     const inAppParam = in_app ? "&in_app=1" : "";
     const callbackUrl = `${baseUrl}/provider/subscription?payment_success=true&billing_period=${billing_period}${inAppParam}`;
+    const { data: tenantRow } = await supabaseAdmin
+      .from("tenants")
+      .select("default_currency")
+      .eq("id", tenantId)
+      .maybeSingle();
+    const tenantDefaultCurrency = String(
+      (tenantRow as { default_currency?: string | null } | null)?.default_currency ?? LAST_RESORT_CURRENCY,
+    )
+      .trim()
+      .toUpperCase();
 
     const init = await initializePaystackTransactionWithPlan({
       email: customerEmail,
@@ -143,8 +163,10 @@ export async function POST(request: NextRequest) {
         pricing_plan_id: plan_id,
         subscription_plan_id: subscriptionPlanId,
         billing_period,
+        tenant_id: tenantId,
       },
-      currency: "ZAR",
+      currency: tenantDefaultCurrency,
+      tenantId,
     });
 
     const authorizationUrl = init?.data?.authorization_url || null;

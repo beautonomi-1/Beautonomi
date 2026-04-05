@@ -4,6 +4,10 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/provider/payouts
@@ -86,32 +90,53 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id, currency")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null; currency?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+    const payoutCurrency =
+      (prow as { currency?: string | null } | null)?.currency || lastResortCurrency;
+
     if (!amount || amount <= 0) {
       return errorResponse("Amount must be greater than 0", "VALIDATION_ERROR", 400);
     }
 
     const numAmount = Number(amount);
-    const { data: platformRow } = await (supabase as any)
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .limit(1)
-      .maybeSingle();
-    const minimumPayout = (platformRow?.settings as any)?.payouts?.minimum_payout_amount ?? 100;
-    const holdDays = (platformRow?.settings as any)?.payouts?.payout_hold_days ?? 0;
+    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabase as any,
+      table: "platform_settings",
+      tenantId: effectiveTenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const payoutSettings = ((scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)?.payouts ?? {};
+    const minimumPayout = Number(payoutSettings.minimum_payout_amount ?? 100);
+    const holdDays = Number(payoutSettings.payout_hold_days ?? 0);
     if (numAmount < minimumPayout) {
       return errorResponse(
-        `Minimum payout amount is ${minimumPayout} ZAR. You requested ${numAmount}.`,
+        `Minimum payout amount is ${minimumPayout} ${payoutCurrency}. You requested ${numAmount}.`,
         "BELOW_MINIMUM_PAYOUT",
         400
       );
     }
 
-    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId, { holdDays });
+    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId, {
+      holdDays,
+      tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    });
 
-    if (amount > availableBalance) {
+    const availableRounded = Math.round(availableBalance * 100) / 100;
+    const requestRounded = Math.round(numAmount * 100) / 100;
+    if (requestRounded > availableRounded + 1e-6) {
       return errorResponse(
-        `Insufficient balance. Available: ${availableBalance}, Requested: ${amount}`,
+        `Insufficient balance. Available: ${availableRounded}, Requested: ${requestRounded}`,
         "INSUFFICIENT_BALANCE",
         400
       );
@@ -165,14 +190,14 @@ export async function POST(request: NextRequest) {
       .insert({
         provider_id: providerId,
         payout_number: "",
-        amount: Number(amount),
-        currency: "ZAR",
+        amount: numAmount,
+        currency: payoutCurrency,
         status: "pending",
         payout_method: "bank_transfer",
         payout_account_details: Object.keys(payoutAccountDetails).length > 0 ? payoutAccountDetails : {},
         platform_fee_amount: 0,
-        platform_fee_percentage: 15,
-        net_amount: Number(amount),
+        platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 15),
+        net_amount: numAmount,
         scheduled_at: new Date().toISOString(),
       })
       .select()
@@ -188,8 +213,8 @@ export async function POST(request: NextRequest) {
         user_id: user.id,
         type: "system",
         title: "Payout Requested",
-        message: `Payout request of ${amount} ZAR has been submitted`,
-        data: { payout_id: payout.id, amount },
+        message: `Payout request of ${numAmount} ${payoutCurrency} has been submitted`,
+        data: { payout_id: payout.id, amount: numAmount },
         action_url: "/provider/payouts",
       });
     } catch {

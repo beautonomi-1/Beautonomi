@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderDetail } from "@/types/beautonomi";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 // Increase timeout for this route
 export const maxDuration = 30; // 30 seconds
@@ -19,6 +22,18 @@ export async function GET(
 ) {
   try {
     const supabase = await getSupabaseServer();
+    let tenantId: string;
+    try {
+      tenantId = await resolveTenantIdWithZaFallback(request);
+    } catch (tenantErr) {
+      console.error("Tenant resolution failed in /api/public/providers/[slug]:", tenantErr);
+      return NextResponse.json(
+        { data: null, error: { message: "Tenant not configured", code: "TENANT_UNAVAILABLE" } },
+        { status: 503 }
+      );
+    }
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { slug: rawSlug } = await params;
     const { searchParams } = new URL(request.url);
     const latParam = searchParams.get("lat");
@@ -39,7 +54,6 @@ export async function GET(
       decodedSlug = rawSlug;
     }
 
-    console.log(`[Provider API] Fetching provider with slug: ${decodedSlug} (raw: ${rawSlug})`);
 
     // Fetch provider - use left join for users to avoid filtering out providers if user doesn't exist
     // Note: accepts_custom_requests may not exist in all databases, so we'll fetch it separately if needed
@@ -76,6 +90,7 @@ export async function GET(
         users(include_in_search_engines)
       `)
       .eq("slug", decodedSlug)
+      .eq("tenant_id", tenantId)
       .eq("status", "active")
       .maybeSingle(); // Use maybeSingle instead of single to avoid errors if not found
     provider = initial.data;
@@ -83,7 +98,6 @@ export async function GET(
 
     // If not found with decoded slug, try original slug
     if (providerError || !provider) {
-      console.log(`[Provider API] Not found with decoded slug, trying original: ${slug}`);
       const retry = await supabase
         .from("providers")
         .select(`
@@ -109,6 +123,7 @@ export async function GET(
           users(include_in_search_engines)
         `)
         .eq("slug", slug)
+        .eq("tenant_id", tenantId)
         .eq("status", "active")
         .maybeSingle(); // Use maybeSingle instead of single
       
@@ -127,7 +142,6 @@ export async function GET(
       
       // Try to find by ID if slug looks like a UUID
       if (slug.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-        console.log(`[Provider API] Slug looks like UUID, trying to find by ID: ${slug}`);
         const { data: providerById, error: idError } = await supabase
           .from("providers")
           .select(`
@@ -149,11 +163,11 @@ export async function GET(
             users(include_in_search_engines)
           `)
           .eq("id", slug)
+          .eq("tenant_id", tenantId)
           .eq("status", "active")
           .single();
         
         if (providerById && !idError) {
-          console.log(`[Provider API] Found provider by ID: ${providerById.business_name}`);
           provider = providerById;
           providerError = null;
         }
@@ -161,7 +175,6 @@ export async function GET(
       
       if (providerError || !provider) {
         // Last attempt: try without status filter (in case status is not 'active' but provider exists)
-        console.log(`[Provider API] Trying without status filter as last attempt`);
         const lastAttempt = await supabase
           .from("providers")
           .select(`
@@ -186,13 +199,16 @@ export async function GET(
             users(include_in_search_engines)
           `)
           .eq("slug", decodedSlug)
+          .eq("tenant_id", tenantId)
           .single();
         
         if (lastAttempt.data && !lastAttempt.error) {
-          console.log(`[Provider API] Found provider but status is: ${lastAttempt.data.status}`);
-          // If provider exists but status is not active, still return it but log a warning
-          if (lastAttempt.data.status !== 'active') {
-            console.warn(`[Provider API] Provider ${lastAttempt.data.business_name} is not active (status: ${lastAttempt.data.status})`);
+          const nonPublicStatuses = ["suspended", "deactivated", "banned", "deleted"];
+          if (nonPublicStatuses.includes(lastAttempt.data.status)) {
+            return NextResponse.json(
+              { data: null, error: { message: "Provider not found", code: "NOT_FOUND" } },
+              { status: 404 }
+            );
           }
           provider = lastAttempt.data;
           providerError = null;
@@ -216,7 +232,6 @@ export async function GET(
       }
     }
 
-    console.log(`[Provider API] Found provider: ${provider.business_name} (ID: ${provider.id})`);
 
     const providerData = provider as any;
     
@@ -234,12 +249,30 @@ export async function GET(
     const languagesSpoken = providerData.languages_spoken ?? ['English'];
 
     // Fetch all related data in parallel for better performance
+    const loadPublicRatings = async () => {
+      const statusFiltered = await supabase
+        .from("reviews")
+        .select("rating")
+        .eq("provider_id", providerData.id)
+        .eq("status", "published");
+      if (!statusFiltered.error) {
+        return statusFiltered.data ?? [];
+      }
+      const visibleFiltered = await supabase
+        .from("reviews")
+        .select("rating")
+        .eq("provider_id", providerData.id)
+        .eq("is_visible", true);
+      return visibleFiltered.data ?? [];
+    };
+
     const [
       locationsResult,
       offeringsResult,
       staffCountResult,
       policiesResult,
       pointsResult,
+      publicRatings,
     ] = await Promise.all([
       // Fetch locations
       supabase
@@ -292,6 +325,7 @@ export async function GET(
         `)
         .eq("provider_id", providerData.id)
         .maybeSingle(),
+      loadPublicRatings(),
     ]);
 
     const locations = locationsResult.data || [];
@@ -299,6 +333,12 @@ export async function GET(
     const staffCount = staffCountResult.count || undefined;
     const policies = policiesResult.data;
     const pointsData = pointsResult.data;
+    const reviewRows = Array.isArray(publicRatings) ? publicRatings : [];
+    const reviewCountLive = reviewRows.length;
+    const ratingAverageLive =
+      reviewCountLive > 0
+        ? reviewRows.reduce((sum: number, r: { rating?: number | null }) => sum + Number(r.rating ?? 0), 0) / reviewCountLive
+        : 0;
     
     // Extract badge from points data (Supabase may return relation as array)
     let currentBadge = null;
@@ -394,9 +434,9 @@ export async function GET(
     let supportsHouseCalls = false;
     let supportsSalon = false;
 
-    // Check if provider supports house calls (any offering with supports_at_home = true)
+    // Check if provider supports house calls (normalize boolean-like values)
     if (offerings && offerings.length > 0) {
-      supportsHouseCalls = (offerings as any[]).some((o: any) => o.supports_at_home === true);
+      supportsHouseCalls = (offerings as any[]).some((o: any) => Boolean(o.supports_at_home));
     }
 
     // Also check services table for supports_at_home if no offerings found
@@ -413,9 +453,14 @@ export async function GET(
           .limit(100);
         
         if (servicesData && servicesData.length > 0) {
-          supportsHouseCalls = servicesData.some((s: any) => s.supports_at_home === true);
+          supportsHouseCalls = servicesData.some((s: any) => Boolean(s.supports_at_home));
         }
       }
+    }
+
+    // Keep provider-level capability as a fallback signal when data is partially migrated.
+    if (!supportsHouseCalls && providerData.offers_mobile_services === true) {
+      supportsHouseCalls = true;
     }
 
     // Support salon only if provider has at least one physical salon location (location_type = 'salon').
@@ -428,13 +473,13 @@ export async function GET(
       console.warn(`Provider ${providerData.id} (slug: ${slug}) has no business_name`);
     }
 
-    const result: PublicProviderDetail = {
+    const result = {
       id: providerData.id,
       slug: providerData.slug,
       business_name: providerData.business_name || "Provider",
       business_type: providerData.business_type,
-      rating: providerData.rating_average ?? 0,
-      review_count: providerData.review_count ?? 0,
+      rating: Number.isFinite(ratingAverageLive) ? Math.round(ratingAverageLive * 100) / 100 : (providerData.rating_average ?? 0),
+      review_count: reviewCountLive || 0,
       thumbnail_url: providerData.thumbnail_url,
       avatar_url: providerData.avatar_url ?? null,
       city: city,
@@ -442,7 +487,7 @@ export async function GET(
       is_featured: providerData.is_featured ?? false,
       is_verified: providerData.is_verified ?? false,
       starting_price: startingPrice,
-      currency: providerData.currency || "ZAR",
+      currency: providerData.currency || defaultCurrency,
       description: providerData.description || "",
       gallery: providerData.gallery || [],
       categories: categories as string[],
@@ -494,7 +539,9 @@ export async function GET(
       current_badge: currentBadge,
       total_points: pointsData?.total_points || undefined,
       distance_km: distance_km ?? undefined,
-    };
+      /** Expose to clients so booking pages can add noindex when provider opted out */
+      seo_indexable: includeInSearchEngines,
+    } as PublicProviderDetail;
 
     const response = NextResponse.json({
       data: result,

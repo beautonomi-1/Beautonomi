@@ -6,6 +6,9 @@ import {
   errorResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
+import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
 import { z } from "zod";
 
 const RETURN_WINDOW_DAYS = 14;
@@ -34,6 +37,7 @@ export async function GET(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     const { data, error } = await supabase.from("product_return_requests")
       .select(
@@ -43,7 +47,24 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (error) throw error;
-    return successResponse({ returns: data ?? [] });
+    const rows = (data ?? []) as Array<{ order?: { provider?: { id?: string | null } | null } | null }>;
+    const providerIds = [
+      ...new Set(
+        rows
+          .map((r) => r.order?.provider?.id ?? null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const { data: tenantProviders } = providerIds.length
+      ? await supabase.from("providers").select("id").in("id", providerIds).eq("tenant_id", tenantId)
+      : { data: [] as Array<{ id: string }> };
+    const allowedProviderIds = new Set((tenantProviders ?? []).map((p) => p.id));
+    return successResponse({
+      returns: rows.filter((r) => {
+        const providerId = r.order?.provider?.id;
+        return providerId != null && allowedProviderIds.has(providerId);
+      }),
+    });
   } catch (err) {
     return handleApiError(err, "Failed to fetch return requests");
   }
@@ -58,6 +79,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = createReturnSchema.parse(body);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
 
     // Validate order belongs to customer and is delivered
     const { data: order, error: orderErr } = await supabase.from("product_orders")
@@ -67,6 +89,15 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (orderErr || !order) {
+      return errorResponse("Order not found", "NOT_FOUND", 404);
+    }
+    const { data: orderProvider } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", order.provider_id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (!orderProvider?.id) {
       return errorResponse("Order not found", "NOT_FOUND", 404);
     }
     if (!["delivered", "ready_for_collection"].includes(order.status)) {
@@ -151,27 +182,26 @@ export async function POST(request: NextRequest) {
 
     if (createErr) throw createErr;
 
-    // Notify provider of return request
-    const { data: provider } = await supabase.from("providers")
-      .select("owner_id")
+    // Notify provider team of return request
+    const { data: providerTenant } = await supabase.from("providers")
+      .select("tenant_id")
       .eq("id", order.provider_id)
       .single();
-
-    if (provider?.owner_id) {
-      const { data: userData } = await supabase.from("users").select("full_name").eq("id", user.id).single();
-      await supabase.from("notifications").insert({
-        user_id: provider.owner_id,
-        type: "product_return_requested",
-        title: "Return Request",
-        message: `${userData?.full_name ?? "A customer"} has requested a return for an item worth R${refundAmount.toFixed(2)}`,
-        metadata: {
-          return_request_id: returnReq.id,
-          order_id: parsed.order_id,
-          reason: parsed.reason,
-        },
-        link: "/provider/ecommerce/returns",
-      }).then(() => {}, () => {});
-    }
+    const { format: formatRefundHint } = await getTenantMoneyFormatter(
+      (providerTenant as { tenant_id?: string | null } | null)?.tenant_id,
+    );
+    const { data: userData } = await supabase.from("users").select("full_name").eq("id", user.id).single();
+    await notifyProviderTeamUsers(order.provider_id, {
+      type: "product_return_requested",
+      title: "Return Request",
+      message: `${userData?.full_name ?? "A customer"} has requested a return for an item worth ${formatRefundHint(refundAmount)}`,
+      metadata: {
+        return_request_id: returnReq.id,
+        order_id: parsed.order_id,
+        reason: parsed.reason,
+      },
+      link: "/provider/ecommerce/returns",
+    });
 
     return successResponse({ return_request: returnReq }, 201);
   } catch (err) {

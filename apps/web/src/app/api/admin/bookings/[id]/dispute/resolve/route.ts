@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
-import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const resolveDisputeSchema = z.object({
   resolution: z.enum(["refund_full", "refund_partial", "deny"]),
@@ -19,6 +23,7 @@ type BookingRow = {
   booking_number: string;
   currency?: string;
   status: string;
+  tenant_id?: string | null;
 };
 
 type DisputeRow = { id: string };
@@ -36,12 +41,15 @@ export async function POST(
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    if (!user) {
-      return unauthorizedResponse("Authentication required");
-    }
 
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    if (!supabase) {
+      return NextResponse.json(
+        { data: null, error: { message: "Database unavailable", code: "SERVER_ERROR" } },
+        { status: 500 }
+      );
+    }
     const body = await request.json();
 
     // Validate request body
@@ -60,6 +68,22 @@ export async function POST(
           },
         },
         { status: 400 }
+      );
+    }
+
+    const tenantId = await resolveAdminApiTenantId(request);
+    const bookingLoad = await fetchBookingInAdminTenant(supabase, id, tenantId, "*");
+    if ("error" in bookingLoad) {
+      const st = bookingLoad.error.status;
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: st === 403 ? "Booking belongs to another market" : "Booking not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "NOT_FOUND",
+          },
+        },
+        { status: st }
       );
     }
 
@@ -84,28 +108,11 @@ export async function POST(
       );
     }
 
-    // Get booking
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (!booking) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Booking not found",
-            code: "NOT_FOUND",
-          },
-        },
-        { status: 404 }
-      );
-    }
-
     const { resolution, refund_amount, notes } = validationResult.data;
-    const bookingData = booking as BookingRow;
+    const bookingData = bookingLoad.booking as BookingRow;
+    const effectiveTenantId = bookingData.tenant_id ?? tenantId;
+    const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
     // Handle refunds: always credit customer wallet (no Paystack call)
     if (resolution === "refund_full" || resolution === "refund_partial") {
@@ -127,14 +134,20 @@ export async function POST(
         );
       }
 
+      const disputeWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+        tenant_id: bookingData.tenant_id ?? tenantId,
+        provider_id: bookingData.provider_id,
+      });
+
       const rpc = supabase.rpc as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
       const { error: walletError } = await rpc("wallet_credit_admin", {
         p_user_id: bookingData.customer_id,
         p_amount: refundAmt,
-        p_currency: bookingData.currency || "ZAR",
+        p_currency: bookingData.currency || lastResortCurrency,
         p_description: `Dispute resolution refund for booking ${bookingData.booking_number}`,
         p_reference_id: (dispute as DisputeRow).id,
         p_reference_type: "booking_dispute",
+        p_tenant_id: disputeWalletTenantId,
       });
 
       if (walletError) {
@@ -190,6 +203,25 @@ export async function POST(
         status: "completed",
         created_by: user.id,
       });
+
+      const { error: disputeFinanceErr } = await supabase.from("finance_transactions").insert({
+        tenant_id: disputeWalletTenantId,
+        booking_id: id,
+        provider_id: bookingData.provider_id,
+        transaction_type: "refund",
+        amount: -refundAmt,
+        fees: 0,
+        commission: 0,
+        net: -refundAmt,
+        description: `Dispute resolution refund for booking ${bookingData.booking_number}`,
+        created_at: new Date().toISOString(),
+      });
+      if (disputeFinanceErr) {
+        console.error(
+          "Dispute resolve: finance ledger insert failed after wallet credit:",
+          disputeFinanceErr,
+        );
+      }
 
       await supabase
         .from("bookings")
@@ -256,7 +288,7 @@ export async function POST(
         resolution === "refund_full"
           ? "Your dispute has been resolved with a full refund. The amount has been added to your wallet—use it for your next booking or request a payout."
           : resolution === "refund_partial"
-          ? `Your dispute has been resolved with a partial refund of ${bookingData.currency || "ZAR"} ${refund_amount ?? 0}. The amount has been added to your wallet.`
+          ? `Your dispute has been resolved with a partial refund of ${bookingData.currency || lastResortCurrency} ${refund_amount ?? 0}. The amount has been added to your wallet.`
           : "Your dispute has been reviewed and the decision is in favor of the provider.";
 
       // Notify customer

@@ -12,6 +12,8 @@ import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
 
 interface Location {
   id: string;
@@ -401,6 +403,10 @@ function LocationModal({
       toast.error("Country is required");
       return;
     }
+    if (formData.phone?.trim() && !isCompleteE164(formData.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
 
     try {
       setIsSaving(true);
@@ -543,13 +549,12 @@ function LocationModal({
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  type="tel"
+                <PhoneInput
+                  label="Phone"
+                  inputId="provider-location-form-phone"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="mt-1.5"
+                  onChange={(e164) => setFormData({ ...formData, phone: e164 })}
+                  className="mt-1.5 space-y-1"
                 />
               </div>
               <div>

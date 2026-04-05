@@ -6,6 +6,8 @@ export default defineConfig({
   plugins: [react()],
   test: {
     globals: true,
+    /** API route tests import heavy modules; parallel CI runners need headroom above 5s default. */
+    testTimeout: 15_000,
     environment: "jsdom",
     include: ["src/**/*.{test,spec}.{js,ts,jsx,tsx}"],
     exclude: ["node_modules", ".next"],

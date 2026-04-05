@@ -1,57 +1,29 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import type { Metadata } from "next";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { fetcher } from "@/lib/http/fetcher";
 import WhyBeautonomiHero from "./components/hero";
 import Features from "./components/features";
 import Benefits from "./components/benefits";
 import CTABanner from "./components/cta-banner";
 import FAQ from "@/components/global/faq";
+import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
+import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
-interface PageContent {
-  [sectionKey: string]: {
-    content: string;
-    content_type: string;
-    metadata: Record<string, any>;
-  };
-}
+export const metadata: Metadata = {
+  title: "Why Beautonomi",
+  description:
+    "Learn why customers and beauty professionals choose Beautonomi.",
+  alternates: {
+    canonical: "/why-beautonomi",
+    languages: getHreflangAlternateUrls("/why-beautonomi"),
+  },
+};
 
-export default function WhyBeautonomiPage() {
-  const [content, setContent] = useState<PageContent | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+export const revalidate = 300;
 
-  useEffect(() => {
-    const loadContent = async () => {
-      try {
-        const response = await fetcher.get<{ data: PageContent }>("/api/public/page-content?page_slug=why-beautonomi");
-        setContent(response.data);
-      } catch (error) {
-        console.error("Failed to load why-beautonomi page content:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadContent();
-  }, []);
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-white pb-20 md:pb-0">
-        <BeautonomiHeader />
-        <div className="container mx-auto px-4 py-16">
-          <div className="animate-pulse">
-            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
-            <div className="h-4 bg-gray-200 rounded w-full mb-2"></div>
-          </div>
-        </div>
-        <Footer />
-        <BottomNav />
-      </div>
-    );
-  }
+export default async function WhyBeautonomiPage() {
+  const content = await getPublicPageContent("why-beautonomi");
 
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">

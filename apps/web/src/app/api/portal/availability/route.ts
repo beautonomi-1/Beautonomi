@@ -5,6 +5,7 @@ import { validatePortalToken } from "@/lib/portal/token";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
+import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 
 /**
  * GET /api/portal/availability
@@ -16,14 +17,20 @@ import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
  * Query params: token, date
  */
 export async function GET(request: NextRequest) {
-  const { allowed } = checkPortalRateLimit(request);
+  const rate = await checkPortalRateLimit(request);
+  const { allowed } = rate;
   if (!allowed) {
-    return handleApiError(
+    const response = handleApiError(
       new Error("Rate limit exceeded"),
       "Too many requests. Please try again later.",
       "RATE_LIMITED",
       429
     );
+    return applyRateLimitHeaders(response, {
+      limit: 30,
+      remaining: rate.remaining,
+      retryAfterSeconds: rate.retryAfterSeconds,
+    });
   }
 
   try {
@@ -60,6 +67,7 @@ export async function GET(request: NextRequest) {
       .from("bookings")
       .select(`
         id,
+        provider_id,
         location_type,
         booking_services (
           staff_id,
@@ -96,7 +104,12 @@ export async function GET(request: NextRequest) {
     }
     totalDuration = totalDuration || 60;
 
-    const constraints = await loadAvailabilityConstraints(supabase, staffId, date);
+    const constraints = await loadAvailabilityConstraints(
+      supabase,
+      staffId,
+      date,
+      (booking as { provider_id?: string }).provider_id
+    );
     const travelBuffer = booking.location_type === "at_home" ? 30 : 0;
 
     const slots = calculateAvailableSlots(constraints, totalDuration, date, {

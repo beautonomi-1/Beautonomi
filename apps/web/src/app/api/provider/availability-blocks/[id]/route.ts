@@ -7,7 +7,7 @@ import {
   notFoundResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
-import { requirePermission } from "@/lib/auth/requirePermission";
+import { requireAnyPermission } from "@/lib/auth/requirePermission";
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const updateSchema = z.object({
@@ -27,8 +27,7 @@ function toIso(dateLike: string) {
 
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    // Check permission to edit settings
-    const permissionCheck = await requirePermission('edit_settings', request);
+    const permissionCheck = await requireAnyPermission(["edit_settings", "edit_appointments"], request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }
@@ -92,8 +91,7 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    // Check permission to edit settings
-    const permissionCheck = await requirePermission('edit_settings', request);
+    const permissionCheck = await requireAnyPermission(["edit_settings", "edit_appointments"], request);
     if (!permissionCheck.authorized) {
       return permissionCheck.response!;
     }

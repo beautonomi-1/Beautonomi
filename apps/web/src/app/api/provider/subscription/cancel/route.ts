@@ -4,6 +4,8 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { sendTemplateNotification } from "@/lib/notifications/onesignal";
 import { createClient } from '@supabase/supabase-js';
 import { disableSubscriptionByCode } from '@/lib/payments/paystack-complete';
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
 
 /**
  * POST /api/provider/subscription/cancel
@@ -14,8 +16,12 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
+
+    const marketMismatch = await providerTenantMismatchResponse(supabase, tenantId, providerId);
+    if (marketMismatch) return marketMismatch;
 
     // Get subscription with plan details before cancelling
     const { data: subscriptionToCancel } = await supabase
@@ -39,7 +45,7 @@ export async function POST(request: NextRequest) {
     const paystackSubscriptionCode = (subscriptionToCancel as any).paystack_subscription_code;
     if (paystackSubscriptionCode) {
       try {
-        await disableSubscriptionByCode(paystackSubscriptionCode);
+        await disableSubscriptionByCode(paystackSubscriptionCode, { tenantId });
       } catch (paystackError) {
         console.error("Error disabling Paystack subscription:", paystackError);
         // Continue with local cancellation even if Paystack call fails

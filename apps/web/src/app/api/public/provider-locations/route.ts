@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
 /**
  * GET /api/public/provider-locations?provider_id=...
@@ -15,16 +16,48 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await getSupabaseServer();
+    const tenantRes = await requirePublicTenant(request);
+    if (tenantRes instanceof Response) {
+      return tenantRes;
+    }
+    const { tenantId } = tenantRes;
 
-    const { data: locations, error } = await supabase
-      .from("provider_locations")
-      .select("id, name, address_line1, address_line2, city, state, postal_code, country, phone, email, is_primary, latitude, longitude")
+    const supabase = getSupabaseAdmin();
+
+    const { data: prov, error: provErr } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (provErr || !prov) {
+      return NextResponse.json({ error: "Provider not found" }, { status: 404 });
+    }
+
+    let locations: any[] | null = null;
+    const primaryQuery = (supabase.from("provider_locations") as any)
+      .select("id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude")
       .eq("provider_id", providerId)
       .eq("is_active", true)
+      .eq("location_type", "salon")
       .order("is_primary", { ascending: false });
+    const { data: strictLocations, error } = await primaryQuery;
 
-    if (error) throw error;
+    if (error?.code === "42703") {
+      // Backward-compatible fallback for DBs that do not have provider_locations.location_type yet.
+      const { data: legacyLocations, error: legacyError } = await (supabase
+        .from("provider_locations") as any)
+        .select("id, name, address_line1, address_line2, city, state, postal_code, country, is_primary, latitude, longitude")
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false });
+      if (legacyError) throw legacyError;
+      locations = legacyLocations ?? [];
+    } else {
+      if (error) throw error;
+      locations = strictLocations ?? [];
+    }
 
     return NextResponse.json({ data: { locations: locations ?? [] } });
   } catch (err) {

@@ -2,6 +2,10 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  isProviderSubscriptionFeatureEnabled,
+  SUBSCRIPTION_FEATURE_KEYS,
+} from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
 const resourceTypeEnum = z.enum(["room", "chair", "equipment", "other"]);
@@ -9,6 +13,7 @@ const updateResourceSchema = z.object({
   name: z.string().min(1).optional(),
   description: z.string().optional(),
   group_id: z.string().uuid().nullable().optional(),
+  location_id: z.string().uuid().nullable().optional(),
   capacity: z.number().optional(),
   is_active: z.boolean().optional(),
   resource_type: resourceTypeEnum.optional(),
@@ -82,6 +87,7 @@ export async function GET(
       group_color: group?.color || null,
       group_id: resource.group_id || null,
       provider_id: resource.provider_id,
+      location_id: (resource as any).location_id ?? null,
       created_at: resource.created_at,
       updated_at: resource.updated_at,
     };
@@ -138,6 +144,17 @@ export async function PATCH(
       if (!providerId) {
         return notFoundResponse("Provider not found");
       }
+      const resourcesOk = await isProviderSubscriptionFeatureEnabled(
+        providerId,
+        SUBSCRIPTION_FEATURE_KEYS.serviceResources
+      );
+      if (!resourcesOk) {
+        return errorResponse(
+          "Equipment and room resources are not included in your current subscription plan.",
+          "SUBSCRIPTION_FEATURE_DISABLED",
+          403
+        );
+      }
     }
 
     // Verify resource exists
@@ -172,6 +189,9 @@ export async function PATCH(
     }
     if (validationResult.data.group_id !== undefined) {
       updateData.group_id = validationResult.data.group_id || null;
+    }
+    if (validationResult.data.location_id !== undefined) {
+      updateData.location_id = validationResult.data.location_id || null;
     }
     if (validationResult.data.resource_type !== undefined) {
       updateData.resource_type = validationResult.data.resource_type || "room";
@@ -213,6 +233,7 @@ export async function PATCH(
       group_color: group?.color || null,
       group_id: updatedResource.group_id || null,
       provider_id: updatedResource.provider_id,
+      location_id: (updatedResource as any).location_id ?? null,
       created_at: updatedResource.created_at,
       updated_at: updatedResource.updated_at,
     };
@@ -257,6 +278,17 @@ export async function DELETE(
       providerId = await getProviderIdForUser(user.id, supabase);
       if (!providerId) {
         return notFoundResponse("Provider not found");
+      }
+      const resourcesOk = await isProviderSubscriptionFeatureEnabled(
+        providerId,
+        SUBSCRIPTION_FEATURE_KEYS.serviceResources
+      );
+      if (!resourcesOk) {
+        return errorResponse(
+          "Equipment and room resources are not included in your current subscription plan.",
+          "SUBSCRIPTION_FEATURE_DISABLED",
+          403
+        );
       }
     }
 

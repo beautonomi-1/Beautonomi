@@ -35,10 +35,12 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
+    const base = (APP_URL ?? "").replace(/\/$/, "") || "https://beautonomi.com";
+    const redirectTo = `${base}/auth/callback`;
     setLoading(true);
     try {
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: `${APP_URL?.trim() || "https://beautonomi.com"}/account-settings/login-and-security/reset-password`,
+        redirectTo,
       });
 
       if (error) {

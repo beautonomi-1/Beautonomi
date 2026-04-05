@@ -5,6 +5,11 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 
 const refundSchema = z.object({
   amount: z.number().min(0.01).optional(), // If not provided, full refund
@@ -25,6 +30,7 @@ type BookingRow = {
   currency?: string;
   booking_number: string;
   provider_id: string;
+  tenant_id?: string | null;
 };
 
 /**
@@ -46,6 +52,7 @@ export async function POST(
 
     const { txId } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
 
     const validationResult = refundSchema.safeParse(body);
@@ -98,28 +105,37 @@ export async function POST(
       );
     }
 
-    const { data: booking } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("id", txData.booking_id)
-      .single();
-
-    if (!booking) {
+    const bookingLoad = await fetchBookingInAdminTenant(
+      supabase,
+      txData.booking_id,
+      tenantId,
+      "*"
+    );
+    if ("error" in bookingLoad) {
+      const st = bookingLoad.error.status;
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: "Booking not found",
-            code: "BOOKING_NOT_FOUND",
+            message: st === 403 ? "Booking belongs to another market" : "Booking not found",
+            code: st === 403 ? "TENANT_MISMATCH" : "BOOKING_NOT_FOUND",
           },
         },
-        { status: 404 }
+        { status: st }
       );
     }
 
-    const bookingData = booking as BookingRow;
+    const bookingData = bookingLoad.booking as BookingRow;
+    const effectiveTenantId = bookingData.tenant_id ?? tenantId;
+    const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const refundAmount = validationResult.data.amount ?? Number(txData.amount);
     const { reason } = validationResult.data;
+
+    const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+      tenant_id: bookingData.tenant_id ?? tenantId,
+      provider_id: bookingData.provider_id,
+    });
 
     if (refundAmount > Number(txData.amount)) {
       return NextResponse.json(
@@ -139,10 +155,11 @@ export async function POST(
     const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: bookingData.customer_id,
       p_amount: refundAmount,
-      p_currency: bookingData.currency || "ZAR",
+      p_currency: bookingData.currency || lastResortCurrency,
       p_description: `Refund for booking ${bookingData.booking_number}: ${reason}`,
       p_reference_id: txId,
       p_reference_type: "refund",
+      p_tenant_id: financeTenantId,
     });
 
     if (walletError) {
@@ -219,7 +236,9 @@ export async function POST(
     await supabase
       .from("finance_transactions")
       .insert({
+        tenant_id: financeTenantId,
         booking_id: txData.booking_id,
+        provider_id: bookingData.provider_id,
         transaction_type: "refund",
         amount: -refundAmount,
         fees: 0,
@@ -252,7 +271,7 @@ export async function POST(
         bookingData.customer_id,
         {
           title: "Refund added to wallet",
-          message: `A refund of ${bookingData.currency || "ZAR"} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
+          message: `A refund of ${bookingData.currency || lastResortCurrency} ${refundAmount} for booking ${bookingData.booking_number} has been added to your wallet. Use it for your next booking or request a payout.`,
           data: {
             type: "refund_processed",
             booking_id: txData.booking_id,

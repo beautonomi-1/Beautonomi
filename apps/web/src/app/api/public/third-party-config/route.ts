@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { unstable_cache } from "next/cache";
+import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/public/third-party-config
@@ -13,9 +14,11 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const service = searchParams.get("service") ?? "";
   const app = searchParams.get("app") ?? "";
+  const tenant = await resolveTenantFromRequest(request);
+  const tenantId = tenant?.id ?? "";
 
   try {
-    const result = await getCachedThirdPartyConfig(service, app);
+    const result = await getCachedThirdPartyConfig(service, app, tenantId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching third-party config:", error);
@@ -29,17 +32,29 @@ export async function GET(request: Request) {
   }
 }
 
-async function getCachedThirdPartyConfig(service: string, app: string) {
+async function getCachedThirdPartyConfig(service: string, app: string, tenantId: string) {
   return unstable_cache(
     async () => {
       const supabase = await getSupabaseServer();
-      const { data: settings } = await supabase
+      let tenantSettings: { settings?: unknown } | null = null;
+      if (tenantId) {
+        const { data } = await supabase
+          .from("platform_settings")
+          .select("settings")
+          .eq("is_active", true)
+          .eq("tenant_id", tenantId)
+          .maybeSingle();
+        tenantSettings = (data as { settings?: unknown } | null) ?? null;
+      }
+      const { data: globalSettings } = await supabase
         .from("platform_settings")
         .select("settings")
-        .single();
+        .eq("is_active", true)
+        .is("tenant_id", null)
+        .maybeSingle();
 
       type SettingsRow = { settings?: { onesignal?: { enabled?: boolean; app_id?: string; app_id_provider?: string; safari_web_id?: string }; mapbox?: { enabled?: boolean; public_token?: string }; amplitude?: { enabled?: boolean; api_key?: string }; google?: { enabled?: boolean; maps_api_key?: string; places_api_key?: string; analytics_id?: string } } };
-      const s = settings as SettingsRow | null;
+      const s = (tenantSettings ?? globalSettings) as SettingsRow | null;
       if (s?.settings) {
         const config: Record<string, unknown> = {};
         const svc = service || undefined;
@@ -64,13 +79,29 @@ async function getCachedThirdPartyConfig(service: string, app: string) {
 
         // Mapbox - single source for web + mobile: prefer mapbox_config (Admin > Mapbox); fallback to platform_settings
         if (!svc || svc === "mapbox") {
-          const { data: mapboxConfigRow } = await supabase
-            .from("mapbox_config")
-            .select("public_access_token, style_url, is_enabled")
-            .eq("is_enabled", true)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
+          let mapboxConfigRow: { public_access_token?: string; style_url?: string; is_enabled?: boolean } | null = null;
+          if (tenantId) {
+            const { data: tenantMapboxConfig } = await supabase
+              .from("mapbox_config")
+              .select("public_access_token, style_url, is_enabled")
+              .eq("is_enabled", true)
+              .eq("tenant_id", tenantId)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            mapboxConfigRow = (tenantMapboxConfig as typeof mapboxConfigRow) ?? null;
+          }
+          if (!mapboxConfigRow) {
+            const { data: globalMapboxConfig } = await supabase
+              .from("mapbox_config")
+              .select("public_access_token, style_url, is_enabled")
+              .eq("is_enabled", true)
+              .is("tenant_id", null)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            mapboxConfigRow = (globalMapboxConfig as typeof mapboxConfigRow) ?? null;
+          }
 
           if (mapboxConfigRow?.public_access_token) {
             config.mapbox = {
@@ -111,7 +142,7 @@ async function getCachedThirdPartyConfig(service: string, app: string) {
 
       return { data: {}, error: null };
     },
-    ["third-party-config-public", service, app],
+    ["third-party-config-public", service, app, tenantId || "global"],
     { revalidate: 3600, tags: ["platform-settings"] }
   )();
 }

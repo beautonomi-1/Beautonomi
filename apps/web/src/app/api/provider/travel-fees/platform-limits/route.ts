@@ -10,7 +10,8 @@ import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabas
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireRoleInApi(["provider_owner", "provider_staff"], request);    const supabase = await getSupabaseServer(request);
+    await requireRoleInApi(["provider_owner", "provider_staff"], request);
+    const supabase = await getSupabaseServer(request);
 
     const { data: platformSettings, error } = await supabase
       .from("platform_settings")
@@ -36,6 +37,9 @@ export async function GET(request: NextRequest) {
       provider_min_minimum_fee: travelFees.provider_min_minimum_fee ?? 0.0,
       provider_max_minimum_fee: travelFees.provider_max_minimum_fee ?? 100.0,
       allow_provider_customization: travelFees.allow_provider_customization !== false,
+      pricing_model: travelFees.pricing_model ?? "per_km",
+      default_tiers: travelFees.default_tiers ?? null,
+      allow_provider_tiered: travelFees.allow_provider_tiered !== false,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch travel fee limits");

@@ -35,6 +35,7 @@ const PrivacyPage = () => {
   // Account tab states
   const [accountVisibility, setAccountVisibility] = useState(false);
   const [profileInformation, setProfileInformation] = useState(false);
+  const [analyticsConsent, setAnalyticsConsent] = useState(true);
 
   // Sharing tab states
   const [readReceipts, setReadReceipts] = useState(false);
@@ -80,6 +81,7 @@ const PrivacyPage = () => {
           showHomeCity: boolean;
           showTripType: boolean;
           showLengthOfStay: boolean;
+          analytics_consent?: boolean;
         };
       }>("/api/me/privacy-settings", { cache: "no-store" });
 
@@ -91,6 +93,7 @@ const PrivacyPage = () => {
         showHomeCity?: boolean;
         showTripType?: boolean;
         showLengthOfStay?: boolean;
+        analytics_consent?: boolean;
       };
       const settings: PrivacySettingsPayload = response.data ?? (response as PrivacySettingsPayload);
 
@@ -101,6 +104,7 @@ const PrivacyPage = () => {
       setShowHomeCity(settings.showHomeCity ?? false);
       setShowTripType(settings.showTripType ?? false);
       setShowLengthOfStay(settings.showLengthOfStay ?? false);
+      setAnalyticsConsent(settings.analytics_consent ?? true);
     } catch (error: unknown) {
       console.error("Failed to load privacy settings:", error);
       toast.error("Failed to load privacy settings. Please try again.");
@@ -231,7 +235,7 @@ const PrivacyPage = () => {
         password: deletePassword,
         reason: deleteReason || null,
       });
-      toast.success("Your account deletion request has been submitted.");
+      toast.success("Your account has been deleted. You will be signed out.");
       setShowDeleteDialog(false);
       setDeletePassword("");
       setDeleteConfirmText("");
@@ -381,6 +385,39 @@ const PrivacyPage = () => {
                                 await updatePrivacySetting("profileInformation", checked);
                               } catch {
                                 setProfileInformation(previousValue);
+                              }
+                            }}
+                            className="data-[state=checked]:bg-[#FF0077] data-[state=unchecked]:bg-gray-300"
+                          />
+                        </div>
+                      </motion.div>
+
+                      {/* Product analytics */}
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.1 }}
+                        className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1">
+                            <h3 className="text-base font-semibold text-gray-900">
+                              Product analytics
+                            </h3>
+                            <p className="text-sm font-light text-gray-600">
+                              Allow Beautonomi to use analytics to improve the product (e.g. usage and performance). You can disable this at any time.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={analyticsConsent}
+                            disabled={isLoadingSettings}
+                            onCheckedChange={async (checked) => {
+                              const previousValue = analyticsConsent;
+                              setAnalyticsConsent(checked);
+                              try {
+                                await updatePrivacySetting("analytics_consent", checked);
+                              } catch {
+                                setAnalyticsConsent(previousValue);
                               }
                             }}
                             className="data-[state=checked]:bg-[#FF0077] data-[state=unchecked]:bg-gray-300"

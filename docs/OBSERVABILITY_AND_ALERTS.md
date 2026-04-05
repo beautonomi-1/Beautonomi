@@ -74,6 +74,14 @@ Example (already partially in place in `apps/web/src/app/api/payments/webhook/ro
 
 No mandatory vendor; use placeholders (e.g. "Configure in Vercel" / "Add Slack webhook in env") until you wire a specific provider.
 
+Scale policy references:
+
+- `docs/SCALE_SLO_GATES.md`
+- `docs/SLO_ALERT_POLICY.md`
+- `scripts/prod/verify-observability-gates.mjs`
+- `docs/SECRETS_BOOTSTRAP.md`
+- `docs/analytics/MARKET_ROUTING_DASHBOARD_SPEC.md`
+
 ## 4. Suggested dashboards
 
 - **Amplitude (or product analytics):** Funnel for booking flow, search → profile → book; track errors or drop-off steps.

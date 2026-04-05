@@ -37,7 +37,11 @@ export default function ExploreSavedPage() {
           </button>
         </div>
       )}
-      <LoginModal open={showLogin} setOpen={setShowLogin} />
+      <LoginModal
+        open={showLogin}
+        setOpen={setShowLogin}
+        initialMode="login"
+      />
     </div>
   );
 }

@@ -26,6 +26,7 @@ import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -385,7 +386,7 @@ export default function ChatScreen() {
                           </View>
                           {typeof offer?.price === "number" && (
                             <Text style={twStyle("text-base font-medium text-gray-900 mt-0.5")}>
-                              {formatCurrency(offer.price, offer.currency ?? "ZAR")}
+                              {formatCurrency(offer.price, offer.currency ?? getTenantDefaultCurrency())}
                             </Text>
                           )}
                           {offer?.duration_minutes != null && offer.duration_minutes > 0 && (

@@ -1,9 +1,9 @@
-import { useEffect, useState, useCallback } from "react";
+import { useMemo } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
-import { api } from "@/lib/api-client";
+import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
 import type { UserRole } from "@beautonomi/types";
 
@@ -18,60 +18,26 @@ interface RoleGateProps {
 export function RoleGate({ children }: RoleGateProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const [, setRole] = useState<UserRole | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [blocked, setBlocked] = useState(false);
-  const [blockReason, setBlockReason] = useState<BlockReason | null>(null);
+  const { role, loading, profileLoadError, refresh } = useProvider();
 
   async function handleSignOut() {
     await signOut();
     router.replace("/(auth)/login" as never);
   }
 
-  const checkRole = useCallback(async (isRetry = false) => {
-    if (!user) return;
-    setLoading(true);
-    setBlocked(false);
-    setBlockReason(null);
-    setRole(null);
-
-    // Longer timeout for role check (45s); cold Next.js can be slow. Single retry on timeout.
-    const { data, error } = await api.fetch<{ role: UserRole }>("/api/me/role", {
-      method: "GET",
-      timeout: 45000,
-    });
-    setLoading(false);
-
-    const isTimeoutOrNetwork =
-      error?.code === "NETWORK_ERROR" || error?.code === "TIMEOUT";
-    if (isTimeoutOrNetwork && !isRetry) {
-      console.log("[AUTH] RoleGate role check timed out, retrying once…");
-      return checkRole(true);
+  const blockReason = useMemo<BlockReason | null>(() => {
+    if (!role) {
+      if (profileLoadError && /network|timeout|timed out|fetch/i.test(profileLoadError)) {
+        return "network";
+      }
+      return "api";
     }
-    if (isTimeoutOrNetwork) {
-      console.log("[AUTH] RoleGate blocked: network/timeout", { message: error?.message });
-      setBlockReason("network");
-      setBlocked(true);
-      return;
+    if (!ALLOWED_ROLES.includes(role as UserRole)) {
+      return "role";
     }
-    if (error || !data) {
-      console.log("[AUTH] RoleGate blocked: API error or no data", { error: error?.message, hasData: !!data });
-      setBlockReason("api");
-      setBlocked(true);
-      return;
-    }
-    if (!ALLOWED_ROLES.includes(data.role)) {
-      console.log("[AUTH] RoleGate blocked: role not allowed", { role: data.role });
-      setBlockReason("role");
-      setBlocked(true);
-    } else {
-      setRole(data.role);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    checkRole();
-  }, [checkRole]);
+    return null;
+  }, [role, profileLoadError]);
+  const blocked = !loading && blockReason !== null;
 
   if (!user) return null;
   if (loading) {
@@ -115,7 +81,9 @@ export function RoleGate({ children }: RoleGateProps) {
           {isNetwork && (
             <TouchableOpacity
               style={{ backgroundColor: "#2563eb", borderRadius: 12, paddingHorizontal: 24, paddingVertical: 14, marginRight: 12 }}
-              onPress={() => checkRole()}
+              onPress={() => {
+                void refresh();
+              }}
             >
               <Text style={{ fontWeight: "600", color: Colors.white, fontSize: 16 }}>Retry</Text>
             </TouchableOpacity>

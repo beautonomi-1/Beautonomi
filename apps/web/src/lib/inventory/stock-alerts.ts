@@ -81,12 +81,13 @@ export async function checkLowStockAndAlert(providerId?: string) {
           .join("\n");
 
         // Create notification
-        await supabaseAdmin.from("notifications").insert({
+        const { insertNotification: insertStockNotif } = await import("@/lib/notifications/insert-notification");
+        await insertStockNotif({
           user_id: provider.user_id,
           type: "low_stock_alert",
           title: "Low Stock Alert",
           message: `${providerProducts.length} product(s) are running low: ${productNames}`,
-          metadata: {
+          data: {
             provider_id: pid,
             product_count: providerProducts.length,
             products: providerProducts.map((p) => ({
@@ -96,7 +97,7 @@ export async function checkLowStockAndAlert(providerId?: string) {
               low_stock_level: p.low_stock_level,
             })),
           },
-          link: `/provider/products?low_stock=true`,
+          action_url: `/provider/products?low_stock=true`,
         });
 
         // Send push/email notification

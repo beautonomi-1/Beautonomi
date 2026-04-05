@@ -1,58 +1,53 @@
 # Admin Portal — Role Model
 
-> What the superadmin can do and how enforcement is implemented.
+> Current model for admin UI/API access, section roles, and superadmin-only actions.
 
-## Who is a superadmin?
+## Admin roles
 
-- **Role value**: `superadmin` (stored in user profile / auth metadata; see `UserRole` in `@/types/beautonomi`).
-- **Assignment**: Manually (e.g. Supabase dashboard or internal tooling); no self-service.
+The admin portal supports section-based roles in addition to `superadmin`.
 
-## What superadmin can do
+- `superadmin`
+- `admin_support`
+- `admin_finance`
+- `admin_trust`
+- `admin_content`
+- `admin_ecommerce`
+- `admin_marketing`
+- `admin_integrations`
+- `admin_operations`
+- `admin_platform_config`
 
-- **Full read**: Users, providers, bookings, refunds, payouts, verifications, disputes, support tickets, audit logs, finance summary/transactions, reports, exports, feature flags, API keys, config/catalog/content, notifications, webhooks, etc.
-- **Critical writes**:
-  - Provider: approve, suspend, reject, verify; overrides; payout accounts; distance settings.
-  - User: change role, set password, deactivate, impersonate; bulk actions.
-  - Booking: cancel, refund, open/resolve dispute.
-  - Refunds / payouts: create, approve, reject, mark paid/failed.
-  - Verifications: approve, reject (with audit).
-  - Feature flags: create, update, delete.
-  - API keys: create, revoke, update.
-  - Broadcast: send email, push, SMS.
-  - Config: notification templates, catalog, content, settings, fees, etc.
-- **Audit**: View audit logs; export data (within policy).
+## Access model
 
-## How enforcement is implemented
+### 1) UI access (`/admin/**`)
 
-### 1. UI (pages under `/admin`)
+- `apps/web/src/app/admin/layout.tsx` uses `RoleGuard` with `ALL_ADMIN_ROLES`.
+- Section visibility in sidebar is controlled by `admin_section_roles` (defaulted from `ADMIN_SECTION_ROLES`, optionally overridden in `platform_settings`).
+- Some pages remain intentionally `superadmin` only via page-level `RoleGuard`.
 
-- **Layout guard**: `apps/web/src/app/admin/layout.tsx` wraps all admin pages in `<RoleGuard allowedRoles={["superadmin"]} redirectTo="/">`. Non-superadmin users are redirected to `/`.
-- **No middleware**: There is no Next.js middleware in `apps/web` that protects `/admin`. Recommendation: add middleware that redirects unauthenticated or non-superadmin requests to `/` for defense in depth.
+### 2) API access (`/api/admin/**`)
 
-### 2. API (routes under `/api/admin/**`)
+- Admin APIs must use:
+  - `requireAdminSection(ADMIN_SECTION_...)` for section-scoped routes, or
+  - `requireRoleInApi(["superadmin"], request)` for superadmin-only routes.
+- Legacy `requireRole(...)` is not permitted in `/api/admin/**`.
+- Provider roles (`provider_owner`, `provider_staff`) are not allowed in `/api/admin/**`; provider access must go through `/api/provider/**`.
 
-- **Per-route**: Every admin API route handler calls one of:
-  - `requireRole(["superadmin"])` from `@/lib/supabase/auth-server` (cookie/session), or
-  - `requireRoleInApi(["superadmin"], request)` from `@/lib/supabase/api-helpers` (supports Bearer token for mobile and cookie for web).
-- **Behavior**: Fails with 401/403 and does not execute handler logic if the user is missing or not superadmin.
-- **Evidence**: 167+ admin `route.ts` files contain `requireRole` or `requireRoleInApi`; no admin API is intended to be public.
+### 3) Superadmin-only sensitive actions
 
-### 3. Data access
+The following remain superadmin-only by API guard:
 
-- **Supabase**: Admin routes use the server Supabase client (RLS applies with the authenticated user). For operations that must bypass RLS (e.g. cross-tenant reads, audit log write), the code uses the service-role client (e.g. `getSupabaseAdmin()`) only where necessary (e.g. `writeAuditLog`).
-- **Secrets**: Admin APIs must not return secrets (e.g. full API key value after creation) to the client except when required once at creation; responses use `{ data, error }` and avoid leaking internal tokens.
+- user creation (`POST /api/admin/users`)
+- role changes (`PUT /api/admin/users/[id]/role`)
+- impersonation (`POST /api/admin/users/[id]/impersonate`)
 
-### 4. Audit logging
+### 4) Data and audit
 
-- **Sensitive actions** are logged via `writeAuditLog()` in `@/lib/audit/audit.ts` (writes to `audit_logs` table with service-role). Examples: booking cancel, payout approve/reject, feature-flag create, provider status change. Actor is the superadmin user from the auth check.
+- Admin APIs primarily use server Supabase clients and can use service role only when required (cross-tenant admin operations, audit writes).
+- Sensitive writes are audit logged with `writeAuditLog`.
 
-## Summary
+## Boundary rule (important)
 
-| Layer | Mechanism |
-|-------|-----------|
-| Page access | `RoleGuard` in admin layout (superadmin only) |
-| API access | `requireRole(["superadmin"])` or `requireRoleInApi(["superadmin"], request)` in every admin route |
-| Sensitive writes | Server-side validation + audit log where applicable |
-| Middleware | Not present; recommended to add for `/admin` |
-
-Only users with role `superadmin` should access `/admin` pages and `/api/admin/*` endpoints.
+- `/api/admin/**` = admin operations.
+- `/api/provider/**` = provider operations.
+- If a provider portal feature needs data currently in an admin endpoint, create/extend a provider-scoped endpoint instead of widening `/api/admin/**`.

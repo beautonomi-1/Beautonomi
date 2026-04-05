@@ -11,6 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Textarea } from "@/components/ui/textarea";
 import { formatCurrency } from "@/lib/utils";
 import { fetcher } from "@/lib/http/fetcher";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { isCompleteE164 } from "@/lib/phone";
+import { toast } from "sonner";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface StepGroupParticipantsProps {
   bookingState: BookingState;
@@ -34,6 +39,8 @@ export default function StepGroupParticipants({
   maxGroupSize: initialMaxGroupSize,
   availableServices,
 }: StepGroupParticipantsProps) {
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [maxGroupSize, setMaxGroupSize] = useState(initialMaxGroupSize);
   const [participants, setParticipants] = useState(
     bookingState.groupParticipants || [
@@ -117,6 +124,11 @@ export default function StepGroupParticipants({
       return;
     }
 
+    if (participantForm.phone?.trim() && !isCompleteE164(participantForm.phone)) {
+      toast.error("Enter a valid phone number or leave the field blank.");
+      return;
+    }
+
     if (editingParticipant) {
       setParticipants(prev =>
         prev.map(p =>
@@ -168,7 +180,7 @@ export default function StepGroupParticipants({
     }, 0);
   };
 
-  const currency = bookingState.selectedServices[0]?.currency || "ZAR";
+  const currency = bookingState.selectedServices[0]?.currency || tenantCurrency;
 
   return (
     <div className="px-4 py-6 space-y-6">
@@ -347,15 +359,14 @@ export default function StepGroupParticipants({
             </div>
 
             <div>
-              <Label htmlFor="participant-phone">Phone (Optional)</Label>
-              <Input
-                id="participant-phone"
-                type="tel"
+              <PhoneInput
+                inputId="booking-step-group-participant-phone"
+                label="Phone (Optional)"
                 value={participantForm.phone}
-                onChange={(e) =>
-                  setParticipantForm({ ...participantForm, phone: e.target.value })
+                onChange={(e164) =>
+                  setParticipantForm({ ...participantForm, phone: e164 })
                 }
-                placeholder="+27 11 123 4567"
+                placeholder="Phone number"
                 className="touch-target"
               />
             </div>

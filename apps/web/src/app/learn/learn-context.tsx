@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useCallback } from "react";
+import React, { createContext, useContext, useState } from "react";
 
 type LearnContextValue = {
   /** When false, show compact search in header (e.g. after hero scrolls out). */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -61,6 +62,7 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
 };
 
 export default function ProviderProductOrdersPage() {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [orders, setOrders] = useState<ProductOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
@@ -123,7 +125,7 @@ export default function ProviderProductOrdersPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden px-1 sm:px-0">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Product Orders</h1>
         <p className="text-sm text-gray-500 mt-1">Manage customer product purchases and fulfillment</p>
@@ -167,10 +169,10 @@ export default function ProviderProductOrdersPage() {
             {orders.map((o) => {
               const actions = STATUS_ACTIONS[o.status] ?? [];
               return (
-                <div key={o.id} className="p-5 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
+                <div key={o.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3 mb-2">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
                         <span className="font-bold text-gray-900 text-lg">{o.order_number}</span>
                         <Badge variant={STATUS_BADGE[o.status] ?? "outline"}>
                           {o.status.replace(/_/g, " ")}
@@ -179,7 +181,7 @@ export default function ProviderProductOrdersPage() {
                           {o.payment_status}
                         </Badge>
                       </div>
-                      <p className="text-sm text-gray-700">
+                      <p className="text-sm text-gray-700 break-words">
                         <span className="font-medium">{o.customer?.full_name}</span>{" "}
                         <span className="text-gray-400">({o.customer?.email})</span>
                       </p>
@@ -193,7 +195,7 @@ export default function ProviderProductOrdersPage() {
                                 <span className="text-gray-500"> · {Object.values(item.product_variant.option_values).join(", ")}</span>
                               )}
                             </span>
-                            <span className="text-gray-400">R{Number(item.total_price).toFixed(2)}</span>
+                            <span className="text-gray-400">{formatMoney(Number(item.total_price))}</span>
                           </div>
                         ))}
                       </div>
@@ -201,14 +203,14 @@ export default function ProviderProductOrdersPage() {
                         <p className="text-xs text-blue-600 mt-2">Tracking: {o.tracking_number}</p>
                       )}
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-xl font-bold text-gray-900">R{Number(o.total_amount).toFixed(2)}</p>
+                    <div className="text-left sm:text-right shrink-0 w-full sm:w-auto border-t sm:border-t-0 border-gray-100 pt-3 sm:pt-0">
+                      <p className="text-xl font-bold text-gray-900">{formatMoney(Number(o.total_amount))}</p>
                       <p className="text-xs text-gray-500 mt-1">
                         {new Date(o.created_at).toLocaleDateString()} ·{" "}
                         {o.fulfillment_type === "delivery" ? "Delivery" : "Collection"}
                       </p>
                       {actions.length > 0 && (
-                        <div className="flex gap-2 mt-3 justify-end">
+                        <div className="flex flex-wrap gap-2 mt-3 justify-start sm:justify-end">
                           {actions.map((a) => (
                             <button
                               key={a.next}

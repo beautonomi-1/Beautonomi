@@ -1,7 +1,6 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { requireRoleInApi, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { cookies } from "next/headers";
@@ -12,7 +11,7 @@ const MAX_IMPERSONATIONS_PER_HOUR = 5;
  * Check rate limit: max impersonations per admin per hour.
  * Returns true if the admin is within the allowed limit.
  */
-async function checkImpersonationRateLimit(adminId: string): Promise<{ allowed: boolean; count: number }> {
+async function checkImpersonationRateLimit(adminId: string): Promise<{ allowed: boolean; count: number; checkError: boolean }> {
   const supabase = getSupabaseAdmin();
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
@@ -25,12 +24,11 @@ async function checkImpersonationRateLimit(adminId: string): Promise<{ allowed: 
 
   if (error) {
     console.error("Rate limit check failed:", error);
-    // Fail open but log — don't block admins due to DB errors
-    return { allowed: true, count: 0 };
+    return { allowed: false, count: 0, checkError: true };
   }
 
   const currentCount = count ?? 0;
-  return { allowed: currentCount < MAX_IMPERSONATIONS_PER_HOUR, count: currentCount };
+  return { allowed: currentCount < MAX_IMPERSONATIONS_PER_HOUR, count: currentCount, checkError: false };
 }
 
 export async function POST(
@@ -38,7 +36,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user: adminUser } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    const { user: adminUser } = await requireRoleInApi(["superadmin"], request);
 
     const { id } = await params;
 
@@ -61,6 +59,13 @@ export async function POST(
 
     // Rate limiting: max 5 impersonations per admin per hour
     const rateLimit = await checkImpersonationRateLimit(adminUser.id);
+    if (rateLimit.checkError) {
+      return errorResponse(
+        "Unable to verify impersonation limits right now. Please try again shortly.",
+        "RATE_LIMIT_CHECK_FAILED",
+        503
+      );
+    }
     if (!rateLimit.allowed) {
       return errorResponse(
         `Rate limit exceeded: ${rateLimit.count}/${MAX_IMPERSONATIONS_PER_HOUR} impersonations in the last hour. Please wait before trying again.`,
@@ -109,9 +114,6 @@ export async function POST(
       return errorResponse("Failed to create impersonation session", "SESSION_ERROR", 500);
     }
 
-    // Log the full response to debug
-    console.log("Link data received:", JSON.stringify(linkData, null, 2));
-
     // Extract the action link from the response
     // Supabase returns: { properties: { action_link: "..." } }
     let actionLink: string | null = null;
@@ -140,8 +142,6 @@ export async function POST(
       return errorResponse("Failed to extract action link from response", "LINK_EXTRACTION_ERROR", 500);
     }
 
-    console.log("Action link extracted:", actionLink);
-
     // Extract token_hash from the action link
     let token: string | null = null;
     try {
@@ -155,7 +155,6 @@ export async function POST(
       }
     } catch {
       // If parsing fails, try regex extraction
-      console.log("Error parsing URL, trying regex extraction");
       const tokenMatch = actionLink.match(/[?&]token_hash=([^&?#]+)/) || 
                         actionLink.match(/[?&]token=([^&?#]+)/);
       if (tokenMatch) {
@@ -168,8 +167,6 @@ export async function POST(
       console.error("Action link:", actionLink);
       return errorResponse("Failed to extract token from link. Please check server logs for details.", "TOKEN_ERROR", 500);
     }
-
-    console.log("Token extracted successfully:", token.substring(0, 20) + "...");
 
     // Store impersonation info in cookies
     const cookieStore = await cookies();
@@ -191,7 +188,7 @@ export async function POST(
     // Enhanced audit log: admin_impersonation_start
     await writeAuditLog({
       actor_user_id: adminUser.id,
-      actor_role: "superadmin",
+      actor_role: adminUser.role ?? "superadmin",
       action: "admin_impersonation_start",
       entity_type: "user",
       entity_id: id,

@@ -6,6 +6,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { Colors } from "@/constants/colors";
+import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 
 type ProviderMembership = {
   id: string;
@@ -21,6 +22,13 @@ type ProviderMembership = {
   expires_at: string | null;
   started_at: string;
 };
+
+function formatDateSafe(value: unknown): string {
+  if (typeof value !== "string" || !value) return "—";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString();
+}
 
 export default function MembershipScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
@@ -83,6 +91,10 @@ export default function MembershipScreen() {
   const membership = data?.membership;
   const benefits = data?.benefits ?? [];
   const savings = data?.savings ?? { this_month: 0, lifetime: 0 };
+  const savingsCurrency =
+    (typeof data?.savings_currency === "string" && data.savings_currency) ||
+    membership?.currency ||
+    getTenantDefaultCurrency();
   const providerMemberships: ProviderMembership[] = Array.isArray(data?.provider_memberships) ? data.provider_memberships : [];
   const hasSalonMemberships = providerMemberships.length > 0;
 
@@ -99,7 +111,7 @@ export default function MembershipScreen() {
               )}
               <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>
                 {membership?.billing_cycle === "yearly" ? "Billed yearly" : "Billed monthly"}
-                {membership?.expires_at && ` · Renews ${new Date(membership.expires_at).toLocaleDateString()}`}
+                {membership?.expires_at && ` · Renews ${formatDateSafe(membership.expires_at)}`}
               </Text>
             </View>
             {benefits.length > 0 && (
@@ -117,9 +129,9 @@ export default function MembershipScreen() {
               <View style={{ backgroundColor: "#F0FDF4", borderRadius: 12, padding: 16, marginTop: 16 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Your savings</Text>
                 <Text style={{ color: Colors.gray[700], marginTop: 4 }}>
-                  This month: ZAR {savings.this_month?.toFixed(2) ?? "0.00"}
+                  This month: {savingsCurrency} {savings.this_month?.toFixed(2) ?? "0.00"}
                 </Text>
-                <Text style={{ color: Colors.gray[700] }}>Lifetime: ZAR {savings.lifetime?.toFixed(2) ?? "0.00"}</Text>
+                <Text style={{ color: Colors.gray[700] }}>Lifetime: {savingsCurrency} {savings.lifetime?.toFixed(2) ?? "0.00"}</Text>
               </View>
             )}
             {membership?.auto_renew !== false && (
@@ -174,7 +186,7 @@ export default function MembershipScreen() {
                   )}
                   {pm.expires_at && (
                     <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
-                      Expires {new Date(pm.expires_at).toLocaleDateString()}
+                      Expires {formatDateSafe(pm.expires_at)}
                     </Text>
                   )}
                 </View>

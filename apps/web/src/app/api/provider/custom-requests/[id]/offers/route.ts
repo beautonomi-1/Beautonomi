@@ -2,10 +2,13 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 const createOfferSchema = z.object({
   price: z.number().min(0),
-  currency: z.string().min(3).max(5).default("ZAR"),
+  currency: z.string().min(3).max(5).optional(),
   duration_minutes: z.number().int().min(15).max(8 * 60),
   expiration_at: z.string(), // ISO
   notes: z.string().max(4000).optional().nullable(),
@@ -22,8 +25,20 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
+      .maybeSingle();
+    const effectiveTenantId =
+      (prow as { tenant_id?: string | null } | null)?.tenant_id ??
+      (await resolveTenantIdWithZaFallback(request));
+    const lastResortCurrency =
+      (await getTenantRegionConfig(effectiveTenantId))?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+
     const { id } = await params;
-    const body = createOfferSchema.parse(await request.json());
+    const parsed = createOfferSchema.parse(await request.json());
+    const body = { ...parsed, currency: parsed.currency ?? lastResortCurrency };
 
     // Ensure request belongs to this provider
     const { data: reqRow } = await supabase

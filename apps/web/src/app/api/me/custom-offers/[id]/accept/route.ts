@@ -1,8 +1,19 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  successResponse,
+  handleApiError,
+  notFoundResponse,
+  errorResponse,
+} from "@/lib/supabase/api-helpers";
+import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { initializePaystackTransaction } from "@/lib/payments/paystack-server";
 import { computeCustomOfferPricing } from "../../_helpers/custom-offer-pricing";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { getTenantRegionConfig } from "@/lib/regions/config";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { toCents } from "@beautonomi/utils";
 
 interface OfferRow {
   id: string;
@@ -28,6 +39,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   try {
     const { user } = await requireRoleInApi(["customer", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
+    const tenantId = await resolveTenantIdWithZaFallback(request);
+    const tenantRegion = await getTenantRegionConfig(tenantId);
+    const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { id } = await params;
 
     let body: { tip_amount?: number; promotion_code?: string } = {};
@@ -49,6 +63,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const req = offer.request as RequestRow | undefined;
     if (req?.customer_id !== user.id) return notFoundResponse("Offer not found");
 
+    if (req?.provider_id) {
+      const { data: provRow } = await supabase
+        .from("providers")
+        .select("tenant_id")
+        .eq("id", req.provider_id)
+        .maybeSingle();
+      if (
+        !resourceTenantMatchesHostTenant(
+          tenantId,
+          (provRow as { tenant_id?: string | null } | null)?.tenant_id,
+        )
+      ) {
+        return errorResponse(
+          "This offer belongs to a different market. Switch to the correct site or app to pay.",
+          "TENANT_MISMATCH",
+          403,
+        );
+      }
+    }
+
     if (offer.status === "paid" || offer.status === "accepted") {
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: true });
     }
@@ -63,7 +97,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const pricing = await computeCustomOfferPricing(supabase, {
       offerPrice: Number(offer.price || 0),
       travelFee,
-      currency: offer.currency || "ZAR",
+      currency: offer.currency || lastResortCurrency,
       providerId: req?.provider_id ?? "",
       customerId: req?.customer_id ?? "",
       tipAmount: body.tip_amount,
@@ -82,12 +116,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const callbackUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
-    const amountKobo = Math.round(result.totalAmount * 100);
+    const amountKobo = toCents(result.totalAmount);
 
     const init = await initializePaystackTransaction({
       email,
       amountInSmallestUnit: amountKobo,
-      currency: offer.currency || "ZAR",
+      currency: offer.currency || lastResortCurrency,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -103,6 +137,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         promotion_discount_amount: result.promotionDiscountAmount,
         commission_base: result.commissionBase,
       },
+      tenantId,
     });
 
     const paymentUrl = init.data.authorization_url;

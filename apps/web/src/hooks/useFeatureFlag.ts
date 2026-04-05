@@ -4,11 +4,14 @@ import { useState, useEffect } from 'react';
 import { isFeatureEnabled, checkMultipleFeatures } from '@/lib/feature-flags';
 
 /**
- * Hook to check if a single feature is enabled
+ * DB-backed feature flag hook. Fetches flag state from the API on mount.
+ * Prefer `useFeatureFlag` from `ConfigBundleProvider` for bundle-backed flags
+ * that are already loaded with the config bundle (no extra network request).
+ *
  * @param featureKey - The key of the feature to check
  * @returns { enabled: boolean, loading: boolean }
  */
-export function useFeatureFlag(featureKey: string) {
+export function useDbFeatureFlag(featureKey: string) {
   const [enabled, setEnabled] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -93,3 +96,6 @@ export function useMultipleFeatureFlags(featureKeys: string[]) {
 
   return { features, loading };
 }
+
+/** @deprecated Use `useDbFeatureFlag` or the bundle-backed `useFeatureFlag` from ConfigBundleProvider */
+export const useFeatureFlag = useDbFeatureFlag;

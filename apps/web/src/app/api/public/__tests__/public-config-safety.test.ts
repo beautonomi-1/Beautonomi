@@ -78,7 +78,7 @@ describe("Public config response safety (shape and forbidden keys)", () => {
       data: {
         site_name: "Beautonomi",
         logo_url: "/logo.svg",
-        favicon_url: "/favicon.ico",
+        favicon_url: "/icon.svg",
         primary_color: "#FF0077",
         secondary_color: "#D60565",
       },

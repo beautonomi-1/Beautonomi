@@ -1,4 +1,5 @@
 "use client";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 import React, { useState, useEffect } from "react";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
@@ -28,6 +29,7 @@ interface RevenueTrendsData {
 }
 
 export default function RevenueTrendsReport() {
+  const { currencyCode: exportCurrency, format: fmt } = useReportCurrency();
   const [period, setPeriod] = useState("month");
   const [data, setData] = useState<RevenueTrendsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -59,7 +61,7 @@ export default function RevenueTrendsReport() {
 
   const handleExport = () => {
     if (!data) return;
-    const exportData = formatReportDataForExport(data as unknown as ReportRow, "revenue-trends");
+    const exportData = formatReportDataForExport(data as unknown as ReportRow, "revenue-trends", exportCurrency);
     exportToCSV(exportData, "revenue-trends-report");
   };
 
@@ -155,7 +157,7 @@ export default function RevenueTrendsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.totalRevenue.toLocaleString()}
+                  {fmt(data.totalRevenue)}
                 </p>
                 <DollarSign className="w-5 h-5 text-green-600" />
               </div>
@@ -201,7 +203,7 @@ export default function RevenueTrendsReport() {
             <CardContent>
               <div className="flex items-center justify-between">
                 <p className="text-2xl font-semibold text-gray-900">
-                  ZAR {data.averageRevenue.toLocaleString()}
+                  {fmt(data.averageRevenue)}
                 </p>
                 <TrendingUp className="w-5 h-5 text-blue-600" />
               </div>
@@ -253,7 +255,7 @@ export default function RevenueTrendsReport() {
                       </p>
                     </div>
                     <p className="font-semibold text-gray-900">
-                      ZAR {trend.revenue.toLocaleString()}
+                      {fmt(trend.revenue)}
                     </p>
                   </div>
                 ))}

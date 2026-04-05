@@ -12,6 +12,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { formatCurrencyShort } from "@/lib/format";
 import { trackScreenView } from "@/lib/analytics";
 import { twStyle } from "@/lib/twStyle";
 
@@ -24,11 +25,7 @@ interface AnalyticsData {
   trends: { month: string; revenue: number; bookings: number }[];
 }
 
-function formatCurrency(amount: number): string {
-  if (amount >= 1_000_000) return `R${(amount / 1e6).toFixed(1)}m`;
-  if (amount >= 1_000) return `R${(amount / 1000).toFixed(1)}k`;
-  return `R${amount.toFixed(0)}`;
-}
+const formatCurrency = formatCurrencyShort;
 
 export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
