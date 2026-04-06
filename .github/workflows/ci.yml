@@ -121,8 +121,6 @@ jobs:
       NEXT_PUBLIC_APP_URL: http://localhost:3000
       VITE_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
-      # Same-origin when SPA is served from the Next host (cutover default).
-      VITE_WEB_ORIGIN: ""
     steps:
       - uses: actions/checkout@v4
 

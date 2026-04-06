@@ -2,7 +2,11 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
-import { notifySupportTicketCreated } from "@/lib/notifications/notification-service";
+import {
+  notifySupportTicketCreated,
+  notifySupportStaffInboxActivity,
+  resolveSupportTicketStaffRecipients,
+} from "@/lib/notifications/notification-service";
 import { z } from "zod";
 import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
 
@@ -74,6 +78,19 @@ export async function POST(request: NextRequest) {
       );
     } catch (notifyErr) {
       console.error("Support ticket created notification failed:", notifyErr);
+    }
+
+    try {
+      const staffIds = await resolveSupportTicketStaffRecipients(null);
+      await notifySupportStaffInboxActivity(
+        staffIds,
+        ticket.ticket_number || ticket.id,
+        `New ticket: ${validated.subject.slice(0, 200)}`,
+        ticket.id,
+        ["email", "push"]
+      );
+    } catch (staffNotifyErr) {
+      console.error("Support staff new-ticket notification failed:", staffNotifyErr);
     }
 
     return successResponse({

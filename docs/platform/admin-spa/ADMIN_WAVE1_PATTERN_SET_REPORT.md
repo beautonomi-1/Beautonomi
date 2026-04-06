@@ -32,7 +32,7 @@
 | **Query string builder + unit test** | `buildSupportTicketsSearchParams.ts` | Copy/adapt per resource (`limit`/`offset` APIs) |
 | **Support ticket category labels** | `supportTicketCategories.ts` (mirrors web lib) | Keep in sync when categories change |
 | **403 vs generic error** | `AdminApiError` + `PermissionDenied` | Standard across pages |
-| **Legacy handoff** | `legacyAdminHref` for unmigrated detail | Until ticket #8, users #36–37, providers #9–10 ship |
+| **Deep links** | SPA `Link` + `adminSpaTo` / detail routes | No separate admin origin env |
 
 ---
 
@@ -43,7 +43,7 @@
 | **No shared toast system** | Mutations use minimal inline errors only | Add Sonner or a thin `useAdminToast` wrapper for parity with Next admin |
 | **Skeletons vs pulse blocks** | Conventions §8 prefer layout skeletons; pages use simple pulse | Introduce 2–3 skeleton primitives (table, detail header, form) |
 | **Bundle size** | Vite warns ~610 kB single chunk | Lazy `React.lazy` per Wave 1+ route group |
-| **Global search → SPA detail** | Search still targets legacy list URLs with `?highlight=` | When a resource is SPA-only, update `adminSearchResultLegacyPath` or branch by feature flag |
+| **Global search → SPA detail** | `adminSearchResultSpaPath` targets detail routes | Extend if list views need `?highlight=` again |
 | **`GET` vs envelope quirks** | Support tickets JSON is **not** `{ data: … }`; others use `successResponse` | Document per route in matrix §5; optional Zod in `admin-api-client` |
 | **Legacy vs API RBAC mismatch** | `admin_support` may see SPA bookings/disputes but Next pages blocked them | PM/security: align Next `RoleGuard` or accept SPA as source of truth for those paths |
 

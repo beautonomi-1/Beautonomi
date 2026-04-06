@@ -9,7 +9,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function GeneralSettingsPage() {
   const { allowed, denied } = useAdminSectionPage(
@@ -45,11 +44,6 @@ export function GeneralSettingsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Settings" description="GET /api/admin/settings (read-only summary in SPA)" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/settings")} className="font-medium text-gray-900 underline">
-          Edit in legacy admin →
-        </a>
-      </p>
       <AdminPanel>
         <p className="text-sm text-gray-700">
           <span className="text-gray-500">Site name:</span> {siteName || "—"}

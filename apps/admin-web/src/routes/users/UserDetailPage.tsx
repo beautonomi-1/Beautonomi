@@ -1,5 +1,6 @@
-import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -10,25 +11,78 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
+import {
+  AdminDataTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+} from "@/components/admin/AdminDataTable";
 
-type UserDetailPayload = {
-  user: Record<string, unknown>;
-  stats: Record<string, unknown>;
+type UserDetail = Record<string, unknown> & {
+  stats?: Record<string, unknown>;
+  addresses?: Record<string, unknown>[];
+  payment_methods?: Record<string, unknown>[];
+  wallet?: Record<string, unknown> | null;
+  support_tickets?: Record<string, unknown>[];
+  recent_product_orders?: Record<string, unknown>[];
 };
+
+function str(v: unknown): string {
+  return v == null ? "" : String(v);
+}
+
+function bool(v: unknown): boolean {
+  return v === true;
+}
+
+function formatSavedAddress(a: Record<string, unknown>): string {
+  const parts = [
+    a.address_line1,
+    a.address_line2,
+    [a.city, a.state, a.postal_code].filter(Boolean).join(", "),
+    a.country,
+  ].filter(Boolean);
+  const line = parts.map((p) => str(p)).join(" · ");
+  const label = str(a.label);
+  return label ? `${label} — ${line || "—"}` : line || "—";
+}
 
 export function UserDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
+  const [suspendReason, setSuspendReason] = useState("");
 
   const q = useQuery({
     queryKey: adminQueryKeys.userDetail(id),
-    queryFn: () => adminApi.getJson<UserDetailPayload>(`/api/admin/users/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<UserDetail>(`/api/admin/users/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
   });
 
+  const patch = useMutation({
+    mutationFn: (body: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/users/${encodeURIComponent(id)}`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+    },
+  });
+
+  const data = q.data;
+  const stats = data?.stats ?? {};
+  const isSuspended = data?.deactivated_at != null && String(data.deactivated_at).length > 0;
+
+  useEffect(() => {
+    if (!isSuspended) setSuspendReason("");
+  }, [isSuspended]);
+
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing user id" onRetry={() => {}} />;
+
   if (q.isLoading) {
     return (
       <div className="space-y-6">
@@ -39,21 +93,364 @@ export function UserDetailPage() {
       </div>
     );
   }
+
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
+  if (!data) {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="User" />
+        <AdminPanel>
+          <p className="text-sm text-gray-600">User not found.</p>
+        </AdminPanel>
+      </div>
+    );
+  }
+
+  const displayName = str(data.full_name) || str(data.email) || id;
+  const role = str(data.role);
+
+  const customerRatingRows = useMemo(() => {
+    if (role !== "customer") return [];
+    const keys: [string, string][] = [
+      ["customer_review_rating_avg", "Avg from written reviews (providers rating customer)"],
+      ["customer_review_rating_count", "Written review count"],
+      ["customer_booking_rating_avg", "Avg from booking ratings"],
+      ["customer_booking_rating_count", "Booking rating count"],
+    ];
+    return keys.map(([k, label]) => ({ k, label, v: data[k] }));
+  }, [role, data]);
+
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="User detail" description={`GET /api/admin/users/${id}`} />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref(`/admin/users/${id}`)} className="font-medium text-gray-900 underline">
-          Legacy user (role, impersonate) →
-        </a>
-      </p>
+      <AdminPageHeader
+        title={displayName}
+        description={str(data.email)}
+        actions={
+          <Link
+            to={adminSpaTo("/admin/users")}
+            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+          >
+            ← Users
+          </Link>
+        }
+      />
+
+      <AdminMutationAlert errors={[patch.error instanceof Error ? patch.error : null]} />
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Profile</h2>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-gray-500">User ID</dt>
+              <dd className="font-mono text-xs break-all">{id}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Role</dt>
+              <dd className="font-medium">{role || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Phone</dt>
+              <dd>{str(data.phone) || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Status</dt>
+              <dd>{isSuspended ? <span className="text-red-700">Suspended</span> : "Active"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Created</dt>
+              <dd>{data.created_at ? new Date(String(data.created_at)).toLocaleString() : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Last login</dt>
+              <dd>{data.last_login_at ? new Date(String(data.last_login_at)).toLocaleString() : "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Date of birth</dt>
+              <dd>{str(data.date_of_birth) || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Timezone</dt>
+              <dd className="font-mono text-xs">{str(data.timezone) || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Language / currency</dt>
+              <dd>
+                {str(data.preferred_language) || "—"} · {str(data.preferred_currency) || "—"}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-gray-500">Emergency contact</dt>
+              <dd>
+                {str(data.emergency_contact_name) || "—"}
+                {data.emergency_contact_phone ? ` · ${str(data.emergency_contact_phone)}` : ""}
+                {data.emergency_contact_relationship ? ` (${str(data.emergency_contact_relationship)})` : ""}
+              </dd>
+            </div>
+          </dl>
+        </AdminPanel>
+
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Activity</h2>
+          <dl className="mt-4 grid gap-3 text-sm">
+            {Object.keys(stats).length === 0 ? (
+              <p className="text-gray-500">No stats for this role.</p>
+            ) : (
+              Object.entries(stats)
+                .filter(([, v]) => v !== null && typeof v !== "object")
+                .map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-gray-500">{k.replace(/_/g, " ")}</dt>
+                    <dd className="font-medium">{String(v)}</dd>
+                  </div>
+                ))
+            )}
+          </dl>
+        </AdminPanel>
+      </div>
+
+      {role === "customer" ? (
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Customer ratings (provider → customer)</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Aggregates from review follow-ups and per-booking ratings.{" "}
+            <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/reviews?customer_id=${encodeURIComponent(id)}`)}>
+              Reviews mentioning this customer
+            </Link>
+          </p>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+            {customerRatingRows.map(({ k, label, v }) => (
+              <div key={k}>
+                <dt className="text-gray-500">{label}</dt>
+                <dd className="font-medium tabular-nums">{v != null && v !== "" ? String(v) : "—"}</dd>
+              </div>
+            ))}
+          </dl>
+        </AdminPanel>
+      ) : null}
+
       <AdminPanel>
-        <pre className="max-h-[560px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
+        <h2 className="text-lg font-semibold text-gray-900">Saved addresses</h2>
+        {(data.addresses ?? []).length === 0 ? (
+          <p className="mt-2 text-sm text-gray-500">No saved addresses.</p>
+        ) : (
+          <ul className="mt-4 space-y-4 text-sm">
+            {(data.addresses ?? []).map((a) => (
+              <li key={str(a.id)} className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+                <p className="font-medium text-gray-900">
+                  {a.is_default ? "Default · " : ""}
+                  {formatSavedAddress(a)}
+                </p>
+                <dl className="mt-2 grid gap-1 text-xs text-gray-600 sm:grid-cols-2">
+                  <div>
+                    <dt className="inline text-gray-500">Lat: </dt>
+                    <dd className="inline font-mono">{a.latitude != null ? str(a.latitude) : "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="inline text-gray-500">Lng: </dt>
+                    <dd className="inline font-mono">{a.longitude != null ? str(a.longitude) : "—"}</dd>
+                  </div>
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AdminPanel>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Wallet</h2>
+          {data.wallet ? (
+            <dl className="mt-4 text-sm">
+              <div>
+                <dt className="text-gray-500">Balance</dt>
+                <dd className="text-lg font-semibold tabular-nums">
+                  {str(data.wallet.currency)} {Number(data.wallet.balance ?? 0).toFixed(2)}
+                </dd>
+              </div>
+            </dl>
+          ) : (
+            <p className="mt-2 text-sm text-gray-500">No wallet record.</p>
+          )}
+        </AdminPanel>
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Payment methods (masked)</h2>
+          {(data.payment_methods ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">None on file.</p>
+          ) : (
+            <ul className="mt-3 space-y-2 text-sm">
+              {(data.payment_methods ?? []).map((pm) => (
+                <li key={str(pm.id)} className="rounded border border-gray-100 px-3 py-2">
+                  <span className="font-medium">{str(pm.type)}</span> · {str(pm.provider)}
+                  {pm.last_four != null ? (
+                    <span className="text-gray-600"> · •••• {str(pm.last_four)}</span>
+                  ) : null}
+                  {pm.card_brand ? <span className="text-gray-600"> ({str(pm.card_brand)})</span> : null}
+                  {pm.is_default ? <span className="ml-2 text-xs text-primary">default</span> : null}
+                  {pm.is_active === false ? <span className="ml-2 text-xs text-amber-800">inactive</span> : null}
+                </li>
+              ))}
+            </ul>
+          )}
+        </AdminPanel>
+      </div>
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Support tickets</h2>
+        {(data.support_tickets ?? []).length === 0 ? (
+          <p className="mt-2 text-sm text-gray-500">No tickets for this user in this tenant context.</p>
+        ) : (
+          <AdminDataTable className="mt-4">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Ticket</AdminTh>
+                <AdminTh>Subject</AdminTh>
+                <AdminTh>Status</AdminTh>
+                <AdminTh>Created</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {(data.support_tickets ?? []).map((t) => (
+                <tr key={str(t.id)}>
+                  <AdminTd>
+                    <Link
+                      className="font-mono text-xs text-primary underline"
+                      to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(str(t.id))}`)}
+                    >
+                      {str(t.ticket_number)}
+                    </Link>
+                  </AdminTd>
+                  <AdminTd>{str(t.subject)}</AdminTd>
+                  <AdminTd>{str(t.status)}</AdminTd>
+                  <AdminTd>
+                    {t.created_at ? new Date(String(t.created_at)).toLocaleString() : "—"}
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        )}
+      </AdminPanel>
+
+      {role === "customer" ? (
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Recent product orders</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            <Link className="font-medium text-primary underline" to={adminSpaTo("/admin/ecommerce/orders")}>
+              Open all orders
+            </Link>
+          </p>
+          {(data.recent_product_orders ?? []).length === 0 ? (
+            <p className="mt-2 text-sm text-gray-500">No product orders in this tenant.</p>
+          ) : (
+            <AdminDataTable className="mt-4">
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Order</AdminTh>
+                  <AdminTh>Provider</AdminTh>
+                  <AdminTh>Status</AdminTh>
+                  <AdminTh>Payment</AdminTh>
+                  <AdminTh>Total</AdminTh>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {(data.recent_product_orders ?? []).map((o) => {
+                  const oid = str(o.id);
+                  const prov = o.provider as { business_name?: string } | undefined;
+                  return (
+                    <tr key={oid}>
+                      <AdminTd>
+                        <Link
+                          className="font-mono text-xs text-primary underline"
+                          to={adminSpaTo(`/admin/ecommerce/orders/${encodeURIComponent(oid)}`)}
+                        >
+                          {str(o.order_number ?? oid)}
+                        </Link>
+                      </AdminTd>
+                      <AdminTd>{prov?.business_name ?? "—"}</AdminTd>
+                      <AdminTd>{str(o.status)}</AdminTd>
+                      <AdminTd>{str(o.payment_status)}</AdminTd>
+                      <AdminTd className="tabular-nums">{Number(o.total_amount ?? 0).toFixed(2)}</AdminTd>
+                    </tr>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminDataTable>
+          )}
+        </AdminPanel>
+      ) : null}
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Notification preferences</h2>
+        <div className="mt-4 flex flex-col gap-3 text-sm">
+          {(
+            [
+              ["email_notifications_enabled", "Email"],
+              ["sms_notifications_enabled", "SMS"],
+              ["push_notifications_enabled", "Push"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={bool(data[key])}
+                disabled={patch.isPending}
+                onChange={(e) =>
+                  void patch.mutateAsync({
+                    [key]: e.target.checked,
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Account controls</h2>
+        {isSuspended ? (
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-gray-600">
+              Suspended{data.deactivation_reason ? `: ${str(data.deactivation_reason)}` : ""}
+            </p>
+            <button
+              type="button"
+              className={adminToolbarButtonClass(patch.isPending)}
+              disabled={patch.isPending}
+              onClick={() => void patch.mutateAsync({ deactivated_at: null, deactivation_reason: null })}
+            >
+              Reactivate account
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-3">
+            <label className="block text-sm text-gray-700">Reason (optional)</label>
+            <input
+              className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={suspendReason}
+              onChange={(e) => setSuspendReason(e.target.value)}
+              placeholder="Suspension reason"
+            />
+            <button
+              type="button"
+              className={adminToolbarButtonClass(patch.isPending)}
+              disabled={patch.isPending}
+              onClick={() =>
+                void patch.mutateAsync({
+                  deactivated_at: new Date().toISOString(),
+                  deactivation_reason: suspendReason.trim() || null,
+                })
+              }
+            >
+              Suspend account
+            </button>
+          </div>
+        )}
       </AdminPanel>
     </div>
   );

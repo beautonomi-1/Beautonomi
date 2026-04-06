@@ -9,7 +9,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function MapboxConfigPage() {
   const { allowed, denied } = useAdminSectionPage(
@@ -41,11 +40,6 @@ export function MapboxConfigPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Mapbox config" description="GET /api/admin/mapbox/config" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/mapbox")} className="font-medium text-gray-900 underline">
-          Legacy Mapbox UI →
-        </a>
-      </p>
       <AdminPanel>
         <pre className="max-h-[400px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
       </AdminPanel>

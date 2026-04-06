@@ -15,7 +15,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface BookingServiceRow {
   id: string;
@@ -396,22 +396,22 @@ export function BookingDetailPage() {
             <h2 className="mb-3 text-lg font-semibold">Customer</h2>
             <p className="font-medium">{booking.customer?.full_name ?? "—"}</p>
             <p className="text-sm text-gray-600">{booking.customer?.email}</p>
-            <a
-              href={legacyAdminHref(`/admin/users/${booking.customer_id}`)}
+            <Link
+              to={adminSpaTo(`/admin/users/${booking.customer_id}`)}
               className="mt-3 inline-block text-sm font-medium text-gray-900 underline"
             >
-              Open in legacy profile →
-            </a>
+              View customer profile →
+            </Link>
           </AdminPanel>
           <AdminPanel>
             <h2 className="mb-3 text-lg font-semibold">Provider</h2>
             <p className="font-medium">{booking.provider?.business_name ?? "—"}</p>
-            <a
-              href={legacyAdminHref(`/admin/providers/${booking.provider_id}`)}
+            <Link
+              to={adminSpaTo(`/admin/providers/${booking.provider_id}`)}
               className="mt-3 inline-block text-sm font-medium text-gray-900 underline"
             >
-              Open in legacy profile →
-            </a>
+              View provider profile →
+            </Link>
           </AdminPanel>
           <AdminPanel>
             <h2 className="mb-3 text-lg font-semibold">Totals</h2>

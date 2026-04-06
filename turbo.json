@@ -5,6 +5,7 @@
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**", "lib/**"],
+      "passThroughEnv": ["SENTRY_AUTH_TOKEN", "SENTRY_ORG", "SENTRY_PROJECT"],
       "env": [
         "NEXT_PUBLIC_SUPABASE_URL",
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
@@ -25,7 +26,6 @@
         "VITE_SUPABASE_ANON_KEY",
         "VITE_APP_URL",
         "VITE_SITE_URL",
-        "VITE_WEB_ORIGIN",
         "VITE_SENTRY_DSN",
         "VITE_SENTRY_ENVIRONMENT",
         "VITE_GOOGLE_ANALYTICS_ID",

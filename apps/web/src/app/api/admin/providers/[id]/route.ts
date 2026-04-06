@@ -76,9 +76,66 @@ export async function GET(
         ? reviews.reduce((sum: number, r: { rating?: number }) => sum + (r.rating ?? 0), 0) / reviews.length
         : 0;
 
+    const { data: yocoIntegration } = await supabase
+      .from("provider_yoco_integrations")
+      .select("is_enabled, connected_date, last_sync, public_key, created_at, updated_at")
+      .eq("provider_id", providerId)
+      .maybeSingle();
+
+    const { data: yocoDevices } = await supabase
+      .from("provider_yoco_devices")
+      .select(
+        "id, name, yoco_device_id, location_id, location_name, is_active, last_used, total_transactions, created_at, updated_at",
+      )
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: true });
+
+    const { data: yocoLegacyTerminals } = await supabase
+      .from("provider_yoco_terminals")
+      .select("id, device_id, device_name, location_name, active, created_at, updated_at")
+      .eq("provider_id", providerId)
+      .order("created_at", { ascending: true });
+
+    const integ = yocoIntegration as {
+      is_enabled?: boolean;
+      connected_date?: string | null;
+      last_sync?: string | null;
+      public_key?: string | null;
+    } | null;
+
+    const devices = yocoDevices ?? [];
+    const legacy = yocoLegacyTerminals ?? [];
+    const hasLegacyTerminal = legacy.some((t: { active?: boolean }) => t.active !== false);
+    const activeWebDevices = devices.filter((d: { is_active?: boolean }) => d.is_active !== false);
+
+    const yoco_summary = {
+      integration: integ
+        ? {
+            enabled: Boolean(integ.is_enabled),
+            connected_at: integ.connected_date ?? null,
+            last_sync: integ.last_sync ?? null,
+            has_public_key: Boolean(integ.public_key && String(integ.public_key).length > 0),
+          }
+        : null,
+      web_pos_devices: devices,
+      legacy_terminals: legacy,
+      derived: {
+        has_yoco_integration_row: integ != null,
+        has_any_registered_machine: devices.length > 0 || legacy.length > 0,
+        has_active_web_device: activeWebDevices.length > 0,
+        has_active_legacy_terminal: hasLegacyTerminal,
+        /** Integration toggled on (credentials path); use with device rows for operational picture */
+        integration_enabled: Boolean(integ?.is_enabled),
+        /** Best-effort: enabled integration and at least one active device or legacy terminal */
+        likely_ready_for_terminal_payments:
+          Boolean(integ?.is_enabled) && (activeWebDevices.length > 0 || hasLegacyTerminal),
+      },
+    };
+
     return successResponse({
       ...(provider as Record<string, unknown>),
       owner: owner ?? null,
+      yoco_summary,
       stats: {
         booking_count: bookingCount || 0,
         review_count: reviewCount || 0,

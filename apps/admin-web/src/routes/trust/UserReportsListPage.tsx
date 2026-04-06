@@ -20,7 +20,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type UserReportsPayload = {
   data: Record<string, unknown>[];
@@ -81,11 +80,6 @@ export function UserReportsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="User reports" description="GET /api/admin/user-reports" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/user-reports")} className="font-medium text-gray-900 underline">
-          Legacy user reports (resolve) →
-        </a>
-      </p>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

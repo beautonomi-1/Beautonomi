@@ -14,7 +14,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminDataList } from "@/components/admin/AdminDataList";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type ProviderRow = {
   id: string;
@@ -103,11 +102,6 @@ export function ProvidersListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Providers" description="GET /api/admin/providers" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/providers")} className="font-medium text-gray-900 underline">
-          Legacy providers (verify, bulk) →
-        </a>
-      </p>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

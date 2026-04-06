@@ -56,6 +56,8 @@ import {
   Smartphone,
   Link2,
   Network,
+  Share2,
+  FolderOpen,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -166,7 +168,9 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
       { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
+      { title: "CMS resources", href: "/admin/content/resources", icon: FolderOpen },
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
+      { title: "Global categories", href: "/admin/catalog/global-categories", icon: Globe2 },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
     ],
   },
@@ -226,6 +230,7 @@ const navGroups: NavGroup[] = [
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
+      { title: "Referral sources", href: "/admin/referral-sources", icon: Share2 },
       { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
     ],
   },

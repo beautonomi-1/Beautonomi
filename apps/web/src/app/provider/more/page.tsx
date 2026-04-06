@@ -23,6 +23,8 @@ import {
   UserCheck,
   Monitor,
   Link2,
+  PiggyBank,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -77,10 +79,12 @@ const hubSections = [
   },
   {
     title: "Finance",
-    description: "Earnings and payouts",
+    description: "Earnings, payouts, and pay runs",
     items: [
       { label: "Finance Hub", href: "/provider/more/finance-hub", icon: Wallet },
       { label: "Finance & Earnings", href: "/provider/finance", icon: Wallet },
+      { label: "Payouts", href: "/provider/payouts", icon: Coins },
+      { label: "Payroll", href: "/provider/team/payroll", icon: PiggyBank },
       { label: "Payout Accounts", href: "/provider/settings/payout-accounts", icon: Wallet },
     ],
   },

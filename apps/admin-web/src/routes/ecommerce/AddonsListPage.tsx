@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function AddonsListPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E‑commerce access is required.");
@@ -47,11 +46,6 @@ export function AddonsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Add-ons" description="GET /api/admin/addons" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/addons")} className="font-medium text-gray-900 underline">
-          Legacy add-ons →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No add-ons" />
       ) : (

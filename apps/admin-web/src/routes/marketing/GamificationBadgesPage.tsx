@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -19,12 +19,33 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
-type Payload = { badges: Record<string, unknown>[]; total: number };
+type BadgeRow = Record<string, unknown> & {
+  id?: string;
+  name?: string;
+  slug?: string;
+  tier?: number;
+  is_active?: boolean;
+  color?: string;
+};
+
+type Payload = { badges: BadgeRow[]; total: number };
+
+function parseJsonObject(raw: string, label: string): Record<string, unknown> {
+  const t = raw.trim();
+  if (!t) return {};
+  try {
+    const v = JSON.parse(t) as unknown;
+    if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
+    throw new Error(`${label} must be a JSON object`);
+  } catch (e) {
+    throw e instanceof Error ? e : new Error(`Invalid ${label} JSON`);
+  }
+}
 
 export function GamificationBadgesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
+  const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const inc = sp.get("include_inactive") === "true" ? "true" : "false";
   const qk = useMemo(() => adminQueryKeys.gamificationBadges(inc), [inc]);
@@ -36,6 +57,93 @@ export function GamificationBadgesPage() {
     enabled: allowed,
   });
   const rows = q.data?.badges ?? [];
+
+  const [creating, setCreating] = useState(false);
+  const [nName, setNName] = useState("");
+  const [nSlug, setNSlug] = useState("");
+  const [nTier, setNTier] = useState("1");
+  const [nColor, setNColor] = useState("#444444");
+  const [nReq, setNReq] = useState("{}");
+  const [nBen, setNBen] = useState("{}");
+  const [nDesc, setNDesc] = useState("");
+
+  const [editId, setEditId] = useState<string | null>(null);
+  const [eName, setEName] = useState("");
+  const [eSlug, setESlug] = useState("");
+  const [eTier, setETier] = useState("");
+  const [eColor, setEColor] = useState("");
+  const [eReq, setEReq] = useState("");
+  const [eBen, setEBen] = useState("");
+
+  const invalidate = () => void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gamification", "badges"] });
+
+  const createBadge = useMutation({
+    mutationFn: () => {
+      const tier = parseInt(nTier, 10);
+      if (Number.isNaN(tier) || tier < 1 || tier > 10) throw new Error("Tier must be 1–10");
+      return adminApi.postJson<unknown>("/api/admin/gamification/badges", {
+        name: nName.trim(),
+        slug: nSlug.trim().toLowerCase().replace(/\s+/g, "-"),
+        description: nDesc.trim() || null,
+        tier,
+        color: nColor.trim(),
+        requirements: parseJsonObject(nReq, "Requirements"),
+        benefits: parseJsonObject(nBen, "Benefits"),
+        is_active: true,
+        display_order: 0,
+      });
+    },
+    onSuccess: () => {
+      invalidate();
+      setCreating(false);
+      setNName("");
+      setNSlug("");
+      setNTier("1");
+      setNColor("#444444");
+      setNReq("{}");
+      setNBen("{}");
+      setNDesc("");
+    },
+  });
+
+  const patchBadge = useMutation({
+    mutationFn: (body: { id: string; patch: Record<string, unknown> }) =>
+      adminApi.patchJson<unknown>(`/api/admin/gamification/badges/${body.id}`, body.patch),
+    onSuccess: () => {
+      invalidate();
+      setEditId(null);
+    },
+  });
+
+  const deleteBadge = useMutation({
+    mutationFn: (id: string) => adminApi.deleteJson<unknown>(`/api/admin/gamification/badges/${id}`),
+    onSuccess: () => invalidate(),
+  });
+
+  function openEdit(row: BadgeRow) {
+    if (!row.id) return;
+    setEditId(row.id);
+    setEName(String(row.name ?? ""));
+    setESlug(String(row.slug ?? ""));
+    setETier(String(row.tier ?? ""));
+    setEColor(String(row.color ?? ""));
+    setEReq(JSON.stringify(row.requirements ?? {}, null, 2));
+    setEBen(JSON.stringify(row.benefits ?? {}, null, 2));
+  }
+
+  function submitEdit() {
+    if (!editId) return;
+    const tier = parseInt(eTier, 10);
+    const patch: Record<string, unknown> = {
+      name: eName.trim(),
+      slug: eSlug.trim(),
+      color: eColor.trim(),
+      requirements: parseJsonObject(eReq, "Requirements"),
+      benefits: parseJsonObject(eBen, "Benefits"),
+    };
+    if (!Number.isNaN(tier)) patch.tier = tier;
+    patchBadge.mutate({ id: editId, patch });
+  }
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -53,14 +161,15 @@ export function GamificationBadgesPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
+  const createErr = createBadge.error instanceof Error ? createBadge.error.message : null;
+  const patchErr = patchBadge.error instanceof Error ? patchBadge.error.message : null;
+
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Gamification · Badges" description="GET /api/admin/gamification/badges" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/gamification/badges")} className="font-medium text-gray-900 underline">
-          Legacy badges →
-        </a>
-      </p>
+      <AdminPageHeader
+        title="Gamification · Badges"
+        description="Create and maintain provider badges. Requirements and benefits are JSON objects."
+      />
       <AdminPanel>
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input
@@ -75,7 +184,106 @@ export function GamificationBadgesPage() {
           />
           Include inactive
         </label>
+        <button
+          type="button"
+          className="mt-3 rounded border border-gray-300 px-3 py-2 text-sm"
+          onClick={() => setCreating((c) => !c)}
+        >
+          {creating ? "Hide form" : "New badge"}
+        </button>
       </AdminPanel>
+
+      {creating ? (
+        <AdminPanel>
+          <p className="mb-3 text-sm text-gray-600">POST /api/admin/gamification/badges</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              Name
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nName} onChange={(e) => setNName(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Slug
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nSlug} onChange={(e) => setNSlug(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Tier (1–10)
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nTier} onChange={(e) => setNTier(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Color
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nColor} onChange={(e) => setNColor(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Description (optional)
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nDesc} onChange={(e) => setNDesc(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Requirements (JSON object)
+              <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={nReq} onChange={(e) => setNReq(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Benefits (JSON object)
+              <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={nBen} onChange={(e) => setNBen(e.target.value)} />
+            </label>
+          </div>
+          <button
+            type="button"
+            className="mt-3 rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+            disabled={createBadge.isPending || !nName.trim() || !nSlug.trim()}
+            onClick={() => createBadge.mutate()}
+          >
+            Create badge
+          </button>
+          {createErr ? <p className="mt-2 text-sm text-red-600">{createErr}</p> : null}
+        </AdminPanel>
+      ) : null}
+
+      {editId ? (
+        <AdminPanel>
+          <p className="mb-2 text-sm font-medium text-gray-900">Edit badge</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              Name
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eName} onChange={(e) => setEName(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Slug
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eSlug} onChange={(e) => setESlug(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Tier
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eTier} onChange={(e) => setETier(e.target.value)} />
+            </label>
+            <label className="text-sm">
+              Color
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eColor} onChange={(e) => setEColor(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Requirements
+              <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={eReq} onChange={(e) => setEReq(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
+              Benefits
+              <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={eBen} onChange={(e) => setEBen(e.target.value)} />
+            </label>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={patchBadge.isPending}
+              onClick={() => submitEdit()}
+            >
+              Save
+            </button>
+            <button type="button" className="rounded border border-gray-300 px-3 py-2 text-sm" onClick={() => setEditId(null)}>
+              Cancel
+            </button>
+          </div>
+          {patchErr ? <p className="mt-2 text-sm text-red-600">{patchErr}</p> : null}
+        </AdminPanel>
+      ) : null}
+
       {rows.length === 0 ? (
         <EmptyState title="No badges" />
       ) : (
@@ -83,18 +291,46 @@ export function GamificationBadgesPage() {
           <AdminTableHead>
             <tr>
               <AdminTh>Name</AdminTh>
+              <AdminTh>Slug</AdminTh>
               <AdminTh>Tier</AdminTh>
               <AdminTh>Active</AdminTh>
+              <AdminTh className="min-w-[12rem]">Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
             {rows.map((r) => {
-              const row = r as Record<string, unknown>;
+              const id = String(r.id ?? "");
               return (
-                <tr key={String(row.id ?? "")}>
-                  <AdminTd className="font-medium">{String(row.name ?? row.slug ?? "")}</AdminTd>
-                  <AdminTd>{String(row.tier ?? "")}</AdminTd>
-                  <AdminTd>{String(row.is_active ?? "")}</AdminTd>
+                <tr key={id || String(r.slug)}>
+                  <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
+                  <AdminTd className="font-mono text-xs">{String(r.slug ?? "")}</AdminTd>
+                  <AdminTd>{String(r.tier ?? "")}</AdminTd>
+                  <AdminTd>{r.is_active ? "yes" : "no"}</AdminTd>
+                  <AdminTd className="space-x-2 text-sm">
+                    <button type="button" className="text-gray-900 underline" onClick={() => openEdit(r)}>
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-gray-900 underline disabled:opacity-50"
+                      disabled={patchBadge.isPending || !r.id}
+                      onClick={() => r.id && patchBadge.mutate({ id: r.id, patch: { is_active: !r.is_active } })}
+                    >
+                      {r.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-red-700 underline disabled:opacity-50"
+                      disabled={deleteBadge.isPending || !r.id}
+                      onClick={() => {
+                        if (r.id && window.confirm("Delete this badge? (Fails if assigned to a provider.)")) {
+                          deleteBadge.mutate(r.id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </AdminTd>
                 </tr>
               );
             })}

@@ -1,12 +1,13 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { fetcher } from "@/lib/http/fetcher";
 import DownloadBanner from "./DownloadBanner";
 import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
+import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
 
 const DISMISS_KEY = "download_banner_dismissed";
 
@@ -29,6 +30,23 @@ interface AppPlatformConfig {
   download_url?: string;
   app_gallery_url?: string;
 }
+
+/**
+ * Last-resort store URLs — keep aligned with `DEFAULT_APPS_RESPONSE` in `/api/public/apps`
+ * when tenant/env do not define links.
+ */
+const STATIC_STORE_LINKS: Record<"customer" | "provider", ResolvedLinks> = {
+  customer: {
+    ios: "https://apps.apple.com/app/beautonomi-customer",
+    android: "https://play.google.com/store/apps/details?id=com.beautonomi.customer",
+    huawei: "https://appgallery.huawei.com/app/C100000000",
+  },
+  provider: {
+    ios: "https://apps.apple.com/app/beautonomi-provider",
+    android: "https://play.google.com/store/apps/details?id=com.beautonomi.provider",
+    huawei: "https://appgallery.huawei.com/app/C100000001",
+  },
+};
 
 function getStoreLinkFromEnv(appContext: "customer" | "provider", osType: "ios" | "android" | "huawei"): string | null {
   const prefix = appContext === "customer" ? "NEXT_PUBLIC_CUSTOMER" : "NEXT_PUBLIC_PROVIDER";
@@ -54,7 +72,11 @@ function resolveStoreUrl(
   appContext: "customer" | "provider",
   osType: "ios" | "android" | "huawei"
 ): string | null {
-  return getStoreLinkFromAppsData(data, osType) ?? getStoreLinkFromEnv(appContext, osType);
+  return (
+    getStoreLinkFromAppsData(data, osType) ??
+    getStoreLinkFromEnv(appContext, osType) ??
+    STATIC_STORE_LINKS[appContext][osType]
+  );
 }
 
 interface ResolvedLinks {
@@ -67,16 +89,33 @@ interface DownloadBannerContainerProps {
   osType: OsType;
 }
 
-export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps) {
+function resolveAppContext(pathname: string | null, signupPersona: string | null): "customer" | "provider" {
+  if (pathname?.startsWith("/become-a-partner")) return "provider";
+  if (pathname?.startsWith("/provider")) return "provider";
+  if (pathname === "/signup" && signupPersona === "provider") return "provider";
+  return "customer";
+}
+
+export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBannerContainerProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const signupType = pathname === "/signup" ? searchParams.get("type") : null;
   const { track } = useAmplitude();
   const viewedSentRef = useRef(false);
 
-  const appContext = pathname?.startsWith("/become-a-partner") ? "provider" : "customer";
+  const [clientOsType, setClientOsType] = useState<OsType | null>(null);
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    setClientOsType(getOsTypeFromUserAgent(navigator.userAgent));
+  }, []);
+
+  const osType = clientOsType ?? osTypeFromServer;
+
+  const appContext = resolveAppContext(pathname ?? null, signupType);
 
   useEffect(() => {
     viewedSentRef.current = false;
-  }, [appContext]);
+  }, [appContext, osType]);
 
   const mobileOs = osType === "ios" || osType === "android" || osType === "huawei" ? osType : null;
   const isDesktopLike = osType === "desktop" || osType === "other";
@@ -87,9 +126,9 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetcher.get<{ data: Record<string, AppPlatformConfig> }>(
+        const res = (await fetcher.get<{ data: Record<string, AppPlatformConfig> }>(
           `/api/public/apps?type=${appContext}`
-        );
+        )) as { data?: Record<string, AppPlatformConfig> };
         if (cancelled) return;
         const d = res?.data;
         setLinks({
@@ -100,9 +139,9 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
       } catch {
         if (cancelled) return;
         setLinks({
-          ios: getStoreLinkFromEnv(appContext, "ios"),
-          android: getStoreLinkFromEnv(appContext, "android"),
-          huawei: getStoreLinkFromEnv(appContext, "huawei"),
+          ios: resolveStoreUrl(null, appContext, "ios"),
+          android: resolveStoreUrl(null, appContext, "android"),
+          huawei: resolveStoreUrl(null, appContext, "huawei"),
         });
       }
     })();
@@ -156,8 +195,11 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
     setDismissed(true);
   }, [appContext]);
 
-  const showMobile = Boolean(mobileOs && mobileLink && !dismissed);
-  const showDesktop = Boolean(isDesktopLike && hasAnyDesktopLink && !dismissed);
+  /** Admin embed should not promote consumer/provider store installs. */
+  const hideForRoute = Boolean(pathname?.startsWith("/admin"));
+
+  const showMobile = Boolean(!hideForRoute && mobileOs && mobileLink && !dismissed);
+  const showDesktop = Boolean(!hideForRoute && isDesktopLike && hasAnyDesktopLink && !dismissed);
 
   useEffect(() => {
     if (dismissed || viewedSentRef.current) return;
@@ -224,6 +266,7 @@ export function DownloadBannerContainer({ osType }: DownloadBannerContainerProps
     [appContext, osType, pathname, track]
   );
 
+  if (hideForRoute) return null;
   if (dismissed) return null;
 
   if (showMobile && mobileOs && mobileLink) {

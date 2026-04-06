@@ -29,7 +29,7 @@ const DEFAULT_APPS_RESPONSE = {
       version: "1.0.0",
       min_version: "1.0.0",
       app_gallery_url: "https://appgallery.huawei.com/app/C100000000",
-      enabled: false,
+      enabled: true,
     },
   },
   provider: {
@@ -52,7 +52,7 @@ const DEFAULT_APPS_RESPONSE = {
       version: "1.0.0",
       min_version: "1.0.0",
       app_gallery_url: "https://appgallery.huawei.com/app/C100000001",
-      enabled: false,
+      enabled: true,
     },
   },
 };

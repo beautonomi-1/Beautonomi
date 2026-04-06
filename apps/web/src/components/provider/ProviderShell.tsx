@@ -34,6 +34,7 @@ const PRIMARY_ROUTES = [
   "/provider/ecommerce",
   "/provider/reports",
   "/provider/analytics",
+  "/provider/team/payroll",
 ];
 
 export function ProviderShell({ children }: { children: React.ReactNode }) {

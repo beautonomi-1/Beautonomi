@@ -16,7 +16,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type TaxesPayload = {
   tax_rates: Record<string, unknown>[];
@@ -55,11 +54,6 @@ export function TaxesPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Taxes" description="GET /api/admin/taxes" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/taxes")} className="font-medium text-gray-900 underline">
-          Legacy taxes editor →
-        </a>
-      </p>
       {stats ? (
         <AdminPanel>
           <h2 className="mb-2 text-sm font-semibold text-gray-900">Statistics</h2>

@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type Promo = Record<string, unknown> & { id?: string; name?: string; code?: string; is_active?: boolean };
 
@@ -54,11 +53,6 @@ export function PromotionsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Promotions" description="GET /api/admin/promotions" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/promotions")} className="font-medium text-gray-900 underline">
-          Create / edit in legacy →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No promotions" />
       ) : (

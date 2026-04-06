@@ -42,6 +42,7 @@ import {
   Smartphone,
   Link2,
   Network,
+  Share2,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -78,8 +79,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     section: ADMIN_SECTION_OVERVIEW,
     items: [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
-      { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
-      { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye, superadminOnly: true },
+      { title: "Analytics", href: "/admin/analytics", icon: BarChart3, superadminOnly: true },
       { title: "Reports", href: "/admin/reports", icon: FileText },
     ],
   },
@@ -95,7 +96,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Providers", href: "/admin/providers", icon: Building2 },
       { title: "Staff", href: "/admin/staff", icon: UserCheck },
       { title: "Bookings", href: "/admin/bookings", icon: Calendar },
-      { title: "Reviews", href: "/admin/reviews", icon: Star },
+      { title: "Reviews & ratings", href: "/admin/reviews", icon: Star },
       { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag },
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
@@ -131,7 +132,9 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
       { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
+      { title: "CMS resources", href: "/admin/content/resources", icon: Layers },
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
+      { title: "Global categories", href: "/admin/catalog/global-categories", icon: Globe2 },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
     ],
   },
@@ -139,6 +142,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "E-commerce",
     section: ADMIN_SECTION_ECOMMERCE,
     items: [
+      { title: "Overview", href: "/admin/ecommerce", icon: BarChart3 },
       { title: "Product Orders", href: "/admin/ecommerce/orders", icon: ShoppingBag },
       { title: "Product Returns", href: "/admin/ecommerce/returns", icon: Undo2 },
       { title: "Product Catalog", href: "/admin/ecommerce/products", icon: Store },
@@ -186,11 +190,12 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { title: "Settings", href: "/admin/settings", icon: Settings },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
-      { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
+      { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers, superadminOnly: true },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
+      { title: "Referral sources", href: "/admin/referral-sources", icon: Share2 },
       { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
     ],
   },

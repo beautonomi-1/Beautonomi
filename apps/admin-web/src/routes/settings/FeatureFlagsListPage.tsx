@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -17,7 +18,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type FlagRow = Record<string, unknown> & { id?: string; feature_name?: string; category?: string; is_enabled?: boolean };
 
@@ -55,13 +56,9 @@ export function FeatureFlagsListPage() {
     <div className="space-y-6">
       <AdminPageHeader title="Feature flags" description="GET /api/admin/feature-flags" />
       <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/settings/feature-flags")} className="font-medium text-gray-900 underline">
-          Edit in legacy →
-        </a>{" "}
-        ·{" "}
-        <a href={legacyAdminHref("/admin/control-plane/feature-flags")} className="font-medium text-gray-900 underline">
-          Control plane variant →
-        </a>
+        <Link to={adminSpaTo("/admin/control-plane/feature-flags")} className="font-medium text-gray-900 underline">
+          Control plane tools (preview & resolver) →
+        </Link>
       </p>
       {rows.length === 0 ? (
         <EmptyState title="No flags" />

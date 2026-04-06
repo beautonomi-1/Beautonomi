@@ -39,8 +39,6 @@
 | **Admin SPA (`admin-web`)** | `5173` (default Vite) | `vite.config` proxies **`/api`** and **`/auth`** → `http://localhost:3000`. Browser uses **one origin** (`localhost:5173`) for HTML/JS and proxied API/auth paths — matches auth decision intent (avoid naked cross-origin API calls). |
 | **Env** | | SPA: `VITE_*` mirrors `NEXT_PUBLIC_*` for Supabase browser client. |
 
-**Deep links to legacy-only routes:** Use `VITE_WEB_ORIGIN=http://localhost:3000` so Reports (and similar) can link to Next admin until those routes exist in the SPA.
-
 ---
 
 ## 3. Target production model (post–cutover)

@@ -2,7 +2,7 @@ import React from "react";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseAnonPublicClient } from "@/lib/supabase/public-read";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { Mail, Phone, HelpCircle } from "lucide-react";
 
@@ -24,7 +24,8 @@ export const revalidate = 300;
 
 async function getAboutSections(): Promise<AboutSection[]> {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = createSupabaseAnonPublicClient();
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from("about_us_content")
       .select("section_key, title, content, image_url")

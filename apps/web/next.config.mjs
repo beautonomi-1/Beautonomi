@@ -138,7 +138,7 @@ const nextConfig = {
           },
         ],
       },
-      // Admin HTML shell — short TTL when SPA routing is enabled (see middleware + cutover plan §2a).
+      // Admin HTML shell — short TTL when SPA routing is enabled (see `src/proxy.ts` + admin cutover docs).
       {
         source: '/admin/:path*',
         headers: [
@@ -231,15 +231,8 @@ const nextConfig = {
           },
         ],
       },
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // Do not set Cache-Control on `/_next/static/*` — Next.js applies hashed-filename caching;
+      // overriding it triggers a production warning and can fight the framework defaults.
       {
         source: '/images/:path*',
         headers: [

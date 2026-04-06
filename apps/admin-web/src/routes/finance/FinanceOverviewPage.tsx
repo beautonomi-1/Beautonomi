@@ -11,7 +11,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 
 type FinanceSummary = Record<string, number | Record<string, unknown> | null | undefined>;
 
@@ -24,6 +24,11 @@ export function FinanceOverviewPage() {
   const start = sp.get("start_date") ?? "";
   const end = sp.get("end_date") ?? "";
   const rangeKey = `${start}|${end}`;
+
+  const walletFlagQ = useTenantFeatureFlags([TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_WALLET], allowed);
+  const showWalletDisabledBanner =
+    walletFlagQ.isSuccess &&
+    walletFlagQ.data?.features?.[TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_WALLET] === false;
 
   const q = useQuery({
     queryKey: adminQueryKeys.finance.summary(rangeKey),
@@ -78,11 +83,12 @@ export function FinanceOverviewPage() {
         title="Finance"
         description="Ledger-derived totals. Optional URL params: start_date, end_date (ISO)."
       />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/finance")} className="font-medium text-gray-900 underline">
-          Open legacy finance UI for transactions export →
-        </a>
-      </p>
+      {showWalletDisabledBanner ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <code className="rounded bg-amber-100 px-1">payment_wallet</code> is off — customers cannot pay from wallet
+          balance in checkout. Refunds may still credit wallets; see product docs for your market.
+        </div>
+      ) : null}
       <AdminPanel>
         <p className="mb-4 text-sm text-gray-600">
           Filter via query string, e.g. <code className="rounded bg-gray-100 px-1">?start_date=2026-01-01&end_date=2026-01-31</code>

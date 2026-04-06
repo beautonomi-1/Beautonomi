@@ -16,7 +16,6 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type PayoutRow = Record<string, unknown> & {
   id?: string;
@@ -253,11 +252,6 @@ export function PayoutsPage() {
         title="Payouts"
         description="GET /api/admin/payouts · POST …/approve, /reject, /mark-paid, /mark-failed, /initiate-transfer"
       />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/payouts")} className="font-medium text-gray-900 underline">
-          Legacy payouts (alternate flows) →
-        </a>
-      </p>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

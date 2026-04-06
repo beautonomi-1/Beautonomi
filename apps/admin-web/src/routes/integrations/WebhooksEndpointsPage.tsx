@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type Ep = Record<string, unknown> & { id?: string; name?: string; url?: string; is_active?: boolean };
 
@@ -54,11 +53,6 @@ export function WebhooksEndpointsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Webhooks" description="GET /api/admin/webhooks/endpoints" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/webhooks")} className="font-medium text-gray-900 underline">
-          Create / test endpoints in legacy →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No webhook endpoints" />
       ) : (

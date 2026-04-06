@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type ReturnRow = Record<string, unknown> & {
   id?: string;
@@ -84,11 +83,6 @@ export function ProductReturnsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Product returns" description="GET /api/admin/product-returns" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/ecommerce/returns")} className="font-medium text-gray-900 underline">
-          Legacy returns →
-        </a>
-      </p>
       <AdminPanel>
         <label className="text-sm text-gray-600">
           Status{" "}

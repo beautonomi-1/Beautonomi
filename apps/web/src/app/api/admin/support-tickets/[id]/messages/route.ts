@@ -4,6 +4,14 @@ import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
+import { z } from "zod";
+
+const attachmentSchema = z.object({
+  url: z.string().url(),
+  name: z.string(),
+  type: z.string(),
+  size: z.number().optional(),
+});
 
 export async function POST(
   request: NextRequest,
@@ -15,13 +23,19 @@ export async function POST(
     const { id } = await params;
 
     const body = await request.json();
-    const { message, is_internal, attachments } = body;
+    const { message: rawMessage, is_internal } = body;
+    const message = typeof rawMessage === "string" ? rawMessage.trim() : "";
+    let attachments: z.infer<typeof attachmentSchema>[] = [];
+    if (body?.attachments != null) {
+      const parsed = z.array(attachmentSchema).safeParse(body.attachments);
+      if (!parsed.success) {
+        return NextResponse.json({ error: "Invalid attachments" }, { status: 400 });
+      }
+      attachments = parsed.data.slice(0, 10);
+    }
 
-    if (!message) {
-      return NextResponse.json(
-        { error: "Message is required" },
-        { status: 400 }
-      );
+    if (!message && attachments.length === 0) {
+      return NextResponse.json({ error: "Message or attachments are required" }, { status: 400 });
     }
 
     const isInternal = is_internal === true;
@@ -51,14 +65,16 @@ export async function POST(
       );
     }
 
+    const messageBody = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
+
     const { data, error } = await supabase
       .from("support_ticket_messages")
       .insert({
         ticket_id: id,
         user_id: user.id,
-        message,
+        message: messageBody,
         is_internal: isInternal,
-        attachments: attachments || [],
+        attachments,
       })
       .select()
       .single();
@@ -74,10 +90,14 @@ export async function POST(
     // When admin/support_agent replies with a public message, notify the ticket owner (email + in-app for swift communication)
     if (!isInternal && isAdmin && ticket.user_id) {
       try {
+        const previewText =
+          message.slice(0, 200) ||
+          (attachments.length ? `Sent ${attachments.length} attachment(s)` : "");
+        const ellip = message.length > 200 ? "…" : "";
         await notifySupportTicketUpdated(
           ticket.user_id,
           ticket.ticket_number || id,
-          `Support replied: ${message.slice(0, 200)}${message.length > 200 ? "…" : ""}`,
+          `Support replied: ${previewText}${ellip}`,
           id,
           ["email", "push"]
         );

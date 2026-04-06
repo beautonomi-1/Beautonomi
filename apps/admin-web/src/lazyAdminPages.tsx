@@ -16,8 +16,8 @@ export const GodsEyePage = lazy(() =>
 export const ReportsHubPage = lazy(() =>
   import("@/routes/ReportsHubPage").then((m) => ({ default: m.ReportsHubPage }))
 );
-export const WavePlaceholderPage = lazy(() =>
-  import("@/routes/WavePlaceholderPage").then((m) => ({ default: m.WavePlaceholderPage }))
+export const AdminNotFoundPage = lazy(() =>
+  import("@/routes/AdminNotFoundPage").then((m) => ({ default: m.AdminNotFoundPage }))
 );
 export const BookingsPage = lazy(() =>
   import("@/routes/bookings/BookingsPage").then((m) => ({ default: m.BookingsPage }))
@@ -70,11 +70,20 @@ export const UsersListPage = lazy(() =>
 export const VerificationsListPage = lazy(() =>
   import("@/routes/users/VerificationsListPage").then((m) => ({ default: m.VerificationsListPage }))
 );
+export const VerificationDetailPage = lazy(() =>
+  import("@/routes/users/VerificationDetailPage").then((m) => ({ default: m.VerificationDetailPage }))
+);
 export const AuditLogsPage = lazy(() =>
   import("@/routes/users/AuditLogsPage").then((m) => ({ default: m.AuditLogsPage }))
 );
+export const EcommerceOverviewPage = lazy(() =>
+  import("@/routes/ecommerce/EcommerceOverviewPage").then((m) => ({ default: m.EcommerceOverviewPage }))
+);
 export const ProductOrdersPage = lazy(() =>
   import("@/routes/ecommerce/ProductOrdersPage").then((m) => ({ default: m.ProductOrdersPage }))
+);
+export const ProductOrderDetailPage = lazy(() =>
+  import("@/routes/ecommerce/ProductOrderDetailPage").then((m) => ({ default: m.ProductOrderDetailPage }))
 );
 export const ProductReturnsPage = lazy(() =>
   import("@/routes/ecommerce/ProductReturnsPage").then((m) => ({ default: m.ProductReturnsPage }))
@@ -96,6 +105,9 @@ export const PromotionsListPage = lazy(() =>
 );
 export const GiftCardsListPage = lazy(() =>
   import("@/routes/marketing/GiftCardsListPage").then((m) => ({ default: m.GiftCardsListPage }))
+);
+export const GiftCardDetailPage = lazy(() =>
+  import("@/routes/marketing/GiftCardDetailPage").then((m) => ({ default: m.GiftCardDetailPage }))
 );
 export const SystemHealthPage = lazy(() =>
   import("@/routes/ops/SystemHealthPage").then((m) => ({ default: m.SystemHealthPage }))
@@ -130,8 +142,65 @@ export const TeamPermissionsMatrixPage = lazy(() =>
 export const ControlPlaneOverviewPage = lazy(() =>
   import("@/routes/control-plane/ControlPlaneOverviewPage").then((m) => ({ default: m.ControlPlaneOverviewPage }))
 );
-export const ControlPlaneDeepLegacyPage = lazy(() =>
-  import("@/routes/control-plane/ControlPlaneDeepLegacyPage").then((m) => ({ default: m.ControlPlaneDeepLegacyPage }))
+export const CpFeatureFlagsPage = lazy(() =>
+  import("@/routes/control-plane/CpFeatureFlagsPage").then((m) => ({ default: m.CpFeatureFlagsPage }))
+);
+export const CpIntegrationsHubPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationsHubPage").then((m) => ({ default: m.CpIntegrationsHubPage }))
+);
+export const CpIntegrationSumsubPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationSumsubPage").then((m) => ({ default: m.CpIntegrationSumsubPage }))
+);
+export const CpIntegrationGeminiPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationGeminiPage").then((m) => ({ default: m.CpIntegrationGeminiPage }))
+);
+export const CpIntegrationAuraPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationAuraPage").then((m) => ({ default: m.CpIntegrationAuraPage }))
+);
+export const CpModuleDistancePage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleDistancePage }))
+);
+export const CpModuleOnDemandPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleOnDemandPage }))
+);
+export const CpModuleSafetyPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleSafetyPage }))
+);
+export const CpModuleRankingPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleRankingPage }))
+);
+export const CpModuleAiPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleAiPage }))
+);
+export const CpModuleAdsPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneModules").then((m) => ({ default: m.CpModuleAdsPage }))
+);
+export const CpSafetyLogsPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpSafetyLogsPage }))
+);
+export const CpAuditLogPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpAuditLogPage }))
+);
+export const CpMaintenancePage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpMaintenancePage }))
+);
+export const CpMaintenanceSignupsPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpMaintenanceSignupsPage }))
+);
+export const CpAiUsagePage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpAiUsagePage }))
+);
+export const CpAiEntitlementsPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpAiEntitlementsPage }))
+);
+export const CpRankingScoresPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpRankingScoresPage }))
+);
+export const CpAiTemplatesPage = lazy(() =>
+  import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpAiTemplatesPage }))
+);
+export const BroadcastComposePage = lazy(() =>
+  import("@/routes/marketing/BroadcastComposePage").then((m) => ({ default: m.BroadcastComposePage }))
 );
 export const ProvidersListPage = lazy(() =>
   import("@/routes/providers/ProvidersListPage").then((m) => ({ default: m.ProvidersListPage }))
@@ -203,6 +272,15 @@ export const ExplorePostsPage = lazy(() =>
 );
 export const CatalogServicesPage = lazy(() =>
   import("@/routes/content/CatalogServicesPage").then((m) => ({ default: m.CatalogServicesPage }))
+);
+export const GlobalCategoriesPage = lazy(() =>
+  import("@/routes/catalog/GlobalCategoriesPage").then((m) => ({ default: m.GlobalCategoriesPage }))
+);
+export const ContentResourcesPage = lazy(() =>
+  import("@/routes/content/ContentResourcesPage").then((m) => ({ default: m.ContentResourcesPage }))
+);
+export const ReferralSourcesPage = lazy(() =>
+  import("@/routes/providers/ReferralSourcesPage").then((m) => ({ default: m.ReferralSourcesPage }))
 );
 export const AddonsListPage = lazy(() =>
   import("@/routes/ecommerce/AddonsListPage").then((m) => ({ default: m.AddonsListPage }))

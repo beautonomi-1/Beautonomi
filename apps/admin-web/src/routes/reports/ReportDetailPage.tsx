@@ -192,7 +192,7 @@ export function ReportDetailPage() {
         </AdminDataTable>
       ) : (
         <AdminPanel>
-          <p className="text-sm text-gray-600">No tabular series detected; open legacy for full charts.</p>
+          <p className="text-sm text-gray-600">No tabular series detected in this payload; chart views may be limited for this report.</p>
         </AdminPanel>
       )}
     </div>

@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
         customer_id,
         provider_id,
         rating,
+        customer_rating,
         comment,
         service_ratings,
         staff_rating,

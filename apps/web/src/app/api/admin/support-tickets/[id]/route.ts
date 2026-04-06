@@ -3,7 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
-import { notifySupportTicketUpdated } from "@/lib/notifications/notification-service";
+import { notifySupportTicketUpdated, notifySupportStaffInboxActivity } from "@/lib/notifications/notification-service";
 
 export async function GET(
   request: NextRequest,
@@ -76,6 +76,12 @@ export async function PATCH(
       tags,
     } = body;
 
+    const { data: before } = await supabase
+      .from("support_tickets")
+      .select("assigned_to, ticket_number")
+      .eq("id", id)
+      .maybeSingle();
+
     const updateData: Record<string, unknown> = {};
     if (status !== undefined) {
       updateData.status = status;
@@ -98,6 +104,25 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+
+    if (
+      assigned_to !== undefined &&
+      before &&
+      assigned_to &&
+      String(assigned_to) !== String(before.assigned_to ?? "")
+    ) {
+      try {
+        await notifySupportStaffInboxActivity(
+          [String(assigned_to)],
+          (data as { ticket_number?: string }).ticket_number || before?.ticket_number || id,
+          "A support ticket was assigned to you.",
+          id,
+          ["email", "push"]
+        );
+      } catch (e) {
+        console.error("Assignee notification failed:", e);
+      }
+    }
 
     // Notify ticket owner when status is resolved or closed so they know the ticket is officially closed
     if (

@@ -17,4 +17,12 @@ test.describe("admin SPA static shell", () => {
       { timeout: 20_000 }
     );
   });
+
+  test("control-plane route without API shows same session gate UX", async ({ page }) => {
+    await page.goto("/admin/control-plane/overview");
+    await expect(page.locator("body")).toContainText(
+      /Verifying session|could not verify your admin session|Admin sign in/i,
+      { timeout: 20_000 }
+    );
+  });
 });

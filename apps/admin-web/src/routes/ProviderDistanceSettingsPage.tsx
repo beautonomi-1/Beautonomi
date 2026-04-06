@@ -20,7 +20,6 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 interface ProviderDistanceRow {
   id: string;
@@ -105,13 +104,8 @@ export function ProviderDistanceSettingsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Provider distance settings"
-        description="Per-provider PATCH /api/admin/providers/:id/distance-settings. Full providers grid is still legacy until that list migrates."
+        description="Per-provider PATCH /api/admin/providers/:id/distance-settings. Open a provider from the providers list to edit distance here."
       />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/providers")} className="font-medium text-gray-900 underline">
-          Open providers list in legacy admin →
-        </a>
-      </p>
 
       <AdminPanel>
         <input

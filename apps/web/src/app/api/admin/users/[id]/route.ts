@@ -7,6 +7,11 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-message-files";
 import { z } from "zod";
 
+function sanitizeUserForAdmin(row: Record<string, unknown>) {
+  const { two_factor_secret: _tfs, ...rest } = row;
+  return rest;
+}
+
 /**
  * GET /api/admin/users/[id]
  * 
@@ -21,6 +26,7 @@ export async function GET(
 
     const { id } = await params;
     const supabase = await getSupabaseServer(request);
+    const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
     const { data: userData, error } = await supabase
@@ -36,6 +42,28 @@ export async function GET(
     type UserRow = { role?: string };
     const stats: Record<string, unknown> = {};
     const userRow = userData as UserRow;
+    let recent_product_orders: unknown[] = [];
+
+    const { data: addresses } = await admin
+      .from("user_addresses")
+      .select("*")
+      .eq("user_id", id)
+      .order("is_default", { ascending: false })
+      .order("created_at", { ascending: false });
+
+    const { data: payment_methods } = await admin
+      .from("payment_methods")
+      .select(
+        "id, type, provider, last_four, expiry_month, expiry_year, card_brand, is_default, is_active, created_at",
+      )
+      .eq("user_id", id)
+      .order("is_default", { ascending: false });
+
+    const { data: wallet } = await admin
+      .from("user_wallets")
+      .select("balance, currency, updated_at")
+      .eq("user_id", id)
+      .maybeSingle();
 
     if (userRow.role === "customer") {
       const { count: bookingCount } = await supabase
@@ -67,6 +95,40 @@ export async function GET(
       stats.total_bookings = bookingCount || 0;
       stats.total_spent = totalSpent;
       stats.last_booking_date = lastBooking?.scheduled_at || null;
+
+      const { count: productOrderCount } = await admin
+        .from("product_orders")
+        .select("id, provider:providers!inner(tenant_id)", { count: "exact", head: true })
+        .eq("customer_id", id)
+        .eq("provider.tenant_id", tenantId);
+
+      const { data: productOrdersForSpend } = await admin
+        .from("product_orders")
+        .select("total_amount, payment_status, provider:providers!inner(tenant_id)")
+        .eq("customer_id", id)
+        .eq("provider.tenant_id", tenantId);
+
+      const poRows = (productOrdersForSpend ?? []) as {
+        total_amount?: number;
+        payment_status?: string;
+      }[];
+      const product_orders_paid_total = poRows
+        .filter((o) => o.payment_status === "paid")
+        .reduce((s, o) => s + Number(o.total_amount ?? 0), 0);
+
+      stats.product_orders_count = productOrderCount ?? 0;
+      stats.product_orders_paid_total = product_orders_paid_total;
+
+      const { data: recentPo } = await admin
+        .from("product_orders")
+        .select(
+          "id, order_number, status, payment_status, total_amount, currency, fulfillment_type, created_at, provider:providers!inner(id, business_name, tenant_id)",
+        )
+        .eq("customer_id", id)
+        .eq("provider.tenant_id", tenantId)
+        .order("created_at", { ascending: false })
+        .limit(25);
+      recent_product_orders = recentPo ?? [];
     } else if (userRow.role === "provider_owner") {
       const { count: providerCount } = await supabase
         .from("providers")
@@ -77,9 +139,30 @@ export async function GET(
       stats.provider_count = providerCount || 0;
     }
 
+    const { data: supportTicketsRaw } = await admin
+      .from("support_tickets")
+      .select(
+        "id, ticket_number, subject, status, priority, provider_id, created_at, provider:providers(tenant_id)",
+      )
+      .eq("user_id", id)
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    const support_tickets = (supportTicketsRaw ?? []).filter((t: Record<string, unknown>) => {
+      if (!t.provider_id) return true;
+      const prov = t.provider;
+      const p = (Array.isArray(prov) ? prov[0] : prov) as { tenant_id?: string } | undefined;
+      return p?.tenant_id === tenantId;
+    });
+
     return successResponse({
-      ...(userData as Record<string, unknown>),
+      ...sanitizeUserForAdmin(userData as Record<string, unknown>),
       stats,
+      addresses: addresses ?? [],
+      payment_methods: payment_methods ?? [],
+      wallet: wallet ?? null,
+      support_tickets,
+      recent_product_orders,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch user");
@@ -223,7 +306,7 @@ export async function PATCH(
       });
     }
 
-    return successResponse(updatedUser);
+    return successResponse(sanitizeUserForAdmin(updatedUser as Record<string, unknown>));
   } catch (error) {
     return handleApiError(error, "Failed to update user");
   }

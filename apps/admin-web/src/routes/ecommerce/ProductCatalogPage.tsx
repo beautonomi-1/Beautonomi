@@ -1,10 +1,10 @@
-import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
+import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { AdminApiError } from "@beautonomi/admin-api-client";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -19,55 +19,53 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type ProductRow = Record<string, unknown> & {
   id?: string;
   name?: string;
+  sku?: string;
   retail_price?: number;
   quantity?: number;
-  provider?: { business_name?: string } | null;
+  is_active?: boolean;
+  retail_sales_enabled?: boolean;
+  provider?: { id?: string; business_name?: string; status?: string } | null;
 };
 
-type PublicProductsPayload = {
+type CatalogPayload = {
   products: ProductRow[];
   categories: string[];
   pagination: { totalPages: number; total: number };
 };
 
-async function fetchPublicProducts(qs: string): Promise<PublicProductsPayload> {
-  // Intentional: public catalog contract — not `adminApi` / not scope-injected (see matrix + stabilization report).
-  const res = await fetch(`/api/public/products?${qs}`, { credentials: "include" });
-  const json = (await res.json().catch(() => ({}))) as { data?: PublicProductsPayload };
-  if (!res.ok) {
-    throw new AdminApiError(typeof json === "object" && json && "error" in json ? String(json.error) : "Request failed", res.status);
-  }
-  const data = json.data;
-  if (!data) throw new AdminApiError("Invalid products response", 500);
-  return data;
-}
-
-/**
- * Legacy admin used `GET /api/public/products` with a superadmin RoleGuard; matrix lists ecommerce section.
- * We gate with `ADMIN_SECTION_ECOMMERCE` in SPA; if the public API rejects non-superadmin, use legacy.
- */
 export function ProductCatalogPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E-commerce access is required.");
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const search = sp.get("search") || "";
   const category = sp.get("category") || "";
-  const qk = useMemo(() => `${page}|${search}|${category}`, [page, search, category]);
+  const [searchDraft, setSearchDraft] = useState(search);
+  useEffect(() => {
+    setSearchDraft(search);
+  }, [search]);
+  const activeOnly = sp.get("active_only") === "1";
+  const retailOnly = sp.get("retail_only") === "1";
+  const qk = useMemo(
+    () => `${page}|${search}|${category}|${activeOnly}|${retailOnly}`,
+    [page, search, category, activeOnly, retailOnly],
+  );
 
   const q = useQuery({
     queryKey: adminQueryKeys.productCatalog(qk),
     queryFn: async () => {
       const p = new URLSearchParams();
       p.set("page", String(page));
-      p.set("limit", "20");
+      p.set("limit", "24");
       if (search) p.set("search", search);
       if (category) p.set("category", category);
-      return fetchPublicProducts(p.toString());
+      if (activeOnly) p.set("active_only", "1");
+      if (retailOnly) p.set("retail_only", "1");
+      return adminApi.getJson<CatalogPayload>(`/api/admin/ecommerce/catalog?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
   });
@@ -105,34 +103,70 @@ export function ProductCatalogPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Product catalog"
-        description="Uses legacy GET /api/public/products (not an admin-scoped route) — see parity report."
-      />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/ecommerce/products")} className="font-medium text-gray-900 underline">
-          Legacy catalog UI →
-        </a>
-      </p>
-      <AdminPanel>
-        <div className="flex flex-wrap gap-3">
-          <input
-            type="search"
-            placeholder="Search"
-            defaultValue={search}
-            onBlur={(e) => patch({ search: e.target.value.trim() || null, page: "1" })}
-            className="w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
-          />
-          <select
-            className="rounded border border-gray-300 px-2 py-2 text-sm"
-            value={category}
-            onChange={(e) => patch({ category: e.target.value || null, page: "1" })}
+        description="All SKUs in the tenant, including inactive or not listed on the public shop."
+        actions={
+          <Link
+            to={adminSpaTo("/admin/ecommerce")}
+            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
           >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
+            E-commerce overview
+          </Link>
+        }
+      />
+      <AdminPanel>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="block text-sm text-gray-600">
+            Search
+            <input
+              type="search"
+              className="mt-1 block w-full max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={searchDraft}
+              onChange={(e) => setSearchDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  patch({ search: searchDraft.trim() || null, page: "1" });
+                }
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+            onClick={() => patch({ search: searchDraft.trim() || null, page: "1" })}
+          >
+            Apply
+          </button>
+          <label className="text-sm text-gray-600">
+            Category{" "}
+            <select
+              className="ml-2 rounded border border-gray-300 px-2 py-2 text-sm"
+              value={category}
+              onChange={(e) => patch({ category: e.target.value || null, page: "1" })}
+            >
+              <option value="">All</option>
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={activeOnly}
+              onChange={(e) => patch({ active_only: e.target.checked ? "1" : null, page: "1" })}
+            />
+            Active only
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={retailOnly}
+              onChange={(e) => patch({ retail_only: e.target.checked ? "1" : null, page: "1" })}
+            />
+            Retail-enabled only
+          </label>
         </div>
       </AdminPanel>
       {rows.length === 0 ? (
@@ -142,7 +176,10 @@ export function ProductCatalogPage() {
           <AdminTableHead>
             <tr>
               <AdminTh>Name</AdminTh>
+              <AdminTh>SKU</AdminTh>
               <AdminTh>Provider</AdminTh>
+              <AdminTh>Status</AdminTh>
+              <AdminTh>Retail</AdminTh>
               <AdminTh>Price</AdminTh>
               <AdminTh>Qty</AdminTh>
             </tr>
@@ -151,9 +188,26 @@ export function ProductCatalogPage() {
             {rows.map((p) => (
               <tr key={String(p.id)}>
                 <AdminTd className="font-medium">{String(p.name ?? "")}</AdminTd>
-                <AdminTd>{String(p.provider?.business_name ?? "")}</AdminTd>
+                <AdminTd className="font-mono text-xs">{String(p.sku ?? "—")}</AdminTd>
+                <AdminTd>
+                  {p.provider?.id ? (
+                    <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${p.provider.id}`)}>
+                      {String(p.provider.business_name ?? "")}
+                    </Link>
+                  ) : (
+                    String(p.provider?.business_name ?? "")
+                  )}
+                </AdminTd>
+                <AdminTd>
+                  {p.is_active ? (
+                    <span className="text-green-800">active</span>
+                  ) : (
+                    <span className="text-gray-500">inactive</span>
+                  )}
+                </AdminTd>
+                <AdminTd>{p.retail_sales_enabled ? "yes" : "no"}</AdminTd>
                 <AdminTd className="tabular-nums">{Number(p.retail_price ?? 0).toFixed(2)}</AdminTd>
-                <AdminTd>{String(p.quantity ?? "")}</AdminTd>
+                <AdminTd className="tabular-nums">{String(p.quantity ?? "")}</AdminTd>
               </tr>
             ))}
           </AdminTableBody>

@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function CatalogServicesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
@@ -56,11 +55,6 @@ export function CatalogServicesPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Master services" description="GET /api/admin/catalog/services" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/catalog")} className="font-medium text-gray-900 underline">
-          Legacy catalog →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No services" />
       ) : (

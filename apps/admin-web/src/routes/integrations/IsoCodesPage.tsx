@@ -20,7 +20,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type Tab = "countries" | "currencies" | "languages" | "locales" | "timezones";
 
@@ -79,11 +78,6 @@ export function IsoCodesPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="ISO codes" description={`GET ${API[tab]}`} />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/iso-codes")} className="font-medium text-gray-900 underline">
-          Legacy ISO admin →
-        </a>
-      </p>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {TABS.map((t) => (

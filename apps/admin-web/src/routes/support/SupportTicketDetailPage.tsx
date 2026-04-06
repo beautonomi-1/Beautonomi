@@ -1,5 +1,6 @@
-import { useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -10,27 +11,191 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
+
+type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
+
+type TicketRow = Record<string, unknown> & {
+  id?: string;
+  ticket_number?: string;
+  subject?: string;
+  description?: string;
+  category?: string | null;
+  priority?: string;
+  status?: string;
+  user_id?: string | null;
+  provider_id?: string | null;
+  assigned_to?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  user?: { id?: string; email?: string; full_name?: string | null } | null;
+  provider?: { id?: string; business_name?: string | null } | null;
+  assigned_user?: { id?: string; email?: string; full_name?: string | null } | null;
+};
+
+type AttachmentItem = { url: string; name?: string; type?: string; size?: number };
+
+type MessageRow = Record<string, unknown> & {
+  id?: string;
+  message?: string;
+  is_internal?: boolean;
+  created_at?: string;
+  attachments?: unknown;
+  user?: { email?: string; full_name?: string | null } | null;
+};
+
+type NoteRow = Record<string, unknown> & {
+  id?: string;
+  note?: string;
+  is_private?: boolean;
+  created_at?: string;
+  user?: { email?: string; full_name?: string | null } | null;
+};
 
 type TicketBundle = {
-  ticket: Record<string, unknown>;
-  messages: Record<string, unknown>[];
-  notes: Record<string, unknown>[];
+  ticket: TicketRow;
+  messages: MessageRow[];
+  notes: NoteRow[];
 };
+
+const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
+const PRIORITIES = ["high", "medium", "low"] as const;
+
+function str(v: unknown): string {
+  return v == null ? "" : String(v);
+}
+
+function attachmentsFromRow(raw: unknown): AttachmentItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: AttachmentItem[] = [];
+  for (const x of raw) {
+    if (!x || typeof x !== "object") continue;
+    const o = x as Record<string, unknown>;
+    const url = typeof o.url === "string" ? o.url : "";
+    if (!url) continue;
+    out.push({
+      url,
+      name: typeof o.name === "string" ? o.name : undefined,
+      type: typeof o.type === "string" ? o.type : undefined,
+      size: typeof o.size === "number" ? o.size : undefined,
+    });
+  }
+  return out;
+}
 
 export function SupportTicketDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_SUPPORT, "Support access is required.");
 
-  const q = useQuery({
+  const [reply, setReply] = useState("");
+  const [replyInternal, setReplyInternal] = useState(false);
+  const [replyAttachments, setReplyAttachments] = useState<AttachmentItem[]>([]);
+  const [uploadErr, setUploadErr] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [noteBody, setNoteBody] = useState("");
+  const [patchError, setPatchError] = useState<string | null>(null);
+
+  const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
-    queryFn: () => adminApi.getJson<TicketBundle>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
+    queryFn: () =>
+      adminApi.getJson<TicketBundle>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
+  });
+
+  const assigneesQ = useQuery({
+    queryKey: adminQueryKeys.supportTicketAssignees(),
+    queryFn: () => adminApi.getJson<{ assignees: Assignee[] }>("/api/admin/support-ticket-assignees", { timeoutMs: 30_000 }),
+    enabled: allowed && !!id && !detailQ.isLoading,
+  });
+
+  const invalidateTicket = () => {
+    void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTicketDetail(id) });
+    void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+  };
+
+  const patchTicket = useMutation({
+    mutationFn: (body: { status?: string; priority?: string; assigned_to?: string | null }) =>
+      adminApi.patchJson<{ ticket?: TicketRow }>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, body),
+    onSuccess: () => {
+      setPatchError(null);
+      invalidateTicket();
+    },
+    onError: (e: Error) => setPatchError(e.message),
+  });
+
+  const sendMessage = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/messages`, {
+        message: reply.trim(),
+        is_internal: replyInternal,
+        attachments: replyAttachments,
+      }),
+    onSuccess: () => {
+      setReply("");
+      setReplyInternal(false);
+      setReplyAttachments([]);
+      setUploadErr(null);
+      invalidateTicket();
+    },
+  });
+
+  async function onPickFiles(files: FileList | null) {
+    if (!files?.length || !id) return;
+    setUploadErr(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      for (const f of Array.from(files)) fd.append("files", f);
+      const res = await fetch(`/api/admin/support-tickets/${encodeURIComponent(id)}/upload`, {
+        method: "POST",
+        body: fd,
+        credentials: "include",
+      });
+      const json = (await res.json().catch(() => ({}))) as {
+        data?: { attachments?: AttachmentItem[] };
+        error?: string | { message?: string };
+      };
+      if (!res.ok) {
+        const msg =
+          typeof json.error === "string"
+            ? json.error
+            : json.error && typeof json.error === "object" && json.error.message
+              ? String(json.error.message)
+              : `Upload failed (${res.status})`;
+        throw new Error(msg);
+      }
+      const next = json.data?.attachments ?? [];
+      if (!next.length) throw new Error("No files were uploaded");
+      setReplyAttachments((prev) => [...prev, ...next]);
+      if (fileRef.current) fileRef.current.value = "";
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  const addNote = useMutation({
+    mutationFn: () =>
+      adminApi.postJson(`/api/admin/support-tickets/${encodeURIComponent(id)}/notes`, {
+        note: noteBody.trim(),
+        is_private: true,
+      }),
+    onSuccess: () => {
+      setNoteBody("");
+      invalidateTicket();
+    },
   });
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
-  if (q.isLoading) {
+
+  if (detailQ.isLoading) {
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Support ticket" />
@@ -40,22 +205,267 @@ export function SupportTicketDetailPage() {
       </div>
     );
   }
-  if (q.error) {
-    if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+
+  if (detailQ.error) {
+    if (isAdminApiAuthFailure(detailQ.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={detailQ.error.message} onRetry={() => void detailQ.refetch()} />;
   }
+
+  const bundle = detailQ.data;
+  const ticket = bundle?.ticket;
+  if (!ticket) {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Support ticket" />
+        <AdminPanel>
+          <p className="text-sm text-gray-600">Ticket not found.</p>
+        </AdminPanel>
+      </div>
+    );
+  }
+
+  const messages = bundle?.messages ?? [];
+  const notes = bundle?.notes ?? [];
+  const assignees = assigneesQ.data?.assignees ?? [];
+  const assignedId = ticket.assigned_to == null ? "" : str(ticket.assigned_to);
+  const assigneeInList = assignedId && assignees.some((a) => a.id === assignedId);
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Support ticket" description={`GET /api/admin/support-tickets/${id}`} />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref(`/admin/support-tickets/${id}`)} className="font-medium text-gray-900 underline">
-          Legacy ticket (reply, assign) →
-        </a>
-      </p>
-      <AdminPanel>
-        <pre className="max-h-[480px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
-      </AdminPanel>
+      <AdminPageHeader
+        title={str(ticket.subject) || "Support ticket"}
+        description={`#${str(ticket.ticket_number)} · ${str(ticket.status).replace(/_/g, " ")}`}
+        actions={
+          <Link
+            to="/support-tickets"
+            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+          >
+            ← Queue
+          </Link>
+        }
+      />
+
+      {patchError ? (
+        <p className="text-sm text-red-700" role="alert">
+          {patchError}
+        </p>
+      ) : null}
+      <AdminMutationAlert
+        errors={[
+          sendMessage.error instanceof Error ? sendMessage.error : null,
+          addNote.error instanceof Error ? addNote.error : null,
+        ]}
+      />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <AdminPanel className="lg:col-span-2">
+          <h2 className="text-lg font-semibold text-gray-900">Conversation</h2>
+          <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{str(ticket.description)}</p>
+          <ul className="mt-6 space-y-4 border-t border-gray-100 pt-4">
+            {messages.length === 0 ? (
+              <li className="text-sm text-gray-500">No messages yet.</li>
+            ) : (
+              messages.map((m) => (
+                <li key={str(m.id)} className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span>{m.user?.full_name || m.user?.email || "User"}</span>
+                    <span>·</span>
+                    <span>{m.created_at ? new Date(String(m.created_at)).toLocaleString() : "—"}</span>
+                    {m.is_internal ? (
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">Internal</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{str(m.message)}</p>
+                </li>
+              ))
+            )}
+          </ul>
+
+          <div className="mt-6 space-y-3 border-t border-gray-100 pt-4">
+            <label className="block text-sm font-medium text-gray-700">Reply</label>
+            <textarea
+              className="w-full min-h-[100px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Type a reply to the customer…"
+            />
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={replyInternal} onChange={(e) => setReplyInternal(e.target.checked)} />
+              Internal note (not visible to customer)
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                ref={fileRef}
+                type="file"
+                multiple
+                className="text-sm text-gray-700"
+                disabled={uploading}
+                onChange={(e) => void onPickFiles(e.target.files)}
+              />
+              {uploading ? <span className="text-xs text-gray-500">Uploading…</span> : null}
+            </div>
+            {uploadErr ? <p className="text-sm text-red-600">{uploadErr}</p> : null}
+            {replyAttachments.length > 0 ? (
+              <ul className="text-xs text-gray-600">
+                {replyAttachments.map((a) => (
+                  <li key={a.url} className="flex items-center gap-2">
+                    <span>{a.name || "file"}</span>
+                    <button
+                      type="button"
+                      className="text-primary underline"
+                      onClick={() => setReplyAttachments((prev) => prev.filter((x) => x.url !== a.url))}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <button
+              type="button"
+              className={adminToolbarButtonClass(
+                (!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending
+              )}
+              disabled={(!reply.trim() && replyAttachments.length === 0) || sendMessage.isPending}
+              onClick={() => void sendMessage.mutate()}
+            >
+              {sendMessage.isPending ? "Sending…" : "Send reply"}
+            </button>
+          </div>
+        </AdminPanel>
+
+        <div className="space-y-6">
+          <AdminPanel>
+            <h2 className="text-lg font-semibold text-gray-900">Routing</h2>
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-600">Status</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={str(ticket.status)}
+                  disabled={patchTicket.isPending}
+                  onChange={(e) => void patchTicket.mutateAsync({ status: e.target.value })}
+                >
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s.replace(/_/g, " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Priority</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={str(ticket.priority)}
+                  disabled={patchTicket.isPending}
+                  onChange={(e) => void patchTicket.mutateAsync({ priority: e.target.value })}
+                >
+                  {PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Assignee</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={assignedId}
+                  disabled={patchTicket.isPending || assigneesQ.isLoading}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void patchTicket.mutateAsync({ assigned_to: v === "" ? null : v });
+                  }}
+                >
+                  <option value="">Unassigned</option>
+                  {!assigneeInList && assignedId ? (
+                    <option value={assignedId}>
+                      {ticket.assigned_user?.full_name ||
+                        ticket.assigned_user?.email ||
+                        assignedId}{" "}
+                      (current)
+                    </option>
+                  ) : null}
+                  {assignees.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.full_name || a.email || a.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </AdminPanel>
+
+          <AdminPanel>
+            <h2 className="text-lg font-semibold text-gray-900">People</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <div>
+                <dt className="text-gray-500">Customer</dt>
+                <dd>
+                  {ticket.user?.id ? (
+                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/users/${ticket.user.id}`)}>
+                      {ticket.user.full_name || ticket.user.email || ticket.user.id}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Provider</dt>
+                <dd>
+                  {ticket.provider?.id ? (
+                    <Link className="font-medium text-primary underline" to={adminSpaTo(`/admin/providers/${ticket.provider.id}`)}>
+                      {ticket.provider.business_name || ticket.provider.id}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Category</dt>
+                <dd>{ticket.category ? labelForSupportTicketCategory(String(ticket.category)) : "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Created</dt>
+                <dd className="text-gray-700">{ticket.created_at ? new Date(String(ticket.created_at)).toLocaleString() : "—"}</dd>
+              </div>
+            </dl>
+          </AdminPanel>
+
+          <AdminPanel>
+            <h2 className="text-lg font-semibold text-gray-900">Team notes</h2>
+            <ul className="mt-3 max-h-48 space-y-2 overflow-auto text-sm">
+              {notes.length === 0 ? <li className="text-gray-500">No notes.</li> : null}
+              {notes.map((n) => (
+                <li key={str(n.id)} className="rounded-lg bg-gray-50 p-2">
+                  <div className="text-xs text-gray-500">
+                    {n.user?.full_name || n.user?.email} · {n.created_at ? new Date(String(n.created_at)).toLocaleString() : ""}
+                  </div>
+                  <p className="mt-1 whitespace-pre-wrap text-gray-800">{str(n.note)}</p>
+                </li>
+              ))}
+            </ul>
+            <textarea
+              className="mt-3 w-full min-h-[72px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={noteBody}
+              onChange={(e) => setNoteBody(e.target.value)}
+              placeholder="Add internal note…"
+            />
+            <button
+              type="button"
+              className={`mt-2 ${adminToolbarButtonClass(!noteBody.trim() || addNote.isPending)}`}
+              disabled={!noteBody.trim() || addNote.isPending}
+              onClick={() => void addNote.mutate()}
+            >
+              {addNote.isPending ? "Saving…" : "Add note"}
+            </button>
+          </AdminPanel>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,11 +1,10 @@
 import { useSearchParams } from "react-router-dom";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ADMIN_SECTION_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -19,12 +18,13 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type ZoneRow = Record<string, unknown>;
 
 export function ServiceZonesListPage() {
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OPERATIONS, "Operations access is required.");
+  const { allowed, denied } = useSuperadminPage(
+    "Market coverage is superadmin-only in nav (matches sensitive platform geometry)."
+  );
   const [sp, setSp] = useSearchParams();
   const archived = sp.get("include_archived") === "1" || sp.get("include_archived") === "true";
   const qk = useMemo(() => adminQueryKeys.serviceZones(archived ? "archived" : "active"), [archived]);
@@ -58,11 +58,6 @@ export function ServiceZonesListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Market coverage" description="GET /api/admin/service-zones" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/service-zones")} className="font-medium text-gray-900 underline">
-          Legacy map editor →
-        </a>
-      </p>
       <AdminPanel>
         <label className="flex items-center gap-2 text-sm text-gray-700">
           <input

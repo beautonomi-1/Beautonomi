@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 
 type BroadcastEnvelope = {
@@ -81,12 +80,12 @@ export function BroadcastHistoryPage() {
         >
           ← Broadcast hub
         </Link>
-        <a
-          href={legacyAdminHref("/admin/broadcast")}
+        <Link
+          to="/broadcast/compose"
           className="inline-flex min-h-11 items-center font-medium text-gray-700 underline decoration-gray-300 underline-offset-2 hover:text-gray-900"
         >
-          Open legacy composer
-        </a>
+          Compose broadcast
+        </Link>
       </div>
       {meta ? (
         <AdminPanel>

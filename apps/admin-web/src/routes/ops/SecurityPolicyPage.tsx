@@ -9,7 +9,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function SecurityPolicyPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OPERATIONS, "Operations access is required.");
@@ -39,11 +38,6 @@ export function SecurityPolicyPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Security" description="GET /api/admin/security (policy snapshot)" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/security")} className="font-medium text-gray-900 underline">
-          Edit policy in legacy (PATCH) →
-        </a>
-      </p>
       <AdminPanel>
         <pre className="max-h-[480px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
       </AdminPanel>

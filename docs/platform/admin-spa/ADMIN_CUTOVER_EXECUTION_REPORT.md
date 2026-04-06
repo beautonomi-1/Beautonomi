@@ -13,7 +13,7 @@
 | **Cutover mechanism (Tier B)** | Env var **`ADMIN_SPA_ROUTING`**: `spa` \| `legacy` (default **legacy** if unset). Implemented in [`apps/web/src/proxy.ts`](../../apps/web/src/proxy.ts) (Next.js 16 **proxy** — `middleware.ts` is **not** used; a draft `middleware.ts` was removed to satisfy the framework constraint). |
 | **Routing behavior in `spa` mode** | Any `/admin` or `/admin/*` that is **not** a bundled asset → **`NextResponse.rewrite`** to `/admin/index.html`. **`/admin/assets/*`** and paths ending in common static extensions → **`NextResponse.next()`** (no edge admin-role gate — fixes R21-style chunk load loops). |
 | **Cache / robots headers** | [`apps/web/next.config.mjs`](../../apps/web/next.config.mjs): `/admin/assets/:path*` immutable; other `/admin/:path*` `no-store` + `X-Robots-Tag: noindex, nofollow` (assets rule listed **first** so hashed chunks keep long TTL). |
-| **CI** | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) **`build-web`**: build **admin-web** then **web**; `VITE_WEB_ORIGIN` empty for same-origin artifact. Removed standalone **`build-admin-web`** job (redundant). |
+| **CI** | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) **`build-web`**: build **admin-web** then **web**. Removed standalone **`build-admin-web`** job (redundant). |
 | **Turbo / lockfile** | **`admin-web`** added as **`devDependency`** of **`web`** so `turbo run build --filter=web` runs **`^build`** for the SPA first; `pnpm-lock.yaml` updated. |
 | **Gitignore** | [`apps/web/.gitignore`](../../apps/web/.gitignore): ignore generated `public/admin/`. |
 | **`turbo.json`** | Pass-through env: `ADMIN_SPA_ROUTING`, `SKIP_ADMIN_SPA_SYNC`. |
@@ -52,7 +52,7 @@
 |------------|------|
 | **Same host** | SPA `fetch(..., { credentials: 'include' })` targets `/api` on the **same** deployment host — correct for Vercel **web** project. |
 | **`VITE_*` at build time** | Admin bundle embeds Supabase client env. **Preview** and **Production** should use the **intended** Supabase project keys for that environment (mirror `NEXT_PUBLIC_*` policy). |
-| **`VITE_WEB_ORIGIN`** | **Empty** in CI web job for same-origin deep links to legacy; use non-empty only for split-origin dev. |
+| ~~`VITE_WEB_ORIGIN`~~ | Removed; admin SPA uses same-origin routes only. |
 | **Per-env cutover** | Set **`ADMIN_SPA_ROUTING=spa`** on **Preview** first, then Production, per Vercel environment settings. |
 
 ---

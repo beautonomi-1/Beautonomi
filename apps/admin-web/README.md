@@ -19,7 +19,6 @@ Create `apps/admin-web/.env.local` only when you need SPA-specific overrides; ot
 | `VITE_SUPABASE_ANON_KEY` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key. |
 | `VITE_APP_URL` | `NEXT_PUBLIC_APP_URL` | Absolute app origin when needed. |
 | `VITE_SITE_URL` | `NEXT_PUBLIC_SITE_URL` | Canonical site URL fallback. |
-| `VITE_WEB_ORIGIN` | — | Dev: `http://localhost:3000` for links to legacy Next-only admin routes. Empty when same-origin in production. |
 | `VITE_SENTRY_DSN` | `NEXT_PUBLIC_SENTRY_DSN` | Sentry browser DSN. |
 | `VITE_SENTRY_ENVIRONMENT` | — | Sentry environment label (defaults to Vite `MODE`). |
 | `VITE_GOOGLE_ANALYTICS_ID` | `NEXT_PUBLIC_GOOGLE_ANALYTICS_ID` | Optional analytics. |

@@ -1,10 +1,9 @@
 import { Link } from "react-router-dom";
-import { BookOpen, Compass, Layers, ArrowUpRight } from "lucide-react";
+import { BookOpen, Compass, FolderOpen, Globe2, Layers } from "lucide-react";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 const CARDS: {
   to: string;
@@ -16,7 +15,7 @@ const CARDS: {
   {
     to: "/content/learning",
     label: "Learning articles",
-    description: "Curriculum list from the learning API — open legacy to edit.",
+    description: "Curriculum list from the learning API.",
     icon: BookOpen,
     accent: "from-emerald-600 to-teal-700",
   },
@@ -28,11 +27,25 @@ const CARDS: {
     accent: "from-sky-600 to-blue-800",
   },
   {
+    to: "/content/resources",
+    label: "CMS resources",
+    description: "Tenant learning resources and guides (list view).",
+    icon: FolderOpen,
+    accent: "from-violet-600 to-fuchsia-800",
+  },
+  {
     to: "/catalog",
     label: "Catalog services",
-    description: "Master services with category names; CRUD stays in legacy.",
+    description: "Master services with category names.",
     icon: Layers,
     accent: "from-amber-600 to-orange-800",
+  },
+  {
+    to: "/catalog/global-categories",
+    label: "Global categories",
+    description: "Platform service categories for onboarding and targeting.",
+    icon: Globe2,
+    accent: "from-amber-700 to-rose-800",
   },
 ];
 
@@ -44,16 +57,8 @@ export function ContentHubPage() {
     <div className="space-y-8">
       <AdminPageHeader
         title="Content"
-        description="Read-only SPA entry points into the catalog and learning stack. Rich authoring remains in legacy until those flows migrate."
+        description="Learning, explore, and catalog tools in the admin app."
       />
-
-      <a
-        href={legacyAdminHref("/admin/content")}
-        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] transition hover:border-gray-300 hover:bg-gray-50"
-      >
-        Open full legacy content hub
-        <ArrowUpRight className="h-4 w-4 opacity-70" aria-hidden />
-      </a>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {CARDS.map((c) => (
@@ -69,7 +74,7 @@ export function ContentHubPage() {
               <h2 className="text-lg font-semibold text-gray-900">{c.label}</h2>
               <p className="mt-2 flex-1 text-sm leading-relaxed text-gray-600">{c.description}</p>
               <span className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-gray-900 group-hover:underline">
-                Open in SPA →
+                Open →
               </span>
             </div>
           </Link>

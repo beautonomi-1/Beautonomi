@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function LearningArticlesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
@@ -60,11 +59,6 @@ export function LearningArticlesPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Learning articles" description="GET /api/admin/content/learning/articles" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/content/learning")} className="font-medium text-gray-900 underline">
-          Legacy learning CMS →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No articles" />
       ) : (

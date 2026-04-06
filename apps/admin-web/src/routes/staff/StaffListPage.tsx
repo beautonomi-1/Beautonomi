@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type StaffPayload = {
   staff: Record<string, unknown>[];
@@ -59,11 +58,6 @@ export function StaffListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Staff" description="GET /api/admin/staff" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/staff")} className="font-medium text-gray-900 underline">
-          Legacy staff (reset password, edit) →
-        </a>
-      </p>
       {stats ? (
         <AdminPanel>
           <pre className="max-h-40 overflow-auto text-xs text-gray-700">{JSON.stringify(stats, null, 2)}</pre>

@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type InvoiceRow = Record<string, unknown> & {
   id?: string;
@@ -85,11 +84,6 @@ export function BillingPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Billing" description="GET /api/admin/invoices" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/billing")} className="font-medium text-gray-900 underline">
-          Legacy billing (generate invoices) →
-        </a>
-      </p>
       <AdminPanel>
         <label className="text-sm text-gray-600">
           Status filter{" "}

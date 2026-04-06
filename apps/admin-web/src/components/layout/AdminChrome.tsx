@@ -13,7 +13,6 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { NAV_GROUPS } from "@/config/nav";
 import { cn } from "@/lib/cn";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 
@@ -325,8 +324,12 @@ export function AdminChrome() {
           )}
 
           {bootstrap?.isSuperadmin ? (
-            <div className="flex w-full flex-shrink-0 flex-wrap items-center gap-2 md:w-auto">
+            <div
+              className="flex w-full flex-shrink-0 flex-wrap items-center gap-2 md:w-auto"
+              title="Superadmin: choose whether admin APIs use a specific tenant or global context where supported."
+            >
               <select
+                aria-label="Admin API scope mode"
                 className="min-h-11 min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm md:min-h-0 md:flex-none md:py-1.5"
                 value={scopeMode}
                 onChange={(e) => setScopeMode(e.target.value as "tenant" | "global")}
@@ -335,17 +338,39 @@ export function AdminChrome() {
                 <option value="global">Global scope</option>
               </select>
               {scopeMode === "tenant" ? (
-                <select
-                  className="min-h-11 min-w-0 flex-1 max-w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm md:max-w-[200px] md:min-h-0 md:flex-none md:py-1.5"
-                  value={scopeTenantId}
-                  onChange={(e) => setScopeTenantId(e.target.value)}
-                >
-                  {(tenantsQuery.data ?? []).map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name || t.slug || t.id}
-                    </option>
-                  ))}
-                </select>
+                tenantsQuery.isLoading ? (
+                  <span className="min-h-11 rounded-xl border border-dashed border-gray-200 px-3 py-2 text-xs text-gray-500 md:min-h-0 md:py-1.5">
+                    Loading tenants…
+                  </span>
+                ) : tenantsQuery.isError ? (
+                  <span className="max-w-[220px] text-xs text-amber-800" role="status">
+                    Could not load tenants.{" "}
+                    <button
+                      type="button"
+                      className="font-medium underline"
+                      onClick={() => void tenantsQuery.refetch()}
+                    >
+                      Retry
+                    </button>
+                  </span>
+                ) : !(tenantsQuery.data ?? []).length ? (
+                  <span className="text-xs text-gray-500" role="status">
+                    No tenants
+                  </span>
+                ) : (
+                  <select
+                    aria-label="Tenant for scoped admin API requests"
+                    className="min-h-11 min-w-0 flex-1 max-w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs shadow-sm md:max-w-[220px] md:min-h-0 md:flex-none md:py-1.5"
+                    value={scopeTenantId}
+                    onChange={(e) => setScopeTenantId(e.target.value)}
+                  >
+                    {(tenantsQuery.data ?? []).map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name || t.slug || t.id}
+                      </option>
+                    ))}
+                  </select>
+                )
               ) : null}
             </div>
           ) : null}

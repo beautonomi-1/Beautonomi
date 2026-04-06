@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type KeyRow = Record<string, unknown> & { id?: string; name?: string; is_active?: boolean };
 
@@ -54,11 +53,6 @@ export function ApiKeysListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="API keys" description="GET /api/admin/api-keys (secrets stripped server-side)" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/api-keys")} className="font-medium text-gray-900 underline">
-          Rotate / create in legacy →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No API keys" />
       ) : (

@@ -1,27 +1,24 @@
 import { Link } from "react-router-dom";
-import { Megaphone, History, ExternalLink } from "lucide-react";
+import { Megaphone, History } from "lucide-react";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function BroadcastHubPage() {
   const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   if (denied) return denied;
 
-  const legacyCompose = legacyAdminHref("/admin/broadcast");
-
   return (
     <div className="space-y-8">
       <AdminPageHeader
         title="Broadcast"
-        description="Send campaigns from the legacy composer; review delivery history in the SPA."
+        description="Compose campaigns in the SPA and review delivery history."
       />
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <a
-          href={legacyCompose}
+        <Link
+          to="/broadcast/compose"
           className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-200/90 bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-6 text-white shadow-lg ring-1 ring-white/10 transition hover:shadow-xl hover:ring-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <div>
@@ -30,14 +27,13 @@ export function BroadcastHubPage() {
             </div>
             <h2 className="text-lg font-semibold tracking-tight">Compose campaign</h2>
             <p className="mt-2 max-w-sm text-sm text-violet-100">
-              Build and send push, SMS, or email broadcasts using the full legacy workflow.
+              Send push, SMS, or email broadcasts using the admin broadcast APIs.
             </p>
           </div>
           <span className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm font-medium text-white/95">
-            Open composer
-            <ExternalLink className="h-4 w-4 opacity-80" aria-hidden />
+            Open composer →
           </span>
-        </a>
+        </Link>
 
         <Link
           to="/broadcast/history"

@@ -9,7 +9,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function NotificationsConfigPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
@@ -38,11 +37,6 @@ export function NotificationsConfigPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Push configuration" description="GET /api/admin/notifications/config" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/notifications")} className="font-medium text-gray-900 underline">
-          Legacy notifications hub →
-        </a>
-      </p>
       <AdminPanel>
         <pre className="max-h-[320px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
       </AdminPanel>

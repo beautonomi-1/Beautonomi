@@ -51,9 +51,15 @@ export const adminQueryKeys = {
 
   supportTicketDetail: (id: string) => [...adminQueryKeys.root, "support-tickets", "detail", id] as const,
 
+  supportTicketAssignees: () => [...adminQueryKeys.root, "support-ticket-assignees"] as const,
+
   userDetail: (id: string) => [...adminQueryKeys.root, "users", "detail", id] as const,
 
   loyaltyRules: () => [...adminQueryKeys.root, "loyalty", "rules"] as const,
+
+  loyaltyMilestones: () => [...adminQueryKeys.root, "loyalty", "milestones"] as const,
+
+  giftCardDetail: (id: string) => [...adminQueryKeys.root, "gift-cards", "detail", id] as const,
 
   gamificationPointRules: () => [...adminQueryKeys.root, "gamification", "point-rules"] as const,
 
@@ -127,6 +133,10 @@ export const adminQueryKeys = {
 
   productOrders: (q: string) => [...adminQueryKeys.root, "product-orders", q] as const,
 
+  productOrderDetail: (id: string) => [...adminQueryKeys.root, "product-orders", "detail", id] as const,
+
+  ecommerceOverview: () => [...adminQueryKeys.root, "ecommerce", "overview"] as const,
+
   productReturns: (q: string) => [...adminQueryKeys.root, "product-returns", q] as const,
 
   productCatalog: (q: string) => [...adminQueryKeys.root, "product-catalog", q] as const,
@@ -156,6 +166,16 @@ export const adminQueryKeys = {
   customFields: (q: string) => [...adminQueryKeys.root, "custom-fields", q] as const,
 
   referrals: () => [...adminQueryKeys.root, "referrals"] as const,
+
+  referralFaqs: () => [...adminQueryKeys.root, "referrals", "faqs"] as const,
+
+  referralSources: (providerId: string) => [...adminQueryKeys.root, "referral-sources", providerId] as const,
+
+  globalCategories: () => [...adminQueryKeys.root, "catalog", "global-categories"] as const,
+
+  contentResources: () => [...adminQueryKeys.root, "content", "resources"] as const,
+
+  verificationDetail: (id: string) => [...adminQueryKeys.root, "verifications", "detail", id] as const,
 
   tenantDomains: () => [...adminQueryKeys.root, "tenant-domains"] as const,
 } as const;

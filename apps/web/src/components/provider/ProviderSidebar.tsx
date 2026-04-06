@@ -39,6 +39,7 @@ import {
   Link2,
   Monitor,
   Coins,
+  PiggyBank,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -120,6 +121,7 @@ const navigationSections = [
       { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" as keyof StaffPermissions },
       { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" as keyof StaffPermissions },
       { icon: Users, label: "Team members", href: "/provider/team/members", permission: "view_team" as keyof StaffPermissions },
+      { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" as keyof StaffPermissions },
       { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" as keyof StaffPermissions },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" as keyof StaffPermissions },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" as keyof StaffPermissions },
@@ -156,13 +158,17 @@ const isActiveRoute = (pathname: string, href: string) => {
   if (href === "/provider/team") {
     return pathname === "/provider/team" || pathname === "/provider/team/"
       || (pathname.startsWith("/provider/team/") && !pathname.startsWith("/provider/team/members")
-        && !pathname.startsWith("/provider/team/days-off") && !pathname.startsWith("/provider/team/my-earnings"));
+        && !pathname.startsWith("/provider/team/days-off") && !pathname.startsWith("/provider/team/my-earnings")
+        && !pathname.startsWith("/provider/team/payroll"));
   }
   if (href === "/provider/team/days-off") {
     return pathname.startsWith("/provider/team/days-off");
   }
   if (href === "/provider/team/members") {
     return pathname.startsWith("/provider/team/members");
+  }
+  if (href === "/provider/team/payroll") {
+    return pathname.startsWith("/provider/team/payroll");
   }
   if (href === "/provider/team/my-earnings") {
     return pathname.startsWith("/provider/team/my-earnings");

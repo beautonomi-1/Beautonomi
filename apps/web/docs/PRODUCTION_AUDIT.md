@@ -49,7 +49,7 @@
 
 - **API routes:** Protected routes use `requireAuth()` or `requireRole()`. Service role key used only in server-side report/subscription/payment routes; CRON_SECRET for cron/internal webhooks.
 
-- **Portal auth:** `portal-auth.ts` validates portal tokens (query/cookie), redirects to /portal/error if invalid, sets x-portal-booking-id and optional cookie. Global `src/proxy.ts` handles CORS, Supabase session refresh on navigations, route protection, and optional ZA geo redirect; portal routes still use `portal-auth` where needed.
+- **Portal auth:** `src/lib/portal/portal-request-auth.ts` validates portal tokens (query/cookie), redirects to /portal/error if invalid, sets x-portal-booking-id and optional cookie. Global `src/proxy.ts` handles CORS, Supabase session refresh on navigations, route protection, and optional ZA geo redirect; portal routes can call the portal helpers from the proxy or handlers where needed.
 
 ---
 

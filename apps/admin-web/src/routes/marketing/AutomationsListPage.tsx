@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function AutomationsListPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
@@ -62,11 +61,6 @@ export function AutomationsListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Automations" description="GET /api/admin/automations" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/automations")} className="font-medium text-gray-900 underline">
-          Legacy automations →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No automations" />
       ) : (

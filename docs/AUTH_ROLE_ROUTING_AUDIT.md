@@ -11,7 +11,7 @@
 ### 1.1 Middleware
 
 - **No root `middleware.ts`** in `apps/web`. There is no Next.js edge middleware enforcing auth or role at request level.
-- **`apps/web/src/middleware/portal-auth.ts`** – Portal token validation for passwordless booking portal; not used for admin/provider/customer routing.
+- **`apps/web/src/lib/portal/portal-request-auth.ts`** – Portal token validation for passwordless booking portal; use from `proxy.ts` / routes — not used for admin/provider/customer routing.
 - **Gap:** All protection is layout/component and API; no server-side redirect before page load for `/admin/*` or `/provider/*`.
 
 ### 1.2 Role retrieval
@@ -115,7 +115,7 @@ Role is always read from **DB (`users.role`)**, not JWT claims. AuthProvider cac
 1. **Single source of truth helpers (web):** `lib/auth/role.ts` with `getUserRoleServer()`, `getPortalForUser()`, `getDefaultRouteForPortal()`.
 2. **GET /api/me/portal:** Auth required; returns `role`, `portal`, `provider_id`, `provider_status`; used by web and mobile.
 3. **/portal page (web):** Server-side session + role; redirect to admin dashboard, provider dashboard, provider onboarding/setup-status, or customer (e.g. `/bookings`/`/account-settings`).
-4. **Middleware (optional):** Add `middleware.ts` to protect `/admin/*` and `/provider/*` with redirects to avoid flash; keep layout guards as backup.
+4. **Network boundary (optional):** Extend `apps/web/src/proxy.ts` to tighten `/admin/*` and `/provider/*` redirects and avoid flash; keep layout guards as backup. Do not add `middleware.ts` on Next 16 (use `proxy` only).
 5. **Replace hardcoded dashboard links** with `/portal` where appropriate.
 6. **Mobile:** On launch, call `GET /api/me/portal`; if portal doesn’t match app, show "wrong app" screen with CTA to correct app or web admin.
 7. **Provider status:** In `getPortalForUser()`, map provider status to `provider_onboarding` or suspended; /portal and provider layout redirect non-active to onboarding/setup-status or suspended screen.

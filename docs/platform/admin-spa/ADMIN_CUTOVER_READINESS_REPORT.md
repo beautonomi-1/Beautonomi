@@ -71,10 +71,10 @@ Production cutover is still blocked on **parity matrix Reviewed rows**, **QA/FE 
 
 | Finding | Severity | Evidence / blocker | Remediation |
 |--------|----------|-------------------|-------------|
-| **Documented SPA vars:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, optional `VITE_WEB_ORIGIN`, `VITE_SENTRY_DSN` (`apps/admin-web/README.md`). | — | | |
+| **Documented SPA vars:** `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_SENTRY_DSN` (`apps/admin-web/README.md`). | — | | |
 | **`.env.example`** under `apps/admin-web` | **Positive** | Present (Supabase + optional Sentry vars). | Keep in sync with README. |
 | **Production Vercel:** build-time injection for `admin-web` when integrated must match **same Supabase project** as `NEXT_PUBLIC_*` (README). | **Medium** | Implicit for same-origin. | Document in Vercel project env UI; verify preview/prod values in runbook. |
-| **`VITE_WEB_ORIGIN`:** needed when SPA and legacy admin run on **different origins** (deep links). Should be **empty/unset** when same-origin after cutover. | **Medium** | README. | Add cutover checklist line: confirm `VITE_WEB_ORIGIN` unset in prod build. |
+| ~~`VITE_WEB_ORIGIN`~~ (removed) | — | Historical note: was used for split-origin deep links; SPA no longer depends on it. | — |
 
 **Verdict (area 5):** **Adequate for dev**; **production env wiring** depends on unbuilt integration step and should be explicitly checked at deploy time.
 

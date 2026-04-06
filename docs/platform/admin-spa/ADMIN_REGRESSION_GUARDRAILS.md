@@ -2,11 +2,11 @@
 
 This document defines **critical workflows**, **automated checks**, and a **PR checklist** so admin changes do not silently regress routing, auth, UX states, or API contract hygiene.
 
-The canonical list of flows lives in code: `apps/admin-web/src/regression/criticalFlows.ts` (`CRITICAL_ADMIN_FLOWS`). Update that file when the top-10 set changes, then reflect the change here.
+The canonical list of flows lives in code: `apps/admin-web/src/regression/criticalFlows.ts` (`CRITICAL_ADMIN_FLOWS`). Update that file when the critical set changes, then reflect the change here.
 
 ---
 
-## 1. Top 10 critical admin workflows
+## 1. Critical admin workflows
 
 | # | ID | Route (under `/admin`) | Page module | RBAC |
 |---|----|------------------------|-------------|------|
@@ -19,23 +19,37 @@ The canonical list of flows lives in code: `apps/admin-web/src/regression/critic
 | 7 | users | `users` | `routes/users/UsersListPage.tsx` | section |
 | 8 | feature-flags | `settings/feature-flags` | `routes/settings/FeatureFlagsListPage.tsx` | section |
 | 9 | gods-eye | `gods-eye` | `routes/GodsEyePage.tsx` | superadmin |
-| 10 | audit-logs | `audit-logs` | `routes/users/AuditLogsPage.tsx` | section |
+| 10 | analytics | `analytics` | `routes/AnalyticsPage.tsx` | superadmin |
+| 11 | audit-logs | `audit-logs` | `routes/users/AuditLogsPage.tsx` | section |
+| 12 | control-plane-overview | `control-plane/overview` | `routes/control-plane/ControlPlaneOverviewPage.tsx` | superadmin |
+| 13 | broadcast-compose | `broadcast/compose` | `routes/marketing/BroadcastComposePage.tsx` | section |
+| 14 | team-permissions | `settings/team-permissions` | `routes/settings/TeamPermissionsMatrixPage.tsx` | superadmin |
+| 15 | tenant-domains | `settings/tenant-domains` | `routes/settings/TenantDomainsListPage.tsx` | superadmin |
+| 16 | service-zones | `service-zones` | `routes/ops/ServiceZonesListPage.tsx` | superadmin |
+| 17 | referral-sources | `referral-sources` | `routes/providers/ReferralSourcesPage.tsx` | section |
+| 18 | ecommerce-overview | `ecommerce` | `routes/ecommerce/EcommerceOverviewPage.tsx` | section |
 
 **RBAC meaning (for static tests):**
 
 - **public** — login only; must **not** use section or superadmin page hooks.
 - **section** — must use `useAdminSectionPage` (or equivalent section gate pattern enforced by tests).
-- **superadmin** — must use `useSuperadminPage` for the gods-eye surface.
+- **superadmin** — must use `useSuperadminPage` on each superadmin-only route (e.g. Gods Eye, Analytics, control plane overview, team permissions, tenant domains, market coverage).
 
 ---
 
 ## 2. Coverage layers
 
+### 2.0 Sidebar nav ↔ `App.tsx` (Vitest)
+
+**Location:** `apps/admin-web/src/regression/navRoutesRegression.test.ts`
+
+**Intent:** Every `href` in `config/nav.ts` has a matching `<Route path="…" />` (including `control-plane/*` children and the `custom-fields` alias) so sidebar links never 404.
+
 ### 2.1 Route-level smoke (Vitest)
 
 **Location:** `apps/admin-web/src/regression/adminRouteSmoke.test.ts`
 
-**Intent:** Every critical `appPath` has a matching `<Route path="…" />` in `App.tsx` so renamed or dropped routes fail CI immediately.
+**Intent:** Every critical `appPath` is registered in `App.tsx` (flat `path="a/b"` or nested under `control-plane/*`) so renamed or dropped routes fail CI immediately.
 
 **Run (repo root):**
 

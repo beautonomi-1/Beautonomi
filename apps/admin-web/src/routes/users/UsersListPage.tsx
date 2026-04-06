@@ -15,8 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminDataList } from "@/components/admin/AdminDataList";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
-
 type UserRow = Record<string, unknown> & {
   id?: string;
   full_name?: string;
@@ -108,11 +106,6 @@ export function UsersListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Users" description="GET /api/admin/users" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/users")} className="font-medium text-gray-900 underline">
-          Legacy users (detail, role, export) →
-        </a>
-      </p>
       <AdminPanel>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <input

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -20,7 +20,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type ReviewsPayload = {
   reviews: Record<string, unknown>[];
@@ -36,7 +36,12 @@ export function ReviewsListPage() {
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const status = sp.get("status") || "all";
-  const qk = useMemo(() => adminQueryKeys.reviews(`p=${page}|s=${status}`), [page, status]);
+  const providerId = sp.get("provider_id")?.trim() || "";
+  const customerId = sp.get("customer_id")?.trim() || "";
+  const qk = useMemo(
+    () => adminQueryKeys.reviews(`p=${page}|s=${status}|pv=${providerId}|cu=${customerId}`),
+    [page, status, providerId, customerId]
+  );
 
   const q = useQuery({
     queryKey: qk,
@@ -45,6 +50,8 @@ export function ReviewsListPage() {
       p.set("page", String(page));
       p.set("limit", "25");
       if (status !== "all") p.set("status", status);
+      if (providerId) p.set("provider_id", providerId);
+      if (customerId) p.set("customer_id", customerId);
       return adminApi.getJson<ReviewsPayload>(`/api/admin/reviews?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -52,6 +59,7 @@ export function ReviewsListPage() {
 
   const rows = q.data?.reviews ?? [];
   const pag = q.data?.pagination;
+  const stats = q.data?.statistics;
 
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);
@@ -64,6 +72,14 @@ export function ReviewsListPage() {
   function setPage(next: number) {
     const n = new URLSearchParams(sp);
     n.set("page", String(next));
+    setSp(n, { replace: true });
+  }
+
+  function clearEntityFilters() {
+    const n = new URLSearchParams(sp);
+    n.delete("provider_id");
+    n.delete("customer_id");
+    n.set("page", "1");
     setSp(n, { replace: true });
   }
 
@@ -87,12 +103,31 @@ export function ReviewsListPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Reviews" description="GET /api/admin/reviews" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/reviews")} className="font-medium text-gray-900 underline">
-          Legacy reviews (moderation, export) →
-        </a>
-      </p>
+      <AdminPageHeader
+        title="Reviews & ratings"
+        description="Customer→provider stars (`rating`), provider→customer (`customer_rating`), and staff rating per review. Superadmin has access via Providers & operations."
+      />
+      {stats ? (
+        <AdminPanel>
+          <h2 className="text-sm font-semibold text-gray-900">Summary</h2>
+          <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <dt className="text-gray-500">Total reviews</dt>
+              <dd className="font-medium tabular-nums">{String(stats.total ?? "—")}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Average (customer→provider)</dt>
+              <dd className="font-medium tabular-nums">{String(stats.average_rating ?? "—")}</dd>
+            </div>
+            <div>
+              <dt className="text-gray-500">Visible / hidden / flagged</dt>
+              <dd className="font-medium">
+                {String(stats.visible ?? "—")} / {String(stats.hidden ?? "—")} / {String(stats.flagged ?? "—")}
+              </dd>
+            </div>
+          </dl>
+        </AdminPanel>
+      ) : null}
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (
@@ -106,6 +141,26 @@ export function ReviewsListPage() {
             </button>
           ))}
         </div>
+        {(providerId || customerId) && (
+          <p className="mt-3 text-sm text-gray-600">
+            Filtered
+            {providerId ? (
+              <>
+                {" "}
+                · provider <span className="font-mono text-xs">{providerId}</span>
+              </>
+            ) : null}
+            {customerId ? (
+              <>
+                {" "}
+                · customer <span className="font-mono text-xs">{customerId}</span>
+              </>
+            ) : null}
+            <button type="button" className="ml-2 text-primary underline" onClick={clearEntityFilters}>
+              Clear
+            </button>
+          </p>
+        )}
         {pag ? (
           <p className="mt-3 text-sm text-gray-600">
             Page {pag.page} of {Math.max(1, pag.total_pages)} · {pag.total} total
@@ -118,7 +173,9 @@ export function ReviewsListPage() {
         <AdminDataTable>
           <AdminTableHead>
             <tr>
-              <AdminTh>Rating</AdminTh>
+              <AdminTh>Customer→provider</AdminTh>
+              <AdminTh>Provider→customer</AdminTh>
+              <AdminTh>Staff</AdminTh>
               <AdminTh>Comment</AdminTh>
               <AdminTh>Provider</AdminTh>
               <AdminTh>Customer</AdminTh>
@@ -128,14 +185,32 @@ export function ReviewsListPage() {
           <AdminTableBody>
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
-              const prov = row.provider as { business_name?: string } | undefined;
-              const cust = row.customer as { full_name?: string; email?: string } | undefined;
+              const prov = row.provider as { id?: string; business_name?: string } | undefined;
+              const cust = row.customer as { id?: string; full_name?: string; email?: string } | undefined;
               return (
                 <tr key={String(row.id ?? "")}>
-                  <AdminTd>{String(row.rating ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums font-medium">{String(row.rating ?? "—")}</AdminTd>
+                  <AdminTd className="tabular-nums">{String(row.customer_rating ?? "—")}</AdminTd>
+                  <AdminTd className="tabular-nums">{String(row.staff_rating ?? "—")}</AdminTd>
                   <AdminTd className="max-w-xs truncate text-xs">{String(row.comment ?? "")}</AdminTd>
-                  <AdminTd className="text-xs">{String(prov?.business_name ?? "")}</AdminTd>
-                  <AdminTd className="text-xs">{String(cust?.full_name ?? cust?.email ?? "")}</AdminTd>
+                  <AdminTd className="text-xs">
+                    {prov?.id ? (
+                      <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${prov.id}`)}>
+                        {String(prov.business_name ?? prov.id)}
+                      </Link>
+                    ) : (
+                      String(prov?.business_name ?? "")
+                    )}
+                  </AdminTd>
+                  <AdminTd className="text-xs">
+                    {cust?.id ? (
+                      <Link className="text-primary underline" to={adminSpaTo(`/admin/users/${cust.id}`)}>
+                        {String(cust.full_name ?? cust.email ?? cust.id)}
+                      </Link>
+                    ) : (
+                      String(cust?.full_name ?? cust?.email ?? "")
+                    )}
+                  </AdminTd>
                   <AdminTd>{String(row.is_visible ?? "")}</AdminTd>
                 </tr>
               );

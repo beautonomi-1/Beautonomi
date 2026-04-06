@@ -185,8 +185,6 @@ The Vite build **loads `apps/web/.env*` first, then `apps/admin-web/.env*`** and
 
 **Vercel:** The same project env as `apps/web` is sufficient for `turbo` builds that compile `admin-web` after env is applied; explicit `VITE_*` is optional. **Local:** Either set `VITE_*` in `apps/admin-web/.env.local` or rely on `apps/web/.env.local` with `NEXT_PUBLIC_*` only.
 
-`VITE_WEB_ORIGIN` is admin-only (e.g. `http://localhost:3000`) for deep links to legacy Next admin pages during split dev servers.
-
 ---
 
 ## Per-environment checklist

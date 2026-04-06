@@ -1,3 +1,8 @@
+/**
+ * Admin SPA routes must cover every sidebar `href` in `src/config/nav.ts`
+ * (use the path after `/admin/`; add `<Navigate />` aliases for legacy URLs).
+ * Unmatched paths render `AdminNotFoundPage`.
+ */
 import { Link, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminChrome } from "@/components/layout/AdminChrome";
@@ -108,11 +113,14 @@ export default function App() {
           <Route path="settings/platform-fees" element={<P.PlatformFeesPage />} />
           <Route path="users/:id" element={<P.UserDetailPage />} />
           <Route path="users" element={<P.UsersListPage />} />
+          <Route path="verifications/:id" element={<P.VerificationDetailPage />} />
           <Route path="verifications" element={<P.VerificationsListPage />} />
           <Route path="audit-logs" element={<P.AuditLogsPage />} />
+          <Route path="ecommerce/orders/:id" element={<P.ProductOrderDetailPage />} />
           <Route path="ecommerce/orders" element={<P.ProductOrdersPage />} />
           <Route path="ecommerce/returns" element={<P.ProductReturnsPage />} />
           <Route path="ecommerce/products" element={<P.ProductCatalogPage />} />
+          <Route path="ecommerce" element={<P.EcommerceOverviewPage />} />
           <Route path="addons" element={<P.AddonsListPage />} />
           <Route path="webhooks" element={<P.WebhooksEndpointsPage />} />
           <Route path="api-keys" element={<P.ApiKeysListPage />} />
@@ -120,12 +128,14 @@ export default function App() {
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />
           <Route path="promotions" element={<P.PromotionsListPage />} />
+          <Route path="gift-cards/:id" element={<P.GiftCardDetailPage />} />
           <Route path="gift-cards" element={<P.GiftCardsListPage />} />
           <Route path="loyalty" element={<P.LoyaltyRulesPage />} />
           <Route path="gamification/point-rules" element={<P.GamificationPointRulesPage />} />
           <Route path="gamification/badges" element={<P.GamificationBadgesPage />} />
           <Route path="notifications" element={<P.NotificationsConfigPage />} />
           <Route path="broadcast/history" element={<P.BroadcastHistoryPage />} />
+          <Route path="broadcast/compose" element={<P.BroadcastComposePage />} />
           <Route path="broadcast" element={<P.BroadcastHubPage />} />
           <Route path="automations" element={<P.AutomationsListPage />} />
           <Route path="notification-templates" element={<P.NotificationTemplatesListPage />} />
@@ -139,16 +149,38 @@ export default function App() {
           <Route path="settings/custom-fields" element={<P.CustomFieldsListPage />} />
           <Route path="custom-fields" element={<Navigate to="../settings/custom-fields" replace />} />
           <Route path="settings/referrals" element={<P.ReferralsSettingsPage />} />
+          <Route path="referral-sources" element={<P.ReferralSourcesPage />} />
           <Route path="settings/tenant-domains" element={<P.TenantDomainsListPage />} />
           <Route path="settings/team-permissions" element={<P.TeamPermissionsMatrixPage />} />
           <Route path="content/learning" element={<P.LearningArticlesPage />} />
+          <Route path="content/resources" element={<P.ContentResourcesPage />} />
           <Route path="content" element={<P.ContentHubPage />} />
           <Route path="explore" element={<P.ExplorePostsPage />} />
+          <Route path="catalog/global-categories" element={<P.GlobalCategoriesPage />} />
           <Route path="catalog" element={<P.CatalogServicesPage />} />
           <Route path="control-plane" element={<Outlet />}>
             <Route index element={<Navigate to="overview" replace />} />
             <Route path="overview" element={<P.ControlPlaneOverviewPage />} />
-            <Route path="*" element={<P.ControlPlaneDeepLegacyPage />} />
+            <Route path="feature-flags" element={<P.CpFeatureFlagsPage />} />
+            <Route path="integrations" element={<P.CpIntegrationsHubPage />} />
+            <Route path="integrations/sumsub" element={<P.CpIntegrationSumsubPage />} />
+            <Route path="integrations/gemini" element={<P.CpIntegrationGeminiPage />} />
+            <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
+            <Route path="modules/distance" element={<P.CpModuleDistancePage />} />
+            <Route path="modules/on-demand" element={<P.CpModuleOnDemandPage />} />
+            <Route path="modules/safety" element={<P.CpModuleSafetyPage />} />
+            <Route path="modules/ranking/scores" element={<P.CpRankingScoresPage />} />
+            <Route path="modules/ranking" element={<P.CpModuleRankingPage />} />
+            <Route path="modules/ai/usage" element={<P.CpAiUsagePage />} />
+            <Route path="modules/ai/entitlements" element={<P.CpAiEntitlementsPage />} />
+            <Route path="modules/ai/templates" element={<P.CpAiTemplatesPage />} />
+            <Route path="modules/ai" element={<P.CpModuleAiPage />} />
+            <Route path="modules/ads" element={<P.CpModuleAdsPage />} />
+            <Route path="safety-logs" element={<P.CpSafetyLogsPage />} />
+            <Route path="maintenance/sign-ups" element={<P.CpMaintenanceSignupsPage />} />
+            <Route path="maintenance" element={<P.CpMaintenancePage />} />
+            <Route path="audit-log" element={<P.CpAuditLogPage />} />
+            <Route path="*" element={<P.AdminNotFoundPage />} />
           </Route>
           <Route path="sms-templates" element={<Navigate to="../notification-templates" replace />} />
           <Route path="email-templates" element={<Navigate to="../notification-templates" replace />} />
@@ -156,7 +188,7 @@ export default function App() {
             path="settings/integrations/analytics"
             element={<Navigate to="../../../integrations/amplitude" replace />}
           />
-          <Route path="*" element={<P.WavePlaceholderPage />} />
+          <Route path="*" element={<P.AdminNotFoundPage />} />
         </Route>
       </Route>
     </Routes>

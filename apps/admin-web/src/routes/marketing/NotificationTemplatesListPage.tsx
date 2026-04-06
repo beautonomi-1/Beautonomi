@@ -19,7 +19,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type Payload = { templates: Record<string, unknown>[] };
 
@@ -62,11 +61,6 @@ export function NotificationTemplatesListPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Notification templates" description="GET /api/admin/notification-templates" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/notification-templates")} className="font-medium text-gray-900 underline">
-          Legacy editor →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No templates" />
       ) : (

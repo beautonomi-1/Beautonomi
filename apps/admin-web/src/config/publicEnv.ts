@@ -9,8 +9,6 @@ export const publicEnv = {
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY,
   appUrl: import.meta.env.VITE_APP_URL,
   siteUrl: import.meta.env.VITE_SITE_URL,
-  /** Dev-only: legacy Next admin origin (e.g. http://localhost:3000). */
-  webOrigin: import.meta.env.VITE_WEB_ORIGIN,
   sentryDsn: import.meta.env.VITE_SENTRY_DSN,
   sentryEnvironment: import.meta.env.VITE_SENTRY_ENVIRONMENT,
   googleAnalyticsId: import.meta.env.VITE_GOOGLE_ANALYTICS_ID,

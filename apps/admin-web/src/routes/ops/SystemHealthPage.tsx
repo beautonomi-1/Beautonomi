@@ -10,7 +10,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function SystemHealthPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OPERATIONS, "Operations access is required.");
@@ -49,11 +48,6 @@ export function SystemHealthPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="System health" description="GET /api/admin/system-health" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/system-health")} className="font-medium text-gray-900 underline">
-          Legacy dashboards →
-        </a>
-      </p>
       <AdminPanel>
         <pre className="max-h-[480px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
       </AdminPanel>

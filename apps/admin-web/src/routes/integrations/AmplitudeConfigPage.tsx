@@ -10,7 +10,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 export function AmplitudeConfigPage() {
   const { allowed, denied } = useAdminSectionPage(
@@ -51,11 +50,6 @@ export function AmplitudeConfigPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Amplitude" description="GET /api/admin/integrations/amplitude" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/integrations/amplitude")} className="font-medium text-gray-900 underline">
-          Edit keys in legacy (PUT) →
-        </a>
-      </p>
       <AdminPanel>
         <label className="text-sm text-gray-600">
           Environment{" "}

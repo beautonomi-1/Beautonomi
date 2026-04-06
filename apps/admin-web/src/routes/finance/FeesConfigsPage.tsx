@@ -17,7 +17,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type FeeConfig = Record<string, unknown>;
 
@@ -57,11 +56,6 @@ export function FeesConfigsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Fee management" description="GET /api/admin/fees/configs" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/fees")} className="font-medium text-gray-900 underline">
-          Legacy fee tools →
-        </a>
-      </p>
       {rows.length === 0 ? (
         <EmptyState title="No fee configs" description="Table may be empty or not migrated for this tenant." />
       ) : (

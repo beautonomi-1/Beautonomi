@@ -40,6 +40,7 @@ import {
   Repeat,
   Link2,
   Monitor,
+  PiggyBank,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -131,6 +132,7 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" },
       { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" },
+      { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" },
       { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" },

@@ -20,7 +20,6 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type LogRow = Record<string, unknown> & {
   id?: string;
@@ -86,9 +85,6 @@ export function AuditLogsPage() {
     <div className="space-y-6">
       <AdminPageHeader title="Audit logs" />
       <div className="flex flex-wrap gap-3">
-        <a href={legacyAdminHref("/admin/audit-logs")} className="text-sm font-medium text-gray-900 underline">
-          Legacy audit UI →
-        </a>
         <button
           type="button"
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"

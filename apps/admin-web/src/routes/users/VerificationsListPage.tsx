@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -19,7 +19,6 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminTabButtonClass } from "@/lib/adminUi";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 type VerRow = Record<string, unknown> & {
   id?: string;
@@ -64,12 +63,10 @@ export function VerificationsListPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Verifications" description="GET /api/admin/verifications" />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/verifications")} className="font-medium text-gray-900 underline">
-          Review actions in legacy →
-        </a>
-      </p>
+      <AdminPageHeader
+        title="Verifications"
+        description="Identity review queue for the resolved admin tenant. Open a row to approve, reject, or view documents."
+      />
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (
@@ -97,6 +94,7 @@ export function VerificationsListPage() {
               <AdminTh>User</AdminTh>
               <AdminTh>Email</AdminTh>
               <AdminTh>Status</AdminTh>
+              <AdminTh>Action</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
@@ -105,6 +103,11 @@ export function VerificationsListPage() {
                 <AdminTd>{String(r.user?.full_name ?? "")}</AdminTd>
                 <AdminTd>{String(r.user?.email ?? "")}</AdminTd>
                 <AdminTd>{String(r.status ?? "")}</AdminTd>
+                <AdminTd>
+                  <Link to={`/verifications/${String(r.id)}`} className="text-sm font-medium text-primary hover:underline">
+                    Review
+                  </Link>
+                </AdminTd>
               </tr>
             ))}
           </AdminTableBody>

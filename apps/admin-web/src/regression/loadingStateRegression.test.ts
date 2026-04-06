@@ -12,7 +12,7 @@ const srcRoot = join(__dirname, "..");
  * Login uses form state instead of query skeletons.
  */
 const LOADING_OR_ERROR_PATTERN =
-  /\b(AdminPageSkeleton|AdminQueryBlock|AdminRetryBlock|query\.isLoading|query\.isPending|q\.isLoading|q\.isPending|isLoading|isPending|PermissionDenied|AdminMutationAlert)\b/;
+  /\b(AdminPageSkeleton|AdminQueryBlock|AdminRetryBlock|query\.isLoading|query\.isPending|q\.isLoading|q\.isPending|isLoading|isPending|PermissionDenied|AdminMutationAlert|useAdminSectionPage|useSuperadminPage)\b/;
 
 describe("loading / error surface regression (critical pages)", () => {
   it.each(CRITICAL_ADMIN_FLOWS.filter((f) => f.id !== "login"))(

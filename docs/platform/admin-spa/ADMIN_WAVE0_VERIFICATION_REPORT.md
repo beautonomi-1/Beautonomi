@@ -63,11 +63,11 @@
 
 ## 4. Remediation applied in this verification pass (high-confidence code)
 
-- **Global search:** Result links aligned with **legacy** `AdminShell` (`?highlight=` on list routes) + `legacyAdminHref` for dev/prod origin correctness; restored secondary lines (email/phone, owner, date).  
+- **Global search:** Result links use SPA detail paths via `adminSearchResultSpaPath`; restored secondary lines (email/phone, owner, date).  
 - **Search UX:** Document **mousedown** outside closes dropdown.  
 - **Section permissions:** Expose load **failure** + **Retry** banner (avoid silent fallback confusion).  
 - **Dashboard errors:** **Retry** control on load failure (UI conventions §8).  
-- **Tests:** `adminSearchResultLegacyPath` unit tests.  
+- **Tests:** `adminSearchResultSpaPath` unit tests.  
 - **Docs:** This report; matrix Implementation Delta row (below).
 
 ---

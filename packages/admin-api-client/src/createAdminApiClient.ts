@@ -197,6 +197,20 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
       });
     },
 
+    async deleteJson<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      return requestJson<T>(path, { ...init, method: "DELETE" });
+    },
+
+    async putJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      const merged =
+        body === undefined ? undefined : mergeAdminScopeIntoJsonBody(path, "PUT", body);
+      return requestJson<T>(path, {
+        ...init,
+        method: "PUT",
+        body: merged === undefined ? undefined : JSON.stringify(merged),
+      });
+    },
+
     /**
      * Binary download (CSV, etc.) with the same **GET scope injection** and credentials as `getJson`.
      */

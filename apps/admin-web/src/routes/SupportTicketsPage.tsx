@@ -23,7 +23,6 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
 import { buildSupportTicketsSearchParams, supportTicketsPageSize } from "@/lib/buildSupportTicketsSearchParams";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 interface SupportTicket {
@@ -294,13 +293,6 @@ export function SupportTicketsPage() {
                     <Link className="text-sm font-medium text-gray-900 underline" to={ticket.id}>
                       Open
                     </Link>
-                    <span className="mx-2 text-gray-300">·</span>
-                    <a
-                      href={legacyAdminHref(`/admin/support-tickets/${ticket.id}`)}
-                      className="text-sm text-gray-600 underline"
-                    >
-                      Legacy
-                    </a>
                   </AdminTd>
                 </tr>
               ))}

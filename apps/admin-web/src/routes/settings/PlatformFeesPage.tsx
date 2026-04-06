@@ -9,7 +9,6 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
-import { legacyAdminHref } from "@/lib/legacyAdminOrigin";
 
 /** API uses `ADMIN_SECTION_PLATFORM_CONFIG` (not finance) — matches `GET /api/admin/platform-fees`. */
 export function PlatformFeesPage() {
@@ -46,13 +45,8 @@ export function PlatformFeesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Platform fees"
-        description="Read-only in SPA; API is gated as platform_config. PATCH remains in legacy until SPA form lands."
+        description="Read-only in SPA; API is gated as platform_config. Editing uses PATCH when a form is added."
       />
-      <p className="text-sm text-gray-600">
-        <a href={legacyAdminHref("/admin/settings/platform-fees")} className="font-medium text-gray-900 underline">
-          Edit in legacy admin →
-        </a>
-      </p>
       <AdminPanel>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           {Object.entries(d).map(([k, v]) => (
