@@ -9,14 +9,28 @@ Wave 0 admin UI for the Beautonomi migration: React Router, TanStack Query, and 
 
 ## Environment
 
-Create `apps/admin-web/.env.local` (or export in your shell) with the **same Supabase project** as `apps/web`:
+Vite merges **both** `apps/admin-web/.env*` and `apps/web/.env*` (admin overrides web on conflicts), then falls back to **`process.env`**. So you can rely on the **same `NEXT_PUBLIC_*` variables as Next.js** for builds (e.g. Vercel) without copying them into `VITE_*`, as long as the web app’s env is available when `pnpm build` runs for `admin-web`.
 
-| Variable | Purpose |
-|----------|---------|
-| `VITE_SUPABASE_URL` | Browser Supabase client (mirror `NEXT_PUBLIC_SUPABASE_URL`). |
-| `VITE_SUPABASE_ANON_KEY` | Mirror `NEXT_PUBLIC_SUPABASE_ANON_KEY`. |
-| `VITE_WEB_ORIGIN` | Optional. Set to `http://localhost:3000` so links to **legacy** Next-only admin routes (e.g. report drill-downs) open on the Next dev server. Leave empty when the SPA and API are same-origin in production. |
-| `VITE_SENTRY_DSN` | Optional. Enables Sentry when set. |
+Create `apps/admin-web/.env.local` only when you need SPA-specific overrides; otherwise copy from `apps/web/.env.example` into `apps/web/.env.local` and run Vite — Supabase and other public keys are picked up automatically.
+
+| Variable (Vite) | Next.js equivalent | Purpose |
+|-----------------|-------------------|---------|
+| `VITE_SUPABASE_URL` | `NEXT_PUBLIC_SUPABASE_URL` | Browser Supabase client. |
+| `VITE_SUPABASE_ANON_KEY` | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key. |
+| `VITE_APP_URL` | `NEXT_PUBLIC_APP_URL` | Absolute app origin when needed. |
+| `VITE_SITE_URL` | `NEXT_PUBLIC_SITE_URL` | Canonical site URL fallback. |
+| `VITE_WEB_ORIGIN` | — | Dev: `http://localhost:3000` for links to legacy Next-only admin routes. Empty when same-origin in production. |
+| `VITE_SENTRY_DSN` | `NEXT_PUBLIC_SENTRY_DSN` | Sentry browser DSN. |
+| `VITE_SENTRY_ENVIRONMENT` | — | Sentry environment label (defaults to Vite `MODE`). |
+| `VITE_GOOGLE_ANALYTICS_ID` | `NEXT_PUBLIC_GOOGLE_ANALYTICS_ID` | Optional analytics. |
+| `VITE_AMPLITUDE_API_KEY` | `NEXT_PUBLIC_AMPLITUDE_API_KEY` | Optional. |
+| `VITE_MAPBOX_ACCESS_TOKEN` | `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` | Optional. |
+| `VITE_GLOBAL_ENTRY_HOST` | `NEXT_PUBLIC_GLOBAL_ENTRY_HOST` | Market / routing UX. |
+| `VITE_DEFAULT_MARKET_HOST` | `NEXT_PUBLIC_DEFAULT_MARKET_HOST` | Default market host. |
+| `VITE_MARKET_OVERRIDE_TTL_HOURS` | `NEXT_PUBLIC_MARKET_OVERRIDE_TTL_HOURS` | Override TTL. |
+| `VITE_CATEGORY_ICON_CACHE_REVISION` | `NEXT_PUBLIC_CATEGORY_ICON_CACHE_REVISION` | Cache bust param. |
+
+Runtime reads go through `src/config/publicEnv.ts`.
 
 ## Scripts
 

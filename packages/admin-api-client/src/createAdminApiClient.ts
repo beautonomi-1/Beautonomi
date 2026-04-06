@@ -1,4 +1,4 @@
-import { withAdminScopeUrl } from "./adminScope";
+import { mergeAdminScopeIntoJsonBody, withAdminScopeUrl } from "./adminScope";
 import { AdminApiError, isForbiddenStatus, isUnauthorizedStatus } from "./errors";
 import { adminBootstrapSchema, type AdminBootstrap } from "./schemas/bootstrap";
 
@@ -178,18 +178,22 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
     },
 
     async postJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      const merged =
+        body === undefined ? undefined : mergeAdminScopeIntoJsonBody(path, "POST", body);
       return requestJson<T>(path, {
         ...init,
         method: "POST",
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: merged === undefined ? undefined : JSON.stringify(merged),
       });
     },
 
     async patchJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      const merged =
+        body === undefined ? undefined : mergeAdminScopeIntoJsonBody(path, "PATCH", body);
       return requestJson<T>(path, {
         ...init,
         method: "PATCH",
-        body: body === undefined ? undefined : JSON.stringify(body),
+        body: merged === undefined ? undefined : JSON.stringify(merged),
       });
     },
 

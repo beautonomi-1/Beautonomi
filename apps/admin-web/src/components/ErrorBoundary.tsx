@@ -1,4 +1,5 @@
 import React, { Component, type ErrorInfo, type ReactNode } from "react";
+import { publicEnv } from "@/config/publicEnv";
 
 interface Props {
   children: ReactNode;
@@ -18,7 +19,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error("admin-web ErrorBoundary:", error, info);
-    if (import.meta.env.VITE_SENTRY_DSN) {
+    if (publicEnv.sentryDsn) {
       void import("@sentry/react").then(({ captureException }) => {
         captureException(error, { extra: { componentStack: info.componentStack } });
       });

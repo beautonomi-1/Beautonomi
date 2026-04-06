@@ -4,12 +4,12 @@ Environment variables used across the Beautonomi monorepo, by app and environmen
 
 ## Summary
 
-| Category | Web | Customer (Expo) | Provider (Expo) |
-|----------|-----|-----------------|-----------------|
-| Supabase | NEXT_PUBLIC_* + SERVICE_ROLE | EXPO_PUBLIC_SUPABASE_* | EXPO_PUBLIC_SUPABASE_* |
-| App URL | NEXT_PUBLIC_APP_URL | EXPO_PUBLIC_APP_URL | EXPO_PUBLIC_APP_URL |
-| Payments | PAYSTACK_* (server only) | — (via API) | — (via API) |
-| Integrations | Various (see below) | EXPO_PUBLIC_ONESIGNAL_APP_ID (optional) | EXPO_PUBLIC_ONESIGNAL_APP_ID (optional) |
+| Category | Web | Admin SPA (Vite) | Customer (Expo) | Provider (Expo) |
+|----------|-----|------------------|-----------------|-----------------|
+| Supabase | NEXT_PUBLIC_* + SERVICE_ROLE | `VITE_*` or merged `NEXT_PUBLIC_*` (see § Admin SPA) | EXPO_PUBLIC_SUPABASE_* | EXPO_PUBLIC_SUPABASE_* |
+| App URL | NEXT_PUBLIC_APP_URL | Same (merged) | EXPO_PUBLIC_APP_URL | EXPO_PUBLIC_APP_URL |
+| Payments | PAYSTACK_* (server only) | — (uses `/api` on web) | — (via API) | — (via API) |
+| Integrations | Various (see below) | Same public keys as web when needed | EXPO_PUBLIC_ONESIGNAL_APP_ID (optional) | EXPO_PUBLIC_ONESIGNAL_APP_ID (optional) |
 
 ---
 
@@ -166,6 +166,26 @@ EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS=24
 ```
 
 > When expanding to more markets, update `SUPPORTED_MARKET_COUNTRIES`, `TENANT_HOST_COUNTRY_MAP`, `MARKET_AUTO_SWITCH_ALLOWED_COUNTRIES`, and `EXPO_PUBLIC_MARKET_HOST_OPTIONS` accordingly.
+
+---
+
+## Admin SPA (`apps/admin-web`)
+
+Source: `apps/admin-web/.env.example`, `apps/admin-web/vite.config.ts`, `apps/admin-web/src/config/publicEnv.ts`.
+
+The Vite build **loads `apps/web/.env*` first, then `apps/admin-web/.env*`** and injects merged values into `import.meta.env.VITE_*`. For each key below, **`VITE_*` in admin-web overrides** the Next-style value.
+
+| Semantic (client bundle) | Prefer in admin `.env.local` | Falls back from web / `process.env` |
+|---------------------------|------------------------------|-------------------------------------|
+| Supabase URL / anon | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
+| App / site URL | `VITE_APP_URL`, `VITE_SITE_URL` | `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_SITE_URL` |
+| Sentry DSN | `VITE_SENTRY_DSN` | `NEXT_PUBLIC_SENTRY_DSN` |
+| GA / Amplitude / Mapbox | `VITE_GOOGLE_ANALYTICS_ID`, etc. | Matching `NEXT_PUBLIC_*` |
+| Global entry / default market / override TTL | `VITE_GLOBAL_ENTRY_HOST`, … | `NEXT_PUBLIC_GLOBAL_ENTRY_HOST`, … |
+
+**Vercel:** The same project env as `apps/web` is sufficient for `turbo` builds that compile `admin-web` after env is applied; explicit `VITE_*` is optional. **Local:** Either set `VITE_*` in `apps/admin-web/.env.local` or rely on `apps/web/.env.local` with `NEXT_PUBLIC_*` only.
+
+`VITE_WEB_ORIGIN` is admin-only (e.g. `http://localhost:3000`) for deep links to legacy Next admin pages during split dev servers.
 
 ---
 

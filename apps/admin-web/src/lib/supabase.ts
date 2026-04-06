@@ -1,14 +1,17 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { publicEnv } from "@/config/publicEnv";
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
 export function getSupabaseBrowserClient() {
   if (typeof window === "undefined") return null;
   if (!client) {
-    const url = import.meta.env.VITE_SUPABASE_URL || "";
-    const key = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+    const url = publicEnv.supabaseUrl || "";
+    const key = publicEnv.supabaseAnonKey || "";
     if (!url || !key) {
-      console.warn("admin-web: VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY not set");
+      console.warn(
+        "admin-web: set VITE_SUPABASE_* or NEXT_PUBLIC_SUPABASE_* (see apps/admin-web/.env.example)"
+      );
     }
     client = createBrowserClient(url || "https://placeholder.supabase.co", key || "placeholder");
   }

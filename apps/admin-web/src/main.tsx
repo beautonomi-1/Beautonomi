@@ -7,6 +7,7 @@ import { AdminSessionProvider } from "@/providers/AdminSessionProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import App from "./App";
 import "./index.css";
+import { publicEnv } from "@/config/publicEnv";
 
 const rootEl = document.getElementById("root")!;
 
@@ -26,12 +27,12 @@ function renderApp() {
   );
 }
 
-const sentryDsn = import.meta.env.VITE_SENTRY_DSN;
+const sentryDsn = publicEnv.sentryDsn;
 if (sentryDsn) {
   void import("@sentry/react").then((Sentry) => {
     Sentry.init({
       dsn: sentryDsn,
-      environment: import.meta.env.VITE_SENTRY_ENVIRONMENT ?? import.meta.env.MODE,
+      environment: publicEnv.sentryEnvironment || import.meta.env.MODE,
       sendDefaultPii: false,
       tracesSampleRate: 0.1,
       ignoreErrors: [/ResizeObserver loop/i, /^Non-Error promise rejection captured/],

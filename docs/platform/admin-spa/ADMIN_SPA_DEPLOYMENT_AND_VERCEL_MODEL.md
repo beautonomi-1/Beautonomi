@@ -12,6 +12,7 @@
 |------|--------|-----|
 | 2026-04-06 | **Document created** (file was missing from repo). | Execution plan required a single place for Vercel + routing model; content derived from [`apps/web/vercel.json`](../../apps/web/vercel.json), monorepo layout, and cutover doc. |
 | 2026-04-06 | **Strict review:** Vite dev proxy documents **`/auth`** in addition to **`/api`** (OAuth callback parity). | Matches [`ADMIN_SPA_AUTH_DECISION.md`](./ADMIN_SPA_AUTH_DECISION.md) §2 local-dev wording. |
+| 2026-04-07 | **Env parity:** `apps/admin-web/vite.config.ts` merges `apps/web` + `apps/admin-web` `.env*` and maps **`NEXT_PUBLIC_*` → injected `VITE_*`** so Vercel/web CI matches Next public config without duplicating keys. See `src/config/publicEnv.ts`, `docs/ENVIRONMENT_MATRIX.md` § Admin SPA. | |
 | 2026-04-07 | **Cutover wiring (Option A):** `next build` runs [`sync-admin-spa.mjs`](../../apps/web/scripts/sync-admin-spa.mjs) → `apps/web/public/admin/**`. [`proxy.ts`](../../apps/web/src/proxy.ts) **`ADMIN_SPA_ROUTING=spa`** rewrites HTML navigations to `/admin/index.html` and bypasses auth for `/admin/assets/*`. | Tier **B** kill switch; same host as cutover plan §2. See [`ADMIN_CUTOVER_EXECUTION_REPORT.md`](./ADMIN_CUTOVER_EXECUTION_REPORT.md). |
 | 2026-04-07 | **Legacy Next admin** (`app/admin/**`) retained for **`legacy`** rollback until milestone §8. Decommission inventory: [`ADMIN_LEGACY_DECOMMISSION_REPORT.md`](./ADMIN_LEGACY_DECOMMISSION_REPORT.md). | |
 
@@ -70,7 +71,7 @@ Aligned with **same-origin** default in the migration plan:
 | `turbo run typecheck --filter=admin-web` | SPA + packages typecheck. |
 | `turbo run build --filter=admin-web` | Vite production build (placeholder or real `VITE_*`). |
 | **`build-web` job** | Builds **admin-web** then **web** so `public/admin` is populated. |
-| **Vercel** | Set **`ADMIN_SPA_ROUTING`** per environment; ensure **`VITE_*`** (or mirror of `NEXT_PUBLIC_*`) available when building **admin-web** in the pipeline. |
+| **Vercel** | Set **`ADMIN_SPA_ROUTING`** per environment. **`admin-web` build** merges `apps/web` `.env*` and maps **`NEXT_PUBLIC_*` → `VITE_*`** in `vite.config.ts`, so the same Vercel env as Next is enough; optional `VITE_*` overrides in `apps/admin-web` if needed. |
 
 ---
 

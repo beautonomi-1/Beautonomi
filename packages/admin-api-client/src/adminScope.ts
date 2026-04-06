@@ -24,6 +24,46 @@ export function isScopedAdminCustomizationPath(pathname: string): boolean {
   return SCOPED_ADMIN_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+/** Pathname only (strips query), for matching scoped prefixes. */
+export function adminScopePathname(path: string): string {
+  try {
+    const base =
+      typeof window !== "undefined" && window.location?.origin
+        ? window.location.origin
+        : "http://localhost";
+    return new URL(path, base).pathname;
+  } catch {
+    const q = path.indexOf("?");
+    return q === -1 ? path : path.slice(0, q);
+  }
+}
+
+/**
+ * For mutating JSON requests to customization routes, mirror `fetcher.ts`: merge `scope` and
+ * optional `tenant_id` from the same localStorage keys the legacy admin and AdminChrome use.
+ */
+export function mergeAdminScopeIntoJsonBody(
+  path: string,
+  method: string,
+  body: unknown,
+  storage?: Pick<Storage, "getItem">
+): unknown {
+  const pathname = adminScopePathname(path);
+  if (!isScopedAdminCustomizationPath(pathname)) return body;
+  if (method.toUpperCase() === "GET") return body;
+  if (body === null || body === undefined) return body;
+  if (typeof body !== "object" || Array.isArray(body)) return body;
+
+  const { scope, tenantId } = readAdminScopeFromStorage(storage);
+  if (scope !== "global" && scope !== "tenant") return body;
+
+  return {
+    ...(body as Record<string, unknown>),
+    scope,
+    ...(scope === "tenant" && tenantId ? { tenant_id: tenantId } : {}),
+  };
+}
+
 export function readAdminScopeFromStorage(
   storage: Pick<Storage, "getItem"> = typeof localStorage !== "undefined" ? localStorage : ({} as Storage)
 ): { scope: string; tenantId: string } {
