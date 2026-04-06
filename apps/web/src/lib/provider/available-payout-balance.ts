@@ -30,7 +30,7 @@ export async function getAvailablePayoutBalance(
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, created_at, booking_id")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout"])
+    .in("transaction_type", ["provider_earnings", "payout", "refund"])
     .gte("created_at", allTime)
     .lte("created_at", nowIso)
     .order("created_at", { ascending: false });

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance } = await getAvailablePayoutBalance(supabase, providerId, {
+    const { availableBalance } = await getAvailablePayoutBalance(getSupabaseAdmin(), providerId, {
       holdDays,
       tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
     });

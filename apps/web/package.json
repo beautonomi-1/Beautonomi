@@ -36,6 +36,7 @@
     "@amplitude/analytics-browser": "^2.34.1",
     "@amplitude/engagement-browser": "^1.0.8",
     "@amplitude/plugin-session-replay-browser": "^1.26.0",
+    "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
@@ -97,6 +98,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "admin-web": "workspace:*",
     "@next/bundle-analyzer": "^15.0.0",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",

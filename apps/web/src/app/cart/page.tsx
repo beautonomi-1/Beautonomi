@@ -3,6 +3,22 @@
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import BeautonomiHeader from "@/components/layout/beautonomi-header";
+import BottomNav from "@/components/layout/bottom-nav";
+import Footer from "@/components/layout/footer";
+
+function csrfHeaders(): HeadersInit {
+  const h: Record<string, string> = {};
+  if (typeof document !== "undefined") {
+    const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/);
+    if (m?.[1]) h["x-csrf-token"] = decodeURIComponent(m[1].trim());
+  }
+  return h;
+}
+
+function jsonHeaders(): HeadersInit {
+  return { "Content-Type": "application/json", ...csrfHeaders() as Record<string, string> };
+}
 
 interface CartItem {
   id: string;
@@ -46,25 +62,43 @@ export default function CartPage() {
   }, [fetchCart]);
 
   const updateQty = async (itemId: string, qty: number) => {
-    await fetch(`/api/me/cart/${itemId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantity: qty }),
-    });
-    await fetchCart();
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    const prev = items;
+    setItems((cur) => cur.map((i) => (i.id === itemId ? { ...i, quantity: qty } : i)));
+    try {
+      const res = await fetch(`/api/me/cart/${itemId}`, {
+        method: "PATCH",
+        headers: jsonHeaders(),
+        body: JSON.stringify({ quantity: qty }),
+      });
+      if (!res.ok) throw new Error("patch failed");
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    } catch {
+      setItems(prev);
+    }
   };
 
   const removeItem = async (itemId: string) => {
-    await fetch(`/api/me/cart/${itemId}`, { method: "DELETE" });
-    await fetchCart();
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    const prev = items;
+    setItems((cur) => cur.filter((i) => i.id !== itemId));
+    try {
+      const res = await fetch(`/api/me/cart/${itemId}`, { method: "DELETE", headers: csrfHeaders() });
+      if (!res.ok) throw new Error("delete failed");
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    } catch {
+      setItems(prev);
+    }
   };
 
   const clearAll = async () => {
-    await fetch("/api/me/cart", { method: "DELETE" });
+    const prev = items;
     setItems([]);
-    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    try {
+      const res = await fetch("/api/me/cart", { method: "DELETE", headers: csrfHeaders() });
+      if (!res.ok) throw new Error("clear failed");
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("beautonomi:cart-updated"));
+    } catch {
+      setItems(prev);
+    }
   };
 
   const linePrice = (item: CartItem) => (item.effective_price ?? item.product?.retail_price ?? 0) * item.quantity;
@@ -82,7 +116,8 @@ export default function CartPage() {
   const totalCount = items.reduce((s, i) => s + i.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20 md:pb-0 w-full max-w-full">
+      <BeautonomiHeader />
       <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Cart ({totalCount})</h1>
@@ -192,6 +227,8 @@ export default function CartPage() {
           </div>
         )}
       </div>
+      <Footer />
+      <BottomNav />
     </div>
   );
 }

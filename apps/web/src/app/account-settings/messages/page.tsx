@@ -447,7 +447,7 @@ export default function Component() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-screen bg-white overflow-hidden">
+      <div className="flex flex-col h-[100dvh] max-h-[100dvh] md:h-screen md:max-h-screen bg-white overflow-hidden min-h-0">
         {/* Mobile Header - Only show when list is visible, not when chat is open */}
         {!showChat && (
           <div className="md:hidden border-b border-[#e9edef] bg-white px-4 py-3">
@@ -467,7 +467,7 @@ export default function Component() {
         </div>
 
         {/* Main Content */}
-        <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex flex-1 min-h-0 overflow-hidden relative">
           {/* Conversations List */}
           <div
             className={`${

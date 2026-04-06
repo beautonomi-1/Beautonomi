@@ -121,6 +121,11 @@ function createAppointmentFromBookingRow(
     ...(booking.version !== undefined && { version: booking.version }),
     ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
     ...(db_status !== undefined ? { db_status } : {}),
+    ...(booking.provider_form_responses != null &&
+    typeof booking.provider_form_responses === "object" &&
+    Object.keys(booking.provider_form_responses).length > 0
+      ? { provider_form_responses: booking.provider_form_responses }
+      : {}),
   };
 }
 

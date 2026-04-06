@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",

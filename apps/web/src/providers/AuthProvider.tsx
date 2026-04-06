@@ -134,6 +134,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
         sessionKeysToRemove.forEach((key) => sessionStorage.removeItem(key));
+        const primaryKeys: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i += 1) {
+          const k = sessionStorage.key(i);
+          if (k?.startsWith("beautonomi_primary_loc_v1_")) primaryKeys.push(k);
+        }
+        primaryKeys.forEach((k) => sessionStorage.removeItem(k));
       } catch {
         // Ignore errors
       }
@@ -847,6 +853,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Only depend on stable functions, not state values that change frequently
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshUser, supabase, checkEmailVerification]);
+
+  /** After login, apply default saved address to marketplace `userLocation` once per session (unless user clears session storage). */
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const syncKey = `beautonomi_primary_loc_v1_${user.id}`;
+    if (sessionStorage.getItem(syncKey)) return;
+
+    const role = user.role;
+    if (role === "superadmin") {
+      sessionStorage.setItem(syncKey, "1");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/me/addresses", { credentials: "include" });
+        if (!res.ok || cancelled) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const json = (await res.json()) as { data?: unknown };
+        const list = json?.data;
+        if (!Array.isArray(list) || list.length === 0) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const primary =
+          (list as Array<{ is_default?: boolean; latitude?: number | null; longitude?: number | null }>).find(
+            (a) => a.is_default === true,
+          ) || (list as any[])[0];
+        const lat = Number(primary?.latitude);
+        const lng = Number(primary?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const line1 = (primary as { address_line1?: string }).address_line1;
+        const city = (primary as { city?: string }).city;
+        const country = (primary as { country?: string }).country;
+        const label = (primary as { label?: string }).label;
+        const addressStr =
+          [line1, city, country].filter(Boolean).join(", ").trim() ||
+          (typeof label === "string" ? label : "") ||
+          "Saved address";
+        const locationData = { latitude: lat, longitude: lng, address: addressStr };
+        localStorage.setItem("userLocation", JSON.stringify(locationData));
+        window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) sessionStorage.setItem(syncKey, "1");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
 
   const signOut = useCallback(async () => {
     if (!supabase) return;

@@ -122,6 +122,9 @@ export const StaffColumn = memo(StaffColumnComponent, (prev, next) => {
   if (prev.workEnd !== next.workEnd) return false;
   if (prev.timeSlots.length !== next.timeSlots.length) return false;
   if (prev.blocks.length !== next.blocks.length) return false;
+  const prevBlockSig = prev.blocks.map((b) => `${b.id}-${b.start_time}-${b.end_time}`).join(",");
+  const nextBlockSig = next.blocks.map((b) => `${b.id}-${b.start_time}-${b.end_time}`).join(",");
+  if (prevBlockSig !== nextBlockSig) return false;
 
   if (prev.appointments.length !== next.appointments.length) return false;
   for (let i = 0; i < prev.appointments.length; i++) {

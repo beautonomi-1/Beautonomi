@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Legacy admin chrome (sidebar, nav counts, search). Used only by `app/admin/layout.tsx` when
+ * Next serves embedded admin pages — not used by the Vite SPA (`apps/admin-web`).
+ */
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";

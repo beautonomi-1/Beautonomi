@@ -10,7 +10,13 @@
         "NEXT_PUBLIC_SUPABASE_ANON_KEY",
         "NEXT_PUBLIC_APP_URL",
         "NEXT_PUBLIC_SENTRY_DSN",
-        "ANALYZE"
+        "ADMIN_SPA_ROUTING",
+        "SKIP_ADMIN_SPA_SYNC",
+        "ANALYZE",
+        "VITE_SUPABASE_URL",
+        "VITE_SUPABASE_ANON_KEY",
+        "VITE_WEB_ORIGIN",
+        "VITE_SENTRY_DSN"
       ]
     },
     "dev": {

@@ -8,8 +8,9 @@ import Pagination from "@/components/ui/pagination";
 import FilterBar from "@/components/ui/filter-bar";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import type { SearchResult, Category } from "@/types/beautonomi";
-import { Map, List } from "lucide-react";
+import { Map, List, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type mapboxgl from "mapbox-gl";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
@@ -36,6 +37,26 @@ export default function SearchResults({
   );
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const qFromUrl = searchParams.get("q") || searchParams.get("query") || "";
+  const [queryInput, setQueryInput] = useState(qFromUrl);
+
+  useEffect(() => {
+    setQueryInput(qFromUrl);
+  }, [qFromUrl]);
+
+  const applySearchQuery = () => {
+    const params = new URLSearchParams(searchParams.toString());
+    const trimmed = queryInput.trim();
+    if (trimmed) {
+      params.set("q", trimmed);
+      params.delete("query");
+    } else {
+      params.delete("q");
+      params.delete("query");
+    }
+    params.delete("page");
+    router.push(`/search?${params.toString()}`);
+  };
 
   // Load categories on mount only when not provided by the server
   useEffect(() => {
@@ -221,9 +242,35 @@ export default function SearchResults({
     router.push(`/search?${params.toString()}`);
   };
 
+  const SearchQueryRow = () => (
+    <div className="mb-6 flex flex-col sm:flex-row gap-2 sm:items-center">
+      <div className="relative flex-1 min-w-0">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <Input
+          type="search"
+          value={queryInput}
+          onChange={(e) => setQueryInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              applySearchQuery();
+            }
+          }}
+          placeholder="Search by provider name or keywords…"
+          className="pl-10 h-11 bg-white border-gray-200"
+          aria-label="Search providers"
+        />
+      </div>
+      <Button type="button" onClick={applySearchQuery} className="shrink-0 h-11 px-6">
+        Search
+      </Button>
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
+        <SearchQueryRow />
         <LoadingTimeout loadingMessage="Searching providers..." />
       </div>
     );
@@ -232,6 +279,7 @@ export default function SearchResults({
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
+        <SearchQueryRow />
         <EmptyState
           title="Search failed"
           description={error}
@@ -247,6 +295,7 @@ export default function SearchResults({
   if (!results || results.providers.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
+        <SearchQueryRow />
         <FilterBar
           filters={[
             {
@@ -288,6 +337,7 @@ export default function SearchResults({
 
   return (
     <div className="container mx-auto px-4 py-8">
+      <SearchQueryRow />
       {/* Filters and View Toggle */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">

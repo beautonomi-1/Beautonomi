@@ -283,6 +283,10 @@ export interface Appointment {
   service_fee_amount?: number;
   /** Optional version for optimistic locking (PATCH) */
   version?: number;
+  /** Intake/consent/waiver answers from online checkout (`bookings.provider_form_responses`). */
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
+  /** Platform booking custom fields (from `custom_field_values` when loaded). */
+  custom_field_values?: Record<string, string | number | boolean | null> | null;
 }
 
 /**

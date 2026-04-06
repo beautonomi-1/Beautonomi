@@ -758,9 +758,14 @@ const LoginAccount = () => {
             <DialogTitle className="text-xl font-semibold tracking-tighter text-gray-900">
               Deactivate Your Account
             </DialogTitle>
-            <DialogDescription className="text-sm text-gray-600 font-light">
-              This will deactivate your account. You can reactivate later by{" "}
-              <a href="/reactivate" className="underline font-medium text-primary hover:no-underline">visiting the reactivate page</a> or logging in again.
+            <DialogDescription asChild>
+              <div className="text-sm text-gray-600 font-light">
+                This will deactivate your account. You can reactivate later by{" "}
+                <a href="/reactivate" className="underline font-medium text-primary hover:no-underline">
+                  visiting the reactivate page
+                </a>{" "}
+                or logging in again.
+              </div>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

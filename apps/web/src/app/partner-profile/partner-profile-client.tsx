@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import React, { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import PartnerHeroMobile from "./components/partner-hero-mobile";
 import PartnerHero from "./components/partner-hero";
@@ -67,6 +68,39 @@ export default function PartnerProfileClient({
   const { user, isLoading: authLoading } = useAuth();
   const { track, isReady } = useAmplitude();
   const profileViewTrackedRef = useRef(false);
+  const distanceEnrichedRef = useRef(false);
+  const router = useRouter();
+
+  /** Match list cards: add lat/lng from saved marketplace location so server can return distance_km. */
+  useEffect(() => {
+    if (distanceEnrichedRef.current || typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.get("lat") && url.searchParams.get("lng")) {
+        distanceEnrichedRef.current = true;
+        return;
+      }
+      if (!url.searchParams.get("slug")) return;
+      const raw = localStorage.getItem("userLocation");
+      if (!raw) {
+        distanceEnrichedRef.current = true;
+        return;
+      }
+      const loc = JSON.parse(raw) as { latitude?: number; longitude?: number };
+      const lat = Number(loc?.latitude);
+      const lng = Number(loc?.longitude);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        distanceEnrichedRef.current = true;
+        return;
+      }
+      url.searchParams.set("lat", String(lat));
+      url.searchParams.set("lng", String(lng));
+      distanceEnrichedRef.current = true;
+      router.replace(`${url.pathname}?${url.searchParams.toString()}`);
+    } catch {
+      distanceEnrichedRef.current = true;
+    }
+  }, [router]);
 
   useEffect(() => {
     if (provider && isReady && !profileViewTrackedRef.current) {

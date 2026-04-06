@@ -456,11 +456,16 @@ export async function checkAutomationFeatureAccess(
 
 /**
  * Check if provider has access to recurring appointments
+ *
+ * @param supabaseClient — Use the same client as the API route (`getSupabaseServer(request)`).
+ *   If omitted, uses cookie-only `getSupabaseServer()`, which breaks Bearer-token / mobile calls
+ *   and yields false "subscription required" 403s.
  */
 export async function checkRecurringAppointmentFeatureAccess(
-  providerId: string
+  providerId: string,
+  supabaseClient?: SupabaseClient
 ): Promise<RecurringAppointmentFeatureAccess> {
-  const supabase = await getSupabaseServer();
+  const supabase = supabaseClient ?? (await getSupabaseServer());
   const tier = await getProviderSubscriptionTier(supabase, providerId);
 
   if (!tier) {

@@ -13,6 +13,8 @@ interface FAQProps {
   applyBgPrimary?: boolean;
   category?: string;
   limit?: number;
+  /** Use partner-focused CMS category + curated fallback when API returns nothing. */
+  partnerPage?: boolean;
 }
 
 interface FAQItem {
@@ -54,7 +56,34 @@ const defaultFaqData: FAQItem[] = [
   },
 ];
 
-export default function FAQ({ applyBgPrimary, category, limit }: FAQProps) {
+const becomePartnerDefaultFaqData: FAQItem[] = [
+  {
+    id: "partner-1",
+    question: "How do I join Beautonomi as a provider?",
+    answer:
+      "Create a provider account and complete onboarding: business profile, services, availability, and payout details. Once verified, clients can book you through the marketplace.",
+  },
+  {
+    id: "partner-2",
+    question: "How do payouts and fees work?",
+    answer:
+      "You receive payouts according to your region and payout settings in the provider portal. Platform fees and settlement timing are shown in your dashboard and agreement—there are no hidden per-booking surprises in the product UI.",
+  },
+  {
+    id: "partner-3",
+    question: "Can I offer house calls and salon appointments?",
+    answer:
+      "Yes. You can configure house calls, salon locations, or both depending on your business. Travel fees and coverage are set per your rules and tenant configuration.",
+  },
+  {
+    id: "partner-4",
+    question: "How do clients book and pay?",
+    answer:
+      "Clients book through your public profile or the marketplace. Payments are processed securely; you see booking status, deposits, and paid amounts in your calendar and bookings list.",
+  },
+];
+
+export default function FAQ({ applyBgPrimary, category, limit, partnerPage }: FAQProps) {
   const [faqData, setFaqData] = useState<FAQItem[]>(defaultFaqData);
   const [_isLoading, setIsLoading] = useState(true);
 
@@ -64,7 +93,8 @@ export default function FAQ({ applyBgPrimary, category, limit }: FAQProps) {
         setIsLoading(true);
         let url = "/api/public/faqs";
         const params = new URLSearchParams();
-        if (category) params.append("category", category);
+        const effectiveCategory = category ?? (partnerPage ? "become-partner" : undefined);
+        if (effectiveCategory) params.append("category", effectiveCategory);
         if (limit) params.append("limit", limit.toString());
         if (params.toString()) url += `?${params.toString()}`;
 
@@ -98,20 +128,18 @@ export default function FAQ({ applyBgPrimary, category, limit }: FAQProps) {
           });
           setFaqData(transformed);
         } else {
-          // Use default FAQs if no data from API
-          setFaqData(defaultFaqData);
+          setFaqData(partnerPage ? becomePartnerDefaultFaqData : defaultFaqData);
         }
       } catch (error) {
         console.error("Error fetching FAQs:", error);
-        // Use default FAQs on error
-        setFaqData(defaultFaqData);
+        setFaqData(partnerPage ? becomePartnerDefaultFaqData : defaultFaqData);
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchFAQs();
-  }, [category, limit]);
+  }, [category, limit, partnerPage]);
   const onPrimary = !!applyBgPrimary;
   const headingClass = onPrimary
     ? "text-white md:mb-4 max-w-72 md:max-w-md text-[26px] md:text-4xl lg:text-[40px] font-normal lg:font-semibold"

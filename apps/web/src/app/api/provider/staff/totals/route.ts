@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     const { data: staffMembers } = await supabaseAdmin
       .from("provider_staff")
-      .select("id, user_id, users(full_name)")
+      .select("id, user_id, tips_enabled, commission_enabled, users(full_name)")
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
@@ -124,10 +124,15 @@ export async function GET(request: NextRequest) {
     const results: StaffTotalsItem[] = [];
 
     for (const staff of staffMembers) {
+      const staffRow = staff as {
+        id: string;
+        tips_enabled?: boolean | null;
+        commission_enabled?: boolean | null;
+      };
       const commission = await calculateStaffCommission(
         supabaseAdmin,
         providerId,
-        staff.id,
+        staffRow.id,
         fromDate,
         toDate
       );
@@ -138,7 +143,7 @@ export async function GET(request: NextRequest) {
       for (const b of bookings ?? []) {
         const row = b as BookingWithServices;
         const services = row.booking_services ?? [];
-        const staffServices = services.filter((s: { staff_id?: string }) => s.staff_id === staff.id);
+        const staffServices = services.filter((s: { staff_id?: string }) => s.staff_id === staffRow.id);
         if (staffServices.length === 0) continue;
         appointmentsCount += 1;
         const totalPrice = services.reduce((sum: number, x: { price?: number }) => sum + Number(x.price ?? 0), 0);
@@ -148,14 +153,17 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      const tipsEligible = staffRow.tips_enabled !== false;
+      const commissionEligible = staffRow.commission_enabled === true;
+
       results.push({
-        team_member_id: staff.id,
+        team_member_id: staffRow.id,
         team_member_name: (staff.users as { full_name?: string } | null)?.full_name ?? "Unknown",
         appointments_count: appointmentsCount,
         revenue,
-        tips: tipsByStaff.get(staff.id) || 0,
-        hours_worked: hoursByStaff.get(staff.id) || 0,
-        commission: commission.totalCommission,
+        tips: tipsEligible ? tipsByStaff.get(staffRow.id) || 0 : 0,
+        hours_worked: hoursByStaff.get(staffRow.id) || 0,
+        commission: commissionEligible ? commission.totalCommission : 0,
         rating: undefined,
       });
     }

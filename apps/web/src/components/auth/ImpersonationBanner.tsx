@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+/** Superadmin impersonation strip — used from global app shell (not legacy AdminShell-only). */
 export function ImpersonationBanner() {
   const { user, role, isLoading: authLoading } = useAuth();
   const [isImpersonating, setIsImpersonating] = useState(false);

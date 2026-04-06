@@ -33,11 +33,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { Money } from "@/components/provider-portal/Money";
 import { toast } from "sonner";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { useRouter } from "next/navigation";
+import { FetchError } from "@/lib/http/fetcher";
+import {
+  formatApiErrorMessage,
+  subscriptionUpgradeHint,
+} from "@/lib/http/api-error";
 
 export default function RecurringAppointmentsPage() {
+  const router = useRouter();
   const { selectedLocationId } = useProviderPortal();
   const [appointments, setAppointments] = useState<RecurringAppointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadBlocked, setLoadBlocked] = useState<{
+    message: string;
+    code?: string;
+  } | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -48,6 +59,7 @@ export default function RecurringAppointmentsPage() {
   const loadAppointments = useCallback(async () => {
     try {
       setIsLoading(true);
+      setLoadBlocked(null);
       const filters: FilterParams = {
         search: searchQuery || undefined,
         location_id: selectedLocationId || undefined,
@@ -59,7 +71,16 @@ export default function RecurringAppointmentsPage() {
       setTotalPages(response.total_pages);
     } catch (error) {
       console.error("Failed to load recurring appointments:", error);
-      toast.error("Failed to load recurring appointments");
+      const message =
+        formatApiErrorMessage(error, "Failed to load recurring appointments") +
+        subscriptionUpgradeHint(error);
+      setLoadBlocked({
+        message,
+        code: error instanceof FetchError ? error.code : undefined,
+      });
+      setAppointments([]);
+      setTotalPages(1);
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +114,10 @@ export default function RecurringAppointmentsPage() {
       loadAppointments();
     } catch (error) {
       console.error("Failed to delete appointment:", error);
-      toast.error("Failed to delete appointment");
+      toast.error(
+        formatApiErrorMessage(error, "Failed to delete appointment") +
+          subscriptionUpgradeHint(error)
+      );
     }
   };
 
@@ -145,6 +169,24 @@ export default function RecurringAppointmentsPage() {
         subtitle="Manage your repeating appointments and series"
       />
 
+      {loadBlocked && (
+        <div
+          className="mb-6 rounded-xl border border-amber-200/90 bg-amber-50/95 px-4 py-3 text-sm text-amber-950"
+          role="alert"
+        >
+          <p className="font-light leading-relaxed">{loadBlocked.message}</p>
+          {loadBlocked.code === "SUBSCRIPTION_REQUIRED" && (
+            <Button
+              type="button"
+              className="mt-3 bg-[#FF0077] hover:bg-[#D60565] text-white"
+              onClick={() => router.push("/provider/subscription")}
+            >
+              View plans & billing
+            </Button>
+          )}
+        </div>
+      )}
+
       {/* Filters */}
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
@@ -153,7 +195,12 @@ export default function RecurringAppointmentsPage() {
             placeholder="Search by client or service..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSearch();
+              }
+            }}
             className="pl-10"
           />
         </div>
@@ -167,7 +214,11 @@ export default function RecurringAppointmentsPage() {
         <SectionCard className="p-12">
           <EmptyState
             title="No recurring appointments"
-            description="Create recurring appointments from the calendar or appointment dialog"
+            description="From the calendar, open a new appointment, pick a saved client, turn on Repeating visit, then book."
+            action={{
+              label: "Open calendar",
+              onClick: () => router.push("/provider/calendar"),
+            }}
           />
         </SectionCard>
       ) : (
@@ -315,6 +366,7 @@ function RecurringAppointmentEditDialog({
   editMode: "single" | "series";
   onSuccess: () => void;
 }) {
+  const router = useRouter();
   const initialForm = useMemo(() => {
     const meta = (appointment.metadata || {}) as Record<string, unknown>;
     const dm =
@@ -339,10 +391,15 @@ function RecurringAppointmentEditDialog({
 
   const [formData, setFormData] = useState(initialForm);
   const [isLoading, setIsLoading] = useState(false);
+  const [editSubscriptionRequired, setEditSubscriptionRequired] = useState(false);
 
   useEffect(() => {
     if (open) setFormData(initialForm);
   }, [open, initialForm]);
+
+  useEffect(() => {
+    if (open) setEditSubscriptionRequired(false);
+  }, [open]);
 
   const mergedMetadata = useCallback(() => {
     const base =
@@ -405,7 +462,13 @@ function RecurringAppointmentEditDialog({
       onOpenChange(false);
     } catch (error) {
       console.error("Failed to update appointment:", error);
-      toast.error("Failed to update appointment");
+      const msg =
+        formatApiErrorMessage(error, "Failed to update appointment") +
+        subscriptionUpgradeHint(error);
+      toast.error(msg);
+      if (error instanceof FetchError && error.code === "SUBSCRIPTION_REQUIRED") {
+        setEditSubscriptionRequired(true);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -426,6 +489,24 @@ function RecurringAppointmentEditDialog({
               ? "Changes will apply to all future appointments in this series."
               : "This will create an exception for this specific appointment."}
           </div>
+
+          {editSubscriptionRequired && (
+            <div
+              className="rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-3 text-sm text-amber-950"
+              role="alert"
+            >
+              <p className="font-light leading-relaxed">
+                Your plan does not include editing recurring series. Upgrade to continue.
+              </p>
+              <Button
+                type="button"
+                className="mt-2 bg-[#FF0077] hover:bg-[#D60565] text-white"
+                onClick={() => router.push("/provider/subscription")}
+              >
+                View plans & billing
+              </Button>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

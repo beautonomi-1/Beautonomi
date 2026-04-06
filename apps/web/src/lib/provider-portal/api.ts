@@ -770,6 +770,12 @@ export class ProviderApiClient implements ProviderApi {
       (apt as any).is_group_booking = booking.is_group_booking || false;
       (apt as any).group_booking_ref = booking.group_booking_ref || null;
       (apt as any).participants = booking.participants || [];
+      if (booking.provider_form_responses != null) {
+        (apt as any).provider_form_responses = booking.provider_form_responses;
+      }
+      if (booking.custom_field_values != null) {
+        (apt as any).custom_field_values = booking.custom_field_values;
+      }
       return apt;
     } catch (error) {
       console.error("Failed to fetch appointment:", error);
@@ -872,6 +878,16 @@ export class ProviderApiClient implements ProviderApi {
       ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
       ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
       ...(db_status !== undefined ? { db_status } : {}),
+      ...(booking.provider_form_responses != null &&
+      typeof booking.provider_form_responses === "object" &&
+      Object.keys(booking.provider_form_responses).length > 0
+        ? { provider_form_responses: booking.provider_form_responses }
+        : {}),
+      ...(booking.custom_field_values != null &&
+      typeof booking.custom_field_values === "object" &&
+      Object.keys(booking.custom_field_values).length > 0
+        ? { custom_field_values: booking.custom_field_values }
+        : {}),
     } as Appointment;
   }
 
@@ -3901,6 +3917,7 @@ export class ProviderApiClient implements ProviderApi {
       if (filters?.date_from) params.append("date_from", filters.date_from);
       if (filters?.date_to) params.append("date_to", filters.date_to);
       if (filters?.team_member_id) params.append("staff_id", filters.team_member_id);
+      if (filters?.location_id) params.append("location_id", filters.location_id);
       
       const response = await fetcher.get<{ data: any[] }>(`/api/provider/time-blocks?${params.toString()}`);
       return (response.data || []).map((tb: any) => ({

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, handleApiError } from "@/lib/supabase/api-helpers";
 
 function csvEscape(value: any): string {
@@ -35,6 +36,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const db = getSupabaseAdmin();
+
     const { searchParams } = new URL(request.url);
     const range = searchParams.get("range") || "month";
     const now = new Date();
@@ -42,7 +45,7 @@ export async function GET(request: NextRequest) {
     const startIso = startDate.toISOString();
     const endIso = now.toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("finance_transactions")
       .select("id, created_at, transaction_type, amount, net, description")
       .eq("provider_id", providerId)

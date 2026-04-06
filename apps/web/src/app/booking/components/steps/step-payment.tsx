@@ -816,8 +816,20 @@ export default function StepPayment({
         {/* Totals */}
         <div className="p-4 bg-gray-50 rounded-lg space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">{t("booking.subtotal")}</span>
-            <span className="font-medium">{formatCurrency(totals.subtotal, totals.currency)}</span>
+            <span className="text-gray-600">Services, add-ons &amp; products</span>
+            <span className="font-medium">
+              {formatCurrency(totals.services + totals.addons + totals.products, totals.currency)}
+            </span>
+          </div>
+          {totals.travelFee > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Travel fee</span>
+              <span>{formatCurrency(totals.travelFee, totals.currency)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-xs text-gray-500 border-b border-gray-200/80 pb-2">
+            <span>Booking subtotal (before discounts)</span>
+            <span>{formatCurrency(totals.subtotal, totals.currency)}</span>
           </div>
           {bookingState.promotions.couponDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
@@ -853,6 +865,14 @@ export default function StepPayment({
             <div className="flex justify-between text-sm text-gray-600">
               <span>Service Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
+            </div>
+          )}
+          {totals.taxAmount > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>
+                Tax{totals.taxRate > 0 ? ` (${Number(totals.taxRate).toFixed(2)}%)` : ""}
+              </span>
+              <span>{formatCurrency(totals.taxAmount, totals.currency)}</span>
             </div>
           )}
           {tipAmount > 0 && (

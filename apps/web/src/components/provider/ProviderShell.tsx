@@ -51,15 +51,15 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
   // Pages that need special full-height treatment
   const isCalendarPage = pathname?.startsWith("/provider/calendar");
   const isWaitingRoomPage = pathname?.startsWith("/provider/waiting-room");
-  const isFullHeightPage = isCalendarPage || isWaitingRoomPage;
+  const isMessagingPage = pathname?.startsWith("/provider/messaging");
+  const isFullHeightPage = isCalendarPage || isWaitingRoomPage || isMessagingPage;
 
   return (
     <div className={cn(
       "bg-gray-50 overflow-x-hidden w-full max-w-full box-border",
-      // Mobile: always min-h-screen for natural page scrolling (fluid layout)
-      // Desktop: h-screen for full-height pages to enable viewport-constrained layout
-      "min-h-screen",
-      isFullHeightPage && "md:h-screen md:max-h-screen"
+      isFullHeightPage
+        ? "flex flex-col min-h-[100dvh] md:h-screen md:max-h-screen"
+        : "min-h-screen"
     )}>
       {/* Desktop Sidebar */}
       <ProviderSidebar />
@@ -70,6 +70,8 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
           "transition-all duration-300 ease-in-out w-full max-w-full min-w-0 overflow-x-hidden box-border",
           // Mobile: natural flow (no min-h-screen); Desktop: fill viewport
           "flex flex-col md:min-h-screen",
+          // Full-height pages need flex-1 on mobile so main can shrink for viewport-bound children (e.g. messaging).
+          isFullHeightPage && "flex-1 min-h-0",
           // Desktop: strict height for full-height pages
           isFullHeightPage && "md:h-full",
           isExpanded 
@@ -85,15 +87,14 @@ export function ProviderShell({ children }: { children: React.ReactNode }) {
         {/* Main Content */}
         <main className={cn(
           "w-full max-w-full min-w-0 box-border",
-          // Desktop: flex-1 to fill viewport height; Mobile: natural flow (page scrolls)
-          "md:flex-1 md:min-h-0",
-          isFullHeightPage 
-            ? "px-0 py-0 md:px-4 md:py-4 lg:px-6 md:overflow-hidden" 
-            : "px-4 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6 lg:py-8 max-w-[1600px] mx-auto"
+          // Full-height routes: flex column on all breakpoints so nested chat/calendar can use min-h-0.
+          isFullHeightPage
+            ? "flex-1 flex flex-col min-h-0 overflow-hidden px-0 py-0 md:px-4 md:py-4 lg:px-6"
+            : "md:flex-1 md:min-h-0 px-4 sm:px-4 md:px-6 lg:px-8 xl:px-12 py-4 sm:py-6 lg:py-8 max-w-[1600px] mx-auto"
         )}>
           <div className={cn(
             "w-full max-w-full box-border",
-            isFullHeightPage ? "md:h-full md:flex md:flex-col" : ""
+            isFullHeightPage ? "flex-1 flex flex-col min-h-0 md:h-full" : ""
           )}>
             {children}
           </div>

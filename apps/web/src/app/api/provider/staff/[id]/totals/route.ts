@@ -54,7 +54,7 @@ export async function GET(
 
     const { data: staff } = await supabaseAdmin
       .from("provider_staff")
-      .select("id, user_id, users(full_name)")
+      .select("id, user_id, tips_enabled, commission_enabled, users(full_name)")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -140,7 +140,9 @@ export async function GET(
     );
 
     const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate);
-    const tips = tipsByStaff.get(id) || 0;
+    const tipsEligible = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
+    const tips = tipsEligible ? tipsByStaff.get(id) || 0 : 0;
+    const commissionEligible = (staff as { commission_enabled?: boolean | null }).commission_enabled === true;
 
     const item: StaffTotalsItem = {
       team_member_id: id,
@@ -149,7 +151,7 @@ export async function GET(
       revenue,
       tips,
       hours_worked: hoursWorked,
-      commission: commission.totalCommission,
+      commission: commissionEligible ? commission.totalCommission : 0,
       rating: undefined,
     };
 

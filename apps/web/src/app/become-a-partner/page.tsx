@@ -23,7 +23,7 @@ export default function BecomeAPartnerPage() {
       <WhyDifferentSection />
       <FeaturesSection />
       <CTASection />
-      <FAQ applyBgPrimary={true} />
+      <FAQ applyBgPrimary={true} partnerPage />
       <Footer />
     </div>
   );

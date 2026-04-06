@@ -15,6 +15,7 @@ import { GET as getProviderBookings } from "@/app/api/provider/bookings/route";
 import { GET as getProviderTimeBlocks } from "@/app/api/provider/time-blocks/route";
 import { GET as getProviderAvailabilityBlocks } from "@/app/api/provider/availability-blocks/route";
 import { GET as getProviderStaffUnavailability } from "@/app/api/provider/calendar/staff-unavailability/route";
+import { expandTimeBlocksForCalendarRange } from "@/components/provider-portal/calendar/expand-time-blocks";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -265,7 +266,9 @@ export async function fetchCalendarInitial(searchParams: {
     const availPayload = (await availRes.json()) as { data?: AvailabilityBlockRaw[] } | null;
     const unavailPayload = (await unavailRes.json()) as { data?: AvailabilityBlockDisplay[] } | null;
 
-    const timeBlocks = blocksRes.ok ? mapTimeBlockRows(blocksPayload?.data || []) : [];
+    const timeBlocks = blocksRes.ok
+      ? expandTimeBlocksForCalendarRange(mapTimeBlockRows(blocksPayload?.data || []), dateFrom, dateTo)
+      : [];
     const rawAvail = normalizeAvailabilityBlocksToDisplay(availRes.ok ? availPayload?.data || [] : []);
     const sanitizedAvail = sanitizeAvailabilityBlocks(rawAvail);
     const staffUnavail = unavailRes.ok ? unavailPayload?.data || [] : [];

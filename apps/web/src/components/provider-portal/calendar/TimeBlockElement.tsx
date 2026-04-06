@@ -74,7 +74,7 @@ function TimeBlockElementComponent({
   return (
     <div
       className={cn(
-        "absolute left-1 right-1 rounded-md px-2 py-1 transition-opacity",
+        "absolute left-1 right-1 rounded-md px-2 py-1 transition-opacity z-[8]",
         !isAvailability && "cursor-pointer hover:opacity-90",
       )}
       style={{

@@ -91,7 +91,9 @@ export default function FinanceHubPage() {
       setIsLoading(true);
       setError(null);
       const [financeRes, accountsRes, payoutsRes] = await Promise.all([
-        fetcher.get<{ data: { earnings: EarningsData } }>("/api/provider/finance?range=month"),
+        fetcher.get<{ data: { earnings: EarningsData } }>("/api/provider/finance?range=month", {
+          staleTimeMs: 0,
+        }),
         fetcher.get<{ data: PayoutAccount[] }>("/api/provider/payout-accounts"),
         fetcher.get<{ data: Payout[] }>("/api/provider/payouts"),
       ]);

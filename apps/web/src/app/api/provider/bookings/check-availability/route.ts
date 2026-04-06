@@ -3,6 +3,7 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
+import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
@@ -54,6 +55,18 @@ export async function GET(request: NextRequest) {
 
     const conflicts: string[] = [];
     const staffIds = staffIdsParam ? staffIdsParam.split(",").filter(Boolean) : [];
+
+    const holdStaffId = staffIds.length === 1 ? staffIds[0] : null;
+    const holdBlocked = await checkActiveHoldOverlap(
+      supabaseAdmin,
+      providerId,
+      startTime,
+      endTime,
+      { dbStaffId: holdStaffId }
+    );
+    if (holdBlocked) {
+      conflicts.push("Another customer is holding this time slot (checkout in progress)");
+    }
 
     // 1) Existing bookings overlap
     let query = supabaseAdmin

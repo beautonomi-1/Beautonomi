@@ -26,6 +26,7 @@ export {
   extractIconFlags,
   toMangomintAppointment,
   toMangomintBlock,
+  availabilityDisplayToMangomintBlock,
   
   // Travel block generation
   generateTravelBlocks,

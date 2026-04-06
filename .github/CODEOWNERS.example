@@ -1,0 +1,11 @@
+# Example CODEOWNERS for admin platform governance.
+# Copy to `.github/CODEOWNERS` and replace @your-org/... with real GitHub teams or users.
+#
+# See: docs/platform/admin-spa/ADMIN_PLATFORM_GOVERNANCE.md §3
+
+# /apps/admin-web/ @your-org/admin-frontend
+# /packages/admin-access/ @your-org/admin-frontend @your-org/security
+# /packages/admin-api-client/ @your-org/admin-frontend
+# /apps/web/src/app/api/admin/ @your-org/backend @your-org/admin-frontend
+# /apps/web/src/proxy.ts @your-org/platform @your-org/admin-frontend
+# /apps/web/scripts/sync-admin-spa.mjs @your-org/platform @your-org/admin-frontend

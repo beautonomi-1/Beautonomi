@@ -70,7 +70,10 @@ export async function calculatePayRun(
     const hours = hoursByStaff.get(staff.id) || 0;
     const hourlyRate = Number(staff.hourly_rate || 0);
     const salary = Number(staff.salary || 0);
-    const commissionAmount = staff.commission_enabled ? commission.totalCommission : 0;
+    const commissionAmount =
+      (staff as { commission_enabled?: boolean | null }).commission_enabled === true
+        ? commission.totalCommission
+        : 0;
     const hourlyAmount = hours * hourlyRate;
     const salaryAmount =
       periodType === "weekly"
@@ -78,7 +81,9 @@ export async function calculatePayRun(
         : periodType === "monthly"
           ? salary
           : salary / 4;
-    const tipsAmount = staff.tips_enabled ? (tipsByStaff.get(staff.id) || 0) : 0;
+    // tips_enabled defaults true in DB; only exclude when explicitly false
+    const staffTipsEnabled = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
+    const tipsAmount = staffTipsEnabled ? (tipsByStaff.get(staff.id) || 0) : 0;
 
     const grossPay = commissionAmount + hourlyAmount + (salary > 0 ? salaryAmount : 0) + tipsAmount;
     const manualDeductions = 0;

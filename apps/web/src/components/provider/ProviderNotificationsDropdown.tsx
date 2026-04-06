@@ -121,15 +121,36 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string" && UUID_RE.test(value.trim());
+}
+
 function deriveNotificationUrl(notification: Notification): string | undefined {
-  if (notification.link) return notification.link;
+  if (notification.link && typeof notification.link === "string" && notification.link.startsWith("/")) {
+    return notification.link;
+  }
   const d = { ...notification.data, ...notification.metadata };
-  if (d?.booking_id) return `/provider/bookings/${d.booking_id}`;
-  if (d?.conversation_id) return `/provider/messaging?id=${d.conversation_id}`;
-  if (d?.appointment_id) return `/provider/calendar`;
-  if (d?.client_id) return `/provider/clients/${d.client_id}`;
-  if (d?.staff_id) return `/provider/team/members`;
-  if (d?.order_id) return `/provider/orders/${d.order_id}`;
+  if (d?.booking_id != null && isUuid(d.booking_id)) {
+    return `/provider/bookings/${String(d.booking_id).trim()}`;
+  }
+  if (d?.conversation_id != null && isUuid(d.conversation_id)) {
+    return `/provider/messaging?id=${encodeURIComponent(String(d.conversation_id).trim())}`;
+  }
+  if (d?.appointment_id != null && isUuid(d.appointment_id)) {
+    return `/provider/calendar`;
+  }
+  if (d?.client_id != null && isUuid(d.client_id)) {
+    return `/provider/clients/${String(d.client_id).trim()}`;
+  }
+  if (d?.order_id != null && isUuid(d.order_id)) {
+    return `/provider/orders/${String(d.order_id).trim()}`;
+  }
+  if (d?.staff_id != null && isUuid(d.staff_id)) {
+    return `/provider/team/members`;
+  }
   return undefined;
 }
 
@@ -276,7 +297,7 @@ export function ProviderNotificationsDropdown() {
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
       try {
-        await fetcher.post(`/api/provider/notifications/${notification.id}/read`);
+        await fetcher.post(`/api/provider/notifications/${notification.id}/read`, {});
         setNotifications((prev) =>
           prev.map((n) =>
             n.id === notification.id ? { ...n, read: true } : n
@@ -285,13 +306,19 @@ export function ProviderNotificationsDropdown() {
         setTotalUnread((prev) => Math.max(0, prev - 1));
       } catch (error) {
         console.error('Failed to mark notification as read:', error);
+        toast.error('Could not mark notification as read');
       }
     }
 
     const url = deriveNotificationUrl(notification);
     if (url) {
       setOpen(false);
-      router.push(url);
+      try {
+        router.push(url);
+      } catch (e) {
+        console.error('Navigation failed:', e);
+        toast.error('Could not open link for this notification');
+      }
     } else {
       setExpandedId((prev) => (prev === notification.id ? null : notification.id));
     }
@@ -316,7 +343,7 @@ export function ProviderNotificationsDropdown() {
 
   const handleMarkAllRead = async () => {
     try {
-      await fetcher.post('/api/provider/notifications/mark-all-read');
+      await fetcher.post('/api/provider/notifications/mark-all-read', {});
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setTotalUnread(0);
       toast.success('All notifications marked as read');
@@ -404,10 +431,18 @@ export function ProviderNotificationsDropdown() {
                 const derivedUrl = deriveNotificationUrl(notification);
                 return (
                   <div key={notification.id}>
-                    <button
-                      onClick={() => handleNotificationClick(notification)}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void handleNotificationClick(notification);
+                        }
+                      }}
+                      onClick={() => void handleNotificationClick(notification)}
                       className={cn(
-                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors",
+                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors cursor-pointer",
                         !notification.read && "bg-blue-50/50"
                       )}
                     >
@@ -433,6 +468,7 @@ export function ProviderNotificationsDropdown() {
                                 <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5" />
                               )}
                               <button
+                                type="button"
                                 onClick={(e) => handleDeleteNotification(e, notification.id)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
                                 title="Delete notification"
@@ -456,7 +492,7 @@ export function ProviderNotificationsDropdown() {
                           </div>
                         </div>
                       </div>
-                    </button>
+                    </div>
                     {isExpanded && !derivedUrl && (
                       <div className="px-4 pb-3 pt-0 ml-12 text-xs text-gray-500 space-y-1 border-b">
                         <p className="text-gray-600">{notification.message}</p>

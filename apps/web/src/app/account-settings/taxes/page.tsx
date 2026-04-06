@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { FileText, Receipt, Plus, Edit, Download, HelpCircle } from "lucide-react";
+import { FileText, Receipt, Plus, Edit, Download, HelpCircle, Info } from "lucide-react";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
@@ -159,6 +159,17 @@ const TaxesPage = () => {
             >
               Taxes
             </motion.h1>
+
+            <div
+              className="mb-6 flex gap-3 rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 text-sm text-sky-950 backdrop-blur-sm"
+              role="status"
+            >
+              <Info className="h-5 w-5 shrink-0 text-sky-600 mt-0.5" aria-hidden />
+              <p className="font-light leading-relaxed">
+                <span className="font-medium">Coming soon:</span> deeper tax filing helpers and automated document delivery.
+                You can still save taxpayer details and download documents below when they are available for your account.
+              </p>
+            </div>
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="mb-6 grid grid-cols-2 w-full h-auto p-1 bg-gray-100 rounded-xl shadow-inner border border-gray-200">

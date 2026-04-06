@@ -25,6 +25,7 @@ export function CalendarMobileWithDnd({
   timeBlocks = [],
   onReschedule,
   enableConflictValidation = true,
+  availabilityBlocks = [],
   ...mobileProps
 }: CalendarMobileWithDndProps) {
   return (
@@ -32,10 +33,11 @@ export function CalendarMobileWithDnd({
       teamMembers={mobileProps.teamMembers}
       allAppointments={allAppointments}
       timeBlocks={timeBlocks}
+      availabilityBlocks={availabilityBlocks}
       enableConflictValidation={enableConflictValidation}
       onReschedule={onReschedule}
     >
-      <CalendarMobileView {...mobileProps} />
+      <CalendarMobileView {...mobileProps} availabilityBlocks={availabilityBlocks} />
     </DragDropProvider>
   );
 }

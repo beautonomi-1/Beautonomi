@@ -10,6 +10,14 @@ import { fileURLToPath } from "node:url";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const nextCli = join(root, "node_modules", "next", "dist", "bin", "next");
 
+const syncAdmin = spawnSync(process.execPath, [join(root, "scripts", "sync-admin-spa.mjs")], {
+  cwd: root,
+  stdio: "inherit",
+});
+if (syncAdmin.status !== 0 && syncAdmin.status !== null) {
+  process.exit(syncAdmin.status);
+}
+
 // Use Turbopack on memory-constrained CI (GHA) and Vercel — webpack `next build` often exceeds ~6GB heap.
 // Override: NEXT_WEB_FORCE_WEBPACK=1 to force webpack when debugging a Turbopack-only issue.
 const useTurbopack =

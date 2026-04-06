@@ -62,5 +62,8 @@ ios/Pods/
 android/.gradle/
 android/local.properties
 
+# --- Playwright (admin-web E2E) ---
+apps/admin-web/test-results/
+
 # --- Vercel ---
 .vercel/

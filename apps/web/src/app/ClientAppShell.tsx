@@ -8,7 +8,7 @@ import { Toaster } from "sonner";
 import AmplitudeProviderWrapper from "@/components/analytics/AmplitudeProvider";
 import SessionTracker from "@/components/analytics/SessionTracker";
 import DynamicBranding from "@/components/platform/DynamicBranding";
-import { ImpersonationBanner } from "@/components/admin/ImpersonationBanner";
+import { ImpersonationBanner } from "@/components/auth/ImpersonationBanner";
 import FaviconSpinner from "@/components/global/favicon-spinner";
 import AuthLoadingSpinner from "@/components/global/auth-loading-spinner";
 import I18nInit from "@/components/i18n/I18nInit";

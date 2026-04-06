@@ -56,6 +56,10 @@ import { trackCalendarView } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
+import {
+  expandTimeBlocksForCalendarRange,
+  resolveTimeBlockRecordId,
+} from "@/lib/expand-time-blocks";
 
 /* ================================================================== */
 /*  Types                                                              */
@@ -108,6 +112,10 @@ interface TimeBlock {
   availability_block_id?: string;
   /** Distinguishes overlay rows for tap actions / CRUD. */
   calendar_overlay_kind?: "availability" | "staff_off" | "time_block";
+  /** From GET /api/provider/time-blocks (`recurring_pattern`); used to expand recurring rows on the client. */
+  is_recurring?: boolean;
+  is_active?: boolean;
+  recurrence_rule?: unknown;
 }
 
 /** Raw rows from GET /api/provider/availability-blocks (same table public booking uses). */
@@ -742,6 +750,7 @@ export default function CalendarScreen() {
         team_member_id?: string | null;
         name?: string;
         blocked_time_type_name?: string;
+        recurring_pattern?: unknown;
       };
       const st = String(raw.start_time ?? "00:00").slice(0, 5);
       const et = String(raw.end_time ?? "00:00").slice(0, 5);
@@ -754,9 +763,17 @@ export default function CalendarScreen() {
         end_time: et,
         date: raw.date,
         calendar_overlay_kind: "time_block" as const,
+        is_recurring: !!raw.is_recurring,
+        is_active: raw.is_active !== false,
+        recurrence_rule: raw.recurrence_rule ?? raw.recurring_pattern,
       };
     });
   }, [timeBlocks]);
+
+  const expandedApiTimeBlocks = useMemo(
+    () => expandTimeBlocksForCalendarRange(normalizedApiTimeBlocks, startDate, endDate),
+    [normalizedApiTimeBlocks, startDate, endDate],
+  );
 
   useEffect(() => {
     if (!isFocused || !user?.id) return;
@@ -979,8 +996,8 @@ export default function CalendarScreen() {
       out.push(availabilitySegmentToTimeBlock(seg));
     }
 
-    if (preferences.showProcessingAndBuffer && normalizedApiTimeBlocks.length > 0) {
-      for (const tb of normalizedApiTimeBlocks) {
+    if (preferences.showProcessingAndBuffer && expandedApiTimeBlocks.length > 0) {
+      for (const tb of expandedApiTimeBlocks) {
         if (tb.date !== dayStr) continue;
         if (!blockMatchesStaff(tb.staff_id)) continue;
         out.push(tb);
@@ -1359,7 +1376,8 @@ export default function CalendarScreen() {
                 text: "Delete",
                 style: "destructive",
                 onPress: async () => {
-                  const { error } = await deleteCalendarTimeBlock(`/api/provider/time-blocks/${block.id}`);
+                  const recordId = resolveTimeBlockRecordId(block);
+                  const { error } = await deleteCalendarTimeBlock(`/api/provider/time-blocks/${recordId}`);
                   if (error) {
                     Alert.alert("Error", error);
                     return;

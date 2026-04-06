@@ -423,6 +423,12 @@ export default function CustomRequestsPage() {
                               <Button variant="secondary" disabled>
                                 Paid
                               </Button>
+                            ) : ["withdrawn", "declined", "expired", "accepted"].includes(
+                                String(o.status || "").toLowerCase()
+                              ) ? (
+                              <Button variant="secondary" disabled className="capitalize">
+                                {o.status === "withdrawn" ? "Withdrawn" : o.status}
+                              </Button>
                             ) : (
                               <Button onClick={() => acceptAndPay(o.id)}>Accept & Pay</Button>
                             )}

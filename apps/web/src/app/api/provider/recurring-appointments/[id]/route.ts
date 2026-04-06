@@ -38,7 +38,7 @@ export async function PATCH(
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
@@ -118,6 +118,15 @@ export async function DELETE(
     
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const recurringAccessDelete = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
+    if (!recurringAccessDelete.enabled) {
+      return errorResponse(
+        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        "SUBSCRIPTION_REQUIRED",
+        403
+      );
     }
 
     // Verify appointment belongs to provider

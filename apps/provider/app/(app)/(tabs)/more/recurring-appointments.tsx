@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Switch,
+  Linking,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -22,6 +23,29 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Colors } from "@/constants/colors";
+import { APP_URL } from "@/config/public-env";
+
+function providerSubscriptionUrl(): string {
+  const base = (APP_URL || "").replace(/\/$/, "");
+  if (!base) return "/provider/subscription";
+  return `${base}/provider/subscription`;
+}
+
+function alertApiError(title: string, message: string, errorCode: string | null) {
+  if (errorCode === "SUBSCRIPTION_REQUIRED") {
+    Alert.alert(title, message, [
+      { text: "OK", style: "cancel" },
+      {
+        text: "View plans & billing",
+        onPress: () => {
+          void Linking.openURL(providerSubscriptionUrl());
+        },
+      },
+    ]);
+    return;
+  }
+  Alert.alert(title, message);
+}
 
 interface RecurringAppointment {
   id: string;
@@ -168,7 +192,7 @@ export default function RecurringAppointmentsScreen() {
   const recurringUrl = selectedLocationId
     ? `/api/provider/recurring-appointments?limit=100&location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/recurring-appointments?limit=100";
-  const { data, loading, error, refresh } = useApi<RecurringListResponse>(recurringUrl);
+  const { data, loading, error, errorCode, refresh } = useApi<RecurringListResponse>(recurringUrl);
   const { execute: patchRecurring, loading: patching } = useApiMutation("patch");
   const { execute: deleteRecurring } = useApiMutation("delete");
 
@@ -215,10 +239,13 @@ export default function RecurringAppointmentsScreen() {
     };
     if (editNoEnd) body.end_date = null;
     else body.end_date = editEnd.trim();
-    const { error: err } = await patchRecurring(`/api/provider/recurring-appointments/${viewItem.id}`, body);
+    const { error: err, errorCode: patchCode } = await patchRecurring(
+      `/api/provider/recurring-appointments/${viewItem.id}`,
+      body
+    );
     setSavingEdit(false);
     if (err) {
-      Alert.alert("Error", err);
+      alertApiError("Could not save", err, patchCode);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setViewItem(null);
@@ -230,12 +257,12 @@ export default function RecurringAppointmentsScreen() {
     async (item: RecurringAppointment) => {
       const newActive = !item.is_active;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await patchRecurring(
+      const { error: err, errorCode: patchCode } = await patchRecurring(
         `/api/provider/recurring-appointments/${item.id}`,
         { is_active: newActive }
       );
       if (err) {
-        Alert.alert("Error", err);
+        alertApiError("Could not update", err, patchCode);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setViewItem(null);
@@ -257,12 +284,12 @@ export default function RecurringAppointmentsScreen() {
             style: "destructive",
             onPress: async () => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-              const { error: err } = await deleteRecurring(
+              const { error: err, errorCode: delCode } = await deleteRecurring(
                 `/api/provider/recurring-appointments/${item.id}`,
                 {}
               );
               if (err) {
-                Alert.alert("Error", err);
+                alertApiError("Could not delete", err, delCode);
               } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
                 setViewItem(null);
@@ -288,16 +315,33 @@ export default function RecurringAppointmentsScreen() {
   }
 
   if (error && !data) {
-    const is403 =
-      error.toLowerCase().includes("subscription") || error.toLowerCase().includes("upgrade");
+    const isSub =
+      errorCode === "SUBSCRIPTION_REQUIRED" ||
+      error.toLowerCase().includes("subscription") ||
+      error.toLowerCase().includes("upgrade");
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Recurring Appointments" showBack />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState
-            message={is403 ? "This feature requires a Starter plan or higher." : error}
-            onRetry={is403 ? undefined : refresh}
+            message={isSub ? "This feature requires a plan that includes recurring appointments." : error}
+            onRetry={isSub ? undefined : refresh}
           />
+          {isSub && errorCode === "SUBSCRIPTION_REQUIRED" && (
+            <TouchableOpacity
+              onPress={() => void Linking.openURL(providerSubscriptionUrl())}
+              style={{
+                marginTop: 20,
+                alignSelf: "center",
+                backgroundColor: "#FF0077",
+                paddingVertical: 12,
+                paddingHorizontal: 20,
+                borderRadius: 12,
+              }}
+            >
+              <Text style={{ color: "#fff", fontWeight: "600" }}>View plans & billing</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScreenContainer>
     );

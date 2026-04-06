@@ -249,6 +249,25 @@ describe("canPlace", () => {
     expect(result.conflictsWith).toContain("block:block-1");
   });
 
+  it("should block placement when provider-wide block has empty staffId", () => {
+    const salonWide = createMockMangomintBlock({
+      id: "block-salon",
+      startTime: "14:00",
+      endTime: "15:00",
+      staffId: "",
+    });
+
+    const result = canPlace(
+      { startTime: "14:30", durationMinutes: 60, staffId: "staff-1" },
+      { date: "2024-01-15", time: "14:30", staffId: "staff-1" },
+      [],
+      [salonWide]
+    );
+
+    expect(result.valid).toBe(false);
+    expect(result.conflictsWith).toContain("block:block-salon");
+  });
+
   it("should allow placement for different staff member", () => {
     const existing = createMockMangomintAppointment({
       startTimeLocal: "10:00",

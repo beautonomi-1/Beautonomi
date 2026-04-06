@@ -45,6 +45,10 @@ import { WaitingRoomButton, WaitingRoomPanel } from "@/components/waitingRoom";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { ServiceItem, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
+import {
+  expandTimeBlocksForCalendarRange,
+  resolveTimeBlockRecordId,
+} from "@/components/provider-portal/calendar/expand-time-blocks";
 import { AppointmentStatus, mapStatus } from "@/lib/scheduling/mangomintAdapter";
 import { TimeBlockSidebar } from "@/components/calendar/TimeBlockSidebar";
 import { useTimeBlockSidebar, openEditTimeBlockMode } from "@/stores/time-block-sidebar-store";
@@ -700,6 +704,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             date_from: dateFrom,
             date_to: dateTo,
             ...(selectedTeamMember !== "all" && { team_member_id: selectedTeamMember }),
+            ...(selectedLocationId && { location_id: selectedLocationId }),
           }),
           providerApi.listAvailabilityBlocks({ from: fromIso, to: toIso }),
           providerApi.listStaffCalendarUnavailability({
@@ -728,7 +733,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         });
 
         setAppointments(apptsResponse.data);
-        setTimeBlocks(blocks);
+        setTimeBlocks(expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo));
         setAvailabilityBlocks(mergedAvailOverlay);
         setTeamMembers((prevMembers) => {
           // Initialize selectedTeamMemberIds when members are loaded
@@ -1031,9 +1036,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     setSelectedDate(nowInTz(businessTz));
   };
 
-  const handleAppointmentClick = (appointment: Appointment) => {
-    openViewMode(appointment);
-  };
+  const handleAppointmentClick = useCallback(async (appointment: Appointment) => {
+    const bookingId = appointment.booking_id
+      ? appointment.booking_id
+      : appointment.id.includes("-svc-")
+        ? appointment.id.split("-svc-")[0]
+        : appointment.id;
+    try {
+      const full = await providerApi.getAppointment(bookingId);
+      openViewMode(full);
+    } catch {
+      openViewMode(appointment);
+    }
+  }, []);
 
   const handleTimeSlotClick = (date: Date, time: string, teamMemberId: string) => {
     const currentLocation = selectedLocationId 
@@ -1688,7 +1703,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   onAppointmentClick={handleAppointmentClick}
                   onTimeSlotClick={handleTimeSlotClick}
                   onTimeBlockClick={(block) => {
-                    openEditTimeBlockMode(block);
+                    openEditTimeBlockMode({
+                      ...block,
+                      id: resolveTimeBlockRecordId(block),
+                    });
                   }}
                   onCheckout={(apt) => {
                     setSelectedAppointment(apt);
@@ -1778,7 +1796,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   setSelectedDate(date);
                 }
               }}
-              onAppointmentClick={(apt) => openViewMode(apt)}
+              onAppointmentClick={handleAppointmentClick}
               onTimeSlotClick={(date, time, teamMemberId) => {
                 const currentLocation = selectedLocationId
                   ? salons.find(s => s.id === selectedLocationId)
@@ -2190,8 +2208,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           waitingAppointments={waitingAppointments}
           onClose={() => setIsWaitingRoomOpen(false)}
           onRefresh={loadData}
-          onAppointmentClick={(apt) => {
-            openViewMode(apt);
+          onAppointmentClick={async (apt) => {
+            await handleAppointmentClick(apt);
             setIsWaitingRoomOpen(false);
           }}
         />

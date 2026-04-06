@@ -74,7 +74,7 @@ function GestureLayerComponent({
             )}
           >
             <div
-              className="relative"
+              className="relative z-[1]"
               style={{
                 height: `${HOUR_HEIGHT}px`,
                 backgroundColor: isNonWorking && !isHighContrast ? "#f3f4f6" : undefined,

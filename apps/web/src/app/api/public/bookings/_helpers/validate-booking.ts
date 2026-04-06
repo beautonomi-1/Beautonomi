@@ -1082,6 +1082,38 @@ export async function validateBooking(
   // after the guest signs in and pays (recomputed duration can extend past the slot grid window).
   const bookingEnd = holdReservedEndAt ?? bookingEndFromServices;
 
+  // ── Provider calendar blocks (time blocks, availability, staff off) ─────
+  // Same sources as GET /api/public/providers/[slug]/availability; prevents bypass when draft skipped staff conflict paths.
+  const locationIdForCalendar =
+    draft.location_type === "at_salon" ? draft.location_id ?? null : null;
+  {
+    const { isProviderCalendarWindowBlocked } = await import(
+      "@/lib/public-booking/provider-calendar-block-overlap"
+    );
+    for (const line of bookingServicesData) {
+      const segStart = new Date(line.scheduled_start_at);
+      const segEnd = new Date(line.scheduled_end_at);
+      const off = offeringById.get(line.offering_id);
+      const buf = Number(off?.buffer_minutes ?? 15);
+      const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
+      const cal = await isProviderCalendarWindowBlocked(supabaseAdmin, {
+        providerId: draft.provider_id,
+        locationId: locationIdForCalendar,
+        staffId: line.staff_id ?? null,
+        startAt: segStart,
+        endAt: effectiveEnd,
+      });
+      if (cal.blocked) {
+        return handleApiError(
+          new Error(cal.reason || "This time is blocked on the calendar."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409,
+        );
+      }
+    }
+  }
+
   // ── Return enriched data ─────────────────────────────────────────────────
   return {
     customerId,

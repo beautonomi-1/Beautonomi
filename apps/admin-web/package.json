@@ -1,0 +1,42 @@
+{
+  "name": "admin-web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:install": "playwright install chromium"
+  },
+  "dependencies": {
+    "@beautonomi/admin-access": "workspace:*",
+    "@beautonomi/admin-api-client": "workspace:*",
+    "@beautonomi/types": "workspace:*",
+    "@sentry/react": "^10.39.0",
+    "@supabase/ssr": "^0.8.0",
+    "@supabase/supabase-js": "^2.47.10",
+    "@tanstack/react-query": "^5.90.12",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router-dom": "^7.11.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/react": "^19.0.6",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.18.0",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.3",
+    "vitest": "^3.1.1"
+  }
+}

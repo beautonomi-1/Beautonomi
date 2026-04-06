@@ -119,10 +119,14 @@ export default function ProviderFinance() {
         : `/api/provider/finance?range=${dateRange}`;
       
       const response = await fetcher.get<{
-        data: { earnings: EarningsData; transactions: Transaction[] };
-      }>(url);
-      setEarnings(response.data.earnings);
-      setTransactions(response.data.transactions);
+        data: { earnings: EarningsData; transactions: Transaction[] } | null;
+      }>(url, { staleTimeMs: 0 });
+      const payload = response.data;
+      if (!payload?.earnings) {
+        throw new Error("Invalid finance response");
+      }
+      setEarnings(payload.earnings);
+      setTransactions(Array.isArray(payload.transactions) ? payload.transactions : []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -518,8 +522,13 @@ export default function ProviderFinance() {
               <p className="text-2xl font-semibold">
                 {fmt(earnings.last_month)}
               </p>
-              <p className="text-sm text-green-600 mt-1">
-                +{earnings.growth_percentage}% growth
+              <p
+                className={`text-sm mt-1 ${
+                  earnings.growth_percentage >= 0 ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {earnings.growth_percentage >= 0 ? "+" : ""}
+                {earnings.growth_percentage}% vs previous period
               </p>
             </div>
           </div>
@@ -797,10 +806,14 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
       </div>
       <div className="flex items-center gap-4">
         <p className={`font-semibold ${getTypeColor()}`}>
-          {transaction.type === "payout" || transaction.type === "refund"
+          {transaction.type === "payout" ||
+          transaction.type === "refund" ||
+          transaction.amount < 0 ||
+          (transaction.net !== undefined && transaction.net < 0)
             ? "-"
             : "+"}
-          {transaction.currency} {transaction.amount.toFixed(2)}
+          {transaction.currency}{" "}
+          {Math.abs(transaction.amount).toFixed(2)}
         </p>
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor()}`}

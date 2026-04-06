@@ -137,7 +137,9 @@ function CalendarGridComponent({
   const getBlocksForStaff = useCallback(
     (staffId: string, date: Date): CalendarBlock[] => {
       const dateStr = format(date, "yyyy-MM-dd");
-      const tb = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const tbStaff = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const tbAll = timeBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      const tb = [...tbStaff, ...tbAll];
       const sa = availabilityBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
       const aa = availabilityBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
       return [
@@ -424,14 +426,26 @@ function CalendarGridComponent({
   );
 }
 
+function blockOverlaySig(blocks: AvailabilityBlockDisplay[] | undefined): string {
+  return (blocks ?? [])
+    .map((b) => `${b.id}-${b.date}-${b.start_time}-${b.team_member_id ?? ""}`)
+    .join("|");
+}
+
 export const CalendarGrid = memo(CalendarGridComponent, (prev, next) => {
   if (prev.appointments.length !== next.appointments.length) return false;
   if (prev.teamMembers.length !== next.teamMembers.length) return false;
   if (prev.timeBlocks?.length !== next.timeBlocks?.length) return false;
+  if (prev.availabilityBlocks?.length !== next.availabilityBlocks?.length) return false;
+  if (blockOverlaySig(prev.availabilityBlocks) !== blockOverlaySig(next.availabilityBlocks)) return false;
   if (prev.selectedDate.getTime() !== next.selectedDate.getTime()) return false;
   if (prev.view !== next.view) return false;
   if (prev.startHour !== next.startHour) return false;
   if (prev.endHour !== next.endHour) return false;
+
+  const prevTb = (prev.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
+  const nextTb = (next.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
+  if (prevTb !== nextTb) return false;
 
   const prevIds = prev.appointments.map((a) => `${a.id}-${a.scheduled_date}-${a.scheduled_time}-${a.status}`).join(",");
   const nextIds = next.appointments.map((a) => `${a.id}-${a.scheduled_date}-${a.scheduled_time}-${a.status}`).join(",");
