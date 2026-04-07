@@ -5,7 +5,8 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const root = join(__dirname, "..");
+/** Package root when `tsc` / Jest run from `apps/provider` (CI and local). */
+const root = process.cwd();
 const moreDir = join(root, "app", "(app)", "(tabs)", "more");
 const reportsDir = join(moreDir, "reports");
 
