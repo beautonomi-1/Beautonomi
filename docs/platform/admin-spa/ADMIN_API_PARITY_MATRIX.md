@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **241** API rows, 2026-04-06 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **259** API rows, 2026-04-07 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | ~240+ admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **259** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -235,6 +235,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-06 | **Strict review:** Unauthenticated bootstrap returns **401** (route special-case; global `handleApiError` still maps `Authentication required` → **403** elsewhere). **`createAdminApiClient`** parses nested `{ error: { message } }` from `successResponse`/`errorResponse` envelopes. **Scope parity:** `withAdminScopeUrl` matches `fetcher` for **GET** only; **POST/PUT/PATCH** body injection for scoped admin URLs remains **Next `fetcher` only** until SPA mutates those endpoints (document before W3+ content/settings work). |
 | 2026-04-07 | **Wave 0 verification:** Global search result links aligned with legacy `AdminShell` list URLs + `?highlight=`; section-permissions load failure surfaced with retry banner; dashboard load error includes **Retry**. See [`ADMIN_WAVE0_VERIFICATION_REPORT.md`](./ADMIN_WAVE0_VERIFICATION_REPORT.md). |
 | 2026-04-07 | **Wave 1 pattern set:** `@beautonomi/admin-api-client` gains `postJson` / `patchJson` (non-GET paths skip scope query injection per `adminScope.ts`). `GET /api/admin/providers` includes distance fields for distance-settings parity. SPA routes: `support-tickets`, `bookings`, `bookings/:id`, `disputes`, `providers/distance-settings`. See [`ADMIN_WAVE1_PATTERN_SET_REPORT.md`](./ADMIN_WAVE1_PATTERN_SET_REPORT.md). |
+| 2026-04-07 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**259** rows) so every `apps/web/.../api/admin/**/route.ts` is listed; unblocks `check-admin-api-routes-in-taxonomy.mjs` after new routes (ads, compliance, ecommerce catalog/overview, explore comments, gamification backfill init, loyalty rules by id, pricing-plan features, product-orders by id, provider-subscriptions by id, referral-sources, support-tickets upload). |
 | 2026-04-05 | **Waves 2–5 SPA batch:** `getRawJson` on `@beautonomi/admin-api-client` for top-level `{ data, meta }` envelopes. `apps/admin-web` adds read/list routes for finance, reports (`/reports/:reportKey`, API AuthZ **overview**), users trust, ecommerce (orders/returns; products via **public** API), marketing subset, integrations subset, operations JSON snapshots, platform settings subset, control-plane hub + redirects. **Known gaps:** report CSV export contract, platform-fees section vs nav, reports vs finance roles — see [`ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`](./ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md). |
 
 ---
@@ -248,5 +249,6 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-06 | Shell rows updated for SPA client methods; §8 Implementation Delta; changelog renumbered to §9 |
 | 2026-04-07 | §8 Wave 0 verification delta; link to `ADMIN_WAVE0_VERIFICATION_REPORT.md` |
 | 2026-04-07 | §4 notes rows 7,11,13,14,16; §8 Wave 1 pattern set; `ADMIN_WAVE1_PATTERN_SET_REPORT.md` |
+| 2026-04-07 | §1.1 inventory **259** routes; §8 taxonomy regen delta (admin-api CSV + CI guardrail) |
 | 2026-04-05 | §8 Waves 2–5 SPA batch delta; link to `ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`; test strategy §2.7 envelope note |
 | 2026-04-06 | **SPA sweep:** W1 list/detail read routes, W3 content surfaces, W4 marketing/integrations/ops lists, W5 control-plane `*` legacy bridge, **payout** mutation parity in SPA; `/admin/broadcast` SPA = **history** only (compose stays legacy). |
