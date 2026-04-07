@@ -77,7 +77,8 @@ export async function createBookingRecord(
     bookingData.is_group_booking = true;
   }
 
-  // ── Atomic insert via RPC ────────────────────────────────────────────────
+  // ── Atomic insert via RPC (+ optional entitlement redeem in same DB transaction) ──
+  const entitlementId = validatedDraft.customer_package_entitlement_id ?? null;
   const { data: bookingId, error: bookingError } = await adminSupabase.rpc(
     "create_booking_with_locking",
     {
@@ -86,6 +87,8 @@ export async function createBookingRecord(
       p_staff_id: draft.services[0].staff_id || null,
       p_start_at: v.selectedDatetime.toISOString(),
       p_end_at: v.bookingEnd.toISOString(),
+      p_entitlement_id: entitlementId,
+      p_entitlement_customer_id: entitlementId ? v.customerId : null,
     }
   );
 
@@ -96,6 +99,14 @@ export async function createBookingRecord(
         new Error("This time slot is no longer available. Please select another time."),
         "This time slot is no longer available. Please select another time.",
         "CONFLICT",
+        409
+      );
+    }
+    if (msg.includes("ENTITLEMENT_REDEEM_FAILED")) {
+      return handleApiError(
+        new Error("Could not apply package credit."),
+        "Could not apply package credit. It may have been used already — refresh and try again.",
+        "PACKAGE_ENTITLEMENT_REDEEM_FAILED",
         409
       );
     }

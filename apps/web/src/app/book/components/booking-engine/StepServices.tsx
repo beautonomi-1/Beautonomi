@@ -41,7 +41,7 @@ interface StepServicesProps {
   offerings: ServiceOption[];
   packages: PackageOption[];
   variantsByServiceId: Record<string, ServiceVariant[]>;
-  onSelectPackage: (pkg: PackageOption | null) => void;
+  onSelectPackage: (pkg: PackageOption | null) => void | Promise<void>;
   onSelectService: (entries: BookingServiceEntry[]) => void;
   onNext: () => void;
   isAtHome: boolean;

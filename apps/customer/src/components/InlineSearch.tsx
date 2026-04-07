@@ -13,7 +13,6 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -49,13 +48,10 @@ export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProp
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Re-render on dimension change (e.g. rotation); width not needed for current layout
-  useWindowDimensions();
 
   const expand = useCallback(() => {
     haptic.light();
     setExpanded(true);
-    setTimeout(() => inputRef.current?.focus(), 200);
   }, []);
 
   const collapse = useCallback(() => {
@@ -146,6 +142,13 @@ export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProp
     };
   }, []);
 
+  /** Single focus when expanded — avoids autoFocus + state updates fighting on Android (focus loss after first character). */
+  useEffect(() => {
+    if (!expanded) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 120);
+    return () => clearTimeout(t);
+  }, [expanded]);
+
   return (
     <>
       <TouchableOpacity
@@ -203,7 +206,7 @@ export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProp
                 onChangeText={handleTextChange}
                 onSubmitEditing={handleSubmit}
                 returnKeyType="search"
-                autoFocus
+                blurOnSubmit={false}
               />
               {loading ? (
                 <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 8 }} />

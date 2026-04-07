@@ -4,7 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useSuperadminPage } from "@/hooks/useSuperadminPage";
+import { ADMIN_SECTION_OPERATIONS } from "@beautonomi/admin-access";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -22,8 +23,9 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 type ZoneRow = Record<string, unknown>;
 
 export function ServiceZonesListPage() {
-  const { allowed, denied } = useSuperadminPage(
-    "Market coverage is superadmin-only in nav (matches sensitive platform geometry)."
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_OPERATIONS,
+    "Operations access is required for market coverage (same section as /api/admin/service-zones)."
   );
   const [sp, setSp] = useSearchParams();
   const archived = sp.get("include_archived") === "1" || sp.get("include_archived") === "true";

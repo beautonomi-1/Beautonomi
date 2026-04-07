@@ -152,7 +152,12 @@ export async function GET(
       }
     }
 
-    const res = successResponse(filteredPackages);
+    const normalized = filteredPackages.map((pkg: Record<string, unknown>) => ({
+      ...pkg,
+      title: (pkg.title as string) || (pkg.name as string) || "Package",
+    }));
+
+    const res = successResponse(normalized);
     res.headers.set("Cache-Control", "public, s-maxage=120, stale-while-revalidate=300");
     return res;
   } catch (error) {

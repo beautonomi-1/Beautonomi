@@ -61,7 +61,8 @@ export function TeamMemberCreateEditDialog({
     
     // Notifications
     email_notifications_enabled: true,
-    sms_notifications_enabled: true,
+    sms_notifications_enabled: false,
+    sms_plan_allowed: false,
     desktop_notifications_enabled: false,
     
     // Work Hours
@@ -107,7 +108,8 @@ export function TeamMemberCreateEditDialog({
               mobileReady: settings?.mobileReady ?? false,
               is_admin: settings?.is_admin ?? (member.role === "owner" || member.role === "manager"),
               email_notifications_enabled: settings?.email_notifications_enabled ?? true,
-              sms_notifications_enabled: settings?.sms_notifications_enabled ?? true,
+              sms_notifications_enabled: settings?.sms_notifications_enabled ?? false,
+              sms_plan_allowed: settings?.sms_plan_allowed === true,
               desktop_notifications_enabled: settings?.desktop_notifications_enabled ?? false,
               work_hours_enabled: settings?.work_hours_enabled ?? true,
               commission_enabled: settings?.commission_enabled ?? false,
@@ -135,7 +137,8 @@ export function TeamMemberCreateEditDialog({
               mobileReady: false,
               is_admin: member.role === "owner" || member.role === "manager",
               email_notifications_enabled: true,
-              sms_notifications_enabled: true,
+              sms_notifications_enabled: false,
+              sms_plan_allowed: false,
               desktop_notifications_enabled: false,
               work_hours_enabled: true,
               commission_enabled: false,
@@ -165,7 +168,8 @@ export function TeamMemberCreateEditDialog({
           mobileReady: false,
           is_admin: false,
           email_notifications_enabled: true,
-          sms_notifications_enabled: true,
+          sms_notifications_enabled: false,
+          sms_plan_allowed: false,
           desktop_notifications_enabled: false,
           work_hours_enabled: true,
           commission_enabled: false,
@@ -253,7 +257,9 @@ export function TeamMemberCreateEditDialog({
             mobileReady: formData.mobileReady,
             is_admin: formData.is_admin,
             email_notifications_enabled: formData.email_notifications_enabled,
-            sms_notifications_enabled: formData.sms_notifications_enabled,
+            sms_notifications_enabled: formData.sms_plan_allowed
+              ? formData.sms_notifications_enabled
+              : false,
             desktop_notifications_enabled: formData.desktop_notifications_enabled,
             work_hours_enabled: formData.work_hours_enabled,
             commission_enabled: formData.commission_enabled,
@@ -300,7 +306,9 @@ export function TeamMemberCreateEditDialog({
               mobileReady: formData.mobileReady,
               is_admin: formData.is_admin,
               email_notifications_enabled: formData.email_notifications_enabled,
-              sms_notifications_enabled: formData.sms_notifications_enabled,
+              sms_notifications_enabled: formData.sms_plan_allowed
+                ? formData.sms_notifications_enabled
+                : false,
               desktop_notifications_enabled: formData.desktop_notifications_enabled,
               work_hours_enabled: formData.work_hours_enabled,
               commission_enabled: formData.commission_enabled,
@@ -729,9 +737,12 @@ export function TeamMemberCreateEditDialog({
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm">
+                  <div
+                    className={`flex items-start gap-4 p-4 sm:p-5 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 shadow-sm ${!formData.sms_plan_allowed ? "opacity-70" : ""}`}
+                  >
                     <Switch
-                      checked={formData.sms_notifications_enabled}
+                      checked={formData.sms_plan_allowed ? formData.sms_notifications_enabled : false}
+                      disabled={!formData.sms_plan_allowed}
                       onCheckedChange={(checked) => setFormData({ ...formData, sms_notifications_enabled: checked })}
                       className="mt-1 flex-shrink-0"
                     />
@@ -741,7 +752,9 @@ export function TeamMemberCreateEditDialog({
                         SMS Notifications
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Receive notifications via SMS at {formData.mobile || "their mobile number"}
+                        {formData.sms_plan_allowed
+                          ? `Receive notifications via SMS at ${formData.mobile || "their mobile number"}`
+                          : "Staff SMS is available on subscription plans that include it. Upgrade to enable."}
                       </p>
                     </div>
                   </div>

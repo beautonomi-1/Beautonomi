@@ -213,7 +213,7 @@ const navGroups: NavGroup[] = [
     label: "Operations",
     section: ADMIN_SECTION_OPERATIONS,
     items: [
-      { title: "Market Coverage", href: "/admin/service-zones", icon: Globe2, superadminOnly: true },
+      { title: "Market Coverage", href: "/admin/service-zones", icon: Globe2 },
       { title: "System Health", href: "/admin/system-health", icon: Activity },
       { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
       { title: "Security", href: "/admin/security", icon: Shield },

@@ -4,6 +4,7 @@ import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated, notifySupportStaffInboxActivity } from "@/lib/notifications/notification-service";
+import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
 
 export async function GET(
   request: NextRequest,
@@ -74,11 +75,15 @@ export async function PATCH(
       priority,
       assigned_to,
       tags,
+      category,
+      csat_score,
+      csat_comment,
+      sla_resolution_due_at,
     } = body;
 
     const { data: before } = await supabase
       .from("support_tickets")
-      .select("assigned_to, ticket_number")
+      .select("assigned_to, ticket_number, created_at, priority, resolved_at")
       .eq("id", id)
       .maybeSingle();
 
@@ -91,10 +96,30 @@ export async function PATCH(
       if (status === "closed") {
         updateData.closed_at = new Date().toISOString();
       }
+      if (status === "open" || status === "in_progress" || status === "waiting_customer") {
+        updateData.resolved_at = null;
+        updateData.closed_at = null;
+      }
     }
-    if (priority !== undefined) updateData.priority = priority;
+    if (priority !== undefined) {
+      updateData.priority = priority;
+      const createdAt =
+        typeof before?.created_at === "string" ? before.created_at : undefined;
+      if (createdAt) {
+        updateData.sla_resolution_due_at = computeSlaResolutionDueIso(createdAt, String(priority));
+      }
+    }
     if (assigned_to !== undefined) updateData.assigned_to = assigned_to;
     if (tags !== undefined) updateData.tags = tags;
+    if (category !== undefined) updateData.category = category;
+    if (csat_score !== undefined) {
+      if (csat_score !== null && (typeof csat_score !== "number" || csat_score < 1 || csat_score > 5)) {
+        return NextResponse.json({ error: "csat_score must be null or 1–5" }, { status: 400 });
+      }
+      updateData.csat_score = csat_score;
+    }
+    if (csat_comment !== undefined) updateData.csat_comment = csat_comment;
+    if (sla_resolution_due_at !== undefined) updateData.sla_resolution_due_at = sla_resolution_due_at;
 
     const { data, error } = await supabase
       .from("support_tickets")

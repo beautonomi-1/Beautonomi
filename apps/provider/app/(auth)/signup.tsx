@@ -72,6 +72,7 @@ export default function SignupScreen() {
   const [formSuccess, setFormSuccess] = useState<string | null>(null);
   const [signupSource, setSignupSource] = useState<string | null>(null);
   const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -108,6 +109,9 @@ export default function SignupScreen() {
     if (phone.trim()) {
       const phoneErr = validateNationalPhoneDigits(phone, countryCode);
       if (phoneErr) return phoneErr;
+    }
+    if (!agreedToTerms) {
+      return "Confirm you agree to the Terms of Service, Privacy Policy, and Cookie Policy.";
     }
     return null;
   }
@@ -447,46 +451,62 @@ export default function SignupScreen() {
           <Ionicons name="chevron-down" size={18} color="#6B7280" />
         </TouchableOpacity>
 
-        <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 16, textAlign: "center", lineHeight: 18 }}>
-          By creating an account you agree to our{" "}
-          <Text
-            style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
-            onPress={() => router.push("/(auth)/terms" as never)}
+        <View style={{ flexDirection: "row", alignItems: "flex-start", marginBottom: 16, paddingVertical: 4 }}>
+          <TouchableOpacity
+            onPress={() => setAgreedToTerms(!agreedToTerms)}
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: 6,
+              borderWidth: 1.5,
+              borderColor: agreedToTerms ? PRIMARY : "#D1D5DB",
+              backgroundColor: agreedToTerms ? PRIMARY : "#fff",
+              alignItems: "center",
+              justifyContent: "center",
+              marginRight: 10,
+              marginTop: 2,
+            }}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: agreedToTerms }}
+            accessibilityLabel="Agree to Terms of Service, Privacy Policy, and Cookie Policy"
           >
-            Terms of Service
+            {agreedToTerms ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}
+          </TouchableOpacity>
+          <Text style={{ flex: 1, fontSize: 12, color: "#6B7280", lineHeight: 18 }}>
+            I agree to the{" "}
+            <Text style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }} onPress={() => router.push("/(auth)/terms" as never)}>
+              Terms of Service
+            </Text>
+            ,{" "}
+            <Text style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }} onPress={() => router.push("/(auth)/privacy" as never)}>
+              Privacy Policy
+            </Text>
+            , and{" "}
+            <Text
+              style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
+              onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
+            >
+              Cookie Policy
+            </Text>
+            , including cookies and similar technologies, how we process personal data, and (while signed in) product analytics and limited session replay.
           </Text>
-          {" "}and{" "}
-          <Text
-            style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
-            onPress={() => router.push("/(auth)/privacy" as never)}
-          >
-            Privacy Policy
-          </Text>
-          , and our{" "}
-          <Text
-            style={{ color: PRIMARY, fontWeight: "600", textDecorationLine: "underline" }}
-            onPress={() => Linking.openURL(`${APP_URL.replace(/\/$/, "")}/cookie-policy`).catch(() => {})}
-          >
-            Cookie Policy
-          </Text>
-          , including cookies and similar technologies, how we process personal data, and (while signed in) product analytics and limited session replay. You can change analytics preferences in account privacy settings.
-        </Text>
+        </View>
 
         {/* Sign Up Button */}
         <TouchableOpacity
           onPress={handleSignup}
-          disabled={loading}
+          disabled={loading || !agreedToTerms}
           style={{
             backgroundColor: PRIMARY,
             borderRadius: 12,
             paddingVertical: 16,
             alignItems: "center",
-            opacity: loading ? 0.7 : 1,
+            opacity: loading || !agreedToTerms ? 0.7 : 1,
             marginBottom: 16,
           }}
           accessibilityRole="button"
           accessibilityLabel="Create account"
-          accessibilityState={{ disabled: loading }}
+          accessibilityState={{ disabled: loading || !agreedToTerms }}
         >
           {loading ? (
             <ActivityIndicator color="white" />

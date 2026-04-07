@@ -25,7 +25,7 @@ The canonical list of flows lives in code: `apps/admin-web/src/regression/critic
 | 13 | broadcast-compose | `broadcast/compose` | `routes/marketing/BroadcastComposePage.tsx` | section |
 | 14 | team-permissions | `settings/team-permissions` | `routes/settings/TeamPermissionsMatrixPage.tsx` | superadmin |
 | 15 | tenant-domains | `settings/tenant-domains` | `routes/settings/TenantDomainsListPage.tsx` | superadmin |
-| 16 | service-zones | `service-zones` | `routes/ops/ServiceZonesListPage.tsx` | superadmin |
+| 16 | service-zones | `service-zones` | `routes/ops/ServiceZonesListPage.tsx` | section |
 | 17 | referral-sources | `referral-sources` | `routes/providers/ReferralSourcesPage.tsx` | section |
 | 18 | ecommerce-overview | `ecommerce` | `routes/ecommerce/EcommerceOverviewPage.tsx` | section |
 
@@ -33,7 +33,7 @@ The canonical list of flows lives in code: `apps/admin-web/src/regression/critic
 
 - **public** — login only; must **not** use section or superadmin page hooks.
 - **section** — must use `useAdminSectionPage` (or equivalent section gate pattern enforced by tests).
-- **superadmin** — must use `useSuperadminPage` on each superadmin-only route (e.g. Gods Eye, Analytics, control plane overview, team permissions, tenant domains, market coverage).
+- **superadmin** — must use `useSuperadminPage` on each superadmin-only route (e.g. Gods Eye, Analytics, control plane overview, team permissions, tenant domains).
 
 ---
 

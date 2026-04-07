@@ -234,7 +234,7 @@ export function ExplorePostDetail({ post, relatedPosts }: ExplorePostDetailProps
   };
 
   const shareToX = () => {
-    window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(shareUrl)}`, "_blank");
+    window.open(`https://x.com/intent/tweet?text=${encodeURIComponent(shareTitle)}&url=${encodeURIComponent(shareUrl)}`, "_blank");
     setShowShareModal(false);
   };
 

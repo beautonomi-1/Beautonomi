@@ -4,7 +4,6 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { purgeUserMessageAttachmentFiles } from "@/lib/account/purge-user-message-files";
 import { z } from "zod";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
@@ -313,87 +312,18 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/admin/users/[id]
- * 
- * Permanently delete a user (superadmin only)
- * WARNING: This will permanently delete the user and all associated data
+ * DELETE /api/admin/users/[id] — disabled (use POST /api/admin/compliance/purge-user with required confirmations).
  */
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
-
-    const { id } = await params;
-    const supabase = await getSupabaseServer(request);
-
-    // Check if user exists
-    const { data: existingUser, error: fetchError } = await supabase
-      .from("users")
-      .select("id, role, email")
-      .eq("id", id)
-      .single();
-
-    if (fetchError || !existingUser) {
-      return notFoundResponse("User not found");
-    }
-
-    // Prevent superadmins from deleting themselves
-    if (id === user.id) {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Cannot delete your own account",
-            code: "PERMISSION_DENIED",
-          },
-        },
-        { status: 403 }
-      );
-    }
-
-    // Prevent superadmins from deleting other superadmins
-    if (existingUser.role === "superadmin") {
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Cannot delete another superadmin account",
-            code: "PERMISSION_DENIED",
-          },
-        },
-        { status: 403 }
-      );
-    }
-
-    const supabaseAdmin = getSupabaseAdmin();
-
-    await purgeUserMessageAttachmentFiles(supabaseAdmin, id);
-
-    const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(id);
-
-    if (deleteError) {
-      console.error("Error deleting auth user:", deleteError);
-      return NextResponse.json(
-        {
-          data: null,
-          error: {
-            message: "Failed to delete user",
-            code: "DELETE_ERROR",
-            details: deleteError.message,
-          },
-        },
-        { status: 500 }
-      );
-    }
-
-    return successResponse({
-      id,
-      deleted: true,
-      message: "User deleted successfully",
-    });
-  } catch (error) {
-    return handleApiError(error, "Failed to delete user");
-  }
+export async function DELETE() {
+  return NextResponse.json(
+    {
+      data: null,
+      error: {
+        message:
+          "Direct DELETE is disabled. Use POST /api/admin/compliance/purge-user with reason (≥20 chars), matching account email, phrase DELETE USER FOREVER, and acknowledge_irreversible: true.",
+        code: "USE_COMPLIANCE_PURGE_ENDPOINT",
+      },
+    },
+    { status: 405, headers: { Allow: "GET, PATCH" } },
+  );
 }

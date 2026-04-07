@@ -33,11 +33,26 @@ interface SupportTicket {
   category: string | null;
   priority: string;
   status: string;
+  tags?: string[] | null;
+  sla_resolution_due_at?: string | null;
   user: { id: string; email: string; full_name: string | null } | null;
   provider: { id: string; business_name: string } | null;
   assigned_user: { id: string; email: string; full_name: string | null } | null;
   created_at: string;
   updated_at: string;
+}
+
+function isSlaBreached(ticket: SupportTicket): boolean {
+  if (!ticket.sla_resolution_due_at) return false;
+  if (ticket.status === "resolved" || ticket.status === "closed") return false;
+  return new Date(ticket.sla_resolution_due_at).getTime() < Date.now();
+}
+
+function priorityPillClass(p: string): string {
+  if (p === "urgent") return "bg-red-100 text-red-900";
+  if (p === "high") return "bg-orange-100 text-orange-900";
+  if (p === "low") return "bg-slate-100 text-slate-800";
+  return "bg-gray-100 text-gray-900";
 }
 
 function ticketAgeDays(createdAt: string): number {
@@ -57,6 +72,8 @@ export function SupportTicketsPage() {
   const priorityFilter = searchParams.get("priority") ?? "all";
   const categoryFilter = searchParams.get("category") ?? "all";
   const assignFilter = searchParams.get("assign") ?? "all";
+  const sortFilter = searchParams.get("sort") ?? "updated_desc";
+  const slaOverdueFilter = searchParams.get("sla_overdue") === "1";
   const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
   const pageIndex = page - 1;
   const qFromUrl = searchParams.get("q") ?? "";
@@ -73,6 +90,8 @@ export function SupportTicketsPage() {
             priority: "all",
             category: "all",
             assign: "all",
+            sort: "updated_desc",
+            sla_overdue: "all",
           };
           if (value === defaults[key]) n.delete(key);
           else n.set(key, value);
@@ -95,8 +114,20 @@ export function SupportTicketsPage() {
         assign: assignFilter,
         q: qFromUrl,
         staffUserId: bootstrap?.userId,
+        sort: sortFilter,
+        slaOverdue: slaOverdueFilter,
       }),
-    [pageIndex, statusFilter, priorityFilter, categoryFilter, assignFilter, qFromUrl, bootstrap?.userId]
+    [
+      pageIndex,
+      statusFilter,
+      priorityFilter,
+      categoryFilter,
+      assignFilter,
+      qFromUrl,
+      bootstrap?.userId,
+      sortFilter,
+      slaOverdueFilter,
+    ]
   );
 
   const q = useQuery({
@@ -156,18 +187,20 @@ export function SupportTicketsPage() {
     statusFilter !== "all" ||
     priorityFilter !== "all" ||
     categoryFilter !== "all" ||
-    assignFilter !== "all";
+    assignFilter !== "all" ||
+    sortFilter !== "updated_desc" ||
+    slaOverdueFilter;
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Support tickets" description="Filters sync to the URL for sharing (see ADMIN_SPA_UI_CONVENTIONS §5)" />
+      <AdminPageHeader title="Support tickets" description="Filters sync to the URL for sharing (see ADMIN_SPA_UI_CONVENTIONS, section 5)" />
 
       <AdminPanel>
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 lg:flex-row">
             <input
               type="search"
-              placeholder="Search subject or ticket #…"
+              placeholder="Search subject, ticket #, or description…"
               value={qDraft}
               onChange={(e) => setQDraft(e.target.value)}
               className="w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -180,6 +213,7 @@ export function SupportTicketsPage() {
               <option value="all">All statuses</option>
               <option value="open">Open</option>
               <option value="in_progress">In progress</option>
+              <option value="waiting_customer">Waiting on customer</option>
               <option value="resolved">Resolved</option>
               <option value="closed">Closed</option>
             </select>
@@ -189,6 +223,7 @@ export function SupportTicketsPage() {
               className="rounded-lg border border-gray-300 px-3 py-2 text-sm lg:w-44"
             >
               <option value="all">All priorities</option>
+              <option value="urgent">Urgent</option>
               <option value="high">High</option>
               <option value="medium">Medium</option>
               <option value="low">Low</option>
@@ -222,6 +257,24 @@ export function SupportTicketsPage() {
                 Assigned to me
               </option>
             </select>
+            <select
+              value={sortFilter}
+              onChange={(e) => setFilter("sort", e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-56"
+            >
+              <option value="updated_desc">Sort: Last updated</option>
+              <option value="created_desc">Sort: Newest</option>
+              <option value="sla_asc">Sort: SLA due (soonest)</option>
+              <option value="priority_asc">Sort: Priority</option>
+            </select>
+            <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800">
+              <input
+                type="checkbox"
+                checked={slaOverdueFilter}
+                onChange={(e) => setFilter("sla_overdue", e.target.checked ? "1" : "all")}
+              />
+              SLA overdue
+            </label>
           </div>
         </div>
       </AdminPanel>
@@ -241,6 +294,8 @@ export function SupportTicketsPage() {
                 <AdminTh>User</AdminTh>
                 <AdminTh>Priority</AdminTh>
                 <AdminTh>Status</AdminTh>
+                <AdminTh>SLA</AdminTh>
+                <AdminTh>Tags</AdminTh>
                 <AdminTh>Assigned</AdminTh>
                 <AdminTh>Age</AdminTh>
                 <AdminTh>Created</AdminTh>
@@ -272,10 +327,36 @@ export function SupportTicketsPage() {
                     )}
                   </AdminTd>
                   <AdminTd>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs capitalize">{ticket.priority}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs capitalize ${priorityPillClass(ticket.priority)}`}>
+                      {ticket.priority}
+                    </span>
                   </AdminTd>
                   <AdminTd>
-                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{ticket.status.replace("_", " ")}</span>
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">{ticket.status.replace(/_/g, " ")}</span>
+                  </AdminTd>
+                  <AdminTd className="whitespace-nowrap text-sm">
+                    {ticket.sla_resolution_due_at ? (
+                      <div className="flex flex-col gap-0.5">
+                        <span className={isSlaBreached(ticket) ? "font-medium text-red-700" : "text-gray-700"}>
+                          {isSlaBreached(ticket) ? "Overdue" : "Due"}{" "}
+                          {new Date(ticket.sla_resolution_due_at).toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </AdminTd>
+                  <AdminTd>
+                    {ticket.tags && ticket.tags.length > 0 ? (
+                      <span className="line-clamp-2 text-xs text-gray-600">{ticket.tags.join(", ")}</span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </AdminTd>
                   <AdminTd>
                     {ticket.assigned_user ? (

@@ -1,0 +1,161 @@
+/**
+ * Shared engine: loadAvailabilityConstraints + calculateAvailableSlots — same as
+ * portal (`/api/portal/availability`) and `/api/availability`, extended with
+ * public calendar parity (availability_blocks, staff time off / day off).
+ */
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
+import { loadAvailabilityConstraints } from "./load-constraints";
+import { calculateAvailableSlots } from "./calculate-slots";
+import type { TimeSlot } from "./types";
+import type { AvailabilitySlot } from "@/types/beautonomi";
+import { combineDateAndTime } from "./time-utils";
+
+function mapTimeSlotsToPublicShape(
+  slots: TimeSlot[],
+  date: string,
+  totalBlockedMinutes: number,
+  staffId?: string,
+  locationId?: string | null
+): AvailabilitySlot[] {
+  return slots.map((s) => {
+    const start = combineDateAndTime(date, s.time);
+    const end = new Date(start.getTime() + totalBlockedMinutes * 60 * 1000);
+    return {
+      start: start.toISOString(),
+      end: end.toISOString(),
+      staff_id: staffId || undefined,
+      location_id: locationId || undefined,
+      is_available: s.available,
+    };
+  });
+}
+
+/**
+ * Union “any staff” slots: first staff who is available wins (same UX as legacy public route).
+ */
+function mergeAnyStaffSlots(
+  perStaff: Array<{ staffId: string; slots: TimeSlot[] }>,
+  date: string,
+  totalBlockedMinutes: number,
+  locationId?: string | null
+): AvailabilitySlot[] {
+  const allTimes = new Set<string>();
+  for (const p of perStaff) {
+    for (const s of p.slots) {
+      allTimes.add(s.time);
+    }
+  }
+
+  return [...allTimes]
+    .sort((a, b) => a.localeCompare(b))
+    .map((timeStr) => {
+      let pickedStaff: string | undefined;
+      let available = false;
+      for (const p of perStaff) {
+        const slot = p.slots.find((x) => x.time === timeStr);
+        if (slot?.available) {
+          available = true;
+          pickedStaff = p.staffId;
+          break;
+        }
+      }
+      const start = combineDateAndTime(date, timeStr);
+      const end = new Date(start.getTime() + totalBlockedMinutes * 60 * 1000);
+      return {
+        start: start.toISOString(),
+        end: end.toISOString(),
+        staff_id: available ? pickedStaff : undefined,
+        location_id: locationId || undefined,
+        is_available: available,
+      };
+    });
+}
+
+export async function computePublicSlugAvailabilitySlots(args: {
+  supabase: SupabaseClient;
+  providerId: string;
+  date: string;
+  totalBlockedMinutes: number;
+  travelBufferMinutes: number;
+  locationId?: string | null;
+  /** Raw `staff_id` query: "any", "", "provider-{uuid}", or provider_staff id */
+  staffIdParam: string | null;
+  /** Active provider_staff rows (any-staff mode); empty when solo synthetic */
+  activeStaffRows: Array<{ id: string }>;
+  excludeHoldId?: string;
+}): Promise<AvailabilitySlot[]> {
+  const {
+    supabase,
+    providerId,
+    date,
+    totalBlockedMinutes,
+    travelBufferMinutes,
+    locationId,
+    staffIdParam,
+    activeStaffRows,
+    excludeHoldId,
+  } = args;
+
+  const anyoneMode =
+    staffIdParam === "any" ||
+    staffIdParam === "" ||
+    (typeof staffIdParam === "string" && staffIdParam.startsWith("provider-"));
+
+  const effectiveStaffId = anyoneMode || !staffIdParam?.trim() ? null : staffIdParam.trim();
+
+  const parityBase = {
+    providerId,
+    locationId: locationId ?? null,
+    date,
+  };
+
+  const runForStaff = async (staffColumnId: string, staffIdsForTimeOff: string[]) => {
+    const constraints = await loadAvailabilityConstraints(
+      supabase,
+      staffColumnId,
+      date,
+      providerId,
+      {
+        excludeHoldId,
+        publicCalendarParity: {
+          ...parityBase,
+          slotStaffId: staffColumnId,
+          staffIdsForTimeOff,
+        },
+      }
+    );
+    const avoidGaps = constraints.providerSettings?.avoidGaps ?? false;
+    return calculateAvailableSlots(constraints, totalBlockedMinutes, date, {
+      slotInterval: 15,
+      travelBuffer: travelBufferMinutes,
+      avoidGaps,
+    });
+  };
+
+  if (anyoneMode && activeStaffRows.length > 0) {
+    const perStaff = await Promise.all(
+      activeStaffRows.map(async (s) => ({
+        staffId: s.id,
+        slots: await runForStaff(s.id, [s.id]),
+      }))
+    );
+    return mergeAnyStaffSlots(perStaff, date, totalBlockedMinutes, locationId);
+  }
+
+  const soloSyntheticId = `${SYNTHETIC_PROVIDER_STAFF_PREFIX}${providerId}`;
+  const staffColumnId = effectiveStaffId || soloSyntheticId;
+
+  const staffIdsForTimeOff =
+    effectiveStaffId && !effectiveStaffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)
+      ? [effectiveStaffId]
+      : [];
+
+  const slots = await runForStaff(staffColumnId, staffIdsForTimeOff);
+
+  const emitStaffId =
+    staffColumnId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX) ? undefined : staffColumnId;
+
+  return mapTimeSlotsToPublicShape(slots, date, totalBlockedMinutes, emitStaffId, locationId);
+}

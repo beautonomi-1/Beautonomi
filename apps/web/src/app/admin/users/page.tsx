@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import UserDetailModal from "./components/UserDetailModal";
+import { CompliancePurgeUserDialog } from "@/components/admin/CompliancePurgeUserDialog";
 import Link from "next/link";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -36,7 +37,7 @@ const SIGNUP_SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   social_instagram: "Instagram",
   social_facebook: "Facebook",
-  social_twitter: "Twitter/X",
+  social_twitter: "X",
   friend_or_family: "Friend or family",
   blog_or_article: "Blog or article",
   app_store: "App Store",
@@ -79,6 +80,7 @@ export default function AdminUsers() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [isSelectAll, setIsSelectAll] = useState(false);
+  const [purgeTargetUser, setPurgeTargetUser] = useState<UserData | null>(null);
 
   // Debounce search query
   useEffect(() => {
@@ -281,33 +283,13 @@ export default function AdminUsers() {
     }
   };
 
-  const handleDelete = async (user: UserData, e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click
+  const openCompliancePurgeUser = (user: UserData, e: React.MouseEvent) => {
+    e.stopPropagation();
     if (user.role === "superadmin") {
-      toast.error("Cannot delete superadmin accounts");
+      toast.error("Cannot purge superadmin accounts");
       return;
     }
-
-    const confirmation = prompt(
-      `WARNING: This will permanently delete ${user.full_name || user.email} and all their data. This action cannot be undone.\n\nType "DELETE" to confirm:`
-    );
-    
-    if (confirmation !== "DELETE") {
-      toast.info("Deletion cancelled");
-      return;
-    }
-
-    if (!confirm(`Final confirmation: Are you absolutely sure you want to permanently delete ${user.full_name || user.email}?`)) {
-      return;
-    }
-
-    try {
-      await fetcher.delete(`/api/admin/users/${user.id}`);
-      toast.success("User deleted successfully");
-      loadUsers();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete user");
-    }
+    setPurgeTargetUser(user);
   };
 
   const getRoleBadgeColor = (role: UserRole) => {
@@ -406,15 +388,15 @@ export default function AdminUsers() {
               >
                 {user.deactivated_at ? (<><CheckCircle className="w-4 h-4 mr-2" />Reactivate</>) : (<><Ban className="w-4 h-4 mr-2" />Suspend</>)}
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={(e) => handleDelete(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
-                <Trash2 className="w-4 h-4 mr-2" />Delete
+              <DropdownMenuItem onClick={(e) => openCompliancePurgeUser(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
+                <Trash2 className="w-4 h-4 mr-2" />Purge account…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </td>
       </tr>
     ),
-    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, handleDelete],
+    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, openCompliancePurgeUser],
   );
 
   const renderMobileCard = useCallback(
@@ -463,8 +445,8 @@ export default function AdminUsers() {
                   >
                     {user.deactivated_at ? (<><CheckCircle className="w-4 h-4 mr-2" />Reactivate</>) : (<><Ban className="w-4 h-4 mr-2" />Suspend</>)}
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={(e) => handleDelete(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
-                    <Trash2 className="w-4 h-4 mr-2" />Delete
+                  <DropdownMenuItem onClick={(e) => openCompliancePurgeUser(user, e)} disabled={user.role === "superadmin"} className="text-red-600">
+                    <Trash2 className="w-4 h-4 mr-2" />Purge account…
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href={`/admin/users/${user.id}`}><Edit className="w-4 h-4 mr-2" />View Details</Link>
@@ -506,7 +488,7 @@ export default function AdminUsers() {
         </div>
       </div>
     ),
-    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, handleDelete],
+    [selectedUserIds, handleUserClick, handleSelectUser, handleRoleChange, handleReactivate, handleSuspend, openCompliancePurgeUser],
   );
 
   if (isLoading && users.length === 0) {
@@ -729,6 +711,19 @@ export default function AdminUsers() {
           open={isDetailModalOpen}
           onClose={handleModalClose}
           onUpdate={handleModalUpdate}
+        />
+
+        <CompliancePurgeUserDialog
+          open={purgeTargetUser !== null}
+          onOpenChange={(o) => {
+            if (!o) setPurgeTargetUser(null);
+          }}
+          userId={purgeTargetUser?.id ?? ""}
+          userEmail={purgeTargetUser?.email ?? ""}
+          onComplete={() => {
+            setPurgeTargetUser(null);
+            loadUsers();
+          }}
         />
         </div>
       </div>

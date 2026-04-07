@@ -327,6 +327,8 @@ export interface BookingDraft {
     productVariantId?: string | null;
   }>; // Product line items
   package_id?: string;
+  /** Redeem one session from this entitlement (API validates + decrements). */
+  customer_package_entitlement_id?: string;
   tip_amount: number;
   travel_fee?: number; // Travel fee for at-home services only
   special_requests?: string;

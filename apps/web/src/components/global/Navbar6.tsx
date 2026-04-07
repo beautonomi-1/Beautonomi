@@ -8,7 +8,7 @@ import Search from "./../../../public/images/search-alt-1-svgrepo-com.svg";
 import Chevron from "./../../../public/images/chevron-down-svgrepo-com(1).svg";
 import SidebarIcon from "./../../../public/images/sidebar-icon.svg";
 import CloseIcon from "./../../../public/images/close-icon.svg";
-import Twitter from "./../../../public/images/twitter-icon.svg";
+import XSocial from "./../../../public/images/x-icon.svg";
 import Pinterest from "./../../../public/images/pinterest-icon.svg";
 import Instagram from "./../../../public/images/instagram-icon.svg";
 import Tiktok from "./../../../public/images/tiktok-icon.svg";
@@ -22,7 +22,7 @@ const Navbar6 = () => {
   const [isMobileLangDropdownOpen, setMobileLangDropdownOpen] = useState(false);
 
   const socialMedia = [
-    { src: Twitter, alt: "Twitter", link: "https://twitter.com/beautonomi" },
+    { src: XSocial, alt: "X", link: "https://x.com/beautonomi" },
     {
       src: Pinterest,
       alt: "Pinterest",

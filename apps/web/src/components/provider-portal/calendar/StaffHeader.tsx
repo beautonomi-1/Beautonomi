@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { TeamMember } from "@/lib/provider-portal/types";
-import { getStaffColor } from "./constants";
+import { getStaffColor, STAFF_DAY_COLUMN_LAYOUT } from "./constants";
 
 interface StaffHeaderProps {
   member: TeamMember;
@@ -29,7 +29,7 @@ function StaffHeaderComponent({
   member,
   index,
   bookingCount,
-  hasContent,
+  hasContent: _hasContent,
   onViewWeekSchedule,
   onPrintDaySchedule,
   onEditWorkHours,
@@ -42,9 +42,7 @@ function StaffHeaderComponent({
       className={cn(
         "border-r border-gray-200 last:border-r-0 py-3 px-2",
         "flex flex-col items-center gap-1 transition-all",
-        hasContent
-          ? "flex-[2] min-w-[180px] max-w-[400px]"
-          : "flex-1 min-w-[120px] max-w-[200px]",
+        STAFF_DAY_COLUMN_LAYOUT,
       )}
     >
       <DropdownMenu>

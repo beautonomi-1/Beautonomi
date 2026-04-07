@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { subtractMoney } from "@beautonomi/utils";
 import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecycle";
+import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
 
 type RecordProductOrderPaymentInput = {
   supabase: SupabaseClient;
@@ -83,6 +84,12 @@ export async function recordProductOrderPayment(
     },
     created_at: new Date().toISOString(),
   });
+
+  try {
+    await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
+  } catch (e) {
+    console.error("[recordProductOrderPayment] ensurePackageEntitlementsFromProductOrder", e);
+  }
 
   await (supabase.from("finance_transactions") as any).insert([
     {

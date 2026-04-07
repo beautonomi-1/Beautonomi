@@ -33,7 +33,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency, cancellation_fee'
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency, cancellation_fee, customer_package_entitlement_id'
       )
       .eq('id', bookingId)
       .single();
@@ -189,6 +189,19 @@ export async function POST(
 
     if (updateError) {
       throw updateError;
+    }
+
+    const entitlementId = (booking as { customer_package_entitlement_id?: string | null })
+      .customer_package_entitlement_id;
+    if (entitlementId) {
+      try {
+        await adminSupabase.rpc("restore_customer_package_entitlement", {
+          p_entitlement_id: entitlementId,
+          p_customer_id: user.id,
+        });
+      } catch (restoreErr) {
+        console.error("[cancel booking] restore_customer_package_entitlement", restoreErr);
+      }
     }
 
     // Create booking event

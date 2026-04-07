@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -89,7 +90,15 @@ export function GamificationPointRulesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Gamification · Point rules"
-        description="Adjust points per activity source; PATCH batches updates to /api/admin/gamification/point-rules."
+        description={
+          <>
+            Adjust points per activity source; changes are audited. Platform-wide backfill and per-provider tools live on{" "}
+            <Link className="text-gray-900 underline" to="/admin/gamification/operations">
+              Gamification ops
+            </Link>
+            .
+          </>
+        }
       />
       <AdminPanel>
         <div className="flex flex-wrap items-center gap-3">

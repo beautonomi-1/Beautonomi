@@ -21,6 +21,7 @@ import AuthGuard from "@/components/auth/auth-guard";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
 
 const tabs = [
   { value: "account", label: "Account" },
@@ -423,6 +424,21 @@ const PrivacyPage = () => {
                             className="data-[state=checked]:bg-[#FF0077] data-[state=unchecked]:bg-gray-300"
                           />
                         </div>
+                      </motion.div>
+
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.15 }}
+                        className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm"
+                      >
+                        <h3 className="text-base font-semibold text-gray-900">This browser</h3>
+                        <p className="mt-2 text-sm font-light leading-relaxed text-gray-600">
+                          Account-level analytics above applies to your profile. Cookies and similar storage on{" "}
+                          <span className="text-gray-800">this device</span> are managed separately—use{" "}
+                          <CookieSettingsFooterLink variant="inline" className="inline p-0 align-baseline" /> to adjust
+                          optional cookies on this browser.
+                        </p>
                       </motion.div>
                     </div>
                   </div>

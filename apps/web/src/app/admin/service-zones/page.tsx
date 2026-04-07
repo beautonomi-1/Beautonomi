@@ -97,7 +97,7 @@ export default function MarketCoverageControlPlanePage() {
   }, []);
 
   return (
-    <RoleGuard allowedRoles={["superadmin"]} redirectTo="/admin/dashboard">
+    <RoleGuard allowedRoles={["superadmin", "admin_operations"]} redirectTo="/admin/dashboard">
       {/*
        * Negative margins cancel AdminShell's p-4/p-6 padding on all sides so the
        * three-panel layout truly fills the viewport below the sticky topbar.

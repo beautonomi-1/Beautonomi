@@ -1,22 +1,19 @@
 import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { getSupabaseAdmin } from '@/lib/supabase/admin';
+import { requireRoleInApi, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchMergedFinanceLedgerSliceForTenant } from "@/lib/admin/finance-ledger-tenant";
 
 /**
  * GET /api/admin/activity
- * Get recent activity notifications for admin dashboard
+ * Get recent activity notifications for admin dashboard (header bell).
+ * Any admin role can load; uses service client + tenant scoping (same as nav-counts).
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
-    const supabase = await getSupabaseServer(request);
-
-    if (!supabase) {
-      return successResponse([]);
-    }
+    await requireRoleInApi(ALL_ADMIN_ROLES, request);
+    const supabase = getSupabaseAdmin();
 
     const tenantId = await resolveAdminApiTenantId(request);
 
@@ -305,11 +302,6 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Sort by timestamp (most recent first)
-    activities.sort((a, b) => 
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-
     // Process webhook failures
     if (webhookFailures.status === 'fulfilled' && webhookFailures.value.data) {
       const { data: failures } = webhookFailures.value;
@@ -321,7 +313,7 @@ export async function GET(request: NextRequest) {
             title: 'Webhook Failure',
             message: `${failure.source || 'System'} webhook failed: ${failure.event_type || 'Unknown event'}`,
             timestamp: failure.created_at,
-            link: `/admin/webhooks/failures`,
+            link: `/admin/webhooks`,
             priority: 'high',
           });
         });
@@ -448,6 +440,10 @@ export async function GET(request: NextRequest) {
         });
       }
     }
+
+    activities.sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
 
     // Get counts for badge
     const counts = {

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Package } from "lucide-react";
+import { BarChart3, Package } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -689,6 +690,35 @@ export function CpModuleAiPage() {
 
 type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
 
+type AdsOverview = {
+  campaigns_by_status: Record<string, number>;
+  events_7d: { impressions: number; clicks: number; books: number };
+  events_30d: { impressions: number; clicks: number; books: number };
+  prepaid_revenue_30d_zar: number;
+  total_spent_in_campaigns_zar: number;
+  total_budget_in_campaigns_zar: number;
+  generated_at: string;
+};
+
+type AdsCampaignRow = {
+  id: string;
+  provider_id: string;
+  provider_name: string;
+  status: string;
+  budget: number;
+  spent: number;
+  bid_cpc: number;
+  daily_budget: number | null;
+  pack_impressions: number | null;
+  start_at: string | null;
+  end_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+const zar = (n: number) =>
+  new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR", maximumFractionDigits: 0 }).format(n);
+
 export function CpModuleAdsPage() {
   const { allowed, denied } = useSuperadminPage("Control plane is superadmin-only.");
   const [env, setEnv] = useState("production");
@@ -704,6 +734,79 @@ export function CpModuleAdsPage() {
     cost_per_impression_ratio: "",
   });
   const [msg, setMsg] = useState<string | null>(null);
+
+  const [overview, setOverview] = useState<AdsOverview | null>(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [campaigns, setCampaigns] = useState<AdsCampaignRow[]>([]);
+  const [campaignTotal, setCampaignTotal] = useState(0);
+  const [campaignLoading, setCampaignLoading] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [searchDebounced, setSearchDebounced] = useState("");
+  const [campOffset, setCampOffset] = useState(0);
+  const campPageSize = 20;
+  const [moderatingId, setModeratingId] = useState<string | null>(null);
+  const [opsTick, setOpsTick] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(searchInput.trim()), 400);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  useEffect(() => {
+    setCampOffset(0);
+  }, [searchDebounced, statusFilter]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    let c = false;
+    (async () => {
+      setOverviewLoading(true);
+      try {
+        const d = await adminApi.getJson<AdsOverview>("/api/admin/ads/overview");
+        if (!c) setOverview(d);
+      } catch {
+        if (!c) setOverview(null);
+      } finally {
+        if (!c) setOverviewLoading(false);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [allowed, opsTick]);
+
+  useEffect(() => {
+    if (!allowed) return;
+    let c = false;
+    (async () => {
+      setCampaignLoading(true);
+      try {
+        const qs = new URLSearchParams();
+        qs.set("limit", String(campPageSize));
+        qs.set("offset", String(campOffset));
+        if (statusFilter) qs.set("status", statusFilter);
+        if (searchDebounced) qs.set("search", searchDebounced);
+        const d = await adminApi.getJson<{ campaigns: AdsCampaignRow[]; total: number }>(
+          `/api/admin/ads/campaigns?${qs.toString()}`
+        );
+        if (!c) {
+          setCampaigns(Array.isArray(d.campaigns) ? d.campaigns : []);
+          setCampaignTotal(typeof d.total === "number" ? d.total : 0);
+        }
+      } catch {
+        if (!c) {
+          setCampaigns([]);
+          setCampaignTotal(0);
+        }
+      } finally {
+        if (!c) setCampaignLoading(false);
+      }
+    })();
+    return () => {
+      c = true;
+    };
+  }, [allowed, campOffset, searchDebounced, statusFilter, opsTick]);
 
   useEffect(() => {
     if (!allowed) return;
@@ -777,6 +880,24 @@ export function CpModuleAdsPage() {
     }
   };
 
+  const moderateCampaign = async (id: string, next: "paused" | "ended") => {
+    if (next === "ended") {
+      const ok = window.confirm("End this campaign? It cannot be resumed.");
+      if (!ok) return;
+    }
+    setModeratingId(id);
+    setMsg(null);
+    try {
+      await adminApi.patchJson(`/api/admin/ads/campaigns/${id}`, { status: next });
+      setMsg(next === "paused" ? "Campaign paused." : "Campaign ended.");
+      setOpsTick((t) => t + 1);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Moderation failed");
+    } finally {
+      setModeratingId(null);
+    }
+  };
+
   if (denied) return denied;
 
   return (
@@ -789,6 +910,186 @@ export function CpModuleAdsPage() {
           <p className="text-sm text-gray-700">{msg}</p>
         </AdminPanel>
       ) : null}
+
+      <AdminPanel className="space-y-4">
+        <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
+          <BarChart3 className="h-5 w-5" />
+          Platform overview
+        </h2>
+        {overviewLoading ? (
+          <p className="text-sm text-gray-500">Loading metrics…</p>
+        ) : overview ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Campaigns</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">
+                {(overview.campaigns_by_status.active ?? 0) +
+                  (overview.campaigns_by_status.paused ?? 0) +
+                  (overview.campaigns_by_status.draft ?? 0) +
+                  (overview.campaigns_by_status.ended ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-gray-600">
+                Active {overview.campaigns_by_status.active ?? 0} · Paused{" "}
+                {overview.campaigns_by_status.paused ?? 0} · Draft {overview.campaigns_by_status.draft ?? 0} · Ended{" "}
+                {overview.campaigns_by_status.ended ?? 0}
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Events (30d)</p>
+              <p className="mt-1 text-sm text-gray-800">
+                Impr. {overview.events_30d.impressions.toLocaleString()} · Clicks{" "}
+                {overview.events_30d.clicks.toLocaleString()} · Books {overview.events_30d.books.toLocaleString()}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                7d: impr. {overview.events_7d.impressions.toLocaleString()} · clk {overview.events_7d.clicks} · book{" "}
+                {overview.events_7d.books}
+              </p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Prepaid revenue (30d)</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{zar(overview.prepaid_revenue_30d_zar)}</p>
+              <p className="mt-1 text-xs text-gray-600">Paid budget orders</p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Spend vs budget (all)</p>
+              <p className="mt-1 text-sm font-medium text-gray-900">
+                Spent {zar(overview.total_spent_in_campaigns_zar)} / {zar(overview.total_budget_in_campaigns_zar)}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Updated {new Date(overview.generated_at).toLocaleString(undefined, { hour12: false })}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">Could not load overview.</p>
+        )}
+      </AdminPanel>
+
+      <AdminPanel className="space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Campaigns</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <CpField label="Search (provider or campaign id)">
+            <input
+              className="w-full min-w-[12rem] rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Name or UUID fragment…"
+            />
+          </CpField>
+          <CpField label="Status">
+            <select
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="draft">Draft</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="ended">Ended</option>
+            </select>
+          </CpField>
+        </div>
+        {campaignLoading ? (
+          <p className="text-sm text-gray-500">Loading campaigns…</p>
+        ) : campaigns.length === 0 ? (
+          <p className="text-sm text-gray-500">No campaigns match.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-xs uppercase text-gray-500">
+                  <th className="py-2 pr-3 font-medium">Provider</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Budget</th>
+                  <th className="py-2 pr-3 font-medium">Spent</th>
+                  <th className="py-2 pr-3 font-medium">Bid (CPC)</th>
+                  <th className="py-2 pr-3 font-medium">Updated</th>
+                  <th className="py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map((c) => {
+                  const busy = moderatingId === c.id;
+                  const canPause = c.status === "active" || c.status === "draft";
+                  const canEnd = c.status !== "ended";
+                  return (
+                    <tr key={c.id} className="border-b border-gray-100">
+                      <td className="py-2 pr-3">
+                        <Link
+                          className="font-medium text-primary underline"
+                          to={adminSpaTo(`/admin/providers/${c.provider_id}`)}
+                        >
+                          {c.provider_name}
+                        </Link>
+                        <p className="text-xs text-gray-500">{c.id.slice(0, 8)}…</p>
+                      </td>
+                      <td className="py-2 pr-3 capitalize">{c.status}</td>
+                      <td className="py-2 pr-3">{zar(c.budget)}</td>
+                      <td className="py-2 pr-3">{zar(c.spent)}</td>
+                      <td className="py-2 pr-3">{zar(c.bid_cpc)}</td>
+                      <td className="py-2 pr-3 text-gray-600">
+                        {new Date(c.updated_at).toLocaleDateString(undefined, { hour12: false })}
+                      </td>
+                      <td className="py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {canPause ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className="rounded border border-gray-300 bg-white px-2 py-1 text-xs disabled:opacity-50"
+                              onClick={() => void moderateCampaign(c.id, "paused")}
+                            >
+                              {busy ? "…" : "Pause"}
+                            </button>
+                          ) : null}
+                          {canEnd ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              className="rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-900 disabled:opacity-50"
+                              onClick={() => void moderateCampaign(c.id, "ended")}
+                            >
+                              {busy ? "…" : "End"}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {campaignTotal > campPageSize ? (
+          <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-3 text-sm text-gray-600">
+            <span>
+              {campaignTotal.toLocaleString()} total · showing {campOffset + 1}–
+              {Math.min(campOffset + campaigns.length, campaignTotal)}
+            </span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+                disabled={campOffset <= 0 || campaignLoading}
+                onClick={() => setCampOffset((o) => Math.max(0, o - campPageSize))}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="rounded border border-gray-300 bg-white px-3 py-1 text-sm disabled:opacity-50"
+                disabled={campOffset + campPageSize >= campaignTotal || campaignLoading}
+                onClick={() => setCampOffset((o) => o + campPageSize)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </AdminPanel>
+
       {loading ? (
         <p className="text-sm text-gray-500">Loading…</p>
       ) : (

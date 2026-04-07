@@ -18,7 +18,10 @@ interface DashboardStats {
   total_users: number;
   total_providers: number;
   total_bookings: number;
-  /** Platform take net (commission net − gateway fees, after refunds) — same basis as finance dashboard. */
+  /**
+   * Platform net rollup: booking take + subscription net + ads net (same formula as GET /api/admin/finance/summary `total_platform_take_net`).
+   * Ledger totals use a rolling window (see `metrics_notes.ledger_window_months` when present).
+   */
   total_revenue: number;
   pending_approvals: number;
   /** Bookings whose `created_at` is today (not “in progress” pipeline). */
@@ -29,9 +32,18 @@ interface DashboardStats {
   users_growth?: number;
   providers_growth?: number;
   bookings_growth?: number;
-  /** Gross customer payments (payment + additional_charge `amount`) for the same ledger window as `total_revenue`. */
+  /** Service GMV (gross collected from ledger rows — matches finance summary). */
   gmv_total?: number;
+  /** Same numeric basis as `total_revenue` when API sends both (backward compatibility). */
   platform_net_total?: number;
+  subscription_net_total?: number;
+  ads_net_total?: number;
+  metrics_notes?: {
+    ledger_window_months?: number;
+    customer_count_basis?: string;
+    customer_growth_basis?: string;
+    platform_net_includes?: string;
+  };
 }
 
 export function DashboardPage() {
@@ -163,9 +175,13 @@ export function DashboardPage() {
                 />
                 <AdminMetricCard
                   variant="amber"
-                  label="Platform net (≈2yr)"
+                  label="Platform net (ledger window)"
                   value={formatAdminCurrency(s.total_revenue)}
-                  hint="After refunds & gateway fees — see Finance for full ledger"
+                  hint={
+                    typeof s.metrics_notes?.ledger_window_months === "number"
+                      ? `Rolling ${s.metrics_notes.ledger_window_months} mo — take + subs + ads; Finance for full detail`
+                      : "Take + subs + ads (net); open Finance for full ledger"
+                  }
                 />
                 <AdminMetricCard
                   variant="rose"
@@ -183,6 +199,7 @@ export function DashboardPage() {
                   variant="emerald"
                   label="Platform net today"
                   value={formatAdminCurrency(s.revenue_today)}
+                  hint="Take + subs + ads"
                 />
                 <AdminMetricCard
                   variant="violet"
@@ -194,21 +211,27 @@ export function DashboardPage() {
               {typeof s.gmv_total === "number" ? (
                 <div>
                   <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-                    Ledger context (same window as platform net)
+                    Ledger context (same rolling window as headline platform net)
                   </h2>
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     <AdminMetricCard
                       variant="emerald"
-                      label="GMV — customer payments"
+                      label="Service GMV (gross)"
                       value={formatAdminCurrency(s.gmv_total)}
-                      hint="payment + additional_charge amounts (gross collected)"
+                      hint="Matches finance summary service_collected_gross"
                     />
-                    {typeof s.platform_net_total === "number" ? (
+                    {typeof s.subscription_net_total === "number" ? (
                       <AdminMetricCard
                         variant="slate"
-                        label="Platform + subscriptions (net)"
-                        value={formatAdminCurrency(s.platform_net_total)}
-                        hint="Take-home style rollup from API"
+                        label="Subscription net"
+                        value={formatAdminCurrency(s.subscription_net_total)}
+                      />
+                    ) : null}
+                    {typeof s.ads_net_total === "number" ? (
+                      <AdminMetricCard
+                        variant="slate"
+                        label="Ads net"
+                        value={formatAdminCurrency(s.ads_net_total)}
                       />
                     ) : null}
                   </div>

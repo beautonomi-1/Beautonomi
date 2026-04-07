@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="t">
+  <title id="t">Beautonomi web feature placeholder</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fafafa"/>
+      <stop offset="100%" stop-color="#f4f4f5"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" rx="24" fill="url(#bg)" stroke="#e4e4e7" stroke-width="2"/>
+  <rect x="48" y="40" width="1104" height="48" rx="12" fill="#ffffff" stroke="#e4e4e7"/>
+  <circle cx="76" cy="64" r="8" fill="#ff0077" opacity="0.9"/>
+  <rect x="100" y="56" width="180" height="16" rx="4" fill="#d4d4d8"/>
+  <rect x="48" y="112" width="280" height="470" rx="16" fill="#ffffff" stroke="#e4e4e7"/>
+  <rect x="72" y="144" width="220" height="14" rx="4" fill="#e4e4e7"/>
+  <rect x="72" y="174" width="160" height="14" rx="4" fill="#f4f4f5"/>
+  <rect x="72" y="210" width="232" height="120" rx="12" fill="#fdf2f8" stroke="#fbcfe8"/>
+  <rect x="360" y="112" width="792" height="470" rx="16" fill="#ffffff" stroke="#e4e4e7"/>
+  <rect x="392" y="148" width="400" height="22" rx="6" fill="#18181b"/>
+  <rect x="392" y="186" width="520" height="14" rx="4" fill="#d4d4d8"/>
+  <rect x="392" y="224" width="728" height="280" rx="12" fill="#fafafa" stroke="#e4e4e7"/>
+  <text x="756" y="380" text-anchor="middle" fill="#a1a1aa" font-family="ui-sans-serif, system-ui, sans-serif" font-size="28">Replace with product screenshot</text>
+  <text x="756" y="418" text-anchor="middle" fill="#ff0077" font-family="ui-sans-serif, system-ui, sans-serif" font-size="18" opacity="0.85">Admin ’ Content ’ Learning ’ set Image URL</text>
+</svg>

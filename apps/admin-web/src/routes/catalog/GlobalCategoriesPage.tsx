@@ -33,7 +33,7 @@ export function GlobalCategoriesPage() {
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_CONTENT_CATALOG, "Content & catalog access is required.");
   const [msg, setMsg] = useState<string | null>(null);
-  const [form, setForm] = useState({ name: "", slug: "", description: "" });
+  const [form, setForm] = useState({ name: "", slug: "", description: "", icon: "" });
 
   const q = useQuery({
     queryKey: adminQueryKeys.globalCategories(),
@@ -47,9 +47,10 @@ export function GlobalCategoriesPage() {
         name: form.name.trim(),
         slug: form.slug.trim().toLowerCase(),
         description: form.description.trim() || null,
+        ...(form.icon.trim() ? { icon: form.icon.trim() } : {}),
       }),
     onSuccess: async () => {
-      setForm({ name: "", slug: "", description: "" });
+      setForm({ name: "", slug: "", description: "", icon: "" });
       setMsg("Category created.");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.globalCategories() });
     },
@@ -99,6 +100,14 @@ export function GlobalCategoriesPage() {
         title="Global service categories"
         description="Platform-wide categories used for onboarding, ads targeting, and catalog. Changes apply per resolved admin tenant where data is scoped."
       />
+      <AdminPanel className="border-slate-200 bg-slate-50/90">
+        <p className="text-sm text-gray-800">
+          <strong>Icon / image:</strong> set the optional <code className="rounded bg-white px-1 text-xs">icon</code> field to a{" "}
+          <strong>public image URL</strong> (PNG/SVG/WebP hosted on your CDN or under{" "}
+          <code className="rounded bg-white px-1 text-xs">/images/...</code> on the web app), or a short token your UI maps to an
+          asset. It is stored on <code className="rounded bg-white px-1 text-xs">global_service_categories.icon</code>.
+        </p>
+      </AdminPanel>
       {msg ? (
         <AdminPanel>
           <p className="text-sm text-gray-700">{msg}</p>
@@ -126,6 +135,12 @@ export function GlobalCategoriesPage() {
             value={form.description}
             onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
           />
+          <input
+            className="rounded-lg border border-gray-200 px-2 py-2 text-sm font-mono sm:col-span-2 lg:col-span-3"
+            placeholder="Icon URL or token (optional) — e.g. https://…/category-nails.png"
+            value={form.icon}
+            onChange={(e) => setForm((p) => ({ ...p, icon: e.target.value }))}
+          />
         </div>
         <button
           type="button"
@@ -145,6 +160,7 @@ export function GlobalCategoriesPage() {
             <tr>
               <AdminTh>Name</AdminTh>
               <AdminTh>Slug</AdminTh>
+              <AdminTh>Icon</AdminTh>
               <AdminTh>Order</AdminTh>
               <AdminTh>Providers</AdminTh>
               <AdminTh>Featured</AdminTh>
@@ -159,6 +175,18 @@ export function GlobalCategoriesPage() {
                 <tr key={id}>
                   <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
                   <AdminTd className="font-mono text-xs">{String(r.slug ?? "")}</AdminTd>
+                  <AdminTd className="max-w-[14rem]">
+                    <input
+                      className="w-full rounded border border-gray-200 px-1 py-1 font-mono text-xs"
+                      defaultValue={String(r.icon ?? "")}
+                      placeholder="https://…"
+                      title="Image URL or icon token"
+                      onBlur={(e) => {
+                        const v = e.target.value.trim();
+                        putMut.mutate({ id, body: { icon: v || null } });
+                      }}
+                    />
+                  </AdminTd>
                   <AdminTd>
                     <input
                       type="number"

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
@@ -12,7 +12,8 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
-import { labelForSupportTicketCategory } from "@/lib/supportTicketCategories";
+import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
+import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedResponses";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 
@@ -29,6 +30,12 @@ type TicketRow = Record<string, unknown> & {
   user_id?: string | null;
   provider_id?: string | null;
   assigned_to?: string | null;
+  tags?: string[] | null;
+  sla_resolution_due_at?: string | null;
+  first_staff_reply_at?: string | null;
+  last_customer_reply_at?: string | null;
+  csat_score?: number | null;
+  csat_comment?: string | null;
   created_at?: string;
   updated_at?: string;
   user?: { id?: string; email?: string; full_name?: string | null } | null;
@@ -40,6 +47,7 @@ type AttachmentItem = { url: string; name?: string; type?: string; size?: number
 
 type MessageRow = Record<string, unknown> & {
   id?: string;
+  user_id?: string | null;
   message?: string;
   is_internal?: boolean;
   created_at?: string;
@@ -61,11 +69,19 @@ type TicketBundle = {
   notes: NoteRow[];
 };
 
-const STATUSES = ["open", "in_progress", "resolved", "closed"] as const;
-const PRIORITIES = ["high", "medium", "low"] as const;
+const STATUSES = ["open", "in_progress", "waiting_customer", "resolved", "closed"] as const;
+const PRIORITIES = ["urgent", "high", "medium", "low"] as const;
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
+}
+
+function isSlaBreached(ticket: TicketRow): boolean {
+  const due = ticket.sla_resolution_due_at;
+  if (!due) return false;
+  const st = str(ticket.status);
+  if (st === "resolved" || st === "closed") return false;
+  return new Date(due).getTime() < Date.now();
 }
 
 function attachmentsFromRow(raw: unknown): AttachmentItem[] {
@@ -99,6 +115,9 @@ export function SupportTicketDetailPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [noteBody, setNoteBody] = useState("");
   const [patchError, setPatchError] = useState<string | null>(null);
+  const [tagsInput, setTagsInput] = useState("");
+  const [csatScore, setCsatScore] = useState<number | "">("");
+  const [csatCommentDraft, setCsatCommentDraft] = useState("");
 
   const detailQ = useQuery({
     queryKey: adminQueryKeys.supportTicketDetail(id),
@@ -119,8 +138,16 @@ export function SupportTicketDetailPage() {
   };
 
   const patchTicket = useMutation({
-    mutationFn: (body: { status?: string; priority?: string; assigned_to?: string | null }) =>
-      adminApi.patchJson<{ ticket?: TicketRow }>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, body),
+    mutationFn: (body: {
+      status?: string;
+      priority?: string;
+      assigned_to?: string | null;
+      category?: string | null;
+      tags?: string[];
+      csat_score?: number | null;
+      csat_comment?: string | null;
+      sla_resolution_due_at?: string | null;
+    }) => adminApi.patchJson<{ ticket?: TicketRow }>(`/api/admin/support-tickets/${encodeURIComponent(id)}`, body),
     onSuccess: () => {
       setPatchError(null);
       invalidateTicket();
@@ -192,6 +219,15 @@ export function SupportTicketDetailPage() {
     },
   });
 
+  const syncedTicket = detailQ.data?.ticket;
+  useEffect(() => {
+    if (!syncedTicket?.id) return;
+    setTagsInput(((syncedTicket.tags as string[] | null | undefined) ?? []).join(", "));
+    const sc = syncedTicket.csat_score;
+    setCsatScore(typeof sc === "number" ? sc : "");
+    setCsatCommentDraft(typeof syncedTicket.csat_comment === "string" ? syncedTicket.csat_comment : "");
+  }, [syncedTicket?.id, syncedTicket?.tags, syncedTicket?.csat_score, syncedTicket?.csat_comment]);
+
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing ticket id" onRetry={() => {}} />;
 
@@ -213,6 +249,7 @@ export function SupportTicketDetailPage() {
 
   const bundle = detailQ.data;
   const ticket = bundle?.ticket;
+
   if (!ticket) {
     return (
       <div className="space-y-6">
@@ -229,6 +266,7 @@ export function SupportTicketDetailPage() {
   const assignees = assigneesQ.data?.assignees ?? [];
   const assignedId = ticket.assigned_to == null ? "" : str(ticket.assigned_to);
   const assigneeInList = assignedId && assignees.some((a) => a.id === assignedId);
+  const customerUserId = ticket.user_id == null ? null : str(ticket.user_id);
 
   return (
     <div className="space-y-6">
@@ -261,28 +299,86 @@ export function SupportTicketDetailPage() {
         <AdminPanel className="lg:col-span-2">
           <h2 className="text-lg font-semibold text-gray-900">Conversation</h2>
           <p className="mt-1 text-sm text-gray-600 whitespace-pre-wrap">{str(ticket.description)}</p>
-          <ul className="mt-6 space-y-4 border-t border-gray-100 pt-4">
+          <ul className="mt-6 space-y-3 border-t border-gray-100 pt-4">
             {messages.length === 0 ? (
               <li className="text-sm text-gray-500">No messages yet.</li>
             ) : (
-              messages.map((m) => (
-                <li key={str(m.id)} className="rounded-xl border border-gray-100 bg-gray-50/80 p-3">
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                    <span>{m.user?.full_name || m.user?.email || "User"}</span>
-                    <span>·</span>
-                    <span>{m.created_at ? new Date(String(m.created_at)).toLocaleString() : "—"}</span>
-                    {m.is_internal ? (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-amber-900">Internal</span>
-                    ) : null}
-                  </div>
-                  <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{str(m.message)}</p>
-                </li>
-              ))
+              messages.map((m) => {
+                const internal = Boolean(m.is_internal);
+                const uid = m.user_id == null ? null : str(m.user_id);
+                const fromCustomer = !internal && customerUserId !== null && uid === customerUserId;
+                const fromStaff = !internal && !fromCustomer;
+                const bubble =
+                  internal
+                    ? "border-amber-200 bg-amber-50/90"
+                    : fromStaff
+                      ? "border-blue-200 bg-blue-50/90"
+                      : "border-gray-200 bg-gray-50/90";
+                const atts = attachmentsFromRow(m.attachments);
+                const roleLabel = internal ? "Internal" : fromCustomer ? "Customer" : "Support";
+                return (
+                  <li key={str(m.id)} className={`flex w-full ${fromStaff ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[min(100%,42rem)] rounded-xl border p-3 ${bubble}`}>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                        <span className="font-medium text-gray-700">{roleLabel}</span>
+                        <span>·</span>
+                        <span>{m.user?.full_name || m.user?.email || "User"}</span>
+                        <span>·</span>
+                        <span>{m.created_at ? new Date(String(m.created_at)).toLocaleString() : "—"}</span>
+                        {internal ? (
+                          <span className="rounded-full bg-amber-200/80 px-2 py-0.5 text-amber-950">Not visible to customer</span>
+                        ) : null}
+                      </div>
+                      <p className="mt-2 text-sm text-gray-800 whitespace-pre-wrap">{str(m.message)}</p>
+                      {atts.length > 0 ? (
+                        <ul className="mt-2 space-y-1 border-t border-dashed border-gray-200 pt-2 text-xs">
+                          {atts.map((a) => (
+                            <li key={a.url}>
+                              <a
+                                href={a.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-primary underline"
+                              >
+                                {a.name || "Attachment"}
+                              </a>
+                              {a.size != null ? <span className="text-gray-500"> ({Math.round(a.size / 1024)} KB)</span> : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })
             )}
           </ul>
 
           <div className="mt-6 space-y-3 border-t border-gray-100 pt-4">
             <label className="block text-sm font-medium text-gray-700">Reply</label>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-gray-500">Snippet</span>
+              <select
+                className="max-w-xs rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+                defaultValue=""
+                aria-label="Insert canned reply"
+                onChange={(e) => {
+                  const label = e.target.value;
+                  e.target.value = "";
+                  if (!label) return;
+                  const snippet = SUPPORT_TICKET_CANNED_RESPONSES.find((c) => c.label === label);
+                  if (!snippet) return;
+                  setReply((prev) => (prev.trim() ? `${prev.trim()}\n\n${snippet.body}` : snippet.body));
+                }}
+              >
+                <option value="">Insert canned reply…</option>
+                {SUPPORT_TICKET_CANNED_RESPONSES.map((c) => (
+                  <option key={c.label} value={c.label}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <textarea
               className="w-full min-h-[100px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
               value={reply}
@@ -395,6 +491,51 @@ export function SupportTicketDetailPage() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Category</label>
+                <select
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={ticket.category ?? ""}
+                  disabled={patchTicket.isPending}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    void patchTicket.mutateAsync({ category: v === "" ? null : v });
+                  }}
+                >
+                  <option value="">Uncategorized</option>
+                  {SUPPORT_TICKET_CATEGORY_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.items.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-600">Tags (comma-separated)</label>
+                <input
+                  type="text"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  value={tagsInput}
+                  onChange={(e) => setTagsInput(e.target.value)}
+                  onBlur={() => {
+                    const next = tagsInput
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const prev = ((ticket.tags as string[] | null | undefined) ?? [])
+                      .map((t) => String(t))
+                      .sort()
+                      .join("|");
+                    const n = [...next].sort().join("|");
+                    if (prev !== n) void patchTicket.mutateAsync({ tags: next });
+                  }}
+                  placeholder="billing, vip, follow-up"
+                />
+              </div>
             </div>
           </AdminPanel>
 
@@ -426,14 +567,78 @@ export function SupportTicketDetailPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">Category</dt>
-                <dd>{ticket.category ? labelForSupportTicketCategory(String(ticket.category)) : "—"}</dd>
-              </div>
-              <div>
                 <dt className="text-gray-500">Created</dt>
                 <dd className="text-gray-700">{ticket.created_at ? new Date(String(ticket.created_at)).toLocaleString() : "—"}</dd>
               </div>
+              <div>
+                <dt className="text-gray-500">SLA resolution due</dt>
+                <dd className={isSlaBreached(ticket) ? "font-medium text-red-700" : "text-gray-700"}>
+                  {ticket.sla_resolution_due_at
+                    ? `${new Date(String(ticket.sla_resolution_due_at)).toLocaleString()}${isSlaBreached(ticket) ? " (overdue)" : ""}`
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">First staff reply</dt>
+                <dd className="text-gray-700">
+                  {ticket.first_staff_reply_at
+                    ? new Date(String(ticket.first_staff_reply_at)).toLocaleString()
+                    : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">Last customer reply</dt>
+                <dd className="text-gray-700">
+                  {ticket.last_customer_reply_at
+                    ? new Date(String(ticket.last_customer_reply_at)).toLocaleString()
+                    : "—"}
+                </dd>
+              </div>
             </dl>
+          </AdminPanel>
+
+          <AdminPanel>
+            <h2 className="text-lg font-semibold text-gray-900">Satisfaction (CSAT)</h2>
+            <p className="mt-1 text-xs text-gray-500">Record follow-up survey feedback (1–5).</p>
+            <div className="mt-3 space-y-2">
+              <label className="text-xs font-medium text-gray-600">Score</label>
+              <select
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={csatScore === "" ? "" : String(csatScore)}
+                disabled={patchTicket.isPending}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setCsatScore(v === "" ? "" : Number(v));
+                }}
+              >
+                <option value="">Not set</option>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </select>
+              <label className="text-xs font-medium text-gray-600">Comment</label>
+              <textarea
+                className="w-full min-h-[72px] rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={csatCommentDraft}
+                onChange={(e) => setCsatCommentDraft(e.target.value)}
+                placeholder="Optional note from the customer"
+              />
+              <button
+                type="button"
+                className={adminToolbarButtonClass(patchTicket.isPending)}
+                disabled={patchTicket.isPending}
+                onClick={() => {
+                  void patchTicket.mutateAsync({
+                    csat_score: csatScore === "" ? null : Number(csatScore),
+                    csat_comment: csatCommentDraft.trim() || null,
+                  });
+                }}
+              >
+                {patchTicket.isPending ? "Saving…" : "Save CSAT"}
+              </button>
+            </div>
           </AdminPanel>
 
           <AdminPanel>

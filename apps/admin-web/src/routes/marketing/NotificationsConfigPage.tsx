@@ -36,7 +36,10 @@ export function NotificationsConfigPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Push configuration" description="GET /api/admin/notifications/config" />
+      <AdminPageHeader
+        title="Push configuration"
+        description="Expo / mobile push credentials and related settings (GET /api/admin/notifications/config). In-app alerts for ops work are in the header bell; customer broadcast campaigns live under Marketing → Broadcast."
+      />
       <AdminPanel>
         <pre className="max-h-[320px] overflow-auto rounded bg-gray-50 p-4 text-xs">{JSON.stringify(q.data, null, 2)}</pre>
       </AdminPanel>

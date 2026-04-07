@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, getProviderIdForUser, notFoundResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
 import { z } from "zod";
 
 const DAY_ORDER = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
@@ -17,19 +18,13 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: staff } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!staff) return notFoundResponse("Staff member not found");
+    const resolvedStaffId = await resolveProviderStaffRowId(supabase, providerId, id);
+    if (!resolvedStaffId) return notFoundResponse("Staff member not found");
 
     const { data: schedules } = await supabase
       .from("staff_schedules")
       .select("id, day_of_week, start_time, end_time, is_working")
-      .eq("staff_id", id)
+      .eq("staff_id", resolvedStaffId)
       .order("day_of_week");
 
     const scheduleMap = new Map((schedules || []).map((s: any) => [s.day_of_week, s]));
@@ -38,7 +33,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       const schedule = scheduleMap.get(index);
       return {
         id: schedule?.id || null,
-        staff_id: id,
+        staff_id: resolvedStaffId,
         day_of_week: day.charAt(0).toUpperCase() + day.slice(1),
         start_time: schedule?.start_time?.substring(0, 5) || null,
         end_time: schedule?.end_time?.substring(0, 5) || null,
@@ -71,14 +66,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: staff } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!staff) return notFoundResponse("Staff member not found");
+    const resolvedStaffId = await resolveProviderStaffRowId(supabase, providerId, id);
+    if (!resolvedStaffId) return notFoundResponse("Staff member not found");
 
     const body = await request.json();
     const result = upsertScheduleSchema.safeParse(body);
@@ -94,7 +83,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const { data: schedule, error } = await supabase
       .from("staff_schedules")
       .upsert({
-        staff_id: id,
+        staff_id: resolvedStaffId,
         provider_id: providerId,
         day_of_week: dayIndex,
         start_time: result.data.start_time,
@@ -108,7 +97,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     return successResponse({
       id: schedule.id,
-      staff_id: id,
+      staff_id: resolvedStaffId,
       day_of_week: result.data.day_of_week,
       start_time: schedule.start_time?.substring(0, 5),
       end_time: schedule.end_time?.substring(0, 5),

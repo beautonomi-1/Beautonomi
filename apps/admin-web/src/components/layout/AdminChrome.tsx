@@ -1,6 +1,6 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Menu, LogOut, Search, Bell, ChevronDown } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import {
@@ -17,6 +17,7 @@ import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 
 export function AdminChrome() {
+  const qc = useQueryClient();
   const {
     bootstrap,
     signOut,
@@ -72,11 +73,29 @@ export function AdminChrome() {
     queryFn: async () => {
       try {
         return await adminApi.getJson<{
-          activities?: Array<{ id: string; message?: string; created_at?: string }>;
+          activities?: Array<{
+            id: string;
+            title?: string;
+            message?: string;
+            timestamp?: string;
+            link?: string;
+            priority?: string;
+          }>;
+          total_unread?: number;
         }>("/api/admin/activity");
       } catch (e) {
         if (e instanceof AdminApiError && (e.status === 401 || e.status === 403 || e.status >= 500)) {
-          return { activities: [] as Array<{ id: string; message?: string; created_at?: string }> };
+          return {
+            activities: [] as Array<{
+              id: string;
+              title?: string;
+              message?: string;
+              timestamp?: string;
+              link?: string;
+              priority?: string;
+            }>,
+            total_unread: 0,
+          };
         }
         throw e;
       }
@@ -101,6 +120,20 @@ export function AdminChrome() {
     window.localStorage.setItem(ADMIN_SCOPE_STORAGE_KEY, scopeMode);
     if (scopeTenantId) window.localStorage.setItem(ADMIN_SCOPE_TENANT_STORAGE_KEY, scopeTenantId);
   }, [scopeMode, scopeTenantId]);
+
+  const scopePickerEpoch = useRef<string | null>(null);
+  /** Superadmin tenant/global picker: refetch admin data when scope changes (not on first mount). */
+  useEffect(() => {
+    if (!bootstrap?.isSuperadmin) return;
+    const key = `${scopeMode}|${scopeTenantId}`;
+    if (scopePickerEpoch.current === null) {
+      scopePickerEpoch.current = key;
+      return;
+    }
+    if (scopePickerEpoch.current === key) return;
+    scopePickerEpoch.current = key;
+    void qc.invalidateQueries({ queryKey: adminQueryKeys.root });
+  }, [scopeMode, scopeTenantId, bootstrap?.isSuperadmin, qc]);
 
   useEffect(() => {
     const rows = tenantsQuery.data;
@@ -156,6 +189,13 @@ export function AdminChrome() {
 
   const navCounts = navCountsQuery.data ?? {};
 
+  const activityData = activityQuery.data;
+  const activityItems = activityData?.activities ?? [];
+  const activityUnread = activityData?.total_unread ?? 0;
+
+  /** `/admin/foo/bar?x=1` → React Router path under `/admin` */
+  const activityLinkTo = (href: string) => href.replace(/^\/admin\/?/, "") || ".";
+
   return (
     <div className="flex min-h-screen bg-gray-50">
       <aside
@@ -165,7 +205,8 @@ export function AdminChrome() {
         )}
       >
         <div className="flex h-14 items-center border-b border-gray-100 px-4 font-semibold text-gray-900">
-          Beautonomi Admin
+          <span className="text-primary">Beautonomi</span>
+          <span className="ml-1 text-gray-700">Admin</span>
         </div>
         <nav className="max-h-[calc(100vh-3.5rem)] overflow-y-auto p-3 text-sm">
           {filteredNav.map((group) => (
@@ -182,19 +223,31 @@ export function AdminChrome() {
                         to={item.href.replace(/^\/admin\/?/, "")}
                         className={({ isActive }) =>
                           cn(
-                            "flex min-h-11 items-center justify-between rounded-xl px-3 py-2.5 text-gray-700 hover:bg-gray-100 touch-manipulation",
-                            isActive && "bg-gray-100 font-medium text-gray-900"
+                            "flex min-h-11 items-center justify-between rounded-xl border border-transparent px-3 py-2.5 text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
+                            isActive &&
+                              "border-primary/15 bg-primary/10 font-medium text-primary shadow-sm"
                           )
                         }
                         onClick={() => setSidebarOpen(false)}
                       >
-                        <span className="flex items-center gap-2">
-                          <item.icon className="h-4 w-4 shrink-0 opacity-70" />
-                          {item.title}
-                        </span>
-                        {count > 0 ? (
-                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">{count}</span>
-                        ) : null}
+                        {({ isActive }) => (
+                          <>
+                            <span className="flex items-center gap-2">
+                              <item.icon
+                                className={cn(
+                                  "h-4 w-4 shrink-0",
+                                  isActive ? "text-primary" : "text-gray-500 opacity-80"
+                                )}
+                              />
+                              {item.title}
+                            </span>
+                            {count > 0 ? (
+                              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                                {count}
+                              </span>
+                            ) : null}
+                          </>
+                        )}
                       </NavLink>
                     </li>
                   );
@@ -376,24 +429,51 @@ export function AdminChrome() {
           ) : null}
 
           <details className="relative">
-            <summary className="flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-1 rounded-xl p-2 hover:bg-gray-100 touch-manipulation">
-              <Bell className="h-5 w-5 text-gray-600" />
-              <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" />
+            <summary
+              className="relative flex min-h-11 min-w-11 cursor-pointer list-none items-center justify-center gap-1 rounded-xl p-2 hover:bg-gray-100 touch-manipulation"
+              aria-label={
+                activityUnread > 0
+                  ? `Notifications, ${activityUnread} items needing attention`
+                  : "Notifications"
+              }
+            >
+              <Bell className="h-5 w-5 text-gray-600" aria-hidden />
+              {activityUnread > 0 ? (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-none text-white">
+                  {activityUnread > 99 ? "99+" : activityUnread}
+                </span>
+              ) : null}
+              <ChevronDown className="hidden h-4 w-4 text-gray-400 sm:block" aria-hidden />
             </summary>
-            <div className="absolute right-0 mt-1 w-72 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-white p-2 text-xs shadow-lg">
+            <div className="absolute right-0 z-30 mt-1 w-80 max-h-[min(24rem,70vh)] overflow-auto rounded-lg border border-gray-200 bg-white p-2 text-xs shadow-lg">
               {activityQuery.isLoading ? (
                 <p className="text-gray-500">Loading…</p>
               ) : activityQuery.isError ? (
                 <p className="text-gray-500">Activity unavailable</p>
+              ) : activityItems.length === 0 ? (
+                <p className="text-gray-500">No items needing attention in the feed.</p>
               ) : (
-                <ul className="space-y-2">
-                  {(activityQuery.data as { activities?: Array<{ id: string; message?: string }> })?.activities
-                    ?.slice(0, 8)
-                    .map((a) => (
-                      <li key={a.id} className="text-gray-700">
-                        {a.message ?? a.id}
+                <ul className="space-y-1">
+                  {activityItems.slice(0, 12).map((a) => {
+                    const to = a.link ? activityLinkTo(a.link) : "dashboard";
+                    const primary = a.title ?? "Update";
+                    const body = a.message ?? a.id;
+                    return (
+                      <li key={a.id}>
+                        <Link
+                          to={to}
+                          className="block rounded-lg px-2 py-2 text-left text-gray-800 hover:bg-primary/5"
+                          onClick={(e) => {
+                            const details = (e.currentTarget.closest("details") as HTMLDetailsElement | null);
+                            if (details) details.open = false;
+                          }}
+                        >
+                          <span className="font-medium text-gray-900">{primary}</span>
+                          <span className="mt-0.5 block text-gray-600">{body}</span>
+                        </Link>
                       </li>
-                    )) ?? <li className="text-gray-500">No recent activity</li>}
+                    );
+                  })}
                 </ul>
               )}
             </div>

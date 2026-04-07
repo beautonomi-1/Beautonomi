@@ -52,7 +52,7 @@
 | `operations` | Operations | `admin_operations` | `ADMIN_SECTION_OPERATIONS` |
 | `platform_config` | Platform config | `admin_platform_config` | `ADMIN_SECTION_PLATFORM_CONFIG` |
 
-Superadmin may access all sections. Sidebar also uses `superadminOnly` on: **Market Coverage** (`/admin/service-zones`), **Tenant domains**, **Team permissions**.
+Superadmin may access all sections. Sidebar also uses `superadminOnly` on: **Tenant domains**, **Team permissions**. **Market Coverage** (`/admin/service-zones`) uses the **Operations** section (same as `requireAdminSection(ADMIN_SECTION_OPERATIONS)` on `/api/admin/service-zones/*`).
 
 ---
 
@@ -143,7 +143,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 62 | `/admin/mapbox` | W4 | integrations_dev | Y | `GET/PUT /api/admin/mapbox/config`, legacy zones tab | |
 | 63 | `/admin/iso-codes` | W4 | integrations_dev | Y | `GET/PUT/POST/DELETE /api/admin/iso-codes/*` | |
 | 64 | `/admin/settings/integrations/analytics` | W4 | integrations_dev | R | — | Client redirect → amplitude page |
-| 65 | `/admin/service-zones` | W4 | operations | Y (superadmin only) | `GET/POST/PATCH/DELETE .../service-zones`, map layers, include/exclude, publish, areas/search | |
+| 65 | `/admin/service-zones` | W4 | operations | Y (`admin_operations` + superadmin; APIs: `ADMIN_SECTION_OPERATIONS`) | `GET/POST/PATCH/DELETE .../service-zones`, map layers, include/exclude, publish, areas/search | |
 | 66 | `/admin/system-health` | W4 | operations | Y | `GET /api/admin/system-health` | |
 | 67 | `/admin/monitoring` | W4 | operations | Y | `GET /api/admin/monitoring` | |
 | 68 | `/admin/security` | W4 | operations | Y | Security admin API family | |

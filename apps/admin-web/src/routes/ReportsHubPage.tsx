@@ -60,9 +60,9 @@ export function ReportsHubPage() {
         description="Finance and operations reports for your tenant scope. Each opens the SPA report viewer with export where the API supports it."
       />
       {bootstrap?.isSuperadmin ? (
-        <div className="rounded-2xl border border-indigo-200/80 bg-indigo-50/80 p-4 text-sm text-indigo-950">
-          <p className="font-medium">Superadmin reporting</p>
-          <p className="mt-1 text-indigo-900/90">
+        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4 text-sm text-gray-900">
+          <p className="font-medium text-primary">Superadmin reporting</p>
+          <p className="mt-1 text-gray-700">
             For interactive trends and breakdowns, use{" "}
             <Link to="/analytics" className="font-semibold text-primary underline">
               Analytics
@@ -75,7 +75,7 @@ export function ReportsHubPage() {
           </p>
           <Link
             to="/analytics"
-            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
           >
             <BarChart3 className="h-4 w-4" aria-hidden />
             Open Analytics

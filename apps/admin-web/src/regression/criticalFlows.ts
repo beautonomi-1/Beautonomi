@@ -125,10 +125,10 @@ export const CRITICAL_ADMIN_FLOWS: CriticalAdminFlow[] = [
   },
   {
     id: "service-zones",
-    description: "Superadmin — platform market coverage / geometry",
+    description: "Operations — platform market coverage / geometry (API: ADMIN_SECTION_OPERATIONS)",
     appPath: "service-zones",
     pageModule: "routes/ops/ServiceZonesListPage.tsx",
-    rbac: "superadmin",
+    rbac: "section",
   },
   {
     id: "referral-sources",

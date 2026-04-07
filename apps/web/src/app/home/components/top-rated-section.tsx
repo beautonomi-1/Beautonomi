@@ -37,6 +37,7 @@ const TopRatedSection = ({
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation } = useUserLocation();
   const prevInitialProvidersRef = useRef(initialProviders);
+  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
     if (!initialHydrated) return;
@@ -44,6 +45,14 @@ const TopRatedSection = ({
     prevInitialProvidersRef.current = initialProviders;
     setProviders(initialProviders ?? []);
   }, [initialHydrated, initialProviders]);
+
+  useEffect(() => {
+    if (prevCategoryRef.current === categorySlug) return;
+    prevCategoryRef.current = categorySlug;
+    // Avoid showing stale cards from a previous category while the next query is in-flight.
+    setProviders([]);
+    setIsLoading(true);
+  }, [categorySlug]);
 
   const handleRetry = useCallback(() => {
     setError(null);

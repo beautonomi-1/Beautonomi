@@ -79,6 +79,8 @@ export const adminQueryKeys = {
 
   explorePosts: (q: string) => [...adminQueryKeys.root, "explore", "posts", q] as const,
 
+  explorePostDetail: (id: string) => [...adminQueryKeys.root, "explore", "post", id] as const,
+
   catalogServices: (categoryId: string) => [...adminQueryKeys.root, "catalog", "services", categoryId] as const,
 
   learningArticles: (q: string) => [...adminQueryKeys.root, "learning", "articles", q] as const,

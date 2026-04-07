@@ -18,15 +18,36 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminModal } from "@/components/admin/AdminModal";
 
-type Milestone = Record<string, unknown> & {
+type LoyaltyRule = {
+  id: string;
+  currency?: string;
+  points_per_currency_unit?: number;
+  redemption_rate?: number;
+  is_active?: boolean;
+  effective_from?: string;
+  effective_until?: string | null;
+};
+
+type Milestone = {
   id?: string;
   name?: string;
+  description?: string | null;
   points_threshold?: number;
   reward_amount?: number;
   reward_currency?: string;
   is_active?: boolean;
 };
+
+function fmtTs(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  } catch {
+    return iso;
+  }
+}
 
 export function LoyaltyRulesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
@@ -34,7 +55,7 @@ export function LoyaltyRulesPage() {
 
   const rulesQ = useQuery({
     queryKey: adminQueryKeys.loyaltyRules(),
-    queryFn: () => adminApi.getJson<Record<string, unknown>[]>("/api/admin/loyalty/rules", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<LoyaltyRule[]>("/api/admin/loyalty/rules", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
@@ -53,6 +74,19 @@ export function LoyaltyRulesPage() {
   const [mReward, setMReward] = useState("");
   const [mCurrency, setMCurrency] = useState("");
 
+  const [editRule, setEditRule] = useState<LoyaltyRule | null>(null);
+  const [ePpu, setEPpu] = useState("");
+  const [eRedemption, setERedemption] = useState("");
+  const [eCurrency, setECurrency] = useState("");
+  const [eUntilLocal, setEUntilLocal] = useState("");
+  const [eClearUntil, setEClearUntil] = useState(false);
+
+  const [editMilestone, setEditMilestone] = useState<Milestone | null>(null);
+  const [emName, setEmName] = useState("");
+  const [emThreshold, setEmThreshold] = useState("");
+  const [emReward, setEmReward] = useState("");
+  const [emCurrency, setEmCurrency] = useState("");
+
   const createRule = useMutation({
     mutationFn: () =>
       adminApi.postJson<unknown>("/api/admin/loyalty/rules", {
@@ -66,6 +100,15 @@ export function LoyaltyRulesPage() {
       setPpu("");
       setRedemption("");
       setCurrency("");
+    },
+  });
+
+  const patchRule = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      adminApi.patchJson<unknown>(`/api/admin/loyalty/rules/${id}`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyRules() });
+      setEditRule(null);
     },
   });
 
@@ -88,6 +131,15 @@ export function LoyaltyRulesPage() {
     },
   });
 
+  const patchMilestone = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      adminApi.putJson<unknown>(`/api/admin/loyalty/milestones/${id}`, body),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() });
+      setEditMilestone(null);
+    },
+  });
+
   const deleteMilestone = useMutation({
     mutationFn: (id: string) => adminApi.deleteJson<unknown>(`/api/admin/loyalty/milestones/${id}`),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() }),
@@ -98,6 +150,69 @@ export function LoyaltyRulesPage() {
       adminApi.putJson<unknown>(`/api/admin/loyalty/milestones/${id}`, { is_active }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() }),
   });
+
+  function openEditRule(r: LoyaltyRule) {
+    setEditRule(r);
+    setEPpu(String(r.points_per_currency_unit ?? ""));
+    setERedemption(String(r.redemption_rate ?? ""));
+    setECurrency(String(r.currency ?? ""));
+    setEClearUntil(false);
+    if (r.effective_until) {
+      try {
+        const d = new Date(r.effective_until);
+        const pad = (n: number) => String(n).padStart(2, "0");
+        setEUntilLocal(
+          `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+        );
+      } catch {
+        setEUntilLocal("");
+      }
+    } else {
+      setEUntilLocal("");
+    }
+  }
+
+  function submitEditRule() {
+    if (!editRule?.id) return;
+    const ppuN = parseFloat(ePpu);
+    const redN = parseFloat(eRedemption);
+    if (Number.isNaN(ppuN) || Number.isNaN(redN)) return;
+    const body: Record<string, unknown> = {
+      points_per_currency_unit: ppuN,
+      redemption_rate: redN,
+      currency: eCurrency.trim() || editRule.currency,
+    };
+    if (eClearUntil) {
+      body.effective_until = null;
+    } else if (eUntilLocal.trim()) {
+      body.effective_until = new Date(eUntilLocal).toISOString();
+    }
+    patchRule.mutate({ id: editRule.id, body });
+  }
+
+  function openEditMilestone(m: Milestone) {
+    setEditMilestone(m);
+    setEmName(String(m.name ?? ""));
+    setEmThreshold(String(m.points_threshold ?? ""));
+    setEmReward(String(m.reward_amount ?? ""));
+    setEmCurrency(String(m.reward_currency ?? ""));
+  }
+
+  function submitEditMilestone() {
+    if (!editMilestone?.id) return;
+    const th = parseInt(emThreshold, 10);
+    const rw = parseFloat(emReward);
+    if (!emName.trim() || Number.isNaN(th) || Number.isNaN(rw)) return;
+    patchMilestone.mutate({
+      id: editMilestone.id,
+      body: {
+        name: emName.trim(),
+        points_threshold: th,
+        reward_amount: rw,
+        reward_currency: emCurrency.trim() || undefined,
+      },
+    });
+  }
 
   if (denied) return denied;
 
@@ -123,23 +238,24 @@ export function LoyaltyRulesPage() {
 
   const ruleRows = rulesQ.data ?? [];
   const mileRows = Array.isArray(milesQ.data) ? milesQ.data : [];
-  const ruleCols = ruleRows[0] ? Object.keys(ruleRows[0]).slice(0, 8) : ["id", "currency", "is_active"];
 
   const ruleErr = createRule.error instanceof Error ? createRule.error.message : null;
   const mileErr = createMilestone.error instanceof Error ? createMilestone.error.message : null;
+  const patchRuleErr = patchRule.error instanceof Error ? patchRule.error.message : null;
+  const patchMileErr = patchMilestone.error instanceof Error ? patchMilestone.error.message : null;
 
   return (
     <div className="space-y-8">
       <AdminPageHeader
         title="Loyalty"
-        description="Earning rules and wallet-credit milestones. Uses Marketing & comms permissions."
+        description="Earning rules are matched by currency (see booking completion logic). New rows create a new effective version; edit or deactivate existing rules instead of duplicating."
       />
 
       <section className="space-y-3">
         <h2 className="text-base font-semibold text-gray-900">Earning rules</h2>
         <AdminPanel>
           <p className="mb-3 text-sm text-gray-600">
-            POST creates a new rule version (effective_from = now). Currency defaults from the market when omitted.
+            POST adds a new rule with effective_from = now. Currency defaults from the current market when omitted.
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <label className="text-sm">
@@ -188,19 +304,43 @@ export function LoyaltyRulesPage() {
           <AdminDataTable>
             <AdminTableHead>
               <tr>
-                {ruleCols.map((c) => (
-                  <AdminTh key={c}>{c}</AdminTh>
-                ))}
+                <AdminTh>Currency</AdminTh>
+                <AdminTh>Points / unit</AdminTh>
+                <AdminTh>Redemption rate</AdminTh>
+                <AdminTh>Active</AdminTh>
+                <AdminTh>Effective from</AdminTh>
+                <AdminTh>Until</AdminTh>
+                <AdminTh className="w-44"> </AdminTh>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {ruleRows.map((r, i) => (
-                <tr key={String((r as { id?: string }).id ?? i)}>
-                  {ruleCols.map((c) => (
-                    <AdminTd key={c} className="max-w-[10rem] truncate text-xs">
-                      {String((r as Record<string, unknown>)[c] ?? "")}
-                    </AdminTd>
-                  ))}
+              {ruleRows.map((r) => (
+                <tr key={r.id}>
+                  <AdminTd className="font-mono text-xs uppercase">{String(r.currency ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums">{String(r.points_per_currency_unit ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums">{String(r.redemption_rate ?? "")}</AdminTd>
+                  <AdminTd>{r.is_active ? "Yes" : "No"}</AdminTd>
+                  <AdminTd className="text-xs text-gray-700">{fmtTs(r.effective_from)}</AdminTd>
+                  <AdminTd className="text-xs text-gray-700">{fmtTs(r.effective_until ?? undefined)}</AdminTd>
+                  <AdminTd className="space-x-2">
+                    <button
+                      type="button"
+                      className="text-sm text-gray-800 underline disabled:opacity-50"
+                      disabled={patchRule.isPending || !r.id}
+                      onClick={() =>
+                        r.id &&
+                        patchRule.mutate({
+                          id: r.id,
+                          body: { is_active: !r.is_active },
+                        })
+                      }
+                    >
+                      {r.is_active ? "Deactivate" : "Activate"}
+                    </button>
+                    <button type="button" className="text-sm text-gray-800 underline" onClick={() => openEditRule(r)}>
+                      Edit
+                    </button>
+                  </AdminTd>
                 </tr>
               ))}
             </AdminTableBody>
@@ -274,7 +414,7 @@ export function LoyaltyRulesPage() {
                 <AdminTh>Threshold</AdminTh>
                 <AdminTh>Reward</AdminTh>
                 <AdminTh>Active</AdminTh>
-                <AdminTh className="w-40"> </AdminTh>
+                <AdminTh className="w-52"> </AdminTh>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
@@ -297,6 +437,9 @@ export function LoyaltyRulesPage() {
                         {m.is_active ? "Deactivate" : "Activate"}
                       </button>
                     ) : null}
+                    <button type="button" className="text-sm text-gray-800 underline" onClick={() => openEditMilestone(m)}>
+                      Edit
+                    </button>
                     <button
                       type="button"
                       className="text-sm text-red-700 underline disabled:opacity-50"
@@ -314,6 +457,99 @@ export function LoyaltyRulesPage() {
           </AdminDataTable>
         )}
       </section>
+
+      <AdminModal
+        open={!!editRule}
+        onClose={() => setEditRule(null)}
+        title="Edit loyalty rule"
+        description="Updates the selected row. Set an end date to retire a rule after a point in time."
+        footer={
+          <>
+            <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" onClick={() => setEditRule(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={patchRule.isPending}
+              onClick={() => submitEditRule()}
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3">
+          <label className="text-sm">
+            Points / currency unit
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={ePpu} onChange={(e) => setEPpu(e.target.value)} inputMode="decimal" />
+          </label>
+          <label className="text-sm">
+            Redemption rate
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eRedemption} onChange={(e) => setERedemption(e.target.value)} inputMode="decimal" />
+          </label>
+          <label className="text-sm">
+            Currency
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase" value={eCurrency} onChange={(e) => setECurrency(e.target.value)} />
+          </label>
+          <label className="text-sm">
+            Effective until (local)
+            <input
+              type="datetime-local"
+              className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+              value={eUntilLocal}
+              onChange={(e) => setEUntilLocal(e.target.value)}
+              disabled={eClearUntil}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input type="checkbox" checked={eClearUntil} onChange={(e) => setEClearUntil(e.target.checked)} />
+            No end date (clear &quot;until&quot;)
+          </label>
+          {patchRuleErr ? <p className="text-sm text-red-600">{patchRuleErr}</p> : null}
+        </div>
+      </AdminModal>
+
+      <AdminModal
+        open={!!editMilestone}
+        onClose={() => setEditMilestone(null)}
+        title="Edit milestone"
+        footer={
+          <>
+            <button type="button" className="rounded-lg border border-gray-300 px-3 py-2 text-sm" onClick={() => setEditMilestone(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+              disabled={patchMilestone.isPending}
+              onClick={() => submitEditMilestone()}
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        <div className="grid gap-3">
+          <label className="text-sm">
+            Name
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={emName} onChange={(e) => setEmName(e.target.value)} />
+          </label>
+          <label className="text-sm">
+            Points threshold
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={emThreshold} onChange={(e) => setEmThreshold(e.target.value)} inputMode="numeric" />
+          </label>
+          <label className="text-sm">
+            Reward amount
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={emReward} onChange={(e) => setEmReward(e.target.value)} inputMode="decimal" />
+          </label>
+          <label className="text-sm">
+            Currency
+            <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase" value={emCurrency} onChange={(e) => setEmCurrency(e.target.value)} />
+          </label>
+          {patchMileErr ? <p className="text-sm text-red-600">{patchMileErr}</p> : null}
+        </div>
+      </AdminModal>
     </div>
   );
 }

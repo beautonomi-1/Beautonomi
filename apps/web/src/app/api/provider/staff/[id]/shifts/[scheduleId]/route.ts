@@ -7,6 +7,7 @@ import {
   handleApiError,
   successResponse,
 } from "@/lib/supabase/api-helpers";
+import { resolveProviderStaffRowId } from "@/lib/provider/resolve-provider-staff-id";
 
 /**
  * DELETE /api/provider/staff/[id]/shifts/[scheduleId]
@@ -18,7 +19,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; scheduleId: string }> }
 ) {
   try {
-    const { id: staffId, scheduleId } = await params;
+    const { id: routeStaffId, scheduleId } = await params;
     const { user } = await requireRoleInApi(
       ["provider_owner", "provider_staff", "superadmin"],
       request
@@ -27,14 +28,8 @@ export async function DELETE(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const { data: staff } = await supabase
-      .from("provider_staff")
-      .select("id")
-      .eq("id", staffId)
-      .eq("provider_id", providerId)
-      .single();
-
-    if (!staff) return notFoundResponse("Staff member not found");
+    const staffId = await resolveProviderStaffRowId(supabase, providerId, routeStaffId);
+    if (!staffId) return notFoundResponse("Staff member not found");
 
     const { error } = await supabase
       .from("staff_schedules")

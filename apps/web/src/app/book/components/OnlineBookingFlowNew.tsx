@@ -39,9 +39,15 @@ import type {
   ProviderCategoryOption,
 } from "../types/booking-engine";
 
-import { coerceSelectedDate } from "@beautonomi/utils";
+import {
+  buildRetailCartRowsFromPublicPackage,
+  cartMatchesPublicCatalogPackage,
+  coerceSelectedDate,
+  mergeExpressProductCartLines,
+  type PublicProductCatalogRow,
+} from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
-import { parseProductsQueryParam } from "@/lib/express-booking/prefill";
+import { parseProductsQueryParam, type ProductCartLine } from "@/lib/express-booking/prefill";
 import {
   BOOKING_ACCENT,
   BOOKING_BG,
@@ -164,6 +170,7 @@ const defaultBookingData: BookingData = {
   selectedCategory: null,
   selectedPackage: null,
   selectedServices: [],
+  selectedProducts: [],
   selectedAddonIds: [],
   addonsSubtotal: 0,
   selectedStaff: null,
@@ -182,31 +189,32 @@ const defaultBookingData: BookingData = {
   totalDurationMinutes: 0,
 };
 
-function packageOfferingIdSet(pkg: {
-  services?: Array<{ id?: string | null } | null>;
-  items?: Array<{ type?: string | null; id?: string | null } | null>;
-}): Set<string> {
-  const fromSvc = (pkg.services ?? []).map((s) => s?.id).filter(Boolean) as string[];
-  if (fromSvc.length > 0) return new Set(fromSvc);
-  const fromItems = (pkg.items ?? [])
-    .filter((x) => x && (x.type === "service" || !x.type))
-    .map((x) => x!.id)
-    .filter(Boolean) as string[];
-  return new Set(fromItems);
-}
-
-/** True when line-item offering IDs exactly match the package definition (order-independent). */
-function selectedServicesMatchPackage(
-  entries: Array<{ offering_id: string }>,
-  pkg: { services?: Array<{ id?: string | null } | null>; items?: Array<{ type?: string | null; id?: string | null } | null> } | null
+function cartMatchesCatalogPackage(
+  services: BookingServiceEntry[],
+  productRows: Array<{ id: string; quantity: number }>,
+  pkg: PackageOption | null
 ): boolean {
   if (!pkg) return false;
-  const want = packageOfferingIdSet(pkg);
-  if (want.size === 0) return false;
-  const got = new Set(entries.map((e) => e.offering_id).filter(Boolean));
-  if (got.size !== want.size) return false;
-  for (const id of want) if (!got.has(id)) return false;
-  return true;
+  return cartMatchesPublicCatalogPackage(
+    services.map((s) => s.offering_id),
+    productRows,
+    pkg
+  );
+}
+
+function toProductCartLines(rows: Array<{ id: string; quantity: number }>): ProductCartLine[] {
+  const out: ProductCartLine[] = [];
+  for (const p of rows) {
+    const colon = p.id.indexOf(":");
+    const product_id = colon !== -1 ? p.id.slice(0, colon) : p.id;
+    const vid = colon !== -1 ? p.id.slice(colon + 1) : null;
+    out.push({
+      product_id,
+      quantity: p.quantity,
+      ...(vid ? { product_variant_id: vid } : {}),
+    });
+  }
+  return out;
 }
 
 interface Provider {
@@ -373,12 +381,12 @@ export default function OnlineBookingFlowNew({
     });
   }, [bundle?.meta?.tenant_region?.code]);
 
-  /** Drop stale package context if the user changed services after `?package=` / bundle prefill (keeps consume `package_id` honest). */
+  /** Drop stale package context if the user changed services/products after `?package=` / bundle prefill (keeps consume `package_id` honest). */
   useEffect(() => {
     setBookingData((prev) => {
       const pkg = prev.selectedPackage;
       if (!pkg) return prev;
-      if (selectedServicesMatchPackage(prev.selectedServices, pkg)) return prev;
+      if (cartMatchesCatalogPackage(prev.selectedServices, prev.selectedProducts ?? [], pkg)) return prev;
       const servicesSubtotal = prev.selectedServices.reduce((s, e) => s + e.price, 0);
       return {
         ...prev,
@@ -387,7 +395,7 @@ export default function OnlineBookingFlowNew({
         totalDurationMinutes: prev.selectedServices.reduce((s, e) => s + e.duration_minutes, 0),
       };
     });
-  }, [bookingData.selectedServices, bookingData.selectedPackage]);
+  }, [bookingData.selectedServices, bookingData.selectedProducts, bookingData.selectedPackage]);
 
   // #region agent log
   if (debugIngestUrl) {
@@ -489,7 +497,11 @@ export default function OnlineBookingFlowNew({
         bookingData.selectedPackage &&
         bookingData.selectedPackage.id === packageQueryId &&
         bookingData.selectedServices.length > 0 &&
-        selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)
+        cartMatchesCatalogPackage(
+          bookingData.selectedServices,
+          bookingData.selectedProducts ?? [],
+          bookingData.selectedPackage
+        )
     );
 
   const serviceDeepLinkParam = (queryParams.service?.trim() || queryParams.services?.trim()) ?? "";
@@ -514,7 +526,8 @@ export default function OnlineBookingFlowNew({
   useEffect(() => {
     if (step !== "category") return;
     if (!packageQueryId || !bookingData.selectedPackage || bookingData.selectedPackage.id !== packageQueryId) return;
-    if (!selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)) return;
+    if (!cartMatchesCatalogPackage(bookingData.selectedServices, bookingData.selectedProducts ?? [], bookingData.selectedPackage))
+      return;
     if (!bookingData.selectedCategory) return;
     setStep("services");
   }, [
@@ -725,6 +738,7 @@ export default function OnlineBookingFlowNew({
               ...prev,
               selectedPackage: null,
               selectedServices: entries,
+              selectedProducts: [],
               selectedCategory: inferred ?? prev.selectedCategory,
               servicesSubtotal: entries.reduce((sum, e) => sum + e.price, 0),
               totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
@@ -739,6 +753,7 @@ export default function OnlineBookingFlowNew({
               ...prev,
               selectedPackage: null,
               selectedServices: entries,
+              selectedProducts: [],
               selectedCategory: inferred ?? prev.selectedCategory,
               servicesSubtotal: entries.reduce((sum, e) => sum + e.price, 0),
               totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
@@ -769,10 +784,27 @@ export default function OnlineBookingFlowNew({
               const inferred = inferCategoryForPreselected(entries, baseServices, map);
               const subtotal =
                 typeof pkg.price === "number" ? pkg.price : entries.reduce((sum, e) => sum + e.price, 0);
+              let selectedProducts: BookingData["selectedProducts"] = [];
+              const hasProductLines = (pkg.items ?? []).some((x: { type?: string }) => x.type === "product");
+              if (hasProductLines) {
+                try {
+                  const pr = await fetcher.get<unknown>(`/api/public/providers/${provider.slug}/products`);
+                  const raw = (pr as { data?: unknown })?.data ?? pr ?? [];
+                  const list = Array.isArray(raw) ? raw : [];
+                  selectedProducts = buildRetailCartRowsFromPublicPackage(
+                    pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+                    list as PublicProductCatalogRow[],
+                    tenantCurrency
+                  );
+                } catch {
+                  /* ignore — customer can still complete checkout without prefilled retail */
+                }
+              }
               setBookingData((prev) => ({
                 ...prev,
                 selectedPackage: pkg as unknown as BookingData["selectedPackage"],
                 selectedServices: entries,
+                selectedProducts,
                 selectedCategory: inferred ?? prev.selectedCategory,
                 servicesSubtotal: subtotal,
                 totalDurationMinutes: entries.reduce((sum, e) => sum + e.duration_minutes, 0),
@@ -1201,7 +1233,11 @@ export default function OnlineBookingFlowNew({
       }));
       const pkgForHold =
         bookingData.selectedPackage?.id?.trim() &&
-        selectedServicesMatchPackage(bookingData.selectedServices, bookingData.selectedPackage)
+        cartMatchesCatalogPackage(
+          bookingData.selectedServices,
+          bookingData.selectedProducts ?? [],
+          bookingData.selectedPackage
+        )
           ? bookingData.selectedPackage.id.trim()
           : undefined;
       const res = await fetcher.post<{ data: { hold_id: string } }>("/api/public/booking-holds", {
@@ -1233,12 +1269,16 @@ export default function OnlineBookingFlowNew({
           if (queryParams.gift_card?.trim()) {
             sessionStorage.setItem("beautonomi_booking_gift_card_code", queryParams.gift_card.trim());
           }
-          const cartLines = parseProductsQueryParam(queryParams.products);
-          if (cartLines.length > 0) {
-            sessionStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(cartLines));
+          const fromUrl = parseProductsQueryParam(queryParams.products);
+          const fromPackage = toProductCartLines(bookingData.selectedProducts ?? []);
+          const mergedCart = mergeExpressProductCartLines(fromUrl, fromPackage);
+          if (mergedCart.length > 0) {
+            sessionStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(mergedCart));
+          } else {
+            sessionStorage.removeItem("beautonomi_booking_product_cart");
           }
           const pkg = bookingData.selectedPackage;
-          if (pkg?.id?.trim() && selectedServicesMatchPackage(bookingData.selectedServices, pkg)) {
+          if (pkg?.id?.trim() && cartMatchesCatalogPackage(bookingData.selectedServices, bookingData.selectedProducts ?? [], pkg)) {
             sessionStorage.setItem("beautonomi_booking_package_id", pkg.id.trim());
           } else {
             sessionStorage.removeItem("beautonomi_booking_package_id");
@@ -1337,12 +1377,12 @@ export default function OnlineBookingFlowNew({
             hidePackagesSection={prefillFromPackageDeepLink}
             packages={packages}
             variantsByServiceId={variantsByServiceId}
-            onSelectPackage={(pkg) => {
+            onSelectPackage={async (pkg) => {
               if (!pkg) {
-                setBookingData((prev) => ({ ...prev, selectedPackage: null, selectedServices: [] }));
+                setBookingData((prev) => ({ ...prev, selectedPackage: null, selectedServices: [], selectedProducts: [] }));
                 return;
               }
-              const services = (pkg.services ?? (pkg as any).items?.filter((x: any) => x.type === "service") ?? []).map(
+              const services = (pkg.services ?? (pkg as any).items?.filter((x: any) => x.type === "service" || !x.type) ?? []).map(
                 (s: any) => ({
                   offering_id: s.id,
                   title: s.title,
@@ -1352,10 +1392,23 @@ export default function OnlineBookingFlowNew({
                 })
               );
               const totalDuration = services.reduce((a: number, b: BookingServiceEntry) => a + b.duration_minutes, 0);
+              let selectedProducts: BookingData["selectedProducts"] = [];
+              const hasProductLines = (pkg.items ?? []).some((x: { type?: string }) => x.type === "product");
+              if (hasProductLines) {
+                try {
+                  const pr = await fetcher.get<unknown>(`/api/public/providers/${provider.slug}/products`);
+                  const raw = (pr as { data?: unknown })?.data ?? pr ?? [];
+                  const list = Array.isArray(raw) ? raw : [];
+                  selectedProducts = buildRetailCartRowsFromPublicPackage(pkg, list as PublicProductCatalogRow[], tenantCurrency);
+                } catch {
+                  /* ignore */
+                }
+              }
               setBookingData((prev) => ({
                 ...prev,
                 selectedPackage: pkg,
                 selectedServices: services,
+                selectedProducts,
                 servicesSubtotal: pkg.price,
                 totalDurationMinutes: totalDuration,
               }));
@@ -1365,6 +1418,7 @@ export default function OnlineBookingFlowNew({
                 ...prev,
                 selectedPackage: null,
                 selectedServices: entries,
+                selectedProducts: [],
                 servicesSubtotal: entries.reduce((s, e) => s + e.price, 0),
                 totalDurationMinutes: entries.reduce((s, e) => s + e.duration_minutes, 0),
               }));

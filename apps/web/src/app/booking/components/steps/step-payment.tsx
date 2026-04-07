@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { BookingState } from "../booking-flow";
+import { BookingState, type BookingStep } from "../booking-flow";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
 import { toast } from "sonner";
@@ -45,8 +45,8 @@ interface SavedCard {
 interface StepPaymentProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
-  /** STEP_ORDER index (0 = services, 4 = calendar, …). */
-  onNavigateToStep: (stepIndex: number) => void;
+  /** Navigate by step id (works when `?package=` reorders steps). */
+  onNavigateToStep: (step: BookingStep) => void;
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
@@ -117,6 +117,10 @@ export default function StepPayment({
     late_cancellation_type: string;
   } | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [packageEntitlements, setPackageEntitlements] = useState<
+    Array<{ id: string; package_id: string; sessions_remaining: number; valid_from?: string | null; valid_until?: string | null }>
+  >([]);
+  const [packageEntitlementsLoading, setPackageEntitlementsLoading] = useState(false);
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -218,6 +222,37 @@ export default function StepPayment({
     
     fetchCancellationPolicy();
   }, [bookingState.providerId, bookingState.mode]);
+
+  useEffect(() => {
+    if (!bookingState.selectedPackage?.id || !user?.id || !bookingState.providerId) {
+      setPackageEntitlements([]);
+      if (bookingState.customerPackageEntitlementId) {
+        updateBookingState({ customerPackageEntitlementId: undefined });
+      }
+      return;
+    }
+    let cancelled = false;
+    setPackageEntitlementsLoading(true);
+    const q = new URLSearchParams({
+      provider_id: bookingState.providerId,
+      package_id: bookingState.selectedPackage.id,
+    });
+    fetcher
+      .get<{ data?: { entitlements?: typeof packageEntitlements } }>(`/api/me/package-entitlements?${q}`)
+      .then((res) => {
+        if (cancelled) return;
+        setPackageEntitlements(res?.data?.entitlements ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPackageEntitlements([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPackageEntitlementsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, bookingState.providerId, bookingState.selectedPackage?.id, updateBookingState]);
 
   // Fetch provider online booking settings: tip suggestions, deposit requirements
   useEffect(() => {
@@ -427,6 +462,7 @@ export default function StepPayment({
         };
       }),
       package_id: bookingState.selectedPackage?.id || null,
+      customer_package_entitlement_id: bookingState.customerPackageEntitlementId || null,
       tip_amount: tipAmount,
       travel_fee: bookingState.address?.travelFee || 0,
       special_requests: bookingState.clientInfo?.specialRequests || null,
@@ -549,7 +585,7 @@ export default function StepPayment({
           toast.error(error.message || "This time slot is no longer available. Please select another time.", {
             duration: 5000,
           });
-          onNavigateToStep(4);
+          onNavigateToStep("calendar");
           return;
         }
         
@@ -681,7 +717,7 @@ export default function StepPayment({
             </h3>
             <button
               type="button"
-              onClick={() => onNavigateToStep(0)}
+              onClick={() => onNavigateToStep("services")}
               className="text-sm font-medium text-primary hover:underline"
             >
               Change
@@ -787,7 +823,7 @@ export default function StepPayment({
             </div>
             <button
               type="button"
-              onClick={() => onNavigateToStep(4)}
+              onClick={() => onNavigateToStep("calendar")}
               className="text-sm font-medium text-primary hover:underline shrink-0"
             >
               Change
@@ -810,6 +846,51 @@ export default function StepPayment({
               <p className="text-sm font-medium text-gray-900">House Call</p>
               <p className="text-xs text-gray-600">{bookingState.address.fullAddress}</p>
             </div>
+          </div>
+        )}
+
+        {user && bookingState.selectedPackage?.id && bookingState.providerId && (
+          <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-lg space-y-2">
+            <div className="flex items-center gap-2">
+              <Gift className="w-5 h-5 text-amber-700 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Package credit</p>
+                <p className="text-xs text-gray-600">
+                  If you bought this package online and have prepaid sessions left, apply one to this booking.
+                </p>
+              </div>
+            </div>
+            {packageEntitlementsLoading ? (
+              <p className="text-sm text-gray-500">Loading credits…</p>
+            ) : packageEntitlements.length > 0 ? (
+              <div className="space-y-1">
+                <Label htmlFor="package-entitlement" className="text-xs text-gray-600">
+                  Use prepaid session
+                </Label>
+                <select
+                  id="package-entitlement"
+                  className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                  value={bookingState.customerPackageEntitlementId ?? ""}
+                  onChange={(e) =>
+                    updateBookingState({
+                      customerPackageEntitlementId: e.target.value || undefined,
+                    })
+                  }
+                >
+                  <option value="">No — pay with the method below</option>
+                  {packageEntitlements.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      Use credit — {e.sessions_remaining} session(s) left
+                      {e.valid_until
+                        ? ` (until ${new Date(e.valid_until).toLocaleDateString()})`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">No prepaid sessions found for this package.</p>
+            )}
           </div>
         )}
 

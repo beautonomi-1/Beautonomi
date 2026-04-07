@@ -20,6 +20,11 @@ const pricingPlanSchema = z.object({
   subscription_plan_id: z.string().uuid().nullable().optional(),
 });
 
+/** PUT allows partial updates (e.g. deactivate + unlink from subscription plan). */
+const pricingPlanUpdateSchema = pricingPlanSchema.partial().extend({
+  id: z.string().uuid(),
+});
+
 /**
  * GET /api/admin/pricing-plans
  * Get all pricing plans (admin only)
@@ -94,7 +99,7 @@ export async function PUT(request: NextRequest) {
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
     const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
-    const validationResult = pricingPlanSchema.safeParse(body);
+    const validationResult = pricingPlanUpdateSchema.safeParse(body);
     if (!validationResult.success) {
       return errorResponse(
         "Invalid input data",
@@ -105,10 +110,6 @@ export async function PUT(request: NextRequest) {
     }
 
     const { id, ...updateData } = validationResult.data;
-
-    if (!id) {
-      return errorResponse("Plan ID is required for update", "VALIDATION_ERROR", 400);
-    }
 
     const { data: plan, error } = await supabase
       .from("pricing_plans")

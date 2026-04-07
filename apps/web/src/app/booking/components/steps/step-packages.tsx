@@ -155,7 +155,14 @@ export default function StepPackages({
           `/api/public/offerings?provider_slug=${encodeURIComponent(providerSlug)}&type=package`,
         );
       }
-      setPackages(response.data || []);
+      const raw = response.data || [];
+      setPackages(
+        raw.map((p: ServicePackage & { name?: string }) => ({
+          ...p,
+          title: p.title || p.name || "Package",
+          services: p.services ?? [],
+        })),
+      );
     } catch {
       console.log("No packages available or endpoint not found");
       setPackages([]);

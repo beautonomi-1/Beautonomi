@@ -34,8 +34,12 @@ const FOCUSABLE =
 
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & { hideClose?: boolean }
->(({ className, children, hideClose, "aria-describedby": ariaDescribedby, onOpenAutoFocus, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+    hideClose?: boolean
+    /** When true, omit the default sr-only "Dialog" title — children must include a visible `DialogTitle` for a11y. */
+    suppressFallbackTitle?: boolean
+  }
+>(({ className, children, hideClose, suppressFallbackTitle, "aria-describedby": ariaDescribedby, onOpenAutoFocus, ...props }, ref) => {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const mergedRef = (node: HTMLDivElement | null) => {
     (contentRef as React.MutableRefObject<HTMLDivElement | null>).current = node;
@@ -66,7 +70,9 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
+      {!suppressFallbackTitle ? (
+        <DialogPrimitive.Title className="sr-only">Dialog</DialogPrimitive.Title>
+      ) : null}
       {children}
       {!hideClose && (
         <DialogPrimitive.Close className="absolute right-3 sm:right-4 top-3 sm:top-4 z-10 rounded-full bg-background/80 backdrop-blur-sm border border-border/50 opacity-70 ring-offset-background transition-all hover:opacity-100 hover:bg-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-accent data-[state=open]:text-muted-foreground p-2 sm:p-2.5 touch-manipulation active:scale-95 min-w-[44px] min-h-[44px] flex items-center justify-center">

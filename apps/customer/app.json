@@ -49,6 +49,7 @@
       },
       "package": "com.beautonomi",
       "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
         "com.google.android.gms.permission.AD_ID"
       ],
       "versionCode": 23,

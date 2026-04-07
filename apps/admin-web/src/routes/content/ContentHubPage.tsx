@@ -22,7 +22,7 @@ const CARDS: {
   {
     to: "/explore",
     label: "Explore posts",
-    description: "Moderation-friendly grid of explore posts for your tenant.",
+    description: "Feed moderation: filters, previews, bulk hide, per-post detail with comments and metrics.",
     icon: Compass,
     accent: "from-sky-600 to-blue-800",
   },

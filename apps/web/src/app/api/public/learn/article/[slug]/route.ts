@@ -38,7 +38,7 @@ export async function GET(
 
     const { data: article, error } = await supabase
       .from("learning_articles")
-      .select("id, category_id, title, slug, summary, body, content_format, published_at, image_url, content_type, learning_categories(id, title, slug)")
+      .select("id, category_id, title, slug, summary, body, content_format, published_at, image_url, hero_video_url, content_type, learning_categories(id, title, slug)")
       .eq("slug", slug)
       .eq("status", "published")
       .eq("is_internal", false)

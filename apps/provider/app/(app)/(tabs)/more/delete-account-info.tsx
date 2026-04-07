@@ -26,10 +26,17 @@ export default function DeleteAccountInfoScreen() {
   const { execute: deleteAccount, loading: deleting } = useApiMutation("post");
   const [password, setPassword] = useState("");
   const [reason, setReason] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const DELETE_PHRASE = "DELETE";
+  const confirmOk = confirmText.trim().toUpperCase() === DELETE_PHRASE;
 
   const handleDeleteAccount = async () => {
     if (!password.trim()) {
       Alert.alert("Password required", "Enter your password to confirm account deletion.");
+      return;
+    }
+    if (!confirmOk) {
+      Alert.alert("Confirmation required", `Type ${DELETE_PHRASE} in the confirmation field.`);
       return;
     }
     Alert.alert(
@@ -132,15 +139,45 @@ export default function DeleteAccountInfoScreen() {
             multiline
             style={twStyle("min-h-[88px] rounded-lg border border-gray-200 px-3 py-2.5 text-gray-900")}
           />
+          <Text style={twStyle("mb-1 mt-4 text-sm font-medium text-gray-700")}>
+            Type{" "}
+            <Text style={twStyle("font-mono text-red-600")}>{DELETE_PHRASE}</Text> to confirm
+          </Text>
+          <TextInput
+            value={confirmText}
+            onChangeText={setConfirmText}
+            placeholder={DELETE_PHRASE}
+            placeholderTextColor="#9ca3af"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            style={twStyle(
+              `rounded-lg border px-3 py-2.5 text-gray-900 ${confirmOk ? "border-gray-200" : "border-red-200"}`
+            )}
+          />
+          <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+            Same safeguards as the website. If you use only social or phone sign-in, set a password on the web first.
+          </Text>
         </View>
 
         <TouchableOpacity
           onPress={handleDeleteAccount}
-          style={twStyle("mt-6 rounded-xl border border-red-300 bg-red-50 py-4 px-4")}
+          style={twStyle(
+            `mt-6 rounded-xl border py-4 px-4 ${
+              deleting || !password.trim() || !confirmOk
+                ? "border-gray-200 bg-gray-100"
+                : "border-red-300 bg-red-50"
+            }`
+          )}
           activeOpacity={0.7}
-          disabled={deleting}
+          disabled={deleting || !password.trim() || !confirmOk}
         >
-          <Text style={twStyle("text-center font-semibold text-red-700")}>
+          <Text
+            style={twStyle(
+              `text-center font-semibold ${
+                deleting || !password.trim() || !confirmOk ? "text-gray-400" : "text-red-700"
+              }`
+            )}
+          >
             {deleting ? "Deleting..." : "Delete account permanently"}
           </Text>
         </TouchableOpacity>

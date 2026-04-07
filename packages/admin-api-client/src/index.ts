@@ -2,6 +2,7 @@ export {
   ADMIN_SCOPE_STORAGE_KEY,
   ADMIN_SCOPE_TENANT_STORAGE_KEY,
   SCOPED_ADMIN_PATH_PREFIXES,
+  adminScopeGetAppliesToPathname,
   adminScopePathname,
   isScopedAdminCustomizationPath,
   mergeAdminScopeIntoJsonBody,

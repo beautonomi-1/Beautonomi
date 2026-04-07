@@ -24,10 +24,12 @@
 |------|----------|--------|---------|----------|
 | `/admin/users` | `/api/admin/users` | GET | Query: limit, offset, search, role, status | `{ data: { users, total } \| null, error \| null }` |
 | `/admin/users/[id]` | `/api/admin/users/[id]` | GET | — | `{ data: user \| null, error \| null }` |
+| | `/api/admin/users/[id]` | DELETE | — | **Superadmin only.** Full compliance purge: RPC `compliance_clear_user_references`, storage cleanup, `auth.deleteUser`. |
 | | `/api/admin/users/[id]/role` | PATCH | Body: role | `{ data, error }` |
 | | `/api/admin/users/[id]/password` | POST | Body: new_password | `{ data, error }` |
 | | `/api/admin/users/[id]/impersonate` | POST | (none) | `{ data: { token or url }, error }` |
 | | `/api/admin/users/[id]/bookings` | GET | Query: limit, offset | `{ data: { bookings, total }, error }` |
+| | `/api/admin/compliance/purge-provider` | POST | Body: `provider_id`, `confirmation: "PURGE PROVIDER ORG"`, `reason?` | **Superadmin only.** Purges staff accounts then owner; removes provider org. |
 
 ### Providers
 
@@ -35,6 +37,7 @@
 |------|----------|--------|---------|----------|
 | `/admin/providers` | `/api/admin/providers` | GET | Query: limit, offset, status, search | `{ data: { providers, total }, error }` |
 | `/admin/providers/[id]` | `/api/admin/providers/[id]` | GET/PATCH | PATCH body: status, etc. | `{ data: provider, error }` |
+| | `/api/admin/compliance/purge-provider` | POST | See Users / compliance row above | Full org + linked account erasure |
 | | `/api/admin/providers/[id]/status` | PATCH | Body: status, reason? | `{ data, error }` |
 | | `/api/admin/providers/[id]/verify` | POST | Body: decision, notes? | `{ data, error }` |
 

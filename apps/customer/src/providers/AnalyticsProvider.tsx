@@ -1,7 +1,13 @@
 import { useEffect, useRef } from "react";
-import { Linking, Platform } from "react-native";
+import { Linking } from "react-native";
 import { fetchAmplitudeConfig } from "@beautonomi/analytics";
-import { initAnalytics, handleEngagementURL } from "@/lib/analytics-rn";
+import {
+  initAnalytics,
+  handleEngagementURL,
+  getMobileAnalyticsAttribution,
+  captureMarketingAttributionFromUrl,
+  getCachedFirstTouchForIdentify,
+} from "@/lib/analytics-rn";
 import { setAnalyticsInstance } from "@/lib/analytics";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
@@ -57,6 +63,11 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
         const client = await initAnalytics(config, "client", { enableSessionReplay });
         if (cancelled) return;
 
+        if (client) {
+          const initialUrl = await Linking.getInitialURL();
+          await captureMarketingAttributionFromUrl(initialUrl);
+        }
+
         clientRef.current = client;
 
         if (client) {
@@ -69,8 +80,8 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
           try {
             const res = await api.post<Record<string, unknown>>("/api/me/analytics/identify", {
               portal: "client",
-              platform: Platform.OS,
-              device_type: Platform.OS,
+              ...getMobileAnalyticsAttribution(),
+              ...getCachedFirstTouchForIdentify(),
             });
             if (cancelled) return;
             if (res.error) {
@@ -104,7 +115,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
-  // Deep links for Amplitude Guides & Surveys (preview, etc.). Same API key / CDP as web.
+  // Deep links: Amplitude Guides/Surveys + marketing attribution (UTM / click ids).
   useEffect(() => {
     let cancelled = false;
     Linking.getInitialURL().then(async (url) => {
@@ -113,6 +124,7 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
       if (handled) return;
     });
     const subscription = Linking.addEventListener("url", async ({ url }) => {
+      await captureMarketingAttributionFromUrl(url);
       const handled = await handleEngagementURL(url);
       if (handled) return;
     });

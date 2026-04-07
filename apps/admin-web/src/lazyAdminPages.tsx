@@ -235,6 +235,9 @@ export const GamificationPointRulesPage = lazy(() =>
 export const GamificationBadgesPage = lazy(() =>
   import("@/routes/marketing/GamificationBadgesPage").then((m) => ({ default: m.GamificationBadgesPage }))
 );
+export const GamificationOperationsPage = lazy(() =>
+  import("@/routes/marketing/GamificationOperationsPage").then((m) => ({ default: m.GamificationOperationsPage }))
+);
 export const NotificationTemplatesListPage = lazy(() =>
   import("@/routes/marketing/NotificationTemplatesListPage").then((m) => ({
     default: m.NotificationTemplatesListPage,
@@ -269,6 +272,9 @@ export const LearningArticlesPage = lazy(() =>
 );
 export const ExplorePostsPage = lazy(() =>
   import("@/routes/content/ExplorePostsPage").then((m) => ({ default: m.ExplorePostsPage }))
+);
+export const ExplorePostDetailPage = lazy(() =>
+  import("@/routes/content/ExplorePostDetailPage").then((m) => ({ default: m.ExplorePostDetailPage }))
 );
 export const CatalogServicesPage = lazy(() =>
   import("@/routes/content/CatalogServicesPage").then((m) => ({ default: m.CatalogServicesPage }))

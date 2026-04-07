@@ -10,9 +10,14 @@
   /* iOS / iPadOS Safari: reliable taps; avoid dead clicks on links/buttons */
   html {
     -webkit-text-size-adjust: 100%;
+    min-height: 100%;
   }
   body {
     touch-action: manipulation;
+    /* Full viewport height: legacy 100vh, dynamic viewport, iOS safe-area fill */
+    min-height: 100vh;
+    min-height: 100dvh;
+    min-height: -webkit-fill-available;
   }
   a[href]:not([tabindex="-1"]),
   button:not(:disabled),

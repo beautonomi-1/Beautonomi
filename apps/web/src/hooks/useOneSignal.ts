@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useAuth } from "@/providers/AuthProvider";
+import { useCookieConsent } from "@/providers/CookieConsentProvider";
 
 interface OneSignalSDK {
   init?(opts: { appId: string; notifyButton?: { enable: boolean }; allowLocalhostAsSecureOrigin?: boolean }): void;
@@ -24,6 +25,7 @@ let hasWarnedAboutSdkNotLoaded = false;
  */
 export function useOneSignal() {
   const { user } = useAuth();
+  const { isReady: consentReady, allowsFunctional } = useCookieConsent();
   const [isRegistered, setIsRegistered] = useState(false);
   const [isOneSignalReady, setIsOneSignalReady] = useState(false);
   const hasWarnedRef = useRef(false);
@@ -31,6 +33,7 @@ export function useOneSignal() {
   // Wait for OneSignal to be available
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (!consentReady || !allowsFunctional) return;
 
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
     
@@ -66,9 +69,10 @@ export function useOneSignal() {
       clearInterval(checkInterval);
       clearTimeout(timeout);
     };
-  }, []);
+  }, [consentReady, allowsFunctional]);
 
   useEffect(() => {
+    if (!consentReady || !allowsFunctional) return;
     if (!user || !isOneSignalReady) return;
 
     const OneSignal = window.OneSignal;
@@ -156,7 +160,7 @@ export function useOneSignal() {
         console.error("Error registering device:", error);
       }
     }
-  }, [user, isOneSignalReady, isRegistered]);
+  }, [user, isOneSignalReady, isRegistered, consentReady, allowsFunctional]);
 
   return { isRegistered };
 }

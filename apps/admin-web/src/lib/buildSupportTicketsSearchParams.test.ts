@@ -11,6 +11,8 @@ describe("buildSupportTicketsSearchParams", () => {
       assign: "unassigned",
       q: "refund",
       staffUserId: "u1",
+      sort: "updated_desc",
+      slaOverdue: false,
     });
     const p = new URLSearchParams(qs);
     expect(p.get("limit")).toBe("25");
@@ -31,6 +33,8 @@ describe("buildSupportTicketsSearchParams", () => {
       assign: "mine",
       q: "",
       staffUserId: "abc",
+      sort: "updated_desc",
+      slaOverdue: false,
     });
     const p = new URLSearchParams(qs);
     expect(p.get("offset")).toBe("0");

@@ -123,6 +123,7 @@ interface LearningArticle {
   published_at: string | null;
   scheduled_at?: string | null;
   image_url?: string | null;
+  hero_video_url?: string | null;
   featured_order?: number | null;
   learning_categories?: { title: string; slug: string };
 }
@@ -196,6 +197,7 @@ export default function LearningCenterPage() {
     audience: "general" as "general" | "customer" | "provider" | "internal",
     is_internal: false,
     image_url: "",
+    hero_video_url: "",
     featured_order: "" as string | number,
     published_at: "",
     scheduled_at: "",
@@ -383,6 +385,7 @@ export default function LearningCenterPage() {
         audience: (a.audience as typeof defaultArticleForm.audience) || "general",
         is_internal: a.is_internal ?? false,
         image_url: a.image_url ?? "",
+        hero_video_url: a.hero_video_url ?? "",
         featured_order: a.featured_order ?? "",
         published_at: a.published_at ? a.published_at.slice(0, 16) : "",
         scheduled_at: a.scheduled_at ? a.scheduled_at.slice(0, 16) : "",
@@ -423,6 +426,7 @@ export default function LearningCenterPage() {
         audience: articleForm.audience,
         is_internal: articleForm.is_internal,
         image_url: articleForm.image_url.trim() ? articleForm.image_url.trim() : null,
+        hero_video_url: articleForm.hero_video_url.trim() ? articleForm.hero_video_url.trim() : null,
         featured_order: articleForm.featured_order === "" || articleForm.featured_order === null ? null : Number(articleForm.featured_order),
         published_at: articleForm.published_at ? new Date(articleForm.published_at).toISOString() : null,
         scheduled_at: articleForm.scheduled_at ? new Date(articleForm.scheduled_at).toISOString() : null,
@@ -766,7 +770,16 @@ export default function LearningCenterPage() {
             )}
           </Tabs>
 
-          <Dialog open={isArticleEditorOpen} onOpenChange={(open) => { if (!open) { setShowCreateArticle(false); setEditingArticleId(null); } }}>
+          <Dialog
+            open={isArticleEditorOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowCreateArticle(false);
+                setEditingArticleId(null);
+                setArticleForm(defaultArticleForm);
+              }
+            }}
+          >
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <div className="flex items-center justify-between gap-2">
@@ -848,14 +861,29 @@ export default function LearningCenterPage() {
                     placeholder="Short summary"
                   />
                 </div>
-                <div>
-                  <Label>Hero image URL (optional)</Label>
-                  <Input
-                    value={articleForm.image_url}
-                    onChange={(e) => setArticleForm((f) => ({ ...f, image_url: e.target.value }))}
-                    placeholder="https://..."
-                    type="url"
-                  />
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div>
+                    <Label>Hero image URL (optional)</Label>
+                    <Input
+                      value={articleForm.image_url}
+                      onChange={(e) => setArticleForm((f) => ({ ...f, image_url: e.target.value }))}
+                      placeholder="https://… or /images/learn/…"
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">Screenshot or illustration. Use a full URL or a path under /public (e.g. /images/learn/…).</p>
+                  </div>
+                  <div>
+                    <Label>Hero video / GIF URL (optional)</Label>
+                    <Input
+                      value={articleForm.hero_video_url}
+                      onChange={(e) => setArticleForm((f) => ({ ...f, hero_video_url: e.target.value }))}
+                      placeholder="YouTube, Vimeo, or direct .mp4 / .gif"
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Shown above the hero image when set. YouTube/Vimeo link, or direct file URL. Overrides hero image for the top slot only.
+                    </p>
+                  </div>
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <div>

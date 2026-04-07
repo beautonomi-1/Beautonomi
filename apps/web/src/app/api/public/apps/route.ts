@@ -1,61 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { getDefaultPublicAppsResponse } from "@/lib/store/native-app-store";
 
 /**
  * GET /api/public/apps
  *
  * Public endpoint to get app information for customer and provider apps.
  * Always returns 200 with default data on any error so callers never get 500.
+ *
+ * Default bundle IDs match Expo app.json in apps/customer and apps/provider (see native-app-store.ts).
  */
-const DEFAULT_APPS_RESPONSE = {
-  customer: {
-    android: {
-      package_name: "com.beautonomi.customer",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      download_url: "https://play.google.com/store/apps/details?id=com.beautonomi.customer",
-      enabled: true,
-    },
-    ios: {
-      bundle_id: "com.beautonomi.customer",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      app_store_url: "https://apps.apple.com/app/beautonomi-customer",
-      enabled: true,
-    },
-    huawei: {
-      package_name: "com.beautonomi.customer",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      app_gallery_url: "https://appgallery.huawei.com/app/C100000000",
-      enabled: true,
-    },
-  },
-  provider: {
-    android: {
-      package_name: "com.beautonomi.provider",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      download_url: "https://play.google.com/store/apps/details?id=com.beautonomi.provider",
-      enabled: true,
-    },
-    ios: {
-      bundle_id: "com.beautonomi.provider",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      app_store_url: "https://apps.apple.com/app/beautonomi-provider",
-      enabled: true,
-    },
-    huawei: {
-      package_name: "com.beautonomi.provider",
-      version: "1.0.0",
-      min_version: "1.0.0",
-      app_gallery_url: "https://appgallery.huawei.com/app/C100000001",
-      enabled: true,
-    },
-  },
-};
+const DEFAULT_APPS_RESPONSE = getDefaultPublicAppsResponse();
 
 function getDefaultAppsData(appType: string, platform: string | null) {
   const defaultApps = DEFAULT_APPS_RESPONSE as Record<string, Record<string, any>>;

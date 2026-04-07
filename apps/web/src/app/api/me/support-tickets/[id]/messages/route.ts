@@ -54,7 +54,7 @@ export async function POST(
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, user_id, ticket_number, subject, assigned_to")
+      .select("id, user_id, ticket_number, subject, assigned_to, status")
       .eq("id", id)
       .single();
 
@@ -82,10 +82,15 @@ export async function POST(
 
     if (insertError) throw insertError;
 
-    await supabase
-      .from("support_tickets")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", id);
+    const ticketUpdate: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      last_customer_reply_at: new Date().toISOString(),
+    };
+    const st = String(ticket.status ?? "");
+    if (st === "open" || st === "in_progress") {
+      ticketUpdate.status = "waiting_customer";
+    }
+    await supabase.from("support_tickets").update(ticketUpdate).eq("id", id);
 
     try {
       const staffIds = await resolveSupportTicketStaffRecipients(ticket.assigned_to ?? null);

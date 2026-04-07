@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -22,13 +22,17 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 
 type SubRow = Record<string, unknown> & {
   id?: string;
+  plan_id?: string;
   status?: string;
   billing_period?: string;
   providers?: { business_name?: string } | null;
   subscription_plans?: { name?: string } | null;
 };
 
+type PlanOption = { id: string; name: string };
+
 export function ProviderSubscriptionsPage() {
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   const [sp, setSp] = useSearchParams();
   const status = sp.get("status") || "all";
@@ -46,6 +50,33 @@ export function ProviderSubscriptionsPage() {
     },
     enabled: allowed,
   });
+
+  const plansQ = useQuery({
+    queryKey: adminQueryKeys.plans(),
+    queryFn: () => adminApi.getJson<Record<string, unknown>[]>("/api/admin/plans", { timeoutMs: 60_000 }),
+    enabled: allowed,
+  });
+
+  const planOptions: PlanOption[] = useMemo(() => {
+    const list = Array.isArray(plansQ.data) ? plansQ.data : [];
+    return list
+      .map((p) => ({
+        id: String(p.id ?? ""),
+        name: String(p.name ?? p.id ?? ""),
+      }))
+      .filter((p) => p.id.length > 0);
+  }, [plansQ.data]);
+
+  const changePlan = useMutation({
+    mutationFn: ({ subId, planId }: { subId: string; planId: string }) =>
+      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { plan_id: planId }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
+    },
+  });
+
+  /** Draft plan_id per subscription row until user clicks Apply */
+  const [planDraft, setPlanDraft] = useState<Record<string, string>>({});
 
   const rows = Array.isArray(q.data) ? q.data : [];
 
@@ -67,7 +98,10 @@ export function ProviderSubscriptionsPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Provider subscriptions" description="GET /api/admin/provider-subscriptions" />
+      <AdminPageHeader
+        title="Provider subscriptions"
+        description="Lists provider SaaS subscriptions. Changing the plan updates the database immediately; Paystack may need a separate alignment for customers on card billing."
+      />
       <AdminPanel>
         <label className="text-sm text-gray-600">
           Status{" "}
@@ -95,19 +129,82 @@ export function ProviderSubscriptionsPage() {
             <tr>
               <AdminTh>Provider</AdminTh>
               <AdminTh>Plan</AdminTh>
+              <AdminTh>Change plan</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Period</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((r) => (
-              <tr key={String(r.id)}>
-                <AdminTd>{String(r.providers?.business_name ?? "")}</AdminTd>
-                <AdminTd>{String(r.subscription_plans?.name ?? "")}</AdminTd>
-                <AdminTd>{String(r.status ?? "")}</AdminTd>
-                <AdminTd>{String(r.billing_period ?? "")}</AdminTd>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const sid = String(r.id ?? "");
+              const currentPlanId = r.plan_id != null ? String(r.plan_id) : "";
+              const opts = (() => {
+                const o = [...planOptions];
+                if (currentPlanId && !o.some((x) => x.id === currentPlanId)) {
+                  o.unshift({
+                    id: currentPlanId,
+                    name: String(r.subscription_plans?.name ?? currentPlanId),
+                  });
+                }
+                return o;
+              })();
+              const selected = planDraft[sid] ?? currentPlanId;
+              return (
+                <tr key={sid}>
+                  <AdminTd>{String(r.providers?.business_name ?? "")}</AdminTd>
+                  <AdminTd>{String(r.subscription_plans?.name ?? "")}</AdminTd>
+                  <AdminTd>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        className="max-w-[14rem] rounded border border-gray-300 px-2 py-1 text-sm"
+                        value={selected}
+                        disabled={changePlan.isPending || opts.length === 0}
+                        onChange={(e) => setPlanDraft((d) => ({ ...d, [sid]: e.target.value }))}
+                      >
+                        {opts.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-900 disabled:opacity-50"
+                        disabled={
+                          changePlan.isPending || !selected || selected === currentPlanId || opts.length === 0
+                        }
+                        onClick={() => {
+                          if (
+                            !confirm(
+                              "Change this provider to the selected subscription plan? This updates the database; Paystack may still need manual alignment for billed customers.",
+                            )
+                          ) {
+                            return;
+                          }
+                          changePlan.mutate(
+                            { subId: sid, planId: selected },
+                            {
+                              onSuccess: () => {
+                                setPlanDraft((d) => {
+                                  const n = { ...d };
+                                  delete n[sid];
+                                  return n;
+                                });
+                              },
+                            },
+                          );
+                        }}
+                      >
+                        Apply
+                      </button>
+                      {plansQ.isLoading ? <span className="text-xs text-gray-500">Loading plans…</span> : null}
+                    </div>
+                  </AdminTd>
+                  <AdminTd>{String(r.status ?? "")}</AdminTd>
+                  <AdminTd>{String(r.billing_period ?? "")}</AdminTd>
+                </tr>
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}

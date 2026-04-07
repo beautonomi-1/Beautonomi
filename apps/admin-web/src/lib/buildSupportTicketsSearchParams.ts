@@ -9,6 +9,10 @@ export interface SupportTicketsFilterState {
   /** Server-side search (debounced in UI). */
   q: string;
   staffUserId: string | undefined;
+  /** Sort key for GET /api/admin/support-tickets */
+  sort: string;
+  /** Only tickets past SLA and not resolved/closed */
+  slaOverdue: boolean;
 }
 
 /** Build query string for GET /api/admin/support-tickets (matches Next list page). */
@@ -23,6 +27,8 @@ export function buildSupportTicketsSearchParams(f: SupportTicketsFilterState): s
   else if (f.assign === "mine" && f.staffUserId) params.set("assigned_to", f.staffUserId);
   const q = f.q.trim();
   if (q) params.set("q", q);
+  if (f.sort && f.sort !== "updated_desc") params.set("sort", f.sort);
+  if (f.slaOverdue) params.set("sla_overdue", "1");
   return params.toString();
 }
 

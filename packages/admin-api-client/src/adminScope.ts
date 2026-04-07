@@ -24,6 +24,20 @@ export function isScopedAdminCustomizationPath(pathname: string): boolean {
   return SCOPED_ADMIN_PATH_PREFIXES.some((p) => pathname.startsWith(p));
 }
 
+/**
+ * Most GET /api/admin/* calls receive `scope` + `tenant_id` so the Next.js API can resolve the
+ * effective tenant for superadmin (see `resolveAdminApiTenantId` in apps/web).
+ * Exclude bootstrap and tenant list (picker data must not be tenant-filtered).
+ */
+const ADMIN_SCOPE_GET_EXCLUDED_PREFIXES: readonly string[] = ["/api/admin/bootstrap", "/api/admin/tenants"];
+
+export function adminScopeGetAppliesToPathname(pathname: string): boolean {
+  if (!pathname.startsWith("/api/admin")) return false;
+  return !ADMIN_SCOPE_GET_EXCLUDED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
+}
+
 /** Pathname only (strips query), for matching scoped prefixes. */
 export function adminScopePathname(path: string): string {
   try {
@@ -84,7 +98,9 @@ export function withAdminScopeUrl(
   if (typeof window === "undefined") return url;
   try {
     const u = new URL(url, window.location.origin);
-    if (!isScopedAdminCustomizationPath(u.pathname)) return url;
+    if (!isScopedAdminCustomizationPath(u.pathname) && !adminScopeGetAppliesToPathname(u.pathname)) {
+      return url;
+    }
 
     const { scope, tenantId } = readAdminScopeFromStorage(storage);
     if (method.toUpperCase() !== "GET") return url;

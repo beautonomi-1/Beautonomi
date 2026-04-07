@@ -90,9 +90,10 @@ export default function BookingActionBar({
     <motion.div
       initial={{ y: 100 }}
       animate={{ y: 0 }}
-      className="sticky bottom-0 z-40 bg-white border-t border-gray-200 safe-area-bottom shadow-lg"
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-lg"
+      style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))" }}
     >
-      <div className="px-4 py-3">
+      <div className="px-4 py-3 max-w-[100vw]">
         {/* Totals Summary */}
         <div className="mb-3 space-y-1 text-sm">
           <div className="flex justify-between text-gray-600">

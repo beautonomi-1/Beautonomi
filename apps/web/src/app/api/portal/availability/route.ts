@@ -4,6 +4,10 @@ import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { validatePortalToken } from "@/lib/portal/token";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
+import {
+  slicesFromBookingServiceRows,
+  sumChainedBlockedMinutes,
+} from "@/lib/booking-slot-math/blocked-window-minutes";
 import { checkPortalRateLimit } from "@/lib/rate-limit/portal";
 import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 
@@ -14,7 +18,7 @@ import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
  * Uses loadAvailabilityConstraints + calculateAvailableSlots (not the public
  * book flow availability route). Duration includes service buffers so the
  * blocked span matches the booking flow.
- * Query params: token, date
+ * Query params: token, date, travelBuffer (optional; at-home minutes — align with `/api/availability` + validateBooking)
  */
 export async function GET(request: NextRequest) {
   const rate = await checkPortalRateLimit(request);
@@ -37,6 +41,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get("token");
     const date = searchParams.get("date");
+    const travelBufferParam = parseInt(searchParams.get("travelBuffer") || "", 10);
 
     if (!token) {
       return handleApiError(
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         provider_id,
+        location_id,
         location_type,
         booking_services (
           staff_id,
@@ -95,22 +101,29 @@ export async function GET(request: NextRequest) {
       return successResponse({ date, slots: [] });
     }
 
-    // Total blocked span = sum(durations) + sum(buffers) to match book flow semantics
-    let totalDuration = 0;
-    for (const bs of services) {
-      const dur = bs.duration_minutes ?? bs.offerings?.duration_minutes ?? 60;
-      const buf = bs.offerings?.buffer_minutes ?? 15;
-      totalDuration += dur + buf;
-    }
-    totalDuration = totalDuration || 60;
+    const totalDuration = sumChainedBlockedMinutes(slicesFromBookingServiceRows(services)) || 60;
 
-    const constraints = await loadAvailabilityConstraints(
-      supabase,
-      staffId,
-      date,
-      (booking as { provider_id?: string }).provider_id
-    );
-    const travelBuffer = booking.location_type === "at_home" ? 30 : 0;
+    const providerId = (booking as { provider_id?: string }).provider_id;
+    const locationId = (booking as { location_id?: string | null }).location_id ?? null;
+
+    const constraints = await loadAvailabilityConstraints(supabase, staffId, date, providerId, {
+      publicCalendarParity:
+        providerId && staffId
+          ? {
+              providerId,
+              locationId,
+              date,
+              slotStaffId: staffId,
+              staffIdsForTimeOff: [staffId],
+            }
+          : undefined,
+    });
+    const travelBuffer =
+      booking.location_type === "at_home"
+        ? Number.isFinite(travelBufferParam) && travelBufferParam >= 0
+          ? Math.min(360, travelBufferParam)
+          : 0
+        : 0;
 
     const slots = calculateAvailableSlots(constraints, totalDuration, date, {
       slotInterval: 15,

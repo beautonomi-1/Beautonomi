@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, errorResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { writeAuditLog } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/gamification/point-rules
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
     const body = await request.json();
     const { rules } = body as { rules: Array<{ source: string; points: number }> };
@@ -53,6 +54,14 @@ export async function PATCH(request: NextRequest) {
       if (error) throw error;
       if (data) updated.push(data);
     }
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "update",
+      entity_type: "provider_point_rules",
+      entity_id: null,
+      metadata: { sources: rules.map((r) => r.source), count: updated.length },
+    });
     return successResponse({ updated });
   } catch (error) {
     return handleApiError(error, "Failed to update point rules");

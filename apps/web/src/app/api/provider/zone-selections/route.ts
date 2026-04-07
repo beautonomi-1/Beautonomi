@@ -2,6 +2,7 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -47,6 +48,14 @@ export async function GET(request: NextRequest) {
       throw zonesError;
     }
 
+    const eligibleZones = (platformZones || []).filter((z: Record<string, unknown>) => {
+      const status = z.status as string | undefined;
+      if (status === "archived") return false;
+      if (status === "active") return true;
+      if (status === "draft") return false;
+      return z.is_active === true;
+    });
+
     // Get provider's zone selections
     const { data: selections, error: selectionsError } = await supabase
       .from("provider_zone_selections")
@@ -62,11 +71,16 @@ export async function GET(request: NextRequest) {
       (selections || []).map((s) => [s.platform_zone_id, s])
     );
 
-    // Combine platform zones with provider selections
-    const zonesWithSelections = (platformZones || []).map((zone) => {
-      const selection = selectionsMap.get(zone.id);
+    const zonesWithSelections = eligibleZones.map((zone: Record<string, unknown>) => {
+      const id = zone.id as string;
+      const selection = selectionsMap.get(id);
       return {
-        platform_zone: zone,
+        platform_zone: {
+          id,
+          name: (zone.name as string) ?? "Zone",
+          region: (zone.country_code as string | null) ?? null,
+          description: (zone.description as string | null) ?? null,
+        },
         selection: selection || null,
         is_selected: !!selection,
       };
@@ -117,15 +131,19 @@ export async function POST(request: NextRequest) {
       currency: validationResult.data.currency ?? lastResortCurrency,
     };
 
-    // Verify platform zone exists and is active
-    const { data: platformZone, error: zoneError } = await supabase
+    const admin = getSupabaseAdmin();
+    const { data: platformZone, error: zoneError } = await admin
       .from("platform_zones")
-      .select("id, is_active")
+      .select("id, status, is_active")
       .eq("id", data.platform_zone_id)
-      .eq("is_active", true)
-      .single();
+      .maybeSingle();
 
-    if (zoneError || !platformZone) {
+    const row = platformZone as { id?: string; status?: string; is_active?: boolean } | null;
+    const zoneOk =
+      row &&
+      (row.status === "active" ||
+        (row.is_active === true && row.status !== "draft" && row.status !== "archived"));
+    if (zoneError || !zoneOk) {
       return badRequestResponse("Platform zone not found or inactive");
     }
 

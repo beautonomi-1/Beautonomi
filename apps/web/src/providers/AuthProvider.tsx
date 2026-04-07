@@ -7,12 +7,15 @@ import type { User, UserRole } from "@/types/beautonomi";
 import type { Session } from "@supabase/supabase-js";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention/client-sync";
 import { clearFetcherCache } from "@/lib/http/fetcher";
+import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: UserRole | null;
   isLoading: boolean;
+  /** True while sign-out is in flight (show signing-out UI). */
+  isSigningOut: boolean;
   isEmailVerified: boolean; // Email verification status
   signOut: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
@@ -90,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(cached.session);
   const [role, setRole] = useState<UserRole | null>(cached.role);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(true);
   const router = useRouter();
   const _pathname = usePathname();
@@ -899,7 +903,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           (typeof label === "string" ? label : "") ||
           "Saved address";
         const locationData = { latitude: lat, longitude: lng, address: addressStr };
-        localStorage.setItem("userLocation", JSON.stringify(locationData));
+        if (readAllowsFunctionalFromStorage()) {
+          localStorage.setItem("userLocation", JSON.stringify(locationData));
+        }
         window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
       } catch {
         // ignore
@@ -915,36 +921,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!supabase) return;
+    setIsSigningOut(true);
+    const started = Date.now();
+    const endSigningOutSoon = () => {
+      const elapsed = Date.now() - started;
+      const rest = Math.max(0, 450 - elapsed);
+      window.setTimeout(() => setIsSigningOut(false), rest);
+    };
     try {
-      // Clear local state first
+      // Clear auth cache and fetcher response cache first
+      clearAuthCache();
+      clearFetcherCache();
+
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Error signing out from Supabase:", error);
+      }
+
       setSession(null);
       setUser(null);
       setRole(null);
       setIsEmailVerified(false);
-      
-      // Clear auth cache and fetcher response cache
-      clearAuthCache();
-      clearFetcherCache();
-      
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error("Error signing out from Supabase:", error);
-        // Continue with redirect even if there's an error
-      }
-      
-      // Force navigation to home page
+
       router.push("/");
-      router.refresh(); // Refresh to clear any cached data
+      router.refresh();
     } catch (error) {
       console.error("Unexpected error signing out:", error);
-      // Even on error, clear state and redirect
       setSession(null);
       setUser(null);
       setRole(null);
       setIsEmailVerified(false);
       router.push("/");
       router.refresh();
+    } finally {
+      if (typeof window !== "undefined") endSigningOutSoon();
+      else setIsSigningOut(false);
     }
   }, [supabase, router]);
 
@@ -1036,6 +1047,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         role,
         isLoading,
+        isSigningOut,
         isEmailVerified,
         signOut,
         refreshUser,

@@ -54,6 +54,15 @@ interface ProductsResponse {
   total?: number;
 }
 
+interface ServicePackageRow {
+  id: string;
+  name: string;
+}
+
+interface PackagesListResponse {
+  packages?: ServicePackageRow[];
+}
+
 export default function CatalogueOverviewScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
@@ -66,16 +75,23 @@ export default function CatalogueOverviewScreen() {
     useApi<ServiceItem[]>("/api/provider/services");
   const { data: productsData, refresh: refreshProducts } =
     useApi<ProductsResponse>("/api/provider/products?limit=5");
+  const { data: packagesData, refresh: refreshPackages } =
+    useApi<PackagesListResponse | { data?: PackagesListResponse }>("/api/provider/packages");
 
   const services: ServiceItem[] = Array.isArray(servicesList) ? servicesList : [];
   const products = productsData?.products ?? [];
   const productsTotal = productsData?.total ?? 0;
+  const packagesList =
+    (packagesData as PackagesListResponse)?.packages ??
+    (packagesData as { data?: PackagesListResponse })?.data?.packages ??
+    [];
+  const packagesTotal = packagesList.length;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshServices(), refreshProducts()]);
+    await Promise.all([refreshServices(), refreshProducts(), refreshPackages()]);
     setRefreshing(false);
-  }, [refreshServices, refreshProducts]);
+  }, [refreshServices, refreshProducts, refreshPackages]);
 
   const openServiceDetail = useCallback(async (service: ServiceItem) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -96,6 +112,11 @@ export default function CatalogueOverviewScreen() {
   const goToProducts = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push("/(app)/(tabs)/more/products" as never);
+  }, [router]);
+
+  const goToPackages = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push("/(app)/(tabs)/more/packages-list" as never);
   }, [router]);
 
   const categoryName = (s: ServiceItem): string => {
@@ -129,7 +150,7 @@ export default function CatalogueOverviewScreen() {
 
   return (
     <ScreenContainer scrollable={false}>
-      <ScreenHeader title="Catalogue" showBack subtitle="Services & products" />
+      <ScreenHeader title="Catalogue" showBack subtitle="Services, packages & products" />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
@@ -176,6 +197,47 @@ export default function CatalogueOverviewScreen() {
                 <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
               </TouchableOpacity>
             ))
+          )}
+        </View>
+
+        <View style={{ marginBottom: 24 }}>
+          <View style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", letterSpacing: 1, textTransform: "uppercase", color: Colors.gray[500] }}>Packages</Text>
+            {packagesTotal > 0 && (
+              <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                {packagesTotal} package{packagesTotal !== 1 ? "s" : ""}
+              </Text>
+            )}
+          </View>
+          <TouchableOpacity
+            onPress={goToPackages}
+            activeOpacity={0.7}
+            style={{ marginBottom: 12, flexDirection: "row", alignItems: "center", borderRadius: 16, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 16 }}
+          >
+            <View style={{ height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#e0e7ff" }}>
+              <Ionicons name="layers-outline" size={20} color="#4f46e5" />
+            </View>
+            <View style={{ marginLeft: 12, flex: 1 }}>
+              <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Service packages</Text>
+              <Text style={{ marginTop: 2, fontSize: 14, color: Colors.gray[500] }}>
+                {packagesTotal === 0
+                  ? "Create bundles of services and retail"
+                  : `View all ${packagesTotal} package${packagesTotal !== 1 ? "s" : ""}`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </TouchableOpacity>
+          {packagesList.length > 0 && (
+            <View style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[100], backgroundColor: "rgba(249,250,251,0.5)", paddingHorizontal: 12, paddingVertical: 8 }}>
+              {packagesList.slice(0, 3).map((p) => (
+                <View key={p.id} style={{ flexDirection: "row", alignItems: "center", paddingVertical: 8 }}>
+                  <Text style={{ flex: 1, fontSize: 14, color: Colors.gray[700] }} numberOfLines={1}>{p.name}</Text>
+                </View>
+              ))}
+              {packagesTotal > 3 && (
+                <Text style={{ paddingVertical: 4, fontSize: 12, color: Colors.gray[500] }}>+{packagesTotal - 3} more</Text>
+              )}
+            </View>
           )}
         </View>
 

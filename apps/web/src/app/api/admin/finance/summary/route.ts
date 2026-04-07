@@ -6,11 +6,13 @@ import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
 
 /**
  * GET /api/admin/finance/summary
  *
- * Get financial summary (GMV, fees, net, provider earnings)
+ * Get financial summary (GMV, fees, net, provider earnings).
+ * Ledger math is shared with the admin dashboard via `aggregateFinanceLedgerRows`.
  */
 export async function GET(request: Request) {
   try {
@@ -30,59 +32,7 @@ export async function GET(request: Request) {
       end: endDate,
     });
 
-    type FinanceRow = {
-      transaction_type: string;
-      amount?: number | null;
-      fees?: number | null;
-      commission?: number | null;
-      net?: number | null;
-    };
-    const sum = (
-      types: string[],
-      field: "amount" | "fees" | "commission" | "net" = "amount"
-    ) =>
-      tx
-        .filter((r: FinanceRow) => types.includes(r.transaction_type))
-        .reduce((s: number, r: FinanceRow) => s + Number(r[field] ?? 0), 0);
-
-    // Gateway fees (only on payment and additional_charge_payment)
-    const gatewayFeesServices = sum(["payment", "additional_charge_payment"], "fees");
-
-    const bookingGmv =
-      sum(["payment"], "amount") +
-      sum(["provider_earnings"], "amount") +
-      sum(["tip"], "amount") +
-      sum(["tax"], "amount") +
-      sum(["travel_fee"], "amount") +
-      sum(["service_fee"], "amount");
-    const additionalChargeGross =
-      sum(["additional_charge_payment"], "amount") + sum(["additional_charge_payment"], "fees");
-    const serviceCollectedGross = bookingGmv + additionalChargeGross;
-    const serviceCollectedNet = serviceCollectedGross - gatewayFeesServices;
-
-    const platformCommissionGross = sum(["payment", "additional_charge_payment"], "net");
-    const platformRefundImpact = sum(["refund"], "net");
-    const platformCommissionNet = platformCommissionGross + platformRefundImpact;
-
-    const platformTakeNet = platformCommissionNet - gatewayFeesServices;
-
-    const tipsGross = sum(["tip"], "amount");
-    const taxesGross = sum(["tax"], "amount");
-
-    const subscriptionNet = sum(["provider_subscription_payment"], "net");
-    const subscriptionGatewayFees = sum(["provider_subscription_payment"], "fees");
-    const subscriptionGross = subscriptionNet + subscriptionGatewayFees;
-
-    const adsNet = sum(["provider_ads_payment"], "net");
-    const adsGatewayFees = sum(["provider_ads_payment"], "fees");
-    const adsGross = adsNet + adsGatewayFees;
-
-    const providerEarnings = sum(["provider_earnings"], "net");
-
-    const giftCardSales = sum(["gift_card_sale"], "amount");
-    const membershipSales = sum(["membership_sale"], "amount");
-
-    const refundsGross = sum(["refund"], "amount");
+    const agg = aggregateFinanceLedgerRows(tx);
 
     const supabaseAdmin = getSupabaseAdmin();
     let walletTopupRevenue = 0;
@@ -97,12 +47,7 @@ export async function GET(request: Request) {
       if (endDate) topupQuery = topupQuery.lte("paid_at", endDate);
       const { data: topups, error: topErr } = await topupQuery;
       if (topErr) {
-        console.warn("Wallet topups tenant scope failed, falling back to unscoped sum:", topErr.message);
-        let fallback = supabaseAdmin.from("wallet_topups").select("amount").eq("status", "paid");
-        if (startDate) fallback = fallback.gte("paid_at", startDate);
-        if (endDate) fallback = fallback.lte("paid_at", endDate);
-        const { data: fb } = await fallback;
-        walletTopupRevenue = (fb || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+        console.warn("Wallet topups tenant-scoped query failed:", topErr.message);
       } else {
         walletTopupRevenue = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       }
@@ -117,16 +62,7 @@ export async function GET(request: Request) {
       if (endDate) refQuery = refQuery.lte("created_at", endDate);
       const { data: refTxs, error: refErr } = await refQuery;
       if (refErr) {
-        console.warn("Referral payouts tenant scope failed, falling back to unscoped sum:", refErr.message);
-        let refFb = supabaseAdmin
-          .from("wallet_transactions")
-          .select("amount")
-          .eq("type", "credit")
-          .eq("reference_type", "referral");
-        if (startDate) refFb = refFb.gte("created_at", startDate);
-        if (endDate) refFb = refFb.lte("created_at", endDate);
-        const { data: rfb } = await refFb;
-        referralPayouts = (rfb || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+        console.warn("Referral wallet credits tenant-scoped query failed:", refErr.message);
       } else {
         referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       }
@@ -135,7 +71,7 @@ export async function GET(request: Request) {
     }
 
     const totalPlatformTakeAfterReferrals =
-      platformTakeNet + subscriptionNet + adsNet + walletTopupRevenue - referralPayouts;
+      agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue - referralPayouts;
 
     const period = startDate && endDate ? "custom" : "month";
     let previousStart: string;
@@ -170,50 +106,38 @@ export async function GET(request: Request) {
         start: previousStart,
         end: previousEnd,
       });
-      type PrevRow = { transaction_type: string; amount?: number | null; fees?: number | null };
-      const prevSum = (types: string[], field: "amount" | "fees") =>
-        prev
-          .filter((r: PrevRow) => types.includes(r.transaction_type))
-          .reduce((s: number, r: PrevRow) => s + Number(r[field] ?? 0), 0);
-      previousGmv =
-        prevSum(["payment"], "amount") +
-        prevSum(["provider_earnings"], "amount") +
-        prevSum(["tip"], "amount") +
-        prevSum(["tax"], "amount") +
-        prevSum(["travel_fee"], "amount") +
-        prevSum(["service_fee"], "amount") +
-        prevSum(["additional_charge_payment"], "amount") +
-        prevSum(["additional_charge_payment"], "fees");
+      previousGmv = aggregateFinanceLedgerRows(prev).service_collected_gross;
     }
 
-    const gmvGrowth = previousGmv > 0 ? ((serviceCollectedGross - previousGmv) / previousGmv) * 100 : 0;
+    const gmvGrowth =
+      previousGmv > 0 ? ((agg.service_collected_gross - previousGmv) / previousGmv) * 100 : 0;
 
     return NextResponse.json({
       data: {
-        service_collected_gross: serviceCollectedGross,
-        service_collected_net: serviceCollectedNet,
-        gateway_fees: gatewayFeesServices,
+        service_collected_gross: agg.service_collected_gross,
+        service_collected_net: agg.service_collected_net,
+        gateway_fees: agg.gateway_fees_services,
 
-        platform_commission_gross: platformCommissionGross,
-        platform_refund_impact: platformRefundImpact,
-        platform_commission_net: platformCommissionNet,
-        platform_take_net: platformTakeNet,
+        platform_commission_gross: agg.platform_commission_gross,
+        platform_refund_impact: agg.platform_refund_impact,
+        platform_commission_net: agg.platform_commission_net,
+        platform_take_net: agg.platform_take_net,
 
-        tips_gross: tipsGross,
-        taxes_gross: taxesGross,
+        tips_gross: agg.tips_gross,
+        taxes_gross: agg.taxes_gross,
 
-        subscription_collected_gross: subscriptionGross,
-        subscription_net: subscriptionNet,
-        subscription_gateway_fees: subscriptionGatewayFees,
-        ads_net: adsNet,
-        ads_gross: adsGross,
-        ads_gateway_fees: adsGatewayFees,
-        total_platform_take_net: platformTakeNet + subscriptionNet + adsNet,
+        subscription_collected_gross: agg.subscription_gross,
+        subscription_net: agg.subscription_net,
+        subscription_gateway_fees: agg.subscription_gateway_fees,
+        ads_net: agg.ads_net,
+        ads_gross: agg.ads_gross,
+        ads_gateway_fees: agg.ads_gateway_fees,
+        total_platform_take_net: agg.platform_take_net + agg.subscription_net + agg.ads_net,
 
-        provider_earnings: providerEarnings,
-        refunds_gross: refundsGross,
-        gift_card_sales: giftCardSales,
-        membership_sales: membershipSales,
+        provider_earnings: agg.provider_earnings_net,
+        refunds_gross: agg.refunds_gross,
+        gift_card_sales: agg.gift_card_sales,
+        membership_sales: agg.membership_sales,
 
         wallet_topup_revenue: walletTopupRevenue,
         referral_payouts: referralPayouts,

@@ -50,7 +50,7 @@ export default function Component() {
           </Button>
           <Button variant="outline" className="flex items-center justify-start px-4 gap-4 font-light hover:bg-[#f7f7f7] rounded-xl max-h-[50px]">
           <span className="text-lg"><FaSquareXTwitter/></span>
-            Twitter
+            X
           </Button>
         </div>
       </DialogContent>

@@ -3,10 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection,
   successResponse,
   handleApiError,
-  errorResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchGodsEyeCustomerMarkers } from "@/lib/admin/gods-eye-customer-markers";
 
 type PingRow = { provider_id: string };
 type BookingRow = { id: string; provider_id: string; location_type?: string; location_id?: string; address_latitude?: number | null; address_longitude?: number | null; status?: string; current_stage?: string };
@@ -18,15 +18,20 @@ type AtHomeBookingOut = { booking_id: string; provider_id: string; customer_targ
 
 /**
  * GET /api/admin/gods-eye/map-state
- * Superadmin only. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
- * Query: location_type?, booking_status?, provider_status?, country?, city?, time_window_mins?
+ * Overview section. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
+ * `customer_markers` (saved address or last booking coords) is included only for **superadmin** — traction / oversight.
+ * Query: location_type?, booking_status?, provider_status?, time_window_mins?, customer_markers_max? (default 2000, max 5000)
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const tenantId = await resolveAdminApiTenantId(request);
     const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
+    const customerMarkersMax = Math.min(
+      5000,
+      Math.max(0, Number.parseInt(searchParams.get("customer_markers_max") ?? "2000", 10) || 2000)
+    );
     const locationType = searchParams.get("location_type"); // at_home | at_salon
     const bookingStatus = searchParams.get("booking_status"); // confirmed | in_progress
     const providerStatus = searchParams.get("provider_status"); // active | suspended
@@ -65,12 +70,30 @@ export async function GET(request: NextRequest) {
     const fromBookings = [...new Set(bookingList.map((b: BookingRow) => b.provider_id))];
     const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
 
+    let customer_markers: Awaited<ReturnType<typeof fetchGodsEyeCustomerMarkers>> = [];
+    if (user.role === "superadmin" && customerMarkersMax > 0) {
+      try {
+        customer_markers = await fetchGodsEyeCustomerMarkers(admin, tenantId, customerMarkersMax);
+      } catch (e) {
+        console.error("gods-eye customer markers:", e);
+        customer_markers = [];
+      }
+    }
+
     if (allProviderIds.length === 0) {
       return successResponse({
         providers: [],
         at_home_bookings: [],
         at_salon_bookings: [],
-        summary: { active_providers: 0, active_at_home: 0, at_salon: 0, en_route: 0, arrived: 0 },
+        customer_markers,
+        summary: {
+          active_providers: 0,
+          active_at_home: 0,
+          at_salon: 0,
+          en_route: 0,
+          arrived: 0,
+          customers_mapped: customer_markers.length,
+        },
       });
     }
 
@@ -213,12 +236,14 @@ export async function GET(request: NextRequest) {
       at_salon: atSalonBookings.length,
       en_route: atHomeBookings.filter((b: AtHomeBookingOut) => !b.arrived_at_target).length,
       arrived: atHomeBookings.filter((b: AtHomeBookingOut) => b.arrived_at_target).length,
+      customers_mapped: customer_markers.length,
     };
 
     return successResponse({
       providers: providerMarkers,
       at_home_bookings: atHomeBookings,
       at_salon_bookings: atSalonBookings,
+      customer_markers,
       summary,
     });
   } catch (error) {

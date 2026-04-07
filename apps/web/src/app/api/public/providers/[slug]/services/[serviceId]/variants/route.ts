@@ -58,6 +58,7 @@ export async function GET(
         description,
         price,
         duration_minutes,
+        buffer_minutes,
         currency,
         variant_sort_order,
         display_order
@@ -85,6 +86,7 @@ export async function GET(
         description: v.description,
         price: parseFloat(v.price || 0),
         duration: v.duration_minutes,
+        bufferMinutes: Number(v.buffer_minutes ?? 0),
         currency: v.currency || defaultCurrency,
       })),
       total_count: (variants || []).length,

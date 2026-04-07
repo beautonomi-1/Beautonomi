@@ -9,7 +9,16 @@ import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
 import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 import type { BookingDraft } from "@/types/beautonomi";
-import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
+import {
+  aggregatePackageEntitlements,
+  bookedOfferingCounts,
+  bookedProductCounts,
+  exceedsEntitlement,
+  percentOf,
+  sumMoney,
+  roundCurrency,
+} from "@beautonomi/utils";
+import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -260,10 +269,30 @@ export async function validateBooking(
     }
   }
 
+  // ── Group booking flags (must be consistent before we union offering ids) ──
+  const isGroupFlag = Boolean(validatedDraft.is_group_booking);
+  const participantsArr = validatedDraft.group_participants;
+  const hasParticipants = Array.isArray(participantsArr) && participantsArr.length > 0;
+  if (isGroupFlag && !hasParticipants) {
+    return handleApiError(
+      new Error("Group booking requires participants"),
+      "Add at least one guest to book as a group.",
+      "GROUP_PARTICIPANTS_REQUIRED",
+      400
+    );
+  }
+  if (hasParticipants && !isGroupFlag) {
+    return handleApiError(
+      new Error("group_participants without is_group_booking"),
+      "Enable group booking when adding group participants.",
+      "VALIDATION_ERROR",
+      400
+    );
+  }
+
   // ── Offerings ────────────────────────────────────────────────────────────
   let offeringIds = draft.services.map((s) => s.offering_id);
-  const isGroupBookingDraft =
-    Boolean(validatedDraft.is_group_booking) && Array.isArray(validatedDraft.group_participants) && validatedDraft.group_participants.length > 0;
+  const isGroupBookingDraft = isGroupFlag && hasParticipants;
   if (isGroupBookingDraft) {
     const groupIds = (validatedDraft.group_participants as any[]).flatMap(
       (p: any) => p.service_ids ?? p.serviceIds ?? []
@@ -316,6 +345,84 @@ export async function validateBooking(
             400
           );
         }
+      }
+    }
+  }
+
+  // ── Online group booking policy (server — same DB fields as group-booking-settings API) ──
+  if (isGroupBookingDraft) {
+    const { evaluateGroupBookingPolicy } = await import("@/lib/public-booking/group-booking-policy");
+    const { fetchGroupBookingPolicyFieldsFromDb } = await import("@/lib/public-booking/group-booking-policy-db");
+    const policyFields = await fetchGroupBookingPolicyFieldsFromDb(supabaseAdmin, draft.provider_id);
+    const participants = validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>;
+    const participantOfferingIds = participants.flatMap((p) => p.service_ids ?? p.serviceIds ?? []);
+    const gp = evaluateGroupBookingPolicy({
+      additionalGuestCount: participants.length,
+      ...policyFields,
+      primaryOfferingIds: draft.services.map((s) => s.offering_id),
+      participantOfferingIds,
+      locationType: draft.location_type,
+      locationId: draft.location_id ?? null,
+    });
+    if (gp.ok === false) {
+      return handleApiError(new Error(gp.message), gp.message, gp.code, 400);
+    }
+  }
+
+  // ── Staff: active on provider + offering_staff eligibility when restricted ──
+  {
+    const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
+    const dbStaffByLine = new Map<number, string>();
+    draft.services.forEach((s, idx) => {
+      if (!s.staff_id) return;
+      const { dbStaffId } = normalizePublicStaffIdForDatabase(s.staff_id);
+      if (dbStaffId) dbStaffByLine.set(idx, dbStaffId);
+    });
+    const uniqueStaff = [...new Set(dbStaffByLine.values())];
+    if (uniqueStaff.length > 0) {
+      const { data: psRows } = await supabaseAdmin
+        .from("provider_staff")
+        .select("id")
+        .eq("provider_id", draft.provider_id)
+        .eq("is_active", true)
+        .in("id", uniqueStaff);
+      const activeStaff = new Set((psRows || []).map((r: { id: string }) => r.id));
+      for (const id of uniqueStaff) {
+        if (!activeStaff.has(id)) {
+          return handleApiError(
+            new Error("Staff not available for provider"),
+            "Selected staff is not available for this provider.",
+            "STAFF_INVALID",
+            400
+          );
+        }
+      }
+    }
+    const offeringIdsForStaff = [...new Set(draft.services.map((s) => s.offering_id))];
+    const { data: oStaffRows } = await supabaseAdmin
+      .from("offering_staff")
+      .select("offering_id, staff_id")
+      .in("offering_id", offeringIdsForStaff);
+    const staffAllowedByOffering = new Map<string, Set<string>>();
+    for (const row of oStaffRows || []) {
+      const oid = (row as { offering_id: string }).offering_id;
+      const sid = (row as { staff_id: string }).staff_id;
+      if (!staffAllowedByOffering.has(oid)) staffAllowedByOffering.set(oid, new Set());
+      staffAllowedByOffering.get(oid)!.add(sid);
+    }
+    for (let i = 0; i < draft.services.length; i++) {
+      const s = draft.services[i];
+      const dbId = dbStaffByLine.get(i);
+      if (!dbId) continue;
+      const allowed = staffAllowedByOffering.get(s.offering_id);
+      if (!allowed || allowed.size === 0) continue;
+      if (!allowed.has(dbId)) {
+        return handleApiError(
+          new Error("Staff not eligible for offering"),
+          "Selected staff cannot perform one of the chosen services.",
+          "STAFF_OFFERING_MISMATCH",
+          400
+        );
       }
     }
   }
@@ -521,12 +628,24 @@ export async function validateBooking(
 
   const travelFee = draft.location_type === "at_home" ? (draft.travel_fee || 0) : 0;
 
-  // ── Package discount ─────────────────────────────────────────────────────
+  if (validatedDraft.customer_package_entitlement_id && !draft.package_id) {
+    return handleApiError(
+      new Error("package_id required with entitlement"),
+      "Select a package when redeeming a package credit.",
+      "VALIDATION_ERROR",
+      400
+    );
+  }
+
+  // ── Package discount (catalog `service_packages`) ───────────────────────
+  // `package_id` applies catalog pricing/entitlement via `service_package_items`.
+  // Optional `customer_package_entitlement_id` redeems one session from `customer_package_entitlements`
+  // (validated above when present; decremented after successful insert via RPC).
   let packageDiscountAmount = 0;
   if (draft.package_id) {
     const { data: pkg, error: pkgError } = await supabase
       .from("service_packages")
-      .select("id, provider_id, price, currency, discount_percentage")
+      .select("id, provider_id, price, currency, discount_percentage, is_active")
       .eq("id", draft.package_id)
       .single();
     if (pkgError || !pkg || pkg.provider_id !== draft.provider_id) {
@@ -537,6 +656,77 @@ export async function validateBooking(
         400
       );
     }
+    if ((pkg as { is_active?: boolean }).is_active === false) {
+      return handleApiError(
+        new Error("Package is not active"),
+        "This package is no longer available for booking.",
+        "PACKAGE_INACTIVE",
+        400
+      );
+    }
+
+    if (validatedDraft.customer_package_entitlement_id) {
+      const eid = validatedDraft.customer_package_entitlement_id;
+      const { data: ent, error: entErr } = await supabaseAdmin
+        .from("customer_package_entitlements")
+        .select("id, customer_id, provider_id, package_id, sessions_remaining, valid_from, valid_until")
+        .eq("id", eid)
+        .maybeSingle();
+      if (entErr || !ent) {
+        return handleApiError(
+          new Error("Invalid package entitlement"),
+          "This package credit is not valid.",
+          "PACKAGE_ENTITLEMENT_INVALID",
+          400
+        );
+      }
+      const row = ent as {
+        customer_id: string;
+        provider_id: string;
+        package_id: string;
+        sessions_remaining: number;
+        valid_from?: string | null;
+        valid_until?: string | null;
+      };
+      if (
+        row.customer_id !== customerId ||
+        row.provider_id !== draft.provider_id ||
+        row.package_id !== draft.package_id
+      ) {
+        return handleApiError(
+          new Error("Package entitlement mismatch"),
+          "This package credit does not apply to this booking.",
+          "PACKAGE_ENTITLEMENT_MISMATCH",
+          400
+        );
+      }
+      if (Number(row.sessions_remaining) < 1) {
+        return handleApiError(
+          new Error("Package entitlement exhausted"),
+          "You have no remaining sessions for this package.",
+          "PACKAGE_ENTITLEMENT_EXHAUSTED",
+          400
+        );
+      }
+      const now = new Date();
+      if (row.valid_from && new Date(row.valid_from) > now) {
+        return handleApiError(
+          new Error("Package entitlement not yet valid"),
+          "This package is not active yet.",
+          "PACKAGE_ENTITLEMENT_NOT_YET_VALID",
+          400
+        );
+      }
+      if (row.valid_until && new Date(row.valid_until) < now) {
+        return handleApiError(
+          new Error("Package entitlement expired"),
+          "This package has expired.",
+          "PACKAGE_ENTITLEMENT_EXPIRED",
+          400
+        );
+      }
+    }
+
     // Branch: at_salon with location_id — package must be available at that location
     if (draft.location_type === "at_salon" && draft.location_id) {
       const { data: allPkgLocs } = await supabase
@@ -555,6 +745,62 @@ export async function validateBooking(
         }
       }
     }
+
+    // Package entitlement: every booked offering (primary + group participants) must be covered by
+    // service_package_items quantities. Prevents applying a catalog package discount to arbitrary services.
+    const { data: pkgItems, error: pkgItemsError } = await supabase
+      .from("service_package_items")
+      .select("offering_id, product_id, quantity")
+      .eq("package_id", draft.package_id);
+
+    if (pkgItemsError) throw pkgItemsError;
+
+    const { entitlementByOffering, entitlementByProduct } = aggregatePackageEntitlements(
+      pkgItems as Array<{ offering_id?: string | null; product_id?: string | null; quantity?: unknown }>
+    );
+
+    const hasPkgOfferingLines = entitlementByOffering.size > 0;
+    const hasPkgProductLines = entitlementByProduct.size > 0;
+
+    // Package defines only retail lines — cannot apply catalog package to arbitrary services.
+    if ((pkgItems?.length ?? 0) > 0 && !hasPkgOfferingLines && draft.services.length > 0) {
+      return handleApiError(
+        new Error("Package has no service entitlements for this cart"),
+        "This package does not include the selected services.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    if (hasPkgOfferingLines) {
+      const bookedCounts = bookedOfferingCounts(
+        draft.services,
+        isGroupBookingDraft ? (validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>) : null
+      );
+      const badOffering = exceedsEntitlement(bookedCounts, entitlementByOffering);
+      if (badOffering) {
+        return handleApiError(
+          new Error("Package entitlement mismatch for offerings"),
+          "One or more selected services are not included in this package, or quantities exceed what the package allows.",
+          "PACKAGE_ENTITLEMENT_MISMATCH",
+          400
+        );
+      }
+    }
+
+    if (hasPkgProductLines) {
+      const bookedProd = bookedProductCounts(products as Array<{ product_id?: string; productId?: string; quantity?: unknown }>);
+      const badProduct = exceedsEntitlement(bookedProd, entitlementByProduct);
+      if (badProduct) {
+        return handleApiError(
+          new Error("Package entitlement mismatch for products"),
+          "One or more selected products are not included in this package, or quantities exceed what the package allows.",
+          "PACKAGE_ENTITLEMENT_MISMATCH",
+          400
+        );
+      }
+    }
+
     if (pkg.price !== null && pkg.price !== undefined) {
       packageDiscountAmount = Math.max(0, servicesSubtotal - Number(pkg.price));
     } else if (pkg.discount_percentage) {
@@ -784,11 +1030,10 @@ export async function validateBooking(
     groupTotalDurationMinutes = calculateGroupBookingDuration(allParticipantsForDuration, durationMap);
   }
 
-  // ── Time-slot conflict check ─────────────────────────────────────────────
-  const firstService = draft.services[0];
+  // ── Hold validation (per-segment conflict check runs after booking_services rows are built) ──
   let allowOverride = false;
   let conflictResult: ConflictResult | null = null;
-  /** When completing a Mangomint-style hold, RPC conflict window must match hold.end_at (not recomputed duration). */
+  /** When completing a hold, RPC conflict window must match hold.end_at (not recomputed duration). */
   let holdReservedEndAt: Date | null = null;
 
   if (validatedDraft.hold_id) {
@@ -814,97 +1059,6 @@ export async function validateBooking(
       );
     }
     holdReservedEndAt = new Date(holdRow.end_at as string);
-  }
-
-  if (firstService.staff_id) {
-    const selectedDatetime = new Date(draft.selected_datetime);
-
-    let bookingEndForConflict: Date;
-
-    // Active hold: same window as above (single fetch for all hold flows, including post–random-staff assignment).
-    if (validatedDraft.hold_id && holdReservedEndAt) {
-      bookingEndForConflict = holdReservedEndAt;
-    } else {
-      let checkDuration = 0;
-      if (groupTotalDurationMinutes != null) {
-        checkDuration = groupTotalDurationMinutes;
-        const lastPrimaryOffering = offeringById.get(draft.services[draft.services.length - 1].offering_id);
-        checkDuration += Number(lastPrimaryOffering?.buffer_minutes || 0);
-        checkDuration += Number(lastPrimaryOffering?.processing_minutes || 0);
-        checkDuration += Number(lastPrimaryOffering?.finishing_minutes || 0);
-      } else {
-        for (const s of draft.services) {
-          const off = offeringById.get(s.offering_id);
-          checkDuration += Number(off.duration_minutes || 0);
-          checkDuration += Number(off.buffer_minutes || 0);
-          checkDuration += Number(off.processing_minutes || 0);
-          checkDuration += Number(off.finishing_minutes || 0);
-        }
-      }
-
-      // Mobile slot grid uses `duration + travelBuffer` (see /api/availability + calculate-slots).
-      // Do not use chain-from-previous-address drive time here — it never matched the UI and caused false 409s.
-      if (draft.location_type === "at_home" && draft.address?.latitude && draft.address?.longitude) {
-        const raw = validatedDraft.availability_travel_buffer_minutes;
-        const slotTravelBuffer =
-          typeof raw === "number" && Number.isFinite(raw)
-            ? Math.min(360, Math.max(0, Math.round(raw)))
-            : getTravelBuffer("mobile", undefined);
-        checkDuration += slotTravelBuffer;
-      }
-
-      bookingEndForConflict = new Date(selectedDatetime.getTime() + checkDuration * 60000);
-    }
-
-    const { lockBookingServices, canOverrideDoubleBooking, checkActiveHoldOverlap } = await import(
-      "@/lib/bookings/conflict-check"
-    );
-
-    // Holds reserve the window in DB but are not on booking_services — block 409 if another guest holds this slot.
-    if (!validatedDraft.hold_id) {
-      const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
-      const { dbStaffId } = normalizePublicStaffIdForDatabase(firstService.staff_id as string);
-      const holdOverlap = await checkActiveHoldOverlap(
-        supabaseAdmin,
-        draft.provider_id,
-        selectedDatetime,
-        bookingEndForConflict,
-        { dbStaffId: dbStaffId ?? null }
-      );
-      if (holdOverlap) {
-        return handleApiError(
-          new Error("This time slot is no longer available. Please select another time."),
-          "This time slot is no longer available. Please select another time.",
-          "CONFLICT",
-          409
-        );
-      }
-    }
-
-    // checkDuration already includes trailing buffer after the last service; lockBookingServices()
-    // would add buffer again — that double-count blocked the next slot (false 409).
-    // For hold-based requests, end_at is already the full reserved window.
-    conflictResult = await lockBookingServices(
-      supabase,
-      firstService.staff_id,
-      selectedDatetime,
-      bookingEndForConflict,
-      0
-    );
-
-    if (conflictResult.hasConflict) {
-      allowOverride = await canOverrideDoubleBooking(supabase, draft.provider_id);
-
-      if (!allowOverride) {
-        return handleApiError(
-          new Error("This time slot is no longer available. Please select another time."),
-          "This time slot is no longer available. Please select another time.",
-          "CONFLICT",
-          409
-        );
-      }
-      console.warn("Double booking override allowed for provider:", draft.provider_id);
-    }
   }
 
   // ── Resource availability ────────────────────────────────────────────────
@@ -1031,7 +1185,6 @@ export async function validateBooking(
       const start = new Date(cursor);
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
-      totalDuration += Number(off.duration_minutes);
 
       return {
         offering_id: off.id,
@@ -1043,6 +1196,16 @@ export async function validateBooking(
         scheduled_end_at: end.toISOString(),
       };
     });
+
+    totalDuration = sumChainedBlockedMinutes(
+      draft.services.map((s) => {
+        const off = offeringById.get(s.offering_id);
+        return {
+          durationMinutes: Number(off?.duration_minutes || 0),
+          bufferAfterMinutes: Number(off?.buffer_minutes || 0),
+        };
+      })
+    );
 
     // When "anyone" / no preference: assign a random available staff so booking appears on calendar
     const allStaffNull = bookingServicesData.every((s: any) => !s.staff_id);
@@ -1061,23 +1224,137 @@ export async function validateBooking(
     }
   }
 
+  // ── Time-slot conflict: per scheduled segment (multi-service + multi-staff; solo null staff = provider-wide) ──
+  {
+    const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
+    const {
+      lockBookingServices,
+      canOverrideDoubleBooking,
+      checkActiveHoldOverlap,
+      checkBookingSnapshotSegmentConflicts,
+    } = await import("@/lib/bookings/conflict-check");
+
+    const offeringBufferMinutesById = new Map<string, number>();
+    for (const [oid, off] of offeringById) {
+      offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 15));
+    }
+
+    const snapshotLines = bookingServicesData.map((line: any) => ({
+      offering_id: line.offering_id,
+      staff_id: line.staff_id ?? null,
+      scheduled_start_at: line.scheduled_start_at,
+      scheduled_end_at: line.scheduled_end_at,
+    }));
+
+    if (snapshotLines.length === 0) {
+      // No segments (should not happen after validation) — skip conflict machinery
+    } else {
+      const selectedDatetimeForConflict = new Date(draft.selected_datetime);
+
+      // Other guests' active holds vs each scheduled segment (including synthetic solo: dbStaffId null → provider-wide)
+      for (const line of snapshotLines) {
+        const { dbStaffId } = normalizePublicStaffIdForDatabase(line.staff_id);
+        const segStart = new Date(line.scheduled_start_at);
+        const segEnd = new Date(line.scheduled_end_at);
+        const holdOverlap = await checkActiveHoldOverlap(supabaseAdmin, draft.provider_id, segStart, segEnd, {
+          dbStaffId: dbStaffId ?? null,
+        });
+        if (holdOverlap) {
+          return handleApiError(
+            new Error("This time slot is no longer available. Please select another time."),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+      }
+
+      const segConflict = await checkBookingSnapshotSegmentConflicts(
+        supabaseAdmin,
+        draft.provider_id,
+        snapshotLines,
+        offeringBufferMinutesById
+      );
+      conflictResult = {
+        hasConflict: segConflict.hasConflict,
+        conflictingBookings: segConflict.conflictingBookings,
+      };
+      if (segConflict.hasConflict) {
+        allowOverride = await canOverrideDoubleBooking(supabase, draft.provider_id);
+        if (!allowOverride) {
+          return handleApiError(
+            new Error("This time slot is no longer available. Please select another time."),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+        console.warn("Double booking override allowed for provider:", draft.provider_id);
+      }
+
+      // Advisory lock: reduces TOCTOU vs concurrent confirms (legacy: first staff + whole blocked span)
+      const firstLine = snapshotLines[0];
+      if (firstLine?.staff_id) {
+        if (validatedDraft.hold_id && holdReservedEndAt) {
+          const lockRes = await lockBookingServices(
+            supabase,
+            firstLine.staff_id,
+            selectedDatetimeForConflict,
+            holdReservedEndAt,
+            0
+          );
+          conflictResult = lockRes;
+          if (lockRes.hasConflict) {
+            allowOverride = await canOverrideDoubleBooking(supabase, draft.provider_id);
+            if (!allowOverride) {
+              return handleApiError(
+                new Error("This time slot is no longer available. Please select another time."),
+                "This time slot is no longer available. Please select another time.",
+                "CONFLICT",
+                409
+              );
+            }
+            console.warn("Double booking override allowed for provider:", draft.provider_id);
+          }
+        } else {
+          const lastLine = snapshotLines[snapshotLines.length - 1];
+          const lastBuf = offeringBufferMinutesById.get(lastLine.offering_id) ?? 15;
+          const lockEndAt = new Date(new Date(lastLine.scheduled_end_at).getTime() + lastBuf * 60000);
+          const lockRes = await lockBookingServices(
+            supabase,
+            firstLine.staff_id,
+            selectedDatetimeForConflict,
+            lockEndAt,
+            0
+          );
+          conflictResult = lockRes;
+          if (lockRes.hasConflict) {
+            allowOverride = await canOverrideDoubleBooking(supabase, draft.provider_id);
+            if (!allowOverride) {
+              return handleApiError(
+                new Error("This time slot is no longer available. Please select another time."),
+                "This time slot is no longer available. Please select another time.",
+                "CONFLICT",
+                409
+              );
+            }
+            console.warn("Double booking override allowed for provider:", draft.provider_id);
+          }
+        }
+      }
+    }
+  }
+
   // Ensure totalDuration is non-zero
   if (totalDuration === 0) {
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
-      totalDuration += Number(off.duration_minutes || 0);
+      totalDuration += Number(off.duration_minutes || 0) + Number(off.buffer_minutes || 0);
     }
   }
 
   const selectedDatetime = new Date(draft.selected_datetime);
-  // Include last service's buffer so RPC / conflict check use full blocked span (non-hold path only).
-  const lastOffering = draft.services.length
-    ? offeringById.get(draft.services[draft.services.length - 1].offering_id)
-    : null;
-  const lastBufferMinutes = Number(lastOffering?.buffer_minutes || 0);
-  const bookingEndFromServices = new Date(
-    selectedDatetime.getTime() + (totalDuration + lastBufferMinutes) * 60000
-  );
+  const bookingEndFromServices = new Date(selectedDatetime.getTime() + totalDuration * 60000);
   // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s
   // after the guest signs in and pays (recomputed duration can extend past the slot grid window).
   const bookingEnd = holdReservedEndAt ?? bookingEndFromServices;

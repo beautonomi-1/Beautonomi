@@ -40,6 +40,7 @@ const SORT_OPTIONS = [
   { value: "published_at_asc", label: "Oldest first" },
   { value: "like_count_desc", label: "Most likes" },
   { value: "comment_count_desc", label: "Most comments" },
+  { value: "save_count_desc", label: "Most saves" },
   { value: "created_at_desc", label: "Recently created" },
 ] as const;
 

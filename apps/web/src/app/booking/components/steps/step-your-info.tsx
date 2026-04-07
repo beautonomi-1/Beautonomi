@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { User, Mail, FileText } from "lucide-react";
+import { User, Mail, FileText, Info } from "lucide-react";
+import { fetcher } from "@/lib/http/fetcher";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,6 +35,30 @@ export default function StepYourInfo({
     }
   );
   const { t } = useTranslation();
+  const [cancellationSummary, setCancellationSummary] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadPolicy = async () => {
+      if (!bookingState.providerId) return;
+      try {
+        const locationType = bookingState.mode === "salon" ? "at_salon" : "at_home";
+        let response = await fetcher.get<{ data: Array<{ policy_text?: string }> }>(
+          `/api/public/cancellation-policy?provider_id=${bookingState.providerId}&location_type=${locationType}`,
+        );
+        if (!response.data?.length) {
+          response = await fetcher.get<{ data: Array<{ policy_text?: string }> }>(
+            `/api/public/cancellation-policy?provider_id=${bookingState.providerId}`,
+          );
+        }
+        const text = response.data?.[0]?.policy_text?.trim();
+        setCancellationSummary(text || null);
+      } catch {
+        setCancellationSummary(null);
+      }
+    };
+    void loadPolicy();
+  }, [bookingState.providerId, bookingState.mode]);
+
   const [errors, setErrors] = useState<{
     firstName?: string;
     lastName?: string;
@@ -92,6 +117,25 @@ export default function StepYourInfo({
           We'll use this to confirm your booking and send reminders
         </p>
       </div>
+
+      {cancellationSummary ? (
+        <div
+          className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950"
+          role="region"
+          aria-label="Cancellation policy"
+        >
+          <div className="flex gap-2">
+            <Info className="h-5 w-5 shrink-0 text-amber-700 mt-0.5" aria-hidden />
+            <div>
+              <p className="font-semibold text-amber-950 mb-1">Cancellation policy</p>
+              <p className="text-amber-900/95 leading-relaxed">{cancellationSummary}</p>
+              <p className="text-xs text-amber-800/90 mt-2">
+                You’ll confirm acceptance again at payment.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         {/* First Name */}

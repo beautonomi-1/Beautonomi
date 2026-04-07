@@ -18,6 +18,7 @@ import {
   Ban,
   CheckCircle,
   XCircle,
+  Trash2,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -31,6 +32,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { CompliancePurgeUserDialog } from "@/components/admin/CompliancePurgeUserDialog";
 
 interface UserDetail {
   id: string;
@@ -57,6 +59,7 @@ export default function UserDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<UserDetail | null>(null);
+  const [purgeOpen, setPurgeOpen] = useState(false);
 
   useEffect(() => {
     if (userId) {
@@ -196,6 +199,15 @@ export default function UserDetailPage() {
                         Deactivate User
                       </DropdownMenuItem>
                     )}
+                    {user.role !== "superadmin" && (
+                      <DropdownMenuItem
+                        className="text-red-600 focus:text-red-600"
+                        onClick={() => setPurgeOpen(true)}
+                      >
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Purge account &amp; data…
+                      </DropdownMenuItem>
+                    )}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -308,6 +320,14 @@ export default function UserDetailPage() {
             </div>
           </motion.div>
         </div>
+
+        <CompliancePurgeUserDialog
+          open={purgeOpen}
+          onOpenChange={setPurgeOpen}
+          userId={userId}
+          userEmail={user.email}
+          onComplete={() => router.push("/admin/users")}
+        />
       </div>
     </RoleGuard>
   );

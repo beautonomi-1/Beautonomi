@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -19,11 +19,22 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
+import { publicEnv } from "@/config/publicEnv";
+
+type PricingPlanLink = {
+  id?: string;
+  price?: string;
+  period?: string | null;
+  description?: string | null;
+  cta_text?: string;
+  display_order?: number;
+  is_active?: boolean;
+};
 
 type PlanRow = Record<string, unknown> & {
   name?: string;
   id?: string;
-  pricing_plan?: unknown;
+  pricing_plan?: PricingPlanLink | null;
   price_monthly?: number | null;
   price_yearly?: number | null;
   currency?: string;
@@ -35,7 +46,18 @@ type PlanRow = Record<string, unknown> & {
   paystack_plan_code_monthly?: string | null;
   paystack_plan_code_yearly?: string | null;
   max_locations?: number;
+  max_bookings_per_month?: number | null;
+  max_staff_members?: number | null;
+  features?: Record<string, unknown> | unknown[] | null;
 };
+
+function formatFeaturesJson(row: PlanRow): string {
+  const f = row.features;
+  if (f && typeof f === "object" && !Array.isArray(f)) {
+    return JSON.stringify(f, null, 2);
+  }
+  return "{}";
+}
 
 export function PlansListPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
@@ -53,6 +75,11 @@ export function PlansListPage() {
 
   const rows = Array.isArray(q.data) ? q.data : [];
 
+  const webPlansEditorUrl = (() => {
+    const base = (publicEnv.siteUrl || publicEnv.appUrl || "").replace(/\/$/, "");
+    return base ? `${base}/admin/plans` : "";
+  })();
+
   const [showCreate, setShowCreate] = useState(false);
   const [nName, setNName] = useState("");
   const [nDesc, setNDesc] = useState("");
@@ -64,8 +91,11 @@ export function PlansListPage() {
   const [nPopular, setNPopular] = useState(false);
   const [nOrder, setNOrder] = useState("0");
   const [nMaxLoc, setNMaxLoc] = useState("1");
+  const [nMaxBookings, setNMaxBookings] = useState("");
+  const [nMaxStaff, setNMaxStaff] = useState("");
 
   const [editId, setEditId] = useState<string | null>(null);
+  const [editRow, setEditRow] = useState<PlanRow | null>(null);
   const [eName, setEName] = useState("");
   const [eDesc, setEDesc] = useState("");
   const [eMonthly, setEMonthly] = useState("");
@@ -76,7 +106,19 @@ export function PlansListPage() {
   const [ePopular, setEPopular] = useState(false);
   const [eOrder, setEOrder] = useState("0");
   const [eMaxLoc, setEMaxLoc] = useState("1");
+  const [eMaxBookings, setEMaxBookings] = useState("");
+  const [eMaxStaff, setEMaxStaff] = useState("");
   const [eUpdateSubs, setEUpdateSubs] = useState(false);
+  /** Entitlements / gating — JSON object stored on subscription_plans.features */
+  const [eFeaturesJson, setEFeaturesJson] = useState("{}");
+  /** Public /pricing marketing card (pricing_plans + pricing_plan_features) */
+  const [eShowPricing, setEShowPricing] = useState(false);
+  const [ePriceDisplay, setEPriceDisplay] = useState("");
+  const [ePeriodDisplay, setEPeriodDisplay] = useState("month");
+  const [eDescDisplay, setEDescDisplay] = useState("");
+  const [eCtaText, setECtaText] = useState("Get started");
+  const [eOrderPricing, setEOrderPricing] = useState("0");
+  const [eMarketingBullets, setEMarketingBullets] = useState("");
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.plans() });
 
@@ -93,6 +135,9 @@ export function PlansListPage() {
         is_popular: nPopular,
         display_order: parseInt(nOrder, 10) || 0,
         max_locations: parseInt(nMaxLoc, 10) || 1,
+        max_bookings_per_month: nMaxBookings.trim() ? parseInt(nMaxBookings, 10) : null,
+        max_staff_members: nMaxStaff.trim() ? parseInt(nMaxStaff, 10) : null,
+        features: {},
       }),
     onSuccess: () => {
       invalidate();
@@ -107,12 +152,28 @@ export function PlansListPage() {
       setNPopular(false);
       setNOrder("0");
       setNMaxLoc("1");
+      setNMaxBookings("");
+      setNMaxStaff("");
     },
   });
 
   const savePlan = useMutation({
-    mutationFn: () =>
-      adminApi.putJson<unknown>("/api/admin/subscription-plans", {
+    mutationFn: async () => {
+      if (!editId) throw new Error("No plan selected");
+
+      let featuresObj: Record<string, unknown> = {};
+      try {
+        const parsed = JSON.parse(eFeaturesJson || "{}") as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          featuresObj = parsed as Record<string, unknown>;
+        } else {
+          throw new Error("Features must be a JSON object (not an array).");
+        }
+      } catch (e) {
+        throw new Error(e instanceof Error ? e.message : "Invalid features JSON");
+      }
+
+      const savedPlan = await adminApi.putJson<PlanRow>("/api/admin/subscription-plans", {
         id: editId,
         name: eName.trim(),
         description: eDesc.trim() || undefined,
@@ -124,18 +185,73 @@ export function PlansListPage() {
         is_popular: ePopular,
         display_order: parseInt(eOrder, 10) || 0,
         max_locations: parseInt(eMaxLoc, 10) || 1,
+        max_bookings_per_month: eMaxBookings.trim() ? parseInt(eMaxBookings, 10) : null,
+        max_staff_members: eMaxStaff.trim() ? parseInt(eMaxStaff, 10) : null,
+        features: featuresObj,
         ...(eUpdateSubs ? { update_existing_subscriptions: true } : {}),
-      }),
+      });
+
+      const subId = String(savedPlan.id ?? editId);
+      const prevPp = editRow?.pricing_plan;
+      const prevPpFull = (prevPp ?? {}) as Record<string, unknown>;
+
+      if (eShowPricing) {
+        const pricingPayload = {
+          ...(prevPp?.id ? { id: prevPp.id } : {}),
+          name: eName.trim(),
+          price: ePriceDisplay.trim() || (eMonthly.trim() ? `R${eMonthly.trim()}` : "0"),
+          period: ePeriodDisplay.trim() || null,
+          description: eDescDisplay.trim() || null,
+          cta_text: eCtaText.trim() || "Get started",
+          is_popular: ePopular,
+          display_order: parseInt(eOrderPricing, 10) || 0,
+          is_active: eActive,
+          subscription_plan_id: subId,
+          paystack_plan_code_monthly:
+            (savedPlan.paystack_plan_code_monthly as string | null | undefined) ??
+            (prevPpFull.paystack_plan_code_monthly as string | null | undefined) ??
+            null,
+          paystack_plan_code_yearly:
+            (savedPlan.paystack_plan_code_yearly as string | null | undefined) ??
+            (prevPpFull.paystack_plan_code_yearly as string | null | undefined) ??
+            null,
+        };
+        const ppResult = await (prevPp?.id
+          ? adminApi.putJson<PlanRow & { id: string }>("/api/admin/pricing-plans", pricingPayload)
+          : adminApi.postJson<PlanRow & { id: string }>("/api/admin/pricing-plans", pricingPayload));
+        const ppId = ppResult && typeof ppResult === "object" && "id" in ppResult ? String(ppResult.id) : prevPp?.id;
+        if (ppId) {
+          const lines = eMarketingBullets
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+          await adminApi.putJson(`/api/admin/pricing-plans/${ppId}/features`, { features: lines });
+        }
+      } else if (prevPp?.id) {
+        await adminApi.putJson("/api/admin/pricing-plans", {
+          id: prevPp.id,
+          is_active: false,
+          subscription_plan_id: null,
+        });
+      }
+    },
     onSuccess: () => {
       invalidate();
       setEditId(null);
+      setEditRow(null);
       setEUpdateSubs(false);
     },
   });
 
+  function closeEdit() {
+    setEditId(null);
+    setEditRow(null);
+  }
+
   function openEdit(row: PlanRow) {
     if (!row.id) return;
     setEditId(row.id);
+    setEditRow(row);
     setEName(String(row.name ?? ""));
     setEDesc(String(row.description ?? ""));
     setEMonthly(row.price_monthly != null ? String(row.price_monthly) : "");
@@ -146,7 +262,43 @@ export function PlansListPage() {
     setEPopular(Boolean(row.is_popular));
     setEOrder(String(row.display_order ?? 0));
     setEMaxLoc(String(row.max_locations ?? 1));
+    setEMaxBookings(row.max_bookings_per_month != null ? String(row.max_bookings_per_month) : "");
+    setEMaxStaff(row.max_staff_members != null ? String(row.max_staff_members) : "");
+    setEFeaturesJson(formatFeaturesJson(row));
+    const pp = row.pricing_plan;
+    setEShowPricing(!!pp?.id);
+    setEPriceDisplay(String(pp?.price ?? ""));
+    setEPeriodDisplay(pp?.period != null && pp.period !== "" ? String(pp.period) : "month");
+    setEDescDisplay(pp?.description != null ? String(pp.description) : "");
+    setECtaText(String(pp?.cta_text ?? "Get started"));
+    setEOrderPricing(String(pp?.display_order ?? row.display_order ?? 0));
+    setEMarketingBullets("");
   }
+
+  useEffect(() => {
+    if (!editRow?.pricing_plan?.id) {
+      return;
+    }
+    const id = String(editRow.pricing_plan.id);
+    let cancelled = false;
+    adminApi
+      .getJson<Array<{ feature_text?: string }>>(`/api/admin/pricing-plans/${id}/features`, { timeoutMs: 30_000 })
+      .then((rows) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        setEMarketingBullets(
+          rows
+            .map((r) => r.feature_text)
+            .filter((t): t is string => typeof t === "string" && t.length > 0)
+            .join("\n"),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setEMarketingBullets("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editRow?.id, editRow?.pricing_plan?.id]);
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -171,8 +323,28 @@ export function PlansListPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Plans & subscription products"
-        description="GET /api/admin/plans (list). Create/update via /api/admin/subscription-plans (Paystack sync when prices apply and Paystack is on)."
+        description="Subscription plans control billing and in-app entitlements (feature JSON). The public /pricing page uses separate marketing rows (price label, bullets) linked to each plan when “Show on pricing page” is enabled."
       />
+      {webPlansEditorUrl ? (
+        <AdminPanel className="border-indigo-200 bg-indigo-50/80">
+          <p className="text-sm text-gray-800">
+            <span className="font-semibold">Full visual editor (Next.js admin):</span> advanced toggles and the same
+            merged flow as production live at{" "}
+            <a className="font-mono text-indigo-800 underline" href={webPlansEditorUrl} target="_blank" rel="noreferrer">
+              /admin/plans
+            </a>
+            . Use this SPA for quick edits; use that page for the full dialog UI.
+          </p>
+        </AdminPanel>
+      ) : (
+        <AdminPanel className="border-amber-200 bg-amber-50/80">
+          <p className="text-sm text-amber-950">
+            Set <code className="rounded bg-amber-100 px-1">VITE_SITE_URL</code> (or{" "}
+            <code className="rounded bg-amber-100 px-1">VITE_APP_URL</code>) so we can link to the full{" "}
+            <code className="rounded bg-amber-100 px-1">/admin/plans</code> editor on the web app.
+          </p>
+        </AdminPanel>
+      )}
       {showPaystackOffBanner ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
           <code className="rounded bg-amber-100 px-1">payment_paystack</code> is off for this market — paid plan
@@ -180,21 +352,37 @@ export function PlansListPage() {
         </div>
       ) : null}
       <AdminPanel>
-        <button type="button" className="rounded border border-gray-300 px-3 py-2 text-sm" onClick={() => setShowCreate((s) => !s)}>
+        <button
+          type="button"
+          className="rounded border border-gray-300 px-3 py-2 text-sm"
+          onClick={() => setShowCreate((s) => !s)}
+        >
           {showCreate ? "Hide create form" : "New subscription plan"}
         </button>
       </AdminPanel>
 
       {showCreate ? (
         <AdminPanel>
+          <p className="mb-2 text-sm text-gray-600">
+            Creates a <strong>subscription_plans</strong> row (billing + entitlements). To show a card on{" "}
+            <strong>/pricing</strong>, create the plan here, then edit it and enable “Show on pricing page”.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               Name *
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nName} onChange={(e) => setNName(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nName}
+                onChange={(e) => setNName(e.target.value)}
+              />
             </label>
             <label className="text-sm sm:col-span-2">
               Description
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nDesc} onChange={(e) => setNDesc(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nDesc}
+                onChange={(e) => setNDesc(e.target.value)}
+              />
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" checked={nFree} onChange={(e) => setNFree(e.target.checked)} />
@@ -204,15 +392,27 @@ export function PlansListPage() {
               <>
                 <label className="text-sm">
                   Price monthly
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nMonthly} onChange={(e) => setNMonthly(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                    value={nMonthly}
+                    onChange={(e) => setNMonthly(e.target.value)}
+                  />
                 </label>
                 <label className="text-sm">
                   Price yearly
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nYearly} onChange={(e) => setNYearly(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                    value={nYearly}
+                    onChange={(e) => setNYearly(e.target.value)}
+                  />
                 </label>
                 <label className="text-sm">
                   Currency (optional)
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase" value={nCurrency} onChange={(e) => setNCurrency(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase"
+                    value={nCurrency}
+                    onChange={(e) => setNCurrency(e.target.value)}
+                  />
                 </label>
               </>
             ) : null}
@@ -226,11 +426,36 @@ export function PlansListPage() {
             </label>
             <label className="text-sm">
               Display order
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nOrder} onChange={(e) => setNOrder(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nOrder}
+                onChange={(e) => setNOrder(e.target.value)}
+              />
             </label>
             <label className="text-sm">
               Max locations
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nMaxLoc} onChange={(e) => setNMaxLoc(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nMaxLoc}
+                onChange={(e) => setNMaxLoc(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Max bookings / month (optional)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nMaxBookings}
+                onChange={(e) => setNMaxBookings(e.target.value)}
+                placeholder="e.g. 50"
+              />
+            </label>
+            <label className="text-sm">
+              Max staff (optional)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={nMaxStaff}
+                onChange={(e) => setNMaxStaff(e.target.value)}
+              />
             </label>
           </div>
           <button
@@ -248,14 +473,38 @@ export function PlansListPage() {
       {editId ? (
         <AdminPanel>
           <p className="mb-2 text-sm font-medium text-gray-900">Edit plan</p>
+          <div className="mb-4 space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+            <p>
+              <strong>Billing & limits</strong> below are stored on <code className="rounded bg-white px-1">subscription_plans</code>{" "}
+              and drive the provider app and enforcement.
+            </p>
+            <p>
+              <strong>Feature permissions</strong> are the <code className="rounded bg-white px-1">features</code> JSON object
+              (marketing_campaigns, booking_limits, multi_location, advanced_analytics, …). Edit the JSON carefully — invalid
+              shapes may be ignored at runtime.
+            </p>
+            <p>
+              <strong>Public /pricing</strong> uses <code className="rounded bg-white px-1">pricing_plans</code> + bullet lines
+              in <code className="rounded bg-white px-1">pricing_plan_features</code>. Enable “Show on pricing page” to sync
+              a marketing card; bullets are one line each in the text area.
+            </p>
+          </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="text-sm sm:col-span-2">
               Name
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eName} onChange={(e) => setEName(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eName}
+                onChange={(e) => setEName(e.target.value)}
+              />
             </label>
             <label className="text-sm sm:col-span-2">
-              Description
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eDesc} onChange={(e) => setEDesc(e.target.value)} />
+              Description (internal / admin)
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eDesc}
+                onChange={(e) => setEDesc(e.target.value)}
+              />
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" checked={eFree} onChange={(e) => setEFree(e.target.checked)} />
@@ -265,15 +514,27 @@ export function PlansListPage() {
               <>
                 <label className="text-sm">
                   Price monthly
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eMonthly} onChange={(e) => setEMonthly(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                    value={eMonthly}
+                    onChange={(e) => setEMonthly(e.target.value)}
+                  />
                 </label>
                 <label className="text-sm">
                   Price yearly
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eYearly} onChange={(e) => setEYearly(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                    value={eYearly}
+                    onChange={(e) => setEYearly(e.target.value)}
+                  />
                 </label>
                 <label className="text-sm">
                   Currency (optional)
-                  <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase" value={eCurrency} onChange={(e) => setECurrency(e.target.value)} />
+                  <input
+                    className="mt-1 w-full rounded border border-gray-300 px-2 py-1 uppercase"
+                    value={eCurrency}
+                    onChange={(e) => setECurrency(e.target.value)}
+                  />
                 </label>
               </>
             ) : null}
@@ -287,16 +548,115 @@ export function PlansListPage() {
             </label>
             <label className="text-sm">
               Display order
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eOrder} onChange={(e) => setEOrder(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eOrder}
+                onChange={(e) => setEOrder(e.target.value)}
+              />
             </label>
             <label className="text-sm">
               Max locations
-              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eMaxLoc} onChange={(e) => setEMaxLoc(e.target.value)} />
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eMaxLoc}
+                onChange={(e) => setEMaxLoc(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Max bookings / month
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eMaxBookings}
+                onChange={(e) => setEMaxBookings(e.target.value)}
+              />
+            </label>
+            <label className="text-sm">
+              Max staff
+              <input
+                className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                value={eMaxStaff}
+                onChange={(e) => setEMaxStaff(e.target.value)}
+              />
             </label>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" checked={eUpdateSubs} onChange={(e) => setEUpdateSubs(e.target.checked)} />
               When saving price changes, propagate to existing Paystack subscriptions (update_existing_subscriptions)
             </label>
+
+            <label className="text-sm sm:col-span-2">
+              Feature permissions (JSON object on subscription_plans.features)
+              <textarea
+                className="mt-1 w-full min-h-[180px] rounded border border-gray-300 px-2 py-2 font-mono text-xs"
+                value={eFeaturesJson}
+                onChange={(e) => setEFeaturesJson(e.target.value)}
+                spellCheck={false}
+              />
+            </label>
+
+            <div className="sm:col-span-2 border-t border-gray-200 pt-4">
+              <h3 className="text-sm font-semibold text-gray-900">Public /pricing page (marketing)</h3>
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={eShowPricing} onChange={(e) => setEShowPricing(e.target.checked)} />
+                Show on public pricing page (creates or updates <code className="text-xs">pricing_plans</code> linked to this
+                plan)
+              </label>
+              {eShowPricing ? (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm sm:col-span-2">
+                    Price label (shown on site, e.g. <code className="text-xs">R99</code>, <code className="text-xs">Free</code>,{" "}
+                    <code className="text-xs">Custom</code>)
+                    <input
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                      value={ePriceDisplay}
+                      onChange={(e) => setEPriceDisplay(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Period label
+                    <input
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                      value={ePeriodDisplay}
+                      onChange={(e) => setEPeriodDisplay(e.target.value)}
+                      placeholder="month"
+                    />
+                  </label>
+                  <label className="text-sm">
+                    Card sort order
+                    <input
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                      value={eOrderPricing}
+                      onChange={(e) => setEOrderPricing(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm sm:col-span-2">
+                    Short description (marketing)
+                    <textarea
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1 text-sm"
+                      rows={2}
+                      value={eDescDisplay}
+                      onChange={(e) => setEDescDisplay(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm sm:col-span-2">
+                    CTA button text
+                    <input
+                      className="mt-1 w-full rounded border border-gray-300 px-2 py-1"
+                      value={eCtaText}
+                      onChange={(e) => setECtaText(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm sm:col-span-2">
+                    Bullet lines (one per line → <code className="text-xs">pricing_plan_features</code>)
+                    <textarea
+                      className="mt-1 w-full min-h-[120px] rounded border border-gray-300 px-2 py-2 text-sm"
+                      value={eMarketingBullets}
+                      onChange={(e) => setEMarketingBullets(e.target.value)}
+                      placeholder={"Basic calendar\nEmail notifications\n..."}
+                    />
+                  </label>
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -307,7 +667,7 @@ export function PlansListPage() {
             >
               Save plan
             </button>
-            <button type="button" className="rounded border border-gray-300 px-3 py-2 text-sm" onClick={() => setEditId(null)}>
+            <button type="button" className="rounded border border-gray-300 px-3 py-2 text-sm" onClick={() => closeEdit()}>
               Cancel
             </button>
           </div>
@@ -326,30 +686,38 @@ export function PlansListPage() {
               <AdminTh>Yearly</AdminTh>
               <AdminTh>Free</AdminTh>
               <AdminTh>Active</AdminTh>
-              <AdminTh>Pricing linked</AdminTh>
+              <AdminTh>Public /pricing</AdminTh>
               <AdminTh>Paystack</AdminTh>
               <AdminTh> </AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((r) => (
-              <tr key={String(r.id)}>
-                <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
-                <AdminTd className="tabular-nums">{r.price_monthly != null ? String(r.price_monthly) : "—"}</AdminTd>
-                <AdminTd className="tabular-nums">{r.price_yearly != null ? String(r.price_yearly) : "—"}</AdminTd>
-                <AdminTd>{r.is_free ? "yes" : "no"}</AdminTd>
-                <AdminTd>{r.is_active !== false ? "yes" : "no"}</AdminTd>
-                <AdminTd>{r.pricing_plan ? "yes" : "no"}</AdminTd>
-                <AdminTd className="max-w-[8rem] truncate text-xs font-mono">
-                  {r.paystack_plan_code_monthly || r.paystack_plan_code_yearly ? "codes set" : "—"}
-                </AdminTd>
-                <AdminTd>
-                  <button type="button" className="text-sm text-gray-900 underline" onClick={() => openEdit(r)}>
-                    Edit
-                  </button>
-                </AdminTd>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const pp = r.pricing_plan;
+              const publicLabel = pp?.id
+                ? `${String(pp.price ?? "—")}${pp.period ? ` / ${String(pp.period)}` : ""}`
+                : "—";
+              return (
+                <tr key={String(r.id)}>
+                  <AdminTd className="font-medium">{String(r.name ?? "")}</AdminTd>
+                  <AdminTd className="tabular-nums">{r.price_monthly != null ? String(r.price_monthly) : "—"}</AdminTd>
+                  <AdminTd className="tabular-nums">{r.price_yearly != null ? String(r.price_yearly) : "—"}</AdminTd>
+                  <AdminTd>{r.is_free ? "yes" : "no"}</AdminTd>
+                  <AdminTd>{r.is_active !== false ? "yes" : "no"}</AdminTd>
+                  <AdminTd className="max-w-[10rem] text-xs">
+                    <span title={publicLabel}>{publicLabel}</span>
+                  </AdminTd>
+                  <AdminTd className="max-w-[8rem] truncate text-xs font-mono">
+                    {r.paystack_plan_code_monthly || r.paystack_plan_code_yearly ? "codes set" : "—"}
+                  </AdminTd>
+                  <AdminTd>
+                    <button type="button" className="text-sm text-gray-900 underline" onClick={() => openEdit(r)}>
+                      Edit
+                    </button>
+                  </AdminTd>
+                </tr>
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}

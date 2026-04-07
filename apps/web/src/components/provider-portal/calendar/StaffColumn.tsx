@@ -2,12 +2,13 @@
 
 import React, { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
-import { format, isToday } from "date-fns";
+import { format } from "date-fns";
 import type { Appointment, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
 import { TimeBlockElement } from "./TimeBlockElement";
 import type { CalendarBlock } from "./utils";
+import { STAFF_DAY_COLUMN_LAYOUT } from "./constants";
 
 interface StaffColumnProps {
   member: TeamMember;
@@ -48,7 +49,6 @@ function StaffColumnComponent({
   onTimeSlotClick,
   onTimeBlockClick,
 }: StaffColumnProps) {
-  const hasContent = appointments.length > 0 || blocks.length > 0;
   const dateStr = format(date, "yyyy-MM-dd");
 
   const visibleAppointments = useMemo(() => {
@@ -62,9 +62,7 @@ function StaffColumnComponent({
     <div
       className={cn(
         "border-r border-gray-200 last:border-r-0 relative transition-all",
-        hasContent
-          ? "flex-[2] min-w-[180px] max-w-[400px]"
-          : "flex-1 min-w-[120px] max-w-[200px]",
+        STAFF_DAY_COLUMN_LAYOUT,
       )}
     >
       <GestureLayer

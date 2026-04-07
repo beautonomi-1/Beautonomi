@@ -60,6 +60,12 @@ const LINK_ITEMS: {
     useId: true,
   },
   {
+    label: "Notifications",
+    icon: "notifications-outline",
+    route: "/(app)/(tabs)/more/settings/staff-notifications",
+    useId: true,
+  },
+  {
     label: "Schedule",
     icon: "calendar-outline",
     route: "/(app)/(tabs)/more/staff-schedule",

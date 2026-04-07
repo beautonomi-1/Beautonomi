@@ -6,7 +6,9 @@ import {
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
+  forbiddenResponse,
 } from "@/lib/supabase/api-helpers";
+import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -40,9 +42,9 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    // Verify staff member belongs to provider
+    // Verify staff member belongs to provider (provider_staff — same ids as /api/provider/staff)
     const { data: staff, error: staffError } = await supabase
-      .from("staff")
+      .from("provider_staff")
       .select("id, notification_settings")
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -58,10 +60,14 @@ export async function GET(
         : staff.notification_settings
       : {};
 
-    // Default values
+    const planAllowsSms = await checkStaffSmsNotificationsFeatureAccess(providerId, supabase);
+    const rawSms = notificationSettings.sms_enabled === true;
+
+    // Default values (SMS off until explicitly enabled; effective SMS also requires plan)
     return successResponse({
       emailEnabled: notificationSettings.email_enabled ?? true,
-      smsEnabled: notificationSettings.sms_enabled ?? true,
+      smsEnabled: planAllowsSms && rawSms,
+      smsPlanAllowed: planAllowsSms,
       desktopEnabled: notificationSettings.desktop_enabled ?? false,
       appointmentReminders: notificationSettings.appointment_reminders ?? true,
       appointmentCancellations: notificationSettings.appointment_cancellations ?? true,
@@ -96,9 +102,16 @@ export async function PATCH(
 
     const body = patchSchema.parse(await request.json());
 
+    const planAllowsSms = await checkStaffSmsNotificationsFeatureAccess(providerId, supabase);
+    if (body.sms_enabled === true && !planAllowsSms) {
+      return forbiddenResponse(
+        "SMS for team notifications is not included in your current plan. Upgrade to enable staff SMS."
+      );
+    }
+
     // Verify staff member belongs to provider
     const { data: existing } = await supabase
-      .from("staff")
+      .from("provider_staff")
       .select("id, notification_settings")
       .eq("id", id)
       .eq("provider_id", providerId)
@@ -115,11 +128,10 @@ export async function PATCH(
         : existing.notification_settings
       : {};
 
-    // Merge with new settings
-    const updatedSettings = {
+    // Merge with new settings (always persist sms_enabled false when plan disallows SMS)
+    const updatedSettings: Record<string, unknown> = {
       ...existingSettings,
       ...(body.email_enabled !== undefined && { email_enabled: body.email_enabled }),
-      ...(body.sms_enabled !== undefined && { sms_enabled: body.sms_enabled }),
       ...(body.desktop_enabled !== undefined && { desktop_enabled: body.desktop_enabled }),
       ...(body.appointment_reminders !== undefined && {
         appointment_reminders: body.appointment_reminders,
@@ -135,9 +147,14 @@ export async function PATCH(
       ...(body.weekly_schedule !== undefined && { weekly_schedule: body.weekly_schedule }),
       ...(body.reminder_time !== undefined && { reminder_time: body.reminder_time }),
     };
+    if (!planAllowsSms) {
+      updatedSettings.sms_enabled = false;
+    } else if (body.sms_enabled !== undefined) {
+      updatedSettings.sms_enabled = body.sms_enabled;
+    }
 
     const { data, error } = await supabase
-      .from("staff")
+      .from("provider_staff")
       .update({
         notification_settings: updatedSettings,
         updated_at: new Date().toISOString(),
@@ -156,9 +173,12 @@ export async function PATCH(
         : data.notification_settings
       : {};
 
+    const rawSmsAfter = notificationSettings.sms_enabled === true;
+
     return successResponse({
       emailEnabled: notificationSettings.email_enabled ?? true,
-      smsEnabled: notificationSettings.sms_enabled ?? true,
+      smsEnabled: planAllowsSms && rawSmsAfter,
+      smsPlanAllowed: planAllowsSms,
       desktopEnabled: notificationSettings.desktop_enabled ?? false,
       appointmentReminders: notificationSettings.appointment_reminders ?? true,
       appointmentCancellations: notificationSettings.appointment_cancellations ?? true,

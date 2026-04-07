@@ -9,11 +9,12 @@ import {
 } from "@/lib/notifications/notification-service";
 import { z } from "zod";
 import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
 
 const createTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long"),
   message: z.string().min(1, "Message is required").max(5000, "Message too long"),
-  priority: z.enum(["low", "medium", "high"]).optional().default("medium"),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
   category: z.string().max(120).optional(),
 });
 
@@ -47,6 +48,15 @@ export async function POST(request: NextRequest) {
 
     if (ticketError) {
       throw ticketError;
+    }
+
+    const createdAt = ticket.created_at as string | undefined;
+    if (createdAt) {
+      const slaDue = computeSlaResolutionDueIso(createdAt, validated.priority);
+      await adminSupabase
+        .from("support_tickets")
+        .update({ sla_resolution_due_at: slaDue })
+        .eq("id", ticket.id);
     }
 
     // Create initial message

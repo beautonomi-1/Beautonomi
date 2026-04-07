@@ -11,6 +11,8 @@ export interface LearnArticleData {
   content_format: string;
   published_at: string | null;
   image_url?: string | null;
+  /** YouTube/Vimeo URL, or direct .mp4/.webm/.gif — see LearnArticleHero */
+  hero_video_url?: string | null;
   learning_categories?: { id: string; title: string; slug: string };
   parents: string[];
   parent_slugs: string[];
@@ -51,7 +53,7 @@ export const getLearnArticle = cache(async (slug: string): Promise<LearnArticleD
     const { data: article, error } = await supabase
       .from("learning_articles")
       .select(
-        "id, category_id, title, slug, summary, body, content_format, published_at, image_url, content_type, learning_categories(id, title, slug)",
+        "id, category_id, title, slug, summary, body, content_format, published_at, image_url, hero_video_url, content_type, learning_categories(id, title, slug)",
       )
       .eq("slug", slug)
       .eq("status", "published")

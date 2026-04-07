@@ -157,6 +157,8 @@ export async function createBookingFromHold(
     p_staff_id: staffId,
     p_start_at: hold.start_at,
     p_end_at: hold.end_at,
+    p_entitlement_id: null,
+    p_entitlement_customer_id: null,
   });
 
   if (rpcError) {

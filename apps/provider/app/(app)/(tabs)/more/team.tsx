@@ -101,6 +101,35 @@ export default function TeamScreen() {
           </View>
           <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
         </TouchableOpacity>
+
+        <View style={{ marginBottom: 16, flexDirection: "row", gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings/staff-permissions" as never)}
+            style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 14, paddingHorizontal: 10 }}
+            activeOpacity={0.7}
+            accessibilityLabel="Team permissions"
+            accessibilityRole="button"
+          >
+            <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#eef2ff" }}>
+              <Ionicons name="lock-open-outline" size={22} color="#4f46e5" />
+            </View>
+            <Text style={{ marginTop: 8, fontWeight: "600", fontSize: 13, color: Colors.gray[900], textAlign: "center" }}>Permissions</Text>
+            <Text style={{ marginTop: 2, fontSize: 11, color: Colors.gray[500], textAlign: "center" }}>Roles & access</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/settings/team-staff-notifications" as never)}
+            style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, paddingVertical: 14, paddingHorizontal: 10 }}
+            activeOpacity={0.7}
+            accessibilityLabel="Team notifications"
+            accessibilityRole="button"
+          >
+            <View style={{ width: 40, height: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: "#fef3c7" }}>
+              <Ionicons name="notifications-outline" size={22} color="#d97706" />
+            </View>
+            <Text style={{ marginTop: 8, fontWeight: "600", fontSize: 13, color: Colors.gray[900], textAlign: "center" }}>Notifications</Text>
+            <Text style={{ marginTop: 2, fontSize: 11, color: Colors.gray[500], textAlign: "center" }}>Email & alerts</Text>
+          </TouchableOpacity>
+        </View>
         {staff.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="people-circle-outline" size={48} color="#9ca3af" />

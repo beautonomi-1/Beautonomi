@@ -4,14 +4,16 @@ import { coerceSelectedDate } from "@beautonomi/utils";
 
 export const BOOKING_STATE_STORAGE_KEY = "booking_state";
 
-/** Stable fingerprint for “same booking entry” from the URL (slug, primary service, mode). */
+/** Stable fingerprint for “same booking entry” from the URL (slug, service, product, package, mode). */
 export function computeBookingFlowKey(
   searchParams: ReadonlyURLSearchParams | URLSearchParams
 ): string {
   const slug = (searchParams.get("slug") || searchParams.get("partnerId") || "").trim();
   const serviceId = (searchParams.get("serviceId") || searchParams.get("service") || "").trim();
+  const productId = (searchParams.get("product_id") || searchParams.get("product") || "").trim();
+  const packageId = (searchParams.get("package") || searchParams.get("package_id") || "").trim();
   const mode = (searchParams.get("mode") || "").trim();
-  return `${slug}|${serviceId}|${mode}`;
+  return `${slug}|${serviceId}|${productId}|${packageId}|${mode}`;
 }
 
 export type PersistedBookingEnvelope = {

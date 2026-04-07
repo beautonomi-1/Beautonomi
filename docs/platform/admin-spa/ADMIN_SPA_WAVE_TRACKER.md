@@ -119,7 +119,7 @@
 | `/admin/mapbox` | W4 | Y | M3 | Migrated (SPA) | 62 | SPA config JSON + legacy UI | | 2026-04-06 |
 | `/admin/iso-codes` | W4 | Y | M2 | Migrated (SPA) | 63 | SPA tabbed lists + legacy CRUD | | 2026-04-06 |
 | `/admin/settings/integrations/analytics` | W4 | N | M1 | Migrated (SPA) | 64 | SPA redirect → amplitude | | 2026-04-05 |
-| `/admin/service-zones` | W4 | Y (superadmin) | M4 | Migrated (SPA) | 65 | SPA zones table; map legacy (M4) | | 2026-04-06 |
+| `/admin/service-zones` | W4 | Y (operations section) | M4 | Migrated (SPA) | 65 | SPA zones table; map legacy (M4) | | 2026-04-06 |
 | `/admin/system-health` | W4 | Y | M2 | Migrated (SPA) | 66 | SPA JSON snapshot | | 2026-04-05 |
 | `/admin/monitoring` | W4 | Y | M2 | Migrated (SPA) | 67 | SPA `monitoring/health` | | 2026-04-05 |
 | `/admin/security` | W4 | Y | M2 | Migrated (SPA) | 68 | SPA read JSON | | 2026-04-05 |

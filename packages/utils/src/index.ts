@@ -51,3 +51,31 @@ export {
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
 } from "./arrival-pin-ui";
+export {
+  buildSelectedServicesFromPackageLines,
+  type PrefillBookingServiceRow,
+  type PublicPackageServiceLine,
+  type ServicesCatalogRow,
+} from "./booking/prefillPackageFromLines";
+export {
+  flattenProviderServicesToMenu,
+  resolvePackageOfferingsFromFlatMenu,
+  type ProviderServiceLike,
+  type ProviderServiceVariantLike,
+  type ResolvedOfferingLine,
+  type ResolvePackageOfferingsMode,
+} from "./booking/resolvePackageOfferingsFromFlatMenu";
+export {
+  aggregatePackageEntitlements,
+  aggregatePackageProductRequirementsFromPublicPackage,
+  aggregateProductCartByProductId,
+  bookedOfferingCounts,
+  bookedProductCounts,
+  buildRetailCartRowsFromPublicPackage,
+  cartMatchesPublicCatalogPackage,
+  exceedsEntitlement,
+  mergeExpressProductCartLines,
+  type ExpressProductCartLine,
+  type PackageItemRow,
+  type PublicProductCatalogRow,
+} from "./booking/packageCartMatch";

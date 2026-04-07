@@ -1,10 +1,22 @@
 /**
  * Enrichment Plugin
- * Adds common properties to events: app_version, environment, portal, route, referrer, timezone, provider_id
+ * Adds common properties to **event_properties** so Amplitude receives them
+ * (the browser SDK only forwards event_properties to track(), not top-level AmplitudeEvent fields).
  */
 
 import { AmplitudePlugin, PluginContext } from "./types";
 import { AmplitudeEvent } from "../types";
+import { getMarketingAttributionForEvents } from "../marketing-attribution";
+
+function browserDeviceType(): string {
+  if (typeof navigator === "undefined") return "unknown";
+  const ua = navigator.userAgent.toLowerCase();
+  if (/tablet|ipad|playbook|silk/i.test(ua)) return "tablet";
+  if (/mobile|iphone|ipod|android|blackberry|opera|mini|windows\sce|palm|smartphone|iemobile/i.test(ua)) {
+    return "mobile";
+  }
+  return "desktop";
+}
 
 export class EnrichmentPlugin implements AmplitudePlugin {
   name = "enrichment";
@@ -15,55 +27,49 @@ export class EnrichmentPlugin implements AmplitudePlugin {
   }
 
   execute(event: AmplitudeEvent): AmplitudeEvent {
-    const enriched: AmplitudeEvent = { ...event };
+    const ep = { ...(event.event_properties ?? {}) };
 
-    // Add app version (from env or PlatformSettingsProvider)
-    if (!enriched.app_version) {
-      enriched.app_version = process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0";
+    const app_version = process.env.NEXT_PUBLIC_APP_VERSION || "1.0.0";
+    if (ep.app_version == null) ep.app_version = app_version;
+
+    if (ep.platform == null) {
+      ep.platform = typeof window !== "undefined" ? "web" : "server";
     }
 
-    // Add environment
-    if (!enriched.platform) {
-      enriched.platform = typeof window !== "undefined" ? "web" : "server";
+    if (ep.device_type == null && typeof window !== "undefined") {
+      ep.device_type = browserDeviceType();
     }
 
-    // Add portal (from context)
-    if (this.context.portal && !enriched.event_properties?.portal) {
-      enriched.event_properties = {
-        ...enriched.event_properties,
-        portal: this.context.portal,
-      };
+    if (this.context.portal && ep.portal == null) {
+      ep.portal = this.context.portal;
     }
 
-    // Add route (from context)
-    if (this.context.route && !enriched.event_properties?.route) {
-      enriched.event_properties = {
-        ...enriched.event_properties,
-        route: this.context.route,
-      };
+    if (this.context.route && ep.route == null) {
+      ep.route = this.context.route;
     }
 
-    // Add referrer (client-side only)
-    if (typeof window !== "undefined" && document.referrer && !enriched.event_properties?.referrer) {
-      enriched.event_properties = {
-        ...enriched.event_properties,
-        referrer: document.referrer,
-      };
+    if (typeof window !== "undefined" && document.referrer && ep.referrer == null) {
+      ep.referrer = document.referrer;
     }
 
-    // Add timezone (client-side only)
-    if (typeof window !== "undefined" && !enriched.event_properties?.timezone) {
+    if (typeof window !== "undefined" && ep.timezone == null) {
       try {
-        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        enriched.event_properties = {
-          ...enriched.event_properties,
-          timezone,
-        };
+        ep.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       } catch {
-        // Ignore timezone errors
+        /* ignore */
       }
     }
 
-    return enriched;
+    if (typeof window !== "undefined") {
+      const mkt = getMarketingAttributionForEvents();
+      for (const [k, v] of Object.entries(mkt)) {
+        if (ep[k] == null) ep[k] = v;
+      }
+    }
+
+    return {
+      ...event,
+      event_properties: ep,
+    };
   }
 }

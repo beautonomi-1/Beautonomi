@@ -98,7 +98,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "admin-web": "workspace:*",
     "@next/bundle-analyzer": "^15.0.0",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
@@ -107,6 +106,8 @@
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.2.1",
     "@vitest/coverage-v8": "^1.6.1",
+    "admin-web": "workspace:*",
+    "autoprefixer": "^10.4.27",
     "chokidar": "^3.6.0",
     "cross-env": "^10.1.0",
     "eslint": "^9.18.0",
@@ -120,5 +121,12 @@
   },
   "overrides": {
     "react-remove-scroll": "^2.7.2"
-  }
+  },
+  "browserslist": [
+    ">0.5%",
+    "last 2 versions",
+    "not dead",
+    "iOS >= 12",
+    "Safari >= 12"
+  ]
 }

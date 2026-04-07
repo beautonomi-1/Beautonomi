@@ -190,6 +190,35 @@ export const SUBSCRIPTION_FEATURE_KEYS = {
 } as const;
 
 /**
+ * Staff operational SMS (team notification prefs) — opt-in per plan via `features.staff_sms_notifications`.
+ * When the key is missing, SMS is not allowed (unlike most product flags that default to true for legacy rows).
+ */
+export function resolveStaffSmsNotificationsFromPlanFeatures(
+  features: Record<string, unknown> | null | undefined
+): boolean {
+  if (!features || typeof features !== "object") return false;
+  const raw = (features as Record<string, unknown>).staff_sms_notifications;
+  if (raw === undefined || raw === null) return false;
+  if (typeof raw === "object" && raw !== null) {
+    return (raw as { enabled?: boolean }).enabled === true;
+  }
+  return false;
+}
+
+/**
+ * Whether the provider's current plan allows enabling SMS in team (staff) notification settings.
+ */
+export async function checkStaffSmsNotificationsFeatureAccess(
+  providerId: string,
+  supabaseClient?: SupabaseClient
+): Promise<boolean> {
+  const supabase = supabaseClient ?? (await getSupabaseServer());
+  const tier = await getProviderSubscriptionTier(supabase, providerId);
+  if (!tier) return false;
+  return resolveStaffSmsNotificationsFromPlanFeatures(tier.features as Record<string, unknown>);
+}
+
+/**
  * Resolves a boolean flag from plan features. If the key is missing, returns true (legacy plans).
  * If the key is an object, uses `enabled` when set; if `enabled` is omitted, returns true so
  * objects like `{ max_forms: 5 }` still allow access unless explicitly disabled.

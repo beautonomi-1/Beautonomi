@@ -14,6 +14,39 @@ import { Input } from "@/components/ui/input";
 import type mapboxgl from "mapbox-gl";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
 
+/** Stable component — do not define inline inside SearchResults or the input remounts every render and loses focus on mobile. */
+function SearchQueryBar(props: {
+  queryInput: string;
+  onQueryChange: (value: string) => void;
+  onApply: () => void;
+}) {
+  const { queryInput, onQueryChange, onApply } = props;
+  return (
+    <div className="mb-6 flex flex-col sm:flex-row gap-2 sm:items-center">
+      <div className="relative flex-1 min-w-0">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <Input
+          type="search"
+          value={queryInput}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onApply();
+            }
+          }}
+          placeholder="Search by provider name or keywords…"
+          className="pl-10 h-11 bg-white border-gray-200"
+          aria-label="Search providers"
+        />
+      </div>
+      <Button type="button" onClick={onApply} className="shrink-0 h-11 px-6">
+        Search
+      </Button>
+    </div>
+  );
+}
+
 interface SearchResultsProps {
   initialResults?: SearchResult;
   /** When set, skips client fetch for categories (same as /api/public/categories). */
@@ -242,35 +275,10 @@ export default function SearchResults({
     router.push(`/search?${params.toString()}`);
   };
 
-  const SearchQueryRow = () => (
-    <div className="mb-6 flex flex-col sm:flex-row gap-2 sm:items-center">
-      <div className="relative flex-1 min-w-0">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        <Input
-          type="search"
-          value={queryInput}
-          onChange={(e) => setQueryInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              applySearchQuery();
-            }
-          }}
-          placeholder="Search by provider name or keywords…"
-          className="pl-10 h-11 bg-white border-gray-200"
-          aria-label="Search providers"
-        />
-      </div>
-      <Button type="button" onClick={applySearchQuery} className="shrink-0 h-11 px-6">
-        Search
-      </Button>
-    </div>
-  );
-
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryRow />
+        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
         <LoadingTimeout loadingMessage="Searching providers..." />
       </div>
     );
@@ -279,7 +287,7 @@ export default function SearchResults({
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryRow />
+        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
         <EmptyState
           title="Search failed"
           description={error}
@@ -295,7 +303,7 @@ export default function SearchResults({
   if (!results || results.providers.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryRow />
+        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
         <FilterBar
           filters={[
             {
@@ -337,7 +345,7 @@ export default function SearchResults({
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <SearchQueryRow />
+      <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
       {/* Filters and View Toggle */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">

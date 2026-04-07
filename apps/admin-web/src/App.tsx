@@ -133,6 +133,7 @@ export default function App() {
           <Route path="loyalty" element={<P.LoyaltyRulesPage />} />
           <Route path="gamification/point-rules" element={<P.GamificationPointRulesPage />} />
           <Route path="gamification/badges" element={<P.GamificationBadgesPage />} />
+          <Route path="gamification/operations" element={<P.GamificationOperationsPage />} />
           <Route path="notifications" element={<P.NotificationsConfigPage />} />
           <Route path="broadcast/history" element={<P.BroadcastHistoryPage />} />
           <Route path="broadcast/compose" element={<P.BroadcastComposePage />} />
@@ -155,6 +156,7 @@ export default function App() {
           <Route path="content/learning" element={<P.LearningArticlesPage />} />
           <Route path="content/resources" element={<P.ContentResourcesPage />} />
           <Route path="content" element={<P.ContentHubPage />} />
+          <Route path="explore/:id" element={<P.ExplorePostDetailPage />} />
           <Route path="explore" element={<P.ExplorePostsPage />} />
           <Route path="catalog/global-categories" element={<P.GlobalCategoriesPage />} />
           <Route path="catalog" element={<P.CatalogServicesPage />} />

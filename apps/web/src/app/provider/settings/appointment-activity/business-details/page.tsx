@@ -395,7 +395,7 @@ export default function BusinessDetailsSettings() {
             </div>
             <div>
               <Label htmlFor="x" className="text-sm sm:text-base">
-                X (Twitter)
+                X
               </Label>
               <Input
                 id="x"

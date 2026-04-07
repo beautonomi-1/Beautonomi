@@ -19,6 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 interface NotificationSettings {
   email_enabled: boolean;
   sms_enabled: boolean;
+  sms_plan_allowed: boolean;
   desktop_enabled: boolean;
   appointment_reminders: boolean;
   appointment_cancellations: boolean;
@@ -34,7 +35,8 @@ export default function NotificationsSettings() {
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [settings, setSettings] = useState<NotificationSettings>({
     email_enabled: true,
-    sms_enabled: true,
+    sms_enabled: false,
+    sms_plan_allowed: false,
     desktop_enabled: false,
     appointment_reminders: true,
     appointment_cancellations: true,
@@ -79,6 +81,7 @@ export default function NotificationsSettings() {
         data: {
           emailEnabled: boolean;
           smsEnabled: boolean;
+          smsPlanAllowed: boolean;
           desktopEnabled: boolean;
           appointmentReminders: boolean;
           appointmentCancellations: boolean;
@@ -92,6 +95,7 @@ export default function NotificationsSettings() {
       setSettings({
         email_enabled: response.data.emailEnabled,
         sms_enabled: response.data.smsEnabled,
+        sms_plan_allowed: response.data.smsPlanAllowed === true,
         desktop_enabled: response.data.desktopEnabled,
         appointment_reminders: response.data.appointmentReminders,
         appointment_cancellations: response.data.appointmentCancellations,
@@ -106,7 +110,8 @@ export default function NotificationsSettings() {
       // Use default values on error
       setSettings({
         email_enabled: true,
-        sms_enabled: true,
+        sms_enabled: false,
+        sms_plan_allowed: false,
         desktop_enabled: false,
         appointment_reminders: true,
         appointment_cancellations: true,
@@ -126,7 +131,7 @@ export default function NotificationsSettings() {
     try {
       await fetcher.patch(`/api/provider/staff/${selectedMember}/notifications`, {
         email_enabled: settings.email_enabled,
-        sms_enabled: settings.sms_enabled,
+        sms_enabled: settings.sms_plan_allowed ? settings.sms_enabled : false,
         desktop_enabled: settings.desktop_enabled,
         appointment_reminders: settings.appointment_reminders,
         appointment_cancellations: settings.appointment_cancellations,
@@ -252,12 +257,15 @@ export default function NotificationsSettings() {
                     </div>
                   </div>
 
-                  <div className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg">
+                  <div
+                    className={`flex items-start gap-4 p-4 bg-gray-50 rounded-lg ${!settings.sms_plan_allowed ? "opacity-70" : ""}`}
+                  >
                     <Switch
-                      checked={settings.sms_enabled}
+                      checked={settings.sms_plan_allowed ? settings.sms_enabled : false}
                       onCheckedChange={(checked) =>
                         setSettings({ ...settings, sms_enabled: checked })
                       }
+                      disabled={!settings.sms_plan_allowed}
                       className="mt-1"
                     />
                     <div className="flex-1">
@@ -266,7 +274,9 @@ export default function NotificationsSettings() {
                         SMS Notifications
                       </Label>
                       <p className="text-xs text-gray-500 mt-1">
-                        Send SMS notifications to {selectedMemberData?.mobile || "their mobile number"}
+                        {settings.sms_plan_allowed
+                          ? `Send SMS notifications to ${selectedMemberData?.mobile || "their mobile number"}`
+                          : "Staff SMS is available on subscription plans that include it. Upgrade to enable."}
                       </p>
                     </div>
                   </div>

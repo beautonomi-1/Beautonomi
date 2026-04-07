@@ -778,6 +778,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
         p_staff_id: staffId,
         p_start_at: startAt.toISOString(),
         p_end_at: pEndAt,
+        p_entitlement_id: null,
+        p_entitlement_customer_id: null,
       });
 
       if (rpcError) {

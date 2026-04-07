@@ -43,7 +43,7 @@ export async function POST(
     // Verify user has access to this ticket and get details for notification
     const { data: ticket } = await supabase
       .from("support_tickets")
-      .select("user_id, provider_id, ticket_number, subject")
+      .select("user_id, provider_id, ticket_number, subject, first_staff_reply_at, status")
       .eq("id", id)
       .single();
 
@@ -81,11 +81,17 @@ export async function POST(
 
     if (error) throw error;
 
-    // Update ticket updated_at
-    await supabase
-      .from("support_tickets")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", id);
+    const ticketUpdate: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (!isInternal && isAdmin) {
+      if (!(ticket as { first_staff_reply_at?: string | null }).first_staff_reply_at) {
+        ticketUpdate.first_staff_reply_at = new Date().toISOString();
+      }
+      const st = String((ticket as { status?: string }).status ?? "");
+      if (st === "open" || st === "waiting_customer") {
+        ticketUpdate.status = "in_progress";
+      }
+    }
+    await supabase.from("support_tickets").update(ticketUpdate).eq("id", id);
 
     // When admin/support_agent replies with a public message, notify the ticket owner (email + in-app for swift communication)
     if (!isInternal && isAdmin && ticket.user_id) {

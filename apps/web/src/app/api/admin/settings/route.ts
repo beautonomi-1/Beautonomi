@@ -8,6 +8,7 @@ import { fetchScopedSingle, resolveAdminTenantContext } from "@/lib/tenant/scope
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { getDefaultPublicAppsResponse } from "@/lib/store/native-app-store";
 
 interface PlatformSettings {
   branding: {
@@ -250,54 +251,31 @@ function getDefaultPlatformSettings(): PlatformSettings {
           enabled: true, // iCal doesn't need OAuth, so enabled by default
         },
       },
-      apps: {
-        customer: {
-          android: {
-            package_name: "com.beautonomi.customer",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            download_url: "",
-            enabled: true,
+      apps: (() => {
+        const d = getDefaultPublicAppsResponse();
+        return {
+          customer: {
+            ...d.customer,
+            android: { ...d.customer.android, download_url: "" },
+            ios: { ...d.customer.ios, app_store_url: "" },
+            huawei: {
+              ...d.customer.huawei,
+              app_gallery_url: "",
+              enabled: false,
+            },
           },
-          ios: {
-            bundle_id: "com.beautonomi.customer",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            app_store_url: "",
-            enabled: true,
+          provider: {
+            ...d.provider,
+            android: { ...d.provider.android, download_url: "" },
+            ios: { ...d.provider.ios, app_store_url: "" },
+            huawei: {
+              ...d.provider.huawei,
+              app_gallery_url: "",
+              enabled: false,
+            },
           },
-          huawei: {
-            package_name: "com.beautonomi.customer",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            app_gallery_url: "",
-            enabled: false,
-          },
-        },
-        provider: {
-          android: {
-            package_name: "com.beautonomi.provider",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            download_url: "",
-            enabled: true,
-          },
-          ios: {
-            bundle_id: "com.beautonomi.provider",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            app_store_url: "",
-            enabled: true,
-          },
-          huawei: {
-            package_name: "com.beautonomi.provider",
-            version: "1.0.0",
-            min_version: "1.0.0",
-            app_gallery_url: "",
-            enabled: false,
-          },
-        },
-      },
+        };
+      })(),
     };
 }
 

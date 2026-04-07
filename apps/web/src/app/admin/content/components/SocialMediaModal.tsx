@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-import { Facebook, Twitter, Linkedin, Instagram, Youtube } from "lucide-react";
+import { Facebook, Linkedin, Instagram, Youtube } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
 
 interface SocialMediaLink {
   id: string;
@@ -34,7 +35,7 @@ interface SocialMediaModalProps {
 
 const socialMediaOptions = [
   { value: "Facebook", icon: Facebook },
-  { value: "Twitter", icon: Twitter },
+  { value: "X", icon: FaXTwitter },
   { value: "LinkedIn", icon: Linkedin },
   { value: "Instagram", icon: Instagram },
   { value: "YouTube", icon: Youtube },
@@ -57,8 +58,10 @@ export function SocialMediaModal({
 
   useEffect(() => {
     if (link) {
+      const title =
+        link.title.trim().toLowerCase() === "twitter" ? "X" : link.title;
       setFormData({
-        title: link.title,
+        title,
         href: link.href,
         display_order: link.display_order,
         is_active: link.is_active,
@@ -167,7 +170,7 @@ export function SocialMediaModal({
               id="title"
               value={formData.title}
               onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              placeholder="e.g., Facebook, Twitter, Instagram"
+              placeholder="e.g., Facebook, X, Instagram"
               required
             />
           </div>

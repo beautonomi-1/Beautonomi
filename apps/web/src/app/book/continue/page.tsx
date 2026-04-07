@@ -33,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CustomFieldDefinition } from "@/components/custom-fields/CustomFieldsForm";
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 interface ProviderFormField {
   id: string;
@@ -135,8 +136,8 @@ function resolvePrefillProductLines(
   return out;
 }
 
-const IOS_APP_URL_CONTINUE = "https://apps.apple.com/app/beautonomi";
-const ANDROID_APP_URL_CONTINUE = "https://play.google.com/store/apps/details?id=com.beautonomi";
+const IOS_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultAppStoreUrl;
+const ANDROID_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultPlayStoreUrl;
 
 function MobileAppNudge() {
   const [show, setShow] = useState(false);

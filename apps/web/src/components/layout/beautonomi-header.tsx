@@ -32,6 +32,8 @@ import { HomeNavIcon, ExploreNavIcon } from "@/components/layout/nav-icons";
 import { GlobalCategoryIcon } from "@/components/icons/GlobalCategoryIcon";
 import { CustomerNotificationsDropdown } from "@/components/customer/CustomerNotificationsDropdown";
 import { cn } from "@/lib/utils";
+import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
+import { useCookieConsent } from "@/providers/CookieConsentProvider";
 
 interface Category {
   id: string;
@@ -53,6 +55,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   initialGlobalCategories,
 }) => {
   const { user, isLoading: authLoading, signOut, role: authRole } = useAuth();
+  const { isReady: consentReady, allowsFunctional } = useCookieConsent();
+  const canPersistUserLocation = consentReady && allowsFunctional;
   const router = useRouter();
   const [isCategoryNavPending, startCategoryTransition] = useTransition();
   const searchParams = useSearchParams();
@@ -107,6 +111,18 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const searchToggleRef = useRef<HTMLButtonElement>(null);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const persistUserLocation = useCallback(
+    (data: { latitude: number; longitude: number; address: string }) => {
+      if (!canPersistUserLocation) return;
+      try {
+        localStorage.setItem("userLocation", JSON.stringify(data));
+      } catch (e) {
+        console.error("Failed to persist user location", e);
+      }
+    },
+    [canPersistUserLocation],
+  );
 
   // Fetch categories from API (skipped when RSC already supplied them — faster first paint on home)
   useEffect(() => {
@@ -238,29 +254,27 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   );
 
   useEffect(() => {
-    // Load saved location from localStorage
-    if (typeof window !== "undefined") {
-      const savedLocation = localStorage.getItem("userLocation");
-      if (savedLocation) {
-        try {
-          const location = JSON.parse(savedLocation);
-          setSelectedLocation(location);
-          setSelectedAddress(location.address || "Select address");
-        } catch (error) {
-          console.error("Error parsing saved location:", error);
-        }
-      } else if (!hasTriedIPLocation) {
-        // If no saved location and we haven't tried IP location yet, try to get location from IP
-        setHasTriedIPLocation(true);
-        fetchLocationFromIP();
-      }
-      
-      // If user is logged in, try to load default address
-      if (user && !savedLocation) {
-        loadAddresses();
-      }
+    if (typeof window === "undefined") return;
+    let savedLocation: string | null = null;
+    if (canPersistUserLocation) {
+      savedLocation = localStorage.getItem("userLocation");
     }
-  }, [user, hasTriedIPLocation]);
+    if (savedLocation) {
+      try {
+        const location = JSON.parse(savedLocation);
+        setSelectedLocation(location);
+        setSelectedAddress(location.address || "Select address");
+      } catch (error) {
+        console.error("Error parsing saved location:", error);
+      }
+    } else if (!hasTriedIPLocation) {
+      setHasTriedIPLocation(true);
+      void fetchLocationFromIP();
+    }
+    if (user && !savedLocation) {
+      loadAddresses();
+    }
+  }, [user, hasTriedIPLocation, canPersistUserLocation]);
 
   // Set default address when addresses load
   useEffect(() => {
@@ -274,14 +288,14 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           longitude: defaultAddress.longitude,
           address: addressString
         });
-        localStorage.setItem("userLocation", JSON.stringify({
+        persistUserLocation({
           latitude: defaultAddress.latitude,
           longitude: defaultAddress.longitude,
           address: addressString
-        }));
+        });
       }
     }
-  }, [user, addresses, selectedLocation]);
+  }, [user, addresses, selectedLocation, persistUserLocation]);
 
   // Fetch location from IP address as fallback
   const fetchLocationFromIP = async () => {
@@ -378,7 +392,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           // Always set the location and address - this ensures it displays immediately
           setSelectedLocation(locationData);
           setSelectedAddress(addressString);
-          localStorage.setItem("userLocation", JSON.stringify(locationData));
+          persistUserLocation(locationData);
           window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
           
           // Check service availability
@@ -409,7 +423,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                 // Always set the location and address
                 setSelectedLocation(locationData);
                 setSelectedAddress(fullAddress);
-                localStorage.setItem("userLocation", JSON.stringify(locationData));
+                persistUserLocation(locationData);
                 window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
                 
                 // Check service availability
@@ -450,6 +464,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
     if (onCategoryChange) {
       onCategoryChange(slug);
     } else {
+      const params = new URLSearchParams();
+      if (selectedLocation?.latitude != null && selectedLocation?.longitude != null) {
+        params.set("lat", String(selectedLocation.latitude));
+        params.set("lng", String(selectedLocation.longitude));
+      }
+      if (slug !== "all") {
+        params.set("category", slug);
+      }
+      // Warm the home payload for all sections before route-state updates.
+      void fetchPublicHomeClient(params);
       startCategoryTransition(() => {
         if (slug === "all") {
           router.replace("/", { scroll: false });
@@ -463,10 +487,19 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
   const prefetchCategoryHome = useCallback(
     (slug: string) => {
       if (onCategoryChange) return;
+      const params = new URLSearchParams();
+      if (selectedLocation?.latitude != null && selectedLocation?.longitude != null) {
+        params.set("lat", String(selectedLocation.latitude));
+        params.set("lng", String(selectedLocation.longitude));
+      }
+      if (slug !== "all") {
+        params.set("category", slug);
+      }
+      void fetchPublicHomeClient(params);
       const href = slug === "all" ? "/" : `/?category=${encodeURIComponent(slug)}`;
       router.prefetch(href);
     },
-    [onCategoryChange, router],
+    [onCategoryChange, router, selectedLocation?.latitude, selectedLocation?.longitude],
   );
 
   // Get current location using geolocation API
@@ -502,7 +535,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
               longitude,
               address
             };
-            localStorage.setItem("userLocation", JSON.stringify(locationData));
+            persistUserLocation(locationData);
             
             // Dispatch custom event for immediate updates in same tab
             window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
@@ -513,11 +546,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
             const address = `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
             setSelectedAddress("Current location");
             setSelectedLocation({ latitude, longitude, address });
-            localStorage.setItem("userLocation", JSON.stringify({
+            persistUserLocation({
               latitude,
               longitude,
               address
-            }));
+            });
             toast.success("Location updated");
           }
         } catch (error) {
@@ -526,11 +559,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
           const address = `Current location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
           setSelectedAddress("Current location");
           setSelectedLocation({ latitude, longitude, address });
-          localStorage.setItem("userLocation", JSON.stringify({
+          persistUserLocation({
             latitude,
             longitude,
             address
-          }));
+          });
           toast.success("Location updated");
         } finally {
           setIsGettingLocation(false);
@@ -569,7 +602,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
       longitude: address.longitude,
       address: addressString
     };
-    localStorage.setItem("userLocation", JSON.stringify(locationData));
+    persistUserLocation(locationData);
     
     // Dispatch custom event for immediate updates in same tab
     window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
@@ -606,7 +639,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
         longitude: savedAddress.longitude,
         address: addressString
       };
-      localStorage.setItem("userLocation", JSON.stringify(locationData));
+      persistUserLocation(locationData);
       
       // Dispatch custom event for immediate updates in same tab
       window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
@@ -643,7 +676,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
       longitude: recentLoc.longitude,
       address: recentLoc.address
     };
-    localStorage.setItem("userLocation", JSON.stringify(locationData));
+    persistUserLocation(locationData);
     window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
 
     checkAvailability(recentLoc.latitude, recentLoc.longitude);

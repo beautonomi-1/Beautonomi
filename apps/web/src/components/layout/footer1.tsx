@@ -64,7 +64,7 @@ export default function Footer1() {
               title: "Find us on social",
               links: [
                 { href: "https://facebook.com", text: "Facebook" },
-                { href: "https://twitter.com", text: "Twitter" },
+                { href: "https://x.com", text: "X" },
                 { href: "https://linkedin.com", text: "LinkedIn" },
                 { href: "https://instagram.com", text: "Instagram" },
               ],

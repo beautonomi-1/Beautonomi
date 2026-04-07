@@ -106,10 +106,10 @@ export default function ShareModal({
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank", "width=600,height=400");
   };
 
-  const handleTwitterShare = () => {
+  const handleXShare = () => {
     const text = encodeURIComponent(`Check out ${experienceTitle} on Beautonomi`);
     const url = encodeURIComponent(currentUrl);
-    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank", "width=600,height=400");
+    window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, "_blank", "width=600,height=400");
   };
 
   const handleNativeShare = async () => {
@@ -219,10 +219,10 @@ export default function ShareModal({
                   <Button 
                     variant="outline" 
                     className="w-full flex items-center justify-start px-4 gap-3 font-medium hover:bg-pink-50 hover:border-primary hover:text-primary rounded-xl h-12 transition-all"
-                    onClick={handleTwitterShare}
+                    onClick={handleXShare}
                   >
                     <span className="text-xl"><FaSquareXTwitter/></span>
-                    Twitter
+                    X
                   </Button>
                 </motion.div>
               </div>

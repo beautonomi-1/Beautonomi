@@ -3,11 +3,13 @@
 import { usePathname, useSearchParams } from "next/navigation";
 import { useRef, useEffect, useCallback, useState } from "react";
 import { useAmplitude } from "@/hooks/useAmplitude";
+import { useCookieConsent } from "@/providers/CookieConsentProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import DownloadBanner from "./DownloadBanner";
 import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
 import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 const DISMISS_KEY = "download_banner_dismissed";
 
@@ -37,13 +39,13 @@ interface AppPlatformConfig {
  */
 const STATIC_STORE_LINKS: Record<"customer" | "provider", ResolvedLinks> = {
   customer: {
-    ios: "https://apps.apple.com/app/beautonomi-customer",
-    android: "https://play.google.com/store/apps/details?id=com.beautonomi.customer",
+    ios: NATIVE_STORE.customer.defaultAppStoreUrl,
+    android: NATIVE_STORE.customer.defaultPlayStoreUrl,
     huawei: "https://appgallery.huawei.com/app/C100000000",
   },
   provider: {
-    ios: "https://apps.apple.com/app/beautonomi-provider",
-    android: "https://play.google.com/store/apps/details?id=com.beautonomi.provider",
+    ios: NATIVE_STORE.provider.defaultAppStoreUrl,
+    android: NATIVE_STORE.provider.defaultPlayStoreUrl,
     huawei: "https://appgallery.huawei.com/app/C100000001",
   },
 };
@@ -101,6 +103,7 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
   const searchParams = useSearchParams();
   const signupType = pathname === "/signup" ? searchParams.get("type") : null;
   const { track } = useAmplitude();
+  const { isReady: consentReady, allowsFunctional } = useCookieConsent();
   const viewedSentRef = useRef(false);
 
   const [clientOsType, setClientOsType] = useState<OsType | null>(null);
@@ -168,6 +171,7 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
   const [dismissed, setDismissed] = useState(false);
 
   const checkDismissed = useCallback((): boolean => {
+    if (!consentReady || !allowsFunctional) return false;
     if (typeof sessionStorage === "undefined") return true;
     try {
       const raw = sessionStorage.getItem(DISMISS_KEY);
@@ -177,23 +181,25 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
     } catch {
       return false;
     }
-  }, [appContext]);
+  }, [appContext, consentReady, allowsFunctional]);
 
   useEffect(() => {
     setDismissed(checkDismissed());
   }, [checkDismissed]);
 
   const handleDismiss = useCallback(() => {
-    try {
-      const raw = sessionStorage.getItem(DISMISS_KEY);
-      const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
-      parsed[appContext] = true;
-      sessionStorage.setItem(DISMISS_KEY, JSON.stringify(parsed));
-    } catch {
-      // ignore
+    if (consentReady && allowsFunctional) {
+      try {
+        const raw = sessionStorage.getItem(DISMISS_KEY);
+        const parsed = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+        parsed[appContext] = true;
+        sessionStorage.setItem(DISMISS_KEY, JSON.stringify(parsed));
+      } catch {
+        // ignore
+      }
     }
     setDismissed(true);
-  }, [appContext]);
+  }, [appContext, consentReady, allowsFunctional]);
 
   /** Admin embed should not promote consumer/provider store installs. */
   const hideForRoute = Boolean(pathname?.startsWith("/admin"));

@@ -44,6 +44,12 @@ function isAdminSpaBundledAsset(pathname: string): boolean {
   return /\.(?:js|mjs|css|map|ico|png|svg|webp|woff2?|ttf|eot|json)$/i.test(pathname);
 }
 
+/** Admin UI (all roles, including superadmin) and admin APIs must not be indexed. */
+function withNoIndexAdmin(response: NextResponse): NextResponse {
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
@@ -58,7 +64,7 @@ export async function proxy(request: NextRequest) {
       if (isAdminSpaBundledAsset(pathname)) {
         return NextResponse.next();
       }
-      return NextResponse.rewrite(new URL('/admin/index.html', request.url));
+      return withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url)));
     }
 
     // Handle CORS preflight for API routes
@@ -76,6 +82,9 @@ export async function proxy(request: NextRequest) {
       }
 
       const response = NextResponse.next();
+      if (pathname.startsWith('/api/admin')) {
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      }
       if (origin && isAllowedOrigin(origin)) {
         const headers = corsHeaders(origin);
         Object.entries(headers).forEach(([key, value]) => {
@@ -171,7 +180,11 @@ export async function proxy(request: NextRequest) {
     }
     
     if (isPublicRoute) {
-      return NextResponse.next();
+      const res = NextResponse.next();
+      if (pathname === '/admin/login' || pathname.startsWith('/admin/login/')) {
+        res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      }
+      return res;
     }
 
   // Skip static files and Next.js internals
@@ -382,6 +395,7 @@ export async function proxy(request: NextRequest) {
           return redirectToHome();
         }
 
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
         return response;
       } catch (error) {
         console.error("Error in admin route proxy:", error);

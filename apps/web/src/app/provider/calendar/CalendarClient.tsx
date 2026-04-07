@@ -1690,6 +1690,23 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               />
             ) : (
               <div className="flex flex-1 flex-col min-h-0 min-w-0">
+                <div
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pb-2 border-b border-border/60 mb-2 shrink-0"
+                  aria-label="Schedule legend"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden />
+                    Bookings
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/90" aria-hidden />
+                    Blocks & breaks
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-400/70" aria-hidden />
+                    Shifts / closed
+                  </span>
+                </div>
                 <CalendarDesktopWithDnd
                   allAppointments={appointments}
                   onReschedule={handleReschedule}
@@ -1782,6 +1799,23 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 <span className="text-xs text-gray-600">Refreshing...</span>
               </div>
             )}
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 text-[11px] text-muted-foreground border-b border-border/50"
+              aria-label="Schedule legend"
+            >
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-primary" aria-hidden />
+                Bookings
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-amber-400/90" aria-hidden />
+                Blocks
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-slate-400/70" aria-hidden />
+                Closed
+              </span>
+            </div>
             <CalendarMobileWithDnd
               allAppointments={appointments}
               timeBlocks={timeBlocks}

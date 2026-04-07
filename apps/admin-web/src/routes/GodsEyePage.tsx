@@ -27,6 +27,7 @@ import { AdminQueryBlock } from "@/components/admin/AdminQueryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
 import { cn } from "@/lib/cn";
+import { GodsEyeLiveMap } from "@/routes/GodsEyeLiveMap";
 
 interface ActivityRow {
   id: string;
@@ -185,6 +186,8 @@ export function GodsEyePage() {
         title="Gods Eye"
         description="Tenant-scoped operations. Revenue cards use net customer cash (payments − refunds, ledger net) — aligned with Analytics. Provider earnings tables use provider-side ledger rows."
       />
+
+      <GodsEyeLiveMap />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {quickLinks.map((l) => (

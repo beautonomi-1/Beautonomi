@@ -39,6 +39,7 @@ const NearestProvidersSection = ({
   /** "all" = no distance filter (country-wide / tenant-wide); numeric = filter nearest list */
   const [radiusKm, setRadiusKm] = useState<number | "all">("all");
   const prevInitialProvidersRef = useRef(initialProviders);
+  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
     if (!initialHydrated) return;
@@ -46,6 +47,14 @@ const NearestProvidersSection = ({
     prevInitialProvidersRef.current = initialProviders;
     setProviders(initialProviders ?? []);
   }, [initialHydrated, initialProviders]);
+
+  useEffect(() => {
+    if (prevCategoryRef.current === categorySlug) return;
+    prevCategoryRef.current = categorySlug;
+    // Ensure category switches do not keep showing mismatched nearest cards.
+    setProviders([]);
+    setIsLoading(true);
+  }, [categorySlug]);
 
   useEffect(() => {
     if (locationLoading) return;
@@ -70,25 +79,6 @@ const NearestProvidersSection = ({
           if (addressParts.length > 1) {
             city = addressParts[0];
             country = addressParts[addressParts.length - 1];
-          }
-        } else {
-          if (navigator.geolocation) {
-            try {
-              const perms = navigator.permissions as Permissions | undefined;
-              if (perms?.query) {
-                const geolocationPermission = await perms.query({ name: "geolocation" as PermissionName });
-                if (geolocationPermission.state === "denied") {
-                  throw new Error("geolocation_permission_denied");
-                }
-              }
-              const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-              });
-              lat = position.coords.latitude;
-              lng = position.coords.longitude;
-            } catch {
-              // continue without coords
-            }
           }
         }
 

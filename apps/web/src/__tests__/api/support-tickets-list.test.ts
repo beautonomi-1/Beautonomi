@@ -75,7 +75,9 @@ describe("GET /api/admin/support-tickets", () => {
     expect(builder.eq).toHaveBeenCalledWith("category", "booking_issue");
     expect(builder.is).toHaveBeenCalledWith("assigned_to", null);
     expect(builder.eq).toHaveBeenCalledWith("user_id", "user-123");
-    expect(builder.or).toHaveBeenCalledWith("subject.ilike.%abc123%,ticket_number.ilike.%abc123%");
+    expect(builder.or).toHaveBeenCalledWith(
+      "subject.ilike.%abc123%,ticket_number.ilike.%abc123%,description.ilike.%abc123%"
+    );
     expect(builder.range).toHaveBeenCalledWith(40, 59);
   });
 

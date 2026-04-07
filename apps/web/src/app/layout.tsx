@@ -8,8 +8,6 @@ import { RootErrorBoundary } from "@/components/global/RootErrorBoundary";
 import GlobalErrorLogger from "@/components/global/GlobalErrorLogger";
 import ClientAppShellLoader from "@/components/global/ClientAppShellLoader";
 import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
-import { SpeedInsights } from "@vercel/speed-insights/next";
-import WebVitalsReporter from "@/components/global/WebVitalsReporter";
 import {
   getPublicSiteOriginFromHeaders,
   openGraphLocaleForHost,
@@ -22,6 +20,8 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  /** Chrome/Android virtual keyboard: resize layout so fixed footers stay usable */
+  interactiveWidget: "resizes-content",
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -139,8 +139,6 @@ export default async function RootLayout({
         <RootErrorBoundary>
           <ClientAppShellLoader osType={osType}>{children}</ClientAppShellLoader>
         </RootErrorBoundary>
-        <WebVitalsReporter />
-        {process.env.NODE_ENV === "production" ? <SpeedInsights /> : null}
       </body>
     </html>
   );
