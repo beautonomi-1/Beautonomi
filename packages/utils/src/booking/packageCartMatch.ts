@@ -68,7 +68,7 @@ export function exceedsEntitlement(
   booked: Map<string, number>,
   entitlement: Map<string, number>
 ): string | null {
-  for (const [id, count] of booked) {
+  for (const [id, count] of Array.from(booked.entries())) {
     const allowed = entitlement.get(id) ?? 0;
     if (count > allowed) return id;
   }
@@ -140,7 +140,7 @@ export function mergeExpressProductCartLines(
     if (cur) m.set(k, { ...cur, quantity: Math.min(999, cur.quantity + r.quantity) });
     else m.set(k, { ...r });
   }
-  return [...m.values()];
+  return Array.from(m.values());
 }
 
 export type PublicProductCatalogRow = {
@@ -207,13 +207,17 @@ export function cartMatchesPublicCatalogPackage(
   const wantSvc = packageServiceOfferingIdSet(pkg);
   const gotSvc = new Set(serviceOfferingIds.filter(Boolean));
   if (wantSvc.size !== gotSvc.size) return false;
-  for (const id of wantSvc) if (!gotSvc.has(id)) return false;
+  let serviceIdsMatch = true;
+  wantSvc.forEach((id) => {
+    if (!gotSvc.has(id)) serviceIdsMatch = false;
+  });
+  if (!serviceIdsMatch) return false;
 
   const wantProd = aggregatePackageProductRequirementsFromPublicPackage(pkg);
   const gotProd = aggregateProductCartByProductId(selectedProducts);
   if (wantProd.size > 0) {
     if (wantProd.size !== gotProd.size) return false;
-    for (const [k, v] of wantProd) {
+    for (const [k, v] of Array.from(wantProd.entries())) {
       if (gotProd.get(k) !== v) return false;
     }
   }
