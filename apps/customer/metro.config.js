@@ -1,11 +1,11 @@
 const path = require("path");
-const { getDefaultConfig } = require("expo/metro-config");
+const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const { withNativeWind } = require("nativewind/metro");
 
 const projectRoot = __dirname;
 const monorepoRoot = path.resolve(projectRoot, "../..");
 
-const config = getDefaultConfig(projectRoot);
+const config = getSentryExpoConfig(projectRoot);
 
 // Preserve Expo defaults and add monorepo root (expo doctor expects default watchFolders)
 config.watchFolders = [...(config.watchFolders || [projectRoot]), monorepoRoot];

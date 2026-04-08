@@ -58,7 +58,7 @@ export default function OnDemandIncomingScreen() {
     ringtoneStopRef.current?.();
     playRingtone(onDemandConfig).then((ctrl) => {
       ringtoneStopRef.current = ctrl.stop;
-    });
+    }).catch(() => {});
   }, [request?.id, request?.status, expired, onDemandConfig]);
 
   useEffect(() => {

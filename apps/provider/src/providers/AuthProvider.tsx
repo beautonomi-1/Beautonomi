@@ -34,6 +34,8 @@ import {
 
 WebBrowser.maybeCompleteAuthSession();
 
+const AUTH_SESSION_TIMEOUT_MS = 12 * 1000; // avoid infinite loading if getSession hangs
+
 export type OAuthProvider = "google" | "apple";
 
 interface SignUpMetadata {
@@ -90,8 +92,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setSession(newSession);
     setUser(newSession?.user ?? null);
   }, []);
-
-  const AUTH_SESSION_TIMEOUT_MS = 12 * 1000; // avoid infinite loading if getSession hangs
 
   useEffect(() => {
     let mounted = true;

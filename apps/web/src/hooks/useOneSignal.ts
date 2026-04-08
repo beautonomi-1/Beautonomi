@@ -112,7 +112,7 @@ export function useOneSignal() {
                 if (pid) {
                   registerDevice(pid);
                 }
-              });
+              }).catch(() => {});
             }
           });
         }

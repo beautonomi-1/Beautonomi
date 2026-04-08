@@ -60,33 +60,39 @@ export function useBookings(status?: BookingsStatus) {
     // Default API limit is 20; tabs need enough rows for active customers.
     params.set("limit", "100");
     params.set("page", "1");
-    const res = await api.get<BookingsResponse | Booking[]>(
-      `/api/me/bookings?${params.toString()}`
-    );
-    if (res.error) {
-      const msg = getApiErrorMessage(res.error, "Failed to load bookings");
-      setError(msg);
-      try {
-        const raw = await AsyncStorage.getItem(cacheKey);
-        if (raw) {
-          const parsed = JSON.parse(raw) as Booking[];
-          if (Array.isArray(parsed)) {
-            setData(parsed);
-            setFromCache(true);
+    try {
+      const res = await api.get<BookingsResponse | Booking[]>(
+        `/api/me/bookings?${params.toString()}`
+      );
+      if (res.error) {
+        const msg = getApiErrorMessage(res.error, "Failed to load bookings");
+        setError(msg);
+        try {
+          const raw = await AsyncStorage.getItem(cacheKey);
+          if (raw) {
+            const parsed = JSON.parse(raw) as Booking[];
+            if (Array.isArray(parsed)) {
+              setData(parsed);
+              setFromCache(true);
+            } else setData(null);
           } else setData(null);
-        } else setData(null);
-      } catch {
-        setData(null);
+        } catch {
+          setData(null);
+        }
+      } else {
+        const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
+        setData(list);
+        try {
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
+        } catch {}
       }
-    } else {
-      const list = extractBookingsList(res.data as BookingsResponse | Booking[] | undefined);
-      setData(list);
-      try {
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
-      } catch {}
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Failed to load bookings"));
+      setData(null);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-    setLoading(false);
-    setRefreshing(false);
   }, [status, cacheKey, user?.id]);
 
   useEffect(() => {

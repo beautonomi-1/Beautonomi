@@ -399,8 +399,9 @@ export default function Index() {
     );
   }
 
-  // Profile completion loading
-  if (portalState === "customer" && (profileState === "idle" || profileState === "loading")) {
+  // Profile completion loading (only blocks when APP_URL is set; without it the effect
+  // returns early and profileState stays "idle" — skip the spinner to avoid stuck loading).
+  if (portalState === "customer" && APP_URL?.trim() && (profileState === "idle" || profileState === "loading")) {
     return (
       <View
         style={{

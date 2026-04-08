@@ -75,7 +75,16 @@ export function RoleGate({ children }: RoleGateProps) {
     setLoading(true);
     setError(false);
     setBlocked(false);
-    void fetchRole(0);
+    void (async () => {
+      try {
+        await fetchRole(0);
+      } catch {
+        if (!cancelled) {
+          setLoading(false);
+          setError(true);
+        }
+      }
+    })();
 
     return () => {
       cancelled = true;

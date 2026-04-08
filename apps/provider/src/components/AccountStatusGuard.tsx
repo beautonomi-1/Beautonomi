@@ -34,7 +34,8 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
   const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
   const [checked, setChecked] = useState(false);
-  const didCheck = useRef(false);
+  /** Stores the userId for which the account-status check has run, so a user switch triggers a re-check. */
+  const didCheck = useRef<string | null>(null);
   const hangReportedRef = useRef(false);
   const userPresenceLoggedRef = useRef(false);
   const renderPhaseRef = useRef<string | null>(null);
@@ -68,17 +69,18 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!userId) {
-      didCheck.current = false;
+      didCheck.current = null;
       setChecked(true);
       return;
     }
-    if (didCheck.current) {
+    if (didCheck.current === userId) {
       setChecked(true);
       return;
     }
 
     let cancelled = false;
-    didCheck.current = true;
+    setChecked(false);
+    didCheck.current = userId;
 
     (async () => {
       if (isSentryEnabled()) {

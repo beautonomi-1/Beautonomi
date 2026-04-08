@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import type { ExpressPrefill } from "@/lib/express-booking/prefill";
 import { productCartToQueryParam } from "@/lib/express-booking/prefill";
+import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 
 interface ExpressLinkResponse {
   provider_slug: string;
@@ -25,9 +26,9 @@ type DevicePlatform = "ios" | "android" | "other";
 
 function detectPlatform(): DevicePlatform {
   if (typeof navigator === "undefined") return "other";
-  const ua = navigator.userAgent;
-  if (/iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream) return "ios";
-  if (/android/i.test(ua)) return "android";
+  const osType = getOsTypeFromNavigator(navigator);
+  if (osType === "ios") return "ios";
+  if (osType === "android" || osType === "huawei") return "android";
   return "other";
 }
 

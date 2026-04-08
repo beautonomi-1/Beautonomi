@@ -87,7 +87,6 @@ export function usePaystackPayment() {
           presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         });
 
-        setLoading(false);
         return {
           success: result.type === "dismiss" || result.type === "cancel",
           dismissed: true,
@@ -95,8 +94,9 @@ export function usePaystackPayment() {
         };
       } catch (e) {
         setError(e instanceof Error ? e.message : "Payment failed");
-        setLoading(false);
         return { success: false };
+      } finally {
+        setLoading(false);
       }
     },
     []

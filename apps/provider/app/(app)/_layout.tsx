@@ -50,7 +50,7 @@ export default function AppLayout() {
     };
     Linking.getInitialURL().then((url) => {
       if (url) handleUrl(url);
-    });
+    }).catch(() => {});
     const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
     return () => sub.remove();
   }, [router]);

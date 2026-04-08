@@ -456,7 +456,7 @@ function CheckoutSuccessContent() {
               App Store
             </a>
             <a
-              href="https://play.google.com/store/apps/beautonomi"
+              href="https://play.google.com/store/apps/details?id=com.beautonomi"
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-semibold border transition-all active:scale-[0.97]"

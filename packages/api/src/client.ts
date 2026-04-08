@@ -113,13 +113,6 @@ export async function apiFetch<T>(
     ...(init.headers as Record<string, string>),
   };
 
-  if (getAccessToken) {
-    const token = await getAccessToken();
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-  }
-
   const fetchInit: RequestInit = {
     ...init,
     headers,
@@ -137,6 +130,14 @@ export async function apiFetch<T>(
   }
 
   try {
+    // Resolve auth token inside the try so any exception is caught and returned as { error }.
+    if (getAccessToken) {
+      const token = await getAccessToken();
+      if (token) {
+        (fetchInit.headers as Record<string, string>)["Authorization"] = `Bearer ${token}`;
+      }
+    }
+
     // Add timeout using AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);

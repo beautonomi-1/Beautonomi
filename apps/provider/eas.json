@@ -72,6 +72,19 @@
         "releaseStatus": "draft"
       }
     },
+    "openTesting": {
+      "ios": {
+        "appleId": "beautonomi@gmail.com",
+        "ascAppId": "6748387936",
+        "appleTeamId": "QW33CYPQX5"
+      },
+      "android": {
+        "serviceAccountKeyPath": "./google-services-key.json",
+        "track": "beta",
+        "releaseStatus": "completed",
+        "rolloutPercentage": 100
+      }
+    },
     "internal": {
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",

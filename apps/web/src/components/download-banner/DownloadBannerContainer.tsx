@@ -121,7 +121,8 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
   }, [appContext, osType]);
 
   const mobileOs = osType === "ios" || osType === "android" || osType === "huawei" ? osType : null;
-  const isDesktopLike = osType === "desktop" || osType === "other";
+  // Banner is intentionally mobile/iPad-only; no Windows Store, no desktop prompt.
+  const isDesktopLike = false;
 
   const [links, setLinks] = useState<ResolvedLinks>({ ios: null, android: null, huawei: null });
 

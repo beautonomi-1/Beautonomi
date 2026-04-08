@@ -764,6 +764,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRole(null);
           setIsEmailVerified(false);
           setIsLoading(false);
+        }).catch(() => {
+          if (!isMounted) return;
+          setSession(null);
+          setUser(null);
+          setIsLoading(false);
         });
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         // Update session first to check verification status
@@ -840,7 +845,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Session still alive — restore user state with a single full refresh
           setSession(s);
           refreshUser().catch(() => {});
-        });
+        }).catch(() => {});
       }, 400);
     };
 

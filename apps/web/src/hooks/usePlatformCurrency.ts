@@ -14,6 +14,8 @@ export function usePlatformCurrency() {
     getPlatformLocale().then((settings) => {
       setLocale(settings);
       setIsLoading(false);
+    }).catch(() => {
+      setIsLoading(false);
     });
   }, []);
 

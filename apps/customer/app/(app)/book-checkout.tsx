@@ -685,6 +685,13 @@ export default function BookCheckoutScreen() {
 
   const checkoutTrackedRef = useRef(false);
   const productPrefillFromLinkAppliedRef = useRef(false);
+  const navTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (navTimeoutRef.current) clearTimeout(navTimeoutRef.current);
+    };
+  }, []);
 
   /* Track hold expiry reactively — CountdownBar updates its own UI, but the main screen needs
      to disable the CTA and reflect the expired state without waiting for the next hold fetch. */
@@ -1211,7 +1218,7 @@ export default function BookCheckoutScreen() {
       }
     };
 
-    setTimeout(navigate, 2600);
+    navTimeoutRef.current = setTimeout(navigate, 2600);
   }, [routeCampaignId, routeProviderId, hold_id, hold]);
 
   const handleRequestNow = useCallback(async () => {
