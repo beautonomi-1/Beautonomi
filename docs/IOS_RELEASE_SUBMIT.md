@@ -23,7 +23,10 @@ This runs, in order:
 1. **Customer** → iOS (`--latest`) then Android (`--latest`)
 2. **Provider** → iOS (`--latest`) then Android (`--latest`)
 
-When prompted, choose the **new** build for each (not one already submitted). Android uploads use the track in `eas.json` (`submit.production.android.track`, usually **production** as draft). To upload the same build to **Google Play internal testing** instead, run `pnpm run submit:android:internal` (uses `submit.internal` profile with `track: internal`).
+When prompted, choose the **new** build for each (not one already submitted).
+
+- **iOS (`submit.production`):** Uploads to **App Store Connect**; the build shows in **TestFlight** for testing (same flow as before). Requires `appleId`, `ascAppId`, and `appleTeamId` in `eas.json` (both apps have these).
+- **Android (`submit.production`):** Uses `submit.production.android` — **`track: beta`**, **`releaseStatus: completed`**. That maps to Play Console **Testing → Open testing** (public beta): the same Google Play API **`beta`** track used when “Open testing” is enabled for that track. **Internal-only** uploads use `pnpm run submit:*:android:internal` (`submit.internal` → **`track: internal`**, draft). **Phased rollout** on a track is done in Play Console or via EAS `releaseStatus: inProgress` + `rollout` (see [Expo `eas.json` Android submit](https://docs.expo.dev/eas/json/#android-specific-options-1)).
 
 **Android “Version code X has already been used”:** You’re submitting an **old** AAB (built before the latest `versionCode` in `app.json`). Fix: trigger a **new** production build (push to `main` or run `eas build --profile production --platform android` from the app dir), wait for it to finish, then submit **that** build. Don’t pick an older build from the list.
 
@@ -34,13 +37,16 @@ When prompted, choose the **new** build for each (not one already submitted). An
 | `pnpm run submit:all` | Customer (iOS + Android) then Provider (iOS + Android) |
 | `pnpm run submit:customer` | Customer app: iOS then Android |
 | `pnpm run submit:provider` | Provider app: iOS then Android |
-| `pnpm run submit:customer:ios` | Customer → TestFlight only |
-| `pnpm run submit:customer:android` | Customer → Play **production** track (draft; see `eas.json`) |
-| `pnpm run submit:provider:ios` | Provider → TestFlight only |
-| `pnpm run submit:provider:android` | Provider → Play **production** track (draft) |
-| `pnpm run submit:android:internal` | Both apps → Play **internal testing** track (draft) |
-| `pnpm run submit:customer:android:internal` | Customer → Play **internal** track only |
-| `pnpm run submit:provider:android:internal` | Provider → Play **internal** track only |
+| `pnpm run submit:customer:ios` | Customer → **App Store Connect / TestFlight** |
+| `pnpm run submit:customer:android` | Customer → Play **open testing** / **beta** track (`submit.production`; public beta when Open testing is on in Play Console) |
+| `pnpm run submit:provider:ios` | Provider → **App Store Connect / TestFlight** |
+| `pnpm run submit:provider:android` | Provider → Play **open testing** / **beta** track (`submit.production`) |
+| `pnpm run submit:customer:android:open` | Customer → same as `submit:customer:android` (`openTesting` profile; Android block matches `submit.production`) |
+| `pnpm run submit:provider:android:open` | Provider → same (`openTesting` profile) |
+| `pnpm run submit:android:open` | Both apps → Android open testing (beta track) |
+| `pnpm run submit:android:internal` | Both apps → Play **internal** testing (`submit.internal`) |
+| `pnpm run submit:customer:android:internal` | Customer → internal track only |
+| `pnpm run submit:provider:android:internal` | Provider → internal track only |
 
 ## How builds are triggered
 

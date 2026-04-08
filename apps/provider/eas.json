@@ -68,8 +68,8 @@
       },
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",
-        "track": "production",
-        "releaseStatus": "draft"
+        "track": "beta",
+        "releaseStatus": "completed"
       }
     },
     "openTesting": {
@@ -81,8 +81,7 @@
       "android": {
         "serviceAccountKeyPath": "./google-services-key.json",
         "track": "beta",
-        "releaseStatus": "completed",
-        "rolloutPercentage": 100
+        "releaseStatus": "completed"
       }
     },
     "internal": {
