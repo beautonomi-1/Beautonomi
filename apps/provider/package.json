@@ -65,7 +65,7 @@
     "expo-tracking-transparency": "~6.0.8",
     "expo-updates": "~29.0.16",
     "expo-web-browser": "~15.0.10",
-    "i18next": "^25.8.10",
+    "i18next": "^26.0.4",
     "nativewind": "^4.1.23",
     "onesignal-expo-plugin": "^2.0.4",
     "react": "19.1.0",
