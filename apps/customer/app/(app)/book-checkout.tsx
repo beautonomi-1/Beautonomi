@@ -1194,7 +1194,9 @@ export default function BookCheckoutScreen() {
               style: "destructive",
               onPress: async () => {
                 try {
-                  await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {});
+                  await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
+                    reason: "Reschedule - previous appointment replaced",
+                  });
                   haptic.success();
                 } catch {
                   // Still navigate to new booking

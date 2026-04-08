@@ -85,16 +85,19 @@ export async function GET(
 
     if (cErr) return handleApiError(cErr, "Failed to load comments");
 
+    let view_count = 0;
     const { data: viewRows, error: vErr } = await supabaseAdmin.rpc("get_explore_view_counts", {
       post_ids: [id],
     });
-    if (vErr) return handleApiError(vErr, "Failed to load view count");
-
-    const viewRow = Array.isArray(viewRows) ? viewRows[0] : null;
-    const view_count =
-      viewRow && typeof viewRow === "object" && "view_count" in viewRow
-        ? Number((viewRow as { view_count: unknown }).view_count) || 0
-        : 0;
+    if (vErr) {
+      console.warn("[admin explore/posts detail] get_explore_view_counts failed:", vErr.message);
+    } else {
+      const viewRow = Array.isArray(viewRows) ? viewRows[0] : null;
+      view_count =
+        viewRow && typeof viewRow === "object" && "view_count" in viewRow
+          ? Number((viewRow as { view_count: unknown }).view_count) || 0
+          : 0;
+    }
 
     return successResponse({
       post: postOut,

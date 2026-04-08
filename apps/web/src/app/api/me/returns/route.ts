@@ -200,7 +200,7 @@ export async function POST(request: NextRequest) {
         order_id: parsed.order_id,
         reason: parsed.reason,
       },
-      link: "/provider/ecommerce/returns",
+      link: `/provider/ecommerce/returns?return=${encodeURIComponent(returnReq.id)}`,
     });
 
     return successResponse({ return_request: returnReq }, 201);

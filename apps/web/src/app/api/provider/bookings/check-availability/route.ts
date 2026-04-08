@@ -44,6 +44,8 @@ export async function GET(request: NextRequest) {
     const durationMinutes = parseInt(sp.get("duration_minutes") || "60", 10);
     const staffIdsParam = sp.get("staff_ids");
     const locationId = sp.get("location_id");
+    /** When rescheduling, ignore the booking being edited so the slot does not conflict with itself. */
+    const excludeBookingId = sp.get("exclude_booking_id");
 
     if (!scheduledAt) {
       return handleApiError(new Error("scheduled_at is required"), "VALIDATION_ERROR", 400);
@@ -76,6 +78,10 @@ export async function GET(request: NextRequest) {
       .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", new Date(startTime.getTime() - durationMinutes * 60000).toISOString())
       .lte("scheduled_at", endTime.toISOString());
+
+    if (excludeBookingId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(excludeBookingId)) {
+      query = query.neq("id", excludeBookingId);
+    }
 
     if (locationId) {
       query = query.eq("location_id", locationId);

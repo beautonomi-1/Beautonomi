@@ -18,6 +18,7 @@ import {
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
+  getCustomerEtaUiParts,
 } from "@beautonomi/utils";
 
 function isCompleteArrivalOtpInput(raw: string): boolean {
@@ -58,12 +59,11 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
     loadEvents();
     loadAdditionalCharges();
     
-    // Poll for updates every 10 seconds
     const interval = setInterval(() => {
       loadBooking();
       loadEvents();
       loadAdditionalCharges();
-    }, 10000);
+    }, 15000);
 
     return () => clearInterval(interval);
   }, [bookingId, initialBooking]);
@@ -278,19 +278,20 @@ export default function OrderDetailsDynamic({ bookingId, booking: initialBooking
   const showETA = booking.location_type === "at_home" && 
     (booking.current_stage === "provider_on_way" || booking.provider_en_route_at) && 
     booking.estimated_arrival;
-  const estimatedArrivalDate = showETA ? new Date(booking.estimated_arrival!) : null;
+  const etaParts = showETA ? getCustomerEtaUiParts(booking.estimated_arrival ?? null) : { show: false, timeLabel: null as string | null, minutesLabel: "" };
 
   return (
     <div className="flex flex-col bg-white text-gray-900 p-4">
       <h2 className="text-xl font-semibold mb-4">Order #{booking.booking_number}</h2>
-      {showETA && estimatedArrivalDate && (
+      {showETA && etaParts.show && (
         <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
           <p className="font-medium text-blue-900">Provider en route</p>
           <p className="text-blue-800 mt-0.5">
-            Estimated arrival: {estimatedArrivalDate.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true })}
+            Estimated arrival: {etaParts.timeLabel}
             {" · "}
-            ~{Math.max(1, Math.ceil((estimatedArrivalDate.getTime() - Date.now()) / 60000))} min
+            {etaParts.minutesLabel}
           </p>
+          <p className="text-blue-700/90 mt-1 text-xs">We refresh this as your provider moves.</p>
         </div>
       )}
       <div className="flex space-x-4 mb-4 text-sm">

@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type RuleRow = { source: string; points: number; label?: string; display_order?: number; id?: string };
 
@@ -93,7 +94,7 @@ export function GamificationPointRulesPage() {
         description={
           <>
             Adjust points per activity source; changes are audited. Platform-wide backfill and per-provider tools live on{" "}
-            <Link className="text-gray-900 underline" to="/admin/gamification/operations">
+            <Link className="text-gray-900 underline" to={adminSpaTo("/admin/gamification/operations")}>
               Gamification ops
             </Link>
             .

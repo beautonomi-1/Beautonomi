@@ -8,6 +8,8 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { getProviderStaffIdForUser } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -27,7 +29,6 @@ export async function GET(
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
-    // For superadmin, allow viewing any staff member's permissions
     let providerId: string | null = null;
     if (user.role === "superadmin") {
       // Get provider_id from the staff member
@@ -43,6 +44,19 @@ export async function GET(
       providerId = await getProviderIdForUser(user.id, supabase);
       if (!providerId) {
         return notFoundResponse("Provider not found");
+      }
+    }
+
+    if (user.role !== "superadmin" && providerId) {
+      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      const canViewOthers =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canViewOthers && ownStaffId !== id) {
+        return errorResponse(
+          "You can only view your own permissions.",
+          "FORBIDDEN",
+          403,
+        );
       }
     }
 
@@ -140,11 +154,25 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    // Only provider owners and superadmins can update permissions
-    const { user } = await requireRoleInApi(["provider_owner", "superadmin"], request);
+    const { user } = await requireRoleInApi(
+      ["provider_owner", "provider_staff", "superadmin"],
+      request
+    );
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = patchSchema.parse(await request.json());
+
+    if (user.role !== "superadmin") {
+      const canEdit =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canEdit) {
+        return errorResponse(
+          "Only owners or users with Manage team can edit permissions.",
+          "FORBIDDEN",
+          403,
+        );
+      }
+    }
 
     // For superadmin, allow updating any staff member's permissions
     let providerId: string | null = null;

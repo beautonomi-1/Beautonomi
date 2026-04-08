@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type BroadcastEnvelope = {
   data: { broadcasts: Record<string, unknown>[]; meta: { page: number; limit: number; total: number; has_more: boolean } };
@@ -75,13 +76,13 @@ export function BroadcastHistoryPage() {
       <AdminPageHeader title="Broadcast history" description="GET /api/admin/broadcast/history" />
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <Link
-          to="/broadcast"
+          to={adminSpaTo("/admin/broadcast")}
           className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] transition hover:border-gray-300 hover:bg-gray-50"
         >
           ← Broadcast hub
         </Link>
         <Link
-          to="/broadcast/compose"
+          to={adminSpaTo("/admin/broadcast/compose")}
           className="inline-flex min-h-11 items-center font-medium text-gray-700 underline decoration-gray-300 underline-offset-2 hover:text-gray-900"
         >
           Compose broadcast

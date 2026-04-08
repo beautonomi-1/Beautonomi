@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetcher } from "@/lib/http/fetcher";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 import {
   Search,
   Plus,
@@ -20,12 +21,15 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 
 interface Product {
   id: string;
   name: string;
   brand: string | null;
   retail_price: number;
+  /** Percentage; matches `POST /api/provider/product-sales` line tax (percentOf on line subtotal). */
+  tax_rate: number;
   quantity: number;
   image_urls: string[];
   is_active: boolean;
@@ -34,6 +38,21 @@ interface Product {
 interface CartItem {
   product: Product;
   qty: number;
+}
+
+function walkInCartTotals(cart: CartItem[]) {
+  let subtotal = 0;
+  let taxAmount = 0;
+  for (const c of cart) {
+    const line = c.product.retail_price * c.qty;
+    subtotal += line;
+    taxAmount += percentOf(line, Number(c.product.tax_rate ?? 0));
+  }
+  return {
+    subtotal,
+    taxAmount,
+    grandTotal: sumMoney(subtotal, taxAmount),
+  };
 }
 
 interface WalkInOrder {
@@ -60,6 +79,7 @@ export default function WalkInSalePage() {
   const [error, setError] = useState("");
   const [recentSales, setRecentSales] = useState<WalkInOrder[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showYocoDialog, setShowYocoDialog] = useState(false);
 
   const [loadError, setLoadError] = useState("");
   const fetchProducts = useCallback(async () => {
@@ -68,7 +88,15 @@ export default function WalkInSalePage() {
     try {
       const res = await fetcher.get<{ data: { products: Product[] } }>("/api/provider/products?limit=200");
       if (res?.data?.products) {
-        setProducts(res.data.products.filter((p) => p.is_active && p.quantity > 0));
+        setProducts(
+          res.data.products
+            .filter((p) => p.is_active && p.quantity > 0)
+            .map((p) => ({
+              ...p,
+              retail_price: Number(p.retail_price),
+              tax_rate: Number((p as { tax_rate?: unknown }).tax_rate ?? 0),
+            })),
+        );
       }
     } catch (err: any) {
       console.error("Failed to load products:", err);
@@ -127,7 +155,38 @@ export default function WalkInSalePage() {
     setCart((prev) => prev.filter((c) => c.product.id !== productId));
   };
 
-  const total = cart.reduce((s, c) => s + c.product.retail_price * c.qty, 0);
+  const { subtotal, taxAmount, grandTotal } = useMemo(() => walkInCartTotals(cart), [cart]);
+
+  const submitWalkInOrder = async (paymentReference?: string) => {
+    const res = await fetcher.post<{
+      data: { order: { order_number: string } };
+      error?: string;
+    }>("/api/provider/product-sales", {
+      items: cart.map((c) => ({
+        product_id: c.product.id,
+        quantity: c.qty,
+      })),
+      payment_method: paymentMethod,
+      payment_reference: paymentReference,
+      customer_name: customerName || undefined,
+      customer_phone: customerPhone || undefined,
+    });
+
+    if (res?.data?.order) {
+      const serverTotal = parseFloat(String((res.data.order as { total_amount?: string }).total_amount ?? ""));
+      const fallback = walkInCartTotals(cart).grandTotal;
+      setSuccess({
+        orderNumber: res.data.order.order_number,
+        total: Number.isFinite(serverTotal) ? serverTotal : fallback,
+      });
+      setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      fetchProducts();
+    } else {
+      setError(res?.error ?? "Failed to process sale");
+    }
+  };
 
   const handleSale = async () => {
     if (cart.length === 0 || processing) return;
@@ -135,32 +194,28 @@ export default function WalkInSalePage() {
       setError("Enter a valid phone number or clear the phone field.");
       return;
     }
+    if (paymentMethod === "yoco") {
+      setError("");
+      setShowYocoDialog(true);
+      return;
+    }
+
     setProcessing(true);
     setError("");
-
     try {
-      const res = await fetcher.post<{
-        data: { order: { order_number: string } };
-        error?: string;
-      }>("/api/provider/product-sales", {
-        items: cart.map((c) => ({
-          product_id: c.product.id,
-          quantity: c.qty,
-        })),
-        payment_method: paymentMethod,
-        customer_name: customerName || undefined,
-        customer_phone: customerPhone || undefined,
-      });
+      await submitWalkInOrder();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    }
+    setProcessing(false);
+  };
 
-      if (res?.data?.order) {
-        setSuccess({ orderNumber: res.data.order.order_number, total });
-        setCart([]);
-        setCustomerName("");
-        setCustomerPhone("");
-        fetchProducts();
-      } else {
-        setError(res?.error ?? "Failed to process sale");
-      }
+  const handleYocoWalkInSuccess = async (payment: { yoco_payment_id: string }) => {
+    setShowYocoDialog(false);
+    setProcessing(true);
+    setError("");
+    try {
+      await submitWalkInOrder(payment.yoco_payment_id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     }
@@ -261,6 +316,7 @@ export default function WalkInSalePage() {
                       name: product.name ?? "Product",
                       brand: null,
                       retail_price: variant?.retail_price ?? product.retail_price ?? 0,
+                      tax_rate: Number((product as { tax_rate?: unknown }).tax_rate ?? 0),
                       quantity: variant?.quantity ?? product.quantity ?? 0,
                       image_urls: product.image_urls ?? [],
                       is_active: true,
@@ -444,10 +500,22 @@ export default function WalkInSalePage() {
 
                 {/* Total + confirm */}
                 <div className="border-t px-5 py-4">
-                  <div className="mb-4 flex items-center justify-between">
-                    <span className="text-lg font-semibold text-gray-900">Total</span>
+                  <div className="mb-3 space-y-1 text-sm text-gray-600">
+                    <div className="flex justify-between">
+                      <span>Subtotal (excl. tax)</span>
+                      <span className="font-medium text-gray-900">{formatMoney(subtotal)}</span>
+                    </div>
+                    {taxAmount > 0 && (
+                      <div className="flex justify-between">
+                        <span>Tax</span>
+                        <span className="font-medium text-gray-900">{formatMoney(taxAmount)}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mb-4 flex items-center justify-between border-t border-gray-100 pt-3">
+                    <span className="text-lg font-semibold text-gray-900">Total due</span>
                     <span className="text-2xl font-extrabold text-pink-600">
-                      {formatMoney(total)}
+                      {formatMoney(grandTotal)}
                     </span>
                   </div>
 
@@ -468,7 +536,7 @@ export default function WalkInSalePage() {
                         Processing...
                       </>
                     ) : (
-                      `Complete Sale — ${formatMoney(total)}`
+                      `Complete Sale — ${formatMoney(grandTotal)}`
                     )}
                   </button>
                 </div>
@@ -477,6 +545,15 @@ export default function WalkInSalePage() {
           </div>
         )}
       </div>
+
+      {showYocoDialog && (
+        <YocoPaymentDialog
+          open={showYocoDialog}
+          onOpenChange={setShowYocoDialog}
+          amount={grandTotal}
+          onSuccess={(p) => void handleYocoWalkInSuccess(p)}
+        />
+      )}
     </div>
   );
 }

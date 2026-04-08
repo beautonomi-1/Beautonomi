@@ -6,6 +6,9 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { publicEnv } from "@/config/publicEnv";
+import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -21,6 +24,46 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+
+/** Must match `MANAGEABLE_USER_ROLES` in apps/web `api/admin/users/[id]/role/route.ts`. */
+const MANAGEABLE_USER_ROLES = [
+  "customer",
+  "provider_owner",
+  "provider_staff",
+  "support_agent",
+  "admin_support",
+  "admin_finance",
+  "admin_trust",
+  "admin_content",
+  "admin_ecommerce",
+  "admin_marketing",
+  "admin_integrations",
+  "admin_operations",
+  "admin_platform_config",
+  "superadmin",
+] as const;
+
+type ManageableUserRole = (typeof MANAGEABLE_USER_ROLES)[number];
+
+type UserBookingRow = {
+  id: string;
+  status?: string;
+  service_name?: string;
+  provider_name?: string;
+  scheduled_at?: string;
+  total_amount?: number;
+  created_at?: string;
+};
+
+type WalletTxRow = {
+  id: string;
+  type?: string;
+  amount?: number;
+  description?: string | null;
+  reference_id?: string | null;
+  reference_type?: string | null;
+  created_at?: string;
+};
 
 type UserDetail = Record<string, unknown> & {
   stats?: Record<string, unknown>;
@@ -54,12 +97,37 @@ function formatSavedAddress(a: Record<string, unknown>): string {
 export function UserDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const qc = useQueryClient();
+  const { bootstrap } = useAdminSession();
+  const isSuperadmin = bootstrap?.isSuperadmin === true;
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
   const [suspendReason, setSuspendReason] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [impersonateReason, setImpersonateReason] = useState("");
+  const [roleDraft, setRoleDraft] = useState<ManageableUserRole | "">("");
+  const [exportErr, setExportErr] = useState<string | null>(null);
 
   const q = useQuery({
     queryKey: adminQueryKeys.userDetail(id),
     queryFn: () => adminApi.getJson<UserDetail>(`/api/admin/users/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
+    enabled: allowed && !!id,
+  });
+
+  const bookingsQ = useQuery({
+    queryKey: adminQueryKeys.userBookings(id),
+    queryFn: () =>
+      adminApi.getJson<UserBookingRow[]>(`/api/admin/users/${encodeURIComponent(id)}/bookings`, {
+        timeoutMs: 60_000,
+      }),
+    enabled: allowed && !!id,
+  });
+
+  const walletTxQ = useQuery({
+    queryKey: adminQueryKeys.userWalletTransactions(id),
+    queryFn: () =>
+      adminApi.getJson<WalletTxRow[]>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
+        timeoutMs: 60_000,
+      }),
     enabled: allowed && !!id,
   });
 
@@ -72,13 +140,55 @@ export function UserDetailPage() {
     },
   });
 
+  const passwordPut = useMutation({
+    mutationFn: (new_password: string) =>
+      adminApi.putJson<{ success?: boolean }>(`/api/admin/users/${encodeURIComponent(id)}/password`, {
+        new_password,
+      }),
+    onSuccess: () => {
+      setNewPassword("");
+      setConfirmPassword("");
+    },
+  });
+
+  const rolePut = useMutation({
+    mutationFn: (role: ManageableUserRole) =>
+      adminApi.putJson<Record<string, unknown>>(`/api/admin/users/${encodeURIComponent(id)}/role`, { role }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+    },
+  });
+
+  const impersonatePost = useMutation({
+    mutationFn: (reason: string) =>
+      adminApi.postJson<{ success?: boolean; url?: string }>(
+        `/api/admin/users/${encodeURIComponent(id)}/impersonate`,
+        { reason }
+      ),
+  });
+
   const data = q.data;
   const stats = data?.stats ?? {};
   const isSuspended = data?.deactivated_at != null && String(data.deactivated_at).length > 0;
+  const currentRole = str(data?.role);
 
   useEffect(() => {
     if (!isSuspended) setSuspendReason("");
   }, [isSuspended]);
+
+  useEffect(() => {
+    if (!data?.role) {
+      setRoleDraft("");
+      return;
+    }
+    const r = str(data.role);
+    if (MANAGEABLE_USER_ROLES.includes(r as ManageableUserRole)) {
+      setRoleDraft(r as ManageableUserRole);
+    } else {
+      setRoleDraft("");
+    }
+  }, [data?.role]);
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing user id" onRetry={() => {}} />;
@@ -139,7 +249,17 @@ export function UserDetailPage() {
         }
       />
 
-      <AdminMutationAlert errors={[patch.error instanceof Error ? patch.error : null]} />
+      <AdminMutationAlert
+        errors={[
+          patch.error instanceof Error ? patch.error : null,
+          passwordPut.error instanceof Error ? passwordPut.error : null,
+          rolePut.error instanceof Error ? rolePut.error : null,
+          impersonatePost.error instanceof Error ? impersonatePost.error : null,
+          bookingsQ.error instanceof Error ? bookingsQ.error : null,
+          walletTxQ.error instanceof Error ? walletTxQ.error : null,
+          exportErr ? new Error(exportErr) : null,
+        ]}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminPanel>
@@ -261,18 +381,246 @@ export function UserDetailPage() {
         )}
       </AdminPanel>
 
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Bookings</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Up to 100 bookings in the current tenant scope (customer or linked user id).
+        </p>
+        {bookingsQ.isLoading ? (
+          <p className="mt-4 text-sm text-gray-500">Loading bookings…</p>
+        ) : (bookingsQ.data ?? []).length === 0 ? (
+          <p className="mt-4 text-sm text-gray-500">No bookings found.</p>
+        ) : (
+          <AdminDataTable className="mt-4">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>When</AdminTh>
+                <AdminTh>Service</AdminTh>
+                <AdminTh>Provider</AdminTh>
+                <AdminTh>Status</AdminTh>
+                <AdminTh className="text-right">Total</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {(bookingsQ.data ?? []).map((b) => (
+                <tr key={str(b.id)}>
+                  <AdminTd>
+                    {b.scheduled_at ? new Date(String(b.scheduled_at)).toLocaleString() : "—"}
+                  </AdminTd>
+                  <AdminTd>{str(b.service_name)}</AdminTd>
+                  <AdminTd>{str(b.provider_name)}</AdminTd>
+                  <AdminTd>{str(b.status)}</AdminTd>
+                  <AdminTd className="text-right tabular-nums">
+                    <Link
+                      className="font-mono text-xs text-primary underline"
+                      to={adminSpaTo(`/admin/bookings/${encodeURIComponent(str(b.id))}`)}
+                    >
+                      {Number(b.total_amount ?? 0).toFixed(2)}
+                    </Link>
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        )}
+      </AdminPanel>
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Security & export</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Set a new password (Supabase Auth). User receives no email from this action.
+        </p>
+        <div className="mt-4 grid max-w-md gap-3">
+          <label className="block text-sm">
+            <span className="text-gray-600">New password (min 8 characters)</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-gray-600">Confirm password</span>
+            <input
+              type="password"
+              autoComplete="new-password"
+              className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+          </label>
+          <button
+            type="button"
+            className={`self-start ${adminToolbarButtonClass(passwordPut.isPending || patch.isPending)}`}
+            disabled={passwordPut.isPending || newPassword.length < 8 || newPassword !== confirmPassword}
+            onClick={() => {
+              void passwordPut.mutateAsync(newPassword);
+            }}
+          >
+            {passwordPut.isPending ? "Updating…" : "Update password"}
+          </button>
+        </div>
+        <div className="mt-8 border-t border-gray-100 pt-6">
+          <h3 className="text-sm font-semibold text-gray-900">Data export</h3>
+          <p className="mt-1 text-sm text-gray-600">Download CSV (profile fields and bookings in this tenant).</p>
+          <button
+            type="button"
+            className={`mt-3 ${adminToolbarButtonClass(false)}`}
+            onClick={() => {
+              setExportErr(null);
+              const safe = id.replace(/[^a-zA-Z0-9-]/g, "_").slice(0, 40);
+              void downloadAdminBlob(
+                `/api/admin/users/${encodeURIComponent(id)}/export`,
+                `user-${safe}-export.csv`
+              ).catch((e: unknown) => {
+                setExportErr(e instanceof Error ? e.message : "Export failed");
+              });
+            }}
+          >
+            Download CSV
+          </button>
+        </div>
+      </AdminPanel>
+
+      {isSuperadmin ? (
+        <AdminPanel>
+          <h2 className="text-lg font-semibold text-gray-900">Superadmin</h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Role changes and impersonation are audited. Impersonation is rate-limited per hour.
+          </p>
+          <div className="mt-4 grid gap-4 sm:max-w-md">
+            <label className="block text-sm">
+              <span className="text-gray-600">Platform role</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={roleDraft}
+                disabled={rolePut.isPending}
+                onChange={(e) => setRoleDraft(e.target.value as ManageableUserRole | "")}
+              >
+                {!MANAGEABLE_USER_ROLES.includes(currentRole as ManageableUserRole) ? (
+                  <option value="">Select new role…</option>
+                ) : null}
+                {MANAGEABLE_USER_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {r}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {currentRole && !MANAGEABLE_USER_ROLES.includes(currentRole as ManageableUserRole) ? (
+              <p className="text-xs text-amber-800">
+                Current role <span className="font-mono">{currentRole}</span> is not in the manageable list — choose a
+                replacement to save.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className={`self-start ${adminToolbarButtonClass(rolePut.isPending)}`}
+              disabled={rolePut.isPending || !roleDraft || roleDraft === (currentRole as ManageableUserRole)}
+              onClick={() => void rolePut.mutateAsync(roleDraft as ManageableUserRole)}
+            >
+              {rolePut.isPending ? "Saving role…" : "Save role"}
+            </button>
+          </div>
+          <div className="mt-8 border-t border-gray-100 pt-6">
+            <h3 className="text-sm font-semibold text-gray-900">Impersonate user</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Opens the main app auth callback as this user. For local dev, set{" "}
+              <code className="rounded bg-gray-100 px-1 text-xs">VITE_SITE_URL</code> to your Next.js origin (e.g.{" "}
+              <code className="rounded bg-gray-100 px-1 text-xs">http://localhost:3000</code>) so the redirect hits{" "}
+              <code className="rounded bg-gray-100 px-1 text-xs">/auth/callback</code>.
+            </p>
+            <label className="mt-3 block text-sm">
+              <span className="text-gray-600">Reason (required, min 3 characters)</span>
+              <input
+                className="mt-1 w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={impersonateReason}
+                onChange={(e) => setImpersonateReason(e.target.value)}
+                placeholder="Support ticket #…"
+              />
+            </label>
+            <button
+              type="button"
+              className={`mt-3 ${adminToolbarButtonClass(impersonatePost.isPending)}`}
+              disabled={impersonatePost.isPending || impersonateReason.trim().length < 3}
+              onClick={() => {
+                const reason = impersonateReason.trim();
+                void impersonatePost.mutateAsync(reason).then((res) => {
+                  const path = res?.url;
+                  if (!path || typeof path !== "string") return;
+                  const base = (publicEnv.siteUrl || publicEnv.appUrl || "").trim();
+                  let href: string;
+                  if (base) {
+                    try {
+                      href = new URL(path, base.endsWith("/") ? base : `${base}/`).toString();
+                    } catch {
+                      href = path;
+                    }
+                  } else {
+                    href = path;
+                  }
+                  window.location.assign(href);
+                });
+              }}
+            >
+              {impersonatePost.isPending ? "Starting…" : "Impersonate (redirect)"}
+            </button>
+          </div>
+        </AdminPanel>
+      ) : null}
+
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminPanel>
           <h2 className="text-lg font-semibold text-gray-900">Wallet</h2>
           {data.wallet ? (
-            <dl className="mt-4 text-sm">
-              <div>
-                <dt className="text-gray-500">Balance</dt>
-                <dd className="text-lg font-semibold tabular-nums">
-                  {str(data.wallet.currency)} {Number(data.wallet.balance ?? 0).toFixed(2)}
-                </dd>
-              </div>
-            </dl>
+            <>
+              <dl className="mt-4 text-sm">
+                <div>
+                  <dt className="text-gray-500">Balance</dt>
+                  <dd className="text-lg font-semibold tabular-nums">
+                    {str(data.wallet.currency)} {Number(data.wallet.balance ?? 0).toFixed(2)}
+                  </dd>
+                </div>
+              </dl>
+              <h3 className="mt-6 text-sm font-semibold text-gray-900">Recent transactions</h3>
+              {walletTxQ.isLoading ? (
+                <p className="mt-2 text-sm text-gray-500">Loading ledger…</p>
+              ) : (walletTxQ.data ?? []).length === 0 ? (
+                <p className="mt-2 text-sm text-gray-500">No wallet movements yet.</p>
+              ) : (
+                <AdminDataTable className="mt-3">
+                  <AdminTableHead>
+                    <tr>
+                      <AdminTh>When</AdminTh>
+                      <AdminTh>Type</AdminTh>
+                      <AdminTh className="text-right">Amount</AdminTh>
+                      <AdminTh>Reference</AdminTh>
+                      <AdminTh>Description</AdminTh>
+                    </tr>
+                  </AdminTableHead>
+                  <AdminTableBody>
+                    {(walletTxQ.data ?? []).map((tx) => (
+                      <tr key={str(tx.id)}>
+                        <AdminTd>
+                          {tx.created_at ? new Date(String(tx.created_at)).toLocaleString() : "—"}
+                        </AdminTd>
+                        <AdminTd className="capitalize">{str(tx.type)}</AdminTd>
+                        <AdminTd className="text-right tabular-nums">{Number(tx.amount ?? 0).toFixed(2)}</AdminTd>
+                        <AdminTd className="font-mono text-xs">
+                          {tx.reference_type ? `${str(tx.reference_type)} ` : ""}
+                          {tx.reference_id ? str(tx.reference_id).slice(0, 8) + "…" : "—"}
+                        </AdminTd>
+                        <AdminTd className="max-w-[220px] truncate">
+                          <span title={str(tx.description)}>{str(tx.description) || "—"}</span>
+                        </AdminTd>
+                      </tr>
+                    ))}
+                  </AdminTableBody>
+                </AdminDataTable>
+              )}
+            </>
           ) : (
             <p className="mt-2 text-sm text-gray-500">No wallet record.</p>
           )}

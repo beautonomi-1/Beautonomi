@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -33,6 +33,7 @@ import {
 } from "@/lib/format";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { api } from "@/lib/api-client";
 
 interface DashboardMetrics {
   revenue_today: number;
@@ -171,6 +172,10 @@ export default function SalesScreen() {
     method: PaymentMethod;
     date: string;
   } | null>(null);
+
+  const yocoPendingSaleIdRef = useRef<string | null>(null);
+  const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
+  const [showYocoPayment, setShowYocoPayment] = useState(false);
 
   const { isFocused } = useFocusedApi();
 
@@ -333,6 +338,8 @@ export default function SalesScreen() {
     setReceiptData(null);
     setCartTab("services");
     setSelectedStaffId(null);
+    yocoPendingSaleIdRef.current = null;
+    setYocoLinkedSaleId(null);
     setCheckoutStep("select_client");
   }
 
@@ -348,11 +355,8 @@ export default function SalesScreen() {
     setCheckoutStep("select_services");
   }
 
-  const [showYocoPayment, setShowYocoPayment] = useState(false);
-
-  async function completeSaleWithMethod(method: string, yocoReference?: string) {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const payload: Record<string, unknown> = {
+  function buildSalePayload(overrides: Record<string, unknown> = {}) {
+    return {
       customer_id: selectedClient?.customer_id ?? null,
       is_walk_in: isWalkIn,
       location_id: selectedLocationId || null,
@@ -369,18 +373,24 @@ export default function SalesScreen() {
       tax_rate: taxRate,
       tax_amount: taxAmount,
       tip_amount: tipAmount,
-      payment_method: method,
       total_amount: grandTotal,
-      payment_status: "completed",
+      ...overrides,
     };
-    if (yocoReference) {
-      payload.payment_reference = yocoReference;
-    }
+  }
+
+  async function completeSaleWithMethod(method: string) {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const payload = buildSalePayload({
+      payment_method: method,
+      payment_status: "completed",
+    });
     const { error } = await createSale(payload);
     if (error) {
       Alert.alert("Error", error);
       return;
     }
+    yocoPendingSaleIdRef.current = null;
+    setYocoLinkedSaleId(null);
     setReceiptData({
       total: grandTotal,
       items: [...cart],
@@ -395,10 +405,63 @@ export default function SalesScreen() {
 
   async function handleCompleteSale() {
     if (paymentMethod === "card") {
+      let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
+      if (!saleId) {
+        const { data, error } = await createSale(
+          buildSalePayload({
+            payment_method: "yoco",
+            payment_status: "pending",
+          }),
+        );
+        if (error) {
+          Alert.alert("Error", error);
+          return;
+        }
+        if (!data?.id) {
+          Alert.alert("Error", "Could not prepare card sale");
+          return;
+        }
+        saleId = data.id;
+        yocoPendingSaleIdRef.current = saleId;
+        setYocoLinkedSaleId(saleId);
+      }
       setShowYocoPayment(true);
       return;
     }
     await completeSaleWithMethod(paymentMethod);
+  }
+
+  async function finalizeYocoSale(result: { reference: string }) {
+    const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
+    if (!saleId || !result.reference) {
+      Alert.alert("Error", "Could not finalize card sale");
+      return;
+    }
+    const patch = await api.patch(`/api/provider/sales/${saleId}`, {
+      payment_status: "completed",
+      payment_provider: "yoco",
+      payment_provider_id: result.reference,
+    });
+    if (patch.error) {
+      Alert.alert(
+        "Update failed",
+        "Payment succeeded but the sale could not be marked complete. Check Sales for a pending entry.",
+      );
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    yocoPendingSaleIdRef.current = null;
+    setYocoLinkedSaleId(null);
+    setReceiptData({
+      total: grandTotal,
+      items: [...cart],
+      client: selectedClient?.full_name ?? "Walk-in",
+      method: "card",
+      date: new Date().toISOString(),
+    });
+    setCheckoutStep("receipt");
+    refreshSales();
+    refreshMetrics();
   }
 
   function handleDoneReceipt() {
@@ -972,10 +1035,9 @@ export default function SalesScreen() {
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(grandTotal * 100)}
         currency={tenantCurrency}
+        saleId={yocoLinkedSaleId ?? undefined}
         description={`POS Sale for ${selectedClient?.full_name ?? "Walk-in"}`}
-        onPaymentSuccess={async (result) => {
-          await completeSaleWithMethod("card", result.reference);
-        }}
+        onPaymentSuccess={(result) => finalizeYocoSale(result)}
       />
 
       <View style={{ height: 32 }} />

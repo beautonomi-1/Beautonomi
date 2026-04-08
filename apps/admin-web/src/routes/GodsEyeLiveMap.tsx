@@ -6,7 +6,7 @@ import { Activity } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { fetchMapboxPublicMapConfig } from "@/lib/fetchMapboxPublicMapConfig";
-import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminSpaAbsoluteUrl } from "@/lib/adminSpaPath";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 
 const POLL_MS = 10_000;
@@ -94,11 +94,15 @@ export function GodsEyeLiveMap() {
   const [mapboxStyleUrl, setMapboxStyleUrl] = useState<string | null>(null);
   const [privacyMode, setPrivacyMode] = useState(false);
 
+  const mapDataEnabled =
+    mapboxToken !== undefined && typeof mapboxToken === "string" && mapboxToken.length > 0;
+
   const mapQ = useQuery({
     queryKey: [...adminQueryKeys.godsEye(), "map-state"] as const,
     queryFn: () =>
       adminApi.getJson<MapState>("/api/admin/gods-eye/map-state?customer_markers_max=2500", { timeoutMs: 120_000 }),
     refetchInterval: POLL_MS,
+    enabled: mapDataEnabled,
   });
 
   const mapState = mapQ.data ?? null;
@@ -139,10 +143,25 @@ export function GodsEyeLiveMap() {
       style: mapboxStyleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
       center: DEFAULT_CENTER,
       zoom: DEFAULT_ZOOM,
+      attributionControl: true,
     });
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
     map.on("load", () => {
-      if (!cancelled) setMapReady(true);
+      if (cancelled) return;
+      // Flex/sidebar layouts often leave the canvas at 0×0 until after paint — resize after layout.
+      const bump = () => {
+        try {
+          map.resize();
+        } catch {
+          /* ignore */
+        }
+      };
+      bump();
+      requestAnimationFrame(() => {
+        bump();
+        requestAnimationFrame(bump);
+      });
+      setMapReady(true);
     });
     mapRef.current = map;
 
@@ -156,9 +175,36 @@ export function GodsEyeLiveMap() {
     };
   }, [mapboxToken, mapboxStyleUrl]);
 
+  /** Keep the canvas sized when the shell layout (sidebar, devtools, etc.) changes. */
+  useEffect(() => {
+    if (!mapReady) return;
+    const map = mapRef.current;
+    const el = containerRef.current;
+    if (!map || !el) return;
+
+    const bump = () => {
+      try {
+        map.resize();
+      } catch {
+        /* ignore */
+      }
+    };
+    bump();
+
+    const ro = new ResizeObserver(() => bump());
+    ro.observe(el);
+
+    window.addEventListener("resize", bump);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", bump);
+    };
+  }, [mapReady]);
+
   const renderLayers = useCallback(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !mapState) return;
+    if (!map.isStyleLoaded()) return;
 
     const pos = (lat: number, lng: number) => toMapPosition(lat, lng, privacyMode);
 
@@ -313,7 +359,7 @@ export function GodsEyeLiveMap() {
         const name = String(props.display_name ?? "Customer");
         const city = props.city ? String(props.city) : "";
         const src = props.source === "saved_address" ? "Saved address" : "Last booking location";
-        const profileHref = `/admin/${adminSpaTo(`/admin/users/${uid}`)}`;
+        const profileHref = adminSpaAbsoluteUrl(`/admin/users/${uid}`);
         const html = `
           <div style="font-size:13px;max-width:260px">
             <div style="font-weight:600;margin-bottom:4px">${escapeHtml(name)}</div>
@@ -327,7 +373,7 @@ export function GodsEyeLiveMap() {
       if (props.kind === "provider") {
         const name = String(props.name ?? "Provider");
         const pid = String(props.id ?? "");
-        const href = `/admin/${adminSpaTo(`/admin/providers/${pid}`)}`;
+        const href = adminSpaAbsoluteUrl(`/admin/providers/${pid}`);
         const html = `
           <div style="font-size:13px;max-width:220px">
             <div style="font-weight:600">${escapeHtml(name)}</div>

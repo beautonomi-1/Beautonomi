@@ -1,5 +1,6 @@
 /**
- * In-SPA targets for global search (prefer SPA when route exists).
+ * In-SPA targets for global search (`BrowserRouter` basename `/admin`).
+ * Leading `/` required so links are not resolved relative to the current route.
  */
 export function adminSearchResultSpaPath(kind: "user" | "booking" | "provider", id: string): string {
   switch (kind) {

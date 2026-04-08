@@ -135,7 +135,7 @@ export async function GET(request: NextRequest) {
               title: "New Product Order",
               message: `New product order ${po.order_number} received — ${fmtPo(amountMajor)}.`,
               data: { product_order_id: productOrderId, amount: amountMajor },
-              action_url: `/provider/ecommerce/orders`,
+              action_url: `/provider/ecommerce/orders?order=${encodeURIComponent(productOrderId)}`,
             });
           }
         }

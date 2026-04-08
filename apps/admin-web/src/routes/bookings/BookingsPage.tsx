@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface BookingListRow {
   id: string;
@@ -352,7 +353,7 @@ export function BookingsPage() {
                     ) : null}
                   </div>
                   <Link
-                    to={`/bookings/${b.id}`}
+                    to={adminSpaTo(`/admin/bookings/${encodeURIComponent(b.id)}`)}
                     className="shrink-0 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
                   >
                     View

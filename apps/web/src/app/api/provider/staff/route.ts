@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 import { checkStaffManagementFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { checkStaffLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
 import { z } from "zod";
@@ -78,6 +79,8 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     
     const isFreelancer = providerData?.business_type === 'freelancer';
+
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
     
     // If location_id is provided, first get staff IDs assigned to that location
     let staffIds: string[] | null = null;
@@ -257,7 +260,7 @@ export async function GET(request: NextRequest) {
         location_city: sl.location_city ?? sl.location?.city ?? null,
         is_primary: sl.is_primary ?? false,
       }));
-      return {
+      const row = {
         id: member.id,
         name: member.name || member.users?.full_name || "Staff Member",
         email: member.email || member.users?.email || "",
@@ -272,6 +275,13 @@ export async function GET(request: NextRequest) {
         service_ids: member.service_ids ?? [],
         working_hours: member.working_hours ?? null,
       };
+      const redacted = redactStaffRowForViewer(
+        { ...row, user_id: member.user_id ?? null },
+        user.id,
+        rosterDetailLevel,
+      );
+      const { user_id: _uid, ...safe } = redacted;
+      return safe;
       },
     );
 

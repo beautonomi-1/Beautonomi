@@ -14,6 +14,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { NAV_GROUPS } from "@/config/nav";
 import { cn } from "@/lib/cn";
 import { adminSearchResultSpaPath } from "@/lib/adminSearchSpaPaths";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 
 export function AdminChrome() {
@@ -24,6 +25,7 @@ export function AdminChrome() {
     canAccess,
     canUseGlobalSearch,
     sectionPermissionsError,
+    isSectionPermissionsPending,
     refetchSectionPermissions,
   } = useAdminSession();
   const navigate = useNavigate();
@@ -193,8 +195,8 @@ export function AdminChrome() {
   const activityItems = activityData?.activities ?? [];
   const activityUnread = activityData?.total_unread ?? 0;
 
-  /** `/admin/foo/bar?x=1` → React Router path under `/admin` */
-  const activityLinkTo = (href: string) => href.replace(/^\/admin\/?/, "") || ".";
+  /** `/admin/foo/bar?x=1` → root-absolute path under the admin basename (leading `/`). */
+  const activityLinkTo = (href: string) => adminSpaTo(href);
 
   return (
     <div className="flex min-h-screen bg-gray-50">
@@ -220,7 +222,7 @@ export function AdminChrome() {
                   return (
                     <li key={item.href}>
                       <NavLink
-                        to={item.href.replace(/^\/admin\/?/, "")}
+                        to={adminSpaTo(item.href)}
                         className={({ isActive }) =>
                           cn(
                             "flex min-h-11 items-center justify-between rounded-xl border border-transparent px-3 py-2.5 text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
@@ -455,7 +457,7 @@ export function AdminChrome() {
               ) : (
                 <ul className="space-y-1">
                   {activityItems.slice(0, 12).map((a) => {
-                    const to = a.link ? activityLinkTo(a.link) : "dashboard";
+                    const to = a.link ? activityLinkTo(a.link) : "/dashboard";
                     const primary = a.title ?? "Update";
                     const body = a.message ?? a.id;
                     return (
@@ -487,9 +489,10 @@ export function AdminChrome() {
             <button
               type="button"
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-gray-600 hover:bg-gray-100 touch-manipulation"
-              onClick={async () => {
-                await signOut();
-                navigate("/login");
+              onClick={() => {
+                qc.removeQueries({ queryKey: adminQueryKeys.root });
+                navigate(adminSpaTo("/admin/login"), { replace: true });
+                void signOut();
               }}
               aria-label="Sign out"
             >
@@ -517,15 +520,22 @@ export function AdminChrome() {
 
         <main className="flex-1 p-4 md:p-6">
           <div className="mx-auto max-w-[1600px]">
-            <Suspense
-              fallback={
-                <div className="space-y-4" aria-busy="true" aria-label="Loading page">
-                  <AdminPageSkeleton rows={8} />
-                </div>
-              }
-            >
-              <Outlet />
-            </Suspense>
+            {isSectionPermissionsPending ? (
+              <div className="space-y-4" aria-busy="true" aria-label="Loading permissions">
+                <AdminPageSkeleton rows={8} />
+                <p className="text-center text-sm text-gray-500">Loading team permissions…</p>
+              </div>
+            ) : (
+              <Suspense
+                fallback={
+                  <div className="space-y-4" aria-busy="true" aria-label="Loading page">
+                    <AdminPageSkeleton rows={8} />
+                  </div>
+                }
+              >
+                <Outlet />
+              </Suspense>
+            )}
           </div>
         </main>
       </div>

@@ -19,6 +19,10 @@ import { twStyle } from "@/lib/twStyle";
 interface PermissionsResponse {
   permissions: Record<string, boolean>;
 }
+interface TeamAccessPayload {
+  staff_id: string | null;
+  can_manage_team: boolean;
+}
 
 /** All permissions grouped by category to match web. Order and keys align with backend StaffPermissions. */
 const PERMISSION_CATEGORIES: {
@@ -102,6 +106,15 @@ const ALL_PERMISSION_IDS = PERMISSION_CATEGORIES.flatMap((c) =>
 export default function StaffPermissionEditScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [local, setLocal] = useState<Record<string, boolean>>({});
+  const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const canManageTeam = access?.can_manage_team === true;
+  const isSelf = Boolean(id && access?.staff_id === id);
+  const canEdit = canManageTeam;
+  const readOnlyReason = !canEdit && isSelf
+    ? "You can view your permissions here, but only owners/managers with Manage team can change them."
+    : !canEdit
+      ? "You do not have permission to edit this staff member's permissions."
+      : null;
   const { data, loading, error, refresh } = useApi<PermissionsResponse>(
     id ? `/api/provider/staff/${id}/permissions` : "",
     { enabled: !!id }
@@ -121,6 +134,10 @@ export default function StaffPermissionEditScreen() {
 
   const handleSave = useCallback(async () => {
     if (!id) return;
+    if (!canEdit) {
+      Alert.alert("Read only", readOnlyReason ?? "You do not have permission to edit permissions.");
+      return;
+    }
     const { error } = await updatePerms(
       `/api/provider/staff/${id}/permissions`,
       { permissions: local }
@@ -131,7 +148,7 @@ export default function StaffPermissionEditScreen() {
     }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await refresh();
-  }, [id, local, updatePerms, refresh]);
+  }, [id, local, updatePerms, refresh, canEdit, readOnlyReason]);
 
   function setPermission(key: string, value: boolean) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -203,17 +220,22 @@ export default function StaffPermissionEditScreen() {
                     onValueChange={(v) => setPermission(perm.id, v)}
                     trackColor={{ false: "#d1d5db", true: "#6366f1" }}
                     thumbColor="#fff"
+                    disabled={!canEdit}
                   />
                 </View>
               ))}
             </View>
           </View>
         ))}
+        {readOnlyReason ? (
+          <Text style={twStyle("mb-3 text-xs text-gray-500")}>{readOnlyReason}</Text>
+        ) : null}
         <ActionButton
-          label="Save permissions"
+          label={canEdit ? "Save permissions" : "Permissions are read only"}
           onPress={handleSave}
           loading={saving}
           fullWidth
+          disabled={!canEdit}
         />
       </ScrollView>
     </ScreenContainer>

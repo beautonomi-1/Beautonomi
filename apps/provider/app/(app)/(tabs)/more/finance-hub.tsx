@@ -51,6 +51,7 @@ export default function FinanceHubScreen() {
   const total = earnings?.total_earnings ?? 0;
   const pending = earnings?.pending_payouts ?? 0;
   const available = earnings?.available_balance ?? 0;
+  const thisMonth = earnings?.this_month;
   const currency = getTenantDefaultCurrency();
 
   return (
@@ -67,6 +68,11 @@ export default function FinanceHubScreen() {
           <Text style={{ marginTop: 4, fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
             {currency} {typeof total === "number" ? total.toLocaleString() : "—"}
           </Text>
+          {typeof thisMonth === "number" && thisMonth > 0 && (
+            <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>
+              This month: {currency} {thisMonth.toLocaleString()}
+            </Text>
+          )}
           {(pending > 0 || available > 0) && (
             <View style={{ marginTop: 8 }}>
               {available > 0 && <Text style={{ fontSize: 14, color: "#15803d" }}>Available: {currency} {available.toLocaleString()}</Text>}
@@ -80,10 +86,7 @@ export default function FinanceHubScreen() {
           <TouchableOpacity
             onPress={() => {
               hapticLight();
-              router.push({
-                pathname: "/(app)/(tabs)/more/portal",
-                params: { path: encodeURIComponent("/provider/payouts"), title: "Payouts" },
-              } as never);
+              router.push("/(app)/(tabs)/more/payouts" as never);
             }}
             style={{
               flex: 1,
@@ -97,19 +100,16 @@ export default function FinanceHubScreen() {
             }}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Open payouts in browser"
+            accessibilityLabel="Payouts"
           >
             <Ionicons name="cash-outline" size={22} color={Colors.primary} />
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Payouts</Text>
-            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Web</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>In app</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
               hapticLight();
-              router.push({
-                pathname: "/(app)/(tabs)/more/portal",
-                params: { path: encodeURIComponent("/provider/team/payroll"), title: "Payroll" },
-              } as never);
+              router.push("/(app)/(tabs)/more/payroll" as never);
             }}
             style={{
               flex: 1,
@@ -123,11 +123,11 @@ export default function FinanceHubScreen() {
             }}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="Open payroll in browser"
+            accessibilityLabel="Payroll"
           >
             <Ionicons name="people-outline" size={22} color={Colors.primary} />
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Payroll</Text>
-            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>Web</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>In app</Text>
           </TouchableOpacity>
         </View>
 

@@ -15,6 +15,7 @@ import { adminSpaTo } from "@/lib/adminSpaPath";
 import { publicEnv } from "@/config/publicEnv";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 
 const BUCKET = "explore-posts";
 
@@ -52,10 +53,12 @@ export function ExplorePostDetailPage() {
       adminApi.patchJson(`/api/admin/explore/posts/${encodeURIComponent(id)}`, body),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostDetail(id) });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePosts("") });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostsAll() });
       setShowHideModal(false);
       setHideReason("");
+      adminToast.success("Post updated");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const deleteCommentMutation = useMutation({
@@ -63,8 +66,10 @@ export function ExplorePostDetailPage() {
       adminApi.deleteJson(`/api/admin/explore/comments/${encodeURIComponent(commentId)}`),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostDetail(id) });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePosts("") });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostsAll() });
+      adminToast.success("Comment removed");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   if (denied) return denied;
@@ -102,7 +107,11 @@ export function ExplorePostDetailPage() {
   const comments = bundle?.comments ?? [];
   const viewCount = bundle?.view_count ?? 0;
   const mediaUrls = (post.media_urls as string[]) ?? [];
-  const providers = post.providers as { id?: string; business_name?: string; slug?: string } | undefined;
+  const providersRaw = post.providers as
+    | { id?: string; business_name?: string; slug?: string }
+    | { id?: string; business_name?: string; slug?: string }[]
+    | undefined;
+  const providers = Array.isArray(providersRaw) ? providersRaw[0] : providersRaw;
   const isHidden = Boolean(post.is_hidden);
 
   return (
@@ -231,7 +240,11 @@ export function ExplorePostDetailPage() {
           ) : (
             comments.map((c) => {
               const cid = String(c.id ?? "");
-              const u = c.users as { email?: string; full_name?: string | null } | null;
+              const uRaw = c.users as
+                | { email?: string; full_name?: string | null }
+                | { email?: string; full_name?: string | null }[]
+                | null;
+              const u = Array.isArray(uRaw) ? uRaw[0] : uRaw;
               return (
                 <li key={cid} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-start sm:justify-between">
                   <div>

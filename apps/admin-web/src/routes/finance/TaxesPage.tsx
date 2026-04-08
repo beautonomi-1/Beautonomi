@@ -4,6 +4,8 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -16,6 +18,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 type TaxesPayload = {
   tax_rates: Record<string, unknown>[];
@@ -25,6 +28,7 @@ type TaxesPayload = {
 
 export function TaxesPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  useAdminDocumentTitle("Taxes");
 
   const q = useQuery({
     queryKey: adminQueryKeys.taxes(),
@@ -45,7 +49,14 @@ export function TaxesPage() {
   }
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Taxes" description="GET /api/admin/taxes" />
+        <AdminPanel>
+          <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+        </AdminPanel>
+      </div>
+    );
   }
 
   const rates = q.data?.tax_rates ?? [];
@@ -54,6 +65,18 @@ export function TaxesPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Taxes" description="GET /api/admin/taxes" />
+      <AdminPanel>
+        <div className="flex justify-end">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(q.isFetching)}
+            disabled={q.isFetching}
+            onClick={() => void q.refetch()}
+          >
+            Refresh
+          </button>
+        </div>
+      </AdminPanel>
       {stats ? (
         <AdminPanel>
           <h2 className="mb-2 text-sm font-semibold text-gray-900">Statistics</h2>
@@ -67,6 +90,9 @@ export function TaxesPage() {
           </dl>
         </AdminPanel>
       ) : null}
+      {rates.length === 0 ? (
+        <EmptyState title="No tax rates" description="Rates will appear here when configured for this tenant." />
+      ) : (
       <AdminDataTable>
         <AdminTableHead>
           <tr>
@@ -85,6 +111,7 @@ export function TaxesPage() {
           ))}
         </AdminTableBody>
       </AdminDataTable>
+      )}
     </div>
   );
 }

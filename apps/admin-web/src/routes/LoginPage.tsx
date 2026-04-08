@@ -14,6 +14,8 @@ import {
   verifyMfaTotp,
   refreshMfaChallenge,
 } from "@/lib/adminMfaLogin";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 
 /** SPA-internal path only (no scheme/host); rejects traversal. */
 function safeAdminNextParam(raw: string): string {
@@ -52,6 +54,7 @@ export function LoginPage() {
   const [params] = useSearchParams();
   const qc = useQueryClient();
   const { bootstrap, isLoading: sessionLoading, isError, errorStatus } = useAdminSession();
+  useAdminDocumentTitle("Sign in");
 
   const fromState = (location.state as { from?: string } | null)?.from;
   const rawNext = params.get("next") || fromState || "";
@@ -73,7 +76,7 @@ export function LoginPage() {
   }, []);
 
   if (!sessionLoading && bootstrap && !isError) {
-    return <Navigate to={`/${safeNext}`.replace(/\/+/g, "/")} replace />;
+    return <Navigate to={adminSpaTo(`/admin/${safeNext}`)} replace />;
   }
 
   async function completeLoginAfterSession() {
@@ -88,7 +91,7 @@ export function LoginPage() {
         return;
       }
       await qc.invalidateQueries({ queryKey: adminQueryKeys.root });
-      navigate(`/${safeNext}`.replace(/\/+/g, "/"), { replace: true });
+      navigate(adminSpaTo(`/admin/${safeNext}`), { replace: true });
     } catch (e) {
       setFormError(e instanceof Error ? e.message : "Could not load admin session.");
       const supabase = getSupabaseBrowserClient();

@@ -6,6 +6,8 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -76,7 +78,14 @@ export function BillingPage() {
   }
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Billing" description="GET /api/admin/invoices" />
+        <AdminPanel>
+          <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+        </AdminPanel>
+      </div>
+    );
   }
 
   const totalPages = q.data?.total_pages ?? 1;
@@ -85,26 +94,36 @@ export function BillingPage() {
     <div className="space-y-6">
       <AdminPageHeader title="Billing" description="GET /api/admin/invoices" />
       <AdminPanel>
-        <label className="text-sm text-gray-600">
-          Status filter{" "}
-          <select
-            className="ml-2 rounded border border-gray-300 px-2 py-1 text-sm"
-            value={status}
-            onChange={(e) => {
-              const n = new URLSearchParams(sp);
-              if (e.target.value) n.set("status", e.target.value);
-              else n.delete("status");
-              n.set("page", "1");
-              setSp(n, { replace: true });
-            }}
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <label className="text-sm text-gray-600">
+            Status filter{" "}
+            <select
+              className="ml-2 rounded border border-gray-300 px-2 py-1 text-sm"
+              value={status}
+              onChange={(e) => {
+                const n = new URLSearchParams(sp);
+                if (e.target.value) n.set("status", e.target.value);
+                else n.delete("status");
+                n.set("page", "1");
+                setSp(n, { replace: true });
+              }}
+            >
+              <option value="">All</option>
+              <option value="draft">draft</option>
+              <option value="sent">sent</option>
+              <option value="paid">paid</option>
+              <option value="overdue">overdue</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className={adminToolbarButtonClass(q.isFetching)}
+            disabled={q.isFetching}
+            onClick={() => void q.refetch()}
           >
-            <option value="">All</option>
-            <option value="draft">draft</option>
-            <option value="sent">sent</option>
-            <option value="paid">paid</option>
-            <option value="overdue">overdue</option>
-          </select>
-        </label>
+            Refresh
+          </button>
+        </div>
       </AdminPanel>
       {rows.length === 0 ? (
         <EmptyState title="No invoices" />
@@ -131,10 +150,10 @@ export function BillingPage() {
         </AdminDataTable>
       )}
       {totalPages > 1 ? (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            className={adminToolbarButtonClass(page <= 1)}
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
           >
@@ -142,7 +161,7 @@ export function BillingPage() {
           </button>
           <button
             type="button"
-            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            className={adminToolbarButtonClass(page >= totalPages)}
             disabled={page >= totalPages}
             onClick={() => setPage(page + 1)}
           >

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Parity checker – compares web inventory screen_ids vs mobile implemented screens.
+ * Parity checker:
+ * - Customer app: `screen_id` → expected route file under `apps/customer/app`.
+ * - Provider app: minimal core file smoke list under `apps/provider/app`.
  * Usage: pnpm parity:check
  */
 import fs from "fs";
@@ -20,11 +22,13 @@ const MOBILE_ROUTE_MAP = {
   search: "(app)/(tabs)/search.tsx",
   partner_profile: "(app)/partner-profile.tsx",
   partner_gallery: "(app)/partner-profile.tsx",
-  book: "(app)/book.tsx",
+  /** Nested stack: `(app)/book/index.tsx`, `book/l/[linkSlug]`, `book/continue` (see `(app)/book/_layout.tsx`). */
+  book: "(app)/book/index.tsx",
   book_continue: "(app)/book-checkout.tsx",
   bookings: "(app)/(tabs)/bookings.tsx",
   booking_detail: "(app)/booking-detail.tsx",
-  booking_reschedule: "(app)/book.tsx",
+  /** Resume / reschedule entry (`reschedule_booking_id` on `book/continue` — see `(app)/_layout.tsx`). */
+  booking_reschedule: "(app)/book/continue.tsx",
   booking_review: "(app)/review-write.tsx",
   chats: "(app)/(tabs)/chats.tsx",
   profile: "(app)/(tabs)/profile.tsx",
@@ -51,6 +55,23 @@ const MOBILE_ROUTE_MAP = {
 function fileExists(relPath) {
   const fullPath = path.join(CUSTOMER_APP, relPath);
   return fs.existsSync(fullPath);
+}
+
+const PROVIDER_APP = path.join(ROOT, "apps/provider/app");
+
+/** Minimal provider-app smoke paths (tabs + auth) — extend when formalizing provider↔web parity. */
+const PROVIDER_ROUTE_FILES = [
+  "(app)/(tabs)/dashboard.tsx",
+  "(app)/(tabs)/calendar.tsx",
+  "(app)/(tabs)/more/index.tsx",
+  "(app)/(tabs)/more/bookings/index.tsx",
+  "(app)/(tabs)/more/finance-hub.tsx",
+  "(app)/(tabs)/more/settings/yoco-devices.tsx",
+  "(auth)/login.tsx",
+];
+
+function fileExistsUnder(root, relPath) {
+  return fs.existsSync(path.join(root, relPath));
 }
 
 function main() {
@@ -86,6 +107,16 @@ function main() {
   } else {
     console.log("All contract screens have mobile implementations.");
   }
+
+  console.log("\n=== Provider app core files ===\n");
+  const providerMissing = PROVIDER_ROUTE_FILES.filter((f) => !fileExistsUnder(PROVIDER_APP, f));
+  if (providerMissing.length > 0) {
+    console.log("Missing provider routes:");
+    providerMissing.forEach((f) => console.log("  -", f));
+    console.log("");
+    process.exit(1);
+  }
+  console.log("Provider core:", PROVIDER_ROUTE_FILES.length, "files OK.");
 }
 
 main();

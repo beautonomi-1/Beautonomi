@@ -759,6 +759,7 @@ interface DroppableTimeSlotProps {
   staffId: string;
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function DroppableTimeSlot({
@@ -767,6 +768,7 @@ export function DroppableTimeSlot({
   staffId,
   children,
   className,
+  style,
 }: DroppableTimeSlotProps) {
   const { isDragging, updateDropTarget, dropTarget, validationState, snapTime } = useDragDrop();
   const [_isOver, setIsOver] = useState(false);
@@ -835,6 +837,7 @@ export function DroppableTimeSlot({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={style}
       className={cn(
         "transition-colors relative",
         isDragging && "bg-gray-50",

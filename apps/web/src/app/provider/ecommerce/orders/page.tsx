@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
+import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
@@ -62,8 +64,13 @@ const STATUS_BADGE: Record<string, "default" | "destructive" | "outline" | "seco
 };
 
 export default function ProviderProductOrdersPage() {
+  const searchParams = useSearchParams();
+  const focusOrderId = searchParams.get("order")?.trim() ?? "";
+  const highlightRef = useRef<HTMLDivElement | null>(null);
+
   const { format: formatMoney } = useProviderMoneyFormat();
   const [orders, setOrders] = useState<ProductOrder[]>([]);
+  const [prefetchedFocusOrder, setPrefetchedFocusOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -99,6 +106,45 @@ export default function ProviderProductOrdersPage() {
     const id = setTimeout(() => fetchOrders(), 0);
     return () => clearTimeout(id);
   }, [fetchOrders]);
+
+  useEffect(() => {
+    if (!focusOrderId) {
+      setPrefetchedFocusOrder(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await fetcher.get(`/api/provider/product-orders/${focusOrderId}`)) as {
+          data?: { order?: ProductOrder };
+        };
+        const ord = res?.data?.order;
+        if (!cancelled && ord) setPrefetchedFocusOrder(ord);
+        else if (!cancelled) setPrefetchedFocusOrder(null);
+      } catch {
+        if (!cancelled) setPrefetchedFocusOrder(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [focusOrderId]);
+
+  const displayOrders = useMemo(() => {
+    if (!prefetchedFocusOrder) return orders;
+    if (orders.some((o) => o.id === prefetchedFocusOrder.id)) return orders;
+    return [prefetchedFocusOrder, ...orders];
+  }, [orders, prefetchedFocusOrder]);
+
+  useEffect(() => {
+    if (!focusOrderId || loading) return;
+    const found = displayOrders.some((o) => o.id === focusOrderId);
+    if (!found) return;
+    const id = window.requestAnimationFrame(() => {
+      highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [focusOrderId, loading, displayOrders]);
 
   const handleStatusUpdate = async (orderId: string, newStatus: string) => {
     if (newStatus === "shipped") {
@@ -159,17 +205,26 @@ export default function ProviderProductOrdersPage() {
       <div className="bg-white rounded-xl border overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-gray-500">Loading...</div>
-        ) : orders.length === 0 ? (
+        ) : displayOrders.length === 0 ? (
           <div className="p-12 text-center">
             <ShoppingBag className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500">No orders found</p>
           </div>
         ) : (
           <div className="divide-y">
-            {orders.map((o) => {
+            {displayOrders.map((o) => {
               const actions = STATUS_ACTIONS[o.status] ?? [];
+              const isFocus = Boolean(focusOrderId && o.id === focusOrderId);
               return (
-                <div key={o.id} className="p-4 sm:p-5 hover:bg-gray-50 transition-colors">
+                <div
+                  key={o.id}
+                  ref={isFocus ? highlightRef : undefined}
+                  id={isFocus ? "provider-order-focus" : undefined}
+                  className={cn(
+                    "p-4 sm:p-5 hover:bg-gray-50 transition-colors rounded-xl",
+                    isFocus && "ring-2 ring-pink-500 ring-offset-2 bg-pink-50/30",
+                  )}
+                >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-2 mb-2">

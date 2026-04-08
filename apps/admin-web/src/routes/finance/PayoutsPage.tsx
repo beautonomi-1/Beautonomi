@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass, adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -16,6 +17,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { adminToast } from "@/lib/adminToast";
 
 type PayoutRow = Record<string, unknown> & {
   id?: string;
@@ -34,6 +36,7 @@ type ModalState = { kind: "reject" | "mark_failed"; id: string } | null;
 
 export function PayoutsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  useAdminDocumentTitle("Payouts");
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
@@ -62,7 +65,11 @@ export function PayoutsPage() {
 
   const approveMut = useMutation({
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/approve`, { notes: "" }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Payout approved");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const rejectMut = useMutation({
@@ -72,12 +79,18 @@ export function PayoutsPage() {
       invalidate();
       setModal(null);
       setReason("");
+      adminToast.success("Payout rejected");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const markPaidMut = useMutation({
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/mark-paid`, {}),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Marked as paid");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const markFailedMut = useMutation({
@@ -87,12 +100,18 @@ export function PayoutsPage() {
       invalidate();
       setModal(null);
       setReason("");
+      adminToast.success("Payout marked failed");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const transferMut = useMutation({
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/initiate-transfer`, {}),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Transfer initiated");
+    },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   function setStatus(next: string) {
@@ -250,8 +269,26 @@ export function PayoutsPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Payouts"
-        description="GET /api/admin/payouts · POST …/approve, /reject, /mark-paid, /mark-failed, /initiate-transfer"
+        description="Provider withdrawal queue for this market. Balances are validated when the provider requests a payout; marking paid records the finance ledger so their available balance stays accurate."
       />
+      <AdminPanel>
+        <h3 className="text-sm font-semibold text-gray-900 mb-2">How actions work</h3>
+        <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
+          <li>
+            <strong>Approve</strong> moves a request to processing so finance can pay out (notifies the provider).
+          </li>
+          <li>
+            <strong>Transfer</strong> sends the Paystack transfer when the recipient is set up (use when you pay via Paystack).
+          </li>
+          <li>
+            <strong>Mark paid</strong> use when money has actually left the platform (bank / Paystack settled). This writes the
+            payout to the finance ledger and is idempotent.
+          </li>
+          <li>
+            <strong>Reject / Mark failed</strong> frees the provider&apos;s balance for a new request (requires a reason).
+          </li>
+        </ul>
+      </AdminPanel>
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

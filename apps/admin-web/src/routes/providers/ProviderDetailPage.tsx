@@ -14,6 +14,26 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import {
+  AdminDataTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+} from "@/components/admin/AdminDataTable";
+
+type PayoutAccountRow = Record<string, unknown> & {
+  id?: string;
+  type?: string;
+  account_name?: string | null;
+  account_number_last4?: string | null;
+  bank_name?: string | null;
+  bank_code?: string | null;
+  currency?: string;
+  active?: boolean;
+  is_primary?: boolean;
+  created_at?: string;
+};
 
 type ProviderDetail = Record<string, unknown> & {
   owner?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
@@ -65,6 +85,18 @@ export function ProviderDetailPage() {
     queryFn: () =>
       adminApi.getJson<ProviderDetail>(`/api/admin/providers/${encodeURIComponent(id)}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
+  });
+
+  const providerCanonicalId = q.data?.id != null ? str(q.data.id) : "";
+
+  const payoutAccountsQ = useQuery({
+    queryKey: adminQueryKeys.providers.payoutAccounts(providerCanonicalId),
+    queryFn: () =>
+      adminApi.getJson<PayoutAccountRow[]>(
+        `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/payout-accounts`,
+        { timeoutMs: 60_000 }
+      ),
+    enabled: allowed && !!providerCanonicalId,
   });
 
   useEffect(() => {
@@ -158,7 +190,12 @@ export function ProviderDetailPage() {
         }
       />
 
-      <AdminMutationAlert errors={[save.error instanceof Error ? save.error : null]} />
+      <AdminMutationAlert
+        errors={[
+          save.error instanceof Error ? save.error : null,
+          payoutAccountsQ.error instanceof Error ? payoutAccountsQ.error : null,
+        ]}
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <AdminPanel className="lg:col-span-2">
@@ -259,6 +296,53 @@ export function ProviderDetailPage() {
           </dl>
         </AdminPanel>
       </div>
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Payout accounts</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Bank / transfer recipients on file for payouts (masked account details).
+        </p>
+        {payoutAccountsQ.isLoading ? (
+          <p className="mt-4 text-sm text-gray-500">Loading payout accounts…</p>
+        ) : (payoutAccountsQ.data ?? []).length === 0 ? (
+          <p className="mt-4 text-sm text-gray-500">No payout accounts.</p>
+        ) : (
+          <AdminDataTable className="mt-4">
+            <AdminTableHead>
+              <tr>
+                <AdminTh>Type</AdminTh>
+                <AdminTh>Bank</AdminTh>
+                <AdminTh>Account</AdminTh>
+                <AdminTh>Currency</AdminTh>
+                <AdminTh>Status</AdminTh>
+                <AdminTh>Created</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {(payoutAccountsQ.data ?? []).map((acc) => (
+                <tr key={str(acc.id)}>
+                  <AdminTd>{str(acc.type)}</AdminTd>
+                  <AdminTd>{str(acc.bank_name) || str(acc.bank_code) || "—"}</AdminTd>
+                  <AdminTd>
+                    {str(acc.account_name) || "—"}
+                    {acc.account_number_last4 ? (
+                      <span className="text-gray-600"> · •••• {str(acc.account_number_last4)}</span>
+                    ) : null}
+                  </AdminTd>
+                  <AdminTd>{str(acc.currency) || "—"}</AdminTd>
+                  <AdminTd>
+                    {acc.active === false ? "Inactive" : "Active"}
+                    {acc.is_primary ? <span className="ml-2 text-xs text-primary">primary</span> : null}
+                  </AdminTd>
+                  <AdminTd>
+                    {acc.created_at ? new Date(String(acc.created_at)).toLocaleString() : "—"}
+                  </AdminTd>
+                </tr>
+              ))}
+            </AdminTableBody>
+          </AdminDataTable>
+        )}
+      </AdminPanel>
 
       <AdminPanel>
         <h2 className="text-lg font-semibold text-gray-900">Yoco terminals & integration</h2>

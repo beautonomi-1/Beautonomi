@@ -83,6 +83,7 @@ import {
   Package,
   Search,
   Repeat,
+  Loader2,
 } from "lucide-react";
 
 import type {
@@ -327,6 +328,98 @@ export function AppointmentSidebar({
     recurrencePattern: "weekly",
     recurrenceEndDate: "",
   });
+
+  /** Live hints from GET /api/provider/bookings/check-availability */
+  const [slotAvailability, setSlotAvailability] = useState<{
+    loading: boolean;
+    checked: boolean;
+    available: boolean;
+    conflicts: string[];
+  }>({ loading: false, checked: false, available: true, conflicts: [] });
+
+  useEffect(() => {
+    if (mode !== "create" && mode !== "edit") {
+      setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+      return;
+    }
+    if (!formData.date || !formData.startTime || formData.duration < 1) {
+      setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+      return;
+    }
+
+    const ac = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSlotAvailability((prev) => ({ ...prev, loading: true }));
+      try {
+        const timePart =
+          formData.startTime.length === 5 ? `${formData.startTime}:00` : formData.startTime;
+        const scheduledLocal = new Date(`${formData.date}T${timePart}`);
+        if (Number.isNaN(scheduledLocal.getTime())) {
+          if (!ac.signal.aborted) {
+            setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+          }
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set("scheduled_at", scheduledLocal.toISOString());
+        params.set("duration_minutes", String(formData.duration));
+        if (formData.staffId) params.set("staff_ids", formData.staffId);
+        if (formData.kind !== AppointmentKind.AT_HOME && formData.locationId) {
+          params.set("location_id", formData.locationId);
+        }
+        if (mode === "edit" && activeBookingId) {
+          params.set("exclude_booking_id", activeBookingId);
+        }
+
+        const res = await fetch(`/api/provider/bookings/check-availability?${params.toString()}`, {
+          signal: ac.signal,
+        });
+        const body = (await res.json().catch(() => null)) as {
+          data?: { available?: boolean; conflicts?: string[] };
+        } | null;
+        if (ac.signal.aborted) return;
+        const payload = body?.data;
+        if (!res.ok || !payload) {
+          setSlotAvailability({
+            loading: false,
+            checked: false,
+            available: true,
+            conflicts: [],
+          });
+          return;
+        }
+        setSlotAvailability({
+          loading: false,
+          checked: true,
+          available: Boolean(payload.available),
+          conflicts: Array.isArray(payload.conflicts) ? payload.conflicts : [],
+        });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setSlotAvailability({
+          loading: false,
+          checked: false,
+          available: true,
+          conflicts: [],
+        });
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [
+    mode,
+    formData.date,
+    formData.startTime,
+    formData.duration,
+    formData.staffId,
+    formData.locationId,
+    formData.kind,
+    activeBookingId,
+  ]);
 
   // Referral sources (for "Where did this client come from?")
   const [referralSources, setReferralSources] = useState<Array<{ id: string; name: string; description?: string | null; is_active: boolean }>>([]);
@@ -3349,35 +3442,83 @@ export function AppointmentSidebar({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                    className="flex-1 min-w-0 max-w-full box-border"
-                  />
-                  <Input
-                    type="time"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                    className="flex-1 min-w-0 max-w-full box-border"
-                  />
-                  <Select
-                    value={formData.duration.toString()}
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
-                  >
-                    <SelectTrigger className="flex-1 min-w-0 max-w-full box-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[15, 30, 45, 60, 75, 90, 120, 150, 180].map((d) => (
-                        <SelectItem key={d} value={d.toString()}>
-                          {d} min
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                      className="flex-1 min-w-0 max-w-full box-border"
+                    />
+                    <Input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                      className="flex-1 min-w-0 max-w-full box-border"
+                    />
+                    <Select
+                      value={formData.duration.toString()}
+                      onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
+                    >
+                      <SelectTrigger className="flex-1 min-w-0 max-w-full box-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[15, 30, 45, 60, 75, 90, 120, 150, 180].map((d) => (
+                          <SelectItem key={d} value={d.toString()}>
+                            {d} min
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(mode === "create" || mode === "edit") && (
+                    <div
+                      className={cn(
+                        "mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+                        slotAvailability.loading && "border-gray-200 bg-gray-50 text-gray-600",
+                        !slotAvailability.loading &&
+                          slotAvailability.checked &&
+                          slotAvailability.available &&
+                          "border-green-200 bg-green-50 text-green-900",
+                        !slotAvailability.loading &&
+                          slotAvailability.checked &&
+                          !slotAvailability.available &&
+                          "border-amber-200 bg-amber-50 text-amber-950",
+                      )}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {slotAvailability.loading ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                          Checking slot availability…
+                        </span>
+                      ) : slotAvailability.checked ? (
+                        slotAvailability.available ? (
+                          <span className="font-medium">This time looks available for the selected staff and location.</span>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="font-semibold">This slot may not be available:</span>
+                            <ul className="list-disc pl-4 text-[11px] sm:text-xs">
+                              {slotAvailability.conflicts.map((c, i) => (
+                                <li key={`${i}-${c}`}>{c}</li>
+                              ))}
+                            </ul>
+                            <p className="text-[11px] text-amber-800/90 pt-1">
+                              You can still try to save; the server will reject the booking if the slot is taken.
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-gray-500">
+                          Set date, time, and duration to see availability hints
+                          {formData.staffId ? "" : " (select staff for hours and booking overlap checks)"}.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 

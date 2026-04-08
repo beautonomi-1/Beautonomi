@@ -11,6 +11,7 @@ import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type VerificationDetail = Record<string, unknown> & {
   id?: string;
@@ -83,7 +84,7 @@ export function VerificationDetailPage() {
       <AdminPageHeader
         title="Verification"
         description={
-          <Link to="/verifications" className="text-sm font-medium text-primary hover:underline">
+          <Link to={adminSpaTo("/admin/verifications")} className="text-sm font-medium text-primary hover:underline">
             ← Back to verifications
           </Link>
         }

@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Calendar,
   Clock,
@@ -18,6 +19,7 @@ import {
   Navigation,
   Star,
   Link2,
+  CreditCard,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -72,6 +74,14 @@ import { Trophy } from "lucide-react";
 import CustomerRatingButton from "@/components/reviews/customer-rating-button";
 import RateCustomerModal from "@/components/reviews/rate-customer-modal";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
+import { providerApi } from "@/lib/provider-portal/api";
+import type { YocoPayment } from "@/lib/provider-portal/types";
+import { buildSaleItemsFromBookingDetail } from "@/lib/provider-booking/build-sale-items-from-booking-detail";
+import {
+  HouseCallExcellenceNote,
+  OnPlatformPaymentNote,
+} from "@/components/provider/ProviderBookingExcellenceInline";
 
 const PROVIDER_COMPLETION_MODAL_STORAGE_KEY = "provider_booking_completion_modal_seen_";
 
@@ -142,7 +152,18 @@ export default function ProviderBookingDetail() {
   // Refund state
   const [showRefund, setShowRefund] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
+  const [refundReason, setRefundReason] = useState("");
   const [isRefunding, setIsRefunding] = useState(false);
+
+  // Yoco (parity with provider app: pending sale → terminal → sale PATCH + mark-paid)
+  const [showYocoPayment, setShowYocoPayment] = useState(false);
+  const [yocoDialogAmount, setYocoDialogAmount] = useState(0);
+  const [yocoIntegrationEnabled, setYocoIntegrationEnabled] = useState(false);
+  const [preparingYocoSale, setPreparingYocoSale] = useState(false);
+  const [yocoBookingSaleId, setYocoBookingSaleId] = useState<string | null>(null);
+  const yocoBookingSaleIdRef = useRef<string | null>(null);
+  const yocoPendingChargeAmountRef = useRef<number | null>(null);
+  const yocoPendingSaleOutstandingSnapshotRef = useRef<number | null>(null);
 
   // Notes state
   const [editingNotes, setEditingNotes] = useState(false);
@@ -206,6 +227,32 @@ export default function ProviderBookingDetail() {
     loadBooking();
     loadAdditionalCharges();
   }, [loadBooking, loadAdditionalCharges]);
+
+  useEffect(() => {
+    yocoBookingSaleIdRef.current = yocoBookingSaleId;
+  }, [yocoBookingSaleId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    providerApi
+      .getYocoIntegration()
+      .then((i) => {
+        if (!cancelled) setYocoIntegrationEnabled(!!i.is_enabled);
+      })
+      .catch(() => {
+        if (!cancelled) setYocoIntegrationEnabled(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    yocoBookingSaleIdRef.current = null;
+    setYocoBookingSaleId(null);
+    yocoPendingChargeAmountRef.current = null;
+    yocoPendingSaleOutstandingSnapshotRef.current = null;
+  }, [bookingId]);
 
   // Show provider post-completion modal once per booking
   useEffect(() => {
@@ -313,6 +360,7 @@ export default function ProviderBookingDetail() {
   };
 
   const handleReschedule = async () => {
+    if (!booking) return;
     if (!rescheduleDate || !rescheduleTime) {
       toast.error("Please select both date and time");
       return;
@@ -338,10 +386,25 @@ export default function ProviderBookingDetail() {
   };
 
   const handleMarkPaid = async () => {
+    if (!booking) return;
+    const tp = booking.total_paid ?? 0;
+    const tr = booking.total_refunded ?? 0;
+    const ta = booking.total_amount ?? 0;
+    const outstandingAmt = ta - tp + tr;
+    const paymentAmount = Number(outstandingAmt.toFixed(2));
+    if (paymentAmount <= 0) {
+      toast.error(
+        outstandingAmt < 0
+          ? "This booking has no remaining balance to collect (it may be overpaid). Refresh if you just recorded a payment elsewhere."
+          : "There is no remaining balance on this booking."
+      );
+      return;
+    }
     try {
       setIsMarkingPaid(true);
       await fetcher.post(`/api/provider/bookings/${bookingId}/mark-paid`, {
         payment_method: markPaidMethod,
+        amount: paymentAmount,
       });
       toast.success("Booking marked as paid");
       setShowMarkPaid(false);
@@ -410,19 +473,34 @@ export default function ProviderBookingDetail() {
   };
 
   const handleRefund = async () => {
+    if (!booking) return;
+    const tp = booking.total_paid ?? 0;
+    const tr = booking.total_refunded ?? 0;
+    const maxRefundable = Math.max(0, tp - tr);
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       toast.error("Please enter a valid refund amount");
+      return;
+    }
+    if (amount > maxRefundable + 0.0001) {
+      toast.error(`Refund cannot exceed ${formatMoney(maxRefundable)}`);
+      return;
+    }
+    const reason = refundReason.trim();
+    if (!reason) {
+      toast.error("Please enter a refund reason");
       return;
     }
     try {
       setIsRefunding(true);
       await fetcher.post(`/api/provider/bookings/${bookingId}/refund`, {
         amount,
+        reason,
       });
       toast.success("Refund processed");
       setShowRefund(false);
       setRefundAmount("");
+      setRefundReason("");
       loadBooking();
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to process refund");
@@ -431,7 +509,186 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  const openYocoCheckout = useCallback(async () => {
+    const b = booking;
+    if (!b) return;
+    const totalPaidLocal = b.total_paid ?? 0;
+    const totalRefundedLocal = b.total_refunded ?? 0;
+    const totalAmountLocal = b.total_amount ?? 0;
+    const outstandingLocal = totalAmountLocal - totalPaidLocal + totalRefundedLocal;
+    const chargeAmount = Number(outstandingLocal.toFixed(2));
+    const isStartedLocal = ["started", "in_progress"].includes(b.status);
+    const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
+
+    if (chargeAmount <= 0) {
+      toast.error(
+        outstandingLocal < 0
+          ? "This booking has no remaining balance to collect (it may be overpaid). Refresh if you just recorded a payment elsewhere."
+          : "There is no remaining balance on this booking."
+      );
+      return;
+    }
+    if (!canMarkPaidLocal) {
+      toast.error("Start or complete the booking before recording a card payment.");
+      return;
+    }
+
+    let saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
+    const snap = yocoPendingSaleOutstandingSnapshotRef.current;
+    if (
+      saleId &&
+      snap != null &&
+      Number.isFinite(snap) &&
+      Math.abs(snap - chargeAmount) > 0.02
+    ) {
+      yocoBookingSaleIdRef.current = null;
+      setYocoBookingSaleId(null);
+      yocoPendingSaleOutstandingSnapshotRef.current = null;
+      saleId = null;
+    }
+
+    if (!saleId) {
+      const builtItems = buildSaleItemsFromBookingDetail(b);
+      if (builtItems.length === 0) {
+        toast.error("Could not build sale lines for this booking.");
+        return;
+      }
+      let items = builtItems;
+      let subtotal =
+        typeof b.subtotal === "number" && b.subtotal > 0
+          ? b.subtotal
+          : builtItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+      let taxAmount = typeof b.tax_amount === "number" ? b.tax_amount : 0;
+      let discountAmount = typeof b.discount_amount === "number" ? b.discount_amount : 0;
+      const bookingTotal =
+        typeof b.total_amount === "number" ? b.total_amount : subtotal + taxAmount - discountAmount;
+
+      if (Math.abs(chargeAmount - bookingTotal) > 0.01) {
+        items = [
+          {
+            item_id: null,
+            type: "service",
+            name: "Booking balance due",
+            quantity: 1,
+            unit_price: chargeAmount,
+          },
+        ];
+        subtotal = chargeAmount;
+        taxAmount = 0;
+        discountAmount = 0;
+      }
+
+      const trRaw = typeof b.tax_rate === "number" ? b.tax_rate : 0;
+      const taxRate = trRaw > 1 ? trRaw / 100 : trRaw;
+      const staffId = b.services?.[0]?.staff_id ?? null;
+
+      setPreparingYocoSale(true);
+      try {
+        const res = await fetcher.post<{ data: { id: string } }>("/api/provider/sales", {
+          customer_id: b.customer_id,
+          location_id: b.location_id ?? null,
+          staff_id: staffId,
+          sale_date: b.scheduled_at,
+          items: items.map((i) => ({
+            item_id: i.item_id,
+            type: i.type,
+            name: i.name,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+          })),
+          subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
+          discount_amount: discountAmount,
+          total_amount: chargeAmount,
+          payment_method: "yoco",
+          payment_status: "pending",
+          notes: `Booking ${b.booking_number ?? bookingId}`,
+        });
+        const newId = res.data?.id;
+        if (!newId) {
+          toast.error("Could not prepare card payment.");
+          return;
+        }
+        saleId = newId;
+        yocoBookingSaleIdRef.current = saleId;
+        setYocoBookingSaleId(saleId);
+        yocoPendingSaleOutstandingSnapshotRef.current = chargeAmount;
+      } catch (err) {
+        toast.error(err instanceof FetchError ? err.message : "Could not prepare card payment.");
+        return;
+      } finally {
+        setPreparingYocoSale(false);
+      }
+    }
+
+    yocoPendingChargeAmountRef.current = chargeAmount;
+    setYocoDialogAmount(chargeAmount);
+    setShowYocoPayment(true);
+  }, [booking, bookingId, yocoBookingSaleId]);
+
+  const finalizeYocoBookingPayment = useCallback(
+    async (payment: YocoPayment) => {
+      const reference = payment.yoco_payment_id;
+      if (!reference) {
+        toast.error("Missing payment reference");
+        return;
+      }
+      const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
+      if (!saleId) {
+        toast.error("Missing sale record. Try again.");
+        return;
+      }
+      const b = booking;
+      if (!b) return;
+      const tp = b.total_paid ?? 0;
+      const tr = b.total_refunded ?? 0;
+      const ta = b.total_amount ?? 0;
+      const outstandingCalc = ta - tp + tr;
+
+      try {
+        await providerApi.updateSale(saleId, {
+          payment_status: "completed",
+          payment_provider: "yoco",
+          payment_provider_id: reference,
+        });
+      } catch {
+        toast.error(
+          "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry."
+        );
+        return;
+      }
+
+      const chargeForBooking = yocoPendingChargeAmountRef.current ?? outstandingCalc;
+      try {
+        await fetcher.post(`/api/provider/bookings/${bookingId}/mark-paid`, {
+          payment_method: "card",
+          reference,
+          amount: Number(chargeForBooking.toFixed(2)),
+        });
+      } catch (err) {
+        toast.error(
+          err instanceof FetchError
+            ? `The sale was saved, but updating the booking failed: ${err.message}`
+            : "The sale was saved, but updating the booking failed."
+        );
+        await loadBooking();
+        return;
+      }
+
+      yocoBookingSaleIdRef.current = null;
+      setYocoBookingSaleId(null);
+      yocoPendingChargeAmountRef.current = null;
+      yocoPendingSaleOutstandingSnapshotRef.current = null;
+      setShowYocoPayment(false);
+      toast.success("Booking payment recorded");
+      await loadBooking();
+    },
+    [booking, bookingId, loadBooking, yocoBookingSaleId]
+  );
+
   const handleSaveNotes = async () => {
+    if (!booking) return;
     try {
       setIsSavingNotes(true);
       await fetcher.patch(`/api/provider/bookings/${bookingId}`, {
@@ -569,33 +826,6 @@ export default function ProviderBookingDetail() {
     await submitVerifyQrBody(body);
   };
 
-  const isActive = ["pending", "booked", "confirmed"].includes(booking?.status ?? "");
-  const isStarted = ["started", "in_progress"].includes(booking?.status ?? "");
-  const isAtHome = booking?.location_type === "at_home";
-  const canStartJourney =
-    isAtHome &&
-    (booking?.status === "confirmed" || booking?.status === "pending") &&
-    (booking?.current_stage == null || booking?.current_stage === "confirmed");
-  const canMarkArrived = isAtHome && booking?.current_stage === "provider_on_way";
-  const isEnRoute = isAtHome && booking?.current_stage === "provider_on_way";
-  const isArrived = isAtHome && booking?.current_stage === "provider_arrived";
-  const arrivalVerified =
-    booking.arrival_otp_verified === true || booking.qr_code_verified === true;
-  const arrivalOtpPending = booking.arrival_otp_pending === true;
-  const qrArrivalPending = booking.qr_arrival_pending === true;
-  const totalPaid = booking.total_paid ?? 0;
-  const totalRefunded = booking.total_refunded ?? 0;
-  const totalAmount = booking.total_amount ?? 0;
-  const outstanding = totalAmount - totalPaid + totalRefunded;
-  const canMarkPaid = outstanding > 0 && (booking?.status === "completed" || isStarted);
-  const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
-  /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
-  const canSendPaymentLink =
-    outstanding > 0 &&
-    booking?.status !== "cancelled" &&
-    booking?.payment_status !== "paid" &&
-    !!(booking?.customer_email || booking?.customer_phone);
-
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
@@ -618,6 +848,38 @@ export default function ProviderBookingDetail() {
       </div>
     );
   }
+
+  const b = booking;
+
+  const isActive = ["pending", "booked", "confirmed"].includes(b.status);
+  const isStarted = ["started", "in_progress"].includes(b.status);
+  const isAtHome = b.location_type === "at_home";
+  const canStartJourney =
+    isAtHome &&
+    (b.status === "confirmed" || b.status === "pending") &&
+    (b.current_stage == null || b.current_stage === "confirmed");
+  const canMarkArrived = isAtHome && b.current_stage === "provider_on_way";
+  const isEnRoute = isAtHome && b.current_stage === "provider_on_way";
+  const isArrived = isAtHome && b.current_stage === "provider_arrived";
+  const arrivalVerified =
+    b.arrival_otp_verified === true || b.qr_code_verified === true;
+  const arrivalOtpPending = b.arrival_otp_pending === true;
+  const qrArrivalPending = b.qr_arrival_pending === true;
+  const totalPaid = b.total_paid ?? 0;
+  const totalRefunded = b.total_refunded ?? 0;
+  const totalAmount = b.total_amount ?? 0;
+  const outstanding = totalAmount - totalPaid + totalRefunded;
+  const netPaidAfterRefunds = totalPaid - totalRefunded;
+  const maxRefundable = Math.max(0, netPaidAfterRefunds);
+  const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
+  const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
+  /** Matches provider app + POST /send-payment-link (API rejects if already paid; needs email/SMS contact) */
+  const canSendPaymentLink =
+    outstanding > 0 &&
+    b.status !== "cancelled" &&
+    b.payment_status !== "paid" &&
+    !!(b.customer_email || b.customer_phone);
+  const showYocoPayButton = yocoIntegrationEnabled && canMarkPaid;
 
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
@@ -846,6 +1108,7 @@ export default function ProviderBookingDetail() {
         {isAtHome && (
           <div className="bg-white border rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold mb-4">At-home visit</h2>
+            <HouseCallExcellenceNote />
             <div className="space-y-4">
               {canStartJourney && (
                 <div>
@@ -1188,6 +1451,10 @@ export default function ProviderBookingDetail() {
         {/* Payment Summary */}
         <div className="bg-white border border-gray-200 rounded-xl shadow-sm p-6 mb-6">
           <h2 className="text-xl font-semibold mb-4">Payment Summary</h2>
+          <OnPlatformPaymentNote
+            bookingId={bookingId}
+            show={outstanding > 0 && booking.status !== "cancelled"}
+          />
           <div className="space-y-2">
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
@@ -1399,6 +1666,12 @@ export default function ProviderBookingDetail() {
                 <span className="font-bold text-amber-600">{formatMoney(outstanding)}</span>
               </div>
             )}
+            {outstanding < 0 && (
+              <div className="flex justify-between text-sm border-t pt-2">
+                <span className="text-gray-700 font-medium">Overpaid / credit</span>
+                <span className="font-medium text-blue-700">{formatMoney(-outstanding)}</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1447,6 +1720,18 @@ export default function ProviderBookingDetail() {
               Mark as Paid
             </Button>
           )}
+          {showYocoPayButton && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void openYocoCheckout()}
+              disabled={isUpdating || preparingYocoSale}
+              className="flex-1 min-h-[44px] border-violet-300 text-violet-900 hover:bg-violet-50"
+            >
+              <CreditCard className="w-4 h-4 mr-2" />
+              {preparingYocoSale ? "Preparing…" : "Pay with Yoco (terminal)"}
+            </Button>
+          )}
           {canSendPaymentLink && (
             <Button
               variant="outline"
@@ -1466,7 +1751,8 @@ export default function ProviderBookingDetail() {
             <Button
               variant="outline"
               onClick={() => {
-                setRefundAmount(totalPaid.toFixed(2));
+                setRefundAmount(maxRefundable.toFixed(2));
+                setRefundReason("");
                 setShowRefund(true);
               }}
               disabled={isUpdating}
@@ -1730,24 +2016,44 @@ export default function ProviderBookingDetail() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
               <h3 className="text-lg font-semibold">Issue Refund</h3>
-              <p className="text-sm text-gray-600">Total paid: {formatMoney(totalPaid)}</p>
+              <p className="text-sm text-gray-600">
+                Net paid after refunds: {formatMoney(netPaidAfterRefunds)} · Max refundable:{" "}
+                {formatMoney(maxRefundable)}
+              </p>
               <div>
-                <label className="text-sm font-medium mb-1 block">Refund Amount (R)</label>
+                <label className="text-sm font-medium mb-1 block">Refund amount</label>
                 <Input
                   type="number"
                   value={refundAmount}
                   onChange={(e) => setRefundAmount(e.target.value)}
                   placeholder="0.00"
                   min="0"
-                  max={totalPaid}
+                  max={maxRefundable}
                   step="0.01"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Reason (required)</label>
+                <Textarea
+                  value={refundReason}
+                  onChange={(e) => setRefundReason(e.target.value)}
+                  placeholder="e.g. Service issue, customer request"
+                  rows={3}
+                  className="resize-y min-h-[72px]"
                 />
               </div>
               <div className="flex gap-3">
                 <Button variant="destructive" onClick={handleRefund} disabled={isRefunding} className="flex-1">
                   {isRefunding ? "Processing..." : "Confirm Refund"}
                 </Button>
-                <Button variant="outline" onClick={() => setShowRefund(false)} className="flex-1">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowRefund(false);
+                    setRefundReason("");
+                  }}
+                  className="flex-1"
+                >
                   Cancel
                 </Button>
               </div>
@@ -1826,6 +2132,15 @@ export default function ProviderBookingDetail() {
             onValidScan={(jsonPayload) => submitVerifyQrBody({ qr_data: jsonPayload })}
           />
         ) : null}
+
+        <YocoPaymentDialog
+          open={showYocoPayment}
+          onOpenChange={setShowYocoPayment}
+          amount={yocoDialogAmount}
+          bookingId={bookingId}
+          saleId={yocoBookingSaleId ?? undefined}
+          onSuccess={finalizeYocoBookingPayment}
+        />
       </div>
     </RoleGuard>
   );

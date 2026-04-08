@@ -22,7 +22,13 @@ type Notification = {
   timestamp?: string;
   link?: string;
   action_url?: string;
-  data?: { booking_id?: string; conversation_id?: string; [key: string]: unknown };
+  data?: {
+    booking_id?: string;
+    conversation_id?: string;
+    product_order_id?: string;
+    order_id?: string;
+    [key: string]: unknown;
+  };
 };
 
 type NotificationsResponse = {
@@ -35,12 +41,23 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
   const link = n.link ?? n.action_url ?? "";
   const data = n.data ?? {};
 
+  const productOrderIdFromData =
+    typeof data.product_order_id === "string" && data.product_order_id.trim()
+      ? data.product_order_id.trim()
+      : "";
+
   if (data.booking_id) {
     router.push(`/(app)/(tabs)/more/bookings/${data.booking_id}` as never);
     return;
   }
   if (data.conversation_id) {
     router.push(`/(app)/(tabs)/more/messaging/${data.conversation_id}` as never);
+    return;
+  }
+  if (productOrderIdFromData) {
+    router.push(
+      `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderIdFromData)}` as never,
+    );
     return;
   }
   if (link) {
@@ -60,6 +77,24 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
     }
     if (link.includes("calendar")) {
       router.push("/(app)/(tabs)/calendar" as never);
+      return;
+    }
+    if (link.includes("ecommerce/orders") || link.includes("/product-orders")) {
+      const q = link.match(/order=([a-f0-9-]+)/i);
+      const oid =
+        q?.[1] ??
+        (typeof data.order_id === "string" && data.order_id.trim() ? data.order_id.trim() : "");
+      if (oid) {
+        router.push(
+          `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}` as never,
+        );
+      } else {
+        router.push("/(app)/(tabs)/more/orders-hub" as never);
+      }
+      return;
+    }
+    if (link.includes("ecommerce/returns")) {
+      router.push("/(app)/(tabs)/more/orders-hub?tab=returns" as never);
       return;
     }
     if (link.includes("clients")) {

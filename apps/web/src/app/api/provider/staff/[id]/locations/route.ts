@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import { getProviderStaffIdForUser } from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 
 const updateStaffLocationsSchema = z.object({
@@ -27,6 +29,19 @@ export async function GET(
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    if (user.role !== "superadmin") {
+      const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+      const canViewOthers =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "view_team")) || (await hasPermission(user.id, "manage_team"));
+      if (!canViewOthers && ownStaffId !== staffId) {
+        return errorResponse(
+          "You can only view your own location assignments.",
+          "FORBIDDEN",
+          403
+        );
+      }
     }
 
     const { data: staff } = await supabase

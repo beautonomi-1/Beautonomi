@@ -18,6 +18,7 @@ import {
   Scale,
   ScrollText,
   Shield,
+  ShieldAlert,
   Sparkles,
   ToggleLeft,
   Wrench,
@@ -80,6 +81,12 @@ const GROUPS: { label: string; description: string; items: CpLink[] }[] = [
       { title: "Maintenance", to: "/admin/control-plane/maintenance", icon: Wrench },
       { title: "Sign-ups notify", to: "/admin/control-plane/maintenance/sign-ups", icon: Link2 },
       { title: "Config change log", to: "/admin/control-plane/audit-log", icon: ScrollText },
+      {
+        title: "Compliance purge",
+        to: "/admin/control-plane/compliance",
+        description: "User / provider erasure + audit trail",
+        icon: ShieldAlert,
+      },
     ],
   },
 ];

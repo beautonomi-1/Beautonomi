@@ -5,6 +5,7 @@ import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 const REPORTS: { title: string; description: string; spaTo: string; icon: LucideIcon }[] = [
   {
@@ -64,17 +65,17 @@ export function ReportsHubPage() {
           <p className="font-medium text-primary">Superadmin reporting</p>
           <p className="mt-1 text-gray-700">
             For interactive trends and breakdowns, use{" "}
-            <Link to="/analytics" className="font-semibold text-primary underline">
+            <Link to={adminSpaTo("/admin/analytics")} className="font-semibold text-primary underline">
               Analytics
             </Link>{" "}
             and{" "}
-            <Link to="/gods-eye" className="font-semibold text-primary underline">
+            <Link to={adminSpaTo("/admin/gods-eye")} className="font-semibold text-primary underline">
               Gods Eye
             </Link>{" "}
             (tenant scope follows your admin scope selector).
           </p>
           <Link
-            to="/analytics"
+            to={adminSpaTo("/admin/analytics")}
             className="mt-3 inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-primary/90"
           >
             <BarChart3 className="h-4 w-4" aria-hidden />

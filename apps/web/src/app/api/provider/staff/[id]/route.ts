@@ -9,7 +9,12 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
-import { isProviderOwner } from "@/lib/auth/permissions";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
+import {
+  getTeamRosterDetailLevel,
+  getProviderStaffIdForUser,
+  redactStaffRowForViewer,
+} from "@/lib/auth/provider-team-roster-access";
 import { z } from "zod";
 
 const updateStaffSchema = z.object({
@@ -24,6 +29,39 @@ const updateStaffSchema = z.object({
   location_ids: z.array(z.string().uuid()).optional(),
   service_ids: z.array(z.string().uuid()).optional(),
 });
+
+/** Staff may update their own row without manage_team (name/phone/avatar/mobile only). */
+const selfEditStaffSchema = z.object({
+  name: z.string().optional(),
+  phone: z.string().optional().nullable(),
+  avatar_url: z.string().url().optional().nullable(),
+  mobileReady: z.boolean().optional(),
+});
+
+async function respondWithStaffDetail(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  viewerUserId: string,
+  staffId: string,
+  providerId: string,
+) {
+  const detail = await fetchStaffDetailForApi(supabase, staffId, providerId);
+  if (!detail) {
+    return notFoundResponse("Staff member not found");
+  }
+  const rosterDetailLevel = await getTeamRosterDetailLevel(viewerUserId);
+  const redacted = redactStaffRowForViewer(
+    {
+      ...detail,
+      user_id: (detail.user_id as string | null) ?? null,
+      email: detail.email as string,
+      phone: detail.phone as string | null,
+    },
+    viewerUserId,
+    rosterDetailLevel,
+  );
+  const { user_id: _omitUserId, ...safe } = redacted;
+  return successResponse(safe);
+}
 
 async function canManageOwnerSensitiveOps(user: { id: string; role?: string }): Promise<boolean> {
   if (user.role === "superadmin") return true;
@@ -84,6 +122,7 @@ async function fetchStaffDetailForApi(
 
   const r = row as {
     id: string;
+    user_id?: string | null;
     name?: string | null;
     email?: string | null;
     phone?: string | null;
@@ -139,6 +178,7 @@ async function fetchStaffDetailForApi(
 
   return {
     id: r.id,
+    user_id: r.user_id ?? null,
     name: r.name || r.users?.full_name || "Staff Member",
     email: r.email || r.users?.email || "",
     phone: r.phone || r.users?.phone || null,
@@ -173,12 +213,7 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    const detail = await fetchStaffDetailForApi(supabase, id, providerId);
-    if (!detail) {
-      return notFoundResponse("Staff member not found");
-    }
-
-    return successResponse(detail);
+    return respondWithStaffDetail(supabase, user.id, id, providerId);
   } catch (error) {
     return handleApiError(error, "Failed to fetch staff member");
   }
@@ -194,15 +229,51 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const permissionCheck = await requirePermission("manage_team", request);
-    if (!permissionCheck.authorized) {
-      return permissionCheck.response!;
-    }
-    const { user } = permissionCheck;
-
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
+
+    const providerId = await getProviderIdForUser(user.id, supabase);
+    if (!providerId) {
+      return notFoundResponse("Provider not found");
+    }
+
+    const ownStaffId = await getProviderStaffIdForUser(user.id, providerId, supabase);
+    const editingSelf = ownStaffId === id;
+
+    const canManageTeam =
+      user.role === "superadmin" ||
+      (await isProviderOwner(user.id)) ||
+      (await hasPermission(user.id, "manage_team"));
+
+    if (!canManageTeam && !editingSelf) {
+      return errorResponse(
+        "You do not have permission to update team members.",
+        "FORBIDDEN",
+        403,
+      );
+    }
+
+    if (!canManageTeam && editingSelf) {
+      const selfParsed = selfEditStaffSchema.safeParse(body);
+      if (!selfParsed.success) {
+        return errorResponse("Validation failed", "VALIDATION_ERROR", 400, selfParsed.error.issues);
+      }
+      const d = selfParsed.data;
+      const updateData: Record<string, unknown> = {};
+      if (d.name !== undefined) updateData.name = d.name;
+      if (d.phone !== undefined) updateData.phone = d.phone;
+      if (d.avatar_url !== undefined) updateData.avatar_url = d.avatar_url;
+      if (d.mobileReady !== undefined) updateData.mobile_ready = d.mobileReady;
+      if (Object.keys(updateData).length > 0) {
+        const { error: updateError } = await supabase.from("provider_staff").update(updateData).eq("id", id);
+        if (updateError) {
+          throw updateError;
+        }
+      }
+      return respondWithStaffDetail(supabase, user.id, id, providerId);
+    }
 
     const validationResult = updateStaffSchema.safeParse(body);
     if (!validationResult.success) {
@@ -216,11 +287,6 @@ export async function PATCH(
 
     const replaceLocations = Object.prototype.hasOwnProperty.call(body, "location_ids");
     const replaceServices = Object.prototype.hasOwnProperty.call(body, "service_ids");
-
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
-      return notFoundResponse("Provider not found");
-    }
 
     const { data: existingRow, error: existingErr } = await supabase
       .from("provider_staff")
@@ -332,12 +398,7 @@ export async function PATCH(
       }
     }
 
-    const detail = await fetchStaffDetailForApi(supabase, id, providerId);
-    if (!detail) {
-      throw new Error("Failed to load staff member after update");
-    }
-
-    return successResponse(detail);
+    return respondWithStaffDetail(supabase, user.id, id, providerId);
   } catch (error) {
     return handleApiError(error, "Failed to update staff member");
   }

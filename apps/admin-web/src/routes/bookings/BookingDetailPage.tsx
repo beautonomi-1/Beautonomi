@@ -152,7 +152,7 @@ export function BookingDetailPage() {
         <div className="space-y-6">
           <AdminPageHeader title="Booking" />
           <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
-          <Link to="/bookings" className="text-sm font-medium text-gray-900 underline">
+          <Link to={adminSpaTo("/admin/bookings")} className="text-sm font-medium text-gray-900 underline">
             ← Back to bookings
           </Link>
         </div>
@@ -162,7 +162,7 @@ export function BookingDetailPage() {
       <div className="space-y-6">
         <AdminPageHeader title="Booking" />
         <EmptyState title="Booking not found" description={q.error.message} />
-        <Link to="/bookings" className="text-sm font-medium text-gray-900 underline">
+        <Link to={adminSpaTo("/admin/bookings")} className="text-sm font-medium text-gray-900 underline">
           ← Back to bookings
         </Link>
       </div>
@@ -189,7 +189,7 @@ export function BookingDetailPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <Link to="/bookings" className="text-sm text-gray-600 hover:text-gray-900">
+          <Link to={adminSpaTo("/admin/bookings")} className="text-sm text-gray-600 hover:text-gray-900">
             ← Bookings
           </Link>
           <AdminPageHeader

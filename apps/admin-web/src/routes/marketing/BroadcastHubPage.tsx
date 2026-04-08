@@ -4,6 +4,7 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 export function BroadcastHubPage() {
   const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
@@ -18,7 +19,7 @@ export function BroadcastHubPage() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Link
-          to="/broadcast/compose"
+          to={adminSpaTo("/admin/broadcast/compose")}
           className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-gray-200/90 bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-6 text-white shadow-lg ring-1 ring-white/10 transition hover:shadow-xl hover:ring-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
         >
           <div>
@@ -36,7 +37,7 @@ export function BroadcastHubPage() {
         </Link>
 
         <Link
-          to="/broadcast/history"
+          to={adminSpaTo("/admin/broadcast/history")}
           className="group flex flex-col justify-between rounded-2xl border border-gray-200/90 bg-white p-6 shadow-sm ring-1 ring-gray-950/[0.04] transition hover:border-gray-300 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-900"
         >
           <div>

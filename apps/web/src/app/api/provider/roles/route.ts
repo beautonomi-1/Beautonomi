@@ -8,6 +8,7 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const createSchema = z.object({
@@ -69,7 +70,18 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    if (user.role !== "superadmin") {
+      const canManageRoles =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canManageRoles) {
+        return errorResponse(
+          "Only owners or users with Manage team can create roles.",
+          "FORBIDDEN",
+          403
+        );
+      }
+    }
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 

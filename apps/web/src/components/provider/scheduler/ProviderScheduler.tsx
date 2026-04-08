@@ -59,7 +59,7 @@ export interface ProviderSchedulerProps {
   onMobileDateChange?: (date: Date) => void;
   onMobileAddAppointment?: () => void;
   onMobileFilterClick?: () => void;
-  onMobileViewChange?: (view: "day" | "week") => void;
+  onMobileViewChange?: (view: "day" | "3-days" | "week") => void;
 
   className?: string;
 }
@@ -183,10 +183,12 @@ export function ProviderScheduler({
           appointments={appointments}
           teamMembers={teamMembers}
           selectedDate={selectedDate}
-          view={view === "week" ? "week" : "day"}
+          view={view === "week" ? "week" : view === "3-days" ? "3-days" : "day"}
           onDateChange={handleMobileDateChange}
           onAppointmentClick={handleAppointmentClick}
           onTimeSlotClick={handleTimeSlotClick}
+          onTimeBlockClick={onTimeBlockClick}
+          onRefresh={onRefresh}
           onAddAppointment={() => onMobileAddAppointment?.()}
           onFilterClick={onMobileFilterClick}
           onViewChange={onMobileViewChange}

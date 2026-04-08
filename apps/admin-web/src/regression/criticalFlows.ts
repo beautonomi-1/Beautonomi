@@ -103,6 +103,13 @@ export const CRITICAL_ADMIN_FLOWS: CriticalAdminFlow[] = [
     rbac: "superadmin",
   },
   {
+    id: "compliance-purge",
+    description: "Superadmin — DSAR erasure (user/provider) + immutable purge audit log",
+    appPath: "control-plane/compliance",
+    pageModule: "routes/control-plane/CompliancePurgePage.tsx",
+    rbac: "superadmin",
+  },
+  {
     id: "broadcast-compose",
     description: "Marketing — push/SMS/email broadcast send",
     appPath: "broadcast/compose",

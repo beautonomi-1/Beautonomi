@@ -19,6 +19,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminTabButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type VerRow = Record<string, unknown> & {
   id?: string;
@@ -104,7 +105,10 @@ export function VerificationsListPage() {
                 <AdminTd>{String(r.user?.email ?? "")}</AdminTd>
                 <AdminTd>{String(r.status ?? "")}</AdminTd>
                 <AdminTd>
-                  <Link to={`/verifications/${String(r.id)}`} className="text-sm font-medium text-primary hover:underline">
+                  <Link
+                    to={adminSpaTo(`/admin/verifications/${encodeURIComponent(String(r.id))}`)}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
                     Review
                   </Link>
                 </AdminTd>

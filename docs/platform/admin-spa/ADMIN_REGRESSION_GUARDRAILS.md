@@ -73,6 +73,14 @@ pnpm --filter admin-web test
 
 **Run:** same as §2.1.
 
+### 2.3a Static in-app links ↔ `App.tsx` (Vitest)
+
+**Location:** `apps/admin-web/src/regression/spaStaticLinkLiterals.test.ts` (+ `extractSpaRoutesFromAppTsx.ts`)
+
+**Intent:** Every string literal `adminSpaTo("/admin/…")` and every object `to: "/admin/…"` used for navigation resolves to a route pattern parsed from `App.tsx` (including `control-plane/*` children). Catches broken links when the basename is `/admin` (e.g. `to="/admin/foo"` without `adminSpaTo` doubles the path). Excludes `lib/adminSpaPath.ts` (JSDoc examples only).
+
+**Run:** same as §2.1.
+
 ### 2.4 Basic E2E (Playwright)
 
 **Location:** `apps/admin-web/e2e/login-shell.spec.ts`  
@@ -82,6 +90,7 @@ pnpm --filter admin-web test
 
 - Login shell renders expected heading, labels, and sign-in control.
 - Hitting a protected route **without** a live Next API still shows **some** gate UX (verifying session, session error copy, or login), not a silent blank app.
+- Superadmin-only shell route (`/admin/gods-eye`) is covered the same way as control-plane (session gate UX without API).
 
 **Run:**
 
@@ -92,6 +101,15 @@ pnpm test:e2e
 ```
 
 **Staging / real auth:** For full signed-in journeys (RBAC matrix, mutations), extend Playwright with a staging base URL and credentials or a test harness; the current suite is intentionally minimal and backend-agnostic.
+
+**Optional staging smoke (not in default CI):** Point Playwright at a real deployment and run a focused spec, for example:
+
+```bash
+# From apps/admin-web after `pnpm build` + config override, or use a custom playwright.staging.config.ts
+PLAYWRIGHT_BASE_URL=https://your-staging-origin npx playwright test e2e/login-shell.spec.ts
+```
+
+Use a superadmin test account to validate Gods Eye map load, tenant scope query params, and one control-plane mutation — see the checklist in [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) §4.
 
 ---
 
@@ -145,4 +163,6 @@ Use this when changing routes, pages, API clients, or admin Next routes.
 
 - Critical flow registry: `apps/admin-web/src/regression/criticalFlows.ts`
 - Admin API taxonomy: `docs/admin-api-route-taxonomy.csv`
+- SPA route + API inventory (audit): [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md)
+- Parity / contracts: [`ADMIN_API_PARITY_MATRIX.md`](./ADMIN_API_PARITY_MATRIX.md)
 - CI: `.github/workflows/ci.yml`

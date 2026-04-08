@@ -18,7 +18,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import type { ServiceCategory, ServiceItem, ProductItem, TeamMember, Sale } from "@/lib/provider-portal/types";
+import type {
+  ServiceCategory,
+  ServiceItem,
+  ProductItem,
+  TeamMember,
+  Sale,
+  YocoPayment,
+} from "@/lib/provider-portal/types";
+import { isLikelyUuid } from "@/lib/http/api-error";
 import { providerApi } from "@/lib/provider-portal/api";
 import { Money } from "./Money";
 import { YocoPaymentDialog } from "./YocoPaymentDialog";
@@ -163,9 +171,19 @@ export function NewSaleDialog({
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
   const [isValidatingGiftCard, setIsValidatingGiftCard] = useState(false);
   
-  // Yoco payment
+  // Yoco payment — pending sale row links terminal payment via sale_id
   const [showYocoDialog, setShowYocoDialog] = useState(false);
-  
+  const [yocoLinkedSaleId, setYocoLinkedSaleId] = useState<string | null>(null);
+  const yocoPendingSaleIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      yocoPendingSaleIdRef.current = null;
+      setYocoLinkedSaleId(null);
+      setShowYocoDialog(false);
+    }
+  }, [open]);
+
   // Modals
   const [showNewClientDialog, setShowNewClientDialog] = useState(false);
   const [showCustomServiceDialog, setShowCustomServiceDialog] = useState(false);
@@ -620,19 +638,15 @@ export function NewSaleDialog({
   const giftCardApplied = Math.min(giftCardBalance, subtotal + tax + tipAmount - discountAmount);
   const total = Math.max(0, subtotal + tax + tipAmount - discountAmount - giftCardApplied);
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (options?: {
+    afterYocoTerminalSuccess?: boolean;
+    yocoPayment?: YocoPayment;
+  }) => {
     if (cart.length === 0) {
       toast.error("Please add items to the sale");
       return;
     }
 
-    // If Yoco terminal is selected, open Yoco dialog
-    if (selectedPaymentMethod === "yoco") {
-      setShowYocoDialog(true);
-      return;
-    }
-
-    // Validate location selection
     if (serviceLocationType === "at-salon" && !selectedLocationId) {
       toast.error("Please select a salon location");
       return;
@@ -642,40 +656,103 @@ export function NewSaleDialog({
       return;
     }
 
+    const clientName = selectedClient
+      ? selectedClient.id?.startsWith("walk-in")
+        ? selectedClient.first_name || "Walk-in"
+        : `${selectedClient.first_name || ""} ${selectedClient.last_name || ""}`.trim() || "Walk-in"
+      : "Walk-in";
+
+    const customerId =
+      selectedClient &&
+      !selectedClient.id.startsWith("walk-in") &&
+      isLikelyUuid(selectedClient.id)
+        ? selectedClient.id
+        : undefined;
+
+    const saleBase: Partial<Sale> & { customer_id?: string } = {
+      customer_id: customerId,
+      client_name: clientName,
+      items: cart.map((item) => ({
+        id: item.id,
+        type: (item.type === "variant" || item.type === "addon" ? "service" : item.type) as "service" | "product",
+        name: item.name,
+        quantity: item.quantity,
+        unit_price: item.unit_price,
+        total: item.total,
+      })),
+      subtotal,
+      tax,
+      total,
+      payment_method: selectedPaymentMethod,
+      location_id: serviceLocationType === "at-salon" ? selectedLocationId : undefined,
+      service_location_type: serviceLocationType,
+      house_call_address: serviceLocationType === "house-call" ? houseCallAddress : undefined,
+      team_member_id: selectedTeamMember || undefined,
+      team_member_name: teamMembers.find((m) => m.id === selectedTeamMember)?.name,
+      coupon_code: appliedCoupon?.code,
+      gift_card_code: giftCardBalance > 0 ? giftCardCode : undefined,
+      gift_card_amount: giftCardApplied,
+    };
+
+    // Yoco: create a pending sale, charge terminal with sale_id, then mark completed (no second insert)
+    if (selectedPaymentMethod === "yoco" && !options?.afterYocoTerminalSuccess) {
+      setIsLoading(true);
+      try {
+        let saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
+        if (!saleId) {
+          const pending = await providerApi.createSale({
+            ...saleBase,
+            payment_method: "yoco",
+            payment_status: "pending",
+          } as Partial<Sale>);
+          saleId = pending.id;
+          yocoPendingSaleIdRef.current = saleId;
+          setYocoLinkedSaleId(saleId);
+        }
+        setShowYocoDialog(true);
+      } catch (error) {
+        console.error("Failed to start Yoco sale:", error);
+        toast.error("Failed to prepare card sale");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    if (selectedPaymentMethod === "yoco" && options?.afterYocoTerminalSuccess) {
+      const saleId = yocoPendingSaleIdRef.current ?? yocoLinkedSaleId;
+      const payment = options.yocoPayment;
+      if (!saleId || !payment?.yoco_payment_id) {
+        toast.error("Could not finalize card sale");
+        return;
+      }
+      setIsLoading(true);
+      try {
+        const sale = await providerApi.updateSale(saleId, {
+          payment_status: "completed",
+          payment_provider: "yoco",
+          payment_provider_id: payment.yoco_payment_id,
+        });
+        yocoPendingSaleIdRef.current = null;
+        setYocoLinkedSaleId(null);
+        toast.success("Sale completed!");
+        onSuccess?.(sale);
+        onOpenChange(false);
+      } catch (error) {
+        console.error("Failed to finalize Yoco sale:", error);
+        toast.error("Payment succeeded but updating the sale failed. Check Sales for a pending entry.");
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const clientName = selectedClient
-        ? selectedClient.id?.startsWith("walk-in")
-          ? selectedClient.first_name || "Walk-in"
-          : `${selectedClient.first_name || ""} ${selectedClient.last_name || ""}`.trim() || "Walk-in"
-        : "Walk-in";
-      
-      const saleData: Partial<Sale> = {
-        client_name: clientName,
-        items: cart.map((item) => ({
-          id: item.id,
-          type: (item.type === "variant" || item.type === "addon" ? "service" : item.type) as "service" | "product",
-          name: item.name,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          total: item.total,
-        })),
-        subtotal,
-        tax,
-        total,
-        payment_method: selectedPaymentMethod,
-        payment_status: "completed", // All payments including EFT are completed (simple like cash)
-        location_id: serviceLocationType === "at-salon" ? selectedLocationId : undefined,
-        service_location_type: serviceLocationType,
-        house_call_address: serviceLocationType === "house-call" ? houseCallAddress : undefined,
-        team_member_id: selectedTeamMember || undefined,
-        team_member_name: teamMembers.find((m) => m.id === selectedTeamMember)?.name,
-        coupon_code: appliedCoupon?.code,
-        gift_card_code: giftCardBalance > 0 ? giftCardCode : undefined,
-        gift_card_amount: giftCardApplied,
-      };
-
-      const sale = await providerApi.createSale(saleData);
+      const sale = await providerApi.createSale({
+        ...saleBase,
+        payment_status: "completed",
+      } as Partial<Sale>);
       toast.success("Sale completed!");
       onSuccess?.(sale);
       onOpenChange(false);
@@ -687,8 +764,9 @@ export function NewSaleDialog({
     }
   };
 
-  const handleYocoPaymentSuccess = (_payment: any) => {
-    handleSubmit();
+  const handleYocoPaymentSuccess = (payment: YocoPayment) => {
+    setShowYocoDialog(false);
+    void handleSubmit({ afterYocoTerminalSuccess: true, yocoPayment: payment });
   };
 
   return (
@@ -1607,7 +1685,7 @@ export function NewSaleDialog({
                 </p>
               </div>
               <Button
-                onClick={handleSubmit}
+                onClick={() => void handleSubmit()}
                 disabled={isLoading || cart.length === 0}
                 className="h-12 px-6 text-base font-semibold bg-primary hover:bg-primary-hover text-white rounded-lg shadow-lg disabled:opacity-50 active:scale-95 transition-transform flex-shrink-0"
               >
@@ -1626,12 +1704,12 @@ export function NewSaleDialog({
       </SheetContent>
     </Sheet>
 
-      {showYocoDialog && (
+      {showYocoDialog && yocoLinkedSaleId && (
         <YocoPaymentDialog
           open={showYocoDialog}
           onOpenChange={setShowYocoDialog}
           amount={total}
-          saleId={""}
+          saleId={yocoLinkedSaleId}
           onSuccess={handleYocoPaymentSuccess}
         />
       )}

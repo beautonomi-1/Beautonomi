@@ -207,8 +207,18 @@ export async function GET(request: NextRequest) {
 
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
-    const travelFeesTotal = sumNet(["travel_fee"]);
-    const travelFeesThisPeriod = sumNet(["travel_fee"], { start: startDate, end: now });
+    /** Travel fee rows store gross in `amount` with net=0 (travel is included in provider_earnings). */
+    const sumTravelFeeAmount = (within?: { start: Date; end: Date }) =>
+      rows
+        .filter((r: any) => r.transaction_type === "travel_fee")
+        .filter((r: any) => {
+          if (!within) return true;
+          const d = new Date(r.created_at);
+          return d >= within.start && d <= within.end;
+        })
+        .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const travelFeesTotal = sumTravelFeeAmount();
+    const travelFeesThisPeriod = sumTravelFeeAmount({ start: startDate, end: now });
     const refundsTotal = rows.reduce((s: number, r: any) => {
       if (r.transaction_type === "refund") {
         return s + Math.abs(Number(r.net ?? r.amount ?? 0));
@@ -290,6 +300,7 @@ export async function GET(request: NextRequest) {
         total_earnings: providerEarningsTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
+        payout_hold_days: holdDays,
         minimum_payout_amount: minimumPayoutAmount,
         this_month: thisMonthTotal,
         last_month: lastMonthTotal,

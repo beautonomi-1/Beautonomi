@@ -15,6 +15,7 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
 import { SUPPORT_TICKET_CANNED_RESPONSES } from "@/lib/supportTicketCannedResponses";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 
 type Assignee = { id: string; email: string | null; full_name: string | null; role: string };
@@ -152,7 +153,10 @@ export function SupportTicketDetailPage() {
       setPatchError(null);
       invalidateTicket();
     },
-    onError: (e: Error) => setPatchError(e.message),
+    onError: (e: Error) => {
+      setPatchError(e.message);
+      adminToast.error(e.message);
+    },
   });
 
   const sendMessage = useMutation({
@@ -163,12 +167,15 @@ export function SupportTicketDetailPage() {
         attachments: replyAttachments,
       }),
     onSuccess: () => {
+      const wasInternal = replyInternal;
       setReply("");
       setReplyInternal(false);
       setReplyAttachments([]);
       setUploadErr(null);
       invalidateTicket();
+      adminToast.success(wasInternal ? "Internal reply saved" : "Reply sent");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   async function onPickFiles(files: FileList | null) {
@@ -199,9 +206,12 @@ export function SupportTicketDetailPage() {
       const next = json.data?.attachments ?? [];
       if (!next.length) throw new Error("No files were uploaded");
       setReplyAttachments((prev) => [...prev, ...next]);
+      adminToast.success(next.length === 1 ? "File attached" : `${next.length} files attached`);
       if (fileRef.current) fileRef.current.value = "";
     } catch (e) {
-      setUploadErr(e instanceof Error ? e.message : "Upload failed");
+      const msg = e instanceof Error ? e.message : "Upload failed";
+      setUploadErr(msg);
+      adminToast.error(msg);
     } finally {
       setUploading(false);
     }
@@ -216,7 +226,9 @@ export function SupportTicketDetailPage() {
     onSuccess: () => {
       setNoteBody("");
       invalidateTicket();
+      adminToast.success("Note added");
     },
+    onError: (e: Error) => adminToast.error(e.message),
   });
 
   const syncedTicket = detailQ.data?.ticket;
@@ -275,7 +287,7 @@ export function SupportTicketDetailPage() {
         description={`#${str(ticket.ticket_number)} · ${str(ticket.status).replace(/_/g, " ")}`}
         actions={
           <Link
-            to="/support-tickets"
+            to={adminSpaTo("/admin/support-tickets")}
             className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
           >
             ← Queue
@@ -630,10 +642,13 @@ export function SupportTicketDetailPage() {
                 className={adminToolbarButtonClass(patchTicket.isPending)}
                 disabled={patchTicket.isPending}
                 onClick={() => {
-                  void patchTicket.mutateAsync({
-                    csat_score: csatScore === "" ? null : Number(csatScore),
-                    csat_comment: csatCommentDraft.trim() || null,
-                  });
+                  void patchTicket
+                    .mutateAsync({
+                      csat_score: csatScore === "" ? null : Number(csatScore),
+                      csat_comment: csatCommentDraft.trim() || null,
+                    })
+                    .then(() => adminToast.success("CSAT saved"))
+                    .catch(() => {});
                 }}
               >
                 {patchTicket.isPending ? "Saving…" : "Save CSAT"}

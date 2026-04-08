@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
+import { deriveProviderPortalNotificationUrl } from "@/lib/provider/derive-provider-notification-url";
 
 interface Notification {
   id: string;
@@ -121,37 +122,12 @@ const formatTimeAgo = (timestamp: string) => {
   return time.toLocaleDateString();
 };
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function isUuid(value: unknown): value is string {
-  return typeof value === "string" && UUID_RE.test(value.trim());
-}
-
 function deriveNotificationUrl(notification: Notification): string | undefined {
-  if (notification.link && typeof notification.link === "string" && notification.link.startsWith("/")) {
-    return notification.link;
-  }
-  const d = { ...notification.data, ...notification.metadata };
-  if (d?.booking_id != null && isUuid(d.booking_id)) {
-    return `/provider/bookings/${String(d.booking_id).trim()}`;
-  }
-  if (d?.conversation_id != null && isUuid(d.conversation_id)) {
-    return `/provider/messaging?id=${encodeURIComponent(String(d.conversation_id).trim())}`;
-  }
-  if (d?.appointment_id != null && isUuid(d.appointment_id)) {
-    return `/provider/calendar`;
-  }
-  if (d?.client_id != null && isUuid(d.client_id)) {
-    return `/provider/clients/${String(d.client_id).trim()}`;
-  }
-  if (d?.order_id != null && isUuid(d.order_id)) {
-    return `/provider/orders/${String(d.order_id).trim()}`;
-  }
-  if (d?.staff_id != null && isUuid(d.staff_id)) {
-    return `/provider/team/members`;
-  }
-  return undefined;
+  return deriveProviderPortalNotificationUrl({
+    link: notification.link,
+    data: notification.data,
+    metadata: notification.metadata,
+  });
 }
 
 export function ProviderNotificationsDropdown() {
@@ -204,7 +180,7 @@ export function ProviderNotificationsDropdown() {
                 title: newNotification.title,
                 message: newNotification.message,
                 timestamp: newNotification.created_at,
-                link: newNotification.link || undefined,
+                link: newNotification.link ?? newNotification.action_url ?? undefined,
                 priority: (newNotification.priority || 'low') as 'low' | 'medium' | 'high',
                 read: newNotification.is_read || false,
                 metadata: newNotification.metadata,

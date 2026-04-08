@@ -10,14 +10,14 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **259** API rows, 2026-04-07 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **259** API rows, 2026-04-07 — see §8 Implementation Delta).
 
 ---
 
 ## 1. How to populate (mandatory process)
 
 1. **Seed API list:** Run `node docs/scripts/generate-admin-route-taxonomy.mjs` → use `docs/admin-api-route-taxonomy.csv` as inventory of **server** routes.  
-2. **Seed UI usage:** Grep `apps/web/src/app/admin` (and child components under `apps/web/src/components/admin`) for `"/api/admin` and `fetcher.` / `fetch(` patterns; attach each match to a **page route**.  
+2. **Seed UI usage:** Grep `apps/web/src/app/admin` (and child components under `apps/web/src/components/admin`) for `"/api/admin` and `fetcher.` / `fetch(` patterns; attach each match to a **page route**. For `apps/admin-web`, grep `adminApi.` and `"/api/admin"` under `apps/admin-web/src` (see [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md)).  
 3. **Cross-check nav:** `apps/web/src/components/admin/AdminShell.tsx` `navGroups` hrefs ↔ `apps/web/src/app/admin/**/page.tsx` exists.  
 4. **Per row:** Open the corresponding `apps/web/src/app/api/admin/**/route.ts` and record `requireAdminSection` / `requireRoleInApi` usage.  
 5. **Sign-off:** FE + BE on each **Reviewed** row.
@@ -62,7 +62,7 @@ Complete these first; they block the SPA shell.
 
 | UI route / component | HTTP | API path | AuthZ (section / role) | Query/body | Response notes | Client method (pkg) | Status |
 |----------------------|------|----------|-------------------------|------------|----------------|----------------------|--------|
-| AdminShell | GET | `/api/admin/nav-counts` | `requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG)` today — **known mismatch** vs mixed sidebar audiences | — | Keys align with nav badges | `createAdminApiClient().getJson('/api/admin/nav-counts')` — SPA treats **401/403** as **no badges** (empty object) | In review |
+| AdminShell | GET | `/api/admin/nav-counts` | `requireRoleInApi(ALL_ADMIN_ROLES)` — any admin role gets tenant-scoped badge counts (finance/support/trust, etc.) | — | Keys align with nav `href`s | `createAdminApiClient().getJson('/api/admin/nav-counts')` — SPA treats **401/403** as **no badges** (empty object) | In review |
 | AdminShell | GET | `/api/admin/settings/section-permissions` | `requireRoleInApi(ALL_ADMIN_ROLES)` on GET | — | `{ sectionRoles }` effective matrix | `createAdminApiClient().getJson('/api/admin/settings/section-permissions')` → `sectionRoles` (TanStack Query, **5m** stale) | In review |
 | AdminShell | GET | `/api/admin/search` | `requireAdminSection(ADMIN_SECTION_USERS_TRUST)` | `q` | Users, bookings, providers | `createAdminApiClient().getJson('/api/admin/search?q=…')` | In review |
 | AdminShell (superadmin scope UI) | GET | `/api/admin/tenants` | Superadmin list on **GET** (`route.ts`) | — | Tenant pick list | `createAdminApiClient().getJson('/api/admin/tenants')` | In review |
@@ -81,7 +81,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 |---|-------------|------|-----------------|--------|-----------------------------------------------|-------|
 | 1 | `/admin` | W0 | overview | N | — | Client redirect → dashboard |
 | 2 | `/admin/login` | W0 | — | N | `POST /api/auth/sign-in` (SPA + cookie session) | Auth flows (non-admin API); shell not shown |
-| 3 | `/admin/dashboard` | W0 | overview | Y | `GET /api/admin/dashboard` | Align `RoleGuard` with `ADMIN_SECTION_OVERVIEW` / API |
+| 3 | `/admin/dashboard` | W0 | overview | Y | `GET /api/admin/dashboard` | SPA: methodology panel, `generated_at`, customer fallback flag, metric deep links; RPC `admin_dashboard_tenant_customer_count` (migration 446). |
 | 4 | `/admin/gods-eye` | W0 | overview | Y | `GET /api/admin/gods-eye` | Map-heavy (responsive M4) |
 | 5 | `/admin/analytics` | W0 | overview | Y | `GET /api/admin/dashboard`, `GET /api/admin/analytics`, export | |
 | 6 | `/admin/reports` | W0 | overview | Y | — | Hub only (links to sub-reports) |
@@ -99,7 +99,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 18 | `/admin/refunds` | W1 | providers_operations | Y | `GET /api/admin/refunds`, `POST .../:id` | |
 | 19 | `/admin/finance` | W2 | finance | Y | `GET /api/admin/finance` (+ breakdown endpoints) | |
 | 20 | `/admin/payouts` | W2 | finance | Y | `GET/POST/PATCH /api/admin/payouts` (+ provider payout routes) | |
-| 21 | `/admin/fees` | W2 | finance | Y | `GET/PATCH /api/admin/fees` (+ related) | |
+| 21 | `/admin/fees` | W2 | finance | Y | `GET/POST/PATCH /api/admin/fees/configs`; `GET/POST /api/admin/fees/adjustments`; `GET/POST/PATCH /api/admin/fees/reconciliations` | **SPA:** [`FeesConfigsPage`](../../apps/admin-web/src/routes/finance/FeesConfigsPage.tsx) — tabs + `?tab=` / `page`; configs `getJson` (unwrap `{ data }`); adjustments + reconciliations lists `getRawJson` (`{ data, meta }`); mutations `postJson` / `patchJson`. AuthZ `ADMIN_SECTION_FINANCE` (legacy page used `superadmin` `RoleGuard` — SPA matches API). |
 | 22 | `/admin/billing` | W2 | finance | Y | `GET /api/admin/billing` (+ related) | |
 | 23 | `/admin/taxes` | W2 | finance | Y | `GET/POST/PATCH /api/admin/taxes` | |
 | 24 | `/admin/settings/platform-fees` | W2 | finance | Y | `GET/PATCH /api/admin/platform-fees` | Lives under settings path |
@@ -236,6 +236,11 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | **Wave 0 verification:** Global search result links aligned with legacy `AdminShell` list URLs + `?highlight=`; section-permissions load failure surfaced with retry banner; dashboard load error includes **Retry**. See [`ADMIN_WAVE0_VERIFICATION_REPORT.md`](./ADMIN_WAVE0_VERIFICATION_REPORT.md). |
 | 2026-04-07 | **Wave 1 pattern set:** `@beautonomi/admin-api-client` gains `postJson` / `patchJson` (non-GET paths skip scope query injection per `adminScope.ts`). `GET /api/admin/providers` includes distance fields for distance-settings parity. SPA routes: `support-tickets`, `bookings`, `bookings/:id`, `disputes`, `providers/distance-settings`. See [`ADMIN_WAVE1_PATTERN_SET_REPORT.md`](./ADMIN_WAVE1_PATTERN_SET_REPORT.md). |
 | 2026-04-07 | **Taxonomy / CI:** Regenerated `docs/admin-api-route-taxonomy.csv` (**259** rows) so every `apps/web/.../api/admin/**/route.ts` is listed; unblocks `check-admin-api-routes-in-taxonomy.mjs` after new routes (ads, compliance, ecommerce catalog/overview, explore comments, gamification backfill init, loyalty rules by id, pricing-plan features, product-orders by id, provider-subscriptions by id, referral-sources, support-tickets upload). |
+| 2026-04-07 | **SPA audit inventory:** Added [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) — nav vs `App.tsx` inverse (deep links), global search paths, superadmin code verification + **staging checklist**, page→API summary by area. **Gaps called out:** taxonomy-only routes (e.g. compliance purge) without SPA consumers; optional nav for `addons` / `providers/distance-settings`. |
+| 2026-04-07 | **Gap closure:** SPA [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) at `/admin/control-plane/compliance` (`useSuperadminPage`) + nav + regression critical flow; legacy Next [`app/admin/control-plane/compliance/page.tsx`](../../apps/web/src/app/admin/control-plane/compliance/page.tsx) + `AdminShell` / control-plane nav. Sidebar adds **Provider distance**, **Add-ons**, **Compliance purge** (superadmin). |
+| 2026-04-07 | **Fees SPA parity:** [`FeesConfigsPage`](../../apps/admin-web/src/routes/finance/FeesConfigsPage.tsx) replaces read-only configs table with **Configurations | Adjustments | Reconciliations** (`adminQueryKeys.fees.configs` / `adjustmentsList` / `reconciliationsList`). API: `GET ?active_only=false` + `POST`/`PATCH` configs; `GET` adjustments/reconciliations with `meta`; `POST` adjustments; `POST`/`PATCH` reconciliations. Closes gap vs legacy [`app/admin/fees/page.tsx`](../../apps/web/src/app/admin/fees/page.tsx) (legacy adjustment/reconciliation create modals were not wired). |
+| 2026-04-07 | **Dashboard decision-ready:** `GET /api/admin/dashboard` adds `generated_at`, `customer_count_uses_fallback`, `customer_signups_this_month` / `_last_month`, and expanded `metrics_notes` (fallback basis, bookings/providers growth). SPA [`DashboardPage`](../../apps/admin-web/src/routes/DashboardPage.tsx): correct **Market customers (distinct)** labelling vs `total_users`, methodology `<details>`, fallback warning (migration **446**), per-metric **deep links**, **Refresh** + “as of” time. Pairs with RPC `admin_dashboard_tenant_customer_count`. |
+| 2026-04-07 | **Users / staff / providers SPA parity:** [`UsersListPage`](../../apps/admin-web/src/routes/users/UsersListPage.tsx) — signup-source filter, full role filter, page size 50, row selection + bulk activate/deactivate/delete (`POST /api/admin/users/bulk`), suspend/reactivate, superadmin quick role + compliance purge modal + create user (`POST /api/admin/users`); fixed list links via `adminSpaTo`. [`StaffListPage`](../../apps/admin-web/src/routes/staff/StaffListPage.tsx) — API filters, stats cards, search, edit modal (`PATCH /api/admin/staff/:id`), activate/deactivate, password reset, provider deep links. [`ProvidersListPage`](../../apps/admin-web/src/routes/providers/ProvidersListPage.tsx) — correct provider detail `Link` under `/admin` basename. E-commerce nav adds **Add-ons** → `/admin/addons`. |
 | 2026-04-05 | **Waves 2–5 SPA batch:** `getRawJson` on `@beautonomi/admin-api-client` for top-level `{ data, meta }` envelopes. `apps/admin-web` adds read/list routes for finance, reports (`/reports/:reportKey`, API AuthZ **overview**), users trust, ecommerce (orders/returns; products via **public** API), marketing subset, integrations subset, operations JSON snapshots, platform settings subset, control-plane hub + redirects. **Known gaps:** report CSV export contract, platform-fees section vs nav, reports vs finance roles — see [`ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`](./ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md). |
 
 ---
@@ -250,5 +255,10 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | §8 Wave 0 verification delta; link to `ADMIN_WAVE0_VERIFICATION_REPORT.md` |
 | 2026-04-07 | §4 notes rows 7,11,13,14,16; §8 Wave 1 pattern set; `ADMIN_WAVE1_PATTERN_SET_REPORT.md` |
 | 2026-04-07 | §1.1 inventory **259** routes; §8 taxonomy regen delta (admin-api CSV + CI guardrail) |
+| 2026-04-07 | §1 process note: SPA grep + link to `ADMIN_SPA_AUDIT_INVENTORY.md`; §8 audit inventory delta |
+| 2026-04-07 | §8/§9: compliance purge SPA + legacy parity; nav items for distance-settings, addons, compliance |
+| 2026-04-07 | §8: users/staff/providers SPA parity batch (bulk users, purge modal, create user, staff CRUD + reset password, provider list links, Add-ons nav) |
+| 2026-04-07 | §4 row 21 fees APIs + SPA note; §8 fees SPA parity delta |
+| 2026-04-07 | §8 dashboard API + SPA decision-support delta |
 | 2026-04-05 | §8 Waves 2–5 SPA batch delta; link to `ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`; test strategy §2.7 envelope note |
 | 2026-04-06 | **SPA sweep:** W1 list/detail read routes, W3 content surfaces, W4 marketing/integrations/ops lists, W5 control-plane `*` legacy bridge, **payout** mutation parity in SPA; `/admin/broadcast` SPA = **history** only (compose stays legacy). |

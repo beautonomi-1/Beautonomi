@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import type { Appointment, TeamMember, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
+import type { Appointment, TeamMember, AvailabilityBlockDisplay, TimeBlock } from "@/lib/provider-portal/types";
 import { cn } from "@/lib/utils";
 import { 
   Clock, 
@@ -35,17 +35,18 @@ import {
   Crown,
   FileWarning,
   Camera,
-  Wrench
+  Wrench,
+  RefreshCw,
 } from "lucide-react";
-import { 
-  format, 
-  isToday, 
-  isSameDay, 
-  startOfWeek, 
+import {
+  format,
+  isSameDay,
+  startOfWeek,
   addDays,
-  getDay
+  subDays,
+  getDay,
 } from "date-fns";
-import { mapStatus, extractIconFlags } from "@/lib/scheduling/mangomintAdapter";
+import { mapStatus, extractIconFlags, isMangomintModeEnabled } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors, getActiveIcons } from "@/lib/scheduling/visualMapping";
 import { nowInTz, isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
 
@@ -73,29 +74,43 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { DirectionsLink } from "@/components/ui/directions-link";
 import { useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot } from "@/components/provider-portal/DragDropCalendar";
 import { MangomintStatusLegend } from "@/components/calendar/MangomintStatusLegend";
-import { getFirstHourAnyStaffAvailable } from "@/components/provider-portal/calendar/utils";
+import {
+  getFirstHourAnyStaffAvailable,
+  getAppointmentColors,
+  getEndTime,
+  toDateStr,
+  type CalendarBlock,
+} from "@/components/provider-portal/calendar/utils";
+import { STAFF_DAY_COLUMN_LAYOUT, UNASSIGNED_ID } from "@/components/provider-portal/calendar/constants";
+import { TimeBlockElement } from "@/components/provider-portal/calendar/TimeBlockElement";
+import { useCalendarPreferences } from "@/lib/settings/calendarPreferences";
 
 const MOBILE_COLUMN_HEADER_PX = 48;
 const MOBILE_HOUR_PX_COLUMNS = 60;
 const MOBILE_HOUR_PX_SINGLE = 64;
 
+export type CalendarMobileGridView = "day" | "3-days" | "week";
+
 interface CalendarMobileViewProps {
   appointments: Appointment[];
   teamMembers: TeamMember[];
   selectedDate: Date;
-  view?: "day" | "week";
+  view?: CalendarMobileGridView;
   onDateChange: (date: Date) => void;
   onAppointmentClick: (appointment: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, teamMemberId: string) => void;
   onAddAppointment: () => void;
   onFilterClick?: () => void;
-  onViewChange?: (view: "day" | "week") => void;
+  onViewChange?: (view: CalendarMobileGridView) => void;
   onCheckout?: (appointment: Appointment) => void;
   onStatusChange?: (appointment: Appointment, status: Appointment["status"]) => void;
   startHour?: number;
   endHour?: number;
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null;
   availabilityBlocks?: AvailabilityBlockDisplay[];
+  /** Provider-wide (`team_member_id` null) and per-staff blocks; merged per column like desktop. */
+  timeBlocks?: TimeBlock[];
+  onTimeBlockClick?: (block: TimeBlock) => void;
   onViewWeekSchedule?: (staffMember: TeamMember) => void;
   onPrintDaySchedule?: (staffMember: TeamMember) => void;
   onEditWorkHours?: (staffMember: TeamMember) => void;
@@ -104,6 +119,28 @@ interface CalendarMobileViewProps {
   onClearStaffFilter?: () => void;
   /** IANA timezone for the provider business (e.g. "Africa/Johannesburg"). */
   businessTimezone?: string;
+  /** Same as desktop: refresh data (e.g. pull-to-refresh companion). */
+  onRefresh?: () => void;
+}
+
+/** Matches desktop `BookingBlock` / `getAppointmentColors` for mobile cards. */
+function getMobileBookingVisuals(
+  apt: Appointment,
+  useMangomintMode: boolean,
+  colorBy: "status" | "service" | "team_member",
+  showCanceled: boolean,
+): { colorStyle: React.CSSProperties; colors: ReturnType<typeof getAppointmentColors> } | null {
+  const colors = getAppointmentColors(apt, useMangomintMode, colorBy, showCanceled);
+  if (colors.hidden) return null;
+  return {
+    colors,
+    colorStyle: {
+      backgroundColor: colors.bg,
+      borderLeftColor: colors.border,
+      color: colors.text,
+      opacity: colors.opacity ?? 1,
+    },
+  };
 }
 
 // Layout modes for mobile calendar
@@ -330,6 +367,8 @@ export function CalendarMobileView({
   endHour = 20,
   locationOperatingHours,
   availabilityBlocks = [],
+  timeBlocks = [],
+  onTimeBlockClick,
   onViewWeekSchedule,
   onPrintDaySchedule,
   onEditWorkHours,
@@ -337,6 +376,7 @@ export function CalendarMobileView({
   selectedTeamMemberId,
   onClearStaffFilter,
   businessTimezone,
+  onRefresh,
 }: CalendarMobileViewProps) {
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<MobileLayoutMode>("columns"); // Default to columns view like Mangomint
@@ -350,7 +390,7 @@ export function CalendarMobileView({
   const touchStartX = useRef<number | null>(null);
   const touchEndX = useRef<number | null>(null);
 
-  // Reset staff index when team changes
+  // Reset staff index when team changes (staffForDayGrid length applied in a later effect)
   useEffect(() => {
     if (teamMembers.length > 0 && selectedStaffIndex >= teamMembers.length) {
       queueMicrotask(() => setSelectedStaffIndex(0));
@@ -366,17 +406,109 @@ export function CalendarMobileView({
     return () => window.removeEventListener("calendar-scroll-to-now", handler);
   }, []);
 
-  const selectedStaff = teamMembers[selectedStaffIndex] || null;
   const timeSlots = generateTimeSlots(startHour, endHour);
   const selectedDateStr = format(selectedDate, "yyyy-MM-dd");
 
-  // Get dates for the scrollable date strip
-  // For day view: show 2 weeks centered on selected date (14 days) for easy scrolling
-  // For week view: show the 7 days of the current week
-  const weekStart = startOfWeek(selectedDate, { weekStartsOn: view === "week" ? 1 : 0 });
-  const weekDates = view === "week" 
-    ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
-    : Array.from({ length: 14 }, (_, i) => addDays(selectedDate, i - 4)); // 4 days before, selected day, 9 days after
+  const weekStartMon = useMemo(
+    () => startOfWeek(selectedDate, { weekStartsOn: 1 }),
+    [selectedDate],
+  );
+  /** Days shown in the time grid for week / 3-day (matches desktop). */
+  const visibleDays = useMemo(() => {
+    if (view === "week") {
+      return Array.from({ length: 7 }, (_, i) => addDays(weekStartMon, i));
+    }
+    if (view === "3-days") {
+      return Array.from({ length: 3 }, (_, i) => addDays(selectedDate, i));
+    }
+    return [selectedDate];
+  }, [view, selectedDate, weekStartMon]);
+
+  const isMultiDayGrid = view === "week" || view === "3-days";
+
+  const useMangomintMode = isMangomintModeEnabled();
+  const { preferences } = useCalendarPreferences();
+  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
+  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
+  const highContrast = useMangomintMode && !!preferences.highContrast;
+
+  const timeBlocksByStaffAndDate = useMemo(() => {
+    const map = new Map<string, TimeBlock[]>();
+    for (const block of timeBlocks) {
+      const key = `${block.team_member_id ?? "__all__"}-${block.date}`;
+      const list = map.get(key);
+      if (list) list.push(block);
+      else map.set(key, [block]);
+    }
+    return map;
+  }, [timeBlocks]);
+
+  const availabilityBlocksByStaffAndDate = useMemo(() => {
+    const map = new Map<string, AvailabilityBlockDisplay[]>();
+    for (const block of availabilityBlocks) {
+      const dateStr = block.date;
+      const key = block.team_member_id ? `${block.team_member_id}-${dateStr}` : `__all__-${dateStr}`;
+      const list = map.get(key);
+      if (list) list.push(block);
+      else map.set(key, [block]);
+    }
+    return map;
+  }, [availabilityBlocks]);
+
+  const getBlocksForStaff = useCallback(
+    (staffId: string, date: Date): CalendarBlock[] => {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const tbStaff = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const tbAll = timeBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      const tb = [...tbStaff, ...tbAll];
+      const sa = availabilityBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const aa = availabilityBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      return [
+        ...tb.map((t) => ({ ...t, _source: "time_block" as const })),
+        ...[...sa, ...aa].map((a) => ({
+          ...a,
+          name:
+            a._source === "staff_unavailability"
+              ? (a.reason?.trim() || "Time off")
+              : (a.reason || a.block_type),
+        })),
+      ];
+    },
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate],
+  );
+
+  /** Week / 3-day: one column per day — show provider-wide + every staff member's blocks (like all columns stacked). */
+  const getBlocksForDayColumn = useCallback(
+    (day: Date): CalendarBlock[] => {
+      const dateStr = format(day, "yyyy-MM-dd");
+      const tbAll = timeBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      const tbStaff = teamMembers.flatMap(
+        (m) => timeBlocksByStaffAndDate.get(`${m.id}-${dateStr}`) || [],
+      );
+      const tb = [...tbAll, ...tbStaff];
+      const aa = availabilityBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      const sa = teamMembers.flatMap(
+        (m) => availabilityBlocksByStaffAndDate.get(`${m.id}-${dateStr}`) || [],
+      );
+      return [
+        ...tb.map((t) => ({ ...t, _source: "time_block" as const })),
+        ...[...sa, ...aa].map((a) => ({
+          ...a,
+          name:
+            a._source === "staff_unavailability"
+              ? (a.reason?.trim() || "Time off")
+              : (a.reason || a.block_type),
+        })),
+      ];
+    },
+    [timeBlocksByStaffAndDate, availabilityBlocksByStaffAndDate, teamMembers],
+  );
+
+  // Date strip: day = 14-day scroll; week / 3-day = the same days as the grid
+  const weekDates =
+    view === "week" || view === "3-days"
+      ? visibleDays
+      : Array.from({ length: 14 }, (_, i) => addDays(selectedDate, i - 4));
   
   const dayLabels = ["S", "M", "T", "W", "T", "F", "S"];
 
@@ -403,14 +535,13 @@ export function CalendarMobileView({
     const distance = touchStartX.current - touchEndX.current;
     const minSwipeDistance = 50;
 
-    // Only navigate if it's a clear swipe (not just scrolling)
+    const step =
+      view === "week" ? 7 : view === "3-days" ? 3 : 1;
     if (Math.abs(distance) > minSwipeDistance) {
       if (distance > 0) {
-        // Swipe left - next day
-        onDateChange(addDays(selectedDate, 1));
+        onDateChange(addDays(selectedDate, step));
       } else {
-        // Swipe right - previous day
-        onDateChange(addDays(selectedDate, -1));
+        onDateChange(subDays(selectedDate, step));
       }
     }
 
@@ -418,17 +549,16 @@ export function CalendarMobileView({
     touchEndX.current = null;
   };
   
-  // Scroll to selected date when it changes
   useEffect(() => {
-    if (dateSelectorRef.current && view === "day") {
-      // Small delay to ensure DOM is updated
-      setTimeout(() => {
-        const selectedButton = dateSelectorRef.current?.querySelector('[data-selected-date="true"]') as HTMLElement;
-        if (selectedButton) {
-          selectedButton.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        }
-      }, 100);
-    }
+    if (!dateSelectorRef.current) return;
+    setTimeout(() => {
+      const selectedButton = dateSelectorRef.current?.querySelector(
+        '[data-selected-date="true"]',
+      ) as HTMLElement;
+      if (selectedButton) {
+        selectedButton.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }, 100);
   }, [selectedDate, view]);
 
   // Get appointments for a specific date/time/staff
@@ -439,7 +569,8 @@ export function CalendarMobileView({
   ): Appointment[] => {
     const dateStr = format(date, "yyyy-MM-dd");
     return appointments.filter((apt) => {
-      if (apt.scheduled_date !== dateStr || apt.team_member_id !== teamMemberId) {
+      const aptStaff = apt.team_member_id ? String(apt.team_member_id) : UNASSIGNED_ID;
+      if (apt.scheduled_date !== dateStr || aptStaff !== teamMemberId) {
         return false;
       }
       const { hour: aptHour, minute: aptMinute } = parseTimeParts(apt.scheduled_time);
@@ -451,15 +582,12 @@ export function CalendarMobileView({
     });
   }, [appointments]);
 
-  // Count unique bookings for staff member on selected date (multi-service = one per service row)
-  const toDateStr = (d: string) => d && d.length >= 10 ? d.slice(0, 10) : d || "";
-
   const appointmentsByStaffDate = useMemo(() => {
     const map = new Map<string, Appointment[]>();
     for (const apt of appointments) {
-      const d = apt.scheduled_date || "";
-      const dateKey = d.length >= 10 ? d.slice(0, 10) : d;
-      const key = `${apt.team_member_id}-${dateKey}`;
+      const staffKey = apt.team_member_id ? String(apt.team_member_id) : UNASSIGNED_ID;
+      const dateKey = toDateStr(apt.scheduled_date || "");
+      const key = `${staffKey}-${dateKey}`;
       const existing = map.get(key);
       if (existing) {
         existing.push(apt);
@@ -469,6 +597,62 @@ export function CalendarMobileView({
     }
     return map;
   }, [appointments]);
+
+  /** Day view: Unassigned column + orphan staff (matches desktop `CalendarGrid`). */
+  const displayMembers = useMemo(() => {
+    if (view !== "day") return teamMembers;
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+    const memberIds = new Set(teamMembers.map((m) => m.id));
+    const orphans: TeamMember[] = [];
+    const hasUnassigned =
+      (appointmentsByStaffDate.get(`${UNASSIGNED_ID}-${dateStr}`) ?? []).length > 0;
+
+    appointmentsByStaffDate.forEach((apts, key) => {
+      const parts = key.split("-");
+      const aptDate = parts.length >= 3 ? parts.slice(-3).join("-") : "";
+      const staffId = parts.length >= 3 ? parts.slice(0, -3).join("-") : parts[0] ?? "";
+      if (staffId === UNASSIGNED_ID || !staffId || aptDate !== dateStr) return;
+      if (memberIds.has(staffId)) return;
+      orphans.push({
+        id: staffId,
+        name: apts[0]?.team_member_name || "Staff",
+        role: "employee",
+        email: "",
+        mobile: "",
+        is_active: true,
+      });
+      memberIds.add(staffId);
+    });
+
+    const result: TeamMember[] = [];
+    if (hasUnassigned) {
+      result.push({
+        id: UNASSIGNED_ID,
+        name: "Unassigned",
+        role: "employee",
+        email: "",
+        mobile: "",
+        is_active: true,
+      });
+    }
+    result.push(...teamMembers, ...orphans);
+    return result;
+  }, [teamMembers, selectedDate, view, appointmentsByStaffDate]);
+
+  const staffForDayGrid = view === "day" ? displayMembers : teamMembers;
+
+  const defaultStaffIdForSlot = useMemo(() => {
+    const first = teamMembers.find((m) => m.id !== UNASSIGNED_ID);
+    return first?.id ?? teamMembers[0]?.id ?? "";
+  }, [teamMembers]);
+
+  const selectedStaff = staffForDayGrid[selectedStaffIndex] || null;
+
+  useEffect(() => {
+    if (staffForDayGrid.length > 0 && selectedStaffIndex >= staffForDayGrid.length) {
+      queueMicrotask(() => setSelectedStaffIndex(0));
+    }
+  }, [staffForDayGrid.length, selectedStaffIndex]);
 
   const getStaffAppointmentCount = (staffId: string) => {
     const staffApts = appointmentsByStaffDate.get(`${staffId}-${selectedDateStr}`) || [];
@@ -500,23 +684,37 @@ export function CalendarMobileView({
     const now = nowInTz(tzScroll);
     const ch = now.getHours();
     const cm = now.getMinutes();
-    const viewingToday = isTodayInTz(selectedDate, tzScroll);
+    const viewingToday = isMultiDayGrid
+      ? visibleDays.some((d) => isTodayInTz(d, tzScroll))
+      : isTodayInTz(selectedDate, tzScroll);
     const showNowLine = viewingToday && ch >= startHour && ch <= endHour;
+
+    const staffPool =
+      view === "day"
+        ? staffForDayGrid.filter((m) => m.id !== UNASSIGNED_ID)
+        : teamMembers.filter((m) => m.id !== UNASSIGNED_ID);
+    const poolForFirstHour =
+      staffPool.length > 0 ? staffPool : view === "day" ? staffForDayGrid : teamMembers;
 
     const firstStaffHour = getFirstHourAnyStaffAvailable(
       selectedDate,
       startHour,
       endHour,
-      teamMembers,
+      poolForFirstHour,
       locationOperatingHours,
     );
+
+    const scrollDateKeys = isMultiDayGrid
+      ? visibleDays.map((d) => format(d, "yyyy-MM-dd"))
+      : [selectedDateStr];
 
     let minApptOfs = Infinity;
     for (const apt of appointments) {
       const d = (apt.scheduled_date || "").slice(0, 10);
-      if (d !== selectedDateStr) continue;
+      if (!scrollDateKeys.includes(d)) continue;
       const { hour: ah, minute: am } = parseTimeParts(apt.scheduled_time);
-      if (layoutMode === "columns") {
+      const useColMetrics = layoutMode === "columns" || isMultiDayGrid;
+      if (useColMetrics) {
         const top =
           MOBILE_COLUMN_HEADER_PX +
           (ah - startHour) * MOBILE_HOUR_PX_COLUMNS +
@@ -532,7 +730,8 @@ export function CalendarMobileView({
     const firstWorkCols =
       MOBILE_COLUMN_HEADER_PX + (firstStaffHour - startHour) * MOBILE_HOUR_PX_COLUMNS;
     const firstWorkSingle = (firstStaffHour - startHour) * MOBILE_HOUR_PX_SINGLE;
-    const firstWorkTop = layoutMode === "columns" ? firstWorkCols : firstWorkSingle;
+    const firstWorkTop =
+      layoutMode === "columns" || isMultiDayGrid ? firstWorkCols : firstWorkSingle;
 
     const nowTopCols =
       MOBILE_COLUMN_HEADER_PX +
@@ -540,12 +739,12 @@ export function CalendarMobileView({
       (cm / 60) * MOBILE_HOUR_PX_COLUMNS;
     const nowTopSingle =
       (ch - startHour) * MOBILE_HOUR_PX_SINGLE + (cm / 60) * MOBILE_HOUR_PX_SINGLE;
-    const nowTop = layoutMode === "columns" ? nowTopCols : nowTopSingle;
+    const nowTop = layoutMode === "columns" || isMultiDayGrid ? nowTopCols : nowTopSingle;
 
     const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
 
     let target: number;
-    if (viewingToday && showNowLine) {
+    if (viewingToday && showNowLine && preferences.scrollToNow) {
       const apptOrNow =
         minApptOfs < Infinity ? Math.min(minApptOfs, nowTop) : nowTop;
       target = Math.min(maxScroll, Math.max(firstWorkTop - 12, apptOrNow - 48));
@@ -566,8 +765,13 @@ export function CalendarMobileView({
     startHour,
     endHour,
     locationOperatingHours,
+    staffForDayGrid,
     teamMembers,
     businessTimezone,
+    isMultiDayGrid,
+    visibleDays,
+    view,
+    preferences.scrollToNow,
   ]);
 
   return (
@@ -635,30 +839,45 @@ export function CalendarMobileView({
             </button>
             
             {onViewChange && (
-              <div className="flex items-center border border-white/20 rounded-lg overflow-hidden ml-2">
+              <div className="flex items-center border border-white/20 rounded-lg overflow-hidden ml-1 shrink-0">
                 <button
+                  type="button"
                   onClick={() => onViewChange("day")}
                   aria-pressed={view === "day"}
                   className={cn(
-                    "px-2 py-1 text-xs font-medium transition-colors",
-                    view === "day" 
-                      ? "bg-white/20 text-white" 
-                      : "text-white/70 hover:bg-white/10"
+                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors",
+                    view === "day"
+                      ? "bg-white/20 text-white"
+                      : "text-white/70 hover:bg-white/10",
                   )}
                 >
                   Day
                 </button>
                 <button
+                  type="button"
+                  onClick={() => onViewChange("3-days")}
+                  aria-pressed={view === "3-days"}
+                  className={cn(
+                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-l border-white/15",
+                    view === "3-days"
+                      ? "bg-white/20 text-white"
+                      : "text-white/70 hover:bg-white/10",
+                  )}
+                >
+                  3d
+                </button>
+                <button
+                  type="button"
                   onClick={() => onViewChange("week")}
                   aria-pressed={view === "week"}
                   className={cn(
-                    "px-2 py-1 text-xs font-medium transition-colors",
-                    view === "week" 
-                      ? "bg-white/20 text-white" 
-                      : "text-white/70 hover:bg-white/10"
+                    "px-1.5 py-1 text-[10px] sm:text-xs font-medium transition-colors border-l border-white/15",
+                    view === "week"
+                      ? "bg-white/20 text-white"
+                      : "text-white/70 hover:bg-white/10",
                   )}
                 >
-                  Week
+                  Wk
                 </button>
               </div>
             )}
@@ -672,6 +891,16 @@ export function CalendarMobileView({
               compact
               className="text-white hover:bg-white/10 rounded-lg p-2"
             />
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={() => onRefresh()}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors active:scale-95"
+                aria-label="Refresh schedule"
+              >
+                <RefreshCw className="w-5 h-5" />
+              </button>
+            )}
             <button 
               onClick={(e) => {
                 e.preventDefault();
@@ -692,7 +921,7 @@ export function CalendarMobileView({
             ref={dateSelectorRef}
             className={cn(
               "flex gap-1 overflow-x-auto scrollbar-hide pb-1",
-              view === "day" ? "scroll-smooth" : "justify-around"
+              view === "day" ? "scroll-smooth" : "justify-center sm:justify-around",
             )}
             style={{
               scrollbarWidth: 'none',
@@ -746,8 +975,8 @@ export function CalendarMobileView({
         </div>
       </div>
 
-      {/* Layout Toggle & Staff Header */}
-      {teamMembers.length > 0 && (
+      {/* Layout Toggle & Staff Header — day grid only (week/3-day use combined columns) */}
+      {staffForDayGrid.length > 0 && !isMultiDayGrid && (
         <div className="bg-white border-b border-gray-200 w-full box-border shadow-sm z-20 relative">
           {/* Layout Toggle Row */}
           <div className="flex items-center justify-between px-3 py-2.5 w-full box-border">
@@ -789,7 +1018,7 @@ export function CalendarMobileView({
           {layoutMode === "single" && (
             <div className="px-4 py-3 overflow-x-auto scrollbar-hide w-full box-border">
               <div className="flex gap-2 min-w-0 pb-1">
-                {teamMembers.map((member, idx) => {
+                {staffForDayGrid.map((member, idx) => {
                   const count = getStaffAppointmentCount(member.id);
                   return (
                     <button
@@ -833,19 +1062,379 @@ export function CalendarMobileView({
         </div>
       )}
 
-      {/* Time Grid - Different layouts based on mode */}
-      {layoutMode === "columns" ? (
-        // COLUMNS VIEW - All staff side by side with time grid
-        // Uses pure CSS layout (no window.innerWidth) to avoid SSR hydration issues
-        <div 
+      {/* Time Grid — week / 3-day: one column per day (all staff), matches desktop multi-day */}
+      {isMultiDayGrid ? (
+        <div
           ref={scrollContainerRef}
-          className="relative bg-gray-50 pb-20"
+          className="relative bg-gray-50 pb-20 overflow-x-auto"
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
         >
-          {/* Flex layout: time column + staff columns fill available width */}
-          <div className="flex w-full">
-            {/* Time Column - Fixed width */}
+          <div className="flex w-full min-w-min">
             <div className="w-[52px] flex-shrink-0 bg-white border-r-2 border-gray-400">
-              {/* Corner cell - sticky both top and left */}
+              <div className="h-[48px] sticky top-0 z-50 bg-gray-100 border-b-2 border-gray-400 flex items-center justify-center">
+                <Clock className="w-3.5 h-3.5 text-gray-500" />
+              </div>
+              {timeSlots.map((time, idx) => {
+                const { hour } = parseTimeParts(time);
+                const period = hour >= 12 ? "PM" : "AM";
+                const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+                return (
+                  <div
+                    key={time}
+                    className={cn(
+                      "h-[60px] border-b-2 border-gray-300 flex items-start justify-center pt-1",
+                      idx % 2 === 1 ? "bg-gray-100/60" : "bg-white",
+                    )}
+                  >
+                    <span className="text-[10px] font-bold text-gray-700 whitespace-nowrap leading-tight">
+                      {displayHour}
+                      {period}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {visibleDays.map((day) => {
+              const dateStr = format(day, "yyyy-MM-dd");
+              const dayApts = appointments.filter((apt) => {
+                const d = (apt.scheduled_date || "").slice(0, 10);
+                return d === dateStr;
+              });
+              const isTodayCol = isTodayInTz(day, tz);
+              const colW = view === "week" ? "min-w-[92px] w-[13.5vw] max-w-[140px]" : "min-w-[108px] w-[30vw] max-w-[160px]";
+
+              return (
+                <div key={dateStr} className={cn("flex-shrink-0 border-r-2 border-gray-300 last:border-r-0 relative bg-white", colW)}>
+                  <button
+                    type="button"
+                    onClick={() => onDateChange(day)}
+                    className={cn(
+                      "h-[48px] sticky top-0 z-30 w-full border-b-2 border-gray-400 px-1 py-1 flex flex-col items-center justify-center",
+                      isTodayCol ? "bg-teal-500/20" : "bg-[#1a1f3c]",
+                    )}
+                  >
+                    <span className={cn("text-[9px] font-semibold uppercase", isTodayCol ? "text-gray-700" : "text-white/80")}>
+                      {format(day, "EEE")}
+                    </span>
+                    <span className={cn("text-xs font-bold", isTodayCol ? "text-indigo-700" : "text-white")}>
+                      {format(day, "d MMM")}
+                    </span>
+                    <span className={cn("text-[8px] font-medium", isTodayCol ? "text-gray-600" : "text-[#4fd1c5]")}>
+                      {dayApts.length} appt{dayApts.length !== 1 ? "s" : ""}
+                    </span>
+                  </button>
+
+                  <div className="relative bg-white">
+                    {(() => {
+                      const dayBlocks = getBlocksForDayColumn(day);
+                      if (dayBlocks.length === 0) return null;
+                      return (
+                        <div
+                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
+                        >
+                          {dayBlocks.map((block) => (
+                            <div
+                              key={`${block.id}-${block.start_time}-${block.end_time}-${"team_member_id" in block ? (block.team_member_id ?? "all") : "av"}`}
+                              className="pointer-events-auto"
+                            >
+                              <TimeBlockElement
+                                block={block}
+                                startHour={startHour}
+                                useMangomintMode={useMangomintMode}
+                                onTimeBlockClick={onTimeBlockClick}
+                                variant="week"
+                                pixelsPerHour={MOBILE_HOUR_PX_COLUMNS}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                    {isTodayCol &&
+                      isTodayInTz(day, tz) &&
+                      currentHour >= startHour &&
+                      currentHour <= endHour &&
+                      (() => {
+                        const top =
+                          MOBILE_COLUMN_HEADER_PX +
+                          (currentHour - startHour) * MOBILE_HOUR_PX_COLUMNS +
+                          (currentMinute / 60) * MOBILE_HOUR_PX_COLUMNS;
+                        return (
+                          <div
+                            ref={currentTimeRef}
+                            className="absolute left-0 right-0 z-[60] pointer-events-none flex items-center"
+                            style={{ top: `${top}px` }}
+                          >
+                            <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1 ring-2 ring-white shadow-lg" />
+                            <div className="h-[2px] w-full bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]" />
+                          </div>
+                        );
+                      })()}
+
+                    {timeSlots.map((time, slotIdx) => {
+                      const { hour: slotHour } = parseTimeParts(time);
+                      const slotAppointments = dayApts.filter((apt) => {
+                        const { hour: aptHour } = parseTimeParts(apt.scheduled_time);
+                        return aptHour === slotHour;
+                      });
+                      const { hour } = parseTimeParts(time);
+                      const outsidePreferred = hour < workStart || hour >= workEnd;
+                      const isOutside =
+                        isOutsideOperatingHours(day, hour, locationOperatingHours) ||
+                        outsidePreferred;
+                      const slotHcStyle: React.CSSProperties | undefined =
+                        isOutside && highContrast
+                          ? {
+                              backgroundImage:
+                                "repeating-linear-gradient(135deg, #1f2937 0px, #1f2937 6px, #374151 6px, #374151 12px)",
+                            }
+                          : undefined;
+                      const slotClassName = cn(
+                        "h-[60px] border-b-2 border-gray-300 relative z-10 transition-colors group/slot",
+                        slotIdx % 2 === 1 && !isOutside ? "bg-gray-100/60" : !isOutside ? "bg-white" : null,
+                        isOutside
+                          ? cn(
+                              "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                              !highContrast &&
+                                "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
+                              highContrast && "bg-gray-900/25",
+                            )
+                          : "cursor-pointer hover:bg-blue-50/30",
+                      );
+                      const staffForDrop = defaultStaffIdForSlot;
+
+                      const slotInner = (
+                        <div
+                          className="relative z-10"
+                          role="button"
+                          tabIndex={isOutside ? -1 : 0}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isOutside && defaultStaffIdForSlot) {
+                              onTimeSlotClick(day, time, defaultStaffIdForSlot);
+                            }
+                          }}
+                          onKeyDown={(e) => {
+                            if ((e.key === "Enter" || e.key === " ") && !isOutside && defaultStaffIdForSlot) {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              onTimeSlotClick(day, time, defaultStaffIdForSlot);
+                            }
+                          }}
+                        >
+                          {isOutside && (
+                            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                              <span className="text-[8px] font-bold uppercase text-amber-900/80 bg-white/90 px-1 py-0.5 rounded border border-amber-300">
+                                Closed
+                              </span>
+                            </div>
+                          )}
+                          <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-gray-300 pointer-events-none" />
+                          {slotAppointments.length === 0 && !isOutside && (
+                            <div className="absolute inset-0 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
+                              <Plus className="w-4 h-4 text-gray-300" />
+                            </div>
+                          )}
+                          {slotAppointments.map((apt) => {
+                            const visuals = getMobileBookingVisuals(
+                              apt,
+                              useMangomintMode,
+                              preferences.colorBy,
+                              preferences.showCanceled,
+                            );
+                            if (!visuals) return null;
+                            const { colorStyle, colors: aptColors } = visuals;
+                            const statusColors = getStatusColors(mapStatus(apt));
+                            const minH = preferences.compactMode ? 24 : 26;
+                            const height = Math.max(
+                              (apt.duration_minutes / 60) * 60,
+                              preferences.compactMode ? 28 : 32,
+                            );
+                            const rawFlags = extractIconFlags(apt);
+                            const activeIcons = preferences.showAppointmentIcons
+                              ? getActiveIcons(rawFlags)
+                              : [];
+                            const canDrag =
+                              dragDrop &&
+                              apt.status !== "completed" &&
+                              apt.status !== "cancelled" &&
+                              Boolean(apt.team_member_id);
+                            const cardContent = (
+                              <div
+                                role="button"
+                                tabIndex={0}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAppointmentCardClick(apt);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleAppointmentCardClick(apt);
+                                  }
+                                }}
+                                className={cn(
+                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
+                                  "transition-all shadow-sm active:scale-[0.98] hover:shadow-md border-l-[3px]",
+                                  apt.status === "cancelled" && useMangomintMode && "opacity-50",
+                                )}
+                                style={{
+                                  ...colorStyle,
+                                  height: `${height - 2}px`,
+                                  minHeight: `${minH}px`,
+                                }}
+                              >
+                                <p
+                                  className={cn(
+                                    "text-[8px] font-bold uppercase opacity-90 truncate leading-tight",
+                                    apt.status === "cancelled" && useMangomintMode && "line-through",
+                                  )}
+                                  style={{ color: aptColors.text }}
+                                >
+                                  {apt.service_name}
+                                </p>
+                                <p
+                                  className={cn(
+                                    "text-[9px] font-bold truncate leading-tight",
+                                    apt.status === "cancelled" && useMangomintMode && "line-through",
+                                  )}
+                                  style={{ color: aptColors.text }}
+                                >
+                                  {apt.client_name}
+                                </p>
+                                <p className="text-[8px] truncate opacity-90" style={{ color: aptColors.text }}>
+                                  {apt.team_member_name || "Staff"}
+                                </p>
+                                {height > 36 && (
+                                  <p className="text-[8px] font-semibold opacity-80" style={{ color: aptColors.text }}>
+                                    {formatTime12h(apt.scheduled_time)}
+                                    {preferences.showPrices &&
+                                      (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
+                                        <span className="ml-0.5 font-semibold">
+                                          · R
+                                          {(
+                                            (apt as { total_amount?: number }).total_amount ??
+                                            apt.price ??
+                                            0
+                                          ).toFixed(0)}
+                                        </span>
+                                      )}
+                                  </p>
+                                )}
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "absolute top-0.5 right-0.5 text-[6px] px-0.5 py-0 bg-white/90 border-0 font-semibold",
+                                    statusColors.badgeClasses,
+                                  )}
+                                >
+                                  {statusColors.label.toUpperCase()}
+                                </Badge>
+                                {activeIcons.slice(0, 1).map((icon, idx) => {
+                                  const IconComponent = ICON_MAP[icon.icon];
+                                  if (!IconComponent) return null;
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className="absolute bottom-0.5 left-0.5 w-2 h-2 rounded-full bg-white/90 flex items-center justify-center"
+                                    >
+                                      <IconComponent className="w-1 h-1" />
+                                    </div>
+                                  );
+                                })}
+                                {onCheckout &&
+                                  apt.status !== "completed" &&
+                                  apt.status !== "cancelled" &&
+                                  height > 40 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onCheckout(apt);
+                                      }}
+                                      className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
+                                      title="Checkout"
+                                    >
+                                      <CreditCard className="w-2.5 h-2.5 text-gray-600" />
+                                    </button>
+                                  )}
+                                {onStatusChange && apt.status === "booked" && height > 40 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onStatusChange(apt, "started");
+                                    }}
+                                    className="absolute bottom-0.5 right-5 w-4 h-4 rounded bg-white/80 flex items-center justify-center"
+                                    title="Start"
+                                  >
+                                    <Check className="w-2.5 h-2.5 text-gray-700" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                            return canDrag && apt.team_member_id ? (
+                              <DraggableAppointment
+                                key={apt.id}
+                                appointment={apt}
+                                className="absolute left-0.5 right-0.5 z-10 rounded-md border-l-[3px] overflow-hidden"
+                                style={{
+                                  ...colorStyle,
+                                  height: `${height - 2}px`,
+                                  minHeight: `${minH}px`,
+                                }}
+                                enableKeyboardNav={false}
+                              >
+                                {cardContent}
+                              </DraggableAppointment>
+                            ) : (
+                              <React.Fragment key={apt.id}>{cardContent}</React.Fragment>
+                            );
+                          })}
+                        </div>
+                      );
+
+                      return dragDrop && staffForDrop.length > 0 ? (
+                        <DroppableTimeSlot
+                          key={`${dateStr}-${time}`}
+                          date={dateStr}
+                          time={time}
+                          staffId={staffForDrop}
+                          className={slotClassName}
+                          style={slotHcStyle}
+                        >
+                          {slotInner}
+                        </DroppableTimeSlot>
+                      ) : (
+                        <div
+                          key={`${dateStr}-${time}`}
+                          className={slotClassName}
+                          style={slotHcStyle}
+                        >
+                          {slotInner}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : layoutMode === "columns" ? (
+        // COLUMNS VIEW - fixed-width staff columns + horizontal scroll (matches desktop CalendarGrid)
+        <div
+          ref={scrollContainerRef}
+          className="relative bg-gray-50 pb-20 overflow-x-auto overflow-y-auto min-h-0 touch-pan-x touch-pan-y"
+        >
+          <div className="flex min-w-max">
+            {/* Time column — stays visible while scrolling staff (sticky left) */}
+            <div className="sticky left-0 z-[45] w-[52px] flex-shrink-0 bg-white border-r-2 border-gray-400 shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
               <div className="h-[48px] sticky top-0 z-50 bg-gray-100 border-b-2 border-gray-400 flex items-center justify-center">
                 <Clock className="w-3.5 h-3.5 text-gray-500" />
               </div>
@@ -864,8 +1453,7 @@ export function CalendarMobileView({
               })}
             </div>
 
-            {/* Staff Columns - each gets equal share of remaining space, min 140px */}
-            {teamMembers.map((member) => {
+            {staffForDayGrid.map((member) => {
               const dateStr = selectedDateStr;
               const staffAppointments = appointmentsByStaffDate.get(`${member.id}-${dateStr}`) || [];
               const uniqueBookingCount = new Set(
@@ -873,7 +1461,13 @@ export function CalendarMobileView({
               ).size;
 
               return (
-                <div key={member.id} className="flex-1 min-w-[140px] border-r-2 border-gray-300 last:border-r-0 relative bg-white">
+                <div
+                  key={member.id}
+                  className={cn(
+                    STAFF_DAY_COLUMN_LAYOUT,
+                    "border-r-2 border-gray-300 last:border-r-0 relative bg-white",
+                  )}
+                >
                   {/* Staff Header - Sticky on top */}
                   <div className="h-[48px] sticky top-0 z-30 bg-[#1a1f3c] border-b-2 border-gray-400 px-2 py-1 flex items-center gap-1.5">
                     <DropdownMenu>
@@ -928,6 +1522,32 @@ export function CalendarMobileView({
                   
                   {/* Time Slots with grid lines */}
                   <div className="relative bg-white">
+                    {(() => {
+                      const staffBlocks = getBlocksForStaff(member.id, selectedDate);
+                      if (staffBlocks.length === 0) return null;
+                      return (
+                        <div
+                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
+                        >
+                          {staffBlocks.map((block) => (
+                            <div
+                              key={`${block.id}-${block.start_time}-${block.end_time}-${"team_member_id" in block ? (block.team_member_id ?? "all") : "av"}`}
+                              className="pointer-events-auto"
+                            >
+                              <TimeBlockElement
+                                block={block}
+                                startHour={startHour}
+                                useMangomintMode={useMangomintMode}
+                                onTimeBlockClick={onTimeBlockClick}
+                                variant="week"
+                                pixelsPerHour={MOBILE_HOUR_PX_COLUMNS}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {/* Current Time Red Line Indicator */}
                     {showCurrentTime && (
                       <div 
@@ -952,12 +1572,29 @@ export function CalendarMobileView({
                       const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
                       const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
-                      const isNonWorking = isOutsideLocationHours || outsideStaffHours || inAvailabilityBlock;
+                      const outsidePreferred = hour < workStart || hour >= workEnd;
+                      const isNonWorking =
+                        isOutsideLocationHours ||
+                        outsideStaffHours ||
+                        inAvailabilityBlock ||
+                        outsidePreferred;
+                      const slotHcStyle: React.CSSProperties | undefined =
+                        isNonWorking && highContrast
+                          ? {
+                              backgroundImage:
+                                "repeating-linear-gradient(135deg, #1f2937 0px, #1f2937 6px, #374151 6px, #374151 12px)",
+                            }
+                          : undefined;
                       const slotClassName = cn(
-                        "h-[60px] border-b-2 border-gray-300 relative transition-colors group/slot",
+                        "h-[60px] border-b-2 border-gray-300 relative z-10 transition-colors group/slot",
                         slotIdx % 2 === 1 && !isNonWorking ? "bg-gray-100/60" : !isNonWorking ? "bg-white" : null,
                         isNonWorking
-                          ? "cursor-not-allowed border-l-[5px] border-l-amber-500 bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]"
+                          ? cn(
+                              "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                              !highContrast &&
+                                "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
+                              highContrast && "bg-gray-900/25",
+                            )
                           : "cursor-pointer hover:bg-blue-50/30"
                       );
                       const slotContent = (
@@ -980,22 +1617,29 @@ export function CalendarMobileView({
                           )}
                           
                           {slotAppointments.map((apt) => {
-                            // Use proper status mapping and color system
-                            const mangomintStatus = mapStatus(apt);
-                            const statusColors = getStatusColors(mangomintStatus);
-                            
-                            // Use inline styles for hex colors (Tailwind doesn't support arbitrary hex in classes)
-                            const colorStyle = {
-                              backgroundColor: statusColors.bg,
-                              borderLeftColor: statusColors.border,
-                              color: statusColors.text,
-                            };
-                            const height = Math.max((apt.duration_minutes / 60) * 60, 32);
-                            
-                            // Get icon flags for tags
-                            const flags = extractIconFlags(apt);
-                            const activeIcons = getActiveIcons(flags);
-                            const canDrag = dragDrop && apt.status !== "completed" && apt.status !== "cancelled";
+                            const visuals = getMobileBookingVisuals(
+                              apt,
+                              useMangomintMode,
+                              preferences.colorBy,
+                              preferences.showCanceled,
+                            );
+                            if (!visuals) return null;
+                            const { colorStyle, colors: aptColors } = visuals;
+                            const statusColors = getStatusColors(mapStatus(apt));
+                            const minH = preferences.compactMode ? 26 : 28;
+                            const height = Math.max(
+                              (apt.duration_minutes / 60) * 60,
+                              preferences.compactMode ? 30 : 32,
+                            );
+                            const rawFlags = extractIconFlags(apt);
+                            const activeIcons = preferences.showAppointmentIcons
+                              ? getActiveIcons(rawFlags)
+                              : [];
+                            const canDrag =
+                              dragDrop &&
+                              apt.status !== "completed" &&
+                              apt.status !== "cancelled" &&
+                              Boolean(apt.team_member_id);
                             const cardContent = (
                               <div
                                 role="button"
@@ -1011,89 +1655,121 @@ export function CalendarMobileView({
                                     handleAppointmentCardClick(apt);
                                   }
                                 }}
-                                    className={cn(
-                                      "absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
-                                      "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
-                                      "border-l-[3px]"
-                                    )}
-                                    style={{
-                                      ...colorStyle,
-                                      height: `${height - 2}px`,
-                                      minHeight: "28px",
-                                    }}
-                                  >
-                                    <div className="flex flex-col h-full justify-between min-w-0">
-                                      <div className="min-w-0 flex-1">
-                                        <p className="text-[9px] font-bold uppercase tracking-wide opacity-90 truncate leading-tight">
-                                          {apt.service_name}
-                                        </p>
-                                        <p className="text-[10px] font-bold truncate mt-0.5 leading-tight">
-                                          {apt.client_name}
-                                        </p>
-                                      </div>
-                                      {height > 40 && (
-                                        <p className="text-[9px] font-semibold opacity-80 whitespace-nowrap">
-                                          {formatTime12h(apt.scheduled_time)}
-                                        </p>
-                                      )}
-                                    </div>
-                                    
-                                    {/* Status Badge */}
-                                    <Badge 
-                                      variant="outline" 
+                                className={cn(
+                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
+                                  "border-l-[3px]",
+                                  apt.status === "cancelled" && useMangomintMode && "opacity-50",
+                                )}
+                                style={{
+                                  ...colorStyle,
+                                  height: `${height - 2}px`,
+                                  minHeight: `${minH}px`,
+                                }}
+                              >
+                                <div className="flex flex-col h-full justify-between min-w-0">
+                                  <div className="min-w-0 flex-1">
+                                    <p
                                       className={cn(
-                                        "absolute top-1 right-1 text-[7px] px-1 py-0",
-                                        "bg-white/90 backdrop-blur-sm border-0 font-semibold",
-                                        statusColors.badgeClasses
+                                        "text-[9px] font-bold uppercase tracking-wide opacity-90 truncate leading-tight",
+                                        apt.status === "cancelled" && useMangomintMode && "line-through",
                                       )}
+                                      style={{ color: aptColors.text }}
                                     >
-                                      {statusColors.label.toUpperCase()}
-                                    </Badge>
-                                    
-                                    {/* Icon Flags - Show important indicators */}
-                                    {activeIcons.slice(0, 1).map((icon, idx) => {
-                                      const IconComponent = ICON_MAP[icon.icon];
-                                      if (!IconComponent) return null;
-                                      return (
-                                        <div
-                                          key={idx}
-                                          className={cn(
-                                            "absolute bottom-1 left-1",
-                                            "w-2.5 h-2.5 rounded-full bg-white/90 backdrop-blur-sm",
-                                            "flex items-center justify-center",
-                                            icon.colorClass
-                                          )}
-                                          title={icon.tooltip}
-                                        >
-                                          <IconComponent className="w-1.5 h-1.5" />
-                                        </div>
-                                      );
-                                    })}
-
-                                    {onCheckout && apt.status !== "completed" && apt.status !== "cancelled" && height > 45 && (
-                                      <button
-                                        onClick={(e) => { e.stopPropagation(); onCheckout(apt); }}
-                                        className="absolute bottom-1 right-1 w-4 h-4 rounded bg-white/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
-                                        title="Checkout"
-                                      >
-                                        <CreditCard className="w-2.5 h-2.5 text-gray-600" />
-                                      </button>
-                                    )}
+                                      {apt.service_name}
+                                    </p>
+                                    <p
+                                      className={cn(
+                                        "text-[10px] font-bold truncate mt-0.5 leading-tight",
+                                        apt.status === "cancelled" && useMangomintMode && "line-through",
+                                      )}
+                                      style={{ color: aptColors.text }}
+                                    >
+                                      {apt.client_name}
+                                    </p>
                                   </div>
+                                  {height > 40 && (
+                                    <p
+                                      className="text-[9px] font-semibold opacity-80 whitespace-nowrap"
+                                      style={{ color: aptColors.text }}
+                                    >
+                                      {formatTime12h(apt.scheduled_time)}
+                                      {preferences.showPrices &&
+                                        (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
+                                          <span className="ml-0.5 font-semibold">
+                                            · R
+                                            {(
+                                              (apt as { total_amount?: number }).total_amount ??
+                                              apt.price ??
+                                              0
+                                            ).toFixed(0)}
+                                          </span>
+                                        )}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "absolute top-1 right-1 text-[7px] px-1 py-0",
+                                    "bg-white/90 backdrop-blur-sm border-0 font-semibold",
+                                    statusColors.badgeClasses,
+                                  )}
+                                >
+                                  {statusColors.label.toUpperCase()}
+                                </Badge>
+
+                                {activeIcons.slice(0, 1).map((icon, idx) => {
+                                  const IconComponent = ICON_MAP[icon.icon];
+                                  if (!IconComponent) return null;
+                                  return (
+                                    <div
+                                      key={idx}
+                                      className={cn(
+                                        "absolute bottom-1 left-1",
+                                        "w-2.5 h-2.5 rounded-full bg-white/90 backdrop-blur-sm",
+                                        "flex items-center justify-center",
+                                        icon.colorClass,
+                                      )}
+                                      title={icon.tooltip}
+                                    >
+                                      <IconComponent className="w-1.5 h-1.5" />
+                                    </div>
+                                  );
+                                })}
+
+                                {onCheckout &&
+                                  apt.status !== "completed" &&
+                                  apt.status !== "cancelled" &&
+                                  height > 45 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onCheckout(apt);
+                                      }}
+                                      className="absolute bottom-1 right-1 w-4 h-4 rounded bg-white/80 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover/slot:opacity-100 transition-opacity"
+                                      title="Checkout"
+                                    >
+                                      <CreditCard className="w-2.5 h-2.5 text-gray-600" />
+                                    </button>
+                                  )}
+                              </div>
                             );
                             return canDrag ? (
                               <DraggableAppointment
                                 key={apt.id}
                                 appointment={apt}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
-                                  "border-l-[3px]"
+                                  "border-l-[3px]",
                                 )}
                                 style={{
                                   ...colorStyle,
                                   height: `${height - 2}px`,
-                                  minHeight: "28px",
+                                  minHeight: `${minH}px`,
                                 }}
                                 enableKeyboardNav={false}
                               >
@@ -1107,7 +1783,7 @@ export function CalendarMobileView({
                       );
                       const slotInner = (
                         <div
-                          className="relative"
+                          className="relative z-10"
                           role="button"
                           tabIndex={isNonWorking ? -1 : 0}
                           onClick={(e) => {
@@ -1134,14 +1810,12 @@ export function CalendarMobileView({
                           time={time}
                           staffId={member.id}
                           className={slotClassName}
+                          style={slotHcStyle}
                         >
                           {slotInner}
                         </DroppableTimeSlot>
                       ) : (
-                        <div
-                          key={time}
-                          className={slotClassName}
-                        >
+                        <div key={time} className={slotClassName} style={slotHcStyle}>
                           {slotInner}
                         </div>
                       );
@@ -1179,6 +1853,33 @@ export function CalendarMobileView({
                 </div>
               )}
 
+              {(() => {
+                const singleBlocks = getBlocksForStaff(selectedStaff.id, selectedDate);
+                if (singleBlocks.length === 0) return null;
+                return (
+                  <div
+                    className="absolute left-[58px] sm:left-[66px] right-0 top-0 z-[5] pointer-events-none"
+                    style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_SINGLE}px` }}
+                  >
+                    {singleBlocks.map((block) => (
+                      <div
+                        key={`${block.id}-${block.start_time}-${block.end_time}-${"team_member_id" in block ? (block.team_member_id ?? "all") : "av"}`}
+                        className="pointer-events-auto"
+                      >
+                        <TimeBlockElement
+                          block={block}
+                          startHour={startHour}
+                          useMangomintMode={useMangomintMode}
+                          onTimeBlockClick={onTimeBlockClick}
+                          variant="day"
+                          pixelsPerHour={MOBILE_HOUR_PX_SINGLE}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
               {/* Get all appointments for selected staff and date */}
               {timeSlots.map((time, _idx) => {
                 // Filter appointments for this staff and date
@@ -1197,15 +1898,42 @@ export function CalendarMobileView({
                 const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
 
                 const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
-                const outsideStaffHours = selectedStaff ? isOutsideStaffHours(selectedDate, hour, selectedStaff.working_hours ?? undefined) : false;
-                const inAvailabilityBlock = selectedStaff ? isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, selectedStaff.id, availabilityBlocks) : false;
-                const isNonWorking = isOutsideLocationHours || outsideStaffHours || inAvailabilityBlock;
+                const outsideStaffHours = selectedStaff
+                  ? isOutsideStaffHours(selectedDate, hour, selectedStaff.working_hours ?? undefined)
+                  : false;
+                const inAvailabilityBlock = selectedStaff
+                  ? isSlotInAvailabilityBlock(
+                      format(selectedDate, "yyyy-MM-dd"),
+                      hour,
+                      selectedStaff.id,
+                      availabilityBlocks,
+                    )
+                  : false;
+                const outsidePreferred = hour < workStart || hour >= workEnd;
+                const isNonWorking =
+                  isOutsideLocationHours ||
+                  outsideStaffHours ||
+                  inAvailabilityBlock ||
+                  outsidePreferred;
                 const dateStr = selectedDateStr;
+                const rowHcStyle: React.CSSProperties | undefined =
+                  isNonWorking && highContrast
+                    ? {
+                        backgroundImage:
+                          "repeating-linear-gradient(135deg, #1f2937 0px, #1f2937 6px, #374151 6px, #374151 12px)",
+                      }
+                    : undefined;
                 const rowClassName = cn(
-                  "flex border-b border-gray-200 min-h-[64px] sm:min-h-[80px] w-full box-border transition-colors relative",
+                  "flex border-b border-gray-200 w-full box-border transition-colors relative z-10",
+                  preferences.compactMode ? "min-h-[56px] sm:min-h-[72px]" : "min-h-[64px] sm:min-h-[80px]",
                   isNonWorking
-                    ? "cursor-not-allowed border-l-[5px] border-l-amber-500 bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]"
-                    : "cursor-pointer hover:bg-gray-50"
+                    ? cn(
+                        "cursor-not-allowed border-l-[5px] border-l-amber-500",
+                        !highContrast &&
+                          "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
+                        highContrast && "bg-gray-900/20",
+                      )
+                    : "cursor-pointer hover:bg-gray-50",
                 );
                 const rowContent = (
                   <>
@@ -1228,8 +1956,9 @@ export function CalendarMobileView({
                       role="button"
                       tabIndex={isNonWorking ? -1 : 0}
                       className={cn(
-                        "flex-1 relative min-h-[64px] sm:min-h-[80px] py-1.5 sm:py-2 pl-1.5 sm:pl-2 pr-0 min-w-0",
-                        !isNonWorking && "cursor-pointer"
+                        "flex-1 relative py-1.5 sm:py-2 pl-1.5 sm:pl-2 pr-0 min-w-0",
+                        preferences.compactMode ? "min-h-[56px] sm:min-h-[72px]" : "min-h-[64px] sm:min-h-[80px]",
+                        !isNonWorking && "cursor-pointer",
                       )}
                       onClick={() => {
                         if (!isNonWorking) {
@@ -1244,25 +1973,33 @@ export function CalendarMobileView({
                       }}
                     >
                       {slotAppointments.map((apt) => {
-                        // Use proper status mapping and color system
-                        const mangomintStatus = mapStatus(apt);
-                        const statusColors = getStatusColors(mangomintStatus);
-                        
-                        // Use inline styles for hex colors (Tailwind doesn't support arbitrary hex in classes)
-                        const colorStyle = {
-                          backgroundColor: statusColors.bg,
-                          borderLeftColor: statusColors.border,
-                          color: statusColors.text,
-                        };
-                        
-                        // Calculate height based on duration (using 64px per hour for mobile)
-                        const slotHeight = 64; // Base slot height for mobile
-                        const height = Math.max((apt.duration_minutes / 60) * slotHeight, 52);
-                        
-                        // Calculate top position based on minutes within the hour
+                        const visuals = getMobileBookingVisuals(
+                          apt,
+                          useMangomintMode,
+                          preferences.colorBy,
+                          preferences.showCanceled,
+                        );
+                        if (!visuals) return null;
+                        const { colorStyle, colors: aptColors } = visuals;
+                        const statusColors = getStatusColors(mapStatus(apt));
+                        const slotHeight = preferences.compactMode ? 56 : 64;
+                        const minCardH = preferences.compactMode ? 44 : 52;
+                        const height = Math.max((apt.duration_minutes / 60) * slotHeight, minCardH);
                         const { minute: aptMin } = parseTimeParts(apt.scheduled_time);
                         const topOffset = (aptMin / 60) * slotHeight;
-                        const canDragSingle = dragDrop && apt.status !== "completed" && apt.status !== "cancelled";
+                        const canDragSingle =
+                          dragDrop &&
+                          apt.status !== "completed" &&
+                          apt.status !== "cancelled" &&
+                          Boolean(apt.team_member_id);
+                        const rawFlagsSingle = extractIconFlags(apt);
+                        const activeIcons = preferences.showAppointmentIcons
+                          ? getActiveIcons(rawFlagsSingle)
+                          : [];
+                        const endTimeStr = getEndTime(
+                          apt.scheduled_time || "09:00",
+                          apt.duration_minutes || 0,
+                        );
                         const singleCardContent = (
                           <div
                             role="button"
@@ -1278,113 +2015,131 @@ export function CalendarMobileView({
                                 handleAppointmentCardClick(apt);
                               }
                             }}
-                                className={cn(
-                                  "absolute left-0 right-0 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
-                                  "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
-                                  "border-l-[3px] sm:border-l-4 active:scale-[0.98]"
-                                )}
-                                style={{
-                                  ...colorStyle,
-                                  top: `${topOffset}px`,
-                                  height: `${height}px`,
-                                  minHeight: "52px",
-                                }}
-                              >
-                                <div className="flex flex-col h-full justify-between">
-                                  <div className="min-w-0">
-                                    <p className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wide opacity-90 truncate">
-                                      {apt.service_name}
-                                    </p>
-                                    <p className="text-sm sm:text-base font-bold truncate mt-0.5 sm:mt-1">
-                                      {apt.client_name}
-                                    </p>
-                                  </div>
-                                  <p className="text-[10px] sm:text-xs font-medium opacity-80">
-                                    {formatTime12h(apt.scheduled_time)} – {formatTime12h(
-                                      (() => {
-                                        const { hour: h, minute: m } = parseTimeParts(apt.scheduled_time);
-                                        const endMinutes = h * 60 + m + apt.duration_minutes;
-                                        const endH = Math.floor(endMinutes / 60);
-                                        const endM = endMinutes % 60;
-                                        return `${endH.toString().padStart(2, "0")}:${endM.toString().padStart(2, "0")}`;
-                                      })()
-                                    )}
-                                  </p>
-                                  {height > 70 && (
-                                    <div className="flex items-center gap-1.5 mt-1">
-                                      {onCheckout && apt.status !== "completed" && apt.status !== "cancelled" && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); onCheckout(apt); }}
-                                          className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
-                                        >
-                                          <CreditCard className="w-2.5 h-2.5" />
-                                          Checkout
-                                        </button>
-                                      )}
-                                      {onStatusChange && apt.status === "booked" && (
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); onStatusChange(apt, "started"); }}
-                                          className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
-                                        >
-                                          <Check className="w-2.5 h-2.5" />
-                                          Start
-                                        </button>
-                                      )}
-                                    </div>
+                            className={cn(
+                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
+                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
+                              apt.status === "cancelled" && useMangomintMode && "opacity-50",
+                            )}
+                            style={{
+                              ...colorStyle,
+                              top: `${topOffset}px`,
+                              height: `${height}px`,
+                              minHeight: `${minCardH}px`,
+                            }}
+                          >
+                            <div className="flex flex-col h-full justify-between">
+                              <div className="min-w-0">
+                                <p
+                                  className={cn(
+                                    "text-[10px] sm:text-[11px] font-bold uppercase tracking-wide opacity-90 truncate",
+                                    apt.status === "cancelled" && useMangomintMode && "line-through",
+                                  )}
+                                  style={{ color: aptColors.text }}
+                                >
+                                  {apt.service_name}
+                                </p>
+                                <p
+                                  className={cn(
+                                    "text-sm sm:text-base font-bold truncate mt-0.5 sm:mt-1",
+                                    apt.status === "cancelled" && useMangomintMode && "line-through",
+                                  )}
+                                  style={{ color: aptColors.text }}
+                                >
+                                  {apt.client_name}
+                                </p>
+                              </div>
+                              <p className="text-[10px] sm:text-xs font-medium opacity-80" style={{ color: aptColors.text }}>
+                                {formatTime12h(apt.scheduled_time)} – {formatTime12h(endTimeStr)}
+                                {preferences.showPrices &&
+                                  (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
+                                    <span className="ml-1 font-semibold">
+                                      · R
+                                      {(
+                                        (apt as { total_amount?: number }).total_amount ??
+                                        apt.price ??
+                                        0
+                                      ).toFixed(0)}
+                                    </span>
+                                  )}
+                              </p>
+                              {height > 70 && (
+                                <div className="flex items-center gap-1.5 mt-1">
+                                  {onCheckout && apt.status !== "completed" && apt.status !== "cancelled" && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onCheckout(apt);
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
+                                    >
+                                      <CreditCard className="w-2.5 h-2.5" />
+                                      Checkout
+                                    </button>
+                                  )}
+                                  {onStatusChange && apt.status === "booked" && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onStatusChange(apt, "started");
+                                      }}
+                                      className="px-2 py-0.5 rounded bg-white/70 text-[9px] font-bold flex items-center gap-1 hover:bg-white/90 transition-colors"
+                                    >
+                                      <Check className="w-2.5 h-2.5" />
+                                      Start
+                                    </button>
                                   )}
                                 </div>
-                                
-                                {/* Status Badge - Show for all statuses */}
-                                <Badge 
-                                  variant="outline" 
+                              )}
+                            </div>
+
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "absolute top-1.5 sm:top-2 right-1.5 sm:right-2 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0.5",
+                                "bg-white/90 backdrop-blur-sm border-0 font-semibold",
+                                statusColors.badgeClasses,
+                              )}
+                            >
+                              {statusColors.label.toUpperCase()}
+                            </Badge>
+
+                            {activeIcons.slice(0, 2).map((icon, idx) => {
+                              const IconComponent = ICON_MAP[icon.icon];
+                              if (!IconComponent) return null;
+                              return (
+                                <div
+                                  key={idx}
                                   className={cn(
-                                    "absolute top-1.5 sm:top-2 right-1.5 sm:right-2 text-[8px] sm:text-[9px] px-1 sm:px-1.5 py-0.5",
-                                    "bg-white/90 backdrop-blur-sm border-0 font-semibold",
-                                    statusColors.badgeClasses
+                                    "absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2",
+                                    "w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-white/90 backdrop-blur-sm",
+                                    "flex items-center justify-center",
+                                    icon.colorClass,
                                   )}
+                                  title={icon.tooltip}
                                 >
-                                  {statusColors.label.toUpperCase()}
-                                </Badge>
-                                
-                                {/* Icon Flags - Show important indicators */}
-                                {(() => {
-                                  const flags = extractIconFlags(apt);
-                                  const activeIcons = getActiveIcons(flags);
-                                  return activeIcons.slice(0, 2).map((icon, idx) => {
-                                    const IconComponent = ICON_MAP[icon.icon];
-                                    if (!IconComponent) return null;
-                                    return (
-                                      <div
-                                        key={idx}
-                                        className={cn(
-                                          "absolute bottom-1.5 sm:bottom-2 left-1.5 sm:left-2",
-                                          "w-3 h-3 sm:w-3.5 sm:h-3.5 rounded-full bg-white/90 backdrop-blur-sm",
-                                          "flex items-center justify-center",
-                                          icon.colorClass
-                                        )}
-                                        title={icon.tooltip}
-                                      >
-                                        <IconComponent className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
-                                      </div>
-                                    );
-                                  });
-                                })()}
-                              </div>
+                                  <IconComponent className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                                </div>
+                              );
+                            })}
+                          </div>
                         );
                         return canDragSingle ? (
                           <DraggableAppointment
                             key={apt.id}
                             appointment={apt}
                             className={cn(
-                              "absolute left-0 right-0 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
-                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]"
+                              "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
                             )}
                             style={{
                               ...colorStyle,
                               top: `${topOffset}px`,
                               height: `${height}px`,
-                              minHeight: "52px",
+                              minHeight: `${minCardH}px`,
                             }}
                             enableKeyboardNav={false}
                           >
@@ -1404,11 +2159,12 @@ export function CalendarMobileView({
                     time={time}
                     staffId={selectedStaff.id}
                     className={rowClassName}
+                    style={rowHcStyle}
                   >
                     {rowContent}
                   </DroppableTimeSlot>
                 ) : (
-                  <div key={time} className={rowClassName}>
+                  <div key={time} className={rowClassName} style={rowHcStyle}>
                     {rowContent}
                   </div>
                 );
@@ -1418,7 +2174,7 @@ export function CalendarMobileView({
             <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8">
               <CalendarIcon className="w-12 h-12 mb-4 text-gray-300" />
               <p className="text-center text-sm">
-                {teamMembers.length === 0 
+                {staffForDayGrid.length === 0 
                   ? "No team members available. Add team members to see the calendar."
                   : "Select a team member to view their schedule"}
               </p>

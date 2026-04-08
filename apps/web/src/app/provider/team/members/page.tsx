@@ -29,6 +29,9 @@ import Link from "next/link";
 // Cache key for team members
 const TEAM_MEMBERS_CACHE_KEY = 'provider_team_members';
 const TEAM_MEMBERS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+type TeamAccessPayload = {
+  can_manage_team: boolean;
+};
 
 export default function ProviderTeamMembers() {
   const { provider, isLoading: isLoadingProvider, selectedLocationId } = useProviderPortal();
@@ -38,6 +41,8 @@ export default function ProviderTeamMembers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [canManageTeam, setCanManageTeam] = useState(false);
+  const [teamAccessLoaded, setTeamAccessLoaded] = useState(false);
 
   // Restore from cache on mount
   useEffect(() => {
@@ -63,6 +68,27 @@ export default function ProviderTeamMembers() {
       loadMembers();
     }
   }, [isLoadingProvider, provider, selectedLocationId]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadAccess = async () => {
+      try {
+        const { fetcher } = await import("@/lib/http/fetcher");
+        const data = await fetcher.get<TeamAccessPayload>("/api/provider/team-access");
+        if (!mounted) return;
+        setCanManageTeam(data?.can_manage_team === true);
+      } catch {
+        if (!mounted) return;
+        setCanManageTeam(false);
+      } finally {
+        if (mounted) setTeamAccessLoaded(true);
+      }
+    };
+    void loadAccess();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const loadMembers = async () => {
     try {
@@ -101,11 +127,13 @@ export default function ProviderTeamMembers() {
   );
 
   const handleCreate = () => {
+    if (!canManageTeam) return;
     setSelectedMember(null);
     setIsCreateDialogOpen(true);
   };
 
   const handleEdit = (member: TeamMember) => {
+    if (!canManageTeam) return;
     setSelectedMember(member);
     setIsCreateDialogOpen(true);
   };
@@ -122,6 +150,7 @@ export default function ProviderTeamMembers() {
   };
 
   const handleDelete = async (member: TeamMember) => {
+    if (!canManageTeam) return;
     if (!confirm(`Are you sure you want to delete ${member.name}? This action cannot be undone.`)) return;
     try {
       await providerApi.deleteTeamMember(member.id);
@@ -134,6 +163,7 @@ export default function ProviderTeamMembers() {
   };
 
   const handleResetPassword = async (member: TeamMember) => {
+    if (!canManageTeam) return;
     if (!confirm(`Send password reset email to ${member.name}?`)) return;
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
@@ -156,7 +186,7 @@ export default function ProviderTeamMembers() {
         title="Team Members"
         subtitle={isFreelancer ? "Your profile and service settings" : "Manage your team members and their settings"}
         primaryAction={
-          !isFreelancer
+          !isFreelancer && canManageTeam
             ? {
                 label: "Add Staff Member",
                 onClick: handleCreate,
@@ -165,6 +195,14 @@ export default function ProviderTeamMembers() {
             : undefined
         }
       />
+      {teamAccessLoaded && !canManageTeam ? (
+        <Alert className="border-amber-200 bg-amber-50">
+          <Info className="w-4 h-4 text-amber-700" />
+          <AlertDescription className="text-amber-900">
+            You have read-only team access. Ask an owner or manager with Manage team to add or edit members.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {/* Freelancer Info Banner */}
       {isFreelancer && (
@@ -274,10 +312,14 @@ export default function ProviderTeamMembers() {
           <EmptyState
             title="No team members"
             description="Add your first team member to get started. They'll be able to manage appointments, services, and more."
-            action={{
-              label: "Add Staff Member",
-              onClick: handleCreate,
-            }}
+            action={
+              canManageTeam
+                ? {
+                    label: "Add Staff Member",
+                    onClick: handleCreate,
+                  }
+                : undefined
+            }
           />
         </SectionCard>
       ) : (
@@ -349,7 +391,10 @@ export default function ProviderTeamMembers() {
                       <TableCell className="text-right px-6 py-4">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center">
+                            <button
+                              className="p-2 hover:bg-gray-100 rounded-lg transition-colors min-h-[36px] min-w-[36px] flex items-center justify-center"
+                              disabled={!canManageTeam}
+                            >
                               <MoreVertical className="w-4 h-4 text-gray-600" />
                             </button>
                           </DropdownMenuTrigger>
@@ -413,7 +458,10 @@ export default function ProviderTeamMembers() {
                     </div>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <button className="p-2 hover:bg-gray-100 rounded min-h-[44px] min-w-[44px] touch-manipulation flex-shrink-0">
+                        <button
+                          className="p-2 hover:bg-gray-100 rounded min-h-[44px] min-w-[44px] touch-manipulation flex-shrink-0"
+                          disabled={!canManageTeam}
+                        >
                           <MoreVertical className="w-4 h-4" />
                         </button>
                       </DropdownMenuTrigger>
@@ -465,6 +513,7 @@ export default function ProviderTeamMembers() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleEdit(member)}
+                      disabled={!canManageTeam}
                       className="flex-1 min-h-[44px] touch-manipulation"
                     >
                       <Settings className="w-4 h-4 mr-2" />
@@ -474,6 +523,7 @@ export default function ProviderTeamMembers() {
                       variant="outline"
                       size="sm"
                       onClick={() => handleResetPassword(member)}
+                      disabled={!canManageTeam}
                       className="flex-1 min-h-[44px] touch-manipulation"
                     >
                       <KeyRound className="w-4 h-4 mr-2" />

@@ -46,6 +46,11 @@ const ROLES = [
   { label: "Owner", value: "provider_owner" },
 ];
 
+interface TeamAccessPayload {
+  staff_id: string | null;
+  can_manage_team: boolean;
+}
+
 const LINK_ITEMS: {
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
@@ -101,12 +106,30 @@ export default function TeamMemberDetailScreen() {
     commission_rate: "",
   });
 
+  const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const canManageTeam = access?.can_manage_team === true;
+  const isSelf = Boolean(id && access?.staff_id === id);
+
   const { data: member, loading, error, refresh } = useApi<StaffMember>(
     id ? `/api/provider/staff/${id}` : "",
     { enabled: !!id }
   );
   const { execute: updateStaff, loading: saving } = useApiMutation("patch");
   const { execute: deleteStaff, loading: deleting } = useApiMutation("delete");
+  const { execute: postAction, loading: actionBusy } = useApiMutation("post");
+
+  const visibleLinks = LINK_ITEMS.filter((item) => {
+    if (item.label === "Permissions" || item.label === "Notifications") {
+      return isSelf || canManageTeam;
+    }
+    if (item.label === "Schedule" || item.label === "Days off") {
+      return canManageTeam || isSelf;
+    }
+    if (item.label === "Commission" || item.label === "Locations") {
+      return canManageTeam;
+    }
+    return true;
+  });
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -139,17 +162,19 @@ export default function TeamMemberDetailScreen() {
     const payload: Record<string, unknown> = {
       name: editForm.name.trim(),
       phone: editForm.phone.trim() || null,
-      role: editForm.role,
     };
-    if (editForm.commission_rate.trim()) {
-      const rate = parseFloat(editForm.commission_rate);
-      if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
-        Alert.alert("Validation", "Commission must be between 0 and 100.");
-        return;
+    if (canManageTeam) {
+      payload.role = editForm.role;
+      if (editForm.commission_rate.trim()) {
+        const rate = parseFloat(editForm.commission_rate);
+        if (!Number.isFinite(rate) || rate < 0 || rate > 100) {
+          Alert.alert("Validation", "Commission must be between 0 and 100.");
+          return;
+        }
+        payload.commission_rate = rate;
+      } else {
+        payload.commission_rate = null;
       }
-      payload.commission_rate = rate;
-    } else {
-      payload.commission_rate = null;
     }
     const { error: err } = await updateStaff(`/api/provider/staff/${id}`, payload);
     if (err) {
@@ -158,10 +183,10 @@ export default function TeamMemberDetailScreen() {
       setEditOpen(false);
       refresh();
     }
-  }, [editForm, id, updateStaff, refresh]);
+  }, [editForm, id, updateStaff, refresh, canManageTeam]);
 
   const handleToggleActive = useCallback(() => {
-    if (!member) return;
+    if (!member || !canManageTeam) return;
     const newActive = !member.is_active;
     Alert.alert(
       newActive ? "Activate member" : "Deactivate member",
@@ -181,10 +206,10 @@ export default function TeamMemberDetailScreen() {
         },
       ]
     );
-  }, [member, id, updateStaff, refresh]);
+  }, [member, id, updateStaff, refresh, canManageTeam]);
 
   const handleDelete = useCallback(() => {
-    if (!member) return;
+    if (!member || !canManageTeam) return;
     Alert.alert(
       "Remove team member",
       `Remove ${member.name} from your team? This cannot be undone.`,
@@ -204,7 +229,31 @@ export default function TeamMemberDetailScreen() {
         },
       ]
     );
-  }, [member, id, deleteStaff, router]);
+  }, [member, id, deleteStaff, router, canManageTeam]);
+
+  const handleSendInvite = useCallback(async () => {
+    if (!id || !member?.email || !canManageTeam) return;
+    const { error: err } = await postAction(`/api/provider/staff/${id}/invite`, {
+      email: member.email,
+    });
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Invite sent", `Invitation sent to ${member.email}.`);
+  }, [id, member?.email, postAction, canManageTeam]);
+
+  const handleResetPassword = useCallback(async () => {
+    if (!id || !canManageTeam) return;
+    const { error: err } = await postAction(`/api/provider/staff/${id}/reset-password`, {});
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Reset sent", "Password reset email has been sent.");
+  }, [id, postAction, canManageTeam]);
 
   if (loading && !member) {
     return (
@@ -242,14 +291,16 @@ export default function TeamMemberDetailScreen() {
         showBack
         subtitle={capitalizeFirst(member.role)}
         rightAction={
-          <TouchableOpacity
-            onPress={openEdit}
-            style={twStyle("rounded-xl bg-gray-100 px-3 py-1.5")}
-            accessibilityLabel="Edit team member"
-            accessibilityRole="button"
-          >
-            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Edit</Text>
-          </TouchableOpacity>
+          canManageTeam || isSelf ? (
+            <TouchableOpacity
+              onPress={openEdit}
+              style={twStyle("rounded-xl bg-gray-100 px-3 py-1.5")}
+              accessibilityLabel="Edit team member"
+              accessibilityRole="button"
+            >
+              <Text style={twStyle("text-sm font-semibold text-gray-700")}>Edit</Text>
+            </TouchableOpacity>
+          ) : undefined
         }
       />
       <ScrollView
@@ -282,17 +333,47 @@ export default function TeamMemberDetailScreen() {
           ) : null}
         </View>
 
+        {canManageTeam ? (
+          <View style={twStyle("mx-4 mb-4 rounded-2xl border border-gray-100 bg-white p-2")}>
+            <TouchableOpacity
+              style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
+              onPress={handleSendInvite}
+              disabled={actionBusy || !member.email}
+              accessibilityLabel="Send team invite"
+              accessibilityRole="button"
+            >
+              <Ionicons name="mail-outline" size={18} color="#374151" />
+              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")}>
+                Send invite
+              </Text>
+            </TouchableOpacity>
+            <View style={twStyle("mx-2 h-px bg-gray-100")} />
+            <TouchableOpacity
+              style={twStyle("flex-row items-center rounded-xl px-3 py-3")}
+              onPress={handleResetPassword}
+              disabled={actionBusy || !member.email}
+              accessibilityLabel="Send password reset"
+              accessibilityRole="button"
+            >
+              <Ionicons name="key-outline" size={18} color="#374151" />
+              <Text style={twStyle("ml-2 flex-1 text-sm font-medium text-gray-800")}>
+                Send password reset
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
         {/* Quick actions */}
         <View style={twStyle("mx-4 mb-4")}>
           <Text style={twStyle("mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400 px-1")}>
             Manage
           </Text>
           <View style={twStyle("rounded-2xl border border-gray-100 bg-white overflow-hidden")}>
-            {LINK_ITEMS.map((item, i) => (
+            {visibleLinks.map((item, i) => (
               <TouchableOpacity
                 key={item.label}
                 style={twStyle(
-                  `flex-row items-center px-4 py-3.5 ${i < LINK_ITEMS.length - 1 ? "border-b border-gray-50" : ""}`
+                  `flex-row items-center px-4 py-3.5 ${i < visibleLinks.length - 1 ? "border-b border-gray-50" : ""}`
                 )}
                 onPress={() => {
                   if (item.useId && id) {
@@ -317,6 +398,7 @@ export default function TeamMemberDetailScreen() {
         </View>
 
         {/* Active/inactive toggle */}
+        {canManageTeam ? (
         <View style={twStyle("mx-4 mb-3")}>
           <TouchableOpacity
             style={twStyle(
@@ -341,8 +423,10 @@ export default function TeamMemberDetailScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        ) : null}
 
         {/* Delete */}
+        {canManageTeam ? (
         <View style={twStyle("mx-4 mb-6")}>
           <TouchableOpacity
             style={twStyle("flex-row items-center justify-center rounded-2xl border border-red-200 bg-red-50 py-3.5")}
@@ -357,6 +441,7 @@ export default function TeamMemberDetailScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+        ) : null}
       </ScrollView>
 
       {/* ─── Edit Bottom Sheet ──────────────────────────────────── */}
@@ -382,45 +467,52 @@ export default function TeamMemberDetailScreen() {
           accessibilityLabel="Team member phone"
         />
 
-        {/* Role */}
-        <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
-        <View style={twStyle("mb-3 flex-row flex-wrap")}>
-          {ROLES.map((r) => (
-            <TouchableOpacity
-              key={r.value}
-              style={[
-                twStyle(
-                  `rounded-full px-4 py-2 ${
-                    editForm.role === r.value
-                      ? "bg-gray-900"
-                      : "border border-gray-200 bg-white"
-                  }`
-                ),
-                { marginRight: 8, marginBottom: 8 },
-              ]}
-              onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
-              accessibilityLabel={`Select role ${r.label}`}
-            >
-              <Text
-                style={twStyle(
-                  `text-sm font-medium ${
-                    editForm.role === r.value ? "text-white" : "text-gray-600"
-                  }`
-                )}
-              >
-                {r.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {canManageTeam ? (
+          <>
+            <Text style={twStyle("mb-1 mt-2 text-sm font-medium text-gray-700")}>Role</Text>
+            <View style={twStyle("mb-3 flex-row flex-wrap")}>
+              {ROLES.map((r) => (
+                <TouchableOpacity
+                  key={r.value}
+                  style={[
+                    twStyle(
+                      `rounded-full px-4 py-2 ${
+                        editForm.role === r.value
+                          ? "bg-gray-900"
+                          : "border border-gray-200 bg-white"
+                      }`
+                    ),
+                    { marginRight: 8, marginBottom: 8 },
+                  ]}
+                  onPress={() => setEditForm((p) => ({ ...p, role: r.value }))}
+                  accessibilityLabel={`Select role ${r.label}`}
+                >
+                  <Text
+                    style={twStyle(
+                      `text-sm font-medium ${
+                        editForm.role === r.value ? "text-white" : "text-gray-600"
+                      }`
+                    )}
+                  >
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
-        <FormField
-          label="Commission Rate (%)"
-          value={editForm.commission_rate}
-          onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
-          placeholder="e.g. 30"
-          keyboardType="numeric"
-        />
+            <FormField
+              label="Commission Rate (%)"
+              value={editForm.commission_rate}
+              onChangeText={(t) => setEditForm((p) => ({ ...p, commission_rate: t }))}
+              placeholder="e.g. 30"
+              keyboardType="numeric"
+            />
+          </>
+        ) : (
+          <Text style={twStyle("mt-3 text-xs text-gray-500")}>
+            Role and commission can only be changed by someone with Manage team access.
+          </Text>
+        )}
 
         <ActionButton
           label="Save changes"

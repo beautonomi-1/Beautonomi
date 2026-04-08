@@ -79,3 +79,15 @@ export {
   type PackageItemRow,
   type PublicProductCatalogRow,
 } from "./booking/packageCartMatch";
+export {
+  PROVIDER_EXCELLENCE_DASHBOARD_BODY,
+  PROVIDER_EXCELLENCE_DASHBOARD_COOLDOWN_MS,
+  PROVIDER_EXCELLENCE_DASHBOARD_CTA,
+  PROVIDER_EXCELLENCE_DASHBOARD_STORAGE_KEY,
+  PROVIDER_EXCELLENCE_DASHBOARD_TITLE,
+  PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE,
+  PROVIDER_ON_PLATFORM_PAYMENT_NUDGE,
+  PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE,
+  providerBookingPaymentNudgeSessionKey,
+} from "./provider-excellence-nudges";
+export { getCustomerEtaUiParts } from "./customer-tracking-eta";

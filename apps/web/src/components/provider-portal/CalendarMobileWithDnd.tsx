@@ -37,7 +37,11 @@ export function CalendarMobileWithDnd({
       enableConflictValidation={enableConflictValidation}
       onReschedule={onReschedule}
     >
-      <CalendarMobileView {...mobileProps} availabilityBlocks={availabilityBlocks} />
+      <CalendarMobileView
+        {...mobileProps}
+        availabilityBlocks={availabilityBlocks}
+        timeBlocks={timeBlocks}
+      />
     </DragDropProvider>
   );
 }

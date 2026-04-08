@@ -527,6 +527,7 @@ export async function PATCH(
       send_arrival_notification,
       referral_source_id,
     } = body;
+    const requestedDbStatus = status ? mapStatusToDatabase(status) : undefined;
     
     // Check if any updateable field is provided
     // Note: duration_minutes is stored in booking_services, not bookings table
@@ -535,6 +536,7 @@ export async function PATCH(
         total_amount !== undefined || tip_amount !== undefined ||
         discount_amount !== undefined || discount_reason !== undefined ||
         tax_amount !== undefined ||
+        cancellation_reason !== undefined || cancellation_fee !== undefined ||
         location_type || location_id || address_line1 || travel_fee !== undefined ||
         services !== undefined || products !== undefined ||
         current_stage !== undefined ||
@@ -685,8 +687,8 @@ export async function PATCH(
     };
 
     // Update status if provided (map frontend status to database status)
-    if (status) {
-      updateData.status = mapStatusToDatabase(status);
+    if (requestedDbStatus) {
+      updateData.status = requestedDbStatus;
     }
 
     // Update current_stage (e.g. client_arrived for in-salon check-in, or null when starting service)
@@ -759,6 +761,42 @@ export async function PATCH(
     // Update cancellation fee if provided
     if (cancellation_fee !== undefined) {
       updateData.cancellation_fee = cancellation_fee;
+    }
+
+    // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
+    // This makes status-only or fee-only cancellation updates safe across web + app clients.
+    if (cancellation_fee !== undefined || requestedDbStatus === "cancelled") {
+      const current = currentBooking as Record<string, unknown>;
+      const effectiveSubtotal = Number(
+        updateData.subtotal ?? current.subtotal ?? 0
+      );
+      const effectiveDiscount = Number(
+        updateData.discount_amount ?? current.discount_amount ?? 0
+      );
+      const effectiveTax = Number(
+        updateData.tax_amount ?? current.tax_amount ?? 0
+      );
+      const effectiveServiceFee = Number(
+        updateData.service_fee_amount ?? current.service_fee_amount ?? 0
+      );
+      const effectiveTravel = Number(
+        updateData.travel_fee ?? current.travel_fee ?? 0
+      );
+      const effectiveTip = Number(
+        updateData.tip_amount ?? current.tip_amount ?? 0
+      );
+      const effectiveCancellationFee = Number(
+        updateData.cancellation_fee ?? current.cancellation_fee ?? 0
+      );
+      const normalizedTotal =
+        effectiveSubtotal -
+        effectiveDiscount +
+        effectiveTax +
+        effectiveServiceFee +
+        effectiveTravel +
+        effectiveTip -
+        Math.max(0, effectiveCancellationFee);
+      updateData.total_amount = Math.round(normalizedTotal * 100) / 100;
     }
     
     // Update location type if provided

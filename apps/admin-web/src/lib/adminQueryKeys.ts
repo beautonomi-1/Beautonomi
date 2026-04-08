@@ -12,6 +12,8 @@ export const adminQueryKeys = {
   activity: () => [...adminQueryKeys.root, "activity"] as const,
 
   dashboard: () => [...adminQueryKeys.root, "dashboard"] as const,
+  /** Superadmin tenant-scoped acquisition & migration analytics (GET /api/admin/dashboard/marketing-insights). */
+  dashboardMarketingInsights: () => [...adminQueryKeys.root, "dashboard", "marketing-insights"] as const,
 
   analytics: (period: string) => [...adminQueryKeys.root, "analytics", period] as const,
 
@@ -39,6 +41,8 @@ export const adminQueryKeys = {
     distanceList: () => [...adminQueryKeys.providers.all(), "distance-list"] as const,
     list: (q: string) => [...adminQueryKeys.providers.all(), "list", q] as const,
     detail: (id: string) => [...adminQueryKeys.providers.all(), "detail", id] as const,
+    payoutAccounts: (providerId: string) =>
+      [...adminQueryKeys.providers.all(), "payout-accounts", providerId] as const,
   },
 
   staff: (q: string) => [...adminQueryKeys.root, "staff", q] as const,
@@ -54,6 +58,10 @@ export const adminQueryKeys = {
   supportTicketAssignees: () => [...adminQueryKeys.root, "support-ticket-assignees"] as const,
 
   userDetail: (id: string) => [...adminQueryKeys.root, "users", "detail", id] as const,
+
+  userBookings: (id: string) => [...adminQueryKeys.root, "users", id, "bookings"] as const,
+
+  userWalletTransactions: (id: string) => [...adminQueryKeys.root, "users", id, "wallet-transactions"] as const,
 
   loyaltyRules: () => [...adminQueryKeys.root, "loyalty", "rules"] as const,
 
@@ -78,6 +86,8 @@ export const adminQueryKeys = {
   serviceZones: (q: string) => [...adminQueryKeys.root, "service-zones", q] as const,
 
   explorePosts: (q: string) => [...adminQueryKeys.root, "explore", "posts", q] as const,
+  /** Invalidate every Explore list query regardless of URL filter string (TanStack prefix match). */
+  explorePostsAll: () => [...adminQueryKeys.root, "explore", "posts"] as const,
 
   explorePostDetail: (id: string) => [...adminQueryKeys.root, "explore", "post", id] as const,
 
@@ -92,6 +102,8 @@ export const adminQueryKeys = {
   finance: {
     all: () => [...adminQueryKeys.root, "finance"] as const,
     summary: (range: string) => [...adminQueryKeys.finance.all(), "summary", range] as const,
+    transactions: (filters: { range: string; page: number; type: string; limit: number }) =>
+      [...adminQueryKeys.finance.all(), "transactions", filters] as const,
   },
 
   payouts: {
@@ -102,6 +114,10 @@ export const adminQueryKeys = {
   fees: {
     all: () => [...adminQueryKeys.root, "fees"] as const,
     configs: (q: string) => [...adminQueryKeys.fees.all(), "configs", q] as const,
+    adjustmentsList: (filters: { page: number; limit: number }) =>
+      [...adminQueryKeys.fees.all(), "adjustments", filters] as const,
+    reconciliationsList: (filters: { page: number; limit: number }) =>
+      [...adminQueryKeys.fees.all(), "reconciliations", filters] as const,
   },
 
   billing: {

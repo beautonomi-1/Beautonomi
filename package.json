@@ -59,7 +59,7 @@
     "build:packages": "pnpm exec turbo run build --filter=./packages/*",
     "prepare:production": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
     "release:check": "pnpm run typecheck && pnpm run lint && pnpm run test",
-    "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider",
+    "release:check:mobile": "pnpm exec turbo run typecheck lint --filter=customer --filter=provider && pnpm run parity:check",
     "parity:check": "node tooling/parity/check-parity.mjs",
     "audit:routes": "node tooling/audit/scan-routes.mjs",
     "audit:tenant-admin": "node docs/scripts/check-admin-tenant-scope.mjs",

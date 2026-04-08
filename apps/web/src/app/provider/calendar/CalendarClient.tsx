@@ -359,6 +359,72 @@ const sanitizeAvailabilityBlocks = (blocks: AvailabilityBlockDisplay[]): Availab
     .filter((block): block is AvailabilityBlockDisplay => block !== null);
 };
 
+type CheckoutSaleLine = {
+  id: string;
+  type: "service" | "product";
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  item_id?: string | null;
+};
+
+/** Build POS sale lines from calendar appointment (multi-service + booking products). */
+function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
+  const items: CheckoutSaleLine[] = [];
+  const services = (apt as { services?: Array<Record<string, unknown>> }).services;
+  if (Array.isArray(services) && services.length > 0) {
+    services.forEach((s, idx) => {
+      const name = String(s.offering_name ?? s.service_name ?? s.name ?? "Service");
+      const unit = Number(s.price ?? 0);
+      const oid = s.offering_id ?? s.service_id ?? s.id;
+      items.push({
+        id: String(oid ?? `svc-${idx}`),
+        type: "service",
+        name,
+        quantity: 1,
+        unit_price: unit,
+        total: unit,
+        item_id: typeof oid === "string" ? oid : oid != null ? String(oid) : null,
+      });
+    });
+  }
+
+  const products = (apt as { products?: Array<Record<string, unknown>> }).products;
+  if (Array.isArray(products) && products.length > 0) {
+    products.forEach((p, idx) => {
+      const name = String(p.product_name ?? p.name ?? "Product");
+      const qty = Math.max(1, Number(p.quantity ?? 1));
+      const unit = Number(p.unit_price ?? 0);
+      const lineTotal = Number(p.total_price ?? unit * qty);
+      const pid = p.product_id ?? p.id;
+      items.push({
+        id: String(pid ?? `prd-${idx}`),
+        type: "product",
+        name,
+        quantity: qty,
+        unit_price: unit,
+        total: lineTotal,
+        item_id: typeof pid === "string" ? pid : pid != null ? String(pid) : null,
+      });
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      id: apt.service_id || apt.id,
+      type: "service",
+      name: apt.service_name || "Service",
+      quantity: 1,
+      unit_price: Number(apt.price ?? 0),
+      total: Number(apt.price ?? 0),
+      item_id: apt.service_id || null,
+    });
+  }
+
+  return items;
+}
+
 export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarInitialPayload }) {
   const router = useRouter();
   const { dateView, setDateView, provider, isLoading: isLoadingProvider, salons, selectedLocationId } = useProviderPortal();
@@ -1215,27 +1281,41 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         ...((apt as any).version !== undefined && { version: (apt as any).version }),
       });
 
-      // Create sale record with payment details
+      // Create sale record with payment details (all services + products on the booking)
       try {
+        const saleItems = buildSaleItemsFromAppointment(apt);
+        const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
+        const subtotalForSale = Number(apt.subtotal ?? lineSum);
+        const taxForSale = Number(apt.tax_amount ?? 0);
+        const travel = Number(apt.travel_fee ?? 0);
+        const bookingTotal =
+          Number(apt.total_amount) > 0
+            ? Number(apt.total_amount)
+            : subtotalForSale + taxForSale + travel;
+        const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
+
         await providerApi.createSale({
           customer_id: apt.client_id,
           client_name: apt.client_name,
           date: apt.scheduled_date,
-          items: [{
-            id: apt.service_id || apt.id,
-            type: "service",
-            name: apt.service_name,
-            quantity: 1,
-            unit_price: apt.price ?? 0,
-            total: apt.price ?? 0,
-          }],
-          subtotal: apt.price,
-          tax: 0,
-          total: (apt.price ?? 0) + (apt.tax_amount ?? 0) + (apt.travel_fee ?? 0) + tipAmount - discountAmount,
+          items: saleItems.map((i) => ({
+            id: i.id,
+            type: i.type,
+            name: i.name,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            total: i.total,
+            item_id: i.item_id ?? undefined,
+          })),
+          subtotal: subtotalForSale,
+          tax: taxForSale,
+          total: saleTotal,
           payment_method: paymentMethod,
+          location_id: apt.location_id || undefined,
+          team_member_id: apt.team_member_id || undefined,
           notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: R${tipAmount})` : ""}`.trim() : undefined,
           discount_amount: discountAmount,
-        } as any);
+        } as Parameters<typeof providerApi.createSale>[0]);
       } catch (error) {
         console.error("Failed to create sale record:", error);
         // Don't fail the checkout if sale creation fails
@@ -1809,11 +1889,11 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-sm bg-amber-400/90" aria-hidden />
-                Blocks
+                Blocks & breaks
               </span>
               <span className="flex items-center gap-1">
                 <span className="inline-block h-2 w-2 rounded-sm bg-slate-400/70" aria-hidden />
-                Closed
+                Shifts / closed
               </span>
             </div>
             <CalendarMobileWithDnd
@@ -1824,13 +1904,20 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               appointments={appointments}
               teamMembers={filteredTeamMembers}
               selectedDate={selectedDateSafe}
-              view={dateView === "week" ? "week" : "day"}
+              view={dateView}
+              onRefresh={loadData}
               onDateChange={(date) => {
                 if (date instanceof Date && !isNaN(date.getTime())) {
                   setSelectedDate(date);
                 }
               }}
               onAppointmentClick={handleAppointmentClick}
+              onTimeBlockClick={(block) => {
+                openEditTimeBlockMode({
+                  ...block,
+                  id: resolveTimeBlockRecordId(block),
+                });
+              }}
               onTimeSlotClick={(date, time, teamMemberId) => {
                 const currentLocation = selectedLocationId
                   ? salons.find(s => s.id === selectedLocationId)
@@ -1878,8 +1965,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               onClearStaffFilter={clearStaffFilter}
               onAddAppointment={handleCreateAppointment}
               onFilterClick={() => setIsFilterSheetOpen(true)}
-              onViewChange={(view) => {
-                setDateView(view === "week" ? "week" : "day");
+              onViewChange={(v) => {
+                setDateView(v);
               }}
               businessTimezone={businessTz}
             />
@@ -1936,6 +2023,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   className={dateView === "day" ? "bg-[#1a1f3c]" : ""}
                 >
                   Day
+                </Button>
+                <Button
+                  variant={dateView === "3-days" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDateView("3-days")}
+                  className={dateView === "3-days" ? "bg-[#1a1f3c]" : ""}
+                >
+                  3 days
                 </Button>
                 <Button
                   variant={dateView === "week" ? "default" : "outline"}
@@ -2132,7 +2227,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           appointments={appointments}
           teamMembers={teamMembers}
           selectedDate={selectedDateSafe}
-          view={dateView === "week" ? "week" : "day"}
+          view={dateView}
           initialStaffId={printDialogStaffId || undefined}
         />
       )}

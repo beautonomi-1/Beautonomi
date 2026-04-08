@@ -15,12 +15,15 @@ export function AdminMetricCard({
   label,
   value,
   hint,
+  footer,
   variant = "slate",
   className,
 }: {
   label: string;
   value: ReactNode;
   hint?: string;
+  /** Action link or secondary line (e.g. “Open finance →”). */
+  footer?: ReactNode;
   variant?: AdminMetricCardVariant;
   className?: string;
 }) {
@@ -36,6 +39,7 @@ export function AdminMetricCard({
       <p className="text-xs font-medium uppercase tracking-wide text-white/75">{label}</p>
       <p className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
       {hint ? <p className="mt-1 text-xs text-white/60">{hint}</p> : null}
+      {footer ? <div className="relative z-[1] mt-3 text-xs text-white/85">{footer}</div> : null}
     </div>
   );
 }

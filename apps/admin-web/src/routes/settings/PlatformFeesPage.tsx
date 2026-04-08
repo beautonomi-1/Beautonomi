@@ -4,6 +4,8 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -36,7 +38,14 @@ export function PlatformFeesPage() {
   }
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
-    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Platform fees" description="GET /api/admin/platform-fees" />
+        <AdminPanel>
+          <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+        </AdminPanel>
+      </div>
+    );
   }
 
   const d = q.data ?? {};
@@ -48,6 +57,16 @@ export function PlatformFeesPage() {
         description="Read-only in SPA; API is gated as platform_config. Editing uses PATCH when a form is added."
       />
       <AdminPanel>
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            className={adminToolbarButtonClass(q.isFetching)}
+            disabled={q.isFetching}
+            onClick={() => void q.refetch()}
+          >
+            Refresh
+          </button>
+        </div>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           {Object.entries(d).map(([k, v]) => (
             <div key={k}>

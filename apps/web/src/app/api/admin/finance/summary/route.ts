@@ -37,6 +37,7 @@ export async function GET(request: Request) {
     const supabaseAdmin = getSupabaseAdmin();
     let walletTopupRevenue = 0;
     let referralPayouts = 0;
+    let cancellationFeesRetained = 0;
     try {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
@@ -65,6 +66,23 @@ export async function GET(request: Request) {
         console.warn("Referral wallet credits tenant-scoped query failed:", refErr.message);
       } else {
         referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+      }
+
+      let cancelFeeQuery = supabaseAdmin
+        .from("bookings")
+        .select("cancellation_fee")
+        .eq("tenant_id", tenantId)
+        .eq("status", "cancelled");
+      if (startDate) cancelFeeQuery = cancelFeeQuery.gte("cancelled_at", startDate);
+      if (endDate) cancelFeeQuery = cancelFeeQuery.lte("cancelled_at", endDate);
+      const { data: cancellationRows, error: cancellationErr } = await cancelFeeQuery;
+      if (cancellationErr) {
+        console.warn("Cancellation fee query failed:", cancellationErr.message);
+      } else {
+        cancellationFeesRetained = (cancellationRows || []).reduce(
+          (s, r) => s + Number(r.cancellation_fee || 0),
+          0
+        );
       }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
@@ -135,6 +153,7 @@ export async function GET(request: Request) {
         total_platform_take_net: agg.platform_take_net + agg.subscription_net + agg.ads_net,
 
         provider_earnings: agg.provider_earnings_net,
+        cancellation_fees_retained: cancellationFeesRetained,
         refunds_gross: agg.refunds_gross,
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,

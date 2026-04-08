@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 const API_PATHS: Record<string, string> = {
   revenue: "/api/admin/reports/revenue",
@@ -83,7 +84,7 @@ export function ReportDetailPage() {
       <div className="space-y-6">
         <AdminPageHeader title="Report" />
         <EmptyState title="Unknown report" description={reportKey} />
-        <Link to="/reports" className="text-sm font-medium text-gray-900 underline">
+        <Link to={adminSpaTo("/admin/reports")} className="text-sm font-medium text-gray-900 underline">
           ← Reports hub
         </Link>
       </div>
@@ -122,7 +123,7 @@ export function ReportDetailPage() {
         description={`GET ${apiPath} · AuthZ: overview (API). Finance-nav links may not match role matrix — see progress report.`}
       />
       <div className="flex flex-wrap items-center gap-3">
-        <Link to="/reports" className="text-sm text-gray-600 hover:text-gray-900">
+        <Link to={adminSpaTo("/admin/reports")} className="text-sm text-gray-600 hover:text-gray-900">
           ← Reports hub
         </Link>
         <label className="text-sm text-gray-600">

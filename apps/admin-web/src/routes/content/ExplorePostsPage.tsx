@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 import { publicEnv } from "@/config/publicEnv";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 
@@ -145,11 +146,17 @@ export function ExplorePostsPage() {
     onSuccess: async (res) => {
       setSelected(new Set());
       setBulkHideOpen(false);
-      setMsg(`Updated ${res?.updated ?? 0} post(s).`);
-      await qc.invalidateQueries({ queryKey: adminQueryKeys.explorePosts("") });
+      const n = res?.updated ?? 0;
+      setMsg(`Updated ${n} post(s).`);
+      adminToast.success(n ? `Updated ${n} post(s)` : "No posts were updated");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostsAll() });
       await qc.invalidateQueries({ queryKey: qk });
     },
-    onError: (e) => setMsg(e instanceof Error ? e.message : "Moderation failed"),
+    onError: (e) => {
+      const m = e instanceof Error ? e.message : "Moderation failed";
+      setMsg(m);
+      adminToast.error(m);
+    },
   });
 
   const toggle = (id: string) => {
@@ -376,7 +383,8 @@ export function ExplorePostsPage() {
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
               const id = String(row.id ?? "");
-              const prov = row.providers as ProviderJoin | undefined;
+              const provRaw = row.providers as ProviderJoin | ProviderJoin[] | undefined;
+              const prov = Array.isArray(provRaw) ? provRaw[0] : provRaw;
               const media = Array.isArray(row.media_urls) ? (row.media_urls as string[])[0] : undefined;
               const hidden = Boolean(row.is_hidden);
               return (

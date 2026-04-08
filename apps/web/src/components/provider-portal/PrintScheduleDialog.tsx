@@ -29,7 +29,7 @@ interface PrintScheduleDialogProps {
   appointments: Appointment[];
   teamMembers: TeamMember[];
   selectedDate: Date;
-  view: "day" | "week";
+  view: "day" | "3-days" | "week";
   initialStaffId?: string | null;
 }
 
@@ -66,6 +66,9 @@ export function PrintScheduleDialog({
   const getDateRange = () => {
     if (view === "day") {
       return [selectedDate];
+    }
+    if (view === "3-days") {
+      return Array.from({ length: 3 }, (_, i) => addDays(selectedDate, i));
     }
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
@@ -370,7 +373,9 @@ export function PrintScheduleDialog({
               <h1 className="text-sm font-semibold text-gray-900">
                 {view === "day"
                   ? `Schedule for ${format(selectedDate, "EEEE, MMM d, yyyy")}`
-                  : `Week: ${format(dates[0], "MMM d")} – ${format(dates[6], "MMM d, yyyy")}`}
+                  : view === "3-days"
+                    ? `${format(dates[0], "MMM d")} – ${format(dates[dates.length - 1], "MMM d, yyyy")}`
+                    : `Week: ${format(dates[0], "MMM d")} – ${format(dates[6], "MMM d, yyyy")}`}
               </h1>
               <p className="text-xs text-gray-500 mt-0.5">
                 {selectedStaffId === "all"
@@ -387,7 +392,7 @@ export function PrintScheduleDialog({
             {/* Content */}
             {groupedByDateAndStaff.map(({ date, byStaff }) => (
               <div key={date.toISOString()} className="date-section">
-                {view === "week" && (
+                {view !== "day" && (
                   <div className="date-header">
                     {format(date, "EEEE, MMM d")}
                   </div>

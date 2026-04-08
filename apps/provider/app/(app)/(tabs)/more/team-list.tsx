@@ -62,6 +62,13 @@ interface LocationItem {
   name: string;
 }
 
+interface TeamAccessPayload {
+  staff_id: string | null;
+  can_manage_team: boolean;
+  roster_detail_level?: "full" | "redacted";
+  can_view_team_roster_pii?: boolean;
+}
+
 const ROLES = [
   { label: "Staff", value: "provider_staff" },
   { label: "Manager", value: "provider_manager" },
@@ -88,6 +95,10 @@ export default function TeamListScreen() {
   const { isTablet } = useResponsive();
 
   // Fetch all staff (no location filter) so the full team is visible; filter by location in UI if needed
+  const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const canManageTeam = teamAccess?.can_manage_team === true;
+  const rosterRedacted = teamAccess?.roster_detail_level === "redacted";
+
   const { data: staff, loading, error: staffError, refresh } = useApi<StaffMember[]>(
     "/api/provider/staff",
   );
@@ -145,6 +156,10 @@ export default function TeamListScreen() {
 
   // --- Add member ---
   function openAddSheet() {
+    if (!canManageTeam) {
+      Alert.alert("Permission", "Only owners or managers with “Manage team” can add staff.");
+      return;
+    }
     setForm({ ...EMPTY_FORM });
     setAddSheetOpen(true);
   }
@@ -234,6 +249,13 @@ export default function TeamListScreen() {
 
   function handleLongPress(member: StaffMember) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (!canManageTeam) {
+      Alert.alert(
+        member.name,
+        "Only owners or managers with “Manage team” can edit or remove team members.",
+      );
+      return;
+    }
     Alert.alert(member.name, "What would you like to do?", [
       { text: "Edit", onPress: () => openEditSheet(member) },
       {
@@ -273,11 +295,15 @@ export default function TeamListScreen() {
   }
 
   async function handleSubmit() {
+    if (!canManageTeam) {
+      Alert.alert("Permission", "You do not have permission to add team members.");
+      return;
+    }
     if (!form.name.trim() || !form.email.trim()) {
       Alert.alert("Validation", "Name and email are required.");
       return;
     }
-    const phoneErr = validateE164Phone(form.phone);
+    const phoneErr = form.phone.trim() ? validateE164Phone(form.phone) : null;
     if (phoneErr) {
       Alert.alert("Invalid phone", phoneErr);
       return;
@@ -312,15 +338,17 @@ export default function TeamListScreen() {
         showBack
         subtitle={`${totalCount} members`}
         rightAction={
-          <TouchableOpacity
-            onPress={openAddSheet}
-            style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
-            accessibilityLabel="Add team member"
-            accessibilityRole="button"
-          >
-            <Ionicons name="add" size={18} color="#fff" />
-            <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>Add</Text>
-          </TouchableOpacity>
+          canManageTeam ? (
+            <TouchableOpacity
+              onPress={openAddSheet}
+              style={twStyle("flex-row items-center rounded-xl bg-gray-900 px-4 py-2")}
+              accessibilityLabel="Add team member"
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={twStyle("ml-1 text-sm font-semibold text-white")}>Add</Text>
+            </TouchableOpacity>
+          ) : undefined
         }
       />
 
@@ -376,6 +404,11 @@ export default function TeamListScreen() {
           onSelect={setFilter}
         />
       </View>
+      {rosterRedacted ? (
+        <Text style={twStyle("mb-3 text-xs text-gray-500 px-1")}>
+          Colleague emails and phones are hidden. An owner can grant “View team” to show them.
+        </Text>
+      ) : null}
 
       {/* ── Team List ── */}
       {loading && !staff ? (

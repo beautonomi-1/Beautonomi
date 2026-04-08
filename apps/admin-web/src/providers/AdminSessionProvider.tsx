@@ -21,6 +21,11 @@ interface AdminSessionContextValue {
   sectionRoles: Record<AdminSection, UserRole[]> | null;
   /** True when section-permissions API failed; nav falls back to code defaults (may differ from DB). */
   sectionPermissionsError: boolean;
+  /**
+   * First load of section permissions for non-superadmin users. When true, defer shell navigation
+   * so `canAccess` does not briefly use code defaults before DB-backed roles apply.
+   */
+  isSectionPermissionsPending: boolean;
   refetchSectionPermissions: () => void;
   isLoading: boolean;
   isError: boolean;
@@ -80,6 +85,12 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     const canAccess = (section: AdminSection) =>
       canAccessSection(role, section, sectionRoles ?? undefined);
     const canUseGlobalSearch = canAccess(ADMIN_SECTION_USERS_TRUST);
+    const isSectionPermissionsPending = Boolean(
+      bootstrap &&
+        !bootstrap.is_superadmin &&
+        sectionPermQuery.isLoading &&
+        !sectionPermQuery.isError
+    );
 
     return {
       bootstrap: bootstrap
@@ -93,6 +104,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
         : null,
       sectionRoles,
       sectionPermissionsError: sectionPermQuery.isError,
+      isSectionPermissionsPending,
       refetchSectionPermissions: () => {
         void sectionPermQuery.refetch();
       },
@@ -118,6 +130,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     bootstrapQuery.refetch,
     sectionRoles,
     sectionPermQuery.isError,
+    sectionPermQuery.isLoading,
     sectionPermQuery.refetch,
     qc,
   ]);

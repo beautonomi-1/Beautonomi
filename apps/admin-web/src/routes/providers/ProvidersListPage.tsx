@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminDataList } from "@/components/admin/AdminDataList";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type ProviderRow = {
   id: string;
@@ -60,7 +61,10 @@ export function ProvidersListPage() {
         id: "business",
         header: "Business",
         cell: (p: ProviderRow) => (
-          <Link className="font-medium text-gray-900 underline decoration-gray-400 underline-offset-2 hover:decoration-gray-900" to={p.id}>
+          <Link
+            className="font-medium text-gray-900 underline decoration-gray-400 underline-offset-2 hover:decoration-gray-900"
+            to={adminSpaTo(`/admin/providers/${encodeURIComponent(p.id)}`)}
+          >
             {p.business_name ?? p.id}
           </Link>
         ),

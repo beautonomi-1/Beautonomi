@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -102,7 +102,7 @@ function getNextStatusOptions(current: string): string[] {
 /*  Component (exported for embedding in hub tabs)                     */
 /* ------------------------------------------------------------------ */
 
-export function ProductOrdersContent() {
+export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: string }) {
   const { screenPadding } = useResponsive();
   const currency = getTenantDefaultCurrency();
 
@@ -156,6 +156,50 @@ export function ProductOrdersContent() {
       setLoadingDetail(false);
     }
   }, []);
+
+  const deepLinkOpenedRef = useRef<string | null>(null);
+  const deepLinkFetchDoneRef = useRef<string | null>(null);
+  const allOrdersRef = useRef(allOrders);
+  allOrdersRef.current = allOrders;
+
+  useEffect(() => {
+    if (!deepLinkOrderId?.trim()) {
+      deepLinkOpenedRef.current = null;
+      deepLinkFetchDoneRef.current = null;
+      return;
+    }
+    const id = deepLinkOrderId.trim();
+    if (deepLinkOpenedRef.current && deepLinkOpenedRef.current !== id) {
+      deepLinkOpenedRef.current = null;
+    }
+    if (deepLinkFetchDoneRef.current && deepLinkFetchDoneRef.current !== id) {
+      deepLinkFetchDoneRef.current = null;
+    }
+    if (loading) return;
+    if (deepLinkOpenedRef.current === id) return;
+
+    const fromList = allOrdersRef.current.find((o) => o.id === id);
+    if (fromList) {
+      deepLinkOpenedRef.current = id;
+      void openOrder(fromList);
+      return;
+    }
+
+    if (deepLinkFetchDoneRef.current === id) return;
+    deepLinkFetchDoneRef.current = id;
+    void (async () => {
+      try {
+        const res = await api.get<{ order: Order }>(`/api/provider/product-orders/${id}`);
+        const ord = res.data?.order;
+        if (ord) {
+          deepLinkOpenedRef.current = id;
+          openOrder(ord);
+        }
+      } catch {
+        // Order missing or inaccessible; user stays on list
+      }
+    })();
+  }, [deepLinkOrderId, loading, openOrder]);
 
   const doUpdateStatus = useCallback(
     async (orderId: string, status: string, extra?: { tracking_number?: string; carrier?: string }) => {

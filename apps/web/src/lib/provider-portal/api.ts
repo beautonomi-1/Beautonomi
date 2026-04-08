@@ -108,6 +108,14 @@ export interface ProviderApi {
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<Sale>>;
   createSale(data: Partial<Sale>): Promise<Sale>;
+  updateSale(
+    id: string,
+    data: Partial<{
+      payment_status: string;
+      payment_provider: string | null;
+      payment_provider_id: string | null;
+    }>,
+  ): Promise<Sale>;
 
   // Payments
   listPayments(
@@ -1389,13 +1397,35 @@ export class ProviderApiClient implements ProviderApi {
     }
   }
 
+  async updateSale(
+    id: string,
+    data: Partial<{
+      payment_status: string;
+      payment_provider: string | null;
+      payment_provider_id: string | null;
+    }>,
+  ): Promise<Sale> {
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const response = await fetcher.patch<{ data?: Sale }>(`/api/provider/sales/${id}`, data);
+      const inner = (response as { data?: Sale })?.data;
+      if (!inner?.id) {
+        throw new Error("Failed to update sale");
+      }
+      return inner;
+    } catch (error: unknown) {
+      await this.handleApiError("/api/provider/sales", "PATCH", error, id, undefined, data);
+      throw error;
+    }
+  }
+
   async listPayments(
     filters?: FilterParams,
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<PaymentTransaction>> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      
+
       // Build query parameters
       const params = new URLSearchParams();
       if (filters?.search) {
@@ -2695,6 +2725,7 @@ export class ProviderApiClient implements ProviderApi {
     amount: number; // Amount in Rands (API will convert to cents)
     currency?: string;
     appointment_id?: string;
+    booking_id?: string;
     sale_id?: string;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
@@ -2706,6 +2737,7 @@ export class ProviderApiClient implements ProviderApi {
         amount: data.amount, // In Rands
         currency: data.currency,
         appointment_id: data.appointment_id,
+        booking_id: data.booking_id,
         sale_id: data.sale_id,
         metadata: data.metadata,
       });

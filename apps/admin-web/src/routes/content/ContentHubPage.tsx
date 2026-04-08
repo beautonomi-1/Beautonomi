@@ -4,6 +4,7 @@ import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 const CARDS: {
   to: string;
@@ -13,35 +14,35 @@ const CARDS: {
   accent: string;
 }[] = [
   {
-    to: "/content/learning",
+    to: adminSpaTo("/admin/content/learning"),
     label: "Learning articles",
     description: "Curriculum list from the learning API.",
     icon: BookOpen,
     accent: "from-emerald-600 to-teal-700",
   },
   {
-    to: "/explore",
+    to: adminSpaTo("/admin/explore"),
     label: "Explore posts",
     description: "Feed moderation: filters, previews, bulk hide, per-post detail with comments and metrics.",
     icon: Compass,
     accent: "from-sky-600 to-blue-800",
   },
   {
-    to: "/content/resources",
+    to: adminSpaTo("/admin/content/resources"),
     label: "CMS resources",
     description: "Tenant learning resources and guides (list view).",
     icon: FolderOpen,
     accent: "from-violet-600 to-fuchsia-800",
   },
   {
-    to: "/catalog",
+    to: adminSpaTo("/admin/catalog"),
     label: "Catalog services",
     description: "Master services with category names.",
     icon: Layers,
     accent: "from-amber-600 to-orange-800",
   },
   {
-    to: "/catalog/global-categories",
+    to: adminSpaTo("/admin/catalog/global-categories"),
     label: "Global categories",
     description: "Platform service categories for onboarding and targeting.",
     icon: Globe2,

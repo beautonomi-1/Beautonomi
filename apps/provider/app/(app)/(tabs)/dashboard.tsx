@@ -16,6 +16,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { Badge } from "@/components/ui/Badge";
 import { Avatar } from "@/components/ui/Avatar";
+import { ProviderDashboardExcellenceBanner } from "@/components/ProviderDashboardExcellenceBanner";
 import { SkeletonDashboard } from "@/components/ui/Skeleton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import {
@@ -580,6 +581,8 @@ export default function DashboardScreen() {
             </View>
           </TouchableOpacity>
         )}
+
+      <ProviderDashboardExcellenceBanner />
 
       {/* Identity strip: rating, badge, service type, at-home radius */}
       {m && (

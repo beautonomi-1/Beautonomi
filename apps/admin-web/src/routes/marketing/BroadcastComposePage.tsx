@@ -8,6 +8,7 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 type Channel = "push" | "sms" | "email";
 type RecipientType = "all_users" | "all_providers" | "custom";
@@ -77,7 +78,7 @@ export function BroadcastComposePage() {
         description="Send push, SMS, or email via the admin broadcast APIs. Delivery is logged to broadcast history."
       />
       <p className="text-sm text-gray-600">
-        <Link to="/broadcast/history" className="font-medium text-primary underline">
+        <Link to={adminSpaTo("/admin/broadcast/history")} className="font-medium text-primary underline">
           View delivery history →
         </Link>
       </p>

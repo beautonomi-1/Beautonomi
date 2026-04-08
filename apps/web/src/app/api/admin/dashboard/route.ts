@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
     });
     let totalCustomers =
       typeof rpcCount === "number" ? rpcCount : (rpcCount != null ? Number(rpcCount) : NaN);
+    let customerCountUsesFallback = false;
     if (rpcErr || Number.isNaN(totalCustomers)) {
+      customerCountUsesFallback = true;
       if (rpcErr) console.warn("admin_dashboard_tenant_customer_count RPC failed (migration applied?):", rpcErr.message);
       totalCustomers = await tenantCustomerCountFallback(supabase, tenantId);
     }
@@ -203,6 +205,9 @@ export async function GET(request: NextRequest) {
           ? 100
           : 0;
 
+    const generatedAt = new Date().toISOString();
+
+    // `total_users` is historical JSON key = distinct market customers (not all user roles). See metrics_notes + SPA label.
     return successResponse({
       total_users: totalCustomers,
       total_providers: totalProviders || 0,
@@ -216,6 +221,11 @@ export async function GET(request: NextRequest) {
       users_growth: usersGrowth,
       providers_growth: providersGrowth,
       bookings_growth: bookingsGrowth,
+
+      generated_at: generatedAt,
+      customer_count_uses_fallback: customerCountUsesFallback,
+      customer_signups_this_month: usersThisMonth,
+      customer_signups_last_month: usersLastMonth,
 
       gmv_total: total.service_collected_gross,
       platform_net_total: platformNetTotal,
@@ -239,9 +249,13 @@ export async function GET(request: NextRequest) {
         ledger_window_months: LEDGER_TOTAL_MONTHS,
         customer_count_basis:
           "Distinct customers with preferred_home_tenant OR at least one booking in tenant (RPC).",
+        customer_count_fallback_basis:
+          "When the RPC is unavailable, count is customers with preferred_home_tenant only (understates market reach).",
         customer_growth_basis:
-          "New customer accounts with preferred_home_tenant in this market (month-over-month).",
+          "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
         platform_net_includes: "Booking platform take + subscription net + ads net (matches finance summary).",
+        bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",
+        providers_growth_basis: "Active providers created this calendar month vs last month (tenant scope).",
       },
     });
   } catch (error) {

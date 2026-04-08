@@ -58,6 +58,9 @@ import {
   Network,
   Share2,
   FolderOpen,
+  MapPinned,
+  Boxes,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -130,6 +133,7 @@ const navGroups: NavGroup[] = [
     section: ADMIN_SECTION_PROVIDERS_OPERATIONS,
     items: [
       { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Provider distance", href: "/admin/providers/distance-settings", icon: MapPinned },
       { title: "Staff", href: "/admin/staff", icon: UserCheck },
       { title: "Bookings", href: "/admin/bookings", icon: Calendar },
       { title: "Reviews", href: "/admin/reviews", icon: Star },
@@ -172,6 +176,7 @@ const navGroups: NavGroup[] = [
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
       { title: "Global categories", href: "/admin/catalog/global-categories", icon: Globe2 },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
+      { title: "Add-ons", href: "/admin/addons", icon: Boxes },
     ],
   },
   {
@@ -226,6 +231,12 @@ const navGroups: NavGroup[] = [
       { title: "Settings", href: "/admin/settings", icon: Settings },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
+      {
+        title: "Compliance purge",
+        href: "/admin/control-plane/compliance",
+        icon: ShieldAlert,
+        superadminOnly: true,
+      },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },

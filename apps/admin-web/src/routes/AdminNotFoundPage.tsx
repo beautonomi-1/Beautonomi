@@ -53,7 +53,7 @@ export function AdminNotFoundPage() {
             </Link>
           ))}
         </div>
-        <Link to="/dashboard" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">
+        <Link to={adminSpaTo("/admin/dashboard")} className="mt-4 inline-block text-sm font-medium text-primary hover:underline">
           Back to dashboard →
         </Link>
       </AdminPanel>

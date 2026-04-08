@@ -25,6 +25,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminToast } from "@/lib/adminToast";
 
 function roleLabel(role: UserRole): string {
   if (role === "superadmin") return "Superadmin";
@@ -69,9 +70,13 @@ export function TeamPermissionsMatrixPage() {
     },
     onSuccess: async () => {
       setSaveMsg("Saved.");
+      adminToast.success("Team permissions saved");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.sectionPermissions() });
     },
-    onError: (e: Error) => setSaveMsg(e.message),
+    onError: (e: Error) => {
+      setSaveMsg(e.message);
+      adminToast.error(e.message);
+    },
   });
 
   const roles = useMemo(() => ALL_ADMIN_ROLES, []);

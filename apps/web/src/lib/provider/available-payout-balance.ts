@@ -104,7 +104,10 @@ export async function getAvailablePayoutBalance(
     .in("status", ["pending", "processing"]);
 
   const pendingPayoutsSum = (pendingRows || []).reduce((s, p: any) => s + Number(p.amount || 0), 0);
-  const availableBalance = Math.max(0, onlineEarnings - completedPayouts - pendingPayoutsSum);
+  const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum;
+  /** 2dp so UI and POST /api/provider/payouts validation never disagree on fractional cents */
+  const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+  const availableBalance = Math.max(0, round2(rawAvailable));
 
-  return { availableBalance, pendingPayoutsSum };
+  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum) };
 }

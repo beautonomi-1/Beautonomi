@@ -126,6 +126,9 @@ function createAppointmentFromBookingRow(
     Object.keys(booking.provider_form_responses).length > 0
       ? { provider_form_responses: booking.provider_form_responses }
       : {}),
+    // Full booking lines for checkout → POS sale (multi-service / add-on products)
+    services: booking.services || [],
+    products: booking.products || [],
   };
 }
 

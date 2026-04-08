@@ -413,7 +413,7 @@ export async function POST(request: NextRequest) {
         order_number: orderNum,
         total_amount: totalAmount,
       },
-      link: "/provider/ecommerce/orders",
+      link: `/provider/ecommerce/orders?order=${encodeURIComponent(order.id)}`,
     });
 
     // Order confirmation to customer via OneSignal notification template (push + email)

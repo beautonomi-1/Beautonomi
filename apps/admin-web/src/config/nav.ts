@@ -43,6 +43,9 @@ import {
   Link2,
   Network,
   Share2,
+  MapPinned,
+  Boxes,
+  ShieldAlert,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -94,6 +97,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     section: ADMIN_SECTION_PROVIDERS_OPERATIONS,
     items: [
       { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Provider distance", href: "/admin/providers/distance-settings", icon: MapPinned },
       { title: "Staff", href: "/admin/staff", icon: UserCheck },
       { title: "Bookings", href: "/admin/bookings", icon: Calendar },
       { title: "Reviews & ratings", href: "/admin/reviews", icon: Star },
@@ -146,6 +150,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Product Orders", href: "/admin/ecommerce/orders", icon: ShoppingBag },
       { title: "Product Returns", href: "/admin/ecommerce/returns", icon: Undo2 },
       { title: "Product Catalog", href: "/admin/ecommerce/products", icon: Store },
+      { title: "Add-ons", href: "/admin/addons", icon: Boxes },
     ],
   },
   {
@@ -192,6 +197,12 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Settings", href: "/admin/settings", icon: Settings },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers, superadminOnly: true },
+      {
+        title: "Compliance purge",
+        href: "/admin/control-plane/compliance",
+        icon: ShieldAlert,
+        superadminOnly: true,
+      },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },

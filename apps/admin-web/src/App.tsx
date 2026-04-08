@@ -9,6 +9,7 @@ import { AdminChrome } from "@/components/layout/AdminChrome";
 import { LoginPage } from "@/routes/LoginPage";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import * as P from "@/lazyAdminPages";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 /** Full path under the site, e.g. `/admin/dashboard` (for `next=` parity with `proxy.ts`). */
 function adminFullPath(pathname: string, search: string): string {
@@ -43,7 +44,7 @@ function RequireAuth() {
   }
 
   if (isError && errorStatus === 401) {
-    return <Navigate to={`/login?next=${nextParam}`} replace />;
+    return <Navigate to={adminSpaTo(`/admin/login?next=${nextParam}`)} replace />;
   }
 
   if (isError) {
@@ -59,7 +60,7 @@ function RequireAuth() {
             Retry
           </button>
           <Link
-            to={`/login?next=${nextParam}`}
+            to={adminSpaTo(`/admin/login?next=${nextParam}`)}
             className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm text-gray-900"
           >
             Sign in again
@@ -70,7 +71,7 @@ function RequireAuth() {
   }
 
   if (!bootstrap) {
-    return <Navigate to={`/login?next=${nextParam}`} replace />;
+    return <Navigate to={adminSpaTo(`/admin/login?next=${nextParam}`)} replace />;
   }
 
   return <Outlet />;
@@ -82,7 +83,7 @@ export default function App() {
       <Route path="login" element={<LoginPage />} />
       <Route element={<RequireAuth />}>
         <Route element={<AdminChrome />}>
-          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<P.DashboardPage />} />
           <Route path="analytics" element={<P.AnalyticsPage />} />
           <Route path="gods-eye" element={<P.GodsEyePage />} />
@@ -182,6 +183,7 @@ export default function App() {
             <Route path="maintenance/sign-ups" element={<P.CpMaintenanceSignupsPage />} />
             <Route path="maintenance" element={<P.CpMaintenancePage />} />
             <Route path="audit-log" element={<P.CpAuditLogPage />} />
+            <Route path="compliance" element={<P.CompliancePurgePage />} />
             <Route path="*" element={<P.AdminNotFoundPage />} />
           </Route>
           <Route path="sms-templates" element={<Navigate to="../notification-templates" replace />} />

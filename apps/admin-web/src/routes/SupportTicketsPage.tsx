@@ -24,6 +24,7 @@ import {
 import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@/lib/supportTicketCategories";
 import { buildSupportTicketsSearchParams, supportTicketsPageSize } from "@/lib/buildSupportTicketsSearchParams";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 
 interface SupportTicket {
   id: string;
@@ -371,7 +372,10 @@ export function SupportTicketsPage() {
                     <div className="text-xs text-gray-500">{new Date(ticket.created_at).toLocaleTimeString()}</div>
                   </AdminTd>
                   <AdminTd className="text-right">
-                    <Link className="text-sm font-medium text-gray-900 underline" to={ticket.id}>
+                    <Link
+                      className="text-sm font-medium text-gray-900 underline"
+                      to={adminSpaTo(`/admin/support-tickets/${encodeURIComponent(ticket.id)}`)}
+                    >
                       Open
                     </Link>
                   </AdminTd>

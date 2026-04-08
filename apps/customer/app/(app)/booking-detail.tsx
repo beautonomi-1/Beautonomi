@@ -39,6 +39,7 @@ import {
   ARRIVAL_PIN_LENGTH_HINT,
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
+  getCustomerEtaUiParts,
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 
@@ -112,15 +113,19 @@ export default function BookingDetailScreen() {
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const hasLoadedOnce = useRef(false);
 
-  const load = async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
-    setLoading(true);
-    setError(null);
+    if (!opts?.silent) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const res = await api.get<any>(`/api/me/bookings/${id}`);
       if (res.error) {
-        setError(getApiErrorMessage(res.error, "Failed to load"));
-        setBooking(null);
+        if (!opts?.silent) {
+          setError(getApiErrorMessage(res.error, "Failed to load"));
+          setBooking(null);
+        }
       } else {
         const raw = res.data as Record<string, unknown> | null | undefined;
         const row =
@@ -133,25 +138,40 @@ export default function BookingDetailScreen() {
         hasLoadedOnce.current = true;
       }
     } catch (e) {
-      setError(getApiErrorMessage(e as Error, "Failed to load"));
-      setBooking(null);
+      if (!opts?.silent) {
+        setError(getApiErrorMessage(e as Error, "Failed to load"));
+        setBooking(null);
+      }
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load on id change only
-  }, [id]);
+  }, [id, load]);
 
   // Refetch when screen gains focus after initial load (e.g. return from in-app browser after paying additional charge)
   useFocusEffect(
     useCallback(() => {
       if (id && hasLoadedOnce.current) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- load when focused
-    }, [id])
+    }, [id, load])
   );
+
+  // While provider is en route, poll for ETA + live location (realtime may omit JSONB-heavy columns in some setups)
+  useEffect(() => {
+    if (!id || !booking) return;
+    const locType = booking.location_type;
+    const stage = booking.current_stage;
+    const enRoute = stage === "provider_on_way" || !!(booking as { provider_en_route_at?: string }).provider_en_route_at;
+    const arrived = stage === "provider_arrived" || !!(booking as { provider_arrived_at?: string }).provider_arrived_at;
+    const terminal = booking.status === "cancelled" || booking.status === "completed";
+    if (locType !== "at_home" || !enRoute || arrived || terminal) return;
+    const interval = setInterval(() => {
+      load({ silent: true });
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [id, load, booking]);
 
   // Show post-completion modal once per booking when opening a completed booking
   useEffect(() => {
@@ -279,34 +299,80 @@ export default function BookingDetailScreen() {
 
   const handleCancel = useCallback(async () => {
     if (!booking) return;
-    Alert.alert(
-      "Cancel Booking",
-      "Are you sure you want to cancel this booking? Cancellation fees may apply.",
-      [
-        { text: "Keep Booking", style: "cancel" },
-        {
-          text: "Cancel Booking",
-          style: "destructive",
-          onPress: async () => {
-            setCancelling(true);
-            haptic.medium();
-            try {
-              const res = await api.post(`/api/me/bookings/${id}/cancel`, {});
-              if (res.error) {
-                Alert.alert("Error", res.error.message || "Failed to cancel");
-              } else {
-                haptic.success();
+    let message =
+      "Are you sure you want to cancel this booking? This action cannot be undone.";
+    try {
+      const preview = await api.get<{
+        allowed?: boolean;
+        reason?: string;
+        currency?: string;
+        expected_cancellation_fee?: number;
+        expected_wallet_refund?: number;
+        is_late_cancellation?: boolean;
+        refund_capped_by_paid_amount?: boolean;
+      }>(`/api/me/bookings/${id}/cancel-preview`);
+      const p = preview.data;
+      if (preview.error || !p?.allowed) {
+        Alert.alert("Cannot cancel", preview.error?.message || p?.reason || "Cancellation is not allowed.");
+        return;
+      }
+      const cur = p.currency || booking.currency || getTenantDefaultCurrency();
+      const fee = Number(p.expected_cancellation_fee ?? 0);
+      const refund = Number(p.expected_wallet_refund ?? 0);
+      const capNote =
+        p.refund_capped_by_paid_amount === true
+          ? "\n\nYour wallet refund is capped by the amount you have already paid."
+          : "";
+      message =
+        `Cancel this booking now?\n\n` +
+        `Estimated cancellation fee: ${cur} ${fee.toFixed(2)}\n` +
+        `Estimated wallet refund: ${cur} ${refund.toFixed(2)}` +
+        capNote +
+        `\n\n` +
+        (p.is_late_cancellation
+          ? "You are inside the late-cancellation window."
+          : "You are within the normal cancellation window.");
+    } catch {
+      // Keep default message if preview fails (matches web fallback)
+    }
+
+    Alert.alert("Cancel Booking", message, [
+      { text: "Keep Booking", style: "cancel" },
+      {
+        text: "Cancel Booking",
+        style: "destructive",
+        onPress: async () => {
+          setCancelling(true);
+          haptic.medium();
+          try {
+            const version = typeof booking.version === "number" ? booking.version : undefined;
+            const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
+              reason: "Customer request",
+              ...(version !== undefined ? { version } : {}),
+            });
+            if (res.error) {
+              const st = (res.error as { status?: number }).status;
+              if (st === 409) {
+                Alert.alert(
+                  "Could not cancel",
+                  "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
+                );
                 load();
+              } else {
+                Alert.alert("Error", res.error.message || "Failed to cancel");
               }
-            } catch (e) {
-              Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
-            } finally {
-              setCancelling(false);
+            } else {
+              haptic.success();
+              load();
             }
-          },
+          } catch (e) {
+            Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+          } finally {
+            setCancelling(false);
+          }
         },
-      ],
-    );
+      },
+    ]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable
   }, [booking, id]);
 
@@ -498,7 +564,7 @@ export default function BookingDetailScreen() {
         <Stack.Screen options={{ title: "Booking", headerBackTitle: "Back" }} />
         <View style={{ flex: 1, backgroundColor: Colors.white, padding: 24, alignItems: "center", justifyContent: "center" }}>
           <Text style={{ color: Colors.gray[600], marginBottom: 16 }}>{error}</Text>
-          <TouchableOpacity onPress={load} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+          <TouchableOpacity onPress={() => load()} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
             <Text style={{ color: Colors.white, fontWeight: "600" }}>Retry</Text>
           </TouchableOpacity>
         </View>
@@ -606,17 +672,62 @@ export default function BookingDetailScreen() {
               </View>
             </View>
             {/* ETA (at-home, when provider en route and backend provides it) */}
-            {isAtHome && isProviderEnRoute && estimatedArrival && (
-              <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 16 }}>
-                <Text style={{ fontSize: 14, fontWeight: "500", color: "#1E3A8A" }}>Estimated arrival</Text>
-                <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
-                  {formatTime(estimatedArrival.toISOString())}
-                  {" · "}
-                  Arriving in ~
-                  {Math.max(1, Math.ceil((estimatedArrival.getTime() - Date.now()) / 60000))} min
-                </Text>
-              </View>
-            )}
+            {isAtHome && isProviderEnRoute && estimatedArrival && (() => {
+              const eta = getCustomerEtaUiParts((booking as { estimated_arrival?: string }).estimated_arrival);
+              if (!eta.show) return null;
+              return (
+                <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: "#1E3A8A" }}>Estimated arrival</Text>
+                  <Text style={{ fontSize: 16, color: "#1E40AF", marginTop: 2 }}>
+                    {eta.timeLabel}
+                    {" · "}
+                    {eta.minutesLabel}
+                  </Text>
+                  <Text style={{ fontSize: 12, color: "#3B82F6", marginTop: 6 }}>
+                    We refresh this as your provider moves.
+                  </Text>
+                </View>
+              );
+            })()}
+            {isAtHome && isProviderEnRoute && !isProviderArrived && (() => {
+              const pl = (booking as { provider_location?: { latitude?: unknown; longitude?: unknown } }).provider_location;
+              const pLat = pl && typeof pl === "object" ? Number(pl.latitude) : NaN;
+              const pLng = pl && typeof pl === "object" ? Number(pl.longitude) : NaN;
+              const b = booking as Record<string, unknown>;
+              const nested = b.address as Record<string, unknown> | undefined;
+              const cLat = Number(nested?.latitude ?? b.address_latitude);
+              const cLng = Number(nested?.longitude ?? b.address_longitude);
+              const hasProviderPin = Number.isFinite(pLat) && Number.isFinite(pLng);
+              const hasCustomerPin = Number.isFinite(cLat) && Number.isFinite(cLng);
+              if (!hasProviderPin) {
+                return (
+                  <View style={{ marginBottom: 16, paddingVertical: 8 }}>
+                    <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+                      Live map appears when your provider shares their location.
+                    </Text>
+                  </View>
+                );
+              }
+              return (
+                <View style={{ marginBottom: 16 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 4 }}>Live tracking</Text>
+                  {hasCustomerPin ? (
+                    <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 8 }}>Pink = provider · Blue = your address</Text>
+                  ) : null}
+                  <View style={{ overflow: "hidden", borderRadius: 12 }}>
+                    <StaticMapImage
+                      latitude={pLat}
+                      longitude={pLng}
+                      {...(hasCustomerPin ? { secondaryLatitude: cLat, secondaryLongitude: cLng } : {})}
+                      width={400}
+                      height={180}
+                      zoom={12}
+                      style={{ borderRadius: 12 }}
+                    />
+                  </View>
+                </View>
+              );
+            })()}
             {/* Customer-holds-PIN: show code for provider to enter */}
             {needsPinDisplay && (
               <View style={{ marginBottom: 16, borderRadius: 16, backgroundColor: "#EFF6FF", borderWidth: 1, borderColor: "#BFDBFE", padding: 20 }} accessibilityLabel={ARRIVAL_PIN_CUSTOMER_HEADING}>

@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -135,8 +135,12 @@ export async function POST(request: NextRequest) {
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
     const isLate = checkResult.isLateCancellation === true;
-    const refundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - refundAmount));
+    const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
+    const totalPaid = roundCurrency2(
+      Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0))
+    );
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(
       Number(bFin.subtotal ?? 0) -
         Number(bFin.discount_amount ?? 0) +
@@ -173,7 +177,7 @@ export async function POST(request: NextRequest) {
         policy_applied: policy.id,
         is_late_cancellation: isLate,
         cancellation_fee_applied: cancellationFeeApplied,
-        wallet_refund_amount: refundAmount,
+        wallet_refund_amount: walletRefundAmount,
       },
     });
 
@@ -185,7 +189,7 @@ export async function POST(request: NextRequest) {
           bookingTotal,
           cancelCurrency,
           policy,
-          { isLateCancellation: isLate }
+          { isLateCancellation: isLate, maxWalletCredit: totalPaid }
         );
       } catch (refundErr) {
         console.error("Error processing refund during portal cancellation:", refundErr);
@@ -196,7 +200,7 @@ export async function POST(request: NextRequest) {
     const refundInfo = describeCancellationRefund(
       policy,
       isLate,
-      refundAmount,
+      walletRefundAmount,
       bookingTotal,
       cancelCurrency
     );
