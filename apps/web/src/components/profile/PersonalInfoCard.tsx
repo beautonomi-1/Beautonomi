@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   ChevronDown,
@@ -26,6 +26,10 @@ import { isCompleteE164 } from "@/lib/phone";
 interface PersonalInfoCardProps {
   user: ProfileUser;
   onUpdate?: () => void;
+  /** From ?focus= on /account-settings — opens the matching edit modal */
+  completionFocus?: string | null;
+  /** After the modal is opened (or focus is invalid), strip ?focus= from the URL */
+  onCompletionFocusConsumed?: () => void;
 }
 
 interface EditModalProps {
@@ -378,7 +382,12 @@ function EditModal({ type, isOpen, onClose, onSave, initialData, user }: EditMod
   );
 }
 
-export default function PersonalInfoCard({ user, onUpdate }: PersonalInfoCardProps) {
+export default function PersonalInfoCard({
+  user,
+  onUpdate,
+  completionFocus,
+  onCompletionFocusConsumed,
+}: PersonalInfoCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [editModal, setEditModal] = useState<{ type: string; isOpen: boolean; initialData?: any }>({
     type: "",
@@ -494,44 +503,79 @@ export default function PersonalInfoCard({ user, onUpdate }: PersonalInfoCardPro
     }
   };
 
-  const openEditModal = (type: string) => {
-    let initialData: any = {};
-    
-    if (type === "legalName") {
-      initialData = { first_name: user.first_name || "", last_name: user.last_name || "" };
-    } else if (type === "preferredName") {
-      initialData = { preferred_name: user.preferred_name || "" };
-    } else if (type === "email") {
-      initialData = { email: user.email || "" };
-    } else if (type === "phone") {
-      initialData = { phone: user.phone || "" };
-    } else if (type === "address") {
-      initialData = {
-        line1: user.address?.line1 || "",
-        line2: user.address?.line2 || "",
-        city: user.address?.city || "",
-        state: user.address?.state || "",
-        postal_code: user.address?.postal_code || "",
-        country: user.address?.country || "",
-      };
-    } else if (type === "emergencyContact") {
-      initialData = {
-        name: user.emergency_contact?.name || "",
-        relationship: user.emergency_contact?.relationship || "",
-        phone: user.emergency_contact?.phone || "",
-        email: user.emergency_contact?.email || "",
-      };
-    } else if (type === "identity") {
-      initialData = {
-        document_type: user.identity_verification_document_type || "",
-        country: user.address?.country || "South Africa",
-        file: null,
-        preview: null,
-      };
+  const openEditModal = useCallback(
+    (type: string) => {
+      let initialData: any = {};
+
+      if (type === "legalName") {
+        initialData = { first_name: user.first_name || "", last_name: user.last_name || "" };
+      } else if (type === "preferredName") {
+        initialData = { preferred_name: user.preferred_name || "" };
+      } else if (type === "email") {
+        initialData = { email: user.email || "" };
+      } else if (type === "phone") {
+        initialData = { phone: user.phone || "" };
+      } else if (type === "address") {
+        initialData = {
+          line1: user.address?.line1 || "",
+          line2: user.address?.line2 || "",
+          city: user.address?.city || "",
+          state: user.address?.state || "",
+          postal_code: user.address?.postal_code || "",
+          country: user.address?.country || "",
+        };
+      } else if (type === "emergencyContact") {
+        initialData = {
+          name: user.emergency_contact?.name || "",
+          relationship: user.emergency_contact?.relationship || "",
+          phone: user.emergency_contact?.phone || "",
+          email: user.emergency_contact?.email || "",
+        };
+      } else if (type === "identity") {
+        initialData = {
+          document_type: user.identity_verification_document_type || "",
+          country: user.address?.country || "South Africa",
+          file: null,
+          preview: null,
+        };
+      }
+
+      setEditModal({ type, isOpen: true, initialData });
+    },
+    [user]
+  );
+
+  const lastAppliedFocus = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!completionFocus) {
+      lastAppliedFocus.current = null;
+      return;
+    }
+    if (lastAppliedFocus.current === completionFocus) return;
+
+    const allowed = [
+      "legalName",
+      "preferredName",
+      "email",
+      "phone",
+      "address",
+      "emergencyContact",
+      "identity",
+    ];
+    if (!allowed.includes(completionFocus)) {
+      onCompletionFocusConsumed?.();
+      return;
     }
 
-    setEditModal({ type, isOpen: true, initialData });
-  };
+    lastAppliedFocus.current = completionFocus;
+    setIsOpen(true);
+    const t = window.setTimeout(() => {
+      openEditModal(completionFocus);
+      onCompletionFocusConsumed?.();
+    }, 120);
+    return () => window.clearTimeout(t);
+  }, [completionFocus, openEditModal, onCompletionFocusConsumed]);
 
   return (
     <>

@@ -84,13 +84,13 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
     <>
       <div
         id={embeddedInProfile ? "account-management" : undefined}
-        className={embeddedInProfile ? "rounded-xl border border-zinc-200 bg-white p-4 md:p-6 scroll-mt-24" : ""}
+        className={embeddedInProfile ? "rounded-xl border border-gray-100 bg-white p-4 md:p-6 scroll-mt-24 shadow-sm" : ""}
       >
         {embeddedInProfile ? (
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-zinc-900">Account & settings</h2>
-            <p className="text-sm text-zinc-500 mt-1">
-              Bookings, wallet, notifications, and security — same hub as Account in the menu.
+            <h2 className="text-lg font-semibold text-gray-900">More</h2>
+            <p className="text-sm text-gray-500 mt-1 font-light">
+              Bookings, wallet, notifications, and security.
             </p>
           </div>
         ) : null}

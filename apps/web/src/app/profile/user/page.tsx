@@ -53,7 +53,7 @@ const User = () => {
     <div className="mx-auto p-4 max-w-4xl">
       <Breadcrumb items={[
         { label: "Home", href: "/" },
-        { label: "Profile", href: "/profile" },
+        { label: "Account", href: "/account-settings" },
         { label: "Verify Identity" }
       ]} />
       <div className="flex flex-col md:flex-row justify-between place-items-start">
@@ -191,7 +191,7 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
       await fetcher.post("/api/me/verification", formData);
       
       toast.success("Verification document uploaded successfully! It will be reviewed shortly.");
-      router.push("/profile");
+      router.push("/account-settings");
     } catch (error: any) {
       console.error("Upload error:", error);
       toast.error(error.message || "Failed to upload document. Please try again.");
@@ -221,14 +221,14 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
       <div className="container p-6 space-y-6 max-w-4xl mx-auto">
         <Breadcrumb items={[
           { label: "Home", href: "/" },
-          { label: "Profile", href: "/profile" },
+          { label: "Account", href: "/account-settings" },
           { label: "Verify Identity" }
         ]} />
         <div className="bg-green-50 border border-green-200 rounded-lg p-6 text-center">
           <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
           <h2 className="text-2xl font-semibold text-green-800 mb-2">Identity Verified</h2>
           <p className="text-green-700 mb-4">Your identity has been successfully verified.</p>
-          <Button onClick={() => router.push("/profile")}>Back to Profile</Button>
+          <Button onClick={() => router.push("/account-settings")}>Back to account</Button>
         </div>
       </div>
     );
@@ -239,14 +239,14 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
       <div className="container p-6 space-y-6 max-w-4xl mx-auto">
         <Breadcrumb items={[
           { label: "Home", href: "/" },
-          { label: "Profile", href: "/profile" },
+          { label: "Account", href: "/account-settings" },
           { label: "Verify Identity" }
         ]} />
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
           <Loader2 className="h-16 w-16 text-yellow-500 mx-auto mb-4 animate-spin" />
           <h2 className="text-2xl font-semibold text-yellow-800 mb-2">Verification Pending</h2>
           <p className="text-yellow-700 mb-4">Your verification document is under review. We'll notify you once it's processed.</p>
-          <Button onClick={() => router.push("/profile")}>Back to Profile</Button>
+          <Button onClick={() => router.push("/account-settings")}>Back to account</Button>
         </div>
       </div>
     );
@@ -257,7 +257,7 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
       <div className="container p-6 space-y-6 max-w-4xl mx-auto">
         <Breadcrumb items={[
           { label: "Home", href: "/" },
-          { label: "Profile", href: "/profile" },
+          { label: "Account", href: "/account-settings" },
           { label: "Verify Identity" }
         ]} />
         <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
@@ -278,7 +278,7 @@ const ChooseIdType = ({ onBack }: { onBack: () => void }) => {
     <div className="container p-6 space-y-6 max-w-4xl mx-auto">
       <Breadcrumb items={[
         { label: "Home", href: "/" },
-        { label: "Profile", href: "/profile" },
+        { label: "Account", href: "/account-settings" },
         { label: "Verify Identity" }
       ]} />
         <div className='w-full max-w-full md:max-w-xl'>

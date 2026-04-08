@@ -30,7 +30,7 @@ export default function AboutSection({ about }: AboutSectionProps) {
           <p className="text-sm text-zinc-500 mb-4">
             Add a bio to tell providers about yourself
           </p>
-          <Link href="/profile/create-profile">
+          <Link href="/profile/create-profile?highlight=bio">
             <Button
               variant="outline"
               size="sm"

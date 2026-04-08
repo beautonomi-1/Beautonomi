@@ -204,16 +204,7 @@ const LandingNavbar = () => {
                         className="block px-4 py-2 hover:bg-gray-100"
                         onClick={() => setIsUserDropdownOpen(false)}
                       >
-                        Account Settings
-                      </Link>
-                    </li>
-                    <li>
-                      <Link
-                        href="/profile"
-                        className="block px-4 py-2 hover:bg-gray-100"
-                        onClick={() => setIsUserDropdownOpen(false)}
-                      >
-                        Profile
+                        Account &amp; profile
                       </Link>
                     </li>
                     <li>
@@ -257,14 +248,7 @@ const LandingNavbar = () => {
                   className="block text-base font-normal text-gray-700 hover:text-[#FF0077]"
                   onClick={() => setIsMenuOpen(false)}
                 >
-                  Account Settings
-                </Link>
-                <Link
-                  href="/profile"
-                  className="block text-base font-normal text-gray-700 hover:text-[#FF0077]"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Profile
+                  Account &amp; profile
                 </Link>
               </>
             ) : (

@@ -30,7 +30,17 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Edit, CreditCard, Gift, ChevronDown, ChevronRight } from "lucide-react";
+import {
+  Plus,
+  Edit,
+  CreditCard,
+  Gift,
+  ChevronDown,
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  Trash2,
+} from "lucide-react";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -95,6 +105,24 @@ interface FeatureGating {
     providers?: string[];
     api_access?: boolean;
   };
+  /** Intake, consent, and waiver forms (API: intake_forms) */
+  intake_forms?: {
+    enabled: boolean;
+  };
+  /** Rooms, chairs, equipment resources for services (API: service_resources) */
+  service_resources?: {
+    enabled: boolean;
+  };
+  /** Staff operational SMS in team notification settings */
+  staff_sms_notifications?: {
+    enabled: boolean;
+  };
+  /** Included platform ads budget (ZAR / month) where applicable */
+  platform_ads?: {
+    enabled: boolean;
+    included_credit_zar_per_month?: number | null;
+    note?: string;
+  };
 }
 
 interface PricingPlanLink {
@@ -107,6 +135,8 @@ interface PricingPlanLink {
   is_popular: boolean;
   display_order: number;
   subscription_plan_id: string | null;
+  currency?: string | null;
+  feature_lines?: string[];
 }
 
 interface SubscriptionPlan {
@@ -189,12 +219,45 @@ const getDefaultFeatures = (): FeatureGating => ({
     providers: [],
     api_access: false,
   },
+  intake_forms: {
+    enabled: true,
+  },
+  service_resources: {
+    enabled: true,
+  },
+  staff_sms_notifications: {
+    enabled: false,
+  },
+  platform_ads: {
+    enabled: false,
+    included_credit_zar_per_month: null,
+    note: "",
+  },
 });
 
 // Available channels and providers
 const MARKETING_CHANNELS = ["email", "sms", "whatsapp"];
 const CALENDAR_PROVIDERS = ["google", "outlook", "ical"];
 const REPORT_TYPES = ["sales", "bookings", "staff", "clients", "products", "payments", "gift_cards", "packages"];
+
+/** Collapsible sections under Feature Gating (expand/collapse all). */
+const ALL_FEATURE_COLLAPSE_KEYS = [
+  "intake_forms",
+  "service_resources",
+  "staff_sms_notifications",
+  "platform_ads",
+  "marketing_campaigns",
+  "chat_messages",
+  "yoco_integration",
+  "staff_management",
+  "multi_location",
+  "booking_limits",
+  "advanced_analytics",
+  "marketing_automations",
+  "recurring_appointments",
+  "express_booking",
+  "calendar_sync",
+] as const;
 
 type PlansPageProps = { useMergedPlans?: boolean };
 
@@ -229,6 +292,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     description_display: "",
     cta_text: "Get started",
     display_order_pricing: 0,
+    pricing_currency: "",
+    pricing_features: [] as string[],
     update_existing_subscriptions: false,
   });
 
@@ -253,6 +318,13 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
         recurring_appointments: { ...defaults.recurring_appointments, ...features.recurring_appointments },
         express_booking: { ...defaults.express_booking, ...features.express_booking },
         calendar_sync: { ...defaults.calendar_sync, ...features.calendar_sync },
+        intake_forms: { ...defaults.intake_forms, ...(features as FeatureGating).intake_forms },
+        service_resources: { ...defaults.service_resources, ...(features as FeatureGating).service_resources },
+        staff_sms_notifications: {
+          ...defaults.staff_sms_notifications,
+          ...(features as FeatureGating).staff_sms_notifications,
+        },
+        platform_ads: { ...defaults.platform_ads, ...(features as FeatureGating).platform_ads },
       };
     }
     return getDefaultFeatures();
@@ -300,6 +372,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
       description_display: "",
       cta_text: "Get started",
       display_order_pricing: plans.length,
+      pricing_currency: LAST_RESORT_CURRENCY as string,
+      pricing_features: [],
       update_existing_subscriptions: false,
     });
     setIsCreateDialogOpen(true);
@@ -331,6 +405,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
       description_display: pp?.description || "",
       cta_text: pp?.cta_text || "Get started",
       display_order_pricing: pp?.display_order ?? plan.display_order,
+      pricing_currency: (pp?.currency as string | undefined) ?? plan.currency ?? "",
+      pricing_features: Array.isArray(pp?.feature_lines) ? [...(pp!.feature_lines as string[])] : [],
       update_existing_subscriptions: false,
     });
     setIsEditDialogOpen(true);
@@ -373,6 +449,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
       // When consolidated view: sync pricing page entry so public pricing and onboarding use it
       if (useMergedPlans && formData.show_on_pricing_page && savedPlan?.id) {
+        const featureLines = formData.pricing_features.map((s) => s.trim()).filter(Boolean);
         const pricingPayload = {
           ...(selectedPlan?.pricing_plan ? { id: selectedPlan.pricing_plan.id } : {}),
           name: formData.name,
@@ -386,6 +463,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
           subscription_plan_id: savedPlan.id,
           paystack_plan_code_monthly: savedPlan.paystack_plan_code_monthly || null,
           paystack_plan_code_yearly: savedPlan.paystack_plan_code_yearly || null,
+          currency: formData.pricing_currency.trim() || null,
+          features: featureLines,
         };
         if (selectedPlan?.pricing_plan) {
           await fetcher.put("/api/admin/pricing-plans", pricingPayload);
@@ -448,6 +527,26 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
     const enabled = Object.values(features).filter((f) => f?.enabled).length;
     const total = Object.keys(features).length;
     return `${enabled}/${total} enabled`;
+  };
+
+  const expandAllFeatureSections = () => {
+    setExpandedFeatures((prev) => {
+      const next = { ...prev };
+      ALL_FEATURE_COLLAPSE_KEYS.forEach((k) => {
+        next[k] = true;
+      });
+      return next;
+    });
+  };
+
+  const collapseAllFeatureSections = () => {
+    setExpandedFeatures((prev) => {
+      const next = { ...prev };
+      ALL_FEATURE_COLLAPSE_KEYS.forEach((k) => {
+        next[k] = false;
+      });
+      return next;
+    });
   };
 
   if (loading) {
@@ -893,6 +992,117 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                             }
                           />
                         </div>
+                        <div>
+                          <Label htmlFor="pricing_currency">Currency label (public card)</Label>
+                          <Input
+                            id="pricing_currency"
+                            value={formData.pricing_currency}
+                            onChange={(e) =>
+                              setFormData({ ...formData, pricing_currency: e.target.value })
+                            }
+                            placeholder="e.g. ZAR"
+                          />
+                          <p className="text-xs text-gray-500 mt-1">
+                            Shown under the plan name on /pricing. Billing currency for Paystack is the subscription
+                            plan field above.
+                          </p>
+                        </div>
+                        <div className="col-span-2 space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <Label className="text-base">Plan features (public pricing page)</Label>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  pricing_features: [...prev.pricing_features, ""],
+                                }))
+                              }
+                            >
+                              <Plus className="w-4 h-4 mr-1" aria-hidden />
+                              Add feature
+                            </Button>
+                          </div>
+                          <p className="text-xs text-gray-500">
+                            Each bullet appears as a separate line on /pricing. Edit each one freely.
+                          </p>
+                          {formData.pricing_features.length === 0 ? (
+                            <p className="text-sm text-gray-500 border border-dashed rounded-lg p-4 text-center">
+                              No features yet. Click &quot;Add feature&quot; to add the first bullet.
+                            </p>
+                          ) : (
+                            <ul className="space-y-2 list-none">
+                              {formData.pricing_features.map((line, i) => (
+                                <li key={i} className="flex gap-2 items-start">
+                                  <div className="flex flex-col gap-0.5 pt-1 shrink-0">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      disabled={i === 0}
+                                      aria-label="Move up"
+                                      onClick={() => {
+                                        if (i === 0) return;
+                                        const next = [...formData.pricing_features];
+                                        [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                                        setFormData({ ...formData, pricing_features: next });
+                                      }}
+                                    >
+                                      <ArrowUp className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8"
+                                      disabled={i === formData.pricing_features.length - 1}
+                                      aria-label="Move down"
+                                      onClick={() => {
+                                        if (i >= formData.pricing_features.length - 1) return;
+                                        const next = [...formData.pricing_features];
+                                        [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                                        setFormData({ ...formData, pricing_features: next });
+                                      }}
+                                    >
+                                      <ArrowDown className="w-4 h-4" />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      aria-label="Remove this feature"
+                                      onClick={() => {
+                                        const next = formData.pricing_features.filter((_, j) => j !== i);
+                                        setFormData({ ...formData, pricing_features: next });
+                                      }}
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                  <Textarea
+                                    value={line}
+                                    onChange={(e) => {
+                                      const next = [...formData.pricing_features];
+                                      next[i] = e.target.value;
+                                      setFormData({ ...formData, pricing_features: next });
+                                    }}
+                                    rows={4}
+                                    className="flex-1 min-h-[5.5rem] text-sm"
+                                    placeholder={`Feature ${i + 1}…`}
+                                  />
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          <p className="text-xs text-gray-500 pt-2 border-t">
+                            Site-wide note under the hero (e.g. &quot;Prices in ZAR&quot;): Admin → Content → page{" "}
+                            <strong>pricing</strong>, section <strong>currency_note</strong>.
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -936,8 +1146,192 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
               {/* Feature Gating */}
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Feature Gating</h3>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <h3 className="font-semibold text-lg">Feature Gating</h3>
+                    <p className="text-sm text-gray-600 mt-1">
+                      Full <code className="text-xs bg-muted px-1 rounded">subscription_plans.features</code> map:
+                      product API gates below, then marketing and integrations. Keys align with{" "}
+                      <code className="text-xs bg-muted px-1 rounded">feature-access.ts</code> and provider routes.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2 shrink-0">
+                    <Button type="button" variant="outline" size="sm" onClick={expandAllFeatureSections}>
+                      Expand all
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={collapseAllFeatureSections}>
+                      Collapse all
+                    </Button>
+                  </div>
+                </div>
                 <div className="space-y-2 border rounded-lg p-4">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Product &amp; API gates</p>
+
+                  <Collapsible
+                    open={expandedFeatures.intake_forms}
+                    onOpenChange={(open) =>
+                      setExpandedFeatures({ ...expandedFeatures, intake_forms: open })
+                    }
+                  >
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.intake_forms ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <div>
+                            <Label className="font-medium">Intake, consent &amp; waiver forms</Label>
+                            <p className="text-xs text-gray-500 font-normal">Key: intake_forms</p>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={formData.features.intake_forms?.enabled ?? true}
+                        onCheckedChange={() => toggleFeatureCategory("intake_forms")}
+                      />
+                    </div>
+                    <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-2">
+                      <p className="text-xs text-gray-500">
+                        When disabled, provider APIs block creating or editing forms (consent, waiver, intake).
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Collapsible
+                    open={expandedFeatures.service_resources}
+                    onOpenChange={(open) =>
+                      setExpandedFeatures({ ...expandedFeatures, service_resources: open })
+                    }
+                  >
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.service_resources ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <div>
+                            <Label className="font-medium">Service resources (rooms, chairs, equipment)</Label>
+                            <p className="text-xs text-gray-500 font-normal">Key: service_resources</p>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={formData.features.service_resources?.enabled ?? true}
+                        onCheckedChange={() => toggleFeatureCategory("service_resources")}
+                      />
+                    </div>
+                    <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-2">
+                      <p className="text-xs text-gray-500">
+                        When disabled, providers cannot manage resources or attach them to services.
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Collapsible
+                    open={expandedFeatures.staff_sms_notifications}
+                    onOpenChange={(open) =>
+                      setExpandedFeatures({ ...expandedFeatures, staff_sms_notifications: open })
+                    }
+                  >
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.staff_sms_notifications ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <div>
+                            <Label className="font-medium">Staff operational SMS</Label>
+                            <p className="text-xs text-gray-500 font-normal">Key: staff_sms_notifications</p>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={formData.features.staff_sms_notifications?.enabled ?? false}
+                        onCheckedChange={() => toggleFeatureCategory("staff_sms_notifications")}
+                      />
+                    </div>
+                    <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-2">
+                      <p className="text-xs text-gray-500">
+                        When enabled, team notification settings may include SMS for staff. When off or missing, SMS is
+                        not offered (stricter than other flags).
+                      </p>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <Collapsible
+                    open={expandedFeatures.platform_ads}
+                    onOpenChange={(open) =>
+                      setExpandedFeatures({ ...expandedFeatures, platform_ads: open })
+                    }
+                  >
+                    <div className="flex items-center justify-between w-full p-2 hover:bg-gray-50 rounded">
+                      <CollapsibleTrigger asChild>
+                        <div className="flex items-center space-x-2 cursor-pointer">
+                          {expandedFeatures.platform_ads ? (
+                            <ChevronDown className="w-4 h-4" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4" />
+                          )}
+                          <div>
+                            <Label className="font-medium">Platform ads (included credit)</Label>
+                            <p className="text-xs text-gray-500 font-normal">Key: platform_ads</p>
+                          </div>
+                        </div>
+                      </CollapsibleTrigger>
+                      <Switch
+                        checked={formData.features.platform_ads?.enabled ?? false}
+                        onCheckedChange={() => toggleFeatureCategory("platform_ads")}
+                      />
+                    </div>
+                    <CollapsibleContent className="pl-6 pr-2 pb-2 space-y-3">
+                      <p className="text-xs text-gray-500">
+                        Optional monthly ad credit (ZAR) bundled with the plan, where the ads product is enabled.
+                      </p>
+                      <div>
+                        <Label className="text-sm">Included credit (ZAR / month)</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          className="mt-1"
+                          value={
+                            formData.features.platform_ads?.included_credit_zar_per_month ?? ""
+                          }
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            updateFeature("platform_ads", {
+                              included_credit_zar_per_month: v === "" ? null : Number(v),
+                            });
+                          }}
+                          placeholder="e.g. 500"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-sm">Internal note</Label>
+                        <Textarea
+                          className="mt-1 min-h-[4rem] text-sm"
+                          value={formData.features.platform_ads?.note ?? ""}
+                          onChange={(e) =>
+                            updateFeature("platform_ads", { note: e.target.value })
+                          }
+                          placeholder="Optional note for admins"
+                          rows={3}
+                        />
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
+
+                  <div className="border-t pt-3 mt-1">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                      Marketing &amp; integrations
+                    </p>
+                  </div>
+
                   {/* Marketing Campaigns */}
                   <Collapsible
                     open={expandedFeatures.marketing_campaigns}

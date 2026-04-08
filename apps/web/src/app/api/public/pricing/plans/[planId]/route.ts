@@ -42,7 +42,7 @@ export async function GET(
       const { data } = await supabase
         .from("pricing_plans")
         .select(
-          "id, name, price, period, description, cta_text, is_popular, paystack_plan_code_monthly, paystack_plan_code_yearly"
+          "id, name, price, period, description, cta_text, is_popular, currency, paystack_plan_code_monthly, paystack_plan_code_yearly"
         )
         .eq("id", planId)
         .eq("is_active", true)
@@ -54,7 +54,7 @@ export async function GET(
     const { data: globalPlan, error: planError } = await supabase
       .from("pricing_plans")
       .select(
-        "id, name, price, period, description, cta_text, is_popular, paystack_plan_code_monthly, paystack_plan_code_yearly"
+        "id, name, price, period, description, cta_text, is_popular, currency, paystack_plan_code_monthly, paystack_plan_code_yearly"
       )
       .eq("id", planId)
       .eq("is_active", true)
@@ -73,7 +73,7 @@ export async function GET(
         const { data: overrideByName } = await supabase
           .from("pricing_plans")
           .select(
-            "id, name, price, period, description, cta_text, is_popular, paystack_plan_code_monthly, paystack_plan_code_yearly"
+            "id, name, price, period, description, cta_text, is_popular, currency, paystack_plan_code_monthly, paystack_plan_code_yearly"
           )
           .eq("name", requested.name)
           .eq("is_active", true)
@@ -89,6 +89,7 @@ export async function GET(
               description: overrideByName.description,
               cta_text: overrideByName.cta_text,
               is_popular: overrideByName.is_popular,
+              currency: (overrideByName as { currency?: string | null }).currency ?? null,
               features: [],
               available_billing_periods: [
                 ...(overrideByName.paystack_plan_code_monthly ? ["monthly" as const] : []),
@@ -130,6 +131,7 @@ export async function GET(
         description: plan.description,
         cta_text: plan.cta_text,
         is_popular: plan.is_popular,
+        currency: (plan as { currency?: string | null }).currency ?? null,
         features: features?.map((f) => f.feature_text) ?? [],
         available_billing_periods,
       },

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react";
@@ -16,6 +17,7 @@ import LoginModal from "@/components/global/login-modal";
 import SolutionsDropdown from "./solutions-dropdown";
 import FeaturesDropdown from "./features-dropdown";
 import { usePageContent } from "@/hooks/usePageContent";
+import logo from "../../../../public/images/logo.svg";
 
 const TOP_BANNER_ENABLED_VALUES = new Set(["true", "1", "yes"]);
 
@@ -68,8 +70,8 @@ export default function PartnerNavbar() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {/* Mobile Layout */}
           <div className="flex md:hidden items-center justify-between py-3">
-            <Link href="/" className="flex-shrink-0">
-              <h1 className="text-xl font-bold text-primary">BEAUTONOMI</h1>
+            <Link href="/" className="flex-shrink-0 flex items-center gap-2">
+              <Image src={logo} alt="Beautonomi" className="h-8 w-auto" priority />
             </Link>
             <Button
               variant="ghost"
@@ -84,13 +86,8 @@ export default function PartnerNavbar() {
           {/* Desktop Layout */}
           <div className="hidden md:flex items-center justify-between py-4">
             {/* Logo */}
-            <Link href="/" className="flex-shrink-0">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-gradient-to-br from-primary to-primary-hover rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-lg">B</span>
-                </div>
-                <h1 className="text-xl font-bold text-gray-900">beautonomi</h1>
-              </div>
+            <Link href="/" className="flex-shrink-0 flex items-center gap-2">
+              <Image src={logo} alt="Beautonomi" className="h-9 w-auto" priority />
             </Link>
 
             {/* Center Navigation */}

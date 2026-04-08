@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import Breadcrumb from "@/components/ui/breadcrumb";
+import { getCompletionHref } from "@/lib/profile/completion-deeplinks";
 
 interface ChecklistItem {
   id: string;
@@ -43,20 +44,6 @@ const ITEM_ICONS: Record<string, any> = {
   beauty_preferences: "💄",
 };
 
-const ITEM_ROUTES: Record<string, string> = {
-  photo: "#photo",
-  email: "#email",
-  preferred_name: "#preferred-name",
-  bio: "/profile/create-profile",
-  identity: "#identity",
-  phone: "#phone",
-  address: "#address",
-  emergency_contact: "#emergency-contact",
-  profile_questions: "/profile/create-profile",
-  interests: "/profile/create-profile",
-  beauty_preferences: "#beauty-preferences",
-};
-
 export default function CompleteProfilePage() {
   const [completionData, setCompletionData] = useState<CompletionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -82,14 +69,7 @@ export default function CompleteProfilePage() {
   };
 
   const handleItemClick = (item: ChecklistItem) => {
-    const route = ITEM_ROUTES[item.id];
-    if (route?.startsWith("#")) {
-      // Scroll to section on profile page
-      router.push(`/profile${route}`);
-    } else if (route) {
-      // Navigate to different page
-      router.push(route);
-    }
+    router.push(getCompletionHref(item.id));
   };
 
   if (isLoading) {
@@ -128,7 +108,7 @@ export default function CompleteProfilePage() {
           <Breadcrumb
             items={[
               { label: "Home", href: "/" },
-              { label: "Profile", href: "/profile" },
+              { label: "Account", href: "/account-settings" },
               { label: "Complete Profile" },
             ]}
           />
@@ -160,7 +140,7 @@ export default function CompleteProfilePage() {
                   <h3 className="font-semibold text-green-900">Profile Complete! 🎉</h3>
                 </div>
                 <p className="text-sm text-green-800">
-                  Great job! Your profile is complete. You can update it anytime from your profile page.
+                  Great job! Your profile is complete. You can update it anytime from Account settings.
                 </p>
               </div>
             ) : (
@@ -260,8 +240,8 @@ export default function CompleteProfilePage() {
 
           {/* Back Button */}
           <div className="flex justify-center">
-            <Link href="/profile">
-              <Button variant="outline">Back to Profile</Button>
+            <Link href="/account-settings">
+              <Button variant="outline">Back to account</Button>
             </Link>
           </div>
         </div>
