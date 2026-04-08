@@ -112,6 +112,6 @@
   "devDependencies": {
     "@supabase/supabase-js": "^2.47.10",
     "adm-zip": "^0.5.16",
-    "turbo": "^2.8.8"
+    "turbo": "^2.9.5"
   }
 }
