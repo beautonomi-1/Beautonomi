@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **259** API rows, 2026-04-07 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **261** API rows, 2026-04-08 — see §8 Implementation Delta).
 
 ---
 
@@ -81,7 +81,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 |---|-------------|------|-----------------|--------|-----------------------------------------------|-------|
 | 1 | `/admin` | W0 | overview | N | — | Client redirect → dashboard |
 | 2 | `/admin/login` | W0 | — | N | `POST /api/auth/sign-in` (SPA + cookie session) | Auth flows (non-admin API); shell not shown |
-| 3 | `/admin/dashboard` | W0 | overview | Y | `GET /api/admin/dashboard` | SPA: methodology panel, `generated_at`, customer fallback flag, metric deep links; RPC `admin_dashboard_tenant_customer_count` (migration 446). |
+| 3 | `/admin/dashboard` | W0 | overview | Y | `GET /api/admin/dashboard`; superadmin: `GET /api/admin/dashboard/marketing-insights` | SPA: methodology panel, `generated_at`, customer fallback flag, metric deep links; RPC `admin_dashboard_tenant_customer_count` (migration 446). Superadmin: marketing/demographics panels (migrations **447–448**). |
 | 4 | `/admin/gods-eye` | W0 | overview | Y | `GET /api/admin/gods-eye` | Map-heavy (responsive M4) |
 | 5 | `/admin/analytics` | W0 | overview | Y | `GET /api/admin/dashboard`, `GET /api/admin/analytics`, export | |
 | 6 | `/admin/reports` | W0 | overview | Y | — | Hub only (links to sub-reports) |
@@ -115,7 +115,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 34 | `/admin/reports/gift-cards` | W2 | finance | N | `GET /api/admin/reports/gift-cards` | |
 | 35 | `/admin/reports/yoco-reconciliation` | W2 | finance | N | `GET /api/admin/reports/yoco-reconciliation` | |
 | 36 | `/admin/users` | W3 | users_trust | Y | `GET /api/admin/users`, `POST .../bulk`, `PUT .../role`, `PATCH ...`, `DELETE ...`, export | |
-| 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export | Modal + page variants |
+| 37 | `/admin/users/[id]` | W3 | users_trust | N | `GET .../users/:id`, bookings, password, impersonate, export, `GET .../wallet-transactions` | Modal + page variants |
 | 38 | `/admin/verifications` | W3 | users_trust | Y | `GET /api/admin/verifications` (+ actions) | |
 | 39 | `/admin/audit-logs` | W3 | users_trust | Y | `GET /api/admin/audit-logs`, export | |
 | 40 | `/admin/content` | W3 | content_catalog | Y | Broad: catalog/content endpoints (many `GET/POST/PATCH/DELETE` under `/api/admin/content`, `/api/admin/catalog`, media) | Highest API surface area |
@@ -240,6 +240,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | **Gap closure:** SPA [`CompliancePurgePage`](../../apps/admin-web/src/routes/control-plane/CompliancePurgePage.tsx) at `/admin/control-plane/compliance` (`useSuperadminPage`) + nav + regression critical flow; legacy Next [`app/admin/control-plane/compliance/page.tsx`](../../apps/web/src/app/admin/control-plane/compliance/page.tsx) + `AdminShell` / control-plane nav. Sidebar adds **Provider distance**, **Add-ons**, **Compliance purge** (superadmin). |
 | 2026-04-07 | **Fees SPA parity:** [`FeesConfigsPage`](../../apps/admin-web/src/routes/finance/FeesConfigsPage.tsx) replaces read-only configs table with **Configurations | Adjustments | Reconciliations** (`adminQueryKeys.fees.configs` / `adjustmentsList` / `reconciliationsList`). API: `GET ?active_only=false` + `POST`/`PATCH` configs; `GET` adjustments/reconciliations with `meta`; `POST` adjustments; `POST`/`PATCH` reconciliations. Closes gap vs legacy [`app/admin/fees/page.tsx`](../../apps/web/src/app/admin/fees/page.tsx) (legacy adjustment/reconciliation create modals were not wired). |
 | 2026-04-07 | **Dashboard decision-ready:** `GET /api/admin/dashboard` adds `generated_at`, `customer_count_uses_fallback`, `customer_signups_this_month` / `_last_month`, and expanded `metrics_notes` (fallback basis, bookings/providers growth). SPA [`DashboardPage`](../../apps/admin-web/src/routes/DashboardPage.tsx): correct **Market customers (distinct)** labelling vs `total_users`, methodology `<details>`, fallback warning (migration **446**), per-metric **deep links**, **Refresh** + “as of” time. Pairs with RPC `admin_dashboard_tenant_customer_count`. |
+| 2026-04-08 | **Taxonomy / CI:** Added `docs/admin-api-route-taxonomy.csv` rows for `GET /api/admin/dashboard/marketing-insights` (superadmin + tenant scope; RPCs **447–448**) and `GET /api/admin/users/[id]/wallet-transactions` (`ADMIN_SECTION_USERS_TRUST`). SPA: [`DashboardPage`](../../apps/admin-web/src/routes/DashboardPage.tsx), [`UserDetailPage`](../../apps/admin-web/src/routes/users/UserDetailPage.tsx). §4 rows 3 + 37 updated. |
 | 2026-04-07 | **Users / staff / providers SPA parity:** [`UsersListPage`](../../apps/admin-web/src/routes/users/UsersListPage.tsx) — signup-source filter, full role filter, page size 50, row selection + bulk activate/deactivate/delete (`POST /api/admin/users/bulk`), suspend/reactivate, superadmin quick role + compliance purge modal + create user (`POST /api/admin/users`); fixed list links via `adminSpaTo`. [`StaffListPage`](../../apps/admin-web/src/routes/staff/StaffListPage.tsx) — API filters, stats cards, search, edit modal (`PATCH /api/admin/staff/:id`), activate/deactivate, password reset, provider deep links. [`ProvidersListPage`](../../apps/admin-web/src/routes/providers/ProvidersListPage.tsx) — correct provider detail `Link` under `/admin` basename. E-commerce nav adds **Add-ons** → `/admin/addons`. |
 | 2026-04-05 | **Waves 2–5 SPA batch:** `getRawJson` on `@beautonomi/admin-api-client` for top-level `{ data, meta }` envelopes. `apps/admin-web` adds read/list routes for finance, reports (`/reports/:reportKey`, API AuthZ **overview**), users trust, ecommerce (orders/returns; products via **public** API), marketing subset, integrations subset, operations JSON snapshots, platform settings subset, control-plane hub + redirects. **Known gaps:** report CSV export contract, platform-fees section vs nav, reports vs finance roles — see [`ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`](./ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md). |
 
@@ -255,6 +256,7 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | §8 Wave 0 verification delta; link to `ADMIN_WAVE0_VERIFICATION_REPORT.md` |
 | 2026-04-07 | §4 notes rows 7,11,13,14,16; §8 Wave 1 pattern set; `ADMIN_WAVE1_PATTERN_SET_REPORT.md` |
 | 2026-04-07 | §1.1 inventory **259** routes; §8 taxonomy regen delta (admin-api CSV + CI guardrail) |
+| 2026-04-08 | §1.1 inventory **261** routes; marketing-insights + wallet-transactions taxonomy rows + §4 dashboard / user detail |
 | 2026-04-07 | §1 process note: SPA grep + link to `ADMIN_SPA_AUDIT_INVENTORY.md`; §8 audit inventory delta |
 | 2026-04-07 | §8/§9: compliance purge SPA + legacy parity; nav items for distance-settings, addons, compliance |
 | 2026-04-07 | §8: users/staff/providers SPA parity batch (bulk users, purge modal, create user, staff CRUD + reset password, provider list links, Add-ons nav) |
