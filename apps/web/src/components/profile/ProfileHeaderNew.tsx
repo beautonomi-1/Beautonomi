@@ -13,13 +13,21 @@ import type { ProfileUser, QuickActionBadge } from "@/types/profile";
 interface ProfileHeaderProps {
   user: ProfileUser;
   onUpdate?: () => void;
+  /** When set, skip fetching /api/me/loyalty (parent already loaded it with profile). */
+  prefetchedLoyaltyPoints?: number | null;
 }
 
-export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps) {
+export default function ProfileHeaderNew({
+  user,
+  onUpdate,
+  prefetchedLoyaltyPoints,
+}: ProfileHeaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isEditingHandle, setIsEditingHandle] = useState(false);
   const [handleValue, setHandleValue] = useState(user.handle || "");
-  const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null);
+  const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(
+    prefetchedLoyaltyPoints !== undefined ? prefetchedLoyaltyPoints : null
+  );
 
   const displayName = user.preferred_name || user.full_name || "User";
   const initials = displayName
@@ -42,10 +50,18 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
   const memberSince = new Date(user.created_at);
 
   useEffect(() => {
+    if (prefetchedLoyaltyPoints !== undefined) {
+      setLoyaltyPoints(prefetchedLoyaltyPoints);
+    }
+  }, [prefetchedLoyaltyPoints]);
+
+  useEffect(() => {
+    if (prefetchedLoyaltyPoints !== undefined) return;
     const load = () => {
-      fetcher.get<{ data: { points_balance: number } }>("/api/me/loyalty", {
-        staleTimeMs: 0,
-      })
+      fetcher
+        .get<{ data: { points_balance: number } }>("/api/me/loyalty", {
+          staleTimeMs: 0,
+        })
         .then((res) => setLoyaltyPoints(res.data.points_balance))
         .catch(() => {
           setLoyaltyPoints(null);
@@ -57,7 +73,7 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
     }
     const t = window.setTimeout(load, 0);
     return () => window.clearTimeout(t);
-  }, []);
+  }, [prefetchedLoyaltyPoints]);
 
   const quickActions: QuickActionBadge[] = [
     {
@@ -158,8 +174,8 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
       className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
     >
       <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-        {/* Avatar */}
-        <div className="relative group">
+        {/* Avatar — id used for /account-settings#photo deep links */}
+        <div id="photo" className="relative group">
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}

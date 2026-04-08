@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -30,6 +30,7 @@ interface CollectedProfileData {
 
 export default function ProfileDataCollector() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, refreshUser } = useAuth();
   const [avatarImage, setAvatarImage] = useState<string | null>(user?.avatar_url || null);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
@@ -43,6 +44,25 @@ export default function ProfileDataCollector() {
   const [location, setLocation] = useState<string>("");
   const [languages, setLanguages] = useState<string[]>([]);
   const [interests, setInterests] = useState<string[]>([]);
+
+  /** Deep link from profile completion: ?highlight=bio | questions | interests */
+  useEffect(() => {
+    const highlight = searchParams.get("highlight");
+    if (!highlight) return;
+    const anchorId =
+      highlight === "bio"
+        ? "create-profile-about"
+        : highlight === "questions"
+          ? "create-profile-questions"
+          : highlight === "interests"
+            ? "create-profile-interests"
+            : null;
+    if (!anchorId) return;
+    const t = window.setTimeout(() => {
+      document.getElementById(anchorId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(t);
+  }, [searchParams]);
 
   // Load existing profile data on mount
   useEffect(() => {
@@ -178,7 +198,7 @@ export default function ProfileDataCollector() {
         sessionStorage.setItem('shouldRefreshSetupStatus', 'true');
         router.push(returnUrl);
       } else {
-        router.push("/profile");
+        router.push("/account-settings");
       }
     } catch (error) {
       console.error("Failed to save profile:", error);
@@ -294,7 +314,7 @@ export default function ProfileDataCollector() {
       </Card>
 
       {/* About */}
-      <Card>
+      <Card id="create-profile-about">
         <CardHeader>
           <CardTitle>About You</CardTitle>
           <CardDescription>Tell others a bit about yourself</CardDescription>
@@ -373,7 +393,7 @@ export default function ProfileDataCollector() {
       </Card>
 
       {/* Interests */}
-      <Card>
+      <Card id="create-profile-interests">
         <CardHeader>
           <CardTitle>Interests</CardTitle>
           <CardDescription>What are you into? Add your interests</CardDescription>

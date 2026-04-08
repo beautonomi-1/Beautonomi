@@ -94,12 +94,14 @@ export default function FloatingProgressOrbit({
                   {topItems.map((item, index) => (
                     <motion.button
                       key={item.id}
+                      type="button"
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.03 }}
                       whileHover={{ scale: 1.02, x: 4 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => onItemClick?.(item.id)}
+                      aria-label={`Go to: ${item.label}`}
                       className="w-full text-left p-3 rounded-xl bg-gradient-to-r from-zinc-50 to-white border border-zinc-200/50 hover:border-zinc-300 hover:shadow-md transition-all group"
                     >
                       <div className="flex items-center justify-between">
@@ -126,9 +128,11 @@ export default function FloatingProgressOrbit({
               </div>
 
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={onCompleteClick}
+                aria-label="Continue with the next incomplete profile step"
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white font-medium shadow-lg hover:shadow-xl transition-all"
               >
                 Complete profile

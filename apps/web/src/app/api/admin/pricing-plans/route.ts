@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse  } 
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const pricingPlanSchema = z.object({
   id: z.string().uuid().optional(),
@@ -18,12 +19,35 @@ const pricingPlanSchema = z.object({
   paystack_plan_code_monthly: z.string().nullable().optional(),
   paystack_plan_code_yearly: z.string().nullable().optional(),
   subscription_plan_id: z.string().uuid().nullable().optional(),
+  currency: z.string().nullable().optional(),
 });
 
 /** PUT allows partial updates (e.g. deactivate + unlink from subscription plan). */
 const pricingPlanUpdateSchema = pricingPlanSchema.partial().extend({
   id: z.string().uuid(),
+  /** Replaces all bullet lines on the public pricing card when provided. */
+  features: z.array(z.string()).optional(),
 });
+
+const pricingPlanCreateSchema = pricingPlanSchema.extend({
+  features: z.array(z.string()).optional(),
+});
+
+async function syncPricingPlanFeatures(
+  supabase: SupabaseClient,
+  planId: string,
+  features: string[]
+): Promise<void> {
+  await supabase.from("pricing_plan_features").delete().eq("plan_id", planId);
+  if (features.length === 0) return;
+  const rows = features.map((feature_text, display_order) => ({
+    plan_id: planId,
+    feature_text,
+    display_order,
+  }));
+  const { error } = await supabase.from("pricing_plan_features").insert(rows);
+  if (error) throw error;
+}
 
 /**
  * GET /api/admin/pricing-plans
@@ -61,7 +85,7 @@ export async function POST(request: NextRequest) {
     const { currentTenantId, requestedScope } = await resolveAdminTenantContext(request, body as Record<string, unknown>, user.role ?? null);
     const scopeTenantId = requestedScope.scope === "global" ? null : requestedScope.tenantId ?? currentTenantId;
 
-    const validationResult = pricingPlanSchema.safeParse(body);
+    const validationResult = pricingPlanCreateSchema.safeParse(body);
     if (!validationResult.success) {
       return errorResponse(
         "Invalid input data",
@@ -71,14 +95,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const { features, ...insertRow } = validationResult.data;
+
     const { data: plan, error } = await supabase
       .from("pricing_plans")
-      .insert({ ...validationResult.data, tenant_id: scopeTenantId })
+      .insert({ ...insertRow, tenant_id: scopeTenantId })
       .select()
       .single();
 
     if (error) {
       return handleApiError(error, "Failed to create pricing plan");
+    }
+
+    if (plan && features !== undefined) {
+      try {
+        await syncPricingPlanFeatures(supabase, plan.id, features);
+      } catch (e) {
+        return handleApiError(e, "Failed to save pricing plan features");
+      }
     }
 
     return successResponse(plan);
@@ -109,7 +143,7 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const { id, ...updateData } = validationResult.data;
+    const { id, features, ...updateData } = validationResult.data;
 
     const { data: plan, error } = await supabase
       .from("pricing_plans")
@@ -121,6 +155,14 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       return handleApiError(error, "Failed to update pricing plan");
+    }
+
+    if (plan && features !== undefined) {
+      try {
+        await syncPricingPlanFeatures(supabase, id, features);
+      } catch (e) {
+        return handleApiError(e, "Failed to update pricing plan features");
+      }
     }
 
     return successResponse(plan);

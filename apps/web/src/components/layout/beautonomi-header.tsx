@@ -1039,8 +1039,16 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     </div>
                   </SheetContent>
                 </Sheet>
-              ) : (
-                // Authenticated: Show profile dropdown
+              ) : user && (authRole ?? user.role) === "customer" ? (
+                <Link
+                  href="/account-settings"
+                  className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0 inline-flex items-center justify-center rounded-full hover:bg-gray-100 active:bg-gray-200 transition-colors touch-manipulation select-none"
+                  aria-label="Account settings"
+                >
+                  <User className="h-5 w-5 md:h-6 md:w-6 text-gray-700" />
+                </Link>
+              ) : user ? (
+                // Authenticated non-customer: dashboard + account + sign out
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -1066,7 +1074,7 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                       </DropdownMenuItem>
                     ) : null}
                     <DropdownMenuItem asChild>
-                      <Link href="/profile" className="cursor-pointer">
+                      <Link href="/account-settings" className="cursor-pointer">
                         Profile and account
                       </Link>
                     </DropdownMenuItem>
@@ -1081,6 +1089,8 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+              ) : (
+                <div className="p-1.5 md:p-2 min-w-[44px] min-h-[44px] md:min-w-0 md:min-h-0" aria-hidden />
               )
             ) : (
               <div className="p-1.5 md:p-2 rounded-full">

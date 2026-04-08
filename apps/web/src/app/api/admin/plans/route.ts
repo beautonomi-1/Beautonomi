@@ -28,9 +28,20 @@ export async function GET(request: NextRequest) {
           .select("*")
           .eq("subscription_plan_id", sp.id)
           .maybeSingle();
+        let feature_lines: string[] = [];
+        if (pricingPlan?.id) {
+          const { data: feats } = await supabase
+            .from("pricing_plan_features")
+            .select("feature_text, display_order")
+            .eq("plan_id", pricingPlan.id)
+            .order("display_order", { ascending: true });
+          feature_lines = feats?.map((f) => f.feature_text) ?? [];
+        }
         return {
           ...sp,
-          pricing_plan: pricingPlan || null,
+          pricing_plan: pricingPlan
+            ? { ...pricingPlan, feature_lines }
+            : null,
         };
       })
     );

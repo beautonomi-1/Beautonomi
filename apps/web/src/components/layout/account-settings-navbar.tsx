@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
@@ -20,44 +20,17 @@ const AccountSettingsNavbar: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const [isPopupVisible, setIsPopupVisible] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
-  const popupRef = useRef<HTMLDivElement | null>(null);
 
   // Ensure component only renders Sheet after hydration to avoid ID mismatch
   useEffect(() => {
     queueMicrotask(() => setIsMounted(true));
   }, []);
 
-  useEffect(() => {
-    const handleOutsideClick = (event: MouseEvent) => {
-      if (
-        popupRef.current &&
-        !popupRef.current.contains(event.target as Node)
-      ) {
-        setIsPopupVisible(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-    };
-  }, []);
-
-  const handleProfileClick = () => {
-    if (!user) {
-      setIsLoginModalOpen(true);
-      return;
-    }
-    setIsPopupVisible(!isPopupVisible);
-  };
-
   const handleSignOut = async () => {
     try {
-      setIsPopupVisible(false);
       await signOut();
       // signOut already handles redirect, but ensure we navigate if needed
       if (pathname !== "/") {
@@ -87,57 +60,50 @@ const AccountSettingsNavbar: React.FC = () => {
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Desktop: Account Settings Link */}
             <Link
-              href="/profile"
+              href="/account-settings"
               className="hidden md:flex items-center gap-2 text-sm font-normal text-gray-700 hover:text-primary transition-colors"
             >
               <Settings className="h-5 w-5" />
-              <span>Profile</span>
+              <span>Account</span>
             </Link>
 
             {/* Notifications Bell - Only show when user is logged in */}
             {user && <CustomerNotificationsDropdown />}
 
-            {/* Profile Icon */}
-            <div className="relative" ref={popupRef}>
+            {/* Profile: go straight to account (fast hub); desktop sign out + saved */}
+            {user ? (
+              <>
+                <Link
+                  href="/account-settings"
+                  className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                  aria-label="Account and profile"
+                >
+                  <User className="h-6 w-6 text-gray-700" />
+                </Link>
+                <Link
+                  href="/explore/saved"
+                  className="hidden md:inline-flex text-sm text-gray-600 hover:text-gray-900 px-1"
+                >
+                  Saved
+                </Link>
+                <button
+                  type="button"
+                  onClick={handleSignOut}
+                  className="hidden md:inline-flex text-sm text-gray-600 hover:text-gray-900 px-1"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
               <button
-                onClick={handleProfileClick}
+                type="button"
+                onClick={() => setIsLoginModalOpen(true)}
                 className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="Sign in"
               >
                 <User className="h-6 w-6 text-gray-700" />
               </button>
-
-              {/* Profile Dropdown */}
-              {isPopupVisible && user && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
-                  <div className="px-4 py-2 border-b border-gray-200">
-                    <p className="text-sm font-medium text-gray-900">
-                      {user.full_name || user.email}
-                    </p>
-                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
-                  </div>
-                  <Link
-                    href="/profile"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setIsPopupVisible(false)}
-                  >
-                    Profile and account
-                  </Link>
-                  <Link
-                    href="/explore/saved"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setIsPopupVisible(false)}
-                  >
-                    Saved Posts
-                  </Link>
-                  <button
-                    onClick={handleSignOut}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                  >
-                    Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
+            )}
 
             {/* Mobile Menu - Only render after mount to avoid hydration mismatch */}
             {isMounted && (
@@ -189,13 +155,6 @@ const AccountSettingsNavbar: React.FC = () => {
                     </Link>
                     {user && (
                       <>
-                        <Link
-                          href="/profile"
-                          className="block px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded"
-                          onClick={() => setIsMenuOpen(false)}
-                        >
-                          Profile
-                        </Link>
                         <button
                           onClick={() => {
                             handleSignOut();

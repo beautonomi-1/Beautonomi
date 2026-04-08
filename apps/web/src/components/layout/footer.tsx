@@ -1,7 +1,9 @@
 'use client'
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import GooglePlayIcon from "../../../public/images/playstore-svgrepo-com.svg";
 import LanguageModal from "../global/langauges-modal";
 import { Facebook, Linkedin, Instagram, ArrowRight } from "lucide-react";
 import { FaXTwitter } from "react-icons/fa6";
@@ -53,7 +55,7 @@ export default function Footer({
   );
   const [isLoading, setIsLoading] = useState(() => initialFooter === undefined);
 
-  const isProviderPage = Boolean(pathname?.startsWith("/become-a-partner"));
+  const isProviderPage = Boolean(pathname?.includes("/become-a-partner"));
   const appContext = isProviderPage ? "provider" : "customer";
 
   const _handleOpenModal = () => {
@@ -217,9 +219,14 @@ export default function Footer({
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M3 20.5v-17C3 2.67 3.67 2 4.5 2h15C20.33 2 21 2.67 21 3.5v17c0 .83-.67 1.5-1.5 1.5h-15c-.83 0-1.5-.67-1.5-1.5zM5 4v16h14V4H5zm7 12l-4-4h2.5V8h3v4H16l-4 4z"/>
-                  </svg>
+                  <Image
+                    src={GooglePlayIcon}
+                    alt=""
+                    width={20}
+                    height={20}
+                    className="h-5 w-5 shrink-0"
+                    aria-hidden
+                  />
                   <span className="text-sm font-normal">{androidApp.title}</span>
                 </a>
               )}

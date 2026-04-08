@@ -12,6 +12,8 @@ export type PricingPlan = {
   cta_text: string;
   is_popular: boolean;
   features: string[];
+  /** Display currency label for the card (e.g. ZAR), from pricing_plans.currency */
+  currency: string | null;
 };
 
 export type PricingFAQ = {
@@ -23,6 +25,8 @@ export type PricingFAQ = {
 export type PricingPageContent = {
   heroTitle: string;
   heroDescription: string;
+  /** Optional footnote under the hero (e.g. "All prices in South African Rand") — Admin → Content → pricing → currency_note */
+  currencyNote: string | null;
 };
 
 export async function getPricingPageData(): Promise<{
@@ -34,6 +38,7 @@ export async function getPricingPageData(): Promise<{
     heroTitle: "Simple, transparent pricing",
     heroDescription:
       "Choose the plan that's right for your business. All plans include a 14-day free trial.",
+    currencyNote: null,
   };
 
   try {
@@ -72,6 +77,7 @@ export async function getPricingPageData(): Promise<{
           q.eq("page_slug", "pricing").eq("is_active", true).in("section_key", [
             "hero_title",
             "hero_description",
+            "currency_note",
           ]),
         dedupeKey: (row) => String(row.section_key ?? row.id ?? ""),
       }),
@@ -89,6 +95,7 @@ export async function getPricingPageData(): Promise<{
     for (const item of contentScoped.data || []) {
       if (item.section_key === "hero_title") pageContent.heroTitle = item.content;
       if (item.section_key === "hero_description") pageContent.heroDescription = item.content;
+      if (item.section_key === "currency_note") pageContent.currencyNote = item.content?.trim() || null;
     }
 
     const planIds = plans.map((p) => p.id);
@@ -115,6 +122,7 @@ export async function getPricingPageData(): Promise<{
       cta_text: plan.cta_text,
       is_popular: plan.is_popular,
       features: featuresMap.get(plan.id) || [],
+      currency: (plan.currency as string | null | undefined) ?? null,
     }));
 
     return { plans: normalizedPlans, faqs, pageContent };

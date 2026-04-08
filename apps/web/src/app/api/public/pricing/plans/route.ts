@@ -19,12 +19,22 @@ export async function GET(request: Request) {
       supabase,
       table: "pricing_plans",
       tenantId,
-      select: "id, name, price, period, description, cta_text, is_popular, display_order",
+      select: "id, name, price, period, description, cta_text, is_popular, display_order, currency",
       apply: (q) => q.eq("is_active", true),
       dedupeKey: (row) => String(row.name ?? row.id ?? ""),
       orderBy: { column: "display_order", ascending: true },
     });
-    const plans = scopedPlans.data as Array<{ id: string; name: string; price: string; period: string | null; description: string | null; cta_text: string; is_popular: boolean; display_order: number }>;
+    const plans = scopedPlans.data as Array<{
+      id: string;
+      name: string;
+      price: string;
+      period: string | null;
+      description: string | null;
+      cta_text: string;
+      is_popular: boolean;
+      display_order: number;
+      currency: string | null;
+    }>;
 
     if (!plans?.length) {
       return NextResponse.json({ data: [] });
@@ -46,6 +56,7 @@ export async function GET(request: Request) {
           description: plan.description,
           cta_text: plan.cta_text,
           is_popular: plan.is_popular,
+          currency: plan.currency ?? null,
           features: features?.map((f) => f.feature_text).filter(Boolean) ?? [],
         };
       }),

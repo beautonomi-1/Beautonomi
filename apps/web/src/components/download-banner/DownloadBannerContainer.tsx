@@ -8,7 +8,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import DownloadBanner from "./DownloadBanner";
 import type { DownloadBannerStore } from "./DownloadBanner";
 import type { OsType } from "@/lib/utils/os-type";
-import { getOsTypeFromUserAgent } from "@/lib/utils/os-type";
+import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 const DISMISS_KEY = "download_banner_dismissed";
@@ -92,7 +92,7 @@ interface DownloadBannerContainerProps {
 }
 
 function resolveAppContext(pathname: string | null, signupPersona: string | null): "customer" | "provider" {
-  if (pathname?.startsWith("/become-a-partner")) return "provider";
+  if (pathname?.includes("/become-a-partner")) return "provider";
   if (pathname?.startsWith("/provider")) return "provider";
   if (pathname === "/signup" && signupPersona === "provider") return "provider";
   return "customer";
@@ -109,7 +109,7 @@ export function DownloadBannerContainer({ osType: osTypeFromServer }: DownloadBa
   const [clientOsType, setClientOsType] = useState<OsType | null>(null);
   useEffect(() => {
     if (typeof navigator === "undefined") return;
-    setClientOsType(getOsTypeFromUserAgent(navigator.userAgent));
+    setClientOsType(getOsTypeFromNavigator(navigator));
   }, []);
 
   const osType = clientOsType ?? osTypeFromServer;

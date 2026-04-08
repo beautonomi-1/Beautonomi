@@ -9,7 +9,8 @@ import Image from "next/image";
 import { fetcher } from "@/lib/http/fetcher";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
-import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { getDefaultPublicAppsResponse, NATIVE_STORE } from "@/lib/store/native-app-store";
+import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 
 interface RateUsModalProps {
   isOpen: boolean;
@@ -31,19 +32,10 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
   const [availableStores, setAvailableStores] = useState<AppStoreInfo[]>([]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && isOpen) {
-      // Detect platform
-      const userAgent = window.navigator.userAgent.toLowerCase();
-      let detectedPlatform: 'ios' | 'android' | 'huawei' | null = null;
-      
-      if (userAgent.includes('iphone') || userAgent.includes('ipad')) {
-        detectedPlatform = 'ios';
-      } else if (userAgent.includes('huawei') || userAgent.includes('honor')) {
-        detectedPlatform = 'huawei';
-      } else if (userAgent.includes('android')) {
-        detectedPlatform = 'android';
-      }
-      
+    if (typeof window !== "undefined" && isOpen) {
+      const os = getOsTypeFromNavigator(window.navigator);
+      const detectedPlatform: "ios" | "android" | "huawei" | null =
+        os === "ios" || os === "android" || os === "huawei" ? os : null;
       setPlatform(detectedPlatform);
       loadAppStoreUrls(detectedPlatform);
     }
@@ -145,22 +137,31 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
       
     } catch {
       // Silent fallback - don't log errors to console as they're expected in some cases
-      // Fallback to default URLs
-      const fallbackStore: AppStoreInfo = detectedPlatform === 'ios' 
-        ? {
-            name: 'App Store',
-            icon: Apple,
-            url: NATIVE_STORE.customer.defaultAppStoreUrl,
-            buttonText: 'Rate on App Store',
-            platform: 'ios'
-          }
-        : {
-            name: 'Google Play Store',
-            icon: GooglePlayStore,
-            url: NATIVE_STORE.customer.defaultPlayStoreUrl,
-            buttonText: 'Rate on Google Play',
-            platform: 'android'
-          };
+      const galleryUrl = getDefaultPublicAppsResponse().customer.huawei.app_gallery_url;
+      const fallbackStore: AppStoreInfo =
+        detectedPlatform === "ios"
+          ? {
+              name: "App Store",
+              icon: Apple,
+              url: NATIVE_STORE.customer.defaultAppStoreUrl,
+              buttonText: "Rate on App Store",
+              platform: "ios",
+            }
+          : detectedPlatform === "huawei"
+            ? {
+                name: "Huawei AppGallery",
+                icon: Smartphone,
+                url: galleryUrl,
+                buttonText: "Rate on AppGallery",
+                platform: "huawei",
+              }
+            : {
+                name: "Google Play Store",
+                icon: GooglePlayStore,
+                url: NATIVE_STORE.customer.defaultPlayStoreUrl,
+                buttonText: "Rate on Google Play",
+                platform: "android",
+              };
       setAppStoreInfo(fallbackStore);
       setAvailableStores([fallbackStore]);
     } finally {

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Smartphone } from "lucide-react";
 import { IoCopy } from "react-icons/io5";
 import { FaWhatsappSquare, FaFacebookSquare } from "react-icons/fa";
 import { FaSquareXTwitter } from "react-icons/fa6";
@@ -11,44 +12,55 @@ import { toast } from "sonner";
 import Image from "next/image";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
-import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { getDefaultPublicAppsResponse, NATIVE_STORE } from "@/lib/store/native-app-store";
+import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 
 interface ShareAppModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+type StoreDownloadInfo =
+  | { name: string; url: string; iconSrc: typeof Apple | typeof GooglePlayStore }
+  | { name: string; url: string; iconKind: "huawei" };
+
 export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
   const [currentUrl, setCurrentUrl] = useState("");
   const [copied, setCopied] = useState(false);
-  const [platform, setPlatform] = useState<'ios' | 'android' | null>(null);
+  const [platform, setPlatform] = useState<"ios" | "android" | "huawei" | null>(null);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       queueMicrotask(() => {
         const url = window.location.origin;
         setCurrentUrl(url);
-        const userAgent = window.navigator.userAgent.toLowerCase();
-        if (userAgent.includes('iphone') || userAgent.includes('ipad')) {
-          setPlatform('ios');
-        } else if (userAgent.includes('android')) {
-          setPlatform('android');
+        const os = getOsTypeFromNavigator(window.navigator);
+        if (os === "ios" || os === "android" || os === "huawei") {
+          setPlatform(os);
         }
       });
     }
   }, []);
 
-  const getStoreInfo = () => {
-    if (platform === 'ios') {
+  const getStoreInfo = (): StoreDownloadInfo | null => {
+    if (platform === "ios") {
       return {
-        name: 'App Store',
-        icon: Apple,
+        name: "App Store",
+        iconSrc: Apple,
         url: NATIVE_STORE.customer.defaultAppStoreUrl,
       };
-    } else if (platform === 'android') {
+    }
+    if (platform === "huawei") {
       return {
-        name: 'Google Play Store',
-        icon: GooglePlayStore,
+        name: "Huawei AppGallery",
+        iconKind: "huawei",
+        url: getDefaultPublicAppsResponse().customer.huawei.app_gallery_url,
+      };
+    }
+    if (platform === "android") {
+      return {
+        name: "Google Play Store",
+        iconSrc: GooglePlayStore,
         url: NATIVE_STORE.customer.defaultPlayStoreUrl,
       };
     }
@@ -109,11 +121,15 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
                 className="w-full bg-[#FF0077] hover:bg-[#E6006A] text-white"
                 size="lg"
               >
-                <Image
-                  src={storeInfo.icon}
-                  alt={storeInfo.name}
-                  className="h-5 w-5 mr-2"
-                />
+                {"iconSrc" in storeInfo ? (
+                  <Image
+                    src={storeInfo.iconSrc}
+                    alt={storeInfo.name}
+                    className="h-5 w-5 mr-2"
+                  />
+                ) : (
+                  <Smartphone className="h-5 w-5 mr-2 shrink-0" aria-hidden />
+                )}
                 Download from {storeInfo.name}
               </Button>
             </div>

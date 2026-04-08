@@ -24,7 +24,7 @@ export default function BottomNav() {
     { name: "Search", icon: Search, link: "/search", isLink: true },
     { name: "Bookings", icon: Calendar, link: "/bookings", isLink: true },
     { name: "Chats", icon: MessageSquare, link: "/inbox", isLink: true },
-    { name: "Profile", icon: User, link: "/profile", isLink: true },
+    { name: "Profile", icon: User, link: "/account-settings", isLink: true },
   ] as const;
 
   const guestTabs = [

@@ -62,6 +62,9 @@ export default function PricingPageClient({
           <p className="text-lg sm:text-xl text-gray-600 max-w-2xl mx-auto">
             {pageContent.heroDescription}
           </p>
+          {pageContent.currencyNote ? (
+            <p className="text-sm text-gray-500 max-w-2xl mx-auto mt-4">{pageContent.currencyNote}</p>
+          ) : null}
         </div>
       </div>
 
@@ -91,6 +94,11 @@ export default function PricingPageClient({
 
                 <div className="text-center mb-8">
                   <h3 className="text-2xl font-bold text-gray-900 mb-2">{plan.name}</h3>
+                  {plan.currency ? (
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 mb-1">
+                      {plan.currency}
+                    </p>
+                  ) : null}
                   <div className="flex items-baseline justify-center gap-1 mb-2">
                     <span className="text-4xl font-bold text-gray-900">{plan.price}</span>
                     {plan.period && <span className="text-gray-600">{plan.period}</span>}
