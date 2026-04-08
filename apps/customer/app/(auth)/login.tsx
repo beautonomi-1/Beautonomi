@@ -38,6 +38,7 @@ import {
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { getDeviceDefaultCountryDial } from "@/lib/device-default-country-dial";
 import { navigateAfterCustomerAuth, navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
+import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 
 const PRIMARY = Colors.primary;
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -239,6 +240,7 @@ export default function LoginScreen() {
       }
       trackLogin("phone");
       await applyPendingSignupPreferences();
+      logLoginSuccessBreadcrumb("phone_otp");
       await navigateAfterCustomerAuth(params.return_to);
     } finally {
       setLoading(false);
@@ -287,6 +289,7 @@ export default function LoginScreen() {
       }
       trackLogin("email");
       await applyPendingSignupPreferences();
+      logLoginSuccessBreadcrumb("email_otp");
       await navigateAfterCustomerAuth(params.return_to);
     } finally {
       setLoading(false);
@@ -309,6 +312,7 @@ export default function LoginScreen() {
     }
     trackLogin(provider);
     await applyPendingSignupPreferences();
+    logLoginSuccessBreadcrumb(`oauth_${provider}`);
     await navigateAfterCustomerAuth(params.return_to);
     setLoading(false);
   }
@@ -354,8 +358,10 @@ export default function LoginScreen() {
     else trackLogin("email");
     await applyPendingSignupPreferences();
     if (isSignup) {
+      logLoginSuccessBreadcrumb("email_signup");
       await navigateAfterNewCustomerSignup(params.return_to);
     } else {
+      logLoginSuccessBreadcrumb("email_password");
       await navigateAfterCustomerAuth(params.return_to);
     }
     setLoading(false);

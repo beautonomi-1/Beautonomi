@@ -30,6 +30,13 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { clearApiCache } from "@/lib/api-response-cache";
 import { clearPortalCache } from "@/lib/portal-cache";
+import {
+  authFlowBreadcrumb,
+  clearSentryUser,
+  isSentryEnabled,
+  setAuthFlowTags,
+  setSentryUser,
+} from "@/lib/sentry";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -126,6 +133,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         updateSession(s);
         setLoading(false);
+        if (isSentryEnabled()) {
+          authFlowBreadcrumb("auth_initial_get_session", { hasSession: !!s });
+        }
         if (s?.user) scheduleRetentionSyncOnSession();
       })
       .catch((err) => {
@@ -148,6 +158,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       lastUserIdRef.current = nextUserId;
       updateSession(newSession);
+      if (isSentryEnabled()) {
+        if (event === "SIGNED_OUT") {
+          authFlowBreadcrumb("supabase_auth", { event: "SIGNED_OUT" });
+          setAuthFlowTags({ auth_state: "signed_out" });
+        } else if (event === "SIGNED_IN") {
+          authFlowBreadcrumb("supabase_auth", { event: "SIGNED_IN" });
+        }
+      }
       if (event === "SIGNED_OUT") {
         void clearCustomerUserCaches();
       }
@@ -165,6 +183,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, [updateSession, AUTH_SESSION_TIMEOUT_MS]);
+
+  useEffect(() => {
+    if (!isSentryEnabled()) return;
+    if (user?.id) {
+      setSentryUser(user.id);
+      setAuthFlowTags({ auth_state: "authenticated" });
+    } else {
+      clearSentryUser();
+      setAuthFlowTags({ auth_state: "anonymous" });
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (typeof AppState.addEventListener !== "function") return;

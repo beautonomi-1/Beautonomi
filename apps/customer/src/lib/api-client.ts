@@ -7,17 +7,61 @@ import type { ApiResponse } from "@beautonomi/types";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 
 async function getAccessToken(): Promise<string | null> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.auth.getSession();
-  let token = data.session?.access_token ?? null;
-  if (!token) {
-    const { data: refreshed } = await supabase.auth.refreshSession();
-    token = refreshed.session?.access_token ?? null;
+  if (isSentryEnabled()) {
+    authFlowBreadcrumb("get_access_token", { step: "start" });
   }
-  return token;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", { step: "getUser_done", hasUser: !!user });
+    }
+    if (!user) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", { step: "complete", tokenPresent: false, reason: "no_user" });
+      }
+      return null;
+    }
+    const { data } = await supabase.auth.getSession();
+    let token = data.session?.access_token ?? null;
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", { step: "getSession_done", hasAccessToken: !!token });
+    }
+    let usedRefresh = false;
+    if (!token) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", { step: "refreshSession_start" });
+      }
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed.session?.access_token ?? null;
+      usedRefresh = true;
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", {
+          step: "refreshSession_done",
+          hasAccessToken: !!token,
+        });
+      }
+    }
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", {
+        step: "complete",
+        tokenPresent: !!token,
+        usedRefresh,
+      });
+    }
+    return token;
+  } catch (e) {
+    if (isSentryEnabled()) {
+      captureError(e, { area: "api-client.getAccessToken" });
+      authFlowBreadcrumb("get_access_token", {
+        step: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    throw e;
+  }
 }
 
 const baseApi = createApiClient({

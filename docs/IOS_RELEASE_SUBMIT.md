@@ -23,7 +23,7 @@ This runs, in order:
 1. **Customer** → iOS (`--latest`) then Android (`--latest`)
 2. **Provider** → iOS (`--latest`) then Android (`--latest`)
 
-When prompted, choose the **new** build for each (not one already submitted). Android uploads go to **Internal testing** as a **draft**; roll them out in Play Console when ready.
+When prompted, choose the **new** build for each (not one already submitted). Android uploads use the track in `eas.json` (`submit.production.android.track`, usually **production** as draft). To upload the same build to **Google Play internal testing** instead, run `pnpm run submit:android:internal` (uses `submit.internal` profile with `track: internal`).
 
 **Android “Version code X has already been used”:** You’re submitting an **old** AAB (built before the latest `versionCode` in `app.json`). Fix: trigger a **new** production build (push to `main` or run `eas build --profile production --platform android` from the app dir), wait for it to finish, then submit **that** build. Don’t pick an older build from the list.
 
@@ -35,9 +35,12 @@ When prompted, choose the **new** build for each (not one already submitted). An
 | `pnpm run submit:customer` | Customer app: iOS then Android |
 | `pnpm run submit:provider` | Provider app: iOS then Android |
 | `pnpm run submit:customer:ios` | Customer → TestFlight only |
-| `pnpm run submit:customer:android` | Customer → Play Internal testing only |
+| `pnpm run submit:customer:android` | Customer → Play **production** track (draft; see `eas.json`) |
 | `pnpm run submit:provider:ios` | Provider → TestFlight only |
-| `pnpm run submit:provider:android` | Provider → Play Internal testing only |
+| `pnpm run submit:provider:android` | Provider → Play **production** track (draft) |
+| `pnpm run submit:android:internal` | Both apps → Play **internal testing** track (draft) |
+| `pnpm run submit:customer:android:internal` | Customer → Play **internal** track only |
+| `pnpm run submit:provider:android:internal` | Provider → Play **internal** track only |
 
 ## How builds are triggered
 

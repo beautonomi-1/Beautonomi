@@ -1,12 +1,13 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
 import { AppHeader } from "@/components/AppHeader";
+import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -18,6 +19,11 @@ export default function TabsLayout() {
   const insets = useSafeAreaInsets();
   const { isTablet } = useResponsive();
   const { t } = useTranslation();
+
+  useEffect(() => {
+    if (!isSentryEnabled()) return;
+    authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
+  }, []);
 
   const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
   const screenOptions = useMemo(

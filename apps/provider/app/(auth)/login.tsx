@@ -38,14 +38,16 @@ import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { OtpDigitRow } from "@/components/OtpDigitRow";
 import { trackLogin } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
+import { logLoginSuccessBreadcrumb } from "@/lib/sentry";
 
 const PRIMARY = Colors.primary;
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
 const PENDING_PREFERRED_LANGUAGE_KEY = "beautonomi_pending_preferred_language";
 
 /** Wait for session storage so root `/` portal + profile checks see a valid Bearer token on iOS. */
-async function goToAppRoot(router: { replace: (href: string) => void }) {
+async function goToAppRoot(router: { replace: (href: string) => void }, method: string) {
   await supabase.auth.getSession();
+  logLoginSuccessBreadcrumb(method);
   router.replace("/");
 }
 
@@ -190,7 +192,7 @@ export default function LoginScreen() {
         return;
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router);
+      await goToAppRoot(router, "phone_otp");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed. Please try again.");
     } finally {
@@ -213,7 +215,7 @@ export default function LoginScreen() {
         return;
       }
       await applyPendingSignupPreferences();
-      await goToAppRoot(router);
+      await goToAppRoot(router, `oauth_${provider}`);
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "OAuth sign-in failed. Please try again.");
     } finally {
@@ -240,7 +242,7 @@ export default function LoginScreen() {
       }
       trackLogin("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router);
+      await goToAppRoot(router, "email_password");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Login failed. Please try again.");
     } finally {
@@ -295,7 +297,7 @@ export default function LoginScreen() {
       }
       trackLogin("email");
       await applyPendingSignupPreferences();
-      await goToAppRoot(router);
+      await goToAppRoot(router, "email_otp");
     } catch (e: unknown) {
       setFormError(e instanceof Error ? e.message : "Verification failed.");
     } finally {

@@ -4,6 +4,12 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import type { UserRole } from "@beautonomi/types";
+import {
+  authFlowBreadcrumb,
+  captureError,
+  isSentryEnabled,
+  setAuthFlowTags,
+} from "@/lib/sentry";
 
 const ALLOWED_ROLES: UserRole[] = ["customer"];
 
@@ -24,6 +30,9 @@ export function RoleGate({ children }: RoleGateProps) {
     let cancelled = false;
 
     const fetchRole = async (attempt: number): Promise<void> => {
+      if (isSentryEnabled()) {
+        setAuthFlowTags({ guard_name: "role_gate" });
+      }
       const res = await api.get<{ role: UserRole }>("/api/me/role");
       if (cancelled) return;
 
@@ -33,6 +42,13 @@ export function RoleGate({ children }: RoleGateProps) {
           await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
           return fetchRole(attempt + 1);
         }
+        if (isSentryEnabled()) {
+          authFlowBreadcrumb("role_gate", { outcome: "api_error", status });
+          captureError(new Error("role_gate_api_error"), {
+            area: "RoleGate.customer",
+            status,
+          });
+        }
         setLoading(false);
         setError(true);
         return;
@@ -41,8 +57,15 @@ export function RoleGate({ children }: RoleGateProps) {
       setLoading(false);
       const roleFromApi = res.data?.role;
       if (!roleFromApi) {
+        if (isSentryEnabled()) {
+          authFlowBreadcrumb("role_gate", { outcome: "missing_role" });
+          captureError(new Error("role_gate_missing_role"), { area: "RoleGate.customer" });
+        }
         setError(true);
         return;
+      }
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("role_gate", { outcome: "ok", role: roleFromApi });
       }
       if (!ALLOWED_ROLES.includes(roleFromApi)) {
         setBlocked(true);

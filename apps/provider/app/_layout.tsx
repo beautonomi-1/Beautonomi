@@ -15,7 +15,7 @@ import { ThemeProvider, useTheme } from "@/providers/ThemeProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { OfflineBar } from "@/components/OfflineBar";
 import { useForceUpdate } from "@/hooks/useForceUpdate";
-import { initSentry, Sentry } from "@/lib/sentry";
+import { initSentry, setMobileAppTag, Sentry } from "@/lib/sentry";
 import { initSingular } from "@/lib/singular";
 import MarketAvailabilityGate from "@/components/MarketAvailabilityGate";
 import {
@@ -27,6 +27,7 @@ import { ScreenshotDeepLinkBootstrap } from "@/components/ScreenshotDeepLinkBoot
 // Initialize Sentry and Singular before anything renders; catch so a failure doesn't crash the app
 try {
   initSentry();
+  setMobileAppTag("provider");
 } catch {}
 try {
   initSingular();
