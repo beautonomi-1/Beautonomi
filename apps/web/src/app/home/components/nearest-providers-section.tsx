@@ -39,7 +39,6 @@ const NearestProvidersSection = ({
   /** "all" = no distance filter (country-wide / tenant-wide); numeric = filter nearest list */
   const [radiusKm, setRadiusKm] = useState<number | "all">("all");
   const prevInitialProvidersRef = useRef(initialProviders);
-  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
     if (!initialHydrated) return;
@@ -47,14 +46,6 @@ const NearestProvidersSection = ({
     prevInitialProvidersRef.current = initialProviders;
     setProviders(initialProviders ?? []);
   }, [initialHydrated, initialProviders]);
-
-  useEffect(() => {
-    if (prevCategoryRef.current === categorySlug) return;
-    prevCategoryRef.current = categorySlug;
-    // Ensure category switches do not keep showing mismatched nearest cards.
-    setProviders([]);
-    setIsLoading(true);
-  }, [categorySlug]);
 
   useEffect(() => {
     if (locationLoading) return;

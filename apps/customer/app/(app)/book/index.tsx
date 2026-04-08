@@ -137,9 +137,15 @@ function staffIdForPublicAvailabilityApi(sel: StaffMember | null): string | null
   return sel.id === ANY_STAFF_BOOKING_ID ? "any" : sel.id;
 }
 
-function holdStaffIdFromSelection(sel: StaffMember | null): string | null {
-  if (!sel || sel.id === ANY_STAFF_BOOKING_ID) return null;
-  return sel.id;
+/** Prefer the staff the availability API attached to the slot ("any staff" union); matches web booking. */
+function holdStaffIdFromSlotAndSelection(
+  sel: StaffMember | null,
+  slot: AvailabilitySlot | null
+): string | null {
+  const raw =
+    slot?.staff_id ?? (sel && sel.id !== ANY_STAFF_BOOKING_ID ? sel.id : null);
+  if (!raw || raw === "any" || String(raw).startsWith("provider-")) return null;
+  return raw;
 }
 
 /** Same idea as web booking service step — chunk long lists per category. */
@@ -1465,7 +1471,7 @@ export default function BookScreen() {
 
       const startAt = toIsoUtcTimestamp(selectedSlot.start);
       const endAt = toIsoUtcTimestamp(selectedSlot.end);
-      const holdStaffId = holdStaffIdFromSelection(selectedStaff);
+      const holdStaffId = holdStaffIdFromSlotAndSelection(selectedStaff, selectedSlot);
 
       const res = await api.post<{ hold_id?: string; id?: string }>(
         "/api/public/booking-holds",

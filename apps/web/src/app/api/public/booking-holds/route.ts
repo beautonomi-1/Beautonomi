@@ -326,6 +326,39 @@ export async function POST(request: NextRequest) {
           ])
         );
 
+        const allSnapshotStaffNull = bookingServicesSnapshot.every((s) => !s.staff_id);
+        if (allSnapshotStaffNull) {
+          const { pickFirstStaffForNullStaffLines } = await import(
+            "@/lib/bookings/resolve-any-staff-for-public-booking"
+          );
+          const locationIdForCalendarPick =
+            location_type === "at_salon" ? location_id ?? null : null;
+          const picked = await pickFirstStaffForNullStaffLines({
+            supabaseAdmin: supabase as SupabaseClient,
+            providerId: provider_id,
+            locationId: locationIdForCalendarPick,
+            bookingServicesData: bookingServicesSnapshot.map((s) => ({
+              offering_id: s.offering_id,
+              staff_id: s.staff_id,
+              scheduled_start_at: s.scheduled_start_at,
+              scheduled_end_at: s.scheduled_end_at,
+            })),
+            offeringBufferMinutesById,
+          });
+          if (picked.ok) {
+            for (const s of bookingServicesSnapshot) {
+              s.staff_id = picked.staffId;
+            }
+          } else if (picked.ok === false && picked.reason === "no_one_available_for_window") {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
+        }
+
         const conflictResult = await checkBookingSnapshotSegmentConflicts(
           supabase as SupabaseClient,
           provider_id,

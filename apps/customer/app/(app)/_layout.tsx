@@ -69,59 +69,60 @@ function handleCustomerDeepLink(url: string): boolean {
 
 export default function AppLayout() {
   const { session } = useAuth();
-  // Prevent the onboarding guard from running more than once per app session
-  // (avoids spurious redirects during background token refreshes).
-  const onboardingChecked = useRef(false);
+  /** Stable per signed-in user — do NOT key on access_token (it changes on refresh and caused repeat router.replace / “swiping” on iOS). */
+  const userId = session?.user?.id ?? null;
+  /** Last user id we ran the onboarding deep-link guard for (token refresh keeps same id → no re-run). */
+  const onboardingGuardRanForUserId = useRef<string | null>(null);
 
   // Attach pending referral after login (e.g. post email verification)
   useEffect(() => {
-    if (!session?.access_token) return;
+    if (!userId) return;
     AsyncStorage.getItem(REFERRAL_REF_KEY).then((ref) => {
       if (!ref?.trim()) return;
       api
         .post("/api/me/referrals/attach", { referral_code: ref.trim() })
         .finally(() => AsyncStorage.removeItem(REFERRAL_REF_KEY));
     });
-  }, [session?.access_token]);
+  }, [userId]);
 
-  // Reset the check flag when the user signs out so the next login re-checks.
-  useEffect(() => {
-    if (!session?.access_token) {
-      onboardingChecked.current = false;
-    }
-  }, [session?.access_token]);
-
-  // Customer onboarding guard — redirect new users to the wizard on first login.
-  // Runs once per session (guarded by onboardingChecked ref).
-  // Strategy:
-  //   1. If AsyncStorage flag is set → already done, skip.
-  //   2. Otherwise, ask the server (handles cross-device: user finished on web).
-  //      If the server says done → heal the local flag and skip.
-  //      If the server says not done → redirect to onboarding.
+  // Customer onboarding guard — deep links into (app) without visiting root index.
+  // Must match app/index.tsx: only force onboarding when the server says completed === false.
+  // On API error, do not navigate (root index already sent the user home; fighting it caused stack thrash / swipe loops on tablet).
   useEffect(() => {
     if (isScreenshotMode()) return;
-    if (!session?.access_token) return;
-    if (onboardingChecked.current) return;
-    onboardingChecked.current = true;
+    if (!userId) {
+      onboardingGuardRanForUserId.current = null;
+      return;
+    }
+    if (onboardingGuardRanForUserId.current === userId) return;
+    onboardingGuardRanForUserId.current = userId;
+
+    let cancelled = false;
 
     AsyncStorage.getItem(ONBOARDING_DONE_KEY).then(async (done) => {
-      if (done === "1") return; // Already confirmed locally — no redirect needed
+      if (cancelled) return;
+      if (done === "1") return;
 
       try {
         const res = await api.get<{ completed: boolean }>("/api/me/onboarding/complete");
-        if (!res.error && res?.data?.completed) {
-          // Heal local flag so future launches skip the network call
+        if (cancelled) return;
+        if (!res.error && res.data?.completed === true) {
           await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
           return;
         }
+        if (!res.error && res.data?.completed === false) {
+          router.replace("/(app)/onboarding");
+          return;
+        }
       } catch {
-        // Network unavailable — fall through to redirect so the wizard can run
-        // and re-attempt completion; this is safe because the wizard is idempotent.
+        // Same as error path — do not replace route
       }
-
-      router.replace("/(app)/onboarding");
     });
-  }, [session?.access_token]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
   const headerBackFallback = () => (
     <TouchableOpacity
       onPress={() => {

@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
-import { messageAttachmentRetentionDays } from "@/lib/messaging/message-attachments";
+import {
+  MESSAGE_ATTACHMENTS_BUCKET,
+  messageAttachmentRetentionDays,
+} from "@/lib/messaging/message-attachments";
+import {
+  getStorageServiceClientOrUser,
+  hasSupabaseStorageServiceRole,
+} from "@/lib/supabase/storage-service-client";
 
 /**
  * POST /api/me/messages/upload
@@ -98,46 +104,45 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if storage bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucketName = "message-attachments";
-    const bucketExists = buckets?.some((b) => b.name === bucketName);
+    // Storage: listBuckets/createBucket must use the service role. The user-scoped client often
+    // returns an empty bucket list (not an error), which falsely looked like a missing bucket.
+    const storageClient = getStorageServiceClientOrUser(supabase);
+    const bucketName = MESSAGE_ATTACHMENTS_BUCKET;
 
-    if (!bucketExists) {
-      // Try to create the bucket (requires admin privileges)
-      const { error: createError } = await supabase.storage.createBucket(bucketName, {
-        public: true,
-        fileSizeLimit: 52428800, // 50MB
-        allowedMimeTypes: allowedTypes,
-      });
+    if (hasSupabaseStorageServiceRole()) {
+      const { data: buckets, error: listErr } = await storageClient.storage.listBuckets();
+      if (listErr) {
+        console.warn("[messages/upload] listBuckets:", listErr.message);
+      }
+      const bucketExists = buckets?.some((b) => b.name === bucketName) ?? false;
 
-      if (createError) {
-        console.error("Failed to create bucket:", createError);
-        throw new Error(
-          'Storage bucket "message-attachments" not found. Please create it in Supabase Dashboard > Storage.'
-        );
+      if (!bucketExists) {
+        const { error: createError } = await storageClient.storage.createBucket(bucketName, {
+          public: true,
+          fileSizeLimit: 52428800, // 50MB
+          allowedMimeTypes: allowedTypes,
+        });
+
+        if (createError) {
+          const msg = createError.message || "";
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[messages/upload] createBucket:", createError);
+            throw new Error(
+              `Storage bucket "${bucketName}" is missing and could not be created. Create it in Supabase Dashboard > Storage, or set SUPABASE_SERVICE_ROLE_KEY for server uploads.`
+            );
+          }
+        }
       }
     }
-
-    // Use service role client for storage operations (bypasses RLS)
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    
-    let storageClient = supabase;
-    if (serviceRoleKey && supabaseUrl) {
-      storageClient = createClient(supabaseUrl, serviceRoleKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      });
-    }
+    // Without service role: skip list/create (user JWT often cannot list buckets); upload may still work if Storage RLS allows.
 
     // Upload files to Supabase Storage
     // Storage path: message-attachments/{conversation_id}/{user_id}/{timestamp}-{index}-{random}.{ext}
     const uploadedAttachments: Array<{ url: string; type: string; name: string; size: number }> = [];
     const timestamp = Date.now();
     const userId = user.id;
+
+    let firstUploadError: string | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -159,6 +164,9 @@ export async function POST(request: NextRequest) {
 
       if (uploadError) {
         console.error(`Failed to upload file ${file.name}:`, uploadError);
+        if (!firstUploadError) {
+          firstUploadError = (uploadError as { message?: string }).message || String(uploadError);
+        }
         continue;
       }
 
@@ -178,7 +186,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (uploadedAttachments.length === 0) {
-      return errorResponse("Failed to upload any files", "UPLOAD_ERROR", 500);
+      const hint =
+        firstUploadError && /bucket|not found/i.test(firstUploadError)
+          ? ` (${firstUploadError}). Ensure bucket "${bucketName}" exists and SUPABASE_SERVICE_ROLE_KEY is set on the web app.`
+          : firstUploadError
+            ? ` (${firstUploadError})`
+            : "";
+      return errorResponse(`Failed to upload any files${hint}`, "UPLOAD_ERROR", 500);
     }
 
     return successResponse({

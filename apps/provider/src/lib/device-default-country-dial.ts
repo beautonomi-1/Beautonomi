@@ -3,28 +3,42 @@ import { dialCodeForIso3166Alpha2 } from "@beautonomi/phone";
 
 const FALLBACK_ISO = "ZA";
 
+const TIMEZONE_HINT_TO_ISO: Record<string, string> = {
+  "Africa/Johannesburg": "ZA",
+};
+
+function getRegionIsoFromTimeZone(): string | null {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz && TIMEZONE_HINT_TO_ISO[tz]) return TIMEZONE_HINT_TO_ISO[tz];
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 /** ISO 3166-1 alpha-2 from device locale. Defaults to ZA. */
 export function getDeviceRegionCountryIso(): string {
+  const envIso = process.env.EXPO_PUBLIC_DEFAULT_PHONE_REGION?.trim().toUpperCase();
+  if (envIso && /^[A-Z]{2}$/.test(envIso)) return envIso;
+
   try {
-    const iso = Localization.getLocales?.()?.[0]?.regionCode?.toUpperCase();
-    if (iso && /^[A-Z]{2}$/.test(iso)) return iso;
+    const localeIso = Localization.getLocales?.()?.[0]?.regionCode?.toUpperCase();
+    const tzIso = getRegionIsoFromTimeZone();
+    if (localeIso === "TM" && tzIso) return tzIso;
+    if (localeIso && /^[A-Z]{2}$/.test(localeIso)) return localeIso;
+    if (tzIso) return tzIso;
   } catch {
     /* ignore */
   }
   return FALLBACK_ISO;
 }
 
-/** Default calling code from device locale (e.g. ZA → +27). Falls back to +27. */
+/** Default calling code from device. Override via EXPO_PUBLIC_DEFAULT_PHONE_DIAL / EXPO_PUBLIC_DEFAULT_PHONE_REGION. */
 export function getDeviceDefaultCountryDial(): string {
-  try {
-    const iso = Localization.getLocales?.()?.[0]?.regionCode?.toUpperCase();
-    if (iso && /^[A-Z]{2}$/.test(iso)) {
-      const dial = dialCodeForIso3166Alpha2(iso);
-      if (dial) return dial;
-    }
-  } catch {
-    /* ignore */
-  }
-  const dial = dialCodeForIso3166Alpha2(FALLBACK_ISO);
+  const envDial = process.env.EXPO_PUBLIC_DEFAULT_PHONE_DIAL?.trim();
+  if (envDial && /^\+\d{1,4}$/.test(envDial)) return envDial;
+
+  const dial = dialCodeForIso3166Alpha2(getDeviceRegionCountryIso());
   return dial || "+27";
 }

@@ -28,6 +28,7 @@ import {
 } from "@/lib/phone-country-codes";
 import { getDeviceDefaultCountryDial } from "@/lib/phone";
 import { APP_URL } from "@/config/public-env";
+import { supabase } from "@/lib/supabase/client";
 
 const PRIMARY = Colors.primary;
 const PENDING_SIGNUP_SOURCE_KEY = "beautonomi_pending_signup_source";
@@ -153,7 +154,9 @@ export default function SignupScreen() {
       if (signupSource) {
         api.patch("/api/me/profile", { signup_source: signupSource }).catch(() => {});
       }
-      router.replace("/(app)/onboarding" as never);
+      // Same entry as email login: root index runs portal check + profile → onboarding or dashboard.
+      await supabase.auth.getSession();
+      router.replace("/" as never);
     } catch (e: any) {
       setLoading(false);
       setFormError(e?.message ?? "Sign up failed. Please try again.");

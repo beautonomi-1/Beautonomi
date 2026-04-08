@@ -5,9 +5,10 @@ import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
+import { getCachedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
 
-const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PORTAL_CHECK_DELAY_MS = 400;
+const PORTAL_TIMEOUT_MS = 12 * 1000;
 const PROFILE_COMPLETION_DELAY_MS = 300;
 const PROFILE_COMPLETION_TIMEOUT_MS = 8000;
 
@@ -19,20 +20,6 @@ type ProfileCompletion = {
   checklistItems?: ProfileCompletionItem[];
   percentage?: number;
 };
-
-let portalCache: { portal: string; ts: number } | null = null;
-
-function getCachedPortal(): string | null {
-  if (portalCache && Date.now() - portalCache.ts < PORTAL_CACHE_MS) {
-    return portalCache.portal;
-  }
-  portalCache = null;
-  return null;
-}
-
-function setCachedPortal(portal: string) {
-  portalCache = { portal, ts: Date.now() };
-}
 
 function hasIncompleteRequired(data: ProfileCompletion | null): boolean {
   const items = data?.checklistItems ?? [];
@@ -57,14 +44,17 @@ export default function Index() {
   const [customerOnboardingDone, setCustomerOnboardingDone] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (loading || !session || !APP_URL?.trim()) {
-      if (!loading && session && !APP_URL?.trim()) {
-        setPortalState("customer");
-      }
+    if (loading || !session) {
       return;
     }
 
-    const cached = getCachedPortal();
+    if (!APP_URL?.trim()) {
+      setPortalState("customer");
+      return;
+    }
+
+    const uid = session.user.id;
+    const cached = getCachedPortal(uid);
     if (cached === "customer") {
       setPortalState("customer");
       return;
@@ -76,37 +66,67 @@ export default function Index() {
     }
 
     let cancelled = false;
+    let portalTimedOut = false;
     setPortalState("loading");
 
-    const t = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      if (cancelled) return;
+      portalTimedOut = true;
+      setPortalState("customer");
+    }, PORTAL_TIMEOUT_MS);
+
+    const applyPortal = (portal: string) => {
+      setCachedPortal(uid, portal);
+      if (portal === "provider" || portal === "admin") {
+        setWrongPortal(portal);
+        setPortalState("wrong_app");
+      } else {
+        setPortalState("customer");
+      }
+    };
+
+    const fetchPortal = (attempt: number) => {
       api
         .get<{ portal?: string }>("/api/me/portal")
         .then((res) => {
-          if (cancelled) return;
-          const portal = res.data?.portal ?? "customer";
-          setCachedPortal(portal);
-          if (portal === "provider" || portal === "admin") {
-            setWrongPortal(portal);
-            setPortalState("wrong_app");
-          } else {
+          if (cancelled || portalTimedOut) return;
+          if (res.error) {
+            const status = (res.error as { status?: number }).status;
+            if ((status === 401 || status === 403) && attempt < 4) {
+              setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
+              return;
+            }
             setPortalState("customer");
+            return;
           }
+          const portal = res.data?.portal ?? "customer";
+          applyPortal(portal);
         })
         .catch(() => {
-          if (!cancelled) setPortalState("customer");
+          if (!cancelled && !portalTimedOut) setPortalState("customer");
         });
+    };
+
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      fetchPortal(0);
     }, PORTAL_CHECK_DELAY_MS);
 
     return () => {
       cancelled = true;
       clearTimeout(t);
+      clearTimeout(timeoutId);
     };
-  }, [session, loading]);
+  }, [loading, session?.user?.id]);
 
   // Customer onboarding (web + native): server is source of truth before sending users home.
   useEffect(() => {
-    if (portalState !== "customer" || !session || !APP_URL?.trim()) {
+    if (portalState !== "customer" || !session?.user?.id) {
       setCustomerOnboardingDone(null);
+      return;
+    }
+    if (!APP_URL?.trim()) {
+      setCustomerOnboardingDone(true);
       return;
     }
     if (isScreenshotMode()) {
@@ -131,14 +151,15 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
-  }, [portalState, session]);
+  }, [portalState, session?.user?.id]);
 
   // Phase 2: profile completion (only when portal is customer and onboarding finished)
   useEffect(() => {
-    if (portalState !== "customer" || !session || !APP_URL?.trim()) return;
+    if (portalState !== "customer" || !session?.user?.id || !APP_URL?.trim()) return;
     if (customerOnboardingDone !== true) return;
 
     let cancelled = false;
+    setProfileCompletionData(null);
     setProfileState("loading");
 
     const timeoutId = setTimeout(() => {
@@ -151,6 +172,10 @@ export default function Index() {
         .get<ProfileCompletion>("/api/me/profile-completion")
         .then((res) => {
           if (cancelled) return;
+          if (res.error) {
+            setProfileState("error");
+            return;
+          }
           const data = res.data ?? null;
           setProfileCompletionData(data);
           setProfileState(hasIncompleteRequired(data) ? "incomplete" : "complete");
@@ -165,7 +190,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
-  }, [portalState, session, customerOnboardingDone]);
+  }, [portalState, session?.user?.id, customerOnboardingDone]);
 
   if (loading || (session && portalState === "idle") || portalState === "loading") {
     return (
@@ -193,7 +218,7 @@ export default function Index() {
       <WrongAppScreen
         portal={wrongPortal}
         onSignOut={() => {
-          portalCache = null;
+          clearPortalCache();
           signOut();
         }}
       />

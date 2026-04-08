@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ChevronDown,
   ChevronUp,
@@ -535,10 +535,11 @@ export default function PersonalInfoCard({ user, onUpdate }: PersonalInfoCardPro
 
   return (
     <>
-      <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl overflow-hidden">
+      <div className="bg-white border border-zinc-200 shadow-sm rounded-2xl overflow-hidden">
         <button
+          type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="w-full p-6 flex items-center justify-between hover:bg-white/40 transition-colors"
+          className="w-full p-6 flex items-center justify-between hover:bg-zinc-50/80 transition-colors"
           aria-expanded={isOpen}
         >
           <h3 className="text-lg font-semibold tracking-tight text-zinc-900">
@@ -551,16 +552,8 @@ export default function PersonalInfoCard({ user, onUpdate }: PersonalInfoCardPro
           )}
         </button>
 
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.3 }}
-              className="overflow-hidden"
-            >
-              <div className="px-6 pb-6 space-y-4 border-t border-white/40">
+        {isOpen ? (
+          <div className="px-6 pb-6 space-y-4 border-t border-zinc-100">
                 {/* Legal Name */}
                 <InfoRow
                   label="Legal name"
@@ -680,9 +673,7 @@ export default function PersonalInfoCard({ user, onUpdate }: PersonalInfoCardPro
                   onAdd={!user.emergency_contact?.name ? () => openEditModal("emergencyContact") : undefined}
                 />
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        ) : null}
       </div>
 
       <EditModal

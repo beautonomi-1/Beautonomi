@@ -9,8 +9,15 @@ import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
 async function getAccessToken(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
   const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  let token = data.session?.access_token ?? null;
+  if (!token) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    token = refreshed.session?.access_token ?? null;
+  }
+  return token;
 }
 
 const baseApi = createApiClient({

@@ -1207,19 +1207,39 @@ export async function validateBooking(
       })
     );
 
-    // When "anyone" / no preference: assign a random available staff so booking appears on calendar
+    // When "anyone" / no preference: pick the first team member (stable id order) who passes the
+    // same calendar block + booking overlap rules as payment — not a random id (that caused slots
+    // to show "available" while the assigned staff hit availability_blocks / conflicts).
     const allStaffNull = bookingServicesData.every((s: any) => !s.staff_id);
     if (allStaffNull && draft.provider_id) {
-      const { data: staffRows } = await supabaseAdmin
-        .from("provider_staff")
-        .select("id")
-        .eq("provider_id", draft.provider_id)
-        .eq("is_active", true)
-        .limit(10);
-      const staffIds = (staffRows || []).map((r: any) => r.id);
-      if (staffIds.length > 0) {
-        const assignId = staffIds[Math.floor(Math.random() * staffIds.length)];
-        bookingServicesData = bookingServicesData.map((s: any) => ({ ...s, staff_id: assignId }));
+      const offeringBufferMinutesById = new Map<string, number>();
+      for (const [oid, off] of offeringById) {
+        offeringBufferMinutesById.set(oid, Number(off?.buffer_minutes ?? 15));
+      }
+      const { pickFirstStaffForNullStaffLines } = await import(
+        "@/lib/bookings/resolve-any-staff-for-public-booking"
+      );
+      const locationIdForCalendar =
+        draft.location_type === "at_salon" ? draft.location_id ?? null : null;
+      const picked = await pickFirstStaffForNullStaffLines({
+        supabaseAdmin,
+        providerId: draft.provider_id,
+        locationId: locationIdForCalendar,
+        bookingServicesData: bookingServicesData as any,
+        offeringBufferMinutesById,
+      });
+      if (picked.ok) {
+        bookingServicesData = bookingServicesData.map((s: any) => ({
+          ...s,
+          staff_id: picked.staffId,
+        }));
+      } else if (picked.ok === false && picked.reason === "no_one_available_for_window") {
+        return handleApiError(
+          new Error("This time slot is no longer available. Please select another time."),
+          "This time slot is no longer available. Please select another time.",
+          "CONFLICT",
+          409
+        );
       }
     }
   }

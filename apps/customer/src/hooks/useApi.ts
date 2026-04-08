@@ -7,42 +7,18 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getRuntimeMarketHost } from "@/config/public-env";
+import {
+  responseCache,
+  inflightRequests,
+  pruneResponseCache,
+  clearApiCache,
+} from "@/lib/api-response-cache";
+import { useAuth } from "@/providers/AuthProvider";
+
+export { clearApiCache };
 
 const DEFAULT_LOADING_TIMEOUT_MS = 15000;
 const DEFAULT_STALE_TIME_MS = 20000;
-const MAX_CACHE_ENTRIES = 200;
-
-interface CacheEntry<T> {
-  data: T | null;
-  error: string | null;
-  expiresAt: number;
-}
-
-const responseCache = new Map<string, CacheEntry<unknown>>();
-const inflightRequests = new Map<string, Promise<{ data: unknown | null; error: string | null }>>();
-
-export function clearApiCache(): void {
-  responseCache.clear();
-  inflightRequests.clear();
-}
-
-function pruneResponseCache(now: number): void {
-  for (const [key, entry] of responseCache.entries()) {
-    if (entry.expiresAt <= now) {
-      responseCache.delete(key);
-    }
-  }
-
-  if (responseCache.size <= MAX_CACHE_ENTRIES) return;
-
-  const overflow = responseCache.size - MAX_CACHE_ENTRIES;
-  let removed = 0;
-  for (const key of responseCache.keys()) {
-    responseCache.delete(key);
-    removed += 1;
-    if (removed >= overflow) break;
-  }
-}
 
 interface UseApiOptions {
   enabled?: boolean;
@@ -66,6 +42,8 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     timeoutMs = DEFAULT_LOADING_TIMEOUT_MS,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
   } = options;
+  const { session } = useAuth();
+  const cacheScope = session?.user?.id ?? "_anon";
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
@@ -74,7 +52,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const requestIdRef = useRef(0);
 
   const runtimeMarketHost = getRuntimeMarketHost().trim().toLowerCase() || "default";
-  const cacheKey = `${runtimeMarketHost}::${path}`;
+  const cacheKey = `${cacheScope}::${runtimeMarketHost}::${path}`;
 
   const fetchData = useCallback(async () => {
     if (!enabled) {
@@ -88,7 +66,9 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       setTimedOut(false);
 
       const now = Date.now();
-      const cached = responseCache.get(cacheKey) as CacheEntry<T> | undefined;
+      const cached = responseCache.get(cacheKey) as
+        | { data: T | null; error: string | null; expiresAt: number }
+        | undefined;
       if (cached && cached.expiresAt > now) {
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
@@ -97,7 +77,9 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         return;
       }
 
-      const inflight = inflightRequests.get(cacheKey) as Promise<{ data: T | null; error: string | null }> | undefined;
+      const inflight = inflightRequests.get(cacheKey) as
+        | Promise<{ data: T | null; error: string | null }>
+        | undefined;
       const requestPromise =
         inflight ??
         (async () => {

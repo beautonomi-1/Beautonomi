@@ -71,6 +71,21 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const applyRoleFromResponse = useCallback((roleRes: Awaited<ReturnType<typeof api.get<{ role: string }>>>) => {
+    if (roleRes.error) {
+      captureError(new Error(roleRes.error.message), {
+        area: "ProviderContext.role",
+        code: roleRes.error.code,
+        status: (roleRes.error as { status?: number }).status,
+      });
+      setRole(null);
+    } else if (roleRes.data?.role) {
+      setRole(roleRes.data.role);
+    } else {
+      setRole(null);
+    }
+  }, []);
+
   const fetchProfile = useCallback(async () => {
     const timeoutId = setTimeout(() => setLoading(false), PROFILE_LOAD_TIMEOUT_MS);
     try {
@@ -81,15 +96,24 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       ]);
       restoredRef.current = true;
 
-      if (profileRes.error) {
+      const pe = profileRes.error as { status?: number; code?: string; message?: string } | undefined;
+      const isNoProviderRowYet =
+        pe?.status === 404 || pe?.code === "NOT_FOUND";
+
+      if (profileRes.error && isNoProviderRowYet) {
+        // New provider completing onboarding: no providers row yet — expected; still need role for RoleGate.
+        setProvider(null);
+        setProfileLoadError(null);
+        applyRoleFromResponse(roleRes);
+      } else if (profileRes.error) {
         captureError(new Error(profileRes.error.message), {
           area: "ProviderContext.profile",
           code: profileRes.error.code,
-          status: (profileRes.error as { status?: number }).status,
+          status: pe?.status,
         });
         setProfileLoadError(profileRes.error.message);
         setProvider(null);
-        setRole(null);
+        applyRoleFromResponse(roleRes);
       } else if (profileRes.data) {
         setProfileLoadError(null);
         setProvider(profileRes.data);
@@ -100,28 +124,16 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
           if (storedId === LOCATION_ALL_SENTINEL) return null;
           if (storedId && validIds.includes(storedId)) return storedId;
           if (prev && validIds.includes(prev)) return prev;
-          // No saved branch: org-wide (omit location_id on APIs). User picks a branch in LocationSwitcher if needed.
           return null;
         });
         addBreadcrumb("Provider profile loaded", "provider", {
           providerId: profileRes.data.id,
         });
 
-        if (roleRes.error) {
-          captureError(new Error(roleRes.error.message), {
-            area: "ProviderContext.role",
-            code: roleRes.error.code,
-            status: (roleRes.error as { status?: number }).status,
-          });
-          setRole(null);
-        } else if (roleRes.data?.role) {
-          setRole(roleRes.data.role);
-        } else {
-          setRole(null);
-        }
+        applyRoleFromResponse(roleRes);
       } else {
         setProvider(null);
-        setRole(null);
+        applyRoleFromResponse(roleRes);
       }
     } catch (e) {
       captureError(e, { area: "ProviderContext.fetchProfile" });
@@ -132,7 +144,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       clearTimeout(timeoutId);
       setLoading(false);
     }
-  }, []);
+  }, [applyRoleFromResponse]);
 
   useEffect(() => {
     if (!userId) {

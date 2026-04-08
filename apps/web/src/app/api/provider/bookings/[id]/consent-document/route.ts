@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
+import { getStorageServiceClientOrUser } from "@/lib/supabase/storage-service-client";
 import {
   requireRoleInApi,
   getProviderIdForUser,
@@ -70,14 +70,7 @@ export async function POST(
     const suffix = Math.random().toString(36).slice(2, 10);
     const path = `${Date.now()}-${bookingId}/consent-${formId}-${suffix}.${safeExt}`;
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const storageClient =
-      serviceRoleKey && supabaseUrl
-        ? createClient(supabaseUrl, serviceRoleKey, {
-            auth: { autoRefreshToken: false, persistSession: false },
-          })
-        : supabase;
+    const storageClient = getStorageServiceClientOrUser(supabase);
 
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);

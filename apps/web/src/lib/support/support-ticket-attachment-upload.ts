@@ -1,7 +1,21 @@
-import { createClient } from "@supabase/supabase-js";
+/**
+ * Support ticket message files use the same Supabase Storage bucket as chat attachments
+ * (`message-attachments`), with a dedicated path prefix so they stay separate from
+ * conversation uploads: `support-tickets/{ticket_id}/{user_id}/...`
+ *
+ * @see MESSAGE_ATTACHMENTS_BUCKET in `@/lib/messaging/message-attachments`
+ */
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { MESSAGE_ATTACHMENTS_BUCKET } from "@/lib/messaging/message-attachments";
+import {
+  getStorageServiceClientOrUser,
+  hasSupabaseStorageServiceRole,
+} from "@/lib/supabase/storage-service-client";
 
-export const SUPPORT_TICKET_ATTACHMENTS_BUCKET = "support-ticket-attachments";
+/** @deprecated Use MESSAGE_ATTACHMENTS_BUCKET — kept for any external imports */
+export const SUPPORT_TICKET_ATTACHMENTS_BUCKET = MESSAGE_ATTACHMENTS_BUCKET;
+
+export const SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX = "support-tickets";
 
 export type SupportTicketAttachmentMeta = {
   url: string;
@@ -37,17 +51,6 @@ export function validateSupportTicketFiles(files: File[]): string | null {
   return null;
 }
 
-function storageClientOrFallback(supabase: SupabaseClient): SupabaseClient {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (serviceRoleKey && supabaseUrl) {
-    return createClient(supabaseUrl, serviceRoleKey, {
-      auth: { autoRefreshToken: false, persistSession: false },
-    });
-  }
-  return supabase;
-}
-
 /**
  * Upload files for a support ticket message; returns public URLs for JSON `attachments` column.
  */
@@ -60,19 +63,28 @@ export async function uploadSupportTicketFiles(
   const err = validateSupportTicketFiles(files);
   if (err) throw new Error(err);
 
-  const client = storageClientOrFallback(supabase);
-  const { data: buckets } = await client.storage.listBuckets();
-  const bucketExists = buckets?.some((b) => b.name === SUPPORT_TICKET_ATTACHMENTS_BUCKET);
-  if (!bucketExists) {
-    const { error: createError } = await client.storage.createBucket(SUPPORT_TICKET_ATTACHMENTS_BUCKET, {
-      public: true,
-      fileSizeLimit: 52428800,
-      allowedMimeTypes: allowedTypes,
-    });
-    if (createError) {
-      throw new Error(
-        `Storage bucket "${SUPPORT_TICKET_ATTACHMENTS_BUCKET}" missing and could not be created. Create it in Supabase Dashboard > Storage.`
-      );
+  const client = getStorageServiceClientOrUser(supabase);
+
+  if (hasSupabaseStorageServiceRole()) {
+    const { data: buckets, error: listErr } = await client.storage.listBuckets();
+    if (listErr) {
+      console.warn("[support-ticket upload] listBuckets:", listErr.message);
+    }
+    const bucketExists = buckets?.some((b) => b.name === MESSAGE_ATTACHMENTS_BUCKET) ?? false;
+    if (!bucketExists) {
+      const { error: createError } = await client.storage.createBucket(MESSAGE_ATTACHMENTS_BUCKET, {
+        public: true,
+        fileSizeLimit: 52428800,
+        allowedMimeTypes: allowedTypes,
+      });
+      if (createError) {
+        const msg = createError.message || "";
+        if (!/already exists|duplicate/i.test(msg)) {
+          throw new Error(
+            `Storage bucket "${MESSAGE_ATTACHMENTS_BUCKET}" missing and could not be created. Create it in Supabase Dashboard > Storage, or set SUPABASE_SERVICE_ROLE_KEY.`
+          );
+        }
+      }
     }
   }
 
@@ -82,12 +94,12 @@ export async function uploadSupportTicketFiles(
   for (let i = 0; i < files.length; i++) {
     const file = files[i];
     const fileExt = file.name.split(".").pop() || "bin";
-    const fileName = `${ticketId}/${userId}/${timestamp}-${i}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    const fileName = `${SUPPORT_TICKET_ATTACHMENTS_PATH_PREFIX}/${ticketId}/${userId}/${timestamp}-${i}-${Math.random().toString(36).substring(7)}.${fileExt}`;
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
     const { error: uploadError } = await client.storage
-      .from(SUPPORT_TICKET_ATTACHMENTS_BUCKET)
+      .from(MESSAGE_ATTACHMENTS_BUCKET)
       .upload(fileName, buffer, {
         contentType: file.type,
         cacheControl: "3600",
@@ -96,12 +108,18 @@ export async function uploadSupportTicketFiles(
 
     if (uploadError) {
       console.error(`Support ticket upload failed for ${file.name}:`, uploadError);
+      const msg = String((uploadError as { message?: string }).message ?? uploadError);
+      if (/bucket|not found/i.test(msg)) {
+        throw new Error(
+          `Storage bucket "${MESSAGE_ATTACHMENTS_BUCKET}" is missing. Create it in Supabase Dashboard (same bucket as chat attachments).`
+        );
+      }
       continue;
     }
 
     const {
       data: { publicUrl },
-    } = client.storage.from(SUPPORT_TICKET_ATTACHMENTS_BUCKET).getPublicUrl(fileName);
+    } = client.storage.from(MESSAGE_ATTACHMENTS_BUCKET).getPublicUrl(fileName);
 
     if (publicUrl) {
       uploaded.push({ url: publicUrl, type: file.type, name: file.name, size: file.size });

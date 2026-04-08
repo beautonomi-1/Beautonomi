@@ -19,11 +19,12 @@ type AccountStatus = {
 export function AccountStatusGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { session, signOut } = useAuth();
+  const userId = session?.user?.id ?? null;
   const [checked, setChecked] = useState(false);
   const didCheck = useRef(false);
 
   useEffect(() => {
-    if (!session) {
+    if (!userId) {
       didCheck.current = false;
       setChecked(true);
       return;
@@ -88,7 +89,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     return () => {
       cancelled = true;
     };
-  }, [session, signOut, router]);
+  }, [userId, signOut, router]);
 
   if (!session) return <>{children}</>;
   if (!checked) return null;
