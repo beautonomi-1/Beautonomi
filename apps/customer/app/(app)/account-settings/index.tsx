@@ -96,8 +96,15 @@ export default function AccountSettingsScreen() {
     getAnalyticsClient()?.track("share_app", { source: "account_settings" });
     try {
       const res = await api.get<{ referral_link?: string }>("/api/me/referrals");
+      if (res.error) {
+        await Share.share({
+          message: `Book beauty services on Beautonomi: ${APP_URL}`,
+          title: "Beautonomi",
+        });
+        return;
+      }
       const link = res.data?.referral_link;
-      if (link && !res.error) {
+      if (link) {
         await Share.share({
           message: `Join me on Beautonomi and we both earn rewards! Use my link: ${link}`,
           title: "Join Beautonomi",

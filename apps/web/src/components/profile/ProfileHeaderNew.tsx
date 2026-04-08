@@ -42,13 +42,21 @@ export default function ProfileHeaderNew({ user, onUpdate }: ProfileHeaderProps)
   const memberSince = new Date(user.created_at);
 
   useEffect(() => {
-    // Load loyalty points
-    fetcher.get<{ data: { points_balance: number } }>("/api/me/loyalty")
-      .then(res => setLoyaltyPoints(res.data.points_balance))
-      .catch(() => {
-        // Silently fail - loyalty points are optional
-        setLoyaltyPoints(null);
-      });
+    const load = () => {
+      fetcher.get<{ data: { points_balance: number } }>("/api/me/loyalty", {
+        staleTimeMs: 0,
+      })
+        .then((res) => setLoyaltyPoints(res.data.points_balance))
+        .catch(() => {
+          setLoyaltyPoints(null);
+        });
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(() => load(), { timeout: 2000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(load, 0);
+    return () => window.clearTimeout(t);
   }, []);
 
   const quickActions: QuickActionBadge[] = [

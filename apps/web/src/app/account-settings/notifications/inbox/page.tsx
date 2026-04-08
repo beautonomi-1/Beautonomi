@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
 import AuthGuard from "@/components/auth/auth-guard";
 import Link from "next/link";
+import { deriveCustomerNotificationHref } from "@/lib/customer/derive-customer-notification-url";
 
 interface Notification {
   id: string;
@@ -184,10 +185,10 @@ function NotificationsInbox() {
       }
     }
 
-    const link = notification.link ?? notification.action_url;
+    const href = deriveCustomerNotificationHref(notification);
     const data = notification.data ?? notification.metadata ?? {};
-    if (link) {
-      router.push(link);
+    if (href) {
+      router.push(href);
     } else if ((data as Record<string, unknown>).conversation_id) {
       router.push(`/account-settings/messages?conversation=${(data as Record<string, unknown>).conversation_id}`);
     } else if ((data as Record<string, unknown>).booking_id) {

@@ -31,7 +31,7 @@ export default function FloatingProgressOrbit({
   const gradientColor = getGradientColor();
 
   return (
-    <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8">
+    <div className="backdrop-blur-md bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8">
       <div className="flex flex-col md:flex-row gap-6 md:gap-8">
         {/* Progress Ring */}
         <div className="flex-shrink-0 flex items-center justify-center">
@@ -62,7 +62,7 @@ export default function FloatingProgressOrbit({
                 strokeDasharray={circumference}
                 initial={{ strokeDashoffset: circumference }}
                 animate={{ strokeDashoffset: offset }}
-                transition={{ duration: 1, ease: "easeOut" }}
+                transition={{ duration: 0.28, ease: "easeOut" }}
                 className="drop-shadow-sm"
               />
             </svg>
@@ -96,7 +96,7 @@ export default function FloatingProgressOrbit({
                       key={item.id}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.1 }}
+                      transition={{ delay: index * 0.03 }}
                       whileHover={{ scale: 1.02, x: 4 }}
                       whileTap={{ scale: 0.98 }}
                       onClick={() => onItemClick?.(item.id)}

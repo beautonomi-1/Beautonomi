@@ -30,7 +30,6 @@ const UpcomingTalentSection = ({
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation } = useUserLocation();
   const prevInitialProvidersRef = useRef(initialProviders);
-  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
     if (!initialHydrated) return;
@@ -38,13 +37,6 @@ const UpcomingTalentSection = ({
     prevInitialProvidersRef.current = initialProviders;
     setProviders(initialProviders ?? []);
   }, [initialHydrated, initialProviders]);
-
-  useEffect(() => {
-    if (prevCategoryRef.current === categorySlug) return;
-    prevCategoryRef.current = categorySlug;
-    setProviders([]);
-    setIsLoading(true);
-  }, [categorySlug]);
 
   useEffect(() => {
     let cancelled = false;

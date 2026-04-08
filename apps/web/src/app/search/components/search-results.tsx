@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -8,44 +8,12 @@ import Pagination from "@/components/ui/pagination";
 import FilterBar from "@/components/ui/filter-bar";
 import ProviderCard from "@/app/home/components/provider-card-dynamic";
 import type { SearchResult, Category } from "@/types/beautonomi";
-import { Map, List, Search } from "lucide-react";
+import { Map, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type mapboxgl from "mapbox-gl";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
-
-/** Stable component — do not define inline inside SearchResults or the input remounts every render and loses focus on mobile. */
-function SearchQueryBar(props: {
-  queryInput: string;
-  onQueryChange: (value: string) => void;
-  onApply: () => void;
-}) {
-  const { queryInput, onQueryChange, onApply } = props;
-  return (
-    <div className="mb-6 flex flex-col sm:flex-row gap-2 sm:items-center">
-      <div className="relative flex-1 min-w-0">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 pointer-events-none" />
-        <Input
-          type="search"
-          value={queryInput}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              onApply();
-            }
-          }}
-          placeholder="Search by provider name or keywords…"
-          className="pl-10 h-11 bg-white border-gray-200"
-          aria-label="Search providers"
-        />
-      </div>
-      <Button type="button" onClick={onApply} className="shrink-0 h-11 px-6">
-        Search
-      </Button>
-    </div>
-  );
-}
+import { useUserLocation } from "@/hooks/useUserLocation";
+import { SearchQueryBarWithSuggestions } from "./search-query-bar";
 
 interface SearchResultsProps {
   initialResults?: SearchResult;
@@ -70,8 +38,22 @@ export default function SearchResults({
   );
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
+  const { location: userLocation } = useUserLocation();
   const qFromUrl = searchParams.get("q") || searchParams.get("query") || "";
   const [queryInput, setQueryInput] = useState(qFromUrl);
+
+  const buildSearchApiQuery = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (
+      !params.has("lat") &&
+      userLocation?.latitude != null &&
+      userLocation?.longitude != null
+    ) {
+      params.set("lat", String(userLocation.latitude));
+      params.set("lng", String(userLocation.longitude));
+    }
+    return params.toString();
+  }, [searchParams, userLocation?.latitude, userLocation?.longitude]);
 
   useEffect(() => {
     setQueryInput(qFromUrl);
@@ -135,15 +117,14 @@ export default function SearchResults({
     setSelectedFilters(filters);
   }, [searchParams]);
 
-  // Fetch results when filters change
+  // Fetch results when filters change; merge saved user location for distance_km on cards
   useEffect(() => {
     const fetchResults = async () => {
       try {
         setIsLoading(true);
         setError(null);
 
-        // Build query string from search params
-        const queryString = searchParams.toString();
+        const queryString = buildSearchApiQuery();
         const response = await fetcher.get<{
           data: SearchResult;
           error: null;
@@ -167,7 +148,7 @@ export default function SearchResults({
     if (!initialResults) {
       fetchResults();
     }
-  }, [searchParams, initialResults]);
+  }, [searchParams, initialResults, buildSearchApiQuery]);
 
   // Initialize Mapbox map when switching to map view (token from /api/public/directions-config)
   useEffect(() => {
@@ -278,7 +259,11 @@ export default function SearchResults({
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
+        <SearchQueryBarWithSuggestions
+          queryInput={queryInput}
+          onQueryChange={setQueryInput}
+          onApply={applySearchQuery}
+        />
         <LoadingTimeout loadingMessage="Searching providers..." />
       </div>
     );
@@ -287,7 +272,11 @@ export default function SearchResults({
   if (error) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
+        <SearchQueryBarWithSuggestions
+          queryInput={queryInput}
+          onQueryChange={setQueryInput}
+          onApply={applySearchQuery}
+        />
         <EmptyState
           title="Search failed"
           description={error}
@@ -303,7 +292,11 @@ export default function SearchResults({
   if (!results || results.providers.length === 0) {
     return (
       <div className="container mx-auto px-4 py-8">
-        <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
+        <SearchQueryBarWithSuggestions
+          queryInput={queryInput}
+          onQueryChange={setQueryInput}
+          onApply={applySearchQuery}
+        />
         <FilterBar
           filters={[
             {
@@ -345,7 +338,11 @@ export default function SearchResults({
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <SearchQueryBar queryInput={queryInput} onQueryChange={setQueryInput} onApply={applySearchQuery} />
+      <SearchQueryBarWithSuggestions
+        queryInput={queryInput}
+        onQueryChange={setQueryInput}
+        onApply={applySearchQuery}
+      />
       {/* Filters and View Toggle */}
       <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div className="flex-1">

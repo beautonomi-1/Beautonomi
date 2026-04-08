@@ -95,13 +95,21 @@ export async function GET(request: NextRequest) {
     const providers = Array.from(providerMap.values()).slice(0, Math.ceil(data.limit / 3));
     const providersError = providersByNameError || providersByDescError;
 
-    // Search categories
+    // Search legacy service categories (tenant catalog)
     const { data: categories, error: categoriesError } = await supabase
       .from('service_categories')
       .select('id, name, slug')
       .ilike('name', `%${searchTerm}%`)
       .eq('is_active', true)
       .limit(Math.ceil(data.limit / 3));
+
+    // Global marketplace categories (same slugs as home / search filters)
+    const { data: globalCategories, error: globalCategoriesError } = await supabase
+      .from('global_service_categories')
+      .select('id, name, slug')
+      .eq('is_active', true)
+      .ilike('name', `%${searchTerm}%`)
+      .limit(Math.ceil(data.limit / 2));
 
     // Log errors with more detail
     if (servicesError) {
@@ -152,14 +160,35 @@ export async function GET(request: NextRequest) {
       });
     });
 
-    // Add category suggestions (include slug for search filter)
-    (categories || []).forEach((category: any) => {
+    const seenCategorySlugs = new Set<string>();
+
+    // Add global category suggestions first (search filter parity with home)
+    (globalCategories || []).forEach((category: { id: string; name: string; slug: string }) => {
+      const slug = category.slug?.trim();
+      if (!slug || seenCategorySlugs.has(slug)) return;
+      seenCategorySlugs.add(slug);
       suggestions.push({
         type: 'category',
         id: category.id,
         name: category.name,
-        slug: category.slug,
-        url: `/category/${category.slug}`,
+        slug,
+        url: `/search?category=${encodeURIComponent(slug)}`,
+      });
+    });
+
+    // Legacy service categories — link to search with category slug when present
+    (categories || []).forEach((category: { id: string; name: string; slug?: string | null }) => {
+      const slug = category.slug?.trim();
+      if (slug && seenCategorySlugs.has(slug)) return;
+      if (slug) seenCategorySlugs.add(slug);
+      suggestions.push({
+        type: 'category',
+        id: category.id,
+        name: category.name,
+        slug: slug || undefined,
+        url: slug
+          ? `/search?category=${encodeURIComponent(slug)}`
+          : `/search?q=${encodeURIComponent(category.name)}`,
       });
     });
 

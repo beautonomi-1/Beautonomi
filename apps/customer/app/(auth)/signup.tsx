@@ -25,7 +25,7 @@ import { RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 import { haptic } from "@/lib/haptics";
 import { api } from "@/lib/api-client";
-import { stashPostOnboardingHref } from "@/lib/post-onboarding-redirect";
+import { navigateAfterNewCustomerSignup } from "@/lib/customer-auth-routing";
 import { trackSignUp } from "@/lib/analytics";
 import { useTranslation, supportedLanguages, SIGNUP_SOURCE_OPTIONS } from "@beautonomi/i18n";
 import { changeLanguage } from "@/lib/i18n";
@@ -239,8 +239,7 @@ export default function SignupScreen() {
         await AsyncStorage.removeItem(REFERRAL_REF_KEY);
       }
       haptic.success();
-      await stashPostOnboardingHref(params.return_to);
-      router.replace("/(app)/onboarding");
+      await navigateAfterNewCustomerSignup(params.return_to);
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Signup failed");
     } finally {
@@ -260,8 +259,7 @@ export default function SignupScreen() {
       }
     } else {
       trackSignUp(provider);
-      await stashPostOnboardingHref(params.return_to);
-      router.replace("/(app)/onboarding" as never);
+      await navigateAfterNewCustomerSignup(params.return_to);
     }
   }
 

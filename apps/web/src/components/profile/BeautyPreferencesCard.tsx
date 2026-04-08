@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ChevronDown,
   ChevronUp,
@@ -117,10 +117,11 @@ export default function BeautyPreferencesCard({
   };
 
   return (
-    <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl overflow-hidden">
+    <div className="bg-white border border-zinc-200 shadow-sm rounded-2xl overflow-hidden">
       <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-6 flex items-center justify-between hover:bg-white/40 transition-colors"
+        className="w-full p-6 flex items-center justify-between hover:bg-zinc-50/80 transition-colors"
         aria-expanded={isOpen}
       >
         <h3 className="text-lg font-semibold tracking-tight text-zinc-900">
@@ -133,16 +134,8 @@ export default function BeautyPreferencesCard({
         )}
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="overflow-hidden"
-          >
-            <div className="px-6 pb-6 space-y-6 border-t border-white/40">
+      {isOpen ? (
+            <div className="px-6 pb-6 space-y-6 border-t border-zinc-100">
               {/* Info Banner */}
               <div className="flex items-start gap-3 p-4 bg-blue-50/80 border border-blue-200/50 rounded-xl">
                 <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
@@ -158,23 +151,22 @@ export default function BeautyPreferencesCard({
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {HAIR_TYPES.map((type) => (
-                    <motion.button
+                    <button
+                      type="button"
                       key={type.value}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
                       onClick={() => setFormData({ ...formData, hair_type: type.value })}
                       className={`
-                        p-4 rounded-xl border-2 transition-all
+                        p-4 rounded-xl border-2 transition-all active:scale-[0.98]
                         ${
                           formData.hair_type === type.value
                               ? "bg-[#FF0077] text-white border-[#FF0077] shadow-lg"
-                              : "bg-white/60 border-zinc-200 hover:border-zinc-300 text-zinc-700"
+                              : "bg-white border-zinc-200 hover:border-zinc-300 text-zinc-700"
                         }
                       `}
                     >
                       <div className="text-2xl mb-1">{type.icon}</div>
                       <div className="text-xs font-medium">{type.label}</div>
-                    </motion.button>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -186,23 +178,22 @@ export default function BeautyPreferencesCard({
                 </label>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
                   {SKIN_TYPES.map((type) => (
-                    <motion.button
+                    <button
+                      type="button"
                       key={type.value}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
                       onClick={() => setFormData({ ...formData, skin_type: type.value })}
                       className={`
-                        p-4 rounded-xl border-2 transition-all
+                        p-4 rounded-xl border-2 transition-all active:scale-[0.98]
                         ${
                           formData.skin_type === type.value
                               ? "bg-[#FF0077] text-white border-[#FF0077] shadow-lg"
-                              : "bg-white/60 border-zinc-200 hover:border-zinc-300 text-zinc-700"
+                              : "bg-white border-zinc-200 hover:border-zinc-300 text-zinc-700"
                         }
                       `}
                     >
                       <div className="text-2xl mb-1">{type.icon}</div>
                       <div className="text-xs font-medium">{type.label}</div>
-                    </motion.button>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -263,22 +254,21 @@ export default function BeautyPreferencesCard({
                   {PREFERRED_TIMES.map((time) => {
                     const isSelected = (formData.preferred_times || []).includes(time.value);
                     return (
-                      <motion.button
+                      <button
+                        type="button"
                         key={time.value}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
                         onClick={() => togglePreferredTime(time.value)}
                         className={`
-                          px-4 py-2 rounded-full text-sm font-medium border-2 transition-all
+                          px-4 py-2 rounded-full text-sm font-medium border-2 transition-all active:scale-[0.98]
                           ${
                             isSelected
                               ? "bg-zinc-900 text-white border-zinc-900 shadow-lg"
-                              : "bg-white/60 text-zinc-700 border-zinc-200 hover:border-zinc-300"
+                              : "bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300"
                           }
                         `}
                       >
                         {time.label}
-                      </motion.button>
+                      </button>
                     );
                   })}
                 </div>
@@ -293,22 +283,21 @@ export default function BeautyPreferencesCard({
                   {DAYS_OF_WEEK.map((day) => {
                     const isSelected = (formData.preferred_days || []).includes(day.value);
                     return (
-                      <motion.button
+                      <button
+                        type="button"
                         key={day.value}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
                         onClick={() => togglePreferredDay(day.value)}
                         className={`
-                          px-3 py-2 rounded-lg text-xs font-medium border-2 transition-all
+                          px-3 py-2 rounded-lg text-xs font-medium border-2 transition-all active:scale-[0.98]
                           ${
                             isSelected
                               ? "bg-zinc-900 text-white border-zinc-900 shadow-lg"
-                              : "bg-white/60 text-zinc-700 border-zinc-200 hover:border-zinc-300"
+                              : "bg-white text-zinc-700 border-zinc-200 hover:border-zinc-300"
                           }
                         `}
                       >
                         {day.label}
-                      </motion.button>
+                      </button>
                     );
                   })}
                 </div>
@@ -327,9 +316,7 @@ export default function BeautyPreferencesCard({
                 </div>
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      ) : null}
     </div>
   );
 }
@@ -390,12 +377,8 @@ function AppointmentStyleToggle({
           ))}
         </div>
       </div>
-      {showOther && (
-        <motion.div
-          initial={{ opacity: 0, height: 0 }}
-          animate={{ opacity: 1, height: "auto" }}
-          exit={{ opacity: 0, height: 0 }}
-        >
+      {showOther ? (
+        <div className="pt-1">
           <input
             type="text"
             value={otherValue}
@@ -406,8 +389,8 @@ function AppointmentStyleToggle({
             placeholder="Describe your preference"
             className="w-full px-4 py-2 border border-zinc-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#FF0077] text-sm"
           />
-        </motion.div>
-      )}
+        </div>
+      ) : null}
     </div>
   );
 }

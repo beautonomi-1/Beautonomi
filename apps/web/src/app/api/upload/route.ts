@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { getStorageServiceClientOrUser } from "@/lib/supabase/storage-service-client";
 
 /** Must match `405_storage_product_images_bucket.sql` (not the legacy non-existent `public` bucket). */
 const PRODUCT_UPLOAD_BUCKET =
@@ -16,6 +17,7 @@ export async function POST(request: NextRequest) {
     await requireRoleInApi(['provider_owner', 'provider_staff', 'customer', 'superadmin'], request);
 
     const supabase = await getSupabaseServer();
+    const storageClient = getStorageServiceClientOrUser(supabase);
     const formData = await request.formData();
     
     const file = formData.get("file") as File;
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(arrayBuffer);
 
     // Upload to Supabase Storage
-    const { data: _uploadData, error: uploadError } = await supabase.storage
+    const { data: _uploadData, error: uploadError } = await storageClient.storage
       .from(PRODUCT_UPLOAD_BUCKET)
       .upload(filePath, buffer, {
         contentType: file.type,
@@ -65,7 +67,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get public URL
-    const { data: urlData } = supabase.storage
+    const { data: urlData } = storageClient.storage
       .from(PRODUCT_UPLOAD_BUCKET)
       .getPublicUrl(filePath);
 

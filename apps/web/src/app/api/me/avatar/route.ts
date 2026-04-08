@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  getStorageServiceClientOrUser,
+  hasSupabaseStorageServiceRole,
+} from "@/lib/supabase/storage-service-client";
 
 /**
  * POST /api/me/avatar
@@ -11,22 +14,7 @@ export async function POST(request: NextRequest) {
   try {
     const { user } = await requireRoleInApi(['customer', 'provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
-    
-    // For storage operations, try using service role if available (bypasses RLS)
-    // Otherwise use the regular client with user context
-    let storageClient = supabase;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (serviceRoleKey) {
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      if (supabaseUrl) {
-        storageClient = createClient(supabaseUrl, serviceRoleKey, {
-          auth: {
-            autoRefreshToken: false,
-            persistSession: false,
-          },
-        });
-      }
-    }
+    const storageClient = getStorageServiceClientOrUser(supabase);
 
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -73,16 +61,19 @@ export async function POST(request: NextRequest) {
       userId: user.id,
     });
 
-    // Check if bucket exists and is accessible
-    const { data: buckets, error: bucketError } = await storageClient.storage.listBuckets();
-    if (bucketError) {
-      console.error('Error listing buckets:', bucketError);
-    } else {
-      const avatarsBucket = buckets?.find(b => b.name === 'avatars');
-      if (!avatarsBucket) {
-        throw new Error('Storage bucket "avatars" not found. Please create it in Supabase Dashboard > Storage.');
+    // Only trust listBuckets when using service role; anon/session clients often return an empty list.
+    if (hasSupabaseStorageServiceRole()) {
+      const { data: buckets, error: bucketError } = await storageClient.storage.listBuckets();
+      if (bucketError) {
+        console.warn('[avatar] listBuckets:', bucketError.message);
+      } else {
+        const avatarsBucket = buckets?.find((b) => b.name === 'avatars');
+        if (!avatarsBucket) {
+          throw new Error(
+            'Storage bucket "avatars" not found. Please create it in Supabase Dashboard > Storage.'
+          );
+        }
       }
-      console.log('Avatars bucket found:', avatarsBucket);
     }
 
     // Upload to Supabase Storage

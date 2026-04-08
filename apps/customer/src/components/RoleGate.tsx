@@ -18,30 +18,46 @@ export function RoleGate({ children }: RoleGateProps) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!user) return;
+    const uid = user?.id;
+    if (!uid) return;
 
     let cancelled = false;
-    (async () => {
+
+    const fetchRole = async (attempt: number): Promise<void> => {
       const res = await api.get<{ role: UserRole }>("/api/me/role");
       if (cancelled) return;
+
+      if (res.error) {
+        const status = (res.error as { status?: number }).status;
+        if ((status === 401 || status === 403) && attempt < 4) {
+          await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+          return fetchRole(attempt + 1);
+        }
+        setLoading(false);
+        setError(true);
+        return;
+      }
+
       setLoading(false);
-
-      const raw = res.data as any;
-      const data = raw?.data ?? raw;
-      const roleFromApi = data?.role;
-
-      if (res.error || !roleFromApi) {
+      const roleFromApi = res.data?.role;
+      if (!roleFromApi) {
         setError(true);
         return;
       }
       if (!ALLOWED_ROLES.includes(roleFromApi)) {
         setBlocked(true);
       }
-    })();
+    };
+
+    setLoading(true);
+    setError(false);
+    setBlocked(false);
+    void fetchRole(0);
+
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [user?.id]);
 
   if (!user) return <>{children}</>;
   if (loading) {

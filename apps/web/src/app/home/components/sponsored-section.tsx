@@ -33,7 +33,6 @@ export default function SponsoredSection({
   const [isLoading, setIsLoading] = useState(() => enabled && !initialHydrated);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const prevInitialProvidersRef = useRef(initialProviders);
-  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
     if (!initialHydrated) return;
@@ -41,13 +40,6 @@ export default function SponsoredSection({
     prevInitialProvidersRef.current = initialProviders;
     setProviders(initialProviders ?? []);
   }, [initialHydrated, initialProviders]);
-
-  useEffect(() => {
-    if (prevCategoryRef.current === categorySlug) return;
-    prevCategoryRef.current = categorySlug;
-    setProviders([]);
-    setIsLoading(true);
-  }, [categorySlug]);
 
   useEffect(() => {
     if (!enabled) return;

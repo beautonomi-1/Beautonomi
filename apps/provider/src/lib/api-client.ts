@@ -41,7 +41,14 @@ async function getAccessToken(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
   const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  let token = data.session?.access_token ?? null;
+  // Right after login on iOS, getSession() can briefly return null while storage catches up;
+  // refreshSession() usually yields a valid token for /api/me/portal.
+  if (!token) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    token = refreshed.session?.access_token ?? null;
+  }
+  return token;
 }
 
 // Lazy init so baseUrl is resolved at first request time (window is definitely ready)

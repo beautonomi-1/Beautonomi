@@ -27,6 +27,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAuth } from "@/providers/AuthProvider";
+import { deriveCustomerNotificationHref } from "@/lib/customer/derive-customer-notification-url";
 
 interface Notification {
   id: string;
@@ -177,11 +178,11 @@ export function CustomerNotificationsDropdown() {
       }
     }
 
-    const link = notification.link ?? notification.action_url;
+    const href = deriveCustomerNotificationHref(notification);
     const data = notification.data ?? notification.metadata ?? {};
-    if (link) {
+    if (href) {
       setOpen(false);
-      router.push(link);
+      router.push(href);
     } else if (data.conversation_id) {
       setOpen(false);
       router.push(`/account-settings/messages?conversation=${data.conversation_id}`);

@@ -88,7 +88,10 @@ export default function AuthCallbackScreen() {
           } else {
             // Root index runs portal + provider profile check → onboarding when no profile (same as email login).
             setTimeout(() => {
-              if (!cancelled) router.replace("/" as never);
+              if (cancelled) return;
+              void supabase.auth.getSession().finally(() => {
+                if (!cancelled) router.replace("/" as never);
+              });
             }, 50);
           }
         }

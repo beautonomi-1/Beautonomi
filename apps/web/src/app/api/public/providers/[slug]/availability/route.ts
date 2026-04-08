@@ -157,7 +157,9 @@ export async function GET(
         .eq("provider_id", provider.id)
         .eq("is_active", true);
       if (!staffListError && allStaff) {
-        staffList = allStaff.map((s) => ({ id: s.id }));
+        staffList = allStaff
+          .map((s) => ({ id: s.id }))
+          .sort((a, b) => a.id.localeCompare(b.id));
       }
     }
 

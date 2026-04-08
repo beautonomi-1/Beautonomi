@@ -14,27 +14,28 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const service = searchParams.get("service") ?? "";
   const app = searchParams.get("app") ?? "";
-  const tenant = await resolveTenantFromRequest(request);
-  const tenantId = tenant?.id ?? "";
+  let tenantId = "";
+  try {
+    const tenant = await resolveTenantFromRequest(request);
+    tenantId = tenant?.id ?? "";
+  } catch {
+    tenantId = "";
+  }
 
   try {
     const result = await getCachedThirdPartyConfig(service, app, tenantId);
     return NextResponse.json(result);
   } catch (error) {
     console.error("Error fetching third-party config:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: { message: "Failed to fetch third-party configuration", code: "INTERNAL_ERROR" },
-      },
-      { status: 500 }
-    );
+    // Mobile clients treat 500 as noisy Sentry events; empty config degrades gracefully (no push/maps until fixed).
+    return NextResponse.json({ data: {}, error: null });
   }
 }
 
 async function getCachedThirdPartyConfig(service: string, app: string, tenantId: string) {
   return unstable_cache(
     async () => {
+      try {
       const supabase = await getSupabaseServer();
       let tenantSettings: { settings?: unknown } | null = null;
       if (tenantId) {
@@ -141,6 +142,10 @@ async function getCachedThirdPartyConfig(service: string, app: string, tenantId:
       }
 
       return { data: {}, error: null };
+      } catch (inner) {
+        console.error("third-party-config cache callback:", inner);
+        return { data: {}, error: null };
+      }
     },
     ["third-party-config-public", service, app, tenantId || "global"],
     { revalidate: 3600, tags: ["platform-settings"] }

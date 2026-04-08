@@ -20,6 +20,15 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { ProviderCard } from "@/components/ProviderCard";
 import type { SearchResult, Category } from "@/types/api";
+import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
+
+type Suggestion = {
+  type: "service" | "provider" | "category";
+  id: string;
+  name: string;
+  url?: string;
+  slug?: string;
+};
 
 export default function SearchScreen() {
   useScreenTracking("Search");
@@ -34,6 +43,10 @@ export default function SearchScreen() {
   const [error, setError] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
   const searchRef = useRef<((isRefresh?: boolean, queryOverride?: string, categoryOverride?: string) => Promise<void>) | null>(null);
+  const { selectedAddress } = useSelectedAddress();
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync from nav params when they change (e.g. coming from InlineSearch)
   useEffect(() => {
@@ -67,6 +80,15 @@ export default function SearchScreen() {
         if (cat) searchParams.set("category", cat);
         searchParams.set("limit", "20");
         searchParams.set("page", "1");
+        if (
+          !searchParams.has("lat") &&
+          selectedAddress &&
+          typeof selectedAddress.latitude === "number" &&
+          typeof selectedAddress.longitude === "number"
+        ) {
+          searchParams.set("lat", String(selectedAddress.latitude));
+          searchParams.set("lng", String(selectedAddress.longitude));
+        }
 
         const res = await api.get<SearchResult>(`/api/public/search?${searchParams.toString()}`);
 
@@ -85,7 +107,7 @@ export default function SearchScreen() {
         setRefreshing(false);
       }
     },
-    [query, category]
+    [query, category, selectedAddress?.latitude, selectedAddress?.longitude]
   );
   searchRef.current = search;
 
@@ -101,6 +123,60 @@ export default function SearchScreen() {
   }, [params.q, params.category]);
 
   const onRefresh = () => search(true);
+
+  const fetchSuggestions = useCallback(async (text: string) => {
+    const t = text.trim();
+    if (t.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    setSuggestionsLoading(true);
+    try {
+      const res = await api.get<{ suggestions?: Suggestion[]; data?: { suggestions?: Suggestion[] } }>(
+        `/api/public/search/suggestions?q=${encodeURIComponent(t)}&limit=10`
+      );
+      const raw = res.data as { suggestions?: Suggestion[]; data?: { suggestions?: Suggestion[] } } | undefined;
+      const list = raw?.suggestions ?? raw?.data?.suggestions ?? [];
+      setSuggestions(Array.isArray(list) ? list : []);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }, []);
+
+  const onQueryChange = useCallback(
+    (text: string) => {
+      setQuery(text);
+      if (suggestionDebounceRef.current) clearTimeout(suggestionDebounceRef.current);
+      suggestionDebounceRef.current = setTimeout(() => fetchSuggestions(text), 220);
+    },
+    [fetchSuggestions]
+  );
+
+  const onSuggestionPress = useCallback((s: Suggestion) => {
+    setSuggestions([]);
+    if (s.type === "category" && s.slug) {
+      setCategory(s.slug);
+      setQuery("");
+      void searchRef.current?.(false, "", s.slug);
+      return;
+    }
+    if (s.url?.includes("category=")) {
+      const qIdx = s.url.indexOf("?");
+      if (qIdx >= 0) {
+        const cat = new URLSearchParams(s.url.slice(qIdx + 1)).get("category");
+        if (cat) {
+          setCategory(cat);
+          setQuery("");
+          void searchRef.current?.(false, "", cat);
+          return;
+        }
+      }
+    }
+    setQuery(s.name);
+    void searchRef.current?.(false, s.name, category);
+  }, [category]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={["top"]}>

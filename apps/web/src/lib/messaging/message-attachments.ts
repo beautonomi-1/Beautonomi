@@ -44,6 +44,10 @@ export function isStorageBackedChatAttachment(att: Record<string, unknown>): boo
   }
   const url = String(att.url || "");
   if (!url) return false;
+  // Support ticket files live in the same bucket under `support-tickets/...` — not chat retention scope
+  if (url.includes(`/${MESSAGE_ATTACHMENTS_BUCKET}/support-tickets/`) || url.includes("/message-attachments/support-tickets/")) {
+    return false;
+  }
   return url.includes(`/${MESSAGE_ATTACHMENTS_BUCKET}/`) || url.includes("/message-attachments/");
 }
 

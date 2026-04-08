@@ -17,7 +17,8 @@ import { supabase } from "@/lib/supabase/client";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention-sync";
 import { APP_URL } from "@/config/public-env";
 import { setSentryUser, clearSentryUser } from "@/lib/sentry";
-import { clearApiCache } from "@/hooks/useApi";
+import { clearApiCache } from "@/lib/api-response-cache";
+import { clearPortalCache } from "@/lib/portal-cache";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
@@ -121,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const prevUserId = lastUserIdRef.current;
       if ((prevUserId && prevUserId !== nextUserId) || event === "SIGNED_OUT") {
         clearApiCache();
+        clearPortalCache();
       }
       lastUserIdRef.current = nextUserId;
       updateSession(newSession);
@@ -330,6 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await supabase.auth.signOut();
       clearApiCache();
+      clearPortalCache();
       if (__DEV__) {
         console.log("[AUTH] signOut supabase done, calling updateSession(null)");
       }
@@ -337,6 +340,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.warn("[AUTH] signOut error", e);
       clearApiCache();
+      clearPortalCache();
       updateSession(null);
     }
   }, [updateSession]);

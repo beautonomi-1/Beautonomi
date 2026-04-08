@@ -135,8 +135,9 @@ export async function computePublicSlugAvailabilitySlots(args: {
   };
 
   if (anyoneMode && activeStaffRows.length > 0) {
+    const sortedStaff = [...activeStaffRows].sort((a, b) => a.id.localeCompare(b.id));
     const perStaff = await Promise.all(
-      activeStaffRows.map(async (s) => ({
+      sortedStaff.map(async (s) => ({
         staffId: s.id,
         slots: await runForStaff(s.id, [s.id]),
       }))

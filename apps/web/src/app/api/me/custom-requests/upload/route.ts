@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { createClient } from "@supabase/supabase-js";
+import {
+  getStorageServiceClientOrUser,
+  hasSupabaseStorageServiceRole,
+} from "@/lib/supabase/storage-service-client";
 
 /**
  * POST /api/me/custom-requests/upload
- * 
+ *
  * Uploads inspiration photos for custom service requests to Supabase Storage.
  * Returns the public URLs that can be used in the custom request.
  */
@@ -46,39 +49,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if storage bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
     const bucketName = "custom-request-attachments";
-    const bucketExists = buckets?.some((b) => b.name === bucketName);
+    const storageClient = getStorageServiceClientOrUser(supabase);
 
-    if (!bucketExists) {
-      // Try to create the bucket (requires admin privileges)
-      const { error: createError } = await supabase.storage.createBucket(bucketName, {
-        public: true,
-        fileSizeLimit: 5242880, // 5MB
-        allowedMimeTypes: allowedTypes,
-      });
-
-      if (createError) {
-        console.error("Failed to create bucket:", createError);
-        throw new Error(
-          'Storage bucket "custom-request-attachments" not found. Please create it in Supabase Dashboard > Storage.'
-        );
+    if (hasSupabaseStorageServiceRole()) {
+      const { data: buckets, error: listErr } = await storageClient.storage.listBuckets();
+      if (listErr) {
+        console.warn("[custom-requests/upload] listBuckets:", listErr.message);
       }
-    }
+      const bucketExists = buckets?.some((b) => b.name === bucketName) ?? false;
 
-    // Use service role client for storage operations (bypasses RLS)
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    
-    let storageClient = supabase;
-    if (serviceRoleKey && supabaseUrl) {
-      storageClient = createClient(supabaseUrl, serviceRoleKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      });
+      if (!bucketExists) {
+        const { error: createError } = await storageClient.storage.createBucket(bucketName, {
+          public: true,
+          fileSizeLimit: 5242880, // 5MB
+          allowedMimeTypes: allowedTypes,
+        });
+
+        if (createError) {
+          const msg = createError.message || "";
+          if (!/already exists|duplicate/i.test(msg)) {
+            console.error("[custom-requests/upload] createBucket:", createError);
+            throw new Error(
+              `Storage bucket "${bucketName}" is missing and could not be created. Create it in Supabase Dashboard > Storage, or set SUPABASE_SERVICE_ROLE_KEY for server uploads.`
+            );
+          }
+        }
+      }
     }
 
     // Upload files to Supabase Storage
@@ -86,19 +83,17 @@ export async function POST(request: NextRequest) {
     const uploadedUrls: string[] = [];
     const timestamp = Date.now();
     const userId = user.id;
+    let firstUploadError: string | null = null;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       const fileExt = file.name.split(".").pop() || "jpg";
-      // Organize by user ID and timestamp for easy management
       const fileName = `${userId}/${timestamp}-${i}-${Math.random().toString(36).substring(7)}.${fileExt}`;
 
-      // Convert File to ArrayBuffer then Buffer
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Upload to Supabase Storage
-      const { data: _uploadData, error: uploadError } = await storageClient.storage
+      const { error: uploadError } = await storageClient.storage
         .from(bucketName)
         .upload(fileName, buffer, {
           contentType: file.type,
@@ -108,11 +103,12 @@ export async function POST(request: NextRequest) {
 
       if (uploadError) {
         console.error(`Failed to upload file ${file.name}:`, uploadError);
-        // Continue with other files, but log the error
+        if (!firstUploadError) {
+          firstUploadError = (uploadError as { message?: string }).message || String(uploadError);
+        }
         continue;
       }
 
-      // Get public URL
       const {
         data: { publicUrl },
       } = storageClient.storage.from(bucketName).getPublicUrl(fileName);
@@ -123,7 +119,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (uploadedUrls.length === 0) {
-      return errorResponse("Failed to upload any files", "UPLOAD_ERROR", 500);
+      const hint =
+        firstUploadError && /bucket|not found/i.test(firstUploadError)
+          ? ` (${firstUploadError}). Ensure bucket "${bucketName}" exists and SUPABASE_SERVICE_ROLE_KEY is set on the web app.`
+          : firstUploadError
+            ? ` (${firstUploadError})`
+            : "";
+      return errorResponse(`Failed to upload any files${hint}`, "UPLOAD_ERROR", 500);
     }
 
     return successResponse({

@@ -65,14 +65,14 @@ export async function GET(request: NextRequest) {
         .maybeSingle(), // Use maybeSingle to avoid errors if no address exists
       supabase
         .from("user_verifications")
-        .select("id, status, submitted_at, rejection_reason")
+        .select("id, status, submitted_at, rejection_reason, document_url, document_type")
         .eq("user_id", user.id)
         .order("submitted_at", { ascending: false })
         .limit(1)
         .maybeSingle(), // Use maybeSingle to avoid errors if no verification exists
       supabase
         .from("user_profiles")
-        .select("beauty_preferences, privacy_settings, business_preferences")
+        .select("beauty_preferences, privacy_settings, business_preferences, about, interests")
         .eq("user_id", user.id)
         .maybeSingle(),
     ]);
@@ -121,6 +121,11 @@ export async function GET(request: NextRequest) {
       identity_verification_status: verificationStatus,
       identity_verification_submitted_at: verification?.submitted_at ?? null,
       identity_verification_rejection_reason: verification?.rejection_reason ?? null,
+      identity_verification_document_url: verification?.document_url ?? null,
+      identity_verification_document_type: verification?.document_type ?? null,
+      identity_verification_id: verification?.id ?? null,
+      about: profileData?.about ?? null,
+      interests: profileData?.interests ?? null,
       beauty_preferences: profileData?.beauty_preferences || {},
       privacy_settings: profileData?.privacy_settings || { services_booked_visible: false },
       business_preferences: profileData?.business_preferences || { email: null, enabled: false },

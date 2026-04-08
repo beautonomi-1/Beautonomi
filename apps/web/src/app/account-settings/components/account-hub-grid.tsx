@@ -105,7 +105,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
                   <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
                 </div>
               ) : (
-                <Link href={card.link} className="block">
+                <Link href={card.link} prefetch={embeddedInProfile ? false : undefined} className="block">
                   <div
                     className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-all duration-200 active:scale-[0.98] h-full ${
                       card.link === "/account-settings/loyalty"
@@ -122,7 +122,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
             </div>
           ))}
           {user && user.role === "customer" && (
-            <Link href="/provider/onboarding" className="block">
+            <Link href="/provider/onboarding" prefetch={embeddedInProfile ? false : undefined} className="block">
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full">
                 <FaStore className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>

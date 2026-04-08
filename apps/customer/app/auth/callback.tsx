@@ -64,6 +64,8 @@ export default function AuthCallbackScreen() {
           throw new Error("No authentication data received");
         }
 
+        await supabase.auth.getSession();
+
         if (!cancelled) {
           if (isWeb && window.opener) {
             window.close();

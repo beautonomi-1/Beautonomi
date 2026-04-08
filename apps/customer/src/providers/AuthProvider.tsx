@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { Platform } from "react-native";
@@ -27,7 +28,8 @@ import {
   isCompleteSupabaseSmsOtp,
   SUPABASE_AUTH_OTP_LENGTH,
 } from "@/lib/supabase-sms-otp";
-import { clearApiCache } from "@/hooks/useApi";
+import { clearApiCache } from "@/lib/api-response-cache";
+import { clearPortalCache } from "@/lib/portal-cache";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -90,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastUserIdRef = useRef<string | null>(null);
 
   const updateSession = useCallback((newSession: Session | null) => {
     setSession(newSession);
@@ -137,6 +140,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, newSession) => {
+      const nextUserId = newSession?.user?.id ?? null;
+      const prevUserId = lastUserIdRef.current;
+      if ((prevUserId && prevUserId !== nextUserId) || event === "SIGNED_OUT") {
+        clearApiCache();
+        clearPortalCache();
+      }
+      lastUserIdRef.current = nextUserId;
       updateSession(newSession);
       if (event === "SIGNED_OUT") {
         void clearCustomerUserCaches();
@@ -333,10 +343,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await supabase.auth.signOut();
       clearApiCache();
+      clearPortalCache();
       await clearCustomerUserCaches();
       updateSession(null);
     } catch {
       clearApiCache();
+      clearPortalCache();
       await clearCustomerUserCaches();
       updateSession(null);
     }

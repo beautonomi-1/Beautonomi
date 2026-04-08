@@ -6,26 +6,12 @@ import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
+import { getCachedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
 
-const PORTAL_CACHE_MS = 10 * 60 * 1000; // 10 minutes
 const PROFILE_CHECK_DELAY_MS = 400;
 const AUTH_RETRY_DELAY_MS = 600;
 const PORTAL_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
-
-let portalCache: { portal: string; ts: number } | null = null;
-
-function getCachedPortal(): string | null {
-  if (portalCache && Date.now() - portalCache.ts < PORTAL_CACHE_MS) {
-    return portalCache.portal;
-  }
-  portalCache = null;
-  return null;
-}
-
-function setCachedPortal(portal: string) {
-  portalCache = { portal, ts: Date.now() };
-}
 
 export default function Index() {
   const { session, loading, signOut } = useAuth();
@@ -46,7 +32,8 @@ export default function Index() {
       return;
     }
 
-    const cached = getCachedPortal();
+    const uid = session.user.id;
+    const cached = getCachedPortal(uid);
     if (cached === "customer" || cached === "admin") {
       setWrongPortal(cached);
       setPortalState("wrong_app");
@@ -58,30 +45,57 @@ export default function Index() {
     }
 
     let cancelled = false;
+    /** After timeout we assume provider; ignore late /api/me/portal responses so they can't flip to wrong_app. */
+    let portalTimedOut = false;
     setPortalState("loading");
 
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
+      portalTimedOut = true;
       setPortalState("ok"); // assume provider so user isn't stuck
     }, PORTAL_TIMEOUT_MS);
 
-    const t = setTimeout(() => {
+    const applyPortalResult = (portal: string) => {
+      setCachedPortal(uid, portal);
+      if (portal === "customer" || portal === "admin") {
+        setWrongPortal(portal);
+        setPortalState("wrong_app");
+      } else {
+        setPortalState("ok");
+      }
+    };
+
+    const fetchPortal = (attempt: number) => {
       api
-        .get<{ portal?: string }>("/api/me/portal")
+        .get<{ portal?: string; role?: string }>("/api/me/portal")
         .then((res) => {
-          if (cancelled) return;
-          const portal = res.data?.portal ?? "customer";
-          setCachedPortal(portal);
-          if (portal === "customer" || portal === "admin") {
-            setWrongPortal(portal);
-            setPortalState("wrong_app");
-          } else {
+          if (cancelled || portalTimedOut) return;
+          // Critical: on 401/empty data, do NOT default to "customer" — iOS often fires this
+          // before the Bearer session is ready, which falsely showed Wrong app for providers.
+          if (res.error) {
+            const status = (res.error as { status?: number }).status;
+            if ((status === 401 || status === 403) && attempt < 4) {
+              setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
+              return;
+            }
             setPortalState("ok");
+            return;
           }
+          const portal = res.data?.portal;
+          if (!portal) {
+            setPortalState("ok");
+            return;
+          }
+          applyPortalResult(portal);
         })
         .catch(() => {
-          if (!cancelled) setPortalState("ok");
+          if (!cancelled && !portalTimedOut) setPortalState("ok");
         });
+    };
+
+    const t = setTimeout(() => {
+      if (cancelled) return;
+      fetchPortal(0);
     }, PROFILE_CHECK_DELAY_MS);
 
     return () => {
@@ -89,7 +103,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
-  }, [session, loading]);
+  }, [loading, session?.user?.id]);
 
   // Phase 2: profile check (only when portal is ok)
   const runProfileCheck = (isRetry: boolean) => {
@@ -190,7 +204,7 @@ export default function Index() {
       <WrongAppScreen
         portal={wrongPortal}
         onSignOut={() => {
-          portalCache = null;
+          clearPortalCache();
           signOut();
         }}
       />
