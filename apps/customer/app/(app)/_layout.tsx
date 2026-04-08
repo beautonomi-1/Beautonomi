@@ -13,6 +13,11 @@ import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { ONBOARDING_DONE_KEY } from "./onboarding/index";
 import { isScreenshotMode } from "@/config/public-env";
+import {
+  authFlowBreadcrumb,
+  isSentryEnabled,
+  setAuthFlowTags,
+} from "@/lib/sentry";
 
 const CUSTOMER_SCHEME = "customer://";
 const REFERRAL_REF_KEY = "referral_ref";
@@ -148,6 +153,20 @@ export default function AppLayout() {
     const sub = Linking.addEventListener("url", ({ url }) => handleCustomerDeepLink(url));
     return () => sub.remove();
   }, []);
+
+  const sentryLayoutLoggedForUser = useRef<string | null>(null);
+  useEffect(() => {
+    if (!session?.user?.id) {
+      sentryLayoutLoggedForUser.current = null;
+      return;
+    }
+    if (!isSentryEnabled()) return;
+    const uid = session.user.id;
+    if (sentryLayoutLoggedForUser.current === uid) return;
+    sentryLayoutLoggedForUser.current = uid;
+    setAuthFlowTags({ route_group: "(app)" });
+    authFlowBreadcrumb("authenticated_app_layout", { phase: "mount" });
+  }, [session?.user?.id]);
 
   return (
     <MaintenanceGate>

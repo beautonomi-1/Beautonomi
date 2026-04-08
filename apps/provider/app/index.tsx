@@ -7,6 +7,7 @@ import { WrongAppScreen } from "@/components/WrongAppScreen";
 import { Colors } from "@/constants/colors";
 import { APP_URL, isScreenshotMode } from "@/config/public-env";
 import { getCachedPortal, setCachedPortal, clearPortalCache } from "@/lib/portal-cache";
+import { isSentryEnabled, setAuthFlowTags, setAuthGateContext } from "@/lib/sentry";
 
 const PROFILE_CHECK_DELAY_MS = 400;
 const AUTH_RETRY_DELAY_MS = 600;
@@ -138,7 +139,7 @@ export default function Index() {
 
       setHasProfile(false);
       setCheckingProfile(false);
-    }).catch(() => {
+    }).catch((e) => {
       setHasProfile(false);
       setCheckingProfile(false);
       setProfileLoadError(true);
@@ -173,6 +174,31 @@ export default function Index() {
     // runProfileCheck is intentionally omitted to avoid re-running on every identity change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalState, session?.user?.id]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log("[provider index] route gate state", {
+      authLoading: loading,
+      hasSession: !!session,
+      portalState,
+      checkingProfile,
+      hasProfile,
+      profileLoadError,
+    });
+  }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
+
+  useEffect(() => {
+    if (!isSentryEnabled()) return;
+    setAuthFlowTags({ route_group: "root_index" });
+    setAuthGateContext("provider_index", {
+      authLoading: loading,
+      hasSession: !!session,
+      portalState,
+      checkingProfile,
+      hasProfile,
+      profileLoadError,
+    });
+  }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
   // Not logged in: redirect to login immediately (don't show Loading…)
   if (!session) {

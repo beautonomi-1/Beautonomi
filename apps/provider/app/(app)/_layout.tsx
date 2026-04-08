@@ -5,7 +5,7 @@
  * - AccountStatusGuard: signs out and redirects if account is suspended or deactivated.
  * - Every API call from useApi / api uses Bearer token from Supabase; 401 triggers refresh then retry, then sign out so this layout redirects.
  */
-import { Fragment, useEffect, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import { View, Text, ActivityIndicator, Linking, Platform } from "react-native";
 import { Redirect, Stack, useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -20,12 +20,18 @@ import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
+import {
+  authFlowBreadcrumb,
+  isSentryEnabled,
+  setAuthFlowTags,
+} from "@/lib/sentry";
 
 const SUBSCRIPTION_SUCCESS_DEEP_LINK = "provider://subscription/success";
 
 export default function AppLayout() {
   const { session, loading } = useAuth();
   const router = useRouter();
+  const sentryAppReadyLogged = useRef<string | null>(null);
   const stackScreenOptions = useMemo(
     () => ({
       headerShown: false,
@@ -48,6 +54,24 @@ export default function AppLayout() {
     const sub = Linking.addEventListener("url", ({ url }) => handleUrl(url));
     return () => sub.remove();
   }, [router]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    console.log("(app)/_layout auth gate", { authLoading: loading, hasSession: !!session });
+  }, [loading, session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      sentryAppReadyLogged.current = null;
+      return;
+    }
+    if (!isSentryEnabled() || loading) return;
+    const uid = session.user.id;
+    if (sentryAppReadyLogged.current === uid) return;
+    sentryAppReadyLogged.current = uid;
+    setAuthFlowTags({ route_group: "(app)" });
+    authFlowBreadcrumb("authenticated_app_layout", { phase: "session_ready" });
+  }, [loading, session?.user?.id]);
 
   if (loading) {
     return (

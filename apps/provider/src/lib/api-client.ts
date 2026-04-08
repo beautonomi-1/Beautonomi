@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase/client";
 import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
+import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 
 /** Resolve API base URL with strict production safeguards. */
 function getApiBaseUrl(): string {
@@ -38,17 +39,60 @@ function getApiBaseUrl(): string {
 async function getAccessToken(): Promise<string | null> {
   // Validate session with auth server and refresh if expired (getSession() alone does not refresh).
   // Without this, an expired access_token is sent and the API returns "Auth session missing!".
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const { data } = await supabase.auth.getSession();
-  let token = data.session?.access_token ?? null;
-  // Right after login on iOS, getSession() can briefly return null while storage catches up;
-  // refreshSession() usually yields a valid token for /api/me/portal.
-  if (!token) {
-    const { data: refreshed } = await supabase.auth.refreshSession();
-    token = refreshed.session?.access_token ?? null;
+  if (isSentryEnabled()) {
+    authFlowBreadcrumb("get_access_token", { step: "start" });
   }
-  return token;
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", { step: "getUser_done", hasUser: !!user });
+    }
+    if (!user) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", { step: "complete", tokenPresent: false, reason: "no_user" });
+      }
+      return null;
+    }
+    const { data } = await supabase.auth.getSession();
+    let token = data.session?.access_token ?? null;
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", { step: "getSession_done", hasAccessToken: !!token });
+    }
+    let usedRefresh = false;
+    // Right after login on iOS, getSession() can briefly return null while storage catches up;
+    // refreshSession() usually yields a valid token for /api/me/portal.
+    if (!token) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", { step: "refreshSession_start" });
+      }
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed.session?.access_token ?? null;
+      usedRefresh = true;
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("get_access_token", {
+          step: "refreshSession_done",
+          hasAccessToken: !!token,
+        });
+      }
+    }
+    if (isSentryEnabled()) {
+      authFlowBreadcrumb("get_access_token", {
+        step: "complete",
+        tokenPresent: !!token,
+        usedRefresh,
+      });
+    }
+    return token;
+  } catch (e) {
+    if (isSentryEnabled()) {
+      captureError(e, { area: "api-client.getAccessToken" });
+      authFlowBreadcrumb("get_access_token", {
+        step: "error",
+        message: e instanceof Error ? e.message : String(e),
+      });
+    }
+    throw e;
+  }
 }
 
 // Lazy init so baseUrl is resolved at first request time (window is definitely ready)

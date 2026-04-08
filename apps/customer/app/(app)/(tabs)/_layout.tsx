@@ -12,6 +12,7 @@ import { api } from "@/lib/api-client";
 import { onCartUpdated } from "@/lib/cart-events";
 import { haptic } from "@/lib/haptics";
 import { guestCartItemCount, loadGuestCartLines } from "@/lib/guest-cart";
+import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
@@ -41,6 +42,11 @@ export default function TabsLayout() {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [cartCount, setCartCount] = useState(0);
+
+  useEffect(() => {
+    if (!isSentryEnabled()) return;
+    authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "customer" });
+  }, []);
 
   useFocusEffect(
     useCallback(() => {

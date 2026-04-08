@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,6 +6,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { useProvider } from "@/providers/ProviderContext";
 import { Colors } from "@/constants/colors";
 import type { UserRole } from "@beautonomi/types";
+import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
 const ALLOWED_ROLES: UserRole[] = ["provider_owner", "provider_staff"];
 
@@ -19,6 +20,7 @@ export function RoleGate({ children }: RoleGateProps) {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const { role, loading, profileLoadError, refresh } = useProvider();
+  const lastResolved = useRef<{ loading: boolean; blocked: boolean } | null>(null);
 
   async function handleSignOut() {
     await signOut();
@@ -38,6 +40,20 @@ export function RoleGate({ children }: RoleGateProps) {
     return null;
   }, [role, profileLoadError]);
   const blocked = !loading && blockReason !== null;
+
+  useEffect(() => {
+    if (!user?.id || !isSentryEnabled()) return;
+    const prev = lastResolved.current;
+    const next = { loading, blocked };
+    if (prev && prev.loading && !loading) {
+      setAuthFlowTags({ guard_name: "role_gate" });
+      authFlowBreadcrumb("role_gate", {
+        outcome: blocked ? "blocked" : "ok",
+        blockReason: blocked ? blockReason : undefined,
+      });
+    }
+    lastResolved.current = next;
+  }, [user?.id, loading, blocked, blockReason]);
 
   if (!user) return null;
   if (loading) {

@@ -16,7 +16,13 @@ import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention-sync";
 import { APP_URL } from "@/config/public-env";
-import { setSentryUser, clearSentryUser } from "@/lib/sentry";
+import {
+  authFlowBreadcrumb,
+  clearSentryUser,
+  isSentryEnabled,
+  setAuthFlowTags,
+  setSentryUser,
+} from "@/lib/sentry";
 import { clearApiCache } from "@/lib/api-response-cache";
 import { clearPortalCache } from "@/lib/portal-cache";
 import {
@@ -105,6 +111,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       updateSession(s);
       setLoading(false);
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("auth_initial_get_session", { hasSession: !!s });
+      }
       if (s?.user) scheduleRetentionSyncOnSession();
     }).catch((err) => {
       console.warn("[AUTH] getSession failed", err);
@@ -126,6 +135,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       lastUserIdRef.current = nextUserId;
       updateSession(newSession);
+      if (isSentryEnabled()) {
+        if (event === "SIGNED_OUT") {
+          authFlowBreadcrumb("supabase_auth", { event: "SIGNED_OUT" });
+          setAuthFlowTags({ auth_state: "signed_out" });
+        } else if (event === "SIGNED_IN") {
+          authFlowBreadcrumb("supabase_auth", { event: "SIGNED_IN" });
+        }
+      }
       if (
         newSession?.user &&
         (event === "INITIAL_SESSION" || event === "SIGNED_IN")
@@ -144,8 +161,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user?.id) {
       setSentryUser(user.id, user.email ?? undefined);
+      if (isSentryEnabled()) {
+        setAuthFlowTags({ auth_state: "authenticated" });
+      }
     } else {
       clearSentryUser();
+      if (isSentryEnabled()) {
+        setAuthFlowTags({ auth_state: "anonymous" });
+      }
     }
   }, [user?.id, user?.email]);
 
@@ -179,13 +202,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const raw = phone.startsWith("+") ? phone : `+${phone}`;
     const e164 = normalizeSupabaseAuthPhone(raw);
-    const { error } = await supabase.auth.verifyOtp({
+    const { data, error } = await supabase.auth.verifyOtp({
       phone: e164,
       token: otpToken,
       type: "sms",
     });
-    return { error: error ? new Error(error.message) : null };
-  }, []);
+    if (error) return { error: new Error(error.message) };
+    if (data.session) updateSession(data.session);
+    return { error: null };
+  }, [updateSession]);
 
   const signInWithOtpEmail = useCallback(async (email: string) => {
     const trimmed = email.trim();
@@ -311,10 +336,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithEmail = useCallback(
     async (email: string, password: string) => {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
+      if (!error && data.session) updateSession(data.session);
       if (!error) return { error: null };
       // Supabase 400 often returns "Invalid login credentials" or "Email not confirmed"
       const message =
@@ -322,7 +348,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         "Invalid email or password. If you signed up recently, check your inbox to confirm your email.";
       return { error: new Error(message) };
     },
-    [],
+    [updateSession],
   );
 
   const signOut = useCallback(async () => {
