@@ -34,6 +34,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CustomFieldDefinition } from "@/components/custom-fields/CustomFieldsForm";
 import { NATIVE_STORE } from "@/lib/store/native-app-store";
+import { getOsTypeFromNavigator } from "@/lib/utils/os-type";
 
 interface ProviderFormField {
   id: string;
@@ -147,11 +148,9 @@ function MobileAppNudge() {
   useEffect(() => {
     if (typeof navigator === "undefined") return;
     try { if (sessionStorage.getItem("beautonomi_app_banner_dismissed") === "1") return; } catch {}
-    const ua = navigator.userAgent;
-    const isIos = /iPad|iPhone|iPod/.test(ua) && !(window as any).MSStream;
-    const isAndroid = /android/i.test(ua);
-    if (isIos) { setStoreUrl(IOS_APP_URL_CONTINUE); setLabel("App Store"); setShow(true); }
-    else if (isAndroid) { setStoreUrl(ANDROID_APP_URL_CONTINUE); setLabel("Google Play"); setShow(true); }
+    const osType = getOsTypeFromNavigator(navigator);
+    if (osType === "ios") { setStoreUrl(IOS_APP_URL_CONTINUE); setLabel("App Store"); setShow(true); }
+    else if (osType === "android" || osType === "huawei") { setStoreUrl(ANDROID_APP_URL_CONTINUE); setLabel("Google Play"); setShow(true); }
   }, []);
 
   if (!show) return null;

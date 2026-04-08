@@ -61,6 +61,8 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [profileLoadError, setProfileLoadError] = useState<string | null>(null);
   const restoredRef = useRef(false);
+  /** Incremented each time a new fetchProfile run starts; guards against stale concurrent responses. */
+  const fetchIdRef = useRef(0);
 
   const setSelectedLocationId = useCallback((id: string | null) => {
     setSelectedLocationIdState(id);
@@ -87,13 +89,20 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchProfile = useCallback(async () => {
-    const timeoutId = setTimeout(() => setLoading(false), PROFILE_LOAD_TIMEOUT_MS);
+    const myId = ++fetchIdRef.current;
+    const timeoutId = setTimeout(() => {
+      if (fetchIdRef.current === myId) setLoading(false);
+    }, PROFILE_LOAD_TIMEOUT_MS);
     try {
       const [profileRes, roleRes, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
         restoredRef.current ? Promise.resolve<string | null>(null) : AsyncStorage.getItem(LOCATION_STORAGE_KEY),
       ]);
+
+      // Discard this response if a newer fetchProfile has already started.
+      if (fetchIdRef.current !== myId) return;
+
       restoredRef.current = true;
 
       const pe = profileRes.error as { status?: number; code?: string; message?: string } | undefined;
@@ -136,13 +145,14 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
         applyRoleFromResponse(roleRes);
       }
     } catch (e) {
+      if (fetchIdRef.current !== myId) return;
       captureError(e, { area: "ProviderContext.fetchProfile" });
       setProfileLoadError(e instanceof Error ? e.message : "Something went wrong");
       setProvider(null);
       setRole(null);
     } finally {
       clearTimeout(timeoutId);
-      setLoading(false);
+      if (fetchIdRef.current === myId) setLoading(false);
     }
   }, [applyRoleFromResponse]);
 

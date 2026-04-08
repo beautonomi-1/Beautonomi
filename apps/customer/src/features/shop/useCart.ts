@@ -72,34 +72,39 @@ export function useCart() {
     setLoading(true);
     setError(null);
     setFromCache(false);
-    const res = await api.get<{ items: CartItem[] }>("/api/me/cart");
-    const status = (res.error as { status?: number } | undefined)?.status;
-    if (res.error) {
-      if (status === 403 || status === 401) {
-        setItems([]);
-        setError(null);
-      } else {
-        setError(getApiErrorMessage(res.error, "Failed to load cart"));
-        try {
-          const raw = await AsyncStorage.getItem(cacheKey);
-          if (raw) {
-            const parsed = JSON.parse(raw) as unknown;
-            if (Array.isArray(parsed)) {
-              const list = parsed.map(normalizeServerCartItem).filter(Boolean) as CartItem[];
-              setItems(list);
-              setFromCache(true);
+    try {
+      const res = await api.get<{ items: CartItem[] }>("/api/me/cart");
+      const status = (res.error as { status?: number } | undefined)?.status;
+      if (res.error) {
+        if (status === 403 || status === 401) {
+          setItems([]);
+          setError(null);
+        } else {
+          setError(getApiErrorMessage(res.error, "Failed to load cart"));
+          try {
+            const raw = await AsyncStorage.getItem(cacheKey);
+            if (raw) {
+              const parsed = JSON.parse(raw) as unknown;
+              if (Array.isArray(parsed)) {
+                const list = parsed.map(normalizeServerCartItem).filter(Boolean) as CartItem[];
+                setItems(list);
+                setFromCache(true);
+              }
             }
-          }
+          } catch {}
+        }
+      } else {
+        const list = (res.data?.items ?? []).map(normalizeServerCartItem).filter(Boolean) as CartItem[];
+        setItems(list);
+        try {
+          await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
         } catch {}
       }
-    } else {
-      const list = (res.data?.items ?? []).map(normalizeServerCartItem).filter(Boolean) as CartItem[];
-      setItems(list);
-      try {
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(list));
-      } catch {}
+    } catch (e) {
+      setError(getApiErrorMessage(e, "Failed to load cart"));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [user, authLoading, cacheKey, reloadGuestCart]);
 
   useEffect(() => {

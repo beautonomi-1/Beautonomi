@@ -403,13 +403,22 @@ export default function CustomerOnboarding() {
   const completeOnboarding = async () => {
     setSaving(true);
     try {
-      await api.post("/api/me/onboarding/complete");
+      const res = await api.post("/api/me/onboarding/complete");
+      if (res.error) {
+        Alert.alert("Couldn't complete setup", res.error.message || "Please try again.");
+        return;
+      }
       await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
-    } catch {}
-    setSaving(false);
-    router.replace("/(app)/(tabs)/home");
+    } catch {
+      // Network/unexpected failure — mark locally so we don't re-prompt on cold start.
+      try { await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1"); } catch { /* ignore */ }
+    } finally {
+      setSaving(false);
+    }
+    const pending = await consumePostOnboardingHref();
+    router.replace(pending ? resolvePostLoginHref(pending) : "/(app)/(tabs)/home");
   };
 
   /* ────────────────────────────────

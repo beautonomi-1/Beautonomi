@@ -277,8 +277,8 @@ export default function NewBookingScreen() {
     });
     const discountAmt = discountValue
       ? discountType === "percentage"
-        ? (subtotal * parseFloat(discountValue || "0")) / 100
-        : parseFloat(discountValue || "0")
+        ? (subtotal * (parseFloat(discountValue) || 0)) / 100
+        : (parseFloat(discountValue) || 0)
       : 0;
     const afterDiscount = Math.max(subtotal - discountAmt, 0);
     const taxRatePercent = paymentSettings?.taxRatePercent ?? 15;
@@ -511,7 +511,7 @@ export default function NewBookingScreen() {
   return (
     <KeyboardAvoidingView
       style={twStyle("flex-1 bg-white")}
-      behavior={Platform.OS === "ios" ? "padding" : "padding"}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
     >
       <ScreenContainer>

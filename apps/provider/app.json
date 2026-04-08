@@ -9,7 +9,7 @@
     "runtimeVersion": {
       "policy": "appVersion"
     },
-    "version": "1.0.7",
+    "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -71,6 +71,14 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 200
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "mobile-provider",
+          "organization": "beautonomi"
+        }
       ]
     ],
     "splash": {
@@ -111,7 +119,7 @@
         "android.permission.POST_NOTIFICATIONS",
         "com.google.android.gms.permission.AD_ID"
       ],
-      "versionCode": 25,
+      "versionCode": 200,
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "softwareKeyboardLayoutMode": "resize",

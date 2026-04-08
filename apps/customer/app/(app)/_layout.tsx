@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { View, Platform, TouchableOpacity, Linking } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Stack, router } from "expo-router";
+import { Stack, router, usePathname } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { RoleGate } from "@/components/RoleGate";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
@@ -78,6 +78,10 @@ export default function AppLayout() {
   const userId = session?.user?.id ?? null;
   /** Last user id we ran the onboarding deep-link guard for (token refresh keeps same id → no re-run). */
   const onboardingGuardRanForUserId = useRef<string | null>(null);
+  /** Ref holds the current pathname so async callbacks can read it without a stale closure. */
+  const pathname = usePathname();
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   // Attach pending referral after login (e.g. post email verification)
   useEffect(() => {
@@ -93,6 +97,8 @@ export default function AppLayout() {
   // Customer onboarding guard — deep links into (app) without visiting root index.
   // Must match app/index.tsx: only force onboarding when the server says completed === false.
   // On API error, do not navigate (root index already sent the user home; fighting it caused stack thrash / swipe loops on tablet).
+  // pathnameRef check: skip replace when already on /onboarding — prevents the double-replace animation
+  // that occurred when root index also redirected here (login → root "/" → onboarding → guard fires too → swipe loop).
   useEffect(() => {
     if (isScreenshotMode()) return;
     if (!userId) {
@@ -116,7 +122,10 @@ export default function AppLayout() {
           return;
         }
         if (!res.error && res.data?.completed === false) {
-          router.replace("/(app)/onboarding");
+          // Guard against double-replace: root index may have already navigated here.
+          if (!pathnameRef.current?.includes("/onboarding")) {
+            router.replace("/(app)/onboarding");
+          }
           return;
         }
       } catch {

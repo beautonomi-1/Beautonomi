@@ -22,6 +22,7 @@ export default function Index() {
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [profileLoadError, setProfileLoadError] = useState(false); // timeout or network
   const retryCountRef = useRef(0);
+  const profileRetryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Phase 1: portal check (is this user a provider?)
   useEffect(() => {
@@ -133,7 +134,7 @@ export default function Index() {
 
       if (isAuthError && !isRetry && retryCountRef.current < 1) {
         retryCountRef.current += 1;
-        setTimeout(() => runProfileCheck(true), AUTH_RETRY_DELAY_MS);
+        profileRetryTimeoutRef.current = setTimeout(() => runProfileCheck(true), AUTH_RETRY_DELAY_MS);
         return;
       }
 
@@ -170,6 +171,10 @@ export default function Index() {
       cancelled = true;
       clearTimeout(t);
       clearTimeout(timeoutId);
+      if (profileRetryTimeoutRef.current) {
+        clearTimeout(profileRetryTimeoutRef.current);
+        profileRetryTimeoutRef.current = null;
+      }
     };
     // runProfileCheck is intentionally omitted to avoid re-running on every identity change
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -200,12 +205,8 @@ export default function Index() {
     });
   }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
-  // Not logged in: redirect to login immediately (don't show Loading…)
-  if (!session) {
-    return <Redirect href="/(auth)/login" />;
-  }
-
-  // Auth still resolving
+  // 1. Auth resolving — always wait here first so a post-login router.replace("/") that
+  //    lands before React commits the new session state doesn't redirect back to login.
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
@@ -215,7 +216,12 @@ export default function Index() {
     );
   }
 
-  // Portal check in progress
+  // 2. No session after auth resolved → go to login.
+  if (!session) {
+    return <Redirect href="/(auth)/login" />;
+  }
+
+  // 3. Session present but portal check not yet started or in progress.
   if (portalState === "idle" || portalState === "loading") {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
