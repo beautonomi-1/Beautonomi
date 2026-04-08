@@ -9,20 +9,44 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 import { chargeAuthorization, convertToSmallestUnit } from "@/lib/payments/paystack-complete";
+import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
+import {
+  resolveBookingPaystackAmount,
+  resolveProductOrderPaystackAmount,
+} from "@/lib/payments/resolve-paystack-initialize-amount";
+import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
+import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
-const chargeSavedCardSchema = z.object({
-  payment_method_id: z.string().uuid(),
-  amount: z.number().positive(),
-  currency: z.string().optional(),
-  email: z.string().email(),
-  metadata: z.record(z.string(), z.any()).optional(),
-});
+const chargeSavedCardSchema = z
+  .object({
+    payment_method_id: z.string().uuid(),
+    /** Ignored when metadata includes product_order_id or booking id — server derives amount. */
+    amount: z.number().positive().optional(),
+    currency: z.string().optional(),
+    email: z.string().email(),
+    metadata: z.record(z.string(), z.any()).optional(),
+  })
+  .superRefine((val, ctx) => {
+    const m = val.metadata || {};
+    const hasProductOrder =
+      typeof m.product_order_id === "string" && String(m.product_order_id).trim().length > 0;
+    const hasBooking =
+      (typeof m.booking_id === "string" && String(m.booking_id).trim().length > 0) ||
+      (typeof m.bookingId === "string" && String(m.bookingId).trim().length > 0);
+    if (!hasProductOrder && !hasBooking && (val.amount == null || val.amount <= 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "amount is required unless charging for a product order or booking",
+        path: ["amount"],
+      });
+    }
+  });
 
 /**
  * POST /api/payments/charge-saved-card
@@ -83,11 +107,40 @@ export async function POST(request: NextRequest) {
     }
 
     const meta = body.metadata ?? {};
+    const productOrderIdFromMeta =
+      typeof meta.product_order_id === "string" && meta.product_order_id.trim()
+        ? meta.product_order_id.trim()
+        : null;
+
+    if (productOrderIdFromMeta) {
+      const { data: poRow, error: poErr } = await (supabase.from("product_orders") as any)
+        .select("id, tenant_id, customer_id")
+        .eq("id", productOrderIdFromMeta)
+        .maybeSingle();
+      if (poErr || !poRow) {
+        return notFoundResponse("Order not found");
+      }
+      if (!resourceTenantMatchesHostTenant(tenantId, poRow.tenant_id)) {
+        return errorResponse(
+          "This order belongs to a different market. Open checkout from the correct site or app for this order.",
+          "TENANT_MISMATCH",
+          403,
+        );
+      }
+      if (poRow.customer_id !== user.id) {
+        return errorResponse(
+          "You do not have permission to charge this order",
+          "FORBIDDEN",
+          403,
+        );
+      }
+    }
+
     const bookingIdFromMeta =
       (typeof meta.booking_id === "string" && meta.booking_id) ||
       (typeof meta.bookingId === "string" && meta.bookingId) ||
       null;
-    if (bookingIdFromMeta) {
+    if (bookingIdFromMeta && !productOrderIdFromMeta) {
       const { data: bookingRow, error: bookingErr } = await supabase
         .from("bookings")
         .select("id, tenant_id, customer_id")
@@ -112,8 +165,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Charge the card
-    const amountInSmallestUnit = convertToSmallestUnit(body.amount);
+    let amountInSmallestUnit: number;
+    if (productOrderIdFromMeta) {
+      const resolved = await resolveProductOrderPaystackAmount(supabase, productOrderIdFromMeta, user.id);
+      if (resolved.ok === false) {
+        return errorResponse(resolved.message, resolved.code, resolved.status);
+      }
+      amountInSmallestUnit = resolved.amountSmallestUnit;
+    } else if (bookingIdFromMeta) {
+      const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
+      if (resolved.ok === false) {
+        return errorResponse(resolved.message, resolved.code, resolved.status);
+      }
+      const admin = getSupabaseAdmin();
+      const slotOk = await revalidateBookingSlotBeforePayment(admin, bookingIdFromMeta);
+      if (slotOk.ok === false) {
+        return errorResponse(slotOk.message, slotOk.code, 409);
+      }
+      amountInSmallestUnit = resolved.amountSmallestUnit;
+    } else {
+      amountInSmallestUnit = convertToSmallestUnit(body.amount!);
+    }
 
     const chargeResult = await chargeAuthorization(
       authorizationCode,
@@ -136,10 +208,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const supabaseAdmin = getSupabaseAdmin();
+
+    if (productOrderIdFromMeta && chargeResult.data?.reference) {
+      try {
+        await recordProductOrderPayment({
+          supabase: supabaseAdmin,
+          productOrderId: productOrderIdFromMeta,
+          reference: String(chargeResult.data.reference),
+          amountMajor: convertFromSmallestUnit(amountInSmallestUnit),
+          feesMajor: 0,
+          source: "paystack_verify",
+          provider: "paystack",
+        });
+      } catch (poErr) {
+        console.error("[charge-saved-card] Failed to record product order payment:", poErr);
+      }
+    }
+
     // Sync the booking's payment status/totals when a booking_id is present
     if (bookingIdFromMeta && chargeResult.data?.reference) {
       try {
-        const supabaseAdmin = getSupabaseAdmin();
         await syncBookingAfterPaystackSuccess(supabaseAdmin, bookingIdFromMeta, {
           paymentReference: chargeResult.data.reference,
           paymentProvider: "paystack",

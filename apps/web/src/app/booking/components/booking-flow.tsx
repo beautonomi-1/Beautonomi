@@ -24,6 +24,15 @@ import {
   restoreBookingFlowFromStorage,
   shouldForceFreshStartFromUrl,
 } from "./booking-flow-persistence";
+import {
+  buildRetailCartRowsFromPublicPackage,
+  cartMatchesPublicCatalogPackage,
+  flattenProviderServicesToMenu,
+  resolvePackageOfferingsFromFlatMenu,
+  type ProviderServiceLike,
+  type PublicProductCatalogRow,
+} from "@beautonomi/utils";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { isCompleteE164 } from "@/lib/phone";
 
 /** Same pattern as step-your-info (Continue gating must match that step). */
@@ -65,6 +74,8 @@ export interface BookingState {
     id: string;
     title: string;
     duration: number;
+    /** Turnover after this offering (`offerings.buffer_minutes`); used for slot span parity with validate-booking. */
+    bufferMinutes?: number;
     price: number;
     currency: string;
     staffId?: string;
@@ -102,6 +113,8 @@ export interface BookingState {
     price: number;
     discount: number;
   };
+  /** When set with selectedPackage, redeems one prepaid session from this entitlement (see validateBooking). */
+  customerPackageEntitlementId?: string | null;
   selectedLocationId?: string;
   paymentMethod?: "card" | "cash" | "giftcard";
   paymentOption?: "deposit" | "full";
@@ -135,6 +148,9 @@ export interface BookingState {
     specialRequests?: string;
     houseCallInstructions?: string;
   } | null;
+  /** Repeating schedule after checkout (POST /api/public/bookings subscribe_recurring). */
+  subscribeRecurring?: boolean;
+  recurringFrequency?: "weekly" | "biweekly" | "monthly";
 }
 
 const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "payment"];
@@ -176,6 +192,8 @@ function defaultBookingState(
           phone: user.phone || "",
         }
       : null,
+    subscribeRecurring: false,
+    recurringFrequency: "weekly",
   };
 }
 
@@ -206,6 +224,10 @@ export default function BookingFlow() {
   const checkoutTrackedRef = useRef(false);
   const prevFlowKeyRef = useRef<string | null>(null);
   const [direction, setDirection] = useState(0);
+  /** When false and no URL/deeplink package, the packages step is omitted (empty catalog). */
+  const [providerHasPackages, setProviderHasPackages] = useState<boolean | null>(null);
+  /** Dedupe `?package=` deep-link prefill (per flow key + package id). */
+  const packagePrefillDoneKeyRef = useRef<string | null>(null);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(() => {
     if (typeof window === "undefined") return 0;
@@ -283,7 +305,48 @@ export default function BookingFlow() {
     applyFreshBookingStart();
   }, [applyFreshBookingStart]);
 
-  const currentStep = STEP_ORDER[currentStepIndex];
+  /** Direct service/product deep links skip “packages first” — user chose a specific offering or retail item. */
+  const serviceDirect = Boolean(
+    searchParams.get("serviceId")?.trim() || searchParams.get("service")?.trim()
+  );
+  const productDirect = Boolean(
+    searchParams.get("product_id")?.trim() || searchParams.get("product")?.trim()
+  );
+
+  /**
+   * When `?package=` / `?package_id=` only (no direct service/product), packages step is first.
+   * If customer came via `?service=` / `?product_id=` etc., stay on canonical order and omit the packages step
+   * from this array so indices align with `effectiveStepOrder` (next/back never land on a ghost packages step).
+   */
+  const activeStepOrder = useMemo((): BookingStep[] => {
+    const pkgPinned = Boolean(
+      searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim()
+    );
+    let steps: BookingStep[];
+    if (!pkgPinned || serviceDirect || productDirect) {
+      steps = [...STEP_ORDER];
+    } else {
+      const rest = STEP_ORDER.filter((s) => s !== "packages");
+      const at = rest.indexOf("services");
+      if (at >= 0) {
+        steps = [...rest];
+        steps.splice(at, 0, "packages");
+      } else {
+        steps = ["packages", ...rest] as BookingStep[];
+      }
+    }
+    if (serviceDirect || productDirect) {
+      const ix = steps.indexOf("packages");
+      if (ix > -1) steps.splice(ix, 1);
+    }
+    return steps;
+  }, [searchParams, serviceDirect, productDirect]);
+
+  useEffect(() => {
+    setCurrentStepIndex((i) => Math.max(0, Math.min(i, activeStepOrder.length - 1)));
+  }, [activeStepOrder.length]);
+
+  const currentStep = activeStepOrder[currentStepIndex] ?? STEP_ORDER[0];
   const [platformFeeSettings, setPlatformFeeSettings] = useState<{
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
@@ -291,17 +354,33 @@ export default function BookingFlow() {
     show_service_fee_to_customer: boolean;
   } | null>(null);
   
-  // Debug logging
-  useEffect(() => {
-    console.log(`[Booking Flow] Current step: ${currentStep} (index: ${currentStepIndex})`);
-  }, [currentStep, currentStepIndex]);
-
   useEffect(() => {
     if (isReady && currentStep === "payment" && !checkoutTrackedRef.current) {
       checkoutTrackedRef.current = true;
       track(EVENT_CHECKOUT_START, { provider_id: bookingState.providerId });
     }
   }, [isReady, currentStep, bookingState.providerId, track]);
+
+  useEffect(() => {
+    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    if (!slug) {
+      setProviderHasPackages(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/public/providers/${encodeURIComponent(slug)}/packages`)
+      .then((r) => r.json())
+      .then((j: { data?: unknown }) => {
+        const list = Array.isArray(j?.data) ? j.data : [];
+        if (!cancelled) setProviderHasPackages(list.length > 0);
+      })
+      .catch(() => {
+        if (!cancelled) setProviderHasPackages(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   // Load platform fee settings
   useEffect(() => {
@@ -451,7 +530,7 @@ export default function BookingFlow() {
   }, [searchParams]);
 
   const effectiveStepOrder = useMemo((): BookingStep[] => {
-    const steps = [...STEP_ORDER];
+    const steps = [...activeStepOrder];
     if (user && bookingState.clientInfo) {
       const index = steps.indexOf("yourInfo");
       if (index > -1) steps.splice(index, 1);
@@ -460,26 +539,41 @@ export default function BookingFlow() {
       const index = steps.indexOf("groupParticipants");
       if (index > -1) steps.splice(index, 1);
     }
+    const pkgPinned = Boolean(
+      searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim()
+    );
+    if (providerHasPackages === false && !pkgPinned && !bookingState.selectedPackage) {
+      const index = steps.indexOf("packages");
+      if (index > -1) steps.splice(index, 1);
+    }
     return steps;
-  }, [user, bookingState.clientInfo, bookingState.isGroupBooking]);
+  }, [
+    user,
+    bookingState.clientInfo,
+    bookingState.isGroupBooking,
+    bookingState.selectedPackage,
+    providerHasPackages,
+    searchParams,
+    activeStepOrder,
+  ]);
 
   const effectiveStepIndex = effectiveStepOrder.indexOf(currentStep);
   const progressStepIndex = effectiveStepIndex < 0 ? 0 : effectiveStepIndex;
 
   useLayoutEffect(() => {
     if (effectiveStepOrder.indexOf(currentStep) >= 0) return;
-    const fallback = STEP_ORDER.find(
+    const fallback = activeStepOrder.find(
       (s) =>
-        STEP_ORDER.indexOf(s) >= currentStepIndex && effectiveStepOrder.includes(s)
+        activeStepOrder.indexOf(s) >= currentStepIndex && effectiveStepOrder.includes(s)
     );
-    if (fallback) setCurrentStepIndex(STEP_ORDER.indexOf(fallback));
-  }, [currentStep, currentStepIndex, effectiveStepOrder]);
+    if (fallback) setCurrentStepIndex(activeStepOrder.indexOf(fallback));
+  }, [currentStep, currentStepIndex, effectiveStepOrder, activeStepOrder]);
 
   const handleNext = () => {
     if (effectiveStepIndex < effectiveStepOrder.length - 1) {
       setDirection(1);
       const nextStep = effectiveStepOrder[effectiveStepIndex + 1];
-      const nextIndex = STEP_ORDER.indexOf(nextStep);
+      const nextIndex = activeStepOrder.indexOf(nextStep);
       setCurrentStepIndex(nextIndex);
     }
   };
@@ -487,16 +581,16 @@ export default function BookingFlow() {
   const handleNextRef = useRef(handleNext);
   handleNextRef.current = handleNext;
 
-  /** Navigate to a step by STEP_ORDER index (e.g. 0 = services, 4 = calendar). Do not persist in bookingState — avoids sync loops. */
+  /** Navigate by index into `activeStepOrder` (order changes when `?package=` pins packages first). */
   const navigateToBookingStep = useCallback((stepIndex: number) => {
-    setCurrentStepIndex(Math.max(0, Math.min(STEP_ORDER.length - 1, stepIndex)));
-  }, []);
+    setCurrentStepIndex(Math.max(0, Math.min(activeStepOrder.length - 1, stepIndex)));
+  }, [activeStepOrder.length]);
 
   const handleBack = () => {
     if (effectiveStepIndex > 0) {
       setDirection(-1);
       const prevStep = effectiveStepOrder[effectiveStepIndex - 1];
-      const prevIndex = STEP_ORDER.indexOf(prevStep);
+      const prevIndex = activeStepOrder.indexOf(prevStep);
       setCurrentStepIndex(prevIndex);
     } else {
       router.back();
@@ -506,6 +600,114 @@ export default function BookingFlow() {
   const updateBookingState = (updates: Partial<BookingState>) => {
     setBookingState((prev) => ({ ...prev, ...updates }));
   };
+
+  const packageFlowKey = useMemo(() => computeBookingFlowKey(searchParams), [searchParams]);
+
+  useEffect(() => {
+    packagePrefillDoneKeyRef.current = null;
+  }, [packageFlowKey]);
+
+  /** `?package=` / `?package_id=` deep link: prefill cart from `service_package_items` (staff defaults to `any`). */
+  useEffect(() => {
+    const pkgId = searchParams.get("package")?.trim() || searchParams.get("package_id")?.trim();
+    const slug = searchParams.get("slug") || searchParams.get("partnerId");
+    // Direct service/product links take precedence — do not replace cart with full package bundle.
+    if (serviceDirect || productDirect) return;
+    if (!pkgId || !slug || bookingState.selectedServices.length > 0) return;
+
+    const dedupeKey = `${packageFlowKey}|pkg:${pkgId}`;
+    if (packagePrefillDoneKeyRef.current === dedupeKey) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [pkgRes, svcRes, prodRes] = await Promise.all([
+          fetcher.get<unknown>(`/api/public/providers/${encodeURIComponent(slug)}/packages`),
+          fetcher.get<{ data?: { categories?: Array<{ services?: unknown[] }> } }>(
+            `/api/public/providers/${encodeURIComponent(slug)}/services`,
+            { timeoutMs: 20000 }
+          ),
+          fetcher.get<unknown>(`/api/public/providers/${encodeURIComponent(slug)}/products`).catch(() => null),
+        ]);
+        if (cancelled) return;
+        const rawPkg = (pkgRes as { data?: unknown }).data ?? pkgRes;
+        const list = Array.isArray(rawPkg) ? rawPkg : [];
+        type Pkg = {
+          id: string;
+          name?: string;
+          title?: string;
+          price?: number;
+          discount_percentage?: number;
+          services?: Array<{ id: string; type?: string }>;
+          items?: Array<{ id: string; type?: string }>;
+        };
+        const pkg = (list as Pkg[]).find((p) => p.id === pkgId);
+        if (!pkg) return;
+
+        const svcPayload = (svcRes as { data?: { categories?: Array<{ services?: ProviderServiceLike[] }> } }).data ?? svcRes;
+        const categories =
+          svcPayload && typeof svcPayload === "object" && "categories" in svcPayload
+            ? (svcPayload as { categories?: Array<{ services?: ProviderServiceLike[] }> }).categories
+            : undefined;
+        const flat = flattenProviderServicesToMenu(categories);
+        const lines =
+          pkg.services && pkg.services.length > 0
+            ? pkg.services
+            : (pkg.items ?? []).filter((x) => !x.type || x.type === "service");
+        const ids = lines.map((l) => l.id).filter(Boolean) as string[];
+        const resolved = resolvePackageOfferingsFromFlatMenu(
+          ids,
+          flat,
+          LAST_RESORT_CURRENCY,
+          "strict"
+        );
+        if (!resolved?.length) return;
+
+        const built = resolved.map((r) => ({
+          id: r.offeringId,
+          title: r.title,
+          duration: r.duration_minutes,
+          bufferMinutes: r.buffer_minutes,
+          price: r.price,
+          currency: r.currency,
+          staffId: "any",
+        }));
+        const servicesTotal = built.reduce((sum, s) => sum + s.price, 0);
+        const discount =
+          typeof pkg.price === "number" && pkg.price < servicesTotal
+            ? servicesTotal - pkg.price
+            : pkg.discount_percentage
+              ? (servicesTotal * pkg.discount_percentage) / 100
+              : 0;
+
+        const rawProd = prodRes ? ((prodRes as { data?: unknown }).data ?? prodRes) : [];
+        const prodList = Array.isArray(rawProd) ? rawProd : [];
+        const selectedProducts = buildRetailCartRowsFromPublicPackage(
+          pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+          prodList as PublicProductCatalogRow[],
+          built[0]?.currency ?? LAST_RESORT_CURRENCY
+        );
+
+        packagePrefillDoneKeyRef.current = dedupeKey;
+        updateBookingState({
+          selectedServices: built,
+          selectedProducts,
+          selectedPackage: {
+            id: pkg.id,
+            title: pkg.title || pkg.name || "Package",
+            price: pkg.price ?? Math.max(0, servicesTotal - discount),
+            discount,
+          },
+        });
+      } catch {
+        // ignore — customer can still select services manually
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run when URL/flow changes or cart is empty
+  }, [packageFlowKey, searchParams, bookingState.selectedServices.length, serviceDirect, productDirect]);
 
   /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */
   useEffect(() => {
@@ -533,16 +735,14 @@ export default function BookingFlow() {
         };
         const pkg = (list as Pkg[]).find((p) => p.id === pkgId);
         if (!pkg || cancelled) return;
-        const svcItems =
-          pkg.services && pkg.services.length > 0
-            ? pkg.services
-            : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
-        const wantIds = new Set(svcItems.map((s) => s.id).filter(Boolean) as string[]);
-        if (wantIds.size === 0) return;
-        const gotIds = new Set(bookingState.selectedServices.map((s) => s.id));
-        if (wantIds.size !== gotIds.size) return;
-        for (const w of wantIds) {
-          if (!gotIds.has(w)) return;
+        if (
+          !cartMatchesPublicCatalogPackage(
+            bookingState.selectedServices.map((s) => s.id),
+            bookingState.selectedProducts,
+            pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }>; services?: Array<{ id: string }> }
+          )
+        ) {
+          return;
         }
         const servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
         const discount =
@@ -566,7 +766,7 @@ export default function BookingFlow() {
     return () => {
       cancelled = true;
     };
-  }, [searchParams, bookingState.selectedServices, bookingState.selectedPackage?.id]);
+  }, [searchParams, bookingState.selectedServices, bookingState.selectedProducts, bookingState.selectedPackage?.id]);
 
   /** Skip the packages step when the URL package is already applied (same UX as empty packages list). */
   useEffect(() => {
@@ -716,8 +916,8 @@ export default function BookingFlow() {
         </div>
       </header>
 
-      {/* Step Content */}
-      <main className="flex-1 overflow-hidden relative">
+      {/* Step Content — min-h-0 so flex child can shrink; inner scroll; pb reserves space for fixed BookingActionBar */}
+      <main className="flex-1 min-h-0 overflow-hidden relative">
         <AnimatePresence initial={false} custom={direction} mode="wait">
           <motion.div
             key={currentStep}
@@ -730,9 +930,9 @@ export default function BookingFlow() {
               x: { type: "spring", stiffness: 300, damping: 30 },
               opacity: { duration: 0.2 },
             }}
-            className="absolute inset-0 overflow-y-auto"
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-y-contain"
           >
-            <div className="min-h-full pb-32">
+            <div className="min-h-full pb-[calc(14rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(12rem+env(safe-area-inset-bottom,0px))]">
               {currentStep === "services" ? (
                 <StepServiceSelection
                   bookingState={bookingState}
@@ -791,7 +991,10 @@ export default function BookingFlow() {
                 <StepPayment
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
-                  onNavigateToStep={navigateToBookingStep}
+                  onNavigateToStep={(step) => {
+                    const idx = activeStepOrder.indexOf(step);
+                    if (idx >= 0) setCurrentStepIndex(idx);
+                  }}
                 />
               ) : (
                 <div className="p-8 text-center text-gray-500">

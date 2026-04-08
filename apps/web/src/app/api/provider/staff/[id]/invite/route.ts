@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
 import { z } from "zod";
 
 const inviteSchema = z.object({
@@ -64,15 +65,15 @@ export async function POST(
       .eq("id", providerId)
       .single();
 
-    // Generate invitation token (in a real app, you'd store this in the database)
+    // Generate invitation token used in push/email deep links.
     const invitationToken = Buffer.from(`${id}:${Date.now()}`).toString('base64');
-
-    // In a real implementation, you would:
-    // 1. Store the invitation token in the database
-    // 2. Send an email using your email service (e.g., SendGrid, AWS SES)
-    // 3. Include a link like: https://yourapp.com/accept-invite?token=...
-    
     const businessName = provider?.business_name || 'the team';
+    const inviteEmail = (staff.email || validationResult.data.email || "").trim().toLowerCase();
+    const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
+    const inviteUrl = `${appBase}/provider/onboarding?invite=${encodeURIComponent(invitationToken)}`;
+
+    let pushSent = false;
+    let emailSent = false;
 
     // Notify via OneSignal if staff has user_id (existing user)
     if (staff.user_id) {
@@ -94,16 +95,71 @@ export async function POST(
           ["push"],
           { appType: "provider" }
         );
+        pushSent = true;
       } catch (notifError) {
         console.error('Staff invite notification failed:', notifError);
       }
     }
-    // For staff without user_id: email integration needed (invite link to sign up)
+
+    // Always try email delivery; required path for staff without linked app account.
+    if (inviteEmail) {
+      try {
+        const creds = await resolveOneSignalCredentials("provider");
+        if (creds.appId && creds.restKey) {
+          const emailSubject = `Invitation to join ${businessName}`;
+          const emailBody =
+            (validationResult.data.message?.trim() ||
+              `You've been invited to join ${businessName} as a team member.`) +
+            `\n\nOpen this link to continue: ${inviteUrl}`;
+
+          const oneSignalRes = await fetch("https://api.onesignal.com/notifications?c=push", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json; charset=utf-8",
+              "Authorization": `Key ${creds.restKey}`,
+            },
+            body: JSON.stringify({
+              app_id: creds.appId,
+              target_channel: "email",
+              include_email_tokens: [inviteEmail],
+              email_subject: emailSubject,
+              email_body: emailBody,
+              data: {
+                type: "staff_invitation",
+                staff_id: id,
+                provider_id: providerId,
+                invitation_token: invitationToken,
+              },
+            }),
+          });
+          if (!oneSignalRes.ok) {
+            const errBody = await oneSignalRes.text();
+            console.error("Staff invite email failed:", errBody);
+          } else {
+            emailSent = true;
+          }
+        }
+      } catch (emailErr) {
+        console.error("Staff invite email failed:", emailErr);
+      }
+    }
+
+    if (!pushSent && !emailSent) {
+      return errorResponse(
+        "Failed to send invite. Configure provider OneSignal email credentials or ensure user has push registration.",
+        "INVITE_DELIVERY_FAILED",
+        502
+      );
+    }
 
     return successResponse({
       success: true,
       message: "Invitation sent successfully",
-      email: validationResult.data.email,
+      email: inviteEmail || validationResult.data.email,
+      channels: {
+        push: pushSent,
+        email: emailSent,
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to send invitation");

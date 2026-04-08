@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import { messageAttachmentRetentionDays } from "@/lib/messaging/message-attachments";
 
 /**
  * POST /api/me/messages/upload
@@ -183,6 +184,7 @@ export async function POST(request: NextRequest) {
     return successResponse({
       attachments: uploadedAttachments,
       count: uploadedAttachments.length,
+      retentionDays: messageAttachmentRetentionDays(),
     });
   } catch (error) {
     return handleApiError(error, "Failed to upload files");

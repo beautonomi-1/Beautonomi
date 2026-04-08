@@ -25,11 +25,17 @@ How account **deactivation** and **deletion** are managed by **super admins** an
 
 - **Rules:** Super admins cannot deactivate (or delete) other super admins.
 
-### Delete (admin)
+### Delete (admin) — full compliance purge
 
-- **Where:** User detail (and possibly bulk) **Delete** action.  
-- **API:** `DELETE /api/admin/users/[id]`.  
-- **Rules:** Cannot delete other super admins. Deletion is permanent (user and related data removed or anonymised as per implementation).
+- **Where:** Admin → **Users** → user detail → **Actions** → **Purge account & data** (superadmin only).  
+- **API:** `DELETE /api/admin/users/[id]` — requires **superadmin**; runs DB function `compliance_clear_user_references` (migration `440_compliance_clear_user_references.sql`), removes chat attachment files from storage, then `auth.admin.deleteUser` (cascades `public.users` and most dependent rows).  
+- **Rules:** Cannot delete yourself or another superadmin. Deletion is permanent.
+
+### Purge provider organization (admin)
+
+- **Where:** Admin → **Providers** → provider detail → **Compliance: purge provider organization** (superadmin only).  
+- **API:** `POST /api/admin/compliance/purge-provider` with body `{ provider_id, confirmation: "PURGE PROVIDER ORG", reason? }`.  
+- Deletes linked staff Auth accounts (each full user purge), then the owner account, which removes the provider row and cascaded business data. Refuses superadmin-owned providers.
 
 ---
 

@@ -507,12 +507,15 @@ Current profiles: `development`, `preview`, `production`. No change for multi-re
 
 **Recommendation:** Per-region domains (beautonomi.co.za, beautonomi.co.uk, etc.).
 
-### 6.2 Middleware
+### 6.2 Network boundary (`proxy.ts`, not `middleware.ts`)
 
-**Location:** `apps/web/src/middleware.ts` (create if missing)
+**Location:** `apps/web/src/proxy.ts` — Next.js **16** expects the **`export async function proxy`** entry here. Do **not** add `src/middleware.ts`; the framework disallows using both.
+
+Merge any host/region logic **into** the existing `proxy` function (after imports/helpers). `matcher` stays in the same file as `export const config = { matcher: [...] }`.
 
 ```ts
-import { NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 const DOMAIN_TO_REGION: Record<string, string> = {
   "beautonomi.com": "za",
@@ -529,15 +532,14 @@ function getRegionFromHost(host: string): string {
   return DOMAIN_TO_REGION[h] ?? DOMAIN_TO_REGION[h.replace(/^www\./, "")] ?? "za";
 }
 
-export function middleware(request: NextRequest) {
+// Inside `export async function proxy(request: NextRequest) { ... }`, early for HTML navigations:
+function withRegionHeader(request: NextRequest): NextResponse {
   const host = request.headers.get("host") ?? "";
   const region = getRegionFromHost(host);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-region", region);
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
-
-export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"] };
 ```
 
 **API routes:** Read `request.headers.get("x-region")` in handlers that need region context.

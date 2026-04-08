@@ -98,6 +98,18 @@ describe("bookingDraftSchema – validation", () => {
     }
   });
 
+  it("accepts optional customer_package_entitlement_id with package_id", () => {
+    const PKG = "00000000-0000-4000-8000-000000000040";
+    const ENT = "00000000-0000-4000-8000-000000000041";
+    const result = bookingDraftSchema.safeParse(
+      validBookingDraft({
+        package_id: PKG,
+        customer_package_entitlement_id: ENT,
+      })
+    );
+    expect(result.success).toBe(true);
+  });
+
   it("rejects product lines without productId or product_id", () => {
     const result = bookingDraftSchema.safeParse(
       validBookingDraft({

@@ -3,9 +3,11 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import LanguageModal from "../global/langauges-modal";
-import { Facebook, Twitter, Linkedin, Instagram, ArrowRight } from "lucide-react";
+import { Facebook, Linkedin, Instagram, ArrowRight } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
 import { fetcher } from "@/lib/http/fetcher";
 import type { PublicFooterInitial } from "@/types/public-footer-initial";
+import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
 
 interface FooterLink {
   id: string;
@@ -303,7 +305,8 @@ export default function Footer({
                   socialLinks.map((link) => {
                     const iconMap: Record<string, React.ReactNode> = {
                       facebook: <Facebook className="w-4 h-4" />,
-                      twitter: <Twitter className="w-4 h-4" />,
+                      twitter: <FaXTwitter className="w-4 h-4" aria-hidden />,
+                      x: <FaXTwitter className="w-4 h-4" aria-hidden />,
                       linkedin: <Linkedin className="w-4 h-4" />,
                       instagram: <Instagram className="w-4 h-4" />,
                     };
@@ -337,12 +340,13 @@ export default function Footer({
                       <ArrowRight className="w-3 h-3" />
                     </a>
                     <a
-                      href="https://twitter.com"
+                      href="https://x.com"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-1 text-gray-600 hover:text-primary transition-colors"
+                      title="X"
                     >
-                      <Twitter className="w-4 h-4" />
+                      <FaXTwitter className="w-4 h-4" aria-hidden />
                       <ArrowRight className="w-3 h-3" />
                     </a>
                     <a
@@ -373,6 +377,8 @@ export default function Footer({
               </span>
               <span className="text-gray-400 hidden sm:inline">·</span>
               <Link href="/sitemap.xml" className="hover:underline text-center md:text-right">Sitemap</Link>
+              <span className="text-gray-400 hidden sm:inline">·</span>
+              <CookieSettingsFooterLink variant="footer" className="text-center md:text-right" showChevron />
               <span className="text-gray-400 hidden sm:inline">·</span>
               <Link href="/learn" className="hover:underline text-center md:text-right">Learning Center</Link>
             </div>

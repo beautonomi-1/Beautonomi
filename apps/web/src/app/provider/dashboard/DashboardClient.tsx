@@ -20,6 +20,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { QuickStartBanner } from "@/components/provider/QuickStartBanner";
+import { ProviderDashboardExcellenceBanner } from "@/components/provider/ProviderDashboardExcellenceBanner";
 import { RewardsCard } from "@/components/provider/RewardsCard";
 import { BadgeCongratsModal } from "@/components/provider/BadgeCongratsModal";
 import { ProviderIdentityStrip } from "@/components/provider/ProviderIdentityStrip";
@@ -383,6 +384,8 @@ export function DashboardClient({
 
       {/* Quick Start Banner */}
       <QuickStartBanner />
+
+      <ProviderDashboardExcellenceBanner />
 
       {/* Rewards & Achievements Card - always show to encourage progress */}
       {stats.gamification ? (

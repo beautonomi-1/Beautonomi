@@ -30,12 +30,17 @@ interface Notification {
   is_read: boolean;
   read_at: string | null;
   created_at: string;
+  link?: string;
+  action_url?: string;
   data?: {
     booking_id?: string;
     client_id?: string;
     review_id?: string;
     payment_id?: string;
     conversation_id?: string;
+    product_order_id?: string;
+    order_id?: string;
+    return_request_id?: string;
   };
 }
 
@@ -88,6 +93,26 @@ function getNotificationIcon(type: string): {
 }
 
 function getNotificationRoute(notif: Notification): string | null {
+  const link = notif.link ?? notif.action_url ?? "";
+  if (link.includes("/provider/ecommerce/orders") || link.includes("ecommerce/orders")) {
+    const m = link.match(/order=([a-f0-9-]+)/i) || link.match(/\/orders\/([a-f0-9-]+)/i);
+    const oid = m?.[1] ?? notif.data?.product_order_id ?? notif.data?.order_id;
+    if (oid) {
+      return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}`;
+    }
+    return "/(app)/(tabs)/more/orders-hub";
+  }
+  if (link.includes("/provider/ecommerce/returns") || link.includes("ecommerce/returns")) {
+    return "/(app)/(tabs)/more/orders-hub?tab=returns";
+  }
+  if (link.includes("/product-orders")) {
+    const oid = notif.data?.product_order_id ?? notif.data?.order_id;
+    if (oid) {
+      return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(oid)}`;
+    }
+    return "/(app)/(tabs)/more/orders-hub";
+  }
+
   if (notif.data?.booking_id) {
     return `/(app)/(tabs)/more/bookings/${notif.data.booking_id}`;
   }
@@ -103,6 +128,20 @@ function getNotificationRoute(notif: Notification): string | null {
   }
   if (notif.type === "new_message" || notif.type === "provider_new_message") {
     return "/(app)/(tabs)/more/messaging";
+  }
+
+  if (
+    notif.type === "product_return_requested" ||
+    notif.type === "product_return_approved" ||
+    notif.type === "product_return_rejected" ||
+    notif.type === "product_return_refunded"
+  ) {
+    return "/(app)/(tabs)/more/orders-hub?tab=returns";
+  }
+
+  const productOrderId = notif.data?.product_order_id ?? notif.data?.order_id;
+  if (productOrderId) {
+    return `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderId)}`;
   }
   if (notif.type === "new_review" || notif.type === "provider_new_review") {
     return "/(app)/(tabs)/more/reviews";

@@ -15,3 +15,6 @@ export const handleEngagementURL = analyticsRN.handleEngagementURL;
 export const bootEngagement = analyticsRN.bootEngagement;
 export const getAnalyticsClient = analyticsRN.getAnalyticsClient;
 export const isEngagementEnabled = analyticsRN.isEngagementEnabled;
+export const getMobileAnalyticsAttribution = analyticsRN.getMobileAnalyticsAttribution;
+export const captureMarketingAttributionFromUrl = analyticsRN.captureMarketingAttributionFromUrl;
+export const getCachedFirstTouchForIdentify = analyticsRN.getCachedFirstTouchForIdentify;

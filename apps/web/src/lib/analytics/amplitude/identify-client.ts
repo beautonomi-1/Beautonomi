@@ -7,6 +7,7 @@
 
 import type { UserProperties } from "./identify";
 import { getCsrfHeaders } from "@/lib/csrf";
+import { getFirstTouchForIdentify } from "./marketing-attribution";
 
 /** Detect device type from user agent (browser only; for attribution) */
 function getDeviceType(): string {
@@ -47,6 +48,14 @@ export async function fetchIdentifyProperties(
     if (overrides?.portal) body.portal = overrides.portal;
     if (overrides?.platform) body.platform = overrides.platform;
     if (overrides?.device_type) body.device_type = overrides.device_type;
+    if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_APP_VERSION) {
+      body.app_version = process.env.NEXT_PUBLIC_APP_VERSION;
+    }
+
+    const firstTouch = getFirstTouchForIdentify();
+    for (const [k, v] of Object.entries(firstTouch)) {
+      (body as Record<string, unknown>)[k] = v;
+    }
 
     const res = await fetch("/api/me/analytics/identify", {
       method: "POST",

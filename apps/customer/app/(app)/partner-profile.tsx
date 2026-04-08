@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   FlatList,
   Pressable,
-  Share,
   Linking,
   useWindowDimensions,
   StatusBar,
@@ -28,6 +27,7 @@ import { api } from "@/lib/api-client";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
+import { shareProvider } from "@/lib/share-provider";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -123,20 +123,45 @@ function FloatingIcon({ name, onPress, filled, fillColor }: {
   );
 }
 
-function TrustModule({ distance_km, rating, review_count }: {
+function TrustModule({
+  distance_km,
+  rating,
+  review_count,
+  onPressSetAddress,
+}: {
   distance_km?: number | null;
   rating: number;
   review_count: number;
+  onPressSetAddress?: () => void;
 }) {
+  const missingDistance = distance_km == null;
   return (
     <View style={{ flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FAFAFA" }}>
-      <View style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}>
+      <TouchableOpacity
+        style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}
+        onPress={missingDistance ? onPressSetAddress : undefined}
+        disabled={!missingDistance || !onPressSetAddress}
+        activeOpacity={missingDistance ? 0.7 : 1}
+      >
         <Ionicons name="location-outline" size={18} color="#6B7280" />
         <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 4 }}>Distance</Text>
-        <Text style={{ fontSize: 13, fontWeight: "700", color: "#111" }}>
-          {distance_km != null ? `${distance_km.toFixed(1)} km` : "—"}
-        </Text>
-      </View>
+        {missingDistance ? (
+          <Text
+            style={{
+              fontSize: 12,
+              fontWeight: "600",
+              color: onPressSetAddress ? Colors.primary : "#111",
+              textAlign: "center",
+              marginTop: 2,
+              paddingHorizontal: 4,
+            }}
+          >
+            {onPressSetAddress ? "Set your address" : "—"}
+          </Text>
+        ) : (
+          <Text style={{ fontSize: 13, fontWeight: "700", color: "#111" }}>{`${distance_km.toFixed(1)} km`}</Text>
+        )}
+      </TouchableOpacity>
       <View style={{ width: 1, backgroundColor: "#E5E7EB" }} />
       <View style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}>
         <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -749,11 +774,14 @@ const PROFILE_MANY_CAT_PILLS = 10;
 export default function PartnerProfileScreen() {
   useScreenTracking("Partner Profile");
   const { t } = useTranslation();
-  const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId } = useLocalSearchParams<{
-    slug: string;
-    campaign_id?: string;
-    provider_id?: string;
-  }>();
+  const { slug, campaign_id: paramCampaignId, provider_id: paramProviderId, lat: paramLat, lng: paramLng } =
+    useLocalSearchParams<{
+      slug: string;
+      campaign_id?: string;
+      provider_id?: string;
+      lat?: string;
+      lng?: string;
+    }>();
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const { contentPadding } = useResponsive();
@@ -808,8 +836,14 @@ export default function PartnerProfileScreen() {
     if (!slug) return;
     setLoading(true);
     setError(null);
-    const lat = selectedAddress?.latitude ?? coords?.latitude;
-    const lng = selectedAddress?.longitude ?? coords?.longitude;
+    const fromRouteLat = paramLat != null ? Number(paramLat) : NaN;
+    const fromRouteLng = paramLng != null ? Number(paramLng) : NaN;
+    const fromRoute =
+      Number.isFinite(fromRouteLat) && Number.isFinite(fromRouteLng)
+        ? { latitude: fromRouteLat, longitude: fromRouteLng }
+        : null;
+    const lat = fromRoute?.latitude ?? selectedAddress?.latitude ?? coords?.latitude;
+    const lng = fromRoute?.longitude ?? selectedAddress?.longitude ?? coords?.longitude;
     const qs = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : "";
     try {
       const [provRes, svcRes, pkRes] = await Promise.all([
@@ -852,7 +886,15 @@ export default function PartnerProfileScreen() {
     } finally {
       setLoading(false);
     }
-  }, [slug, selectedAddress?.latitude, selectedAddress?.longitude, coords?.latitude, coords?.longitude]);
+  }, [
+    slug,
+    paramLat,
+    paramLng,
+    selectedAddress?.latitude,
+    selectedAddress?.longitude,
+    coords?.latitude,
+    coords?.longitude,
+  ]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -971,8 +1013,17 @@ export default function PartnerProfileScreen() {
 
   /* ── Share ── */
   const handleShare = useCallback(() => {
-    if (!provider) return;
-    Share.share({ message: `Check out ${provider.business_name} on Beautonomi!`, url: `${APP_URL}/partner-profile?slug=${slug}` }).catch(() => {});
+    if (!provider || !slug) return;
+    void shareProvider({
+      businessName: provider.business_name,
+      slug,
+      webBaseUrl: APP_URL,
+      description: provider.description,
+      topCategory: provider.categories?.[0] ?? null,
+      ratingAverage: provider.rating,
+      reviewCount: provider.review_count,
+      distanceKm: provider.distance_km ?? null,
+    });
   }, [provider, slug]);
 
   /* ── Message ── */
@@ -1416,7 +1467,12 @@ export default function PartnerProfileScreen() {
               )}
             </View>
 
-            <TrustModule distance_km={provider.distance_km as number | null | undefined} rating={provider.rating} review_count={provider.review_count} />
+            <TrustModule
+              distance_km={provider.distance_km as number | null | undefined}
+              rating={provider.rating}
+              review_count={provider.review_count}
+              onPressSetAddress={() => router.push("/(app)/account-settings/addresses")}
+            />
 
             {/* Description */}
             {provider.description?.trim() ? (

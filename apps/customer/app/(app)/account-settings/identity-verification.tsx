@@ -303,8 +303,9 @@ export default function IdentityVerificationScreen() {
             }}
           >
             <Ionicons name="information-circle-outline" size={20} color="#3b82f6" />
-            <Text style={{ flex: 1, fontSize: 13, color: "#1e40af" }}>
-              Our automated verification is coming soon. Upload your ID and our team will review it within 1–2 business days.
+            <Text style={{ flex: 1, fontSize: 13, color: "#1e40af", lineHeight: 19 }}>
+              Automated ID checks are not available on this build yet. Use manual upload below — photos should be clear and
+              uncropped. We usually review within 1–2 business days and you will see status updates here.
             </Text>
           </View>
         )}

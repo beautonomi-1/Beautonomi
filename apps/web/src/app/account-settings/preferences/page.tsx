@@ -38,6 +38,8 @@ const GlobalPreferences: React.FC = () => {
   const tenantTimezone =
     bundle?.meta?.tenant_region?.timezone?.trim() || "Africa/Johannesburg";
   const { user } = useAuth();
+  const isProviderUser =
+    user?.role === "provider_owner" || user?.role === "provider_staff";
   const [editingField, setEditingField] = useState<PreferenceField>(null);
   const [preferences, setPreferences] = useState<Preferences>({
     language: null,
@@ -316,7 +318,8 @@ const GlobalPreferences: React.FC = () => {
                 {/* Main Content */}
                 <div className="w-full lg:w-2/3">
                   {renderField("Preferred language", "language", <Globe className="w-5 h-5 text-[#FF0077]" />)}
-                  {renderField("Preferred currency", "currency", <Globe className="w-5 h-5 text-[#FF0077]" />)}
+                  {!isProviderUser &&
+                    renderField("Preferred currency", "currency", <Globe className="w-5 h-5 text-[#FF0077]" />)}
                   {renderField("Time zone", "timezone", <Globe className="w-5 h-5 text-[#FF0077]" />)}
                 </div>
 
@@ -337,7 +340,9 @@ const GlobalPreferences: React.FC = () => {
                       </h2>
                     </div>
                     <p className="text-sm font-light text-gray-600 leading-relaxed">
-                      Changing your currency updates how you see prices. You can change how you get payments in your payments & payouts preferences.
+                      {isProviderUser
+                        ? "Language and timezone apply to your account. Payout currency follows your provider payout settings."
+                        : "Changing your currency updates how you see prices. You can change how you get payments in your payments & payouts preferences."}
                     </p>
                   </motion.div>
                 </div>

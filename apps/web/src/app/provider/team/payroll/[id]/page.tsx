@@ -46,10 +46,11 @@ function isPayrollOwnerRole(role: string | null | undefined): boolean {
   return role === "provider_owner" || role === "superadmin";
 }
 
-function ComingSoonBadge() {
+/** Tax/UIF auto-calculation may be added later; owners enter values manually today. */
+function ManualEntryHint() {
   return (
     <Badge variant="secondary" className="ml-1 align-middle text-[10px] font-normal normal-case">
-      Coming soon
+      Manual
     </Badge>
   );
 }
@@ -280,7 +281,7 @@ export default function PayrollDetailPage() {
           <h3 className="font-semibold">Pay run items</h3>
           <p className="text-sm text-gray-600 max-w-xl">
             VAT / PAYE and UIF are shown for reference and stay at R0 until automation ships.
-            <ComingSoonBadge /> Use <strong>Manual deductions</strong> for other withholdings while this run is in draft.
+            <ManualEntryHint /> Use <strong>Manual deductions</strong> for other withholdings while this run is in draft.
           </p>
         </div>
 
@@ -341,14 +342,14 @@ export default function PayrollDetailPage() {
                     <div>
                       <span className="text-xs text-gray-500">
                         Tax (VAT/PAYE)
-                        <ComingSoonBadge />
+                        <ManualEntryHint />
                       </span>
                       <p className="text-gray-700">R{tax.toFixed(2)}</p>
                     </div>
                     <div>
                       <span className="text-xs text-gray-500">
                         UIF
-                        <ComingSoonBadge />
+                        <ManualEntryHint />
                       </span>
                       <p className="text-gray-700">R{uif.toFixed(2)}</p>
                     </div>
@@ -408,11 +409,11 @@ export default function PayrollDetailPage() {
                 <TableHead className="text-right">Manual ded.</TableHead>
                 <TableHead className="text-right whitespace-nowrap">
                   Tax (VAT/PAYE)
-                  <ComingSoonBadge />
+                  <ManualEntryHint />
                 </TableHead>
                 <TableHead className="text-right whitespace-nowrap">
                   UIF
-                  <ComingSoonBadge />
+                  <ManualEntryHint />
                 </TableHead>
                 <TableHead>Notes</TableHead>
                 <TableHead className="text-right">Net pay</TableHead>

@@ -1,16 +1,37 @@
 import { NextRequest } from "next/server";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import {
+  requireAdminSection,
+  successResponse,
+  handleApiError,
+  errorResponse,
+  forbiddenResponse,
+} from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { writeAuditLog } from "@/lib/audit/audit";
+
+const CONFIRM_BACKFILL = "BACKFILL_ALL";
 
 /**
  * POST /api/admin/gamification/backfill
- * 
- * Backfill point transactions for all providers based on historical bookings and reviews (admin only)
+ *
+ * Platform-wide backfill (superadmin only). Body: { "confirm": "BACKFILL_ALL" }
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    if (user.role !== "superadmin") {
+      return forbiddenResponse("Superadmin only");
+    }
+    const body = (await request.json().catch(() => ({}))) as { confirm?: string };
+    if (body.confirm !== CONFIRM_BACKFILL) {
+      return errorResponse(
+        `Send { "confirm": "${CONFIRM_BACKFILL}" } to run platform-wide backfill.`,
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
     const supabase = getSupabaseAdmin();
 
     // Call the backfill function
@@ -20,6 +41,15 @@ export async function POST(request: NextRequest) {
       throw error;
     }
 
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "gamification_backfill_all",
+      entity_type: "platform",
+      entity_id: null,
+      metadata: { total_providers: data?.length ?? 0 },
+    });
+
     return successResponse({
       message: 'Point transactions backfilled successfully',
       results: data || [],
@@ -27,31 +57,5 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     return handleApiError(error, 'Failed to backfill point transactions');
-  }
-}
-
-/**
- * POST /api/admin/gamification/backfill/initialize
- * 
- * Initialize points and backfill transactions for all providers (admin only)
- */
-export async function PUT(request: NextRequest) {
-  try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
-    const supabase = getSupabaseAdmin();
-
-    // Call the initialization function which now includes backfilling
-    const { data, error } = await supabase.rpc('initialize_provider_points_for_all');
-
-    if (error) {
-      throw error;
-    }
-
-    return successResponse({
-      message: 'Provider points initialized and transactions backfilled successfully',
-      providers_processed: data || 0,
-    });
-  } catch (error) {
-    return handleApiError(error, 'Failed to initialize provider points');
   }
 }

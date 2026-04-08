@@ -1,6 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { subtractMoney } from "@beautonomi/utils";
+import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecycle";
+import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
 
 type RecordProductOrderPaymentInput = {
   supabase: SupabaseClient;
@@ -18,7 +20,9 @@ export async function recordProductOrderPayment(
   const { supabase, productOrderId, reference, amountMajor, feesMajor = 0, source, provider } = input;
 
   const { data: order, error: orderErr } = await (supabase.from("product_orders") as any)
-    .select("id, tenant_id, provider_id, order_number, total_amount, platform_fee, payment_status, payment_reference")
+    .select(
+      "id, tenant_id, provider_id, customer_id, order_number, total_amount, platform_fee, payment_status, payment_reference",
+    )
     .eq("id", productOrderId)
     .maybeSingle();
 
@@ -54,6 +58,12 @@ export async function recordProductOrderPayment(
     })
     .eq("id", productOrderId);
 
+  const customerId = (order as any).customer_id as string | undefined;
+  const providerId = (order as any).provider_id as string | undefined;
+  if (customerId && providerId) {
+    await clearCustomerCartForProvider(supabase, customerId, providerId);
+  }
+
   if (alreadyRecorded) {
     return { ok: true, duplicate: true };
   }
@@ -74,6 +84,12 @@ export async function recordProductOrderPayment(
     },
     created_at: new Date().toISOString(),
   });
+
+  try {
+    await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
+  } catch (e) {
+    console.error("[recordProductOrderPayment] ensurePackageEntitlementsFromProductOrder", e);
+  }
 
   await (supabase.from("finance_transactions") as any).insert([
     {

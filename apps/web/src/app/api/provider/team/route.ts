@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { getTeamRosterDetailLevel, redactStaffRowForViewer } from "@/lib/auth/provider-team-roster-access";
 
 /**
  * GET /api/provider/team
@@ -27,6 +28,8 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
+    const rosterDetailLevel = await getTeamRosterDetailLevel(user.id);
+
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
 
@@ -45,7 +48,18 @@ export async function GET(request: NextRequest) {
       staffIds = assignments?.map((a) => a.staff_id) || [];
 
       if (staffIds.length === 0) {
-        return successResponse([]);
+        // Legacy fallback: if location belongs to this provider but has no mapping rows yet,
+        // return all provider staff rather than empty list.
+        const { data: locationRow } = await supabase
+          .from("provider_locations")
+          .select("id")
+          .eq("id", locationId)
+          .eq("provider_id", providerId)
+          .maybeSingle();
+        if (!locationRow) {
+          return successResponse([]);
+        }
+        staffIds = null;
       }
     }
 
@@ -82,7 +96,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Map database roles to API format
-    const transformedStaff = (staff || []).map((member: any) => {
+    const transformedStaff = (staff || []).map((member: Record<string, unknown>) => {
       const apiRole =
         member.role === "owner"
           ? "provider_owner"
@@ -90,20 +104,21 @@ export async function GET(request: NextRequest) {
             ? "provider_manager"
             : "provider_staff";
 
-      return {
-        id: member.id,
-        user_id: member.user_id,
-        provider_id: member.provider_id,
-        name: member.name || "Staff Member",
-        email: member.email || "",
-        phone: member.phone || null,
-        avatar_url: member.avatar_url || null,
-        bio: member.bio || null,
+      const row = {
+        id: member.id as string,
+        user_id: member.user_id as string | null,
+        provider_id: member.provider_id as string,
+        name: (member.name as string) || "Staff Member",
+        email: (member.email as string) || "",
+        phone: (member.phone as string | null) || null,
+        avatar_url: (member.avatar_url as string | null) || null,
+        bio: (member.bio as string | null) || null,
         role: apiRole,
-        is_active: member.is_active ?? true,
-        commission_percentage: member.commission_percentage ?? 0,
-        mobileReady: member.mobile_ready ?? false,
+        is_active: (member.is_active as boolean) ?? true,
+        commission_percentage: (member.commission_percentage as number) ?? 0,
+        mobileReady: (member.mobile_ready as boolean) ?? false,
       };
+      return redactStaffRowForViewer(row, user.id, rosterDetailLevel);
     });
 
     return successResponse(transformedStaff);

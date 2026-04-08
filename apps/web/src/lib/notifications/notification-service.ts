@@ -2383,6 +2383,48 @@ export async function notifySupportTicketUpdated(
   );
 }
 
+/**
+ * User IDs to notify for inbound support work (excludes broad superadmin fan-out).
+ */
+async function listSupportInboxRecipientUserIds(limit = 40): Promise<string[]> {
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase.from("users").select("id").in("role", ["support_agent", "admin_support"]).limit(limit);
+  return (data ?? []).map((r: { id: string }) => r.id).filter(Boolean);
+}
+
+/**
+ * Notify support staff about a new ticket or a customer reply (email + push via `support_ticket_updated` template).
+ */
+export async function notifySupportStaffInboxActivity(
+  recipientUserIds: string[],
+  ticketNumber: string,
+  updateMessage: string,
+  ticketId: string,
+  channels: NotificationChannel[] = ["email", "push"]
+) {
+  const unique = [...new Set(recipientUserIds)].filter(Boolean);
+  if (unique.length === 0) return { success: true as const, skipped: true as const };
+  return sendTemplateNotification(
+    "support_ticket_updated",
+    unique,
+    {
+      ticket_number: ticketNumber,
+      update_message: updateMessage,
+      ticket_id: ticketId,
+    },
+    channels,
+    { appType: "customer" }
+  );
+}
+
+/**
+ * Pick staff to alert: assignee if set, otherwise support_agent / admin_support roster.
+ */
+export async function resolveSupportTicketStaffRecipients(assignedToUserId: string | null): Promise<string[]> {
+  if (assignedToUserId) return [assignedToUserId];
+  return listSupportInboxRecipientUserIds();
+}
+
 // ============================================================================
 // DISPUTES & COMPLAINTS
 // ============================================================================

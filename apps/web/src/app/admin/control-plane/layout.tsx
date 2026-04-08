@@ -18,6 +18,7 @@ import {
   MapPin,
   ShieldAlert,
   Wrench,
+  Gavel,
 } from "lucide-react";
 
 const controlPlaneNav = [
@@ -37,6 +38,7 @@ const controlPlaneNav = [
   { title: "Safety Module", href: "/admin/control-plane/modules/safety", icon: ShieldAlert },
   { title: "Safety Logs", href: "/admin/control-plane/safety-logs", icon: ShieldAlert },
   { title: "Audit Log", href: "/admin/control-plane/audit-log", icon: ListChecks },
+  { title: "Compliance purge", href: "/admin/control-plane/compliance", icon: Gavel },
 ];
 
 export default function ControlPlaneLayout({ children }: { children: ReactNode }) {

@@ -32,6 +32,8 @@ export async function GET(request: NextRequest) {
         rating_average,
         review_count,
         created_at,
+        max_service_distance_km,
+        is_distance_filter_enabled,
         provider_locations (city, country)
       `)
       .eq("tenant_id", tenantId)
@@ -51,7 +53,23 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    type ProviderRow = { user_id?: string; id: string; business_name?: string; slug?: string; business_type?: string; status?: string; is_verified?: boolean; billing_email?: string; billing_phone?: string; provider_locations?: unknown[]; created_at?: string; rating_average?: number; review_count?: number };
+    type ProviderRow = {
+      user_id?: string;
+      id: string;
+      business_name?: string;
+      slug?: string;
+      business_type?: string;
+      status?: string;
+      is_verified?: boolean;
+      billing_email?: string;
+      billing_phone?: string;
+      provider_locations?: unknown[];
+      created_at?: string;
+      rating_average?: number;
+      review_count?: number;
+      max_service_distance_km?: number | null;
+      is_distance_filter_enabled?: boolean | null;
+    };
     type UserRow = { id: string; full_name?: string; email?: string; phone?: string };
     const userIds = [...new Set((providers || []).map((p: ProviderRow) => p.user_id).filter(Boolean))] as string[];
     const usersMap = new Map<string, UserRow>();
@@ -74,6 +92,7 @@ export async function GET(request: NextRequest) {
       return {
         id: p.id,
         business_name: p.business_name,
+        name: p.business_name,
         slug: p.slug,
         business_type: p.business_type,
         status,
@@ -86,6 +105,8 @@ export async function GET(request: NextRequest) {
         created_at: p.created_at,
         rating: p.rating_average ?? 0,
         review_count: p.review_count ?? 0,
+        max_service_distance_km: p.max_service_distance_km ?? null,
+        is_distance_filter_enabled: p.is_distance_filter_enabled ?? null,
       };
     });
 

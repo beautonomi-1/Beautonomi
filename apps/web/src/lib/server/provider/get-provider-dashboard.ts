@@ -277,11 +277,11 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     const giftCardSalesTotal = sumAmount(["gift_card_sale"]);
     const membershipSalesTotal = sumAmount(["membership_sale"]);
 
-    // Travel fees (separate from provider_earnings, goes 100% to provider)
-    const travelFeesToday = sumNet(["travel_fee"], startOfToday);
-    const travelFeesThisMonth = sumNet(["travel_fee"], startOfMonth);
-    const travelFeesLastMonth = sumNet(["travel_fee"], startOfLastMonth, endOfLastMonth);
-    const travelFeesTotal = sumNet(["travel_fee"]);
+    // Travel line items: ledger rows use net=0 (travel is included in provider_earnings); use amount for display.
+    const travelFeesToday = sumAmount(["travel_fee"], startOfToday);
+    const travelFeesThisMonth = sumAmount(["travel_fee"], startOfMonth);
+    const travelFeesLastMonth = sumAmount(["travel_fee"], startOfLastMonth, endOfLastMonth);
+    const travelFeesTotal = sumAmount(["travel_fee"]);
 
     // Refund impact on provider earnings (negative provider_earnings rows) - optimized
     let refundsTotal = 0;
@@ -353,19 +353,27 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     
     // Calculate pending payments (unpaid bookings)
     let unpaidBookingsQuery = supabaseAdmin
-      .from('bookings')
-      .select('total_amount, payment_status')
-      .eq('provider_id', providerId)
-      .in('payment_status', ['pending', 'partially_paid'])
-      .not('status', 'in', '(cancelled,no_show)');
+      .from("bookings")
+      .select("total_amount, total_paid, total_refunded, payment_status")
+      .eq("provider_id", providerId)
+      .in("payment_status", ["pending", "partially_paid"])
+      .not("status", "in", "(cancelled,no_show)");
     
     if (locationId) {
       unpaidBookingsQuery = unpaidBookingsQuery.eq('location_id', locationId);
     }
     
     const { data: unpaidBookings } = await unpaidBookingsQuery;
-    
-    const pendingPaymentsAmount = unpaidBookings?.reduce((sum, b) => sum + (b.total_amount || 0), 0) || 0;
+
+    /** Sum outstanding per booking (not full total_amount — fixes partial payments). */
+    const pendingPaymentsAmount =
+      unpaidBookings?.reduce((sum, b) => {
+        const total = Number((b as { total_amount?: number }).total_amount ?? 0);
+        const paid = Number((b as { total_paid?: number }).total_paid ?? 0);
+        const refunded = Number((b as { total_refunded?: number }).total_refunded ?? 0);
+        const outstanding = Math.max(0, total - paid + refunded);
+        return sum + outstanding;
+      }, 0) || 0;
     const pendingPaymentsCount = unpaidBookings?.length || 0;
 
     let insights:

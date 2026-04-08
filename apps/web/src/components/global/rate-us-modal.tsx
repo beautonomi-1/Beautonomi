@@ -9,6 +9,7 @@ import Image from "next/image";
 import { fetcher } from "@/lib/http/fetcher";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 interface RateUsModalProps {
   isOpen: boolean;
@@ -66,15 +67,16 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
       
       // If no apps data, use fallback defaults
       if (!apps) {
+        const c = NATIVE_STORE.customer;
         apps = {
           ios: {
             enabled: true,
-            app_store_url: 'https://apps.apple.com/app/beautonomi-customer',
+            app_store_url: c.defaultAppStoreUrl,
           },
           android: {
             enabled: true,
-            package_name: 'com.beautonomi.customer',
-            download_url: 'https://play.google.com/store/apps/details?id=com.beautonomi.customer',
+            package_name: c.packageAndroid,
+            download_url: c.defaultPlayStoreUrl,
           },
           huawei: {
             enabled: false,
@@ -148,14 +150,14 @@ export default function RateUsModal({ isOpen, onClose }: RateUsModalProps) {
         ? {
             name: 'App Store',
             icon: Apple,
-            url: 'https://apps.apple.com/app/beautonomi-customer',
+            url: NATIVE_STORE.customer.defaultAppStoreUrl,
             buttonText: 'Rate on App Store',
             platform: 'ios'
           }
         : {
             name: 'Google Play Store',
             icon: GooglePlayStore,
-            url: 'https://play.google.com/store/apps/details?id=com.beautonomi.customer',
+            url: NATIVE_STORE.customer.defaultPlayStoreUrl,
             buttonText: 'Rate on Google Play',
             platform: 'android'
           };

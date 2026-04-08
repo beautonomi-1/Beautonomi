@@ -77,16 +77,23 @@ export async function GET(request: NextRequest) {
       supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('tenant_id', tenantId).eq('status', 'completed'),
     ]);
 
-    // GMV from merged ledger (provider in tenant OR booking in tenant).
+    // Net customer cash from ledger: payments + additional charges − refunds (uses `net`, matches `/api/admin/analytics` revenue series).
     const getRevenue = async (startISO: string, endISO?: string) => {
       try {
         const rows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
           start: startISO,
           end: endISO ?? null,
         }, {
-          transactionTypes: ["payment", "additional_charge_payment"],
+          transactionTypes: ["payment", "additional_charge_payment", "refund"],
         });
-        return rows.reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+        return rows.reduce((sum, r) => {
+          const t = r.transaction_type ?? "";
+          const delta =
+            t === "refund"
+              ? -Math.abs(Number(r.net ?? r.amount ?? 0))
+              : Math.abs(Number(r.net ?? r.amount ?? 0));
+          return sum + delta;
+        }, 0);
       } catch (err) {
         console.error("Error calculating revenue:", err);
         return 0;

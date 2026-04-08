@@ -37,6 +37,10 @@ import {
   TicketCheck,
   Coins,
   DollarSign,
+  Repeat,
+  Link2,
+  Monitor,
+  PiggyBank,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -80,7 +84,9 @@ const navigationSections: NavSection[] = [
     title: "Operations",
     items: [
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" },
+      { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" },
+      { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" },
     ],
   },
@@ -126,10 +132,12 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Sparkles, label: "Explore Content", href: "/provider/explore", permission: "create_explore_posts" },
       { icon: Users, label: "Team", href: "/provider/team", permission: "view_team" },
+      { icon: PiggyBank, label: "Payroll", href: "/provider/team/payroll", permission: "view_team" },
       { icon: DollarSign, label: "My Earnings", href: "/provider/team/my-earnings", permission: "view_team" },
       { icon: Star, label: "Reviews", href: "/provider/reviews", permission: "view_reviews" },
       { icon: MessageSquare, label: "Messages", href: "/provider/messaging", permission: "view_messages" },
       { icon: Megaphone, label: "Marketing", href: "/provider/marketing/automations", permission: "edit_settings" },
+      { icon: Link2, label: "Booking links", href: "/provider/express-booking", permission: "edit_settings" },
     ],
   },
 ];
@@ -155,6 +163,9 @@ const routePrefixMap: Record<string, string> = {
   "/provider/schedule": "/provider/schedule",
   "/provider/time-blocks": "/provider/time-blocks",
   "/provider/payouts": "/provider/payouts",
+  "/provider/recurring-appointments": "/provider/recurring-appointments",
+  "/provider/express-booking": "/provider/express-booking",
+  "/provider/front-desk": "/provider/front-desk",
   "/help": "/help",
 };
 
@@ -203,8 +214,13 @@ export function ProviderMobileNav() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation menu">
-          <Menu className="w-6 h-6" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden min-h-[44px] min-w-[44px] touch-manipulation shrink-0"
+          aria-label="Open navigation menu"
+        >
+          <Menu className="w-6 h-6 pointer-events-none" aria-hidden />
         </Button>
       </SheetTrigger>
       <SheetContent
@@ -263,7 +279,7 @@ export function ProviderMobileNav() {
           </div>
 
           {/* Navigation Sections */}
-          <nav className="flex-1 overflow-y-auto overflow-x-hidden px-3 py-3 space-y-5 scrollbar-hide">
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-3 py-3 space-y-5 scrollbar-hide [-webkit-overflow-scrolling:touch]">
             {filteredNavigationSections.map((section) => (
               <div key={section.title}>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5 px-3">
@@ -318,7 +334,7 @@ export function ProviderMobileNav() {
           </nav>
 
           {/* Bottom Section */}
-          <div className="mt-auto pt-2 border-t border-white/10 px-3 space-y-0.5 flex-shrink-0 pb-4">
+          <div className="mt-auto pt-2 border-t border-white/10 px-3 space-y-0.5 flex-shrink-0 pb-safe">
             {bottomItems.map((item) => {
               const Icon = item.icon;
               const isActive = isActiveRoute(pathname, item.href);

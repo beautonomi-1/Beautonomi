@@ -3,6 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase/server';
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import {
   fetchFinanceLedgerExportRowsForTenant,
   fetchFinanceLedgerRowsForTenant,
@@ -14,6 +15,7 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
+    const scopedUserIds = await collectTenantScopedUserIds(supabase, tenantId);
 
     const { searchParams } = new URL(request.url);
     const period = searchParams.get('period') || '30d'; // 7d, 30d, 90d, 1y
@@ -38,10 +40,10 @@ export async function GET(request: NextRequest) {
         startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     }
 
-    // Get daily time series data (optional extra filter, e.g. for users by role)
+    /** Tenant-scoped daily counts (bookings / providers) or customer users tied to this tenant (preferred home + activity sample). */
     const getDailyTimeSeries = async (
       table: string,
-      dateField: string = 'created_at',
+      dateField: string = "created_at",
       extraFilter?: { column: string; value: string }
     ) => {
       let query = supabase
@@ -49,9 +51,22 @@ export async function GET(request: NextRequest) {
         .select(dateField)
         .gte(dateField, startDate.toISOString())
         .order(dateField, { ascending: true });
+
+      if (table === "bookings" || table === "providers") {
+        query = query.eq("tenant_id", tenantId);
+      }
       if (extraFilter) {
         query = query.eq(extraFilter.column, extraFilter.value);
       }
+      if (table === "users") {
+        query = query.eq("role", "customer");
+        if (scopedUserIds.length > 0) {
+          query = query.or(`preferred_home_tenant_id.eq.${tenantId},id.in.(${scopedUserIds.join(",")})`);
+        } else {
+          query = query.eq("preferred_home_tenant_id", tenantId);
+        }
+      }
+
       const { data, error } = await query;
 
       if (error) {
@@ -62,15 +77,14 @@ export async function GET(request: NextRequest) {
       const grouped: Record<string, number> = {};
       type RowWithDate = Record<string, unknown>;
       ((data || []) as unknown as RowWithDate[]).forEach((item: RowWithDate) => {
-        const date = new Date(String(item[dateField] ?? "")).toISOString().split('T')[0];
+        const date = new Date(String(item[dateField] ?? "")).toISOString().split("T")[0];
         grouped[date] = (grouped[date] || 0) + 1;
       });
 
-      // Fill in missing dates with 0
       const result: Array<{ date: string; count: number }> = [];
       const current = new Date(startDate);
       while (current <= now) {
-        const dateStr = current.toISOString().split('T')[0];
+        const dateStr = current.toISOString().split("T")[0];
         result.push({
           date: dateStr,
           count: grouped[dateStr] || 0,
@@ -238,9 +252,9 @@ export async function GET(request: NextRequest) {
       bookingStatusBreakdown,
       topProviders,
     ] = await Promise.all([
-      getDailyTimeSeries('users', 'created_at', { column: 'role', value: 'customer' }),
-      getDailyTimeSeries('providers', 'created_at'),
-      getDailyTimeSeries('bookings', 'created_at'),
+      getDailyTimeSeries("users", "created_at"),
+      getDailyTimeSeries("providers", "created_at"),
+      getDailyTimeSeries("bookings", "created_at"),
       getRevenueTimeSeries(),
       getProviderStatusBreakdown(),
       getBookingStatusBreakdown(),

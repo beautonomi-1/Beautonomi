@@ -14,6 +14,8 @@ import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-tea
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { cancelStalePendingPaystackProductOrders } from "@/lib/orders/product-order-lifecycle";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
@@ -203,6 +205,9 @@ export async function POST(request: NextRequest) {
       return errorResponse(stockErrors.join("; "), "INSUFFICIENT_STOCK", 400);
     }
 
+    const adminSupabase = getSupabaseAdmin();
+    await cancelStalePendingPaystackProductOrders(adminSupabase, user.id, parsed.provider_id);
+
     // Get shipping config for delivery fee
     let deliveryFee = 0;
     if (parsed.fulfillment_type === "delivery") {
@@ -303,6 +308,8 @@ export async function POST(request: NextRequest) {
     }
     const amountAfterWallet = Math.max(0, totalAmount - walletAmountApplied);
     const paidWithWalletOnly = amountAfterWallet <= 0 && walletAmountApplied > 0;
+    const deferCartClearForPaystack =
+      paymentMethod === "paystack" && !paidWithWalletOnly && amountAfterWallet > 0;
 
     // Generate order number
     const { data: seqData } = await supabase.rpc("nextval", {
@@ -387,11 +394,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Clear cart items for this provider
-    await (supabase.from("cart_items") as any)
-      .delete()
-      .eq("user_id", user.id)
-      .eq("provider_id", parsed.provider_id);
+    // Clear cart when checkout is complete or does not depend on Paystack success
+    if (!deferCartClearForPaystack) {
+      await (supabase.from("cart_items") as any)
+        .delete()
+        .eq("user_id", user.id)
+        .eq("provider_id", parsed.provider_id);
+    }
 
     // Notify provider team (owner + active staff with linked accounts)
     const { format: formatOrderTotal } = await getTenantMoneyFormatter(orderTenantId);
@@ -404,7 +413,7 @@ export async function POST(request: NextRequest) {
         order_number: orderNum,
         total_amount: totalAmount,
       },
-      link: "/provider/ecommerce/orders",
+      link: `/provider/ecommerce/orders?order=${encodeURIComponent(order.id)}`,
     });
 
     // Order confirmation to customer via OneSignal notification template (push + email)

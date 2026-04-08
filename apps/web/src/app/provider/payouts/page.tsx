@@ -117,7 +117,7 @@ export default function ProviderPayoutsCenter() {
                   <p className="text-sm text-gray-500">
                     Min payout: {fmt(earnings?.minimum_payout_amount ?? 100)}
                     {(earnings?.pending_payouts ?? 0) > 0 && (
-                      <span> · Pending: {fmt(earnings?.pending_payouts ?? 0)}</span>
+                      <span> · In queue (pending/processing): {fmt(earnings?.pending_payouts ?? 0)}</span>
                     )}
                   </p>
                 </div>

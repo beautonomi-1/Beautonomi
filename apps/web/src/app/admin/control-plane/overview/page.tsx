@@ -3,7 +3,18 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ToggleLeft, Plug, Music, Sparkles, ListChecks, Megaphone, TrendingUp, MapPin, ShieldAlert } from "lucide-react";
+import {
+  ToggleLeft,
+  Plug,
+  Music,
+  Sparkles,
+  ListChecks,
+  Megaphone,
+  TrendingUp,
+  MapPin,
+  ShieldAlert,
+  Gavel,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -23,6 +34,12 @@ const links = [
   { title: "Distance Module", href: "/admin/control-plane/modules/distance", icon: MapPin, description: "Radius filter, service area" },
   { title: "Safety Module", href: "/admin/control-plane/modules/safety", icon: ShieldAlert, description: "Panic, check-in, Aura escalation" },
   { title: "Audit Log", href: "/admin/control-plane/audit-log", icon: ListChecks, description: "Config change history" },
+  {
+    title: "Compliance purge",
+    href: "/admin/control-plane/compliance",
+    icon: Gavel,
+    description: "User / provider erasure and immutable purge audit",
+  },
 ];
 
 export default function ControlPlaneOverviewPage() {

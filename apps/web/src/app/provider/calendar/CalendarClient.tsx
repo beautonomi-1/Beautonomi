@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, TeamMember } from "@/lib/provider-portal/types";
@@ -18,15 +19,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
-import { CalendarMobileView } from "@/components/provider-portal/CalendarMobileView";
-import { CalendarDesktopView } from "@/components/provider-portal/CalendarDesktopView";
-import { GroupBookingDialog } from "@/components/provider-portal/GroupBookingDialog";
-import { PrintScheduleDialog } from "@/components/provider-portal/PrintScheduleDialog";
-import { SetDayOffDialog } from "@/components/provider-portal/SetDayOffDialog";
-import { EditWorkHoursDialog } from "@/components/provider-portal/EditWorkHoursDialog";
-import { CheckoutDialog } from "@/components/provider-portal/CheckoutDialog";
-import { AppointmentStatusManager } from "@/components/provider-portal/AppointmentStatusManager";
-import { DragDropProvider } from "@/components/provider-portal/DragDropCalendar";
 // Side-effect imports to register stub components with Turbopack (workaround for HMR bug)
 import "@/components/provider-portal/AppointmentDialogMobile";
 import "@/components/provider-portal/AppointmentDetailsModal";
@@ -53,6 +45,10 @@ import { WaitingRoomButton, WaitingRoomPanel } from "@/components/waitingRoom";
 import { useSupabaseRealtime } from "@/hooks/useSupabaseRealtime";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import type { ServiceItem, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
+import {
+  expandTimeBlocksForCalendarRange,
+  resolveTimeBlockRecordId,
+} from "@/components/provider-portal/calendar/expand-time-blocks";
 import { AppointmentStatus, mapStatus } from "@/lib/scheduling/mangomintAdapter";
 import { TimeBlockSidebar } from "@/components/calendar/TimeBlockSidebar";
 import { useTimeBlockSidebar, openEditTimeBlockMode } from "@/stores/time-block-sidebar-store";
@@ -62,8 +58,91 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Contrast, Eye, EyeOff, Grid3X3, Tag, DollarSign, Palette, Clock } from "lucide-react";
 import { toast } from "sonner";
-import RateCustomerModal from "@/components/reviews/rate-customer-modal";
+import { useMediaQueryMatch, TW_MD_MIN_QUERY } from "@/hooks/useMediaQueryMatch";
 import type { CalendarInitialPayload } from "./fetch-calendar-initial";
+
+const CalendarDesktopWithDnd = dynamic(
+  () =>
+    import("@/components/provider-portal/CalendarDesktopWithDnd").then(
+      (m) => m.CalendarDesktopWithDnd
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-1 min-h-[280px] items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/80">
+        <RefreshCw className="h-8 w-8 animate-spin text-primary/40" />
+      </div>
+    ),
+  }
+);
+
+const CalendarMobileWithDnd = dynamic(
+  () =>
+    import("@/components/provider-portal/CalendarMobileWithDnd").then(
+      (m) => m.CalendarMobileWithDnd
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex min-h-[40vh] items-center justify-center py-12">
+        <RefreshCw className="h-7 w-7 animate-spin text-primary/40" />
+      </div>
+    ),
+  }
+);
+
+const GroupBookingDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/GroupBookingDialog").then(
+      (m) => m.GroupBookingDialog
+    ),
+  { ssr: false }
+);
+
+const PrintScheduleDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/PrintScheduleDialog").then(
+      (m) => m.PrintScheduleDialog
+    ),
+  { ssr: false }
+);
+
+const SetDayOffDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/SetDayOffDialog").then(
+      (m) => m.SetDayOffDialog
+    ),
+  { ssr: false }
+);
+
+const EditWorkHoursDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/EditWorkHoursDialog").then(
+      (m) => m.EditWorkHoursDialog
+    ),
+  { ssr: false }
+);
+
+const CheckoutDialog = dynamic(
+  () =>
+    import("@/components/provider-portal/CheckoutDialog").then(
+      (m) => m.CheckoutDialog
+    ),
+  { ssr: false }
+);
+
+const AppointmentStatusManager = dynamic(
+  () =>
+    import("@/components/provider-portal/AppointmentStatusManager").then(
+      (m) => m.AppointmentStatusManager
+    ),
+  { ssr: false }
+);
+
+const RateCustomerModal = dynamic(
+  () => import("@/components/reviews/rate-customer-modal"),
+  { ssr: false }
+);
 
 /** Inline calendar display preferences for the mobile Filter sheet */
 function MobileCalendarPreferencesSection() {
@@ -280,6 +359,72 @@ const sanitizeAvailabilityBlocks = (blocks: AvailabilityBlockDisplay[]): Availab
     .filter((block): block is AvailabilityBlockDisplay => block !== null);
 };
 
+type CheckoutSaleLine = {
+  id: string;
+  type: "service" | "product";
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  item_id?: string | null;
+};
+
+/** Build POS sale lines from calendar appointment (multi-service + booking products). */
+function buildSaleItemsFromAppointment(apt: Appointment): CheckoutSaleLine[] {
+  const items: CheckoutSaleLine[] = [];
+  const services = (apt as { services?: Array<Record<string, unknown>> }).services;
+  if (Array.isArray(services) && services.length > 0) {
+    services.forEach((s, idx) => {
+      const name = String(s.offering_name ?? s.service_name ?? s.name ?? "Service");
+      const unit = Number(s.price ?? 0);
+      const oid = s.offering_id ?? s.service_id ?? s.id;
+      items.push({
+        id: String(oid ?? `svc-${idx}`),
+        type: "service",
+        name,
+        quantity: 1,
+        unit_price: unit,
+        total: unit,
+        item_id: typeof oid === "string" ? oid : oid != null ? String(oid) : null,
+      });
+    });
+  }
+
+  const products = (apt as { products?: Array<Record<string, unknown>> }).products;
+  if (Array.isArray(products) && products.length > 0) {
+    products.forEach((p, idx) => {
+      const name = String(p.product_name ?? p.name ?? "Product");
+      const qty = Math.max(1, Number(p.quantity ?? 1));
+      const unit = Number(p.unit_price ?? 0);
+      const lineTotal = Number(p.total_price ?? unit * qty);
+      const pid = p.product_id ?? p.id;
+      items.push({
+        id: String(pid ?? `prd-${idx}`),
+        type: "product",
+        name,
+        quantity: qty,
+        unit_price: unit,
+        total: lineTotal,
+        item_id: typeof pid === "string" ? pid : pid != null ? String(pid) : null,
+      });
+    });
+  }
+
+  if (items.length === 0) {
+    items.push({
+      id: apt.service_id || apt.id,
+      type: "service",
+      name: apt.service_name || "Service",
+      quantity: 1,
+      unit_price: Number(apt.price ?? 0),
+      total: Number(apt.price ?? 0),
+      item_id: apt.service_id || null,
+    });
+  }
+
+  return items;
+}
+
 export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarInitialPayload }) {
   const router = useRouter();
   const { dateView, setDateView, provider, isLoading: isLoadingProvider, salons, selectedLocationId } = useProviderPortal();
@@ -377,6 +522,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(() => initialCalendar?.error ?? null);
   useRoutePerformance("calendar", !isLoadingProvider && !isLoading && teamMembers.length > 0);
+  const calendarViewportMd = useMediaQueryMatch(TW_MD_MIN_QUERY);
   const [selectedTeamMember, setSelectedTeamMember] = useState<string>("all");
   const [selectedTeamMemberIds, setSelectedTeamMemberIds] = useState<string[]>([]);
   const loadDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -624,6 +770,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             date_from: dateFrom,
             date_to: dateTo,
             ...(selectedTeamMember !== "all" && { team_member_id: selectedTeamMember }),
+            ...(selectedLocationId && { location_id: selectedLocationId }),
           }),
           providerApi.listAvailabilityBlocks({ from: fromIso, to: toIso }),
           providerApi.listStaffCalendarUnavailability({
@@ -652,7 +799,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         });
 
         setAppointments(apptsResponse.data);
-        setTimeBlocks(blocks);
+        setTimeBlocks(expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo));
         setAvailabilityBlocks(mergedAvailOverlay);
         setTeamMembers((prevMembers) => {
           // Initialize selectedTeamMemberIds when members are loaded
@@ -955,9 +1102,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     setSelectedDate(nowInTz(businessTz));
   };
 
-  const handleAppointmentClick = (appointment: Appointment) => {
-    openViewMode(appointment);
-  };
+  const handleAppointmentClick = useCallback(async (appointment: Appointment) => {
+    const bookingId = appointment.booking_id
+      ? appointment.booking_id
+      : appointment.id.includes("-svc-")
+        ? appointment.id.split("-svc-")[0]
+        : appointment.id;
+    try {
+      const full = await providerApi.getAppointment(bookingId);
+      openViewMode(full);
+    } catch {
+      openViewMode(appointment);
+    }
+  }, []);
 
   const handleTimeSlotClick = (date: Date, time: string, teamMemberId: string) => {
     const currentLocation = selectedLocationId 
@@ -1124,27 +1281,41 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         ...((apt as any).version !== undefined && { version: (apt as any).version }),
       });
 
-      // Create sale record with payment details
+      // Create sale record with payment details (all services + products on the booking)
       try {
+        const saleItems = buildSaleItemsFromAppointment(apt);
+        const lineSum = saleItems.reduce((s, i) => s + i.total, 0);
+        const subtotalForSale = Number(apt.subtotal ?? lineSum);
+        const taxForSale = Number(apt.tax_amount ?? 0);
+        const travel = Number(apt.travel_fee ?? 0);
+        const bookingTotal =
+          Number(apt.total_amount) > 0
+            ? Number(apt.total_amount)
+            : subtotalForSale + taxForSale + travel;
+        const saleTotal = Math.max(0, bookingTotal + tipAmount - discountAmount);
+
         await providerApi.createSale({
           customer_id: apt.client_id,
           client_name: apt.client_name,
           date: apt.scheduled_date,
-          items: [{
-            id: apt.service_id || apt.id,
-            type: "service",
-            name: apt.service_name,
-            quantity: 1,
-            unit_price: apt.price ?? 0,
-            total: apt.price ?? 0,
-          }],
-          subtotal: apt.price,
-          tax: 0,
-          total: (apt.price ?? 0) + (apt.tax_amount ?? 0) + (apt.travel_fee ?? 0) + tipAmount - discountAmount,
+          items: saleItems.map((i) => ({
+            id: i.id,
+            type: i.type,
+            name: i.name,
+            quantity: i.quantity,
+            unit_price: i.unit_price,
+            total: i.total,
+            item_id: i.item_id ?? undefined,
+          })),
+          subtotal: subtotalForSale,
+          tax: taxForSale,
+          total: saleTotal,
           payment_method: paymentMethod,
+          location_id: apt.location_id || undefined,
+          team_member_id: apt.team_member_id || undefined,
           notes: notes ? `${notes}${tipAmount > 0 ? ` (Tip: R${tipAmount})` : ""}`.trim() : undefined,
           discount_amount: discountAmount,
-        } as any);
+        } as Parameters<typeof providerApi.createSale>[0]);
       } catch (error) {
         console.error("Failed to create sale record:", error);
         // Don't fail the checkout if sale creation fails
@@ -1287,8 +1458,17 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   return (
     <div className="bg-gray-50 sm:mx-0 sm:mt-0 max-w-full flex flex-col md:h-full md:overflow-x-hidden">
-      {/* Desktop View */}
-      <div className="hidden md:flex md:flex-col w-full max-w-full overflow-hidden flex-1 min-h-0">
+      {calendarViewportMd === null && (
+        <div
+          className="flex flex-1 min-h-[50vh] md:min-h-[min(100vh,720px)] w-full items-center justify-center"
+          aria-busy="true"
+          aria-label="Loading calendar layout"
+        >
+          <RefreshCw className="h-9 w-9 animate-spin text-primary/40" />
+        </div>
+      )}
+      {calendarViewportMd === true && (
+      <div className="flex flex-col w-full max-w-full overflow-hidden flex-1 min-h-0">
         {/* Desktop Header - Mangomint Style */}
         <div className="bg-gradient-to-r from-[#1a1f3c] to-[#252a4a] sticky top-0 z-20 px-3 lg:px-6 py-3 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 lg:gap-4 min-w-max">
@@ -1590,59 +1770,72 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               />
             ) : (
               <div className="flex flex-1 flex-col min-h-0 min-w-0">
-                <DragDropProvider
-                  teamMembers={filteredTeamMembers}
-                  allAppointments={appointments}
-                  timeBlocks={timeBlocks}
-                  enableConflictValidation={true}
-                  onReschedule={handleReschedule}
+                <div
+                  className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground pb-2 border-b border-border/60 mb-2 shrink-0"
+                  aria-label="Schedule legend"
                 >
-                  <div className="flex-1 flex flex-col min-h-0 min-w-0">
-                    <CalendarDesktopView
-                      appointments={appointments}
-                      teamMembers={filteredTeamMembers}
-                      timeBlocks={timeBlocks}
-                      availabilityBlocks={availabilityBlocks}
-                      selectedDate={selectedDateSafe}
-                      view={dateView}
-                      onAppointmentClick={handleAppointmentClick}
-                      onTimeSlotClick={handleTimeSlotClick}
-                      onTimeBlockClick={(block) => {
-                        openEditTimeBlockMode(block);
-                      }}
-                      onCheckout={(apt) => {
-                        setSelectedAppointment(apt);
-                        setIsCheckoutDialogOpen(true);
-                      }}
-                      onStatusChange={async (apt, status) => {
-                        try {
-                          await providerApi.updateAppointment(apt.id, { status });
-                          toast.success("Booking status updated successfully");
-                          loadData();
-                          if (selectedAppointment && selectedAppointment.id === apt.id) {
-                            const updated = await providerApi.getAppointment(apt.id);
-                            setSelectedAppointment(updated);
-                          }
-                        } catch (error: any) {
-                          console.error("Failed to update status:", error);
-                          const errorMessage = error?.message || error?.details || `Failed to update booking status to ${status}`;
-                          toast.error(errorMessage, {
-                            description: error?.code ? `Error code: ${error.code}` : undefined,
-                          });
-                        }
-                      }}
-                      onRefresh={loadData}
-                      startHour={startHour}
-                      endHour={endHour}
-                      locationOperatingHours={locationOperatingHours}
-                      onViewWeekSchedule={handleViewWeekSchedule}
-                      onPrintDaySchedule={handlePrintDaySchedule}
-                      onEditWorkHours={handleEditWorkHours}
-                      onSetDayOff={handleSetDayOff}
-                      businessTimezone={businessTz}
-                    />
-                  </div>
-                </DragDropProvider>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-primary" aria-hidden />
+                    Bookings
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-400/90" aria-hidden />
+                    Blocks & breaks
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="inline-block h-2.5 w-2.5 rounded-sm bg-slate-400/70" aria-hidden />
+                    Shifts / closed
+                  </span>
+                </div>
+                <CalendarDesktopWithDnd
+                  allAppointments={appointments}
+                  onReschedule={handleReschedule}
+                  enableConflictValidation
+                  appointments={appointments}
+                  teamMembers={filteredTeamMembers}
+                  timeBlocks={timeBlocks}
+                  availabilityBlocks={availabilityBlocks}
+                  selectedDate={selectedDateSafe}
+                  view={dateView}
+                  onAppointmentClick={handleAppointmentClick}
+                  onTimeSlotClick={handleTimeSlotClick}
+                  onTimeBlockClick={(block) => {
+                    openEditTimeBlockMode({
+                      ...block,
+                      id: resolveTimeBlockRecordId(block),
+                    });
+                  }}
+                  onCheckout={(apt) => {
+                    setSelectedAppointment(apt);
+                    setIsCheckoutDialogOpen(true);
+                  }}
+                  onStatusChange={async (apt, status) => {
+                    try {
+                      await providerApi.updateAppointment(apt.id, { status });
+                      toast.success("Booking status updated successfully");
+                      loadData();
+                      if (selectedAppointment && selectedAppointment.id === apt.id) {
+                        const updated = await providerApi.getAppointment(apt.id);
+                        setSelectedAppointment(updated);
+                      }
+                    } catch (error: any) {
+                      console.error("Failed to update status:", error);
+                      const errorMessage = error?.message || error?.details || `Failed to update booking status to ${status}`;
+                      toast.error(errorMessage, {
+                        description: error?.code ? `Error code: ${error.code}` : undefined,
+                      });
+                    }
+                  }}
+                  onRefresh={loadData}
+                  startHour={startHour}
+                  endHour={endHour}
+                  locationOperatingHours={locationOperatingHours}
+                  onViewWeekSchedule={handleViewWeekSchedule}
+                  onPrintDaySchedule={handlePrintDaySchedule}
+                  onEditWorkHours={handleEditWorkHours}
+                  onSetDayOff={handleSetDayOff}
+                  businessTimezone={businessTz}
+                />
               </div>
             )}
           </div>
@@ -1663,9 +1856,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           />
         </div>
       </div>
+      )}
 
-      {/* Mobile View */}
-      <div className="md:hidden relative max-w-[100vw]">
+      {calendarViewportMd === false && (
+      <div className="relative max-w-[100vw] w-full flex-1 min-w-0 min-h-0">
         {teamMembers.length === 0 ? (
           <div className="p-4">
             <EmptyState
@@ -1685,24 +1879,45 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                 <span className="text-xs text-gray-600">Refreshing...</span>
               </div>
             )}
-            <DragDropProvider
-              teamMembers={filteredTeamMembers}
+            <div
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 text-[11px] text-muted-foreground border-b border-border/50"
+              aria-label="Schedule legend"
+            >
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-primary" aria-hidden />
+                Bookings
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-amber-400/90" aria-hidden />
+                Blocks & breaks
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="inline-block h-2 w-2 rounded-sm bg-slate-400/70" aria-hidden />
+                Shifts / closed
+              </span>
+            </div>
+            <CalendarMobileWithDnd
               allAppointments={appointments}
               timeBlocks={timeBlocks}
-              enableConflictValidation={true}
               onReschedule={handleReschedule}
-            >
-            <CalendarMobileView
+              enableConflictValidation
               appointments={appointments}
               teamMembers={filteredTeamMembers}
               selectedDate={selectedDateSafe}
-              view={dateView === "week" ? "week" : "day"}
+              view={dateView}
+              onRefresh={loadData}
               onDateChange={(date) => {
                 if (date instanceof Date && !isNaN(date.getTime())) {
                   setSelectedDate(date);
                 }
               }}
-              onAppointmentClick={(apt) => openViewMode(apt)}
+              onAppointmentClick={handleAppointmentClick}
+              onTimeBlockClick={(block) => {
+                openEditTimeBlockMode({
+                  ...block,
+                  id: resolveTimeBlockRecordId(block),
+                });
+              }}
               onTimeSlotClick={(date, time, teamMemberId) => {
                 const currentLocation = selectedLocationId
                   ? salons.find(s => s.id === selectedLocationId)
@@ -1750,12 +1965,11 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               onClearStaffFilter={clearStaffFilter}
               onAddAppointment={handleCreateAppointment}
               onFilterClick={() => setIsFilterSheetOpen(true)}
-              onViewChange={(view) => {
-                setDateView(view === "week" ? "week" : "day");
+              onViewChange={(v) => {
+                setDateView(v);
               }}
               businessTimezone={businessTz}
             />
-            </DragDropProvider>
 
             {/* Scroll-to-now floating button — only visible when viewing today */}
             {format(selectedDateSafe, "yyyy-MM-dd") === format(nowInTz(businessTz), "yyyy-MM-dd") && (
@@ -1789,6 +2003,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           onRefresh={loadData}
         />
       </div>
+      )}
 
       {/* Mobile Filter Sheet */}
       <Sheet open={isFilterSheetOpen} onOpenChange={setIsFilterSheetOpen}>
@@ -1808,6 +2023,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   className={dateView === "day" ? "bg-[#1a1f3c]" : ""}
                 >
                   Day
+                </Button>
+                <Button
+                  variant={dateView === "3-days" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setDateView("3-days")}
+                  className={dateView === "3-days" ? "bg-[#1a1f3c]" : ""}
+                >
+                  3 days
                 </Button>
                 <Button
                   variant={dateView === "week" ? "default" : "outline"}
@@ -1976,100 +2199,107 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       />
 
       {/* Group Booking Dialog */}
-      <GroupBookingDialog
-        open={isGroupBookingDialogOpen}
-        onOpenChange={setIsGroupBookingDialogOpen}
-        defaultDate={selectedDateSafe}
-        defaultTime={defaultTimeSlot}
-        defaultTeamMemberId={defaultTeamMemberId}
-        existingAppointments={selectedAppointmentsForGroup}
-        onSuccess={() => {
-          setSelectedAppointmentsForGroup([]);
-          loadData();
-        }}
-      />
+      {isGroupBookingDialogOpen && (
+        <GroupBookingDialog
+          open
+          onOpenChange={setIsGroupBookingDialogOpen}
+          defaultDate={selectedDateSafe}
+          defaultTime={defaultTimeSlot}
+          defaultTeamMemberId={defaultTeamMemberId}
+          existingAppointments={selectedAppointmentsForGroup}
+          onSuccess={() => {
+            setSelectedAppointmentsForGroup([]);
+            loadData();
+          }}
+        />
+      )}
 
       {/* Print Schedule Dialog */}
-      <PrintScheduleDialog
-        open={isPrintDialogOpen}
-        onOpenChange={(open) => {
-          setIsPrintDialogOpen(open);
-          if (!open) {
-            setPrintDialogStaffId(null);
-          }
-        }}
-        appointments={appointments}
-        teamMembers={teamMembers}
-        selectedDate={selectedDateSafe}
-        view={dateView === "week" ? "week" : "day"}
-        initialStaffId={printDialogStaffId || undefined}
-      />
+      {isPrintDialogOpen && (
+        <PrintScheduleDialog
+          open
+          onOpenChange={(open) => {
+            setIsPrintDialogOpen(open);
+            if (!open) {
+              setPrintDialogStaffId(null);
+            }
+          }}
+          appointments={appointments}
+          teamMembers={teamMembers}
+          selectedDate={selectedDateSafe}
+          view={dateView}
+          initialStaffId={printDialogStaffId || undefined}
+        />
+      )}
 
       {/* Set Day Off Dialog */}
-      <SetDayOffDialog
-        open={isSetDayOffDialogOpen}
-        onOpenChange={(open) => {
-          setIsSetDayOffDialogOpen(open);
-          if (!open) {
-            setSelectedStaffForDialog(null);
-          }
-        }}
-        staffMember={selectedStaffForDialog}
-        selectedDate={selectedDateSafe}
-        onSuccess={() => {
-          loadData();
-        }}
-      />
+      {isSetDayOffDialogOpen && (
+        <SetDayOffDialog
+          open
+          onOpenChange={(open) => {
+            setIsSetDayOffDialogOpen(open);
+            if (!open) {
+              setSelectedStaffForDialog(null);
+            }
+          }}
+          staffMember={selectedStaffForDialog}
+          selectedDate={selectedDateSafe}
+          onSuccess={() => {
+            loadData();
+          }}
+        />
+      )}
 
       {/* Edit Work Hours Dialog */}
-      <EditWorkHoursDialog
-        open={isEditWorkHoursDialogOpen}
-        onOpenChange={(open) => {
-          setIsEditWorkHoursDialogOpen(open);
-          if (!open) {
-            setSelectedStaffForDialog(null);
-          }
-        }}
-        staffMember={selectedStaffForDialog}
-        onSuccess={() => {
-          loadData();
-        }}
-      />
+      {isEditWorkHoursDialogOpen && (
+        <EditWorkHoursDialog
+          open
+          onOpenChange={(open) => {
+            setIsEditWorkHoursDialogOpen(open);
+            if (!open) {
+              setSelectedStaffForDialog(null);
+            }
+          }}
+          staffMember={selectedStaffForDialog}
+          onSuccess={() => {
+            loadData();
+          }}
+        />
+      )}
 
       {/* Checkout Dialog */}
-      <CheckoutDialog
-        isOpen={isCheckoutDialogOpen}
-        onClose={() => setIsCheckoutDialogOpen(false)}
-        checkoutData={
-          selectedAppointment
-            ? {
-                appointment_id: selectedAppointment.id,
-                client_id: selectedAppointment.client_id || "",
-                client_name: selectedAppointment.client_name,
-                client_email: selectedAppointment.client_email,
-                team_member_name: selectedAppointment.team_member_name || "Staff",
-                scheduled_date: selectedAppointment.scheduled_date,
-                scheduled_time: selectedAppointment.scheduled_time,
-                services: [
-                  {
-                    id: selectedAppointment.service_id || "1",
-                    name: selectedAppointment.service_name,
-                    price: selectedAppointment.price || 0,
-                    duration_minutes: selectedAppointment.duration_minutes,
-                    quantity: 1,
-                  },
-                ],
-                products: (selectedAppointment as any).addons?.map((addon: any) => ({
-                  id: addon.id,
-                  name: addon.name,
-                  price: addon.price,
-                  quantity: 1,
-                })) || [],
-              }
-            : null
-        }
-        onComplete={handleCheckoutComplete}
-      />
+      {isCheckoutDialogOpen && selectedAppointment && (
+        <CheckoutDialog
+          isOpen
+          onClose={() => setIsCheckoutDialogOpen(false)}
+          checkoutData={{
+            appointment_id: selectedAppointment.id,
+            client_id: selectedAppointment.client_id || "",
+            client_name: selectedAppointment.client_name,
+            client_email: selectedAppointment.client_email,
+            team_member_name: selectedAppointment.team_member_name || "Staff",
+            scheduled_date: selectedAppointment.scheduled_date,
+            scheduled_time: selectedAppointment.scheduled_time,
+            services: [
+              {
+                id: selectedAppointment.service_id || "1",
+                name: selectedAppointment.service_name,
+                price: selectedAppointment.price || 0,
+                duration_minutes: selectedAppointment.duration_minutes,
+                quantity: 1,
+              },
+            ],
+            products:
+              (selectedAppointment as any).addons?.map((addon: any) => ({
+                id: addon.id,
+                name: addon.name,
+                price: addon.price,
+                quantity: 1,
+              })) || [],
+          }}
+          onComplete={handleCheckoutComplete}
+        />
+      )}
 
       {postCheckoutRateBookingId && (
         <RateCustomerModal
@@ -2088,12 +2318,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       )}
 
       {/* Status Manager Dialog */}
-      <AppointmentStatusManager
-        appointment={selectedAppointment}
-        isOpen={isStatusManagerOpen}
-        onClose={() => setIsStatusManagerOpen(false)}
-        onStatusUpdate={handleStatusManagerUpdate}
-      />
+      {isStatusManagerOpen && selectedAppointment && (
+        <AppointmentStatusManager
+          appointment={selectedAppointment}
+          isOpen
+          onClose={() => setIsStatusManagerOpen(false)}
+          onStatusUpdate={handleStatusManagerUpdate}
+        />
+      )}
 
       {/* Waiting Room */}
       <WaitingRoomButton
@@ -2105,8 +2337,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           waitingAppointments={waitingAppointments}
           onClose={() => setIsWaitingRoomOpen(false)}
           onRefresh={loadData}
-          onAppointmentClick={(apt) => {
-            openViewMode(apt);
+          onAppointmentClick={async (apt) => {
+            await handleAppointmentClick(apt);
             setIsWaitingRoomOpen(false);
           }}
         />

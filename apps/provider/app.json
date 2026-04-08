@@ -108,6 +108,7 @@
       },
       "package": "com.beautonomi.partner",
       "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
         "com.google.android.gms.permission.AD_ID"
       ],
       "versionCode": 23,

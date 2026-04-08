@@ -28,6 +28,8 @@ interface YocoPaymentDialogProps {
   onOpenChange: (open: boolean) => void;
   amount: number; // Major currency units (converted to cents server-side)
   appointmentId?: string;
+  /** Provider booking UUID — links terminal payment to the booking row */
+  bookingId?: string;
   saleId?: string;
   onSuccess?: (payment: YocoPayment) => void;
 }
@@ -37,6 +39,7 @@ export function YocoPaymentDialog({
   onOpenChange,
   amount,
   appointmentId,
+  bookingId,
   saleId,
   onSuccess,
 }: YocoPaymentDialogProps) {
@@ -94,10 +97,12 @@ export function YocoPaymentDialog({
         device_id: selectedDeviceId,
         amount: amount,
         currency: tenantCurrency,
-        appointment_id: appointmentId,
+        ...(appointmentId ? { appointment_id: appointmentId } : {}),
+        ...(bookingId ? { booking_id: bookingId } : {}),
         sale_id: saleId,
         metadata: {
-          appointment_ref: appointmentId,
+          ...(appointmentId ? { appointment_ref: appointmentId } : {}),
+          ...(bookingId ? { booking_ref: bookingId } : {}),
           sale_ref: saleId,
         },
       });

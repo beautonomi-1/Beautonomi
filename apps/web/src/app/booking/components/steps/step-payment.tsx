@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart } from "lucide-react";
+import { CheckCircle, CreditCard, Calendar, MapPin, Wallet, Gift, Banknote, Check, Plus, Shield, ArrowLeft, Lock, Info, Heart, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { BookingState } from "../booking-flow";
+import { BookingState, type BookingStep } from "../booking-flow";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
 import { toast } from "sonner";
@@ -21,6 +21,14 @@ import LoginModal from "@/components/global/login-modal";
 import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+
+type PublicBookingCreateResult = {
+  booking_id: string;
+  booking_number: string;
+  payment_url?: string | null;
+  recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
+};
 
 interface SavedCard {
   id: string;
@@ -37,8 +45,8 @@ interface SavedCard {
 interface StepPaymentProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
-  /** STEP_ORDER index (0 = services, 4 = calendar, …). */
-  onNavigateToStep: (stepIndex: number) => void;
+  /** Navigate by step id (works when `?package=` reorders steps). */
+  onNavigateToStep: (step: BookingStep) => void;
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
@@ -109,6 +117,10 @@ export default function StepPayment({
     late_cancellation_type: string;
   } | null>(null);
   const [settingDefaultId, setSettingDefaultId] = useState<string | null>(null);
+  const [packageEntitlements, setPackageEntitlements] = useState<
+    Array<{ id: string; package_id: string; sessions_remaining: number; valid_from?: string | null; valid_until?: string | null }>
+  >([]);
+  const [packageEntitlementsLoading, setPackageEntitlementsLoading] = useState(false);
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -210,6 +222,37 @@ export default function StepPayment({
     
     fetchCancellationPolicy();
   }, [bookingState.providerId, bookingState.mode]);
+
+  useEffect(() => {
+    if (!bookingState.selectedPackage?.id || !user?.id || !bookingState.providerId) {
+      setPackageEntitlements([]);
+      if (bookingState.customerPackageEntitlementId) {
+        updateBookingState({ customerPackageEntitlementId: undefined });
+      }
+      return;
+    }
+    let cancelled = false;
+    setPackageEntitlementsLoading(true);
+    const q = new URLSearchParams({
+      provider_id: bookingState.providerId,
+      package_id: bookingState.selectedPackage.id,
+    });
+    fetcher
+      .get<{ data?: { entitlements?: typeof packageEntitlements } }>(`/api/me/package-entitlements?${q}`)
+      .then((res) => {
+        if (cancelled) return;
+        setPackageEntitlements(res?.data?.entitlements ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPackageEntitlements([]);
+      })
+      .finally(() => {
+        if (!cancelled) setPackageEntitlementsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, bookingState.providerId, bookingState.selectedPackage?.id, updateBookingState]);
 
   // Fetch provider online booking settings: tip suggestions, deposit requirements
   useEffect(() => {
@@ -419,6 +462,7 @@ export default function StepPayment({
         };
       }),
       package_id: bookingState.selectedPackage?.id || null,
+      customer_package_entitlement_id: bookingState.customerPackageEntitlementId || null,
       tip_amount: tipAmount,
       travel_fee: bookingState.address?.travelFee || 0,
       special_requests: bookingState.clientInfo?.specialRequests || null,
@@ -456,8 +500,24 @@ export default function StepPayment({
       }));
     }
 
+    const freq = bookingState.recurringFrequency || "weekly";
+    if (
+      user &&
+      bookingState.subscribeRecurring === true &&
+      subscribeRecurringEligible({
+        subscribe_recurring: { enabled: true, frequency: freq },
+        reschedule_booking_id: null,
+        is_group_booking: bookingState.isGroupBooking,
+        has_group_participants: Boolean(
+          bookingState.groupParticipants && bookingState.groupParticipants.length > 0,
+        ),
+      })
+    ) {
+      bookingData.subscribe_recurring = { enabled: true, frequency: freq };
+    }
+
     const response = await fetcher.post<{
-      data: { booking_id: string; booking_number: string; payment_url?: string | null };
+      data: PublicBookingCreateResult;
     }>("/api/public/bookings", bookingData, {
       // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
       timeoutMs: 120000,
@@ -496,19 +556,36 @@ export default function StepPayment({
     }
 
     setIsProcessing(true);
-    let bookingDraft: { booking_id: string; booking_number: string } | null = null;
+    let bookingResult: PublicBookingCreateResult | null = null;
+
+    const notifyRecurringFromResult = (
+      sub?: PublicBookingCreateResult["recurring_subscription"]
+    ) => {
+      if (!bookingState.subscribeRecurring || !user) return;
+      if (sub?.created) {
+        toast.success(
+          "Repeating schedule saved. Manage it under Account settings → Recurring bookings."
+        );
+      } else if (sub?.pending) {
+        toast.info(
+          "Complete payment to save your repeating schedule. It will appear under Account settings → Recurring bookings after payment succeeds."
+        );
+      } else if (sub && sub.created === false && sub.message) {
+        toast.error(sub.message);
+      }
+    };
 
     try {
       // Step 1: Create booking draft first
       try {
-        bookingDraft = await createBookingDraft();
+        bookingResult = await createBookingDraft();
       } catch (error: any) {
         // Handle conflict errors (409) - time slot no longer available
         if (error.status === 409 || error.code === 'CONFLICT') {
           toast.error(error.message || "This time slot is no longer available. Please select another time.", {
             duration: 5000,
           });
-          onNavigateToStep(4);
+          onNavigateToStep("calendar");
           return;
         }
         
@@ -524,23 +601,26 @@ export default function StepPayment({
           ? "Booking confirmed! You'll pay when your provider arrives."
           : "Booking confirmed! You'll pay at the salon.";
         toast.success(cashLocationMsg);
-        router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
+        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
       }
 
       if (paymentMethod === "giftcard") {
         // Gift card payment - booking already created, payment processed in backend
         toast.success("Booking created! Payment processed from gift card.");
-        router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
+        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
       }
 
-      const draftWithUrl = bookingDraft as { booking_id: string; booking_number: string; payment_url?: string | null };
+      const draftWithUrl = bookingResult;
 
       // Wallet covered full amount — server returned null payment_url
       if ((bookingState.useWallet ?? false) && (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "")) {
         toast.success("Booking created! Payment processed from wallet.");
-        router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
+        router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         return;
       }
 
@@ -548,10 +628,12 @@ export default function StepPayment({
       if (usingSavedCard) {
         if (draftWithUrl.payment_url == null || draftWithUrl.payment_url === "") {
           toast.success("Payment successful!");
-          router.push(`/booking/confirmation?bookingId=${bookingDraft.booking_id}`);
+          notifyRecurringFromResult(bookingResult.recurring_subscription);
+          router.push(`/booking/confirmation?bookingId=${bookingResult.booking_id}`);
         } else {
           // Server returned a URL despite saved card — unexpected; fall back to redirect
           toast.info("Redirecting to complete payment…");
+          notifyRecurringFromResult(bookingResult.recurring_subscription);
           window.location.href = draftWithUrl.payment_url;
         }
         return;
@@ -559,6 +641,7 @@ export default function StepPayment({
 
       // New card / Paystack redirect flow
       if (draftWithUrl.payment_url && draftWithUrl.payment_url.trim() !== "") {
+        notifyRecurringFromResult(bookingResult.recurring_subscription);
         window.location.href = draftWithUrl.payment_url;
         return;
       }
@@ -566,19 +649,37 @@ export default function StepPayment({
       // Fallback: initialize payment client-side if API did not return payment_url
       const depositAmount = Math.ceil((totals.total * depositPercentage) / 100);
       const amountToCharge = paymentOption === "deposit" ? depositAmount : totals.total;
+      const freqFallback = bookingState.recurringFrequency || "weekly";
+      const paystackFallbackRecurring =
+        user &&
+        bookingState.subscribeRecurring === true &&
+        subscribeRecurringEligible({
+          subscribe_recurring: { enabled: true, frequency: freqFallback },
+          reschedule_booking_id: null,
+          is_group_booking: bookingState.isGroupBooking,
+          has_group_participants: Boolean(
+            bookingState.groupParticipants && bookingState.groupParticipants.length > 0,
+          ),
+        });
+
       const result = await initializePayment({
         email: bookingState.clientInfo.email,
         amount: amountToCharge,
         metadata: {
-          bookingId: bookingDraft.booking_id,
-          bookingNumber: bookingDraft.booking_number,
+          bookingId: bookingResult.booking_id,
+          bookingNumber: bookingResult.booking_number,
           paymentOption,
           saveCard: saveCard.toString(),
           setAsDefault: setAsDefault.toString(),
+          ...(paystackFallbackRecurring ? { subscribe_recurring_frequency: freqFallback } : {}),
         },
       });
 
       if (result.authorization_url) {
+        notifyRecurringFromResult(
+          bookingResult.recurring_subscription ??
+            (paystackFallbackRecurring ? { created: false, pending: true } : undefined),
+        );
         window.location.href = result.authorization_url;
       } else {
         toast.error("Failed to initialize payment");
@@ -589,11 +690,11 @@ export default function StepPayment({
       toast.error(errorMessage);
       
       // If booking draft was created but payment failed, provide retry option
-      if (bookingDraft) {
+      if (bookingResult) {
         toast.info("Booking draft created. You can retry payment from your bookings page.", {
           action: {
             label: "View Booking",
-            onClick: () => router.push(`/booking/confirmation?bookingId=${bookingDraft!.booking_id}`),
+            onClick: () => router.push(`/booking/confirmation?bookingId=${bookingResult!.booking_id}`),
           },
         });
       }
@@ -616,7 +717,7 @@ export default function StepPayment({
             </h3>
             <button
               type="button"
-              onClick={() => onNavigateToStep(0)}
+              onClick={() => onNavigateToStep("services")}
               className="text-sm font-medium text-primary hover:underline"
             >
               Change
@@ -722,7 +823,7 @@ export default function StepPayment({
             </div>
             <button
               type="button"
-              onClick={() => onNavigateToStep(4)}
+              onClick={() => onNavigateToStep("calendar")}
               className="text-sm font-medium text-primary hover:underline shrink-0"
             >
               Change
@@ -748,11 +849,68 @@ export default function StepPayment({
           </div>
         )}
 
+        {user && bookingState.selectedPackage?.id && bookingState.providerId && (
+          <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-lg space-y-2">
+            <div className="flex items-center gap-2">
+              <Gift className="w-5 h-5 text-amber-700 shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-gray-900">Package credit</p>
+                <p className="text-xs text-gray-600">
+                  If you bought this package online and have prepaid sessions left, apply one to this booking.
+                </p>
+              </div>
+            </div>
+            {packageEntitlementsLoading ? (
+              <p className="text-sm text-gray-500">Loading credits…</p>
+            ) : packageEntitlements.length > 0 ? (
+              <div className="space-y-1">
+                <Label htmlFor="package-entitlement" className="text-xs text-gray-600">
+                  Use prepaid session
+                </Label>
+                <select
+                  id="package-entitlement"
+                  className="w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm"
+                  value={bookingState.customerPackageEntitlementId ?? ""}
+                  onChange={(e) =>
+                    updateBookingState({
+                      customerPackageEntitlementId: e.target.value || undefined,
+                    })
+                  }
+                >
+                  <option value="">No — pay with the method below</option>
+                  {packageEntitlements.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      Use credit — {e.sessions_remaining} session(s) left
+                      {e.valid_until
+                        ? ` (until ${new Date(e.valid_until).toLocaleDateString()})`
+                        : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-xs text-gray-500">No prepaid sessions found for this package.</p>
+            )}
+          </div>
+        )}
+
         {/* Totals */}
         <div className="p-4 bg-gray-50 rounded-lg space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-600">{t("booking.subtotal")}</span>
-            <span className="font-medium">{formatCurrency(totals.subtotal, totals.currency)}</span>
+            <span className="text-gray-600">Services, add-ons &amp; products</span>
+            <span className="font-medium">
+              {formatCurrency(totals.services + totals.addons + totals.products, totals.currency)}
+            </span>
+          </div>
+          {totals.travelFee > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Travel fee</span>
+              <span>{formatCurrency(totals.travelFee, totals.currency)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-xs text-gray-500 border-b border-gray-200/80 pb-2">
+            <span>Booking subtotal (before discounts)</span>
+            <span>{formatCurrency(totals.subtotal, totals.currency)}</span>
           </div>
           {bookingState.promotions.couponDiscount > 0 && (
             <div className="flex justify-between text-sm text-green-600">
@@ -788,6 +946,14 @@ export default function StepPayment({
             <div className="flex justify-between text-sm text-gray-600">
               <span>Service Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
+            </div>
+          )}
+          {totals.taxAmount > 0 && (
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>
+                Tax{totals.taxRate > 0 ? ` (${Number(totals.taxRate).toFixed(2)}%)` : ""}
+              </span>
+              <span>{formatCurrency(totals.taxAmount, totals.currency)}</span>
             </div>
           )}
           {tipAmount > 0 && (
@@ -1247,6 +1413,60 @@ export default function StepPayment({
           )}
         </div>
       )}
+
+      {user &&
+        !bookingState.isGroupBooking &&
+        !(bookingState.groupParticipants && bookingState.groupParticipants.length > 0) && (
+          <div className="rounded-xl p-5 border border-gray-200 space-y-3 bg-gray-50/80">
+            <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-primary" />
+              Repeat this booking
+            </h3>
+            <p className="text-sm text-gray-600">
+              Save the same services on a repeating schedule. If you pay online, the schedule is created after
+              payment succeeds. Manage repeats under Account settings → Recurring bookings.
+            </p>
+            <div className="flex items-start gap-3">
+              <Checkbox
+                id="booking-flow-subscribe-recurring"
+                checked={bookingState.subscribeRecurring === true}
+                onCheckedChange={(c) =>
+                  updateBookingState({ subscribeRecurring: c === true })
+                }
+                className="mt-1"
+              />
+              <div className="space-y-2 flex-1 min-w-0">
+                <Label
+                  htmlFor="booking-flow-subscribe-recurring"
+                  className="text-sm font-medium text-gray-900 cursor-pointer"
+                >
+                  Turn on repeating visits
+                </Label>
+                {bookingState.subscribeRecurring === true && (
+                  <div className="space-y-1">
+                    <Label htmlFor="booking-flow-recurring-freq" className="text-xs text-gray-500">
+                      How often
+                    </Label>
+                    <select
+                      id="booking-flow-recurring-freq"
+                      value={bookingState.recurringFrequency || "weekly"}
+                      onChange={(e) =>
+                        updateBookingState({
+                          recurringFrequency: e.target.value as "weekly" | "biweekly" | "monthly",
+                        })
+                      }
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm min-h-[44px]"
+                    >
+                      <option value="weekly">Every week</option>
+                      <option value="biweekly">Every 2 weeks</option>
+                      <option value="monthly">Every month</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Payment Button */}
       <div className="sticky bottom-0 bg-white border-t border-gray-200 -mx-4 px-4 py-4 safe-area-bottom">

@@ -8,11 +8,14 @@ import { z } from "zod";
 const updateRecurringSchema = z.object({
   recurrence_rule: z.string().min(1).optional(),
   start_date: z.string().date().optional(),
-  end_date: z.string().date().optional(),
+  end_date: z.string().date().optional().nullable(),
   start_time: z.string().regex(/^\d{2}:\d{2}:\d{2}$/).optional(),
   notes: z.string().optional(),
   is_active: z.boolean().optional(),
   location_id: z.string().uuid().nullable().optional(),
+  frequency: z.string().min(1).optional().nullable(),
+  preferred_time: z.string().optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -35,7 +38,7 @@ export async function PATCH(
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
@@ -115,6 +118,15 @@ export async function DELETE(
     
     if (!providerId) {
       return notFoundResponse("Provider not found");
+    }
+
+    const recurringAccessDelete = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
+    if (!recurringAccessDelete.enabled) {
+      return errorResponse(
+        "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        "SUBSCRIPTION_REQUIRED",
+        403
+      );
     }
 
     // Verify appointment belongs to provider

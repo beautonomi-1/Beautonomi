@@ -82,7 +82,7 @@ export default async function Page({
       : `${label} — book trusted beauty professionals near you`;
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <Suspense
         fallback={
           <div className="h-[73px] md:h-[88px] border-b border-gray-100 bg-white" aria-hidden />
@@ -92,9 +92,12 @@ export default async function Page({
       </Suspense>
       {/* Primary document title for SEO + screen readers; not shown visually */}
       <h1 className="sr-only">{heroTitle}</h1>
-      <Suspense fallback={<HomePageSuspenseFallback />}>
-        <HomeMarketplaceBody categoryParam={sp.category} />
-      </Suspense>
+      {/* overflow-x-hidden only below header — wrapping sticky header breaks tap targets on iPadOS Safari */}
+      <div className="w-full max-w-full overflow-x-hidden">
+        <Suspense fallback={<HomePageSuspenseFallback />}>
+          <HomeMarketplaceBody categoryParam={sp.category} />
+        </Suspense>
+      </div>
     </div>
   );
 }

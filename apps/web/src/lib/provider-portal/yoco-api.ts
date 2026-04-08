@@ -131,6 +131,8 @@ export class YocoApi {
     amount: number; // Amount in Rands (will be converted to cents)
     currency?: string;
     appointment_id?: string;
+    /** Booking UUID — same column as appointment_id on provider_yoco_payments */
+    booking_id?: string;
     sale_id?: string;
     metadata?: Record<string, any>;
   }): Promise<YocoPayment> {
@@ -141,6 +143,7 @@ export class YocoApi {
         amount: data.amount, // API will convert to cents
         currency: data.currency || LAST_RESORT_CURRENCY,
         appointment_id: data.appointment_id,
+        booking_id: data.booking_id,
         sale_id: data.sale_id,
         metadata: data.metadata,
       }

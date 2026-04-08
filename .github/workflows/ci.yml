@@ -74,7 +74,12 @@ jobs:
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Typecheck (turbo)
-        run: pnpm exec turbo run typecheck --filter="./packages/*" --filter=web --filter=customer --filter=provider
+        run: pnpm exec turbo run typecheck --filter="./packages/*" --filter=web --filter=admin-web --filter=customer --filter=provider
+
+      - name: Admin regression (Vitest + API taxonomy)
+        run: |
+          pnpm --filter admin-web test
+          node apps/admin-web/scripts/check-admin-api-routes-in-taxonomy.mjs
 
   lint:
     name: Lint
@@ -103,7 +108,7 @@ jobs:
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
       - name: Lint (turbo)
-        run: pnpm exec turbo run lint --filter=web --filter=customer --filter=provider
+        run: pnpm exec turbo run lint --filter=web --filter=admin-web --filter=customer --filter=provider
 
   build-web:
     name: Build Web App
@@ -114,6 +119,8 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      VITE_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -145,6 +152,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-web-${{ hashFiles('pnpm-lock.yaml', 'turbo.json') }}-
             ${{ runner.os }}-web-
+
+      - name: Build admin SPA (artifacts copied into web via next-build)
+        run: pnpm exec turbo run build --filter=admin-web
+
+      - name: Install Playwright (Chromium) for admin E2E
+        run: pnpm --filter admin-web exec playwright install chromium --with-deps
+
+      - name: Admin SPA E2E smoke (login shell, auth redirect)
+        working-directory: apps/admin-web
+        run: pnpm exec playwright test
+        env:
+          CI: true
 
       - name: Build web (turbo)
         run: pnpm exec turbo run build --filter=web

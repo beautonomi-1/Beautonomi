@@ -58,6 +58,8 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         user_id,
+        commission_enabled,
+        tips_enabled,
         users (
           full_name
         )
@@ -198,19 +200,24 @@ export async function GET(request: NextRequest) {
             }, 0) / staffReviews.length
           : 0;
 
-      // Calculate commission using staff-specific rates
-      const commissionResult = await calculateStaffCommission(
-        supabaseAdmin,
-        providerId,
-        staff.id,
-        fromDate,
-        toDate
-      );
-      const commissionEarned = commissionResult.totalCommission;
+      const commissionEnabled = staff.commission_enabled === true;
+      let commissionEarned = 0;
+      if (commissionEnabled) {
+        const commissionResult = await calculateStaffCommission(
+          supabaseAdmin,
+          providerId,
+          staff.id,
+          fromDate,
+          toDate
+        );
+        commissionEarned = commissionResult.totalCommission;
+      }
 
       return {
         staffId: staff.id,
         staffName: staff.users?.full_name || 'Unknown',
+        commissionEnabled,
+        tipsEnabled: staff.tips_enabled === true,
         totalBookings,
         completedBookings,
         cancelledBookings,

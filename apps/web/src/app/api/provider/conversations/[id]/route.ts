@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 
 /**
  * GET /api/provider/conversations/[id]
@@ -84,7 +85,7 @@ export async function GET(
       sender_type: msg.sender_role === "customer" ? "customer" : "provider",
       created_at: msg.created_at,
       read_at: msg.read_at,
-      attachments: msg.attachments ?? [],
+      attachments: sanitizeMessageAttachmentsForResponse(msg.attachments ?? [], msg.created_at),
     }));
 
     return successResponse({

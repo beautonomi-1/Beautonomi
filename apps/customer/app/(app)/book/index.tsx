@@ -33,7 +33,18 @@ import { haptic } from "@/lib/haptics";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { trackBookingStarted, trackBookingHoldCreated } from "@/lib/analytics";
-import { coerceSelectedDate, formatLocalDateYYYYMMDD, isPublicStaffIdForBooking, toIsoUtcTimestamp } from "@beautonomi/utils";
+import {
+  buildRetailCartRowsFromPublicPackage,
+  cartMatchesPublicCatalogPackage,
+  coerceSelectedDate,
+  flattenProviderServicesToMenu,
+  formatLocalDateYYYYMMDD,
+  isPublicStaffIdForBooking,
+  mergeExpressProductCartLines,
+  resolvePackageOfferingsFromFlatMenu,
+  toIsoUtcTimestamp,
+  type PublicProductCatalogRow,
+} from "@beautonomi/utils";
 import {
   getPendingExcludeHoldId,
   setPendingExcludeHoldId,
@@ -65,11 +76,6 @@ export interface SelectedServiceItem {
   buffer_minutes?: number;
   price: number;
   currency: string;
-}
-
-/** Stable multiset key for comparing package prefill vs current selection (order-independent). */
-function sortedOfferingIdsKey(entries: { offeringId: string }[]): string {
-  return [...new Set(entries.map((e) => e.offeringId))].sort().join("|");
 }
 
 const STEP_LABEL_KEYS: Record<Step, string> = {
@@ -534,8 +540,12 @@ export default function BookScreen() {
   const [categoryFilterText, setCategoryFilterText] = useState("");
   /** Per-category visible count for "Load more" (key = category id). */
   const [visibleLimitByCategoryId, setVisibleLimitByCategoryId] = useState<Record<string, number>>({});
-  /** Set only when `?package=` prefill matched the API and at least one offering was applied (sent to checkout for `package_id`). */
+  /** Set only when `?package=` prefill matched the API and the cart matches services + packaged retail (sent to checkout for `package_id`). */
   const [packageIdForCheckout, setPackageIdForCheckout] = useState<string | null>(null);
+  /** Retail lines from mixed packages — merged into checkout product cart (parity with customer web). */
+  const [selectedPackageProducts, setSelectedPackageProducts] = useState<
+    Array<{ id: string; name: string; price: number; quantity: number; currency: string }>
+  >([]);
   /** Full package object for UI display — seeded from nav params immediately, enriched after API loads. */
   const [activePackage, setActivePackage] = useState<{
     id: string;
@@ -573,8 +583,11 @@ export default function BookScreen() {
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const appliedPrefillAddonsRef = useRef(false);
-  /** Sorted `offeringId` signature when `packageIdForCheckout` was set — cleared if user edits line items. */
-  const packageOfferingSignatureRef = useRef<string | null>(null);
+  /** Public package shape from API — used with {@link cartMatchesPublicCatalogPackage} when `packageIdForCheckout` is set. */
+  const resolvedPackageShapeRef = useRef<{
+    items?: Array<{ type?: string; id?: string; quantity?: number }>;
+    services?: Array<{ id: string }>;
+  } | null>(null);
   const prevStepRef = useRef<Step | null>(null);
   /** Which time-of-day section is expanded (matches web collapsible groups). */
   const [openTimePeriod, setOpenTimePeriod] = useState<"Morning" | "Afternoon" | "Evening" | null>(null);
@@ -714,13 +727,14 @@ export default function BookScreen() {
     setLoading(true);
     setError(null);
     setPackageIdForCheckout(null);
-    packageOfferingSignatureRef.current = null;
+    setSelectedPackageProducts([]);
+    resolvedPackageShapeRef.current = null;
     setPinnedCategoryId(null);
     setServiceFilterText("");
     setCategoryFilterText("");
     setVisibleLimitByCategoryId({});
     try {
-      const [provRes, svcRes, staffRes, obRes, pkRes] = await Promise.all([
+      const [provRes, svcRes, staffRes, obRes, pkRes, prodRes] = await Promise.all([
         api.get<PublicProviderDetail>(`/api/public/providers/${encodeURIComponent(slug)}`),
         api.get<ProviderServicesResponse>(`/api/public/providers/${encodeURIComponent(slug)}/services`),
         api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(slug)}/staff`),
@@ -728,6 +742,7 @@ export default function BookScreen() {
           `/api/public/providers/${encodeURIComponent(slug)}/online-booking-settings`
         ),
         api.get<{ data?: unknown } | unknown[]>(`/api/public/providers/${encodeURIComponent(slug)}/packages`),
+        api.get<unknown>(`/api/public/providers/${encodeURIComponent(slug)}/products`).catch(() => ({ error: true, data: null })),
       ]);
 
       if (provRes.error || !provRes.data) {
@@ -758,62 +773,43 @@ export default function BookScreen() {
 
       if (!svcRes.error && svcRes.data) {
         setServicesData(svcRes.data);
-        const flat: ProviderService[] = (svcRes.data.categories || []).flatMap((c) => c.services);
+        const flat: ProviderService[] = flattenProviderServicesToMenu(
+          (svcRes.data as ProviderServicesResponse).categories
+        ) as ProviderService[];
 
-        const applyMultiFromIds = (rawIds: string[]): SelectedServiceItem[] | null => {
+        const applyMultiFromIds = (
+          rawIds: string[],
+          mode: "strict" | "skip"
+        ): SelectedServiceItem[] | null => {
           const ids = rawIds.map((x) => x.trim()).filter(Boolean);
           if (ids.length === 0) return null;
-          const entries: SelectedServiceItem[] = [];
-          for (const oid of ids) {
-            let svc: ProviderService | undefined;
-            let v: NonNullable<ProviderService["variants"]>[number] | undefined;
-
-            for (const s of flat) {
-              const hit = s.variants?.find((vr) => vr.id === oid);
-              if (hit) {
-                svc = s;
-                v = hit;
-                break;
-              }
-            }
-
-            if (!svc) {
-              svc = flat.find((s) => s.id === oid);
-              if (!svc) continue;
-              if (svc.variants?.length) {
-                v = svc.variants[0];
-              }
-            }
-
-            const offeringId = v?.id ?? svc.id;
-            const dur = v?.duration_minutes ?? svc.duration_minutes ?? 60;
-            const price = v?.price ?? svc.price ?? 0;
-            const currency = svc.currency ?? getTenantDefaultCurrency();
-            const buf = resolveOfferingBufferMinutes(svc, v?.id ?? null);
-            entries.push({
-              offeringId,
-              title: v?.title ?? svc.title ?? "",
-              duration_minutes: dur,
-              buffer_minutes: buf,
-              price,
-              currency,
-            });
+          const resolved = resolvePackageOfferingsFromFlatMenu(
+            ids,
+            flat,
+            getTenantDefaultCurrency(),
+            mode
+          );
+          if (!resolved?.length) return null;
+          const entries: SelectedServiceItem[] = resolved.map((r) => ({
+            offeringId: r.offeringId,
+            title: r.title,
+            duration_minutes: r.duration_minutes,
+            buffer_minutes: r.buffer_minutes,
+            price: r.price,
+            currency: r.currency,
+          }));
+          setSelectedServices(entries);
+          const firstOfferingId = entries[0].offeringId;
+          const firstSvc = flat.find(
+            (s) => s.id === firstOfferingId || s.variants?.some((vv) => vv.id === firstOfferingId),
+          );
+          if (firstSvc) {
+            setSelectedService(firstSvc);
+            const fv =
+              firstSvc.variants?.find((vv) => vv.id === firstOfferingId) ?? firstSvc.variants?.[0];
+            if (fv) setSelectedVariant(fv);
           }
-          if (entries.length > 0) {
-            setSelectedServices(entries);
-            const firstOfferingId = entries[0].offeringId;
-            const firstSvc = flat.find(
-              (s) => s.id === firstOfferingId || s.variants?.some((vv) => vv.id === firstOfferingId),
-            );
-            if (firstSvc) {
-              setSelectedService(firstSvc);
-              const fv =
-                firstSvc.variants?.find((vv) => vv.id === firstOfferingId) ?? firstSvc.variants?.[0];
-              if (fv) setSelectedVariant(fv);
-            }
-            return entries;
-          }
-          return null;
+          return entries;
         };
 
         // Pin matching category, collapse others, expand variant rows, ensure visible slice (web parity).
@@ -852,10 +848,10 @@ export default function BookScreen() {
 
         const multiSource = (service_ids?.trim() || servicesQueryParam?.trim()) ?? "";
         if (multiSource) {
-          const entries = applyMultiFromIds(multiSource.split(","));
+          const entries = applyMultiFromIds(multiSource.split(","), "skip");
           if (entries) autoExpandPreselectedCategory(entries, (svcRes.data as ProviderServicesResponse).categories);
         } else if (service_id) {
-          const entries = applyMultiFromIds([service_id]);
+          const entries = applyMultiFromIds([service_id], "strict");
           if (entries) autoExpandPreselectedCategory(entries, (svcRes.data as ProviderServicesResponse).categories);
         } else if (packageIdFromRoute?.trim() && !pkRes.error && pkRes.data != null) {
           const raw = pkRes.data as { data?: unknown } | unknown;
@@ -882,19 +878,39 @@ export default function BookScreen() {
                 ? pkg.services
                 : (pkg.items ?? []).filter((x) => x.type === "service" || !x.type);
             const ids = svcItems.map((it) => it.id).filter(Boolean) as string[];
-            const applied = applyMultiFromIds(ids);
+            const applied = applyMultiFromIds(ids, "strict");
             if (applied) {
-              packageOfferingSignatureRef.current = sortedOfferingIdsKey(applied);
-              setPackageIdForCheckout(pkgId);
-              autoExpandPreselectedCategory(applied, (svcRes.data as ProviderServicesResponse).categories);
-              // Enrich activePackage with authoritative API data (may improve over nav-param seed)
-              setActivePackage({
-                id: pkgId,
-                name: pkg.name ?? packageNameParam ?? "",
-                price: pkg.price ?? parseFloat(packagePriceParam ?? "0") ?? 0,
-                currency: pkg.currency ?? packageCurrencyParam ?? "",
-                discount_percentage: pkg.discount_percentage ?? (packageDiscountParam ? parseFloat(packageDiscountParam) : null),
-              });
+              const rawProd = !prodRes.error && prodRes.data != null ? prodRes.data : [];
+              const prodList = Array.isArray(rawProd) ? rawProd : [];
+              const retail = buildRetailCartRowsFromPublicPackage(
+                pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+                prodList as PublicProductCatalogRow[],
+                applied[0]?.currency ?? getTenantDefaultCurrency()
+              );
+              const shape = { items: pkg.items, services: pkg.services };
+              resolvedPackageShapeRef.current = shape;
+              setSelectedPackageProducts(retail);
+              const bundleOk = cartMatchesPublicCatalogPackage(
+                applied.map((s) => s.offeringId),
+                retail.map((r) => ({ id: r.id, quantity: r.quantity })),
+                shape
+              );
+              if (bundleOk) {
+                setPackageIdForCheckout(pkgId);
+                autoExpandPreselectedCategory(applied, (svcRes.data as ProviderServicesResponse).categories);
+                setActivePackage({
+                  id: pkgId,
+                  name: pkg.name ?? packageNameParam ?? "",
+                  price: pkg.price ?? parseFloat(packagePriceParam ?? "0") ?? 0,
+                  currency: pkg.currency ?? packageCurrencyParam ?? "",
+                  discount_percentage: pkg.discount_percentage ?? (packageDiscountParam ? parseFloat(packageDiscountParam) : null),
+                });
+              } else {
+                resolvedPackageShapeRef.current = null;
+                setSelectedPackageProducts([]);
+                setPackageIdForCheckout(null);
+                setActivePackage(null);
+              }
             }
           }
         }
@@ -949,14 +965,20 @@ export default function BookScreen() {
 
   useEffect(() => {
     if (!packageIdForCheckout) return;
-    const sig = packageOfferingSignatureRef.current;
-    if (sig == null) return;
-    if (sortedOfferingIdsKey(selectedServices) !== sig) {
-      packageOfferingSignatureRef.current = null;
+    const shape = resolvedPackageShapeRef.current;
+    if (!shape) return;
+    const ok = cartMatchesPublicCatalogPackage(
+      selectedServices.map((s) => s.offeringId),
+      selectedPackageProducts.map((p) => ({ id: p.id, quantity: p.quantity })),
+      shape
+    );
+    if (!ok) {
+      resolvedPackageShapeRef.current = null;
       setPackageIdForCheckout(null);
       setActivePackage(null);
+      setSelectedPackageProducts([]);
     }
-  }, [selectedServices, packageIdForCheckout]);
+  }, [selectedServices, selectedPackageProducts, packageIdForCheckout]);
 
   // Auto-advance past the service step when a package has been fully preloaded —
   // the user's intent (book this package) is already clear, no need to linger on service selection.
@@ -1496,9 +1518,22 @@ export default function BookScreen() {
       if (giftCardParam?.trim()) {
         await AsyncStorage.setItem("beautonomi_booking_gift_card_code", giftCardParam.trim());
       }
-      const cartLines = parseExpressProductCartParam(productsParam);
-      if (cartLines.length > 0) {
-        await AsyncStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(cartLines));
+      const fromUrl = parseExpressProductCartParam(productsParam);
+      const fromPackage = selectedPackageProducts.map((p) => {
+        const colon = p.id.indexOf(":");
+        const product_id = colon !== -1 ? p.id.slice(0, colon) : p.id;
+        const vid = colon !== -1 ? p.id.slice(colon + 1) : undefined;
+        return {
+          product_id,
+          quantity: p.quantity,
+          ...(vid ? { product_variant_id: vid } : {}),
+        };
+      });
+      const mergedLines = mergeExpressProductCartLines(fromUrl, fromPackage);
+      if (mergedLines.length > 0) {
+        await AsyncStorage.setItem("beautonomi_booking_product_cart", JSON.stringify(mergedLines));
+      } else {
+        await AsyncStorage.removeItem("beautonomi_booking_product_cart");
       }
       try {
         const hci = atHomeAddress.house_call_instructions.trim();
@@ -1513,7 +1548,7 @@ export default function BookScreen() {
 } finally {
     setCreatingHold(false);
   }
-}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, promoParam, giftCardParam, productsParam, packageIdForCheckout, slug, t]);
+}, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, promoParam, giftCardParam, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t]);
 
   const goBack = useCallback(() => {
     haptic.light();
@@ -1741,6 +1776,37 @@ export default function BookScreen() {
                         </View>
                       </View>
                     ))}
+                    {selectedPackageProducts.length > 0 && (
+                      <>
+                        <Text style={{ fontSize: 15, fontWeight: "700", color: "#374151", marginBottom: 10, marginTop: 16 }}>
+                          Retail included
+                        </Text>
+                        {selectedPackageProducts.map((p) => (
+                          <View
+                            key={p.id}
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              paddingVertical: 12,
+                              paddingHorizontal: 14,
+                              backgroundColor: "#fff",
+                              borderRadius: 12,
+                              borderWidth: 1,
+                              borderColor: "#E5E7EB",
+                              marginBottom: 8,
+                            }}
+                          >
+                            <Ionicons name="cube-outline" size={18} color="#6B7280" style={{ marginRight: 10 }} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{p.name}</Text>
+                              <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>
+                                ×{p.quantity} · {p.currency} {(p.price * p.quantity).toFixed(2)}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </>
+                    )}
                   </View>
                 ) : (
                   /* ── Regular mode: full editable service selection ── */

@@ -152,6 +152,8 @@ export interface BookingData {
   // Services: either package (with multiple offerings) or single service/variant
   selectedPackage: PackageOption | null;
   selectedServices: BookingServiceEntry[]; // flattened for hold/API
+  /** Retail lines for mixed packages (`items` with `type: "product"`); cart key `id` is product id or `productId:variantId`. */
+  selectedProducts: Array<{ id: string; name: string; price: number; quantity: number; currency: string }>;
   selectedAddonIds: string[];
   addonsSubtotal: number;
 

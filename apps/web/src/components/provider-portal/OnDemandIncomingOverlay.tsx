@@ -81,17 +81,22 @@ export function OnDemandIncomingOverlay() {
     const tick = () => {
       const now = Date.now();
       const exp = new Date(incomingRequest.expires_at).getTime();
-      setSecondsLeft(Math.max(0, Math.ceil((exp - now) / 1000)));
+      const next = Math.max(0, Math.ceil((exp - now) / 1000));
+      setSecondsLeft(next);
+      if (next <= 0) {
+        ringtoneStopRef.current?.();
+        setIncomingRequest((prev) => (prev?.id === incomingRequest.id ? null : prev));
+      }
     };
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [incomingRequest?.expires_at, incomingRequest?.status]);
+  }, [incomingRequest?.id, incomingRequest?.expires_at, incomingRequest?.status]);
 
-  const _stopRingtoneAndClose = () => {
+  useEffect(() => {
+    if (incomingRequest?.status === "requested") return;
     ringtoneStopRef.current?.();
-    setIncomingRequest(null);
-  };
+  }, [incomingRequest?.status]);
 
   const handleAccept = async () => {
     if (!incomingRequest?.id) return;

@@ -96,7 +96,7 @@ export async function createGroupBookingServices(
  */
 export function calculateGroupBookingDuration(
   participants: Array<{ serviceIds: string[] }>,
-  servicesMap: Map<string, { duration_minutes: number }>
+  servicesMap: Map<string, { duration_minutes: number; buffer_minutes?: number }>
 ): number {
   let maxDuration = 0;
 
@@ -105,7 +105,8 @@ export function calculateGroupBookingDuration(
     for (const serviceId of participant.serviceIds) {
       const service = servicesMap.get(serviceId);
       if (service) {
-        participantDuration += service.duration_minutes;
+        participantDuration +=
+          service.duration_minutes + Number(service.buffer_minutes ?? 0);
       }
     }
     maxDuration = Math.max(maxDuration, participantDuration);

@@ -4,14 +4,37 @@ import { isPaystackEnabledForTenant } from "@/lib/subscriptions/entitlements";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import {
+  resolveBookingPaystackAmount,
+  resolveProductOrderPaystackAmount,
+} from "@/lib/payments/resolve-paystack-initialize-amount";
+import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
 import { z } from "zod";
 
-const initializeSchema = z.object({
-  email: z.string().email("Invalid email address"),
-  amount: z.number().min(100, "Minimum amount is 100"),
-  metadata: z.record(z.string(), z.unknown()).optional(),
-});
+const initializeSchema = z
+  .object({
+    email: z.string().email("Invalid email address"),
+    /** Ignored when paying for a product order or booking — server derives amount. */
+    amount: z.number().min(100, "Minimum amount is 100").optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((val, ctx) => {
+    const m = val.metadata || {};
+    const hasProductOrder =
+      typeof m.product_order_id === "string" && String(m.product_order_id).trim().length > 0;
+    const hasBooking =
+      (typeof m.bookingId === "string" && String(m.bookingId).trim().length > 0) ||
+      (typeof m.booking_id === "string" && String(m.booking_id).trim().length > 0);
+    if (!hasProductOrder && !hasBooking && (val.amount == null || val.amount < 100)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "amount is required (min 100) unless paying for a product order or booking",
+        path: ["amount"],
+      });
+    }
+  });
 
 /**
  * POST /api/paystack/initialize
@@ -109,6 +132,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    let paystackAmount = body.amount ?? 0;
+    if (productOrderIdRaw) {
+      const resolved = await resolveProductOrderPaystackAmount(supabase, productOrderIdRaw, user.id);
+      if (resolved.ok === false) {
+        return errorResponse(resolved.message, resolved.code, resolved.status);
+      }
+      paystackAmount = resolved.amountSmallestUnit;
+    } else if (bookingIdFromMeta) {
+      const resolved = await resolveBookingPaystackAmount(supabase, bookingIdFromMeta, user.id);
+      if (resolved.ok === false) {
+        return errorResponse(resolved.message, resolved.code, resolved.status);
+      }
+      const admin = getSupabaseAdmin();
+      const slotOk = await revalidateBookingSlotBeforePayment(admin, bookingIdFromMeta);
+      if (slotOk.ok === false) {
+        return errorResponse(slotOk.message, slotOk.code, 409);
+      }
+      paystackAmount = resolved.amountSmallestUnit;
+    }
+
     const PAYSTACK_SECRET_KEY = await getPaystackSecretKey({ tenantId });
     
     if (!PAYSTACK_SECRET_KEY) {
@@ -126,9 +169,10 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         email: body.email,
-        amount: body.amount,
+        amount: paystackAmount,
         metadata: {
           ...rawMeta,
+          ...(bookingIdFromMeta ? { booking_id: bookingIdFromMeta } : {}),
           save_card: saveCard,
           set_as_default: setAsDefault,
           customer_id: user.id,

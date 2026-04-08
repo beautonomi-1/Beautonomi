@@ -7,12 +7,15 @@ import type { User, UserRole } from "@/types/beautonomi";
 import type { Session } from "@supabase/supabase-js";
 import { scheduleRetentionSyncOnSession } from "@/lib/retention/client-sync";
 import { clearFetcherCache } from "@/lib/http/fetcher";
+import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: UserRole | null;
   isLoading: boolean;
+  /** True while sign-out is in flight (show signing-out UI). */
+  isSigningOut: boolean;
   isEmailVerified: boolean; // Email verification status
   signOut: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
@@ -90,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(cached.session);
   const [role, setRole] = useState<UserRole | null>(cached.role);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSigningOut, setIsSigningOut] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(true);
   const router = useRouter();
   const _pathname = usePathname();
@@ -134,6 +138,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         }
         sessionKeysToRemove.forEach((key) => sessionStorage.removeItem(key));
+        const primaryKeys: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i += 1) {
+          const k = sessionStorage.key(i);
+          if (k?.startsWith("beautonomi_primary_loc_v1_")) primaryKeys.push(k);
+        }
+        primaryKeys.forEach((k) => sessionStorage.removeItem(k));
       } catch {
         // Ignore errors
       }
@@ -848,38 +858,104 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshUser, supabase, checkEmailVerification]);
 
+  /** After login, apply default saved address to marketplace `userLocation` once per session (unless user clears session storage). */
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const syncKey = `beautonomi_primary_loc_v1_${user.id}`;
+    if (sessionStorage.getItem(syncKey)) return;
+
+    const role = user.role;
+    if (role === "superadmin") {
+      sessionStorage.setItem(syncKey, "1");
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/me/addresses", { credentials: "include" });
+        if (!res.ok || cancelled) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const json = (await res.json()) as { data?: unknown };
+        const list = json?.data;
+        if (!Array.isArray(list) || list.length === 0) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const primary =
+          (list as Array<{ is_default?: boolean; latitude?: number | null; longitude?: number | null }>).find(
+            (a) => a.is_default === true,
+          ) || (list as any[])[0];
+        const lat = Number(primary?.latitude);
+        const lng = Number(primary?.longitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          sessionStorage.setItem(syncKey, "1");
+          return;
+        }
+        const line1 = (primary as { address_line1?: string }).address_line1;
+        const city = (primary as { city?: string }).city;
+        const country = (primary as { country?: string }).country;
+        const label = (primary as { label?: string }).label;
+        const addressStr =
+          [line1, city, country].filter(Boolean).join(", ").trim() ||
+          (typeof label === "string" ? label : "") ||
+          "Saved address";
+        const locationData = { latitude: lat, longitude: lng, address: addressStr };
+        if (readAllowsFunctionalFromStorage()) {
+          localStorage.setItem("userLocation", JSON.stringify(locationData));
+        }
+        window.dispatchEvent(new CustomEvent("userLocationChanged", { detail: locationData }));
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) sessionStorage.setItem(syncKey, "1");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
+
   const signOut = useCallback(async () => {
     if (!supabase) return;
+    setIsSigningOut(true);
+    const started = Date.now();
+    const endSigningOutSoon = () => {
+      const elapsed = Date.now() - started;
+      const rest = Math.max(0, 450 - elapsed);
+      window.setTimeout(() => setIsSigningOut(false), rest);
+    };
     try {
-      // Clear local state first
+      // Clear auth cache and fetcher response cache first
+      clearAuthCache();
+      clearFetcherCache();
+
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error("Error signing out from Supabase:", error);
+      }
+
       setSession(null);
       setUser(null);
       setRole(null);
       setIsEmailVerified(false);
-      
-      // Clear auth cache and fetcher response cache
-      clearAuthCache();
-      clearFetcherCache();
-      
-      // Sign out from Supabase
-      const { error } = await supabase.auth.signOut();
-      if (error) {
-        console.error("Error signing out from Supabase:", error);
-        // Continue with redirect even if there's an error
-      }
-      
-      // Force navigation to home page
+
       router.push("/");
-      router.refresh(); // Refresh to clear any cached data
+      router.refresh();
     } catch (error) {
       console.error("Unexpected error signing out:", error);
-      // Even on error, clear state and redirect
       setSession(null);
       setUser(null);
       setRole(null);
       setIsEmailVerified(false);
       router.push("/");
       router.refresh();
+    } finally {
+      if (typeof window !== "undefined") endSigningOutSoon();
+      else setIsSigningOut(false);
     }
   }, [supabase, router]);
 
@@ -971,6 +1047,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         session,
         role,
         isLoading,
+        isSigningOut,
         isEmailVerified,
         signOut,
         refreshUser,

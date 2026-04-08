@@ -44,6 +44,7 @@ interface DashboardStats {
   gateway_fees_total: number;
   subscription_net_total: number;
   subscription_gateway_fees_total: number;
+  ads_net_total?: number;
   tips_total: number;
   taxes_total: number;
   gift_card_sales_total: number;
@@ -198,7 +199,7 @@ export default function AdminDashboard() {
                 value={stats.total_providers.toLocaleString()}
                 icon={<Building2 className="w-6 h-6" />}
                 color="green"
-                trend={stats.providers_growth !== 0 ? `${stats.providers_growth >= 0 ? '+' : ''}${stats.providers_growth}` : undefined}
+                trend={stats.providers_growth !== 0 ? `${stats.providers_growth >= 0 ? '+' : ''}${stats.providers_growth}%` : undefined}
               />
               <StatCard
                 title="Total Bookings"
@@ -208,12 +209,12 @@ export default function AdminDashboard() {
                 trend={stats.bookings_growth !== 0 ? `${stats.bookings_growth >= 0 ? '+' : ''}${stats.bookings_growth}%` : undefined}
               />
               <StatCard
-                title="Platform Take (Net)"
+                title="Platform net (take + subs + ads)"
                 value={`R ${stats.platform_net_total.toLocaleString()}`}
                 icon={<DollarSign className="w-6 h-6" />}
                 color="orange"
                 trend={stats.revenue_growth !== 0 ? `${stats.revenue_growth >= 0 ? '+' : ''}${stats.revenue_growth}%` : undefined}
-                infoTooltip="Your actual platform revenue after deducting gateway fees. Formula: Commission (Net) - Gateway Fees. This is the money that stays with the platform."
+                infoTooltip="Matches finance summary: booking platform take (net of gateway fees, after refunds) plus subscription net and ads net. Rolling ledger window (see API metrics_notes)."
               />
             </div>
           </motion.div>
@@ -221,10 +222,11 @@ export default function AdminDashboard() {
           {/* Revenue Streams */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
-            title="GMV (Services)"
+            title="GMV (services gross)"
             value={`R ${stats.gmv_total.toLocaleString()}`}
             icon={<DollarSign className="w-6 h-6" />}
             color="purple"
+            infoTooltip="Service GMV from ledger (payments, provider lines, tips, tax, fees, additional charges) — same as finance summary service_collected_gross."
           />
           <StatCard
             title="Commission (Gross)"
@@ -254,6 +256,14 @@ export default function AdminDashboard() {
             icon={<DollarSign className="w-6 h-6" />}
             color="green"
           />
+          {typeof stats.ads_net_total === "number" ? (
+            <StatCard
+              title="Ads (Net)"
+              value={`R ${stats.ads_net_total.toLocaleString()}`}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="green"
+            />
+          ) : null}
           <StatCard
             title="Tips (Gross)"
             value={`R ${stats.tips_total.toLocaleString()}`}

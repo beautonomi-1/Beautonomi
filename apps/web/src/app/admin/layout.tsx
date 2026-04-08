@@ -1,32 +1,18 @@
-"use client";
+import type { Metadata } from "next";
+import AdminLayoutClient from "./AdminLayoutClient";
 
-import { ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import AdminShell from "@/components/admin/AdminShell";
-import RoleGuard from "@/components/auth/RoleGuard";
-import { useRouteTracking } from "@/lib/analytics/amplitude/route-tracker";
-import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
+/**
+ * All roles that use `/admin` (including superadmin) must not be indexed; belts-and-suspenders
+ * with `robots.txt` disallow + `proxy.ts` X-Robots-Tag for SPA and API responses.
+ */
+export const metadata: Metadata = {
+  robots: {
+    index: false,
+    follow: false,
+    googleBot: { index: false, follow: false },
+  },
+};
 
-function RouteTracker() {
-  useRouteTracking();
-  return null;
-}
-
-export default function AdminLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
-  const pathname = usePathname();
-
-  if (pathname === "/admin/login") {
-    return <>{children}</>;
-  }
-
-  return (
-    <RoleGuard allowedRoles={ALL_ADMIN_ROLES} redirectTo="/admin/login">
-      <RouteTracker />
-      <AdminShell>{children}</AdminShell>
-    </RoleGuard>
-  );
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return <AdminLayoutClient>{children}</AdminLayoutClient>;
 }

@@ -40,6 +40,7 @@ The following remain superadmin-only by API guard:
 - user creation (`POST /api/admin/users`)
 - role changes (`PUT /api/admin/users/[id]/role`)
 - impersonation (`POST /api/admin/users/[id]/impersonate`)
+- full user / provider compliance purge (`DELETE /api/admin/users/[id]`, `POST /api/admin/compliance/purge-provider`)
 
 ### 4) Data and audit
 

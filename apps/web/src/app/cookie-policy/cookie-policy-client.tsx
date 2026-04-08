@@ -9,6 +9,7 @@ import HeroPlaceholder from "../../../public/images/using-your-dashboard-optimiz
 import Breadcrumb from "../account-settings/components/breadcrumb";
 import BackButton from "../account-settings/components/back-button";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
+import { CookieSettingsFooterLink } from "@/components/cookie-consent/CookieSettingsFooterLink";
 
 export interface CookiePolicyData {
   pageTitle: string;
@@ -132,7 +133,11 @@ export default function CookiePolicyClient({ data }: { data: CookiePolicyData })
                     </Button>
                   </Link>
                 </motion.div>
-                <div className="pt-4 border-t border-gray-200">
+                <div className="pt-4 border-t border-gray-200 space-y-3">
+                  <p className="text-sm font-light text-gray-600">
+                    Want to change what we remember in your browser? Open{" "}
+                    <CookieSettingsFooterLink variant="policy" className="inline p-0 align-baseline" />.
+                  </p>
                   <p className="text-sm font-light text-gray-600 mb-2">
                     You can also{" "}
                     <Link

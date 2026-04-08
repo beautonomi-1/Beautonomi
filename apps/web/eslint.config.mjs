@@ -10,7 +10,16 @@ const perfPlugin = require("./eslint-rules/index.js");
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
-  globalIgnores([".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**", "eslint-rules/**"]),
+  globalIgnores([
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+    "node_modules/**",
+    "eslint-rules/**",
+    // Vite-built admin SPA chunks copied for hosting; minified — not project source.
+    "public/admin/**",
+  ]),
   // Scripts and config: allow require() where common (Node/CommonJS).
   {
     files: ["scripts/**/*.js", "scripts/**/*.mjs", "scripts/**/*.cjs", "tailwind.config.ts"],

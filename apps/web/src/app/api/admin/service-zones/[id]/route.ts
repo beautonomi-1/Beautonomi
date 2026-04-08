@@ -6,7 +6,7 @@ import { requireAdminSection,
   errorResponse,
   notFoundResponse,
  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -28,7 +28,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
 
@@ -111,7 +111,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();

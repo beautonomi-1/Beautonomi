@@ -15,6 +15,7 @@ import type {
 /** Placeholder for synthetic rows derived from `booking_holds` (blocked window only). */
 const HOLD_SYNTHETIC_OFFERING_ID = '00000000-0000-0000-0000-000000000000';
 import { expandRecurringPattern } from './time-utils';
+import { loadPublicCalendarParityBookings } from './public-calendar-parity-bookings';
 import {
   parseSyntheticProviderStaffId,
   SYNTHETIC_PROVIDER_STAFF_PREFIX,
@@ -345,7 +346,8 @@ export async function loadStaffShifts(
 export async function loadTimeBlocks(
   supabase: SupabaseClient,
   staffId: string | null,
-  date: string
+  date: string,
+  providerId?: string
 ): Promise<TimeBlock[]> {
   // Query time blocks for the specific date
   // staff_id = null means applies to all staff
@@ -354,6 +356,10 @@ export async function loadTimeBlocks(
     .select('*')
     .eq('date', date)
     .eq('is_active', true);
+
+  if (providerId) {
+    query.eq('provider_id', providerId);
+  }
 
   if (staffId) {
     query.or(`staff_id.eq.${staffId},staff_id.is.null`);
@@ -378,6 +384,10 @@ export async function loadTimeBlocks(
     .select('*')
     .eq('is_recurring', true)
     .eq('is_active', true);
+
+  if (providerId) {
+    recurringQuery.eq('provider_id', providerId);
+  }
 
   if (staffId) {
     recurringQuery.or(`staff_id.eq.${staffId},staff_id.is.null`);
@@ -669,6 +679,16 @@ export type LoadAvailabilityConstraintsOptions = {
    * When set, this active hold is not treated as blocking (caller’s own hold while finishing checkout).
    */
   excludeHoldId?: string;
+  /**
+   * Merge availability_blocks + staff time off / day off (same rules as public slug availability).
+   */
+  publicCalendarParity?: {
+    providerId: string;
+    locationId?: string | null;
+    date: string;
+    slotStaffId: string | null;
+    staffIdsForTimeOff: string[];
+  };
 };
 
 function resolveConstraintsDb(
@@ -724,7 +744,9 @@ export async function loadAvailabilityConstraints(
 
   const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
-    workHoursEnabled ? loadTimeBlocks(db, effectiveStaffId, date) : Promise.resolve([]),
+    workHoursEnabled
+      ? loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId)
+      : Promise.resolve([]),
     syntheticProviderId
       ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date)
       : loadExistingBookings(db, effectiveStaffId, date),
@@ -772,10 +794,26 @@ export async function loadAvailabilityConstraints(
     );
   }
 
+  let parityBookings: BookingService[] = [];
+  if (options?.publicCalendarParity && resolvedProviderId) {
+    const pc = options.publicCalendarParity;
+    try {
+      parityBookings = await loadPublicCalendarParityBookings(supabase, db, {
+        providerId: pc.providerId,
+        date: pc.date,
+        locationId: pc.locationId,
+        slotStaffId: pc.slotStaffId,
+        staffIdsForTimeOff: pc.staffIdsForTimeOff,
+      });
+    } catch (e) {
+      console.error('loadPublicCalendarParityBookings:', e);
+    }
+  }
+
   return {
     staffShifts,
     timeBlocks,
-    existingBookings: [...existingBookings, ...holdBlocks],
+    existingBookings: [...existingBookings, ...holdBlocks, ...parityBookings],
     providerSettings,
     workHoursEnabled,
   } as AvailabilityConstraints & {

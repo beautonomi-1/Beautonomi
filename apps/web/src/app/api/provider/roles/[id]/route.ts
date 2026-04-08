@@ -8,6 +8,7 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -26,7 +27,18 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    if (user.role !== "superadmin") {
+      const canManageRoles =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canManageRoles) {
+        return errorResponse(
+          "Only owners or users with Manage team can update roles.",
+          "FORBIDDEN",
+          403
+        );
+      }
+    }
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -105,7 +117,18 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner"], request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    if (user.role !== "superadmin") {
+      const canManageRoles =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canManageRoles) {
+        return errorResponse(
+          "Only owners or users with Manage team can delete roles.",
+          "FORBIDDEN",
+          403
+        );
+      }
+    }
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const providerId = await getProviderIdForUser(user.id, supabase);

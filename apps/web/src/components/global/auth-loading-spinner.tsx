@@ -4,14 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { BeautonomiLoadingIcon } from "@/components/BeautonomiLoadingIcon";
-
-/** Routes that do not show auth overlay so they can load immediately. */
-const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/resources", "/become-a-partner"];
-
-function isPublicRoute(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return pathname === "/" || PUBLIC_ROUTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
+import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-public-routes";
 
 /**
  * AuthLoadingSpinner Component
@@ -21,11 +14,12 @@ function isPublicRoute(pathname: string | null): boolean {
  */
 export default function AuthLoadingSpinner() {
   const pathname = usePathname();
-  const { isLoading } = useAuth();
+  const { isLoading, isSigningOut } = useAuth();
   const [timedOut, setTimedOut] = useState(false);
+  const showOverlay = isLoading || isSigningOut;
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!showOverlay) {
       setTimedOut(false);
       return;
     }
@@ -34,9 +28,9 @@ export default function AuthLoadingSpinner() {
       setTimedOut(true);
     }, 12000);
     return () => clearTimeout(timeout);
-  }, [isLoading]);
+  }, [showOverlay]);
 
-  if (!isLoading || isPublicRoute(pathname) || timedOut) return null;
+  if (!showOverlay || isCustomerShellPublicRoute(pathname) || timedOut) return null;
 
   return (
     <div
@@ -47,7 +41,7 @@ export default function AuthLoadingSpinner() {
       <div className="backdrop-blur-2xl bg-white/90 border border-border shadow-2xl rounded-2xl p-8 flex flex-col items-center gap-4 animate-in zoom-in-95 fade-in duration-200">
         <BeautonomiLoadingIcon size={56} />
         <p className="text-sm font-medium text-muted-foreground tracking-tight animate-in fade-in slide-in-from-bottom-2 duration-200 delay-75">
-          Checking authentication...
+          {isSigningOut ? "Signing out…" : "Checking authentication..."}
         </p>
       </div>
     </div>

@@ -11,11 +11,15 @@ import {
   Clock,
   BarChart3,
   ChevronRight,
+  Shield,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const items = [
   { label: "Team members", href: "/provider/team/members", icon: Users, description: "Manage staff, roles, and permissions" },
+  { label: "Permissions", href: "/provider/settings/team/permissions", icon: Shield, description: "Per-person access for bookings and settings" },
+  { label: "Team notifications", href: "/provider/settings/team/notifications", icon: Bell, description: "Email, SMS, and alert preferences per staff member" },
   { label: "My Earnings", href: "/provider/team/my-earnings", icon: DollarSign, description: "View your earnings and payouts" },
   { label: "Days Off", href: "/provider/team/days-off", icon: CalendarOff, description: "Team days off and time off requests" },
   { label: "Shifts", href: "/provider/team/shifts", icon: CalendarRange, description: "Schedule and manage shifts" },

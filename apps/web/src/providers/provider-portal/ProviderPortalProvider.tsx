@@ -4,11 +4,7 @@ import React, { createContext, useContext, useState, useEffect, useRef, ReactNod
 import { useRouter } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Provider, Salon } from "@/lib/provider-portal/types";
-import {
-  fetcher,
-  FetchTimeoutError,
-  PROVIDER_BOOTSTRAP_TIMEOUT_MS,
-} from "@/lib/http/fetcher";
+import { fetcher, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
 
 interface ProviderPortalState {
   provider: Provider | null;
@@ -221,37 +217,6 @@ export function ProviderPortalProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Keep setup completion fresh in the background for long-lived sessions.
-        fetcher
-          .get<{ data: { completionPercentage: number } }>("/api/provider/setup-status", {
-            timeoutMs: PROVIDER_BOOTSTRAP_TIMEOUT_MS,
-          })
-          .then((setupStatus) => {
-            if (typeof setupStatus?.data?.completionPercentage !== "number") return;
-            const liveCompletion = setupStatus.data.completionPercentage;
-            setState((prev) => ({ ...prev, setupCompletion: liveCompletion }));
-            cachedProviderData = {
-              provider,
-              salons,
-              setupCompletion: liveCompletion,
-              timestamp: Date.now(),
-            };
-            if (typeof window !== "undefined") {
-              try {
-                sessionStorage.setItem(STORAGE_KEY, JSON.stringify(cachedProviderData));
-              } catch {
-                // Ignore storage errors
-              }
-            }
-          })
-          .catch((error) => {
-            if (error instanceof FetchTimeoutError && error.message.includes("cancelled")) return;
-          });
-
-        setState((prev) => ({
-          ...prev,
-          setupCompletion,
-        }));
         setLoadError(null);
       } catch (error) {
         console.error("Failed to load provider data:", error);

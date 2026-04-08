@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { checkMessageLimit, formatLimitError } from "@/lib/subscriptions/limit-checker";
+import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 import { z } from "zod";
 
 /**
@@ -112,7 +113,7 @@ export async function GET(
         sender_name: senderName,
         sender_avatar: sender?.avatar_url || null,
         content: msg.content,
-        attachments: msg.attachments || [],
+        attachments: sanitizeMessageAttachmentsForResponse(msg.attachments || [], msg.created_at),
         is_read: msg.is_read,
         read_at: msg.read_at, // Include read_at for read receipts
         sender_type: msg.sender_role === "customer" ? "customer" : "provider",

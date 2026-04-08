@@ -1,47 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import type { AvailabilitySlot } from "@/types/beautonomi";
-
-type WorkingHoursDay = {
-  is_open?: boolean;
-  open_time?: string; // "09:00"
-  close_time?: string; // "17:00"
-  breaks?: { start: string; end: string }[]; // e.g. [{ start: "12:00", end: "13:00" }]
-};
-
-const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
-function dayKeyFromDate(date: Date): (typeof DAY_KEYS)[number] {
-  const d = date.getDay();
-  return DAY_KEYS[d];
-}
-
-function parseTimeToMinutes(time: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec(time);
-  if (!m) return null;
-  const hh = parseInt(m[1], 10);
-  const mm = parseInt(m[2], 10);
-  if (Number.isNaN(hh) || Number.isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
-  return hh * 60 + mm;
-}
-
-function isoAtLocalDateMinutes(dateStr: string, minutes: number): string {
-  // Interprets `${dateStr}T..` in server local timezone. This matches existing behavior in the codebase.
-  const hh = Math.floor(minutes / 60)
-    .toString()
-    .padStart(2, "0");
-  const mm = (minutes % 60).toString().padStart(2, "0");
-  return new Date(`${dateStr}T${hh}:${mm}:00`).toISOString();
-}
-
-function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
-  const as = new Date(aStart).getTime();
-  const ae = new Date(aEnd).getTime();
-  const bs = new Date(bStart).getTime();
-  const be = new Date(bEnd).getTime();
-  return as < be && ae > bs;
-}
+import {
+  publicSlugSpanParamsFromSlices,
+  type OfferingTimingSlice,
+} from "@/lib/booking-slot-math/blocked-window-minutes";
+import { computePublicSlugAvailabilitySlots } from "@/lib/availability/public-slug-availability-engine";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -51,8 +16,14 @@ function overlaps(aStart: string, aEnd: string, bStart: string, bEnd: string) {
  * bookings can pass total span. Optional `service_ids` (comma-separated UUIDs)
  * unions required resources across offerings for multi-service carts; when omitted,
  * `service_id` alone is used for resource rules.
- * Reschedule/portal use a separate pipeline:
- * loadAvailabilityConstraints + calculateAvailableSlots (see /api/portal/availability).
+ * Uses the same engine as portal and `/api/availability`:
+ * `loadAvailabilityConstraints` + `calculateAvailableSlots` (see /api/portal/availability).
+ * Optional `travel_buffer_minutes` (at-home) is passed through like `/api/availability`.
+ *
+ * When `service_ids` (comma-separated offering UUIDs) is present, **duration_minutes** and
+ * **buffer_minutes** are recomputed server-side from `offerings` in query order using
+ * {@link publicSlugSpanParamsFromSlices} so the blocked window matches `validateBooking` /
+ * `sumChainedBlockedMinutes` (client params are ignored for that split when all ids resolve).
  */
 export async function GET(
   request: Request,
@@ -115,9 +86,48 @@ export async function GET(
       );
     }
 
-    // Duration and buffer: use query params when provided (e.g. multi-service total); else use single offering when service_id given
+    // Duration and buffer: prefer authoritative chain from `service_ids` + DB; else query params; else single offering.
     let durationMinutes = paramDuration != null ? parseInt(paramDuration, 10) : NaN;
     let bufferMinutes = paramBuffer != null ? parseInt(paramBuffer, 10) : NaN;
+
+    const serviceIdsParam = searchParams.get("service_ids");
+    const orderedOfferingIds =
+      serviceIdsParam
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [];
+
+    if (orderedOfferingIds.length > 0) {
+      const { data: offRows, error: offErr } = await supabase
+        .from("offerings")
+        .select("id, duration_minutes, buffer_minutes, is_active")
+        .eq("provider_id", provider.id)
+        .eq("is_active", true)
+        .in("id", orderedOfferingIds);
+
+      if (!offErr && offRows?.length) {
+        const byId = new Map(offRows.map((o) => [o.id, o]));
+        const slices: OfferingTimingSlice[] = [];
+        let allResolved = true;
+        for (const oid of orderedOfferingIds) {
+          const o = byId.get(oid);
+          if (!o) {
+            allResolved = false;
+            break;
+          }
+          slices.push({
+            durationMinutes: Number(o.duration_minutes) || 60,
+            bufferAfterMinutes: Math.max(0, Number(o.buffer_minutes) || 0),
+          });
+        }
+        if (allResolved && slices.length === orderedOfferingIds.length) {
+          const span = publicSlugSpanParamsFromSlices(slices);
+          durationMinutes = span.durationMinutes;
+          bufferMinutes = span.bufferMinutes;
+        }
+      }
+    }
+
     if (serviceId) {
       const { data: offering, error: offeringError } = await supabase
         .from("offerings")
@@ -134,310 +144,23 @@ export async function GET(
     if (Number.isNaN(durationMinutes) || durationMinutes <= 0) durationMinutes = 60;
     if (Number.isNaN(bufferMinutes) || bufferMinutes < 0) bufferMinutes = 0;
 
-    // "any" or synthetic "provider-*" (solo provider with no provider_staff rows) = aggregate slots
     const anyoneMode =
       staffId === "any" ||
       staffId === "" ||
       (typeof staffId === "string" && staffId.startsWith("provider-"));
-    const effectiveStaffId = anyoneMode ? null : staffId;
 
-    // Determine working hours: prefer staff hours if staff_id provided, otherwise location hours (primary/selected)
-    const day = dayKeyFromDate(new Date(`${date}T00:00:00`));
-
-    let staffHours: WorkingHoursDay | null = null;
-    let staffList: Array<{ id: string; working_hours: Record<string, WorkingHoursDay> | null }> = [];
-
+    let staffList: Array<{ id: string }> = [];
     if (anyoneMode) {
       const { data: allStaff, error: staffListError } = await supabase
         .from("provider_staff")
-        .select("id, working_hours")
+        .select("id")
         .eq("provider_id", provider.id)
         .eq("is_active", true);
       if (!staffListError && allStaff) {
-        staffList = allStaff.map((s) => ({
-          id: s.id,
-          working_hours: s.working_hours as Record<string, WorkingHoursDay> | null,
-        }));
-      }
-    } else if (effectiveStaffId) {
-      const { data: staff, error: staffError } = await supabase
-        .from("provider_staff")
-        .select("id, provider_id, is_active, working_hours")
-        .eq("id", effectiveStaffId)
-        .single();
-      if (!staffError && staff && staff.provider_id === provider.id && staff.is_active) {
-        staffHours = (staff.working_hours || {})[day] || null;
+        staffList = allStaff.map((s) => ({ id: s.id }));
       }
     }
 
-    let locationHours: WorkingHoursDay | null = null;
-    if (locationId) {
-      const { data: loc, error: locError } = await supabase
-        .from("provider_locations")
-        .select("id, provider_id, is_active, working_hours")
-        .eq("id", locationId)
-        .single();
-      if (!locError && loc && loc.provider_id === provider.id && loc.is_active) {
-        locationHours = (loc.working_hours || {})[day] || null;
-      }
-    } else {
-      const { data: locs, error: locsError } = await supabase
-        .from("provider_locations")
-        .select("id, provider_id, is_active, is_primary, working_hours")
-        .eq("provider_id", provider.id)
-        .eq("is_active", true)
-        .order("is_primary", { ascending: false })
-        .order("created_at", { ascending: true })
-        .limit(1);
-      if (!locsError && locs && locs.length > 0) {
-        locationHours = (locs[0].working_hours || {})[day] || null;
-      }
-    }
-
-    const defaultHours: WorkingHoursDay = { is_open: true, open_time: "09:00", close_time: "18:00" };
-
-    // Fetch existing booking conflicts for the day
-    const startOfDayIso = isoAtLocalDateMinutes(date, 0);
-    const endOfDayIso = isoAtLocalDateMinutes(date, 24 * 60 - 1);
-
-    const { data: bookings, error: bookingsError } = await supabase
-      .from("bookings")
-      .select("id, status, provider_id, location_id")
-      .eq("provider_id", provider.id)
-      .gte("scheduled_at", startOfDayIso)
-      .lte("scheduled_at", endOfDayIso)
-      .not("status", "in", "(cancelled,no_show)");
-
-    if (bookingsError) throw bookingsError;
-
-    const bookingIds = (bookings || []).map((b) => b.id);
-    let busyIntervals: Array<{ start: string; end: string; staff_id?: string | null }> = [];
-
-    if (bookingIds.length > 0) {
-      const { data: svcRows, error: svcError } = await supabase
-        .from("booking_services")
-        .select("scheduled_start_at, scheduled_end_at, staff_id, booking_id")
-        .in("booking_id", bookingIds);
-      if (svcError) throw svcError;
-      busyIntervals = (svcRows || []).map((r) => ({
-        start: r.scheduled_start_at,
-        end: r.scheduled_end_at,
-        staff_id: r.staff_id,
-      }));
-    }
-
-    // Active slot holds (not yet booking_services) — block the same windows for every shopper.
-    // Callers pass excludeHoldId so the holder still sees their reserved slot while choosing times.
-    const supabaseAdminHolds = getSupabaseAdmin();
-    const nowIso = new Date().toISOString();
-    let holdsQuery = supabaseAdminHolds
-      .from("booking_holds")
-      .select("start_at, end_at, staff_id, id")
-      .eq("provider_id", provider.id)
-      .eq("hold_status", "active")
-      .gt("expires_at", nowIso)
-      .gt("end_at", startOfDayIso)
-      .lt("start_at", endOfDayIso);
-    if (excludeHoldId) {
-      holdsQuery = holdsQuery.neq("id", excludeHoldId);
-    }
-    const { data: holdRows, error: holdsError } = await holdsQuery;
-    if (holdsError) {
-      console.error("booking_holds fetch for public availability:", holdsError);
-    } else {
-      for (const h of holdRows || []) {
-        busyIntervals.push({
-          start: h.start_at as string,
-          end: h.end_at as string,
-          staff_id: h.staff_id,
-        });
-      }
-    }
-
-    // Fetch availability blocks that overlap this day (block.end_at > startOfDay AND block.start_at < endOfDay)
-    const { data: blocks, error: blocksError } = await supabase
-      .from("availability_blocks")
-      .select("start_at, end_at, staff_id, location_id")
-      .eq("provider_id", provider.id)
-      .gt("end_at", startOfDayIso)
-      .lt("start_at", endOfDayIso);
-    if (blocksError) throw blocksError;
-
-    // Fetch staff time off for this date: treat as all-day busy for that staff
-    const staffIdsToCheck =
-      anyoneMode && staffList.length > 0
-        ? staffList.map((s) => s.id)
-        : effectiveStaffId
-          ? [effectiveStaffId]
-          : [];
-    if (staffIdsToCheck.length > 0) {
-      const supabaseAdmin = getSupabaseAdmin();
-      const { data: timeOffRows, error: timeOffError } = await supabaseAdmin
-        .from("staff_time_off")
-        .select("staff_id")
-        .eq("provider_id", provider.id)
-        .lte("start_date", date)
-        .gte("end_date", date)
-        .in("staff_id", staffIdsToCheck);
-      if (!timeOffError && timeOffRows?.length) {
-        for (const row of timeOffRows) {
-          if (row.staff_id) {
-            busyIntervals.push({
-              start: startOfDayIso,
-              end: endOfDayIso,
-              staff_id: row.staff_id,
-            });
-          }
-        }
-      }
-
-      // Days off from portal (staff_days_off) — same as time off: block the whole day for that staff
-      const { data: daysOffRows, error: daysOffError } = await supabaseAdmin
-        .from("staff_days_off")
-        .select("staff_id, is_approved")
-        .eq("provider_id", provider.id)
-        .eq("date", date)
-        .in("staff_id", staffIdsToCheck);
-      if (!daysOffError && daysOffRows?.length) {
-        for (const row of daysOffRows) {
-          if (row.staff_id && row.is_approved !== false) {
-            busyIntervals.push({
-              start: startOfDayIso,
-              end: endOfDayIso,
-              staff_id: row.staff_id,
-            });
-          }
-        }
-      }
-    }
-
-    // Provider time blocks (same source as /api/provider/bookings/available-slots) — block customer slots
-    const supabaseAdminBlocks = getSupabaseAdmin();
-    const { data: timeBlocks } = await supabaseAdminBlocks
-      .from("time_blocks")
-      .select("staff_id, date, start_time, end_time")
-      .eq("provider_id", provider.id)
-      .eq("date", date)
-      .eq("is_active", true);
-    for (const tb of timeBlocks || []) {
-      const d = typeof tb.date === "string" ? tb.date : date;
-      const startPart = typeof tb.start_time === "string" ? tb.start_time.slice(0, 5) : "00:00";
-      const endPart = typeof tb.end_time === "string" ? tb.end_time.slice(0, 5) : "23:59";
-      const blockStart = new Date(`${d}T${startPart}:00`).toISOString();
-      const blockEnd = new Date(`${d}T${endPart}:00`).toISOString();
-      busyIntervals.push({
-        start: blockStart,
-        end: blockEnd,
-        staff_id: tb.staff_id ?? undefined,
-      });
-    }
-
-    const step = 15;
-    const slotDuration = durationMinutes;
-    const totalSpan = slotDuration + bufferMinutes;
-
-    const buildSlotsForStaff = (
-      hours: WorkingHoursDay | null,
-      sid: string | null
-    ): AvailabilitySlot[] => {
-      const chosen = hours || locationHours || defaultHours;
-      const isOpen = chosen.is_open !== false;
-      const openMin = parseTimeToMinutes(chosen.open_time || "09:00");
-      const closeMin = parseTimeToMinutes(chosen.close_time || "18:00");
-      if (!isOpen || openMin === null || closeMin === null || closeMin <= openMin) {
-        return [];
-      }
-      const breakRanges: Array<{ start: number; end: number }> = [];
-      for (const br of chosen.breaks ?? []) {
-        const bs = parseTimeToMinutes(br.start);
-        const be = parseTimeToMinutes(br.end);
-        if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
-      }
-      const slotOverlapsBreak = (slotStartMin: number, slotEndMin: number) =>
-        breakRanges.some((br) => slotStartMin < br.end && slotEndMin > br.start);
-
-      const slots: AvailabilitySlot[] = [];
-      for (let startMin = openMin; startMin + slotDuration <= closeMin; startMin += step) {
-        const slotEndMin = startMin + slotDuration;
-        if (slotOverlapsBreak(startMin, slotEndMin)) continue;
-        const slotStartIso = isoAtLocalDateMinutes(date, startMin);
-        const _slotEndIso = isoAtLocalDateMinutes(date, slotEndMin);
-        const blockEndIso = isoAtLocalDateMinutes(date, startMin + totalSpan);
-        if (startMin + totalSpan > closeMin) continue;
-        let available = true;
-        for (const b of busyIntervals) {
-          if (sid && b.staff_id && b.staff_id !== sid) continue;
-          if (overlaps(slotStartIso, blockEndIso, b.start, b.end)) {
-            available = false;
-            break;
-          }
-        }
-        if (available) {
-          for (const blk of blocks || []) {
-            if (sid && blk.staff_id && blk.staff_id !== sid) continue;
-            if (locationId && blk.location_id && blk.location_id !== locationId) continue;
-            if (overlaps(slotStartIso, blockEndIso, blk.start_at, blk.end_at)) {
-              available = false;
-              break;
-            }
-          }
-        }
-        // Return slot end as start + totalSpan so clients (holds) store the full blocked period including buffer
-        const slotEndFullIso = isoAtLocalDateMinutes(date, startMin + totalSpan);
-        slots.push({
-          start: slotStartIso,
-          end: slotEndFullIso,
-          staff_id: sid || undefined,
-          location_id: locationId || undefined,
-          is_available: available,
-        });
-      }
-      return slots;
-    };
-
-    let slots: AvailabilitySlot[];
-
-    if (anyoneMode && staffList.length > 0) {
-      const slotToStaff = new Map<string, string>();
-      const allStarts = new Set<string>();
-      for (const s of staffList) {
-        // Use staff's working_hours; fallback to location/default is inside buildSlotsForStaff
-        const hours = (s.working_hours || {})[day] || null;
-        const staffSlots = buildSlotsForStaff(hours ?? locationHours, s.id);
-        for (const slot of staffSlots) {
-          allStarts.add(slot.start);
-          if (slot.is_available && !slotToStaff.has(slot.start)) {
-            slotToStaff.set(slot.start, s.id);
-          }
-        }
-      }
-      const totalSpan = slotDuration + bufferMinutes;
-      slots = Array.from(allStarts)
-        .sort()
-        .map((start) => {
-          const end = new Date(start);
-          end.setMinutes(end.getMinutes() + totalSpan);
-          const availableStaffId = slotToStaff.get(start);
-          return {
-            start,
-            end: end.toISOString(),
-            staff_id: availableStaffId || undefined,
-            location_id: locationId || undefined,
-            is_available: !!availableStaffId,
-          };
-        });
-    } else {
-      const chosen = staffHours || locationHours || defaultHours;
-      const isOpen = chosen.is_open !== false;
-      const openMin = parseTimeToMinutes(chosen.open_time || "09:00");
-      const closeMin = parseTimeToMinutes(chosen.close_time || "18:00");
-      if (!isOpen || openMin === null || closeMin === null || closeMin <= openMin) {
-        return NextResponse.json({ data: { slots: [] }, error: null });
-      }
-      slots = buildSlotsForStaff(staffHours || locationHours || defaultHours, effectiveStaffId);
-    }
-
-    // Filter by max_advance_days: reject dates too far in the future
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dateObj = new Date(`${date}T00:00:00`);
@@ -446,6 +169,23 @@ export async function GET(
     if (daysFromToday > effectiveMaxAdvance) {
       return NextResponse.json({ data: { slots: [] }, error: null });
     }
+
+    const totalBlockedMinutes = durationMinutes + bufferMinutes;
+    const travelBufferParam = parseInt(searchParams.get("travel_buffer_minutes") || "0", 10);
+    const travelBufferMinutes =
+      Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
+
+    let slots = await computePublicSlugAvailabilitySlots({
+      supabase,
+      providerId: provider.id,
+      date,
+      totalBlockedMinutes,
+      travelBufferMinutes,
+      locationId: locationId || null,
+      staffIdParam: staffId,
+      activeStaffRows: staffList,
+      excludeHoldId,
+    });
 
     // Filter by min_notice_minutes: exclude any slot that starts before now + lead time
     // (must apply on every calendar date — e.g. tomorrow 8am can be invalid if it is <12h away)
@@ -456,15 +196,9 @@ export async function GET(
 
     // Filter by resource availability: union required resources across offerings (multi-service).
     // Use slot.end for the occupancy window — same as duration_minutes + buffer_minutes used for staff conflicts.
-    const serviceIdsParam = searchParams.get("service_ids");
-    const offeringIdsForResources =
-      serviceIdsParam
-        ?.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean) ?? [];
     const resourceCheckOfferingIds =
-      offeringIdsForResources.length > 0
-        ? offeringIdsForResources
+      orderedOfferingIds.length > 0
+        ? orderedOfferingIds
         : serviceId
           ? [serviceId]
           : [];

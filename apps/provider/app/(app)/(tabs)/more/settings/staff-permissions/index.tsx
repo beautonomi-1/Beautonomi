@@ -21,6 +21,10 @@ interface StaffMember {
   role?: string;
   is_admin?: boolean;
 }
+interface TeamAccessPayload {
+  staff_id: string | null;
+  can_manage_team: boolean;
+}
 
 const ROLE_LABEL: Record<string, string> = {
   provider_owner: "Owner",
@@ -31,6 +35,9 @@ const ROLE_LABEL: Record<string, string> = {
 export default function StaffPermissionsListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
+  const { data: access } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const canManageTeam = access?.can_manage_team === true;
+  const ownStaffId = access?.staff_id ?? null;
   const { data: staffList, loading, error: staffError, refresh } = useApi<StaffMember[]>(
     "/api/provider/staff"
   );
@@ -65,8 +72,13 @@ export default function StaffPermissionsListScreen() {
       <ScreenHeader
         title="Staff permissions"
         showBack
-        subtitle="Edit per-staff access"
+        subtitle={canManageTeam ? "Edit per-staff access" : "View permissions (read-only)"}
       />
+      {!canManageTeam ? (
+        <Text style={twStyle("mb-3 px-1 text-xs text-gray-500")}>
+          You can only open your own permissions. Ask an owner/manager with Manage team to update access.
+        </Text>
+      ) : null}
       {list.length === 0 ? (
         <EmptyState
           icon="people-outline"
@@ -81,11 +93,13 @@ export default function StaffPermissionsListScreen() {
           renderItem={({ item }: { item: StaffMember }) => (
             <TouchableOpacity
               style={twStyle("mb-2 flex-row items-center rounded-xl border border-gray-100 bg-white p-4")}
-              onPress={() =>
+              onPress={() => {
+                if (!canManageTeam && ownStaffId !== item.id) return;
                 router.push(
                   `/(app)/(tabs)/more/settings/staff-permissions/${item.id}` as any
-                )
-              }
+                );
+              }}
+              disabled={!canManageTeam && ownStaffId !== item.id}
             >
               <Avatar name={item.name} size="md" />
               <View style={twStyle("ml-3 flex-1")}>
@@ -95,7 +109,11 @@ export default function StaffPermissionsListScreen() {
                   {item.is_admin ? " • Admin" : ""}
                 </Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+              <Ionicons
+                name="chevron-forward"
+                size={18}
+                color={!canManageTeam && ownStaffId !== item.id ? "#d1d5db" : "#9ca3af"}
+              />
             </TouchableOpacity>
           )}
         />

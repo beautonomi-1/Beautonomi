@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse } from "@/lib/supabase/api-helpers";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
+import { fetchGroupBookingPolicyFieldsFromDb } from "@/lib/public-booking/group-booking-policy-db";
 
 /**
  * GET /api/public/providers/[slug]/group-booking-settings
@@ -38,13 +39,11 @@ export async function GET(
       decodedSlug = slug;
     }
 
-    // Get provider by slug - try without status filter first, then with it
-    let provider: { id: string; online_group_booking_enabled: boolean | null; max_group_size: number | null } | null = null;
-    
-    // First try with decoded slug without status filter
+    let provider: { id: string } | null = null;
+
     const { data: providerData1 } = await supabase
       .from("providers")
-      .select("id, online_group_booking_enabled, max_group_size")
+      .select("id")
       .eq("slug", decodedSlug)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -52,14 +51,13 @@ export async function GET(
     if (providerData1) {
       provider = providerData1;
     } else {
-      // Try with original slug without status filter
       const { data: providerData2 } = await supabase
         .from("providers")
-        .select("id, online_group_booking_enabled, max_group_size")
+        .select("id")
         .eq("slug", slug)
         .eq("tenant_id", tenantId)
         .maybeSingle();
-      
+
       if (providerData2) {
         provider = providerData2;
       }
@@ -75,18 +73,13 @@ export async function GET(
       });
     }
 
-    // Get excluded services and enabled locations from provider settings
-    const { data: settings } = await supabase
-      .from("provider_settings")
-      .select("group_booking_excluded_services, group_booking_enabled_locations")
-      .eq("provider_id", provider.id)
-      .maybeSingle();
+    const fields = await fetchGroupBookingPolicyFieldsFromDb(supabase, provider.id);
 
     return successResponse({
-      enabled: provider.online_group_booking_enabled ?? false,
-      maxGroupSize: provider.max_group_size ?? 10,
-      excludedServices: settings?.group_booking_excluded_services || [],
-      enabledLocations: settings?.group_booking_enabled_locations || [],
+      enabled: fields.onlineGroupBookingEnabled,
+      maxGroupSize: fields.maxGroupSize,
+      excludedServices: fields.excludedServiceIds,
+      enabledLocations: fields.enabledLocationIds ?? [],
     });
   } catch (error) {
     // Return default values on error instead of error response

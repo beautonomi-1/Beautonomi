@@ -40,16 +40,20 @@ async function calculateCompletionData(
   userId: string,
   userData: UserCompletionRow,
   profileData: ProfileCompletionRow,
-  authPhone?: string | null
+  authPhone?: string | null,
+  verificationRow?: { status?: string | null } | null
 ): Promise<CompletionData> {
-  // Get verification status
-  const { data: verification } = await supabase
-    .from("user_verifications")
-    .select("status")
-    .eq("user_id", userId)
-    .order("submitted_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  let verification = verificationRow;
+  if (!verification) {
+    const { data } = await supabase
+      .from("user_verifications")
+      .select("status")
+      .eq("user_id", userId)
+      .order("submitted_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    verification = data;
+  }
 
   // Calculate completion for each item
   const checklistItems = [
@@ -212,34 +216,42 @@ async function getProfileData(): Promise<{
         .maybeSingle(),
     ]);
 
+    type ProfileRowExtras = {
+      about?: string | null;
+      interests?: unknown;
+      beauty_preferences?: Record<string, unknown> | null;
+      privacy_settings?: Record<string, unknown> | null;
+    };
+    const profileRowFull: ProfileRowExtras | null =
+      profileResult.status === "fulfilled" && profileResult.value.data
+        ? (profileResult.value.data as ProfileRowExtras)
+        : null;
+
     // Process user data
     let userData: ProfileUser | null = null;
+    let verificationForCompletion: { status?: string | null } | null = null;
     if (userResult.status === "fulfilled" && userResult.value.data) {
       const user = userResult.value.data;
-      
-      // Get address
-      const { data: address } = await supabase
-        .from("user_addresses")
-        .select("*")
-        .eq("user_id", user.id)
-        .eq("is_default", true)
-        .maybeSingle();
 
-      // Get verification
-      const { data: verification } = await supabase
-        .from("user_verifications")
-        .select("id, status, submitted_at, rejection_reason, document_url, document_type, country")
-        .eq("user_id", user.id)
-        .order("submitted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const [addressRes, verificationRes] = await Promise.all([
+        supabase
+          .from("user_addresses")
+          .select("*")
+          .eq("user_id", user.id)
+          .eq("is_default", true)
+          .maybeSingle(),
+        supabase
+          .from("user_verifications")
+          .select("id, status, submitted_at, rejection_reason, document_url, document_type, country")
+          .eq("user_id", user.id)
+          .order("submitted_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
 
-      // Get profile preferences
-      const { data: profilePrefs } = await supabase
-        .from("user_profiles")
-        .select("beauty_preferences, privacy_settings")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const address = addressRes.data;
+      const verification = verificationRes.data;
+      verificationForCompletion = verification;
 
       // Parse full_name
       const fullName = user.full_name || "";
@@ -299,16 +311,16 @@ async function getProfileData(): Promise<{
         identity_verification_document_url: verification?.document_url || null,
         identity_verification_document_type: verification?.document_type || null,
         identity_verification_id: verification?.id || null,
-        beauty_preferences: profilePrefs?.beauty_preferences || {},
-        privacy_settings: profilePrefs?.privacy_settings || { services_booked_visible: false },
+        beauty_preferences: profileRowFull?.beauty_preferences || {},
+        privacy_settings: profileRowFull?.privacy_settings || { services_booked_visible: false },
       } as ProfileUser;
     }
 
     type FullProfileRow = { about?: string | null; interests?: string[] | null };
     let profileData: ProfileData | null = null;
     let fullProfileData: FullProfileRow | null = null;
-    if (profileResult.status === "fulfilled" && profileResult.value.data) {
-      fullProfileData = profileResult.value.data as FullProfileRow;
+    if (profileRowFull) {
+      fullProfileData = profileRowFull as FullProfileRow;
       profileData = {
         about: fullProfileData.about ?? null,
         interests: fullProfileData.interests ?? null,
@@ -324,7 +336,8 @@ async function getProfileData(): Promise<{
         user.id,
         userResult.value.data,
         fullProfileData,
-        authPhone
+        authPhone,
+        verificationForCompletion
       );
     }
 

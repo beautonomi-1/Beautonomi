@@ -16,6 +16,7 @@ import {
   MARKET_GEO_OPT_OUT_COOKIE,
   getMarketOverrideCookieMaxAgeSeconds,
 } from "@/lib/seo/host-config";
+import { readAllowsFunctionalFromStorage } from "@/lib/cookie-consent/guards";
 
 type AvailabilityStatus = "allowed" | "unsupported" | "restricted";
 const MARKET_OVERRIDE_KEY = "market_manual_override";
@@ -71,6 +72,7 @@ function setGeoOptOutCookie(): void {
 }
 
 function setManualOverride(host: string): void {
+  if (!readAllowsFunctionalFromStorage()) return;
   try {
     const until = Date.now() + MARKET_OVERRIDE_TTL_MS;
     window.localStorage.setItem(
@@ -84,6 +86,7 @@ function setManualOverride(host: string): void {
 }
 
 function hasActiveManualOverride(): boolean {
+  if (!readAllowsFunctionalFromStorage()) return false;
   try {
     const raw = window.localStorage.getItem(MARKET_OVERRIDE_KEY);
     if (!raw) return false;

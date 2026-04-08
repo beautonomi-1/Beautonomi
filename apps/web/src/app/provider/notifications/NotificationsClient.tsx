@@ -30,6 +30,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
+import { deriveProviderPortalNotificationUrl } from "@/lib/provider/derive-provider-notification-url";
 
 interface Notification {
   id: string;
@@ -45,15 +46,11 @@ interface Notification {
 }
 
 function deriveNotificationUrl(notification: Notification): string | undefined {
-  if (notification.link) return notification.link;
-  const d = { ...notification.data, ...notification.metadata };
-  if (d?.booking_id) return `/provider/bookings/${d.booking_id}`;
-  if (d?.conversation_id) return `/provider/messaging?id=${d.conversation_id}`;
-  if (d?.appointment_id) return `/provider/calendar`;
-  if (d?.client_id) return `/provider/clients/${d.client_id}`;
-  if (d?.staff_id) return `/provider/team/members`;
-  if (d?.order_id) return `/provider/orders/${d.order_id}`;
-  return undefined;
+  return deriveProviderPortalNotificationUrl({
+    link: notification.link,
+    data: notification.data,
+    metadata: notification.metadata,
+  });
 }
 
 const getNotificationIcon = (type: string) => {

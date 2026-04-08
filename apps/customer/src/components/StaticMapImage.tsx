@@ -10,6 +10,9 @@ import { getMapboxConfig } from "@/lib/third-party-config";
 interface StaticMapImageProps {
   latitude: number;
   longitude: number;
+  /** Optional second pin (e.g. customer address) — map uses Mapbox `auto` framing when set. */
+  secondaryLatitude?: number;
+  secondaryLongitude?: number;
   width?: number;
   height?: number;
   zoom?: number;
@@ -19,6 +22,8 @@ interface StaticMapImageProps {
 export function StaticMapImage({
   latitude,
   longitude,
+  secondaryLatitude,
+  secondaryLongitude,
   width = 400,
   height = 200,
   zoom = 14,
@@ -42,9 +47,22 @@ export function StaticMapImage({
         const stylePath = config.style_url
           ? (config.style_url.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? "mapbox/streets-v12")
           : "mapbox/streets-v12";
-        const pin = `pin-l+FF0077(${longitude},${latitude})`;
-        const center = `${longitude},${latitude},${zoom}`;
-        const url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${width}x${height}@2x?access_token=${config.token}`;
+        const hasSecondary =
+          secondaryLatitude != null &&
+          secondaryLongitude != null &&
+          Number.isFinite(secondaryLatitude) &&
+          Number.isFinite(secondaryLongitude) &&
+          !(Math.abs(secondaryLatitude - latitude) < 1e-6 && Math.abs(secondaryLongitude - longitude) < 1e-6);
+        let url: string;
+        if (hasSecondary) {
+          const pinA = `pin-l+FF0077(${longitude},${latitude})`;
+          const pinB = `pin-l+2563EB(${secondaryLongitude},${secondaryLatitude})`;
+          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pinA},${pinB}/auto/${width}x${height}@2x?access_token=${config.token}`;
+        } else {
+          const pin = `pin-l+FF0077(${longitude},${latitude})`;
+          const center = `${longitude},${latitude},${zoom}`;
+          url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${center}/${width}x${height}@2x?access_token=${config.token}`;
+        }
         setUri(url);
       } catch {
         if (!cancelled) setUri(null);
@@ -56,7 +74,7 @@ export function StaticMapImage({
     return () => {
       cancelled = true;
     };
-  }, [latitude, longitude, width, height, zoom]);
+  }, [latitude, longitude, secondaryLatitude, secondaryLongitude, width, height, zoom]);
 
   if (loading) {
     return (

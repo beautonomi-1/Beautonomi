@@ -107,6 +107,7 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
             ? "saved_card"
             : "new_card";
 
+    const total = Number(v.totalAmount);
     await trackServer(
       EVENT_BOOKING_CONFIRMED,
       {
@@ -119,6 +120,9 @@ export async function postBookingEffects(input: PostBookingInput): Promise<void>
         location_type: draft.location_type,
         payment_method: paymentMethodLabel,
         payment_pending_redirect: input.paymentUrl != null,
+        /** Amplitude revenue / LTV analysis (same currency as `currency`) */
+        revenue: Number.isFinite(total) ? total : undefined,
+        price: Number.isFinite(total) ? total : undefined,
       },
       userId
     );

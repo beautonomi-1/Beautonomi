@@ -335,7 +335,7 @@ apps/web ─────→ @beautonomi/i18n
 
 | Gap | Impact | Evidence |
 |-----|--------|---------|
-| Middleware has duplicate code blocks | Bug surface | `apps/web/src/middleware.ts` lines ~106-138 |
+| Proxy route logic duplication | Bug surface | `apps/web/src/proxy.ts` (keep a single code path) |
 | Provider app has no OAuth (Google/Apple) | Feature gap vs customer | `apps/provider/src/providers/AuthProvider.tsx` |
 | Placeholder Supabase URL fallback | Silent failure | `apps/web/src/lib/supabase/server.ts` |
 | Mobile auth is client-side only | No server enforcement on screen access | Both mobile AuthProviders |
@@ -531,7 +531,7 @@ packages/ui/           (create — cross-platform primitives)
 - [x] Fix Windows-incompatible `clean` script — Changed `rm -rf` to `npx rimraf` in root and packages
 - [x] Remove duplicate ESLint config — Deleted `apps/web/.eslintrc.json`, kept `eslint.config.mjs`
 - [x] Add root Prettier config — `.prettierrc` with consistent formatting rules
-- [x] Fix middleware duplicate code — Removed duplicate route-skip blocks from `apps/web/src/middleware.ts`
+- [x] Fix duplicate network-boundary logic — Consolidated in `apps/web/src/proxy.ts` (Next 16 `proxy`, not `middleware.ts`)
 
 ### Phase 1: Foundation & DX ✅ IMPLEMENTED
 

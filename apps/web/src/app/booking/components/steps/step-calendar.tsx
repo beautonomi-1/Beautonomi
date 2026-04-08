@@ -13,6 +13,10 @@ import { useTranslation } from "@beautonomi/i18n";
 import AddToWaitlistButton from "@/components/booking/AddToWaitlistButton";
 import { coerceSelectedDate } from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import {
+  availabilityRouteDurationMinutes,
+  slicesFromBookingCart,
+} from "@/lib/booking-slot-math/blocked-window-minutes";
 
 /** Aligns with typical online booking settings when this step has no provider settings prop. */
 const BOOKING_MAX_ADVANCE_DAYS = 90;
@@ -123,11 +127,14 @@ export default function StepCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);
 
-  // Calculate total duration including travel buffer for mobile
-  const totalDuration = bookingState.selectedServices.reduce(
-    (sum, service) => sum + service.duration,
-    0
-  ) + bookingState.selectedAddons.reduce((sum, addon) => sum + addon.duration, 0);
+  // Chained service + buffer minutes (+ add-on durations) — matches validate-booking / public slug span decomposition
+  const totalDuration = useMemo(() => {
+    const slices = slicesFromBookingCart(
+      bookingState.selectedServices,
+      bookingState.selectedAddons
+    );
+    return availabilityRouteDurationMinutes(slices);
+  }, [bookingState.selectedServices, bookingState.selectedAddons]);
 
   // Use actual travel time if available, otherwise use configured default
   const travelBuffer = getTravelBuffer(bookingState.mode, bookingState.address?.travelTimeMinutes);
@@ -145,9 +152,13 @@ export default function StepCalendar({
       const holdParam = excludeHoldId
         ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}`
         : "";
+      const providerParam =
+        bookingState.providerId && (!staffId || staffId === "any")
+          ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
+          : "";
 
       const response = await fetcher.get<{ data: AvailabilityData }>(
-        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}`,
+        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}`,
         { staleTimeMs: 0 }
       );
 
@@ -168,6 +179,7 @@ export default function StepCalendar({
     travelBuffer,
     totalDuration,
     excludeHoldId,
+    bookingState.providerId,
   ]);
 
   useEffect(() => {

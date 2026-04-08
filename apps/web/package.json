@@ -36,6 +36,7 @@
     "@amplitude/analytics-browser": "^2.34.1",
     "@amplitude/engagement-browser": "^1.0.8",
     "@amplitude/plugin-session-replay-browser": "^1.26.0",
+    "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
@@ -105,6 +106,8 @@
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.2.1",
     "@vitest/coverage-v8": "^1.6.1",
+    "admin-web": "workspace:*",
+    "autoprefixer": "^10.4.27",
     "chokidar": "^3.6.0",
     "cross-env": "^10.1.0",
     "eslint": "^9.18.0",
@@ -118,5 +121,12 @@
   },
   "overrides": {
     "react-remove-scroll": "^2.7.2"
-  }
+  },
+  "browserslist": [
+    ">0.5%",
+    "last 2 versions",
+    "not dead",
+    "iOS >= 12",
+    "Safari >= 12"
+  ]
 }

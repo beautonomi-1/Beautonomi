@@ -132,6 +132,8 @@ export {
   notifyNewMessage,
   notifySupportTicketCreated,
   notifySupportTicketUpdated,
+  notifySupportStaffInboxActivity,
+  resolveSupportTicketStaffRecipients,
   
   // Disputes & Complaints
   notifyDisputeOpened,

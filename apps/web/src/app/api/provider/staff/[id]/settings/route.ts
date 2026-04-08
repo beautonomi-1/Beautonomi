@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  requireRoleInApi,
+  getProviderIdForUser,
+  successResponse,
+  notFoundResponse,
+  handleApiError,
+  errorResponse,
+  forbiddenResponse,
+} from "@/lib/supabase/api-helpers";
+import { checkStaffSmsNotificationsFeatureAccess } from "@/lib/subscriptions/feature-access";
 import { z } from "zod";
 
 /**
@@ -59,6 +68,9 @@ export async function GET(
       return notFoundResponse("Staff member not found");
     }
 
+    const planAllowsSms = await checkStaffSmsNotificationsFeatureAccess(providerId, supabase);
+    const rawStaffSms = staff.sms_notifications_enabled === true;
+
     // Map database role to API format
     const apiRole = staff.role === "owner" ? "provider_owner"
                  : staff.role === "manager" ? "provider_manager"
@@ -76,7 +88,8 @@ export async function GET(
       can_be_assigned_to_product_sales: staff.can_be_assigned_to_product_sales ?? false,
       is_admin: staff.is_admin ?? (staff.role === "owner" || staff.role === "manager"),
       email_notifications_enabled: staff.email_notifications_enabled ?? true,
-      sms_notifications_enabled: staff.sms_notifications_enabled ?? true,
+      sms_notifications_enabled: planAllowsSms && rawStaffSms,
+      sms_plan_allowed: planAllowsSms,
       desktop_notifications_enabled: staff.desktop_notifications_enabled ?? false,
       work_hours_enabled: staff.work_hours_enabled ?? true,
       commission_enabled: staff.commission_enabled ?? false,
@@ -200,6 +213,16 @@ export async function PATCH(
     if (mapped.mobileReady !== undefined) {
       mapped.mobile_ready = mapped.mobileReady;
       delete mapped.mobileReady;
+    }
+
+    const planAllowsSms = await checkStaffSmsNotificationsFeatureAccess(providerId, supabase);
+    if (mapped.sms_notifications_enabled === true && !planAllowsSms) {
+      return forbiddenResponse(
+        "SMS for team notifications is not included in your current plan. Upgrade to enable staff SMS."
+      );
+    }
+    if (!planAllowsSms) {
+      mapped.sms_notifications_enabled = false;
     }
 
     // Update settings

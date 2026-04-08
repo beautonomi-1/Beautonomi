@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
         console.log(`[Services API] Last resort: Fetching service ${serviceIdFromBooking} to get provider...`);
         const { data: lastResortService, error: lastResortError } = await supabase
           .from("offerings")
-          .select("provider_id, id, title, description, duration_minutes, price, currency, supports_at_home, supports_at_salon, provider_category_id, parent_service_id, service_type, is_active, display_order, online_booking_enabled")
+          .select("provider_id, id, title, description, duration_minutes, buffer_minutes, price, currency, supports_at_home, supports_at_salon, provider_category_id, parent_service_id, service_type, is_active, display_order, online_booking_enabled")
           .eq("id", serviceIdFromBooking)
           .single();
 
@@ -164,6 +164,7 @@ export async function GET(request: NextRequest) {
               title: lastResortService.title,
               description: lastResortService.description,
               duration: lastResortService.duration_minutes,
+              bufferMinutes: Number(lastResortService.buffer_minutes ?? 0),
               price: parseFloat(lastResortService.price || 0),
               currency: lastResortService.currency || lastResortCurrency,
               category: "Other", // Will be resolved from provider_category_id later
@@ -196,6 +197,7 @@ export async function GET(request: NextRequest) {
           title,
           description,
           duration_minutes,
+          buffer_minutes,
           price,
           currency,
           supports_at_home,
@@ -236,6 +238,7 @@ export async function GET(request: NextRequest) {
         title,
         description,
         duration_minutes,
+        buffer_minutes,
         price,
         currency,
         supports_at_home,
@@ -338,7 +341,7 @@ export async function GET(request: NextRequest) {
       if (!parentIncluded) {
         const { data: parentService } = await supabase
           .from("offerings")
-          .select("id, title, description, duration_minutes, price, currency, supports_at_home, supports_at_salon, provider_category_id, parent_service_id, service_type, is_active, display_order, online_booking_enabled")
+          .select("id, title, description, duration_minutes, buffer_minutes, price, currency, supports_at_home, supports_at_salon, provider_category_id, parent_service_id, service_type, is_active, display_order, online_booking_enabled")
           .eq("id", resolvedServiceId)
           .eq("provider_id", provider.id)
           .single();
@@ -375,6 +378,7 @@ export async function GET(request: NextRequest) {
             title,
             description,
             duration_minutes,
+            buffer_minutes,
             price,
             currency,
             supports_at_home,
@@ -398,6 +402,7 @@ export async function GET(request: NextRequest) {
             title: specificService.title,
             description: specificService.description,
             duration: specificService.duration_minutes,
+            bufferMinutes: Number(specificService.buffer_minutes ?? 0),
             price: parseFloat(specificService.price || 0),
             currency: specificService.currency || lastResortCurrency,
             category: "Other", // Will be resolved from provider_category_id later
@@ -511,6 +516,7 @@ export async function GET(request: NextRequest) {
       title: offering.title,
       description: offering.description,
       duration: offering.duration_minutes,
+      bufferMinutes: Number(offering.buffer_minutes ?? 0),
       price: parseFloat(offering.price || 0),
       currency: offering.currency || lastResortCurrency,
       category: categoryMap[offering.provider_category_id] || "Other",

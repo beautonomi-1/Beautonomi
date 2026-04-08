@@ -268,7 +268,7 @@ export function MessagingClient({
 
   return (
     <RoleGuard allowedRoles={["provider_owner", "provider_staff"]}>
-      <div className="flex flex-col h-screen bg-white overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 h-[100dvh] max-h-[100dvh] md:h-full md:max-h-full bg-white overflow-hidden">
         {/* Mobile Header - Only show when list is visible, not when chat is open */}
         {!showChat && (
           <div className="md:hidden border-b border-[#e9edef] bg-white px-4 py-3">
@@ -337,7 +337,7 @@ export function MessagingClient({
           <div
             className={`${
               showChat ? "block" : "hidden md:block"
-            } flex-1 flex flex-col absolute md:relative inset-0 z-20 md:z-auto bg-white h-full overflow-hidden min-h-0`}
+            } flex-1 flex flex-col absolute md:relative inset-0 z-20 md:z-auto bg-white h-full overflow-hidden min-h-0 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-0`}
           >
             {selectedConversation ? (
               <WhatsAppChat

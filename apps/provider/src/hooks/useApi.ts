@@ -2,6 +2,7 @@
  * Generic data fetching hooks with loading, error, refresh support.
  */
 import { useState, useEffect, useCallback, useRef } from "react";
+import type { ApiError } from "@beautonomi/types";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { getRuntimeMarketHost } from "@/config/public-env";
@@ -13,11 +14,15 @@ const MAX_CACHE_ENTRIES = 200;
 interface CacheEntry<T> {
   data: T | null;
   error: string | null;
+  errorCode: string | null;
   expiresAt: number;
 }
 
 const responseCache = new Map<string, CacheEntry<unknown>>();
-const inflightRequests = new Map<string, Promise<{ data: unknown | null; error: string | null }>>();
+const inflightRequests = new Map<
+  string,
+  Promise<{ data: unknown | null; error: string | null; errorCode: string | null }>
+>();
 
 export function clearApiCache(): void {
   responseCache.clear();
@@ -54,6 +59,8 @@ interface UseApiResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
+  /** API `error.code` when the server returned a structured error (e.g. SUBSCRIPTION_REQUIRED). */
+  errorCode: string | null;
   /** True when loading has exceeded timeoutMs; show "Taking too long? Retry" and call refresh */
   timedOut: boolean;
   refresh: () => Promise<void>;
@@ -69,6 +76,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [timedOut, setTimedOut] = useState(false);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
@@ -79,12 +87,14 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
   const fetchData = useCallback(async () => {
     if (!enabled) {
       setLoading(false);
+      setErrorCode(null);
       return;
     }
     const id = ++requestIdRef.current;
     try {
       setLoading(true);
       setError(null);
+      setErrorCode(null);
       setTimedOut(false);
 
       const now = Date.now();
@@ -93,25 +103,36 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
         if (!mountedRef.current || id !== requestIdRef.current) return;
         setData(cached.data);
         setError(cached.error);
+        setErrorCode(cached.errorCode ?? null);
         return;
       }
 
-      const inflight = inflightRequests.get(cacheKey) as Promise<{ data: T | null; error: string | null }> | undefined;
+      const inflight = inflightRequests.get(cacheKey) as
+        | Promise<{ data: T | null; error: string | null; errorCode: string | null }>
+        | undefined;
       const requestPromise =
         inflight ??
         (async () => {
           const result = await api.get<T>(path);
           if (result.error) {
-            return { data: null, error: getApiErrorMessage(result.error, "Request failed") };
+            const e = result.error as ApiError;
+            return {
+              data: null,
+              error: getApiErrorMessage(e, "Request failed"),
+              errorCode: e.code ?? null,
+            };
           }
-          return { data: result.data, error: null };
+          return { data: result.data, error: null, errorCode: null };
         })();
 
       if (!inflight) {
-        inflightRequests.set(cacheKey, requestPromise as Promise<{ data: unknown | null; error: string | null }>);
+        inflightRequests.set(
+          cacheKey,
+          requestPromise as Promise<{ data: unknown | null; error: string | null; errorCode: string | null }>
+        );
       }
 
-      let payload: { data: T | null; error: string | null };
+      let payload: { data: T | null; error: string | null; errorCode: string | null };
       try {
         payload = await requestPromise;
       } finally {
@@ -125,19 +146,23 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       responseCache.set(cacheKey, {
         data: payload.data,
         error: payload.error,
+        errorCode: payload.errorCode,
         expiresAt: Date.now() + staleTimeMs,
       });
       pruneResponseCache(Date.now());
 
       if (payload.error) {
         setError(payload.error);
+        setErrorCode(payload.errorCode);
         setData(null);
       } else {
         setData(payload.data);
+        setErrorCode(null);
       }
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
       setError(getApiErrorMessage(err, "Request failed"));
+      setErrorCode(null);
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
@@ -171,7 +196,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     setData(newData);
   }, []);
 
-  return { data, loading, error, timedOut, refresh, mutate };
+  return { data, loading, error, errorCode, timedOut, refresh, mutate };
 }
 
 export function useApiPost<TReq, TRes>(path: string) {
@@ -221,7 +246,10 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
   }, []);
 
   const execute = useCallback(
-    async (path: string, body?: Record<string, unknown> | object): Promise<{ data: TRes | null; error: string | null }> => {
+    async (
+      path: string,
+      body?: Record<string, unknown> | object
+    ): Promise<{ data: TRes | null; error: string | null; errorCode: string | null }> => {
       try {
         setLoading(true);
         setError(null);
@@ -236,15 +264,16 @@ export function useApiMutation<TRes>(method: "put" | "patch" | "post" | "delete"
           result = await api.put<TRes>(path, body as Record<string, unknown>);
         }
         if (result.error) {
-          const msg = getApiErrorMessage(result.error, "Request failed");
+          const apiErr = result.error as ApiError;
+          const msg = getApiErrorMessage(apiErr, "Request failed");
           if (mountedRef.current) setError(msg);
-          return { data: null, error: msg };
+          return { data: null, error: msg, errorCode: apiErr.code ?? null };
         }
-        return { data: result.data, error: null };
+        return { data: result.data, error: null, errorCode: null };
       } catch (err) {
         const msg = getApiErrorMessage(err, "Request failed");
         if (mountedRef.current) setError(msg);
-        return { data: null, error: msg };
+        return { data: null, error: msg, errorCode: null };
       } finally {
         if (mountedRef.current) setLoading(false);
       }

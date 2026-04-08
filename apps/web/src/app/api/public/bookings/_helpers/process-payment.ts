@@ -17,6 +17,8 @@ import { percentOf, subtractMoney, toCents } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
+import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
+import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
@@ -68,6 +70,14 @@ export async function processPayment(
 
   const paymentMethod = validatedDraft.payment_method || "card";
   const paymentOption = validatedDraft.payment_option || "deposit";
+  const recurringSubscribeEligible = subscribeRecurringEligible({
+    subscribe_recurring: validatedDraft.subscribe_recurring,
+    reschedule_booking_id: validatedDraft.reschedule_booking_id,
+    is_group_booking: validatedDraft.is_group_booking,
+    has_group_participants: Boolean(
+      validatedDraft.group_participants && validatedDraft.group_participants.length > 0,
+    ),
+  });
   const paymentTypes = await getPlatformPaymentTypesForTenant(
     supabaseAdmin as any,
     flagTenantId,
@@ -242,6 +252,20 @@ export async function processPayment(
       marketTenantId: flagTenantId,
     });
 
+    if (recurringSubscribeEligible) {
+      const recurringPay = paymentMethod === "cash" ? "cash" : "card";
+      const sub = await insertCustomerRecurringSeriesFromPaidBooking({
+        admin: supabaseAdmin,
+        bookingId: booking.id,
+        customerId: v.customerId,
+        frequency: validatedDraft.subscribe_recurring!.frequency,
+        paymentMethod: recurringPay,
+      });
+      if (sub.ok === false) {
+        console.error("[recurring] insert after no-gateway payment:", sub.message);
+      }
+    }
+
     return { paymentUrl: null };
   }
 
@@ -324,6 +348,9 @@ export async function processPayment(
           payment_method_id: savedPaymentMethodId,
           hold_id: validatedDraft.hold_id || null,
           loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          ...(recurringSubscribeEligible
+            ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
+            : {}),
         },
         { tenantId: flagTenantId }
       );
@@ -377,6 +404,19 @@ export async function processPayment(
         paymentProvider: "paystack",
       });
 
+      if (recurringSubscribeEligible) {
+        const sub = await insertCustomerRecurringSeriesFromPaidBooking({
+          admin: supabaseAdmin,
+          bookingId: booking.id,
+          customerId: v.customerId,
+          frequency: validatedDraft.subscribe_recurring!.frequency,
+          paymentMethod: "card",
+        });
+        if (sub.ok === false) {
+          console.error("[recurring] insert after saved card charge:", sub.message);
+        }
+      }
+
       await (supabase.from("payments") as any).insert({
         booking_id: booking.id,
         user_id: v.customerId,
@@ -428,6 +468,9 @@ export async function processPayment(
           set_as_default: setAsDefault,
           hold_id: validatedDraft.hold_id || undefined,
           loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          ...(recurringSubscribeEligible
+            ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
+            : {}),
         },
         tenantId: flagTenantId,
       });
@@ -480,6 +523,19 @@ export async function processPayment(
         status: cashStatus,
       })
       .eq("id", booking.id);
+
+    if (recurringSubscribeEligible) {
+      const sub = await insertCustomerRecurringSeriesFromPaidBooking({
+        admin: supabaseAdmin,
+        bookingId: booking.id,
+        customerId: v.customerId,
+        frequency: validatedDraft.subscribe_recurring!.frequency,
+        paymentMethod: "cash",
+      });
+      if (sub.ok === false) {
+        console.error("[recurring] insert after cash booking:", sub.message);
+      }
+    }
   }
 
   return { paymentUrl };

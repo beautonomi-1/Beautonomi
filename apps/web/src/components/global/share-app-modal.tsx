@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import GooglePlayStore from '../../../public/images/playstore-svgrepo-com.svg';
 import Apple from '../../../public/images/apple-173-svgrepo-com.svg';
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 interface ShareAppModalProps {
   isOpen: boolean;
@@ -42,13 +43,13 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
       return {
         name: 'App Store',
         icon: Apple,
-        url: 'https://apps.apple.com/app/beautonomi',
+        url: NATIVE_STORE.customer.defaultAppStoreUrl,
       };
     } else if (platform === 'android') {
       return {
         name: 'Google Play Store',
         icon: GooglePlayStore,
-        url: 'https://play.google.com/store/apps/details?id=com.beautonomi',
+        url: NATIVE_STORE.customer.defaultPlayStoreUrl,
       };
     }
     return null;
@@ -83,10 +84,10 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
     window.open(`https://www.facebook.com/sharer/sharer.php?u=${url}`, "_blank", "width=600,height=400");
   };
 
-  const handleTwitterShare = () => {
+  const handleXShare = () => {
     const text = encodeURIComponent("Check out Beautonomi - Beauty Services Marketplace");
     const url = encodeURIComponent(currentUrl);
-    window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}`, "_blank", "width=600,height=400");
+    window.open(`https://x.com/intent/tweet?text=${text}&url=${url}`, "_blank", "width=600,height=400");
   };
 
   return (
@@ -154,10 +155,10 @@ export default function ShareAppModal({ isOpen, onClose }: ShareAppModalProps) {
             <Button
               variant="outline"
               className="flex items-center justify-start px-4 gap-4 font-light hover:bg-[#f7f7f7] rounded-xl"
-              onClick={handleTwitterShare}
+              onClick={handleXShare}
             >
               <span className="text-lg"><FaSquareXTwitter/></span>
-              Twitter
+              X
             </Button>
           </div>
         </div>

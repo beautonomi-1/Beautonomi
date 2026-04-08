@@ -35,10 +35,37 @@ function corsHeaders(origin: string | null) {
   return headers;
 }
 
+function adminSpaRoutingEnabled(): boolean {
+  return (process.env.ADMIN_SPA_ROUTING || '').toLowerCase() === 'spa';
+}
+
+function isAdminSpaBundledAsset(pathname: string): boolean {
+  if (pathname.startsWith('/admin/assets/')) return true;
+  return /\.(?:js|mjs|css|map|ico|png|svg|webp|woff2?|ttf|eot|json)$/i.test(pathname);
+}
+
+/** Admin UI (all roles, including superadmin) and admin APIs must not be indexed. */
+function withNoIndexAdmin(response: NextResponse): NextResponse {
+  response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
     const origin = request.headers.get('origin');
+
+    /**
+     * Controlled admin cutover (Tier B — `ADMIN_SPA_ROUTING=spa` on deploy).
+     * Serves the Vite SPA from `public/admin/` and bypasses legacy `app/admin/**` + proxy auth for HTML navigations.
+     * Static chunks under `/admin/assets/` must not hit the admin role gate (see ADMIN_CUTOVER_READINESS_REPORT).
+     */
+    if (adminSpaRoutingEnabled() && (pathname === '/admin' || pathname.startsWith('/admin/'))) {
+      if (isAdminSpaBundledAsset(pathname)) {
+        return NextResponse.next();
+      }
+      return withNoIndexAdmin(NextResponse.rewrite(new URL('/admin/index.html', request.url)));
+    }
 
     // Handle CORS preflight for API routes
     if (pathname.startsWith('/api')) {
@@ -55,6 +82,9 @@ export async function proxy(request: NextRequest) {
       }
 
       const response = NextResponse.next();
+      if (pathname.startsWith('/api/admin')) {
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      }
       if (origin && isAllowedOrigin(origin)) {
         const headers = corsHeaders(origin);
         Object.entries(headers).forEach(([key, value]) => {
@@ -150,7 +180,11 @@ export async function proxy(request: NextRequest) {
     }
     
     if (isPublicRoute) {
-      return NextResponse.next();
+      const res = NextResponse.next();
+      if (pathname === '/admin/login' || pathname.startsWith('/admin/login/')) {
+        res.headers.set('X-Robots-Tag', 'noindex, nofollow');
+      }
+      return res;
     }
 
   // Skip static files and Next.js internals
@@ -361,6 +395,7 @@ export async function proxy(request: NextRequest) {
           return redirectToHome();
         }
 
+        response.headers.set('X-Robots-Tag', 'noindex, nofollow');
         return response;
       } catch (error) {
         console.error("Error in admin route proxy:", error);

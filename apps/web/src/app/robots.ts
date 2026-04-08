@@ -14,6 +14,7 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
         allow: "/",
         disallow: [
           "/api/",
+          /** All admin roles (incl. superadmin) use `/admin` — keep disallowed for crawlers */
           "/admin/",
           "/provider/",
           "/account-settings/",

@@ -1,5 +1,9 @@
 export const HOUR_HEIGHT = 60;
 export const TIME_COLUMN_WIDTH = 70;
+
+/** Multi-staff day view: fixed-width columns so the grid scrolls horizontally instead of compressing staff. */
+export const STAFF_DAY_COLUMN_LAYOUT =
+  "shrink-0 w-[132px] sm:w-[148px] min-w-[120px] max-w-[220px]";
 export const UNASSIGNED_ID = "__unassigned__";
 export const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 

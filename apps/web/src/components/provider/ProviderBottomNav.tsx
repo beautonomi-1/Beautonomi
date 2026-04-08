@@ -95,7 +95,10 @@ export function ProviderBottomNav() {
         pathname?.startsWith("/provider/payouts") ||
         pathname?.startsWith("/provider/sales") ||
         pathname?.startsWith("/provider/account") ||
-        pathname?.startsWith("/provider/notifications")) return "More";
+        pathname?.startsWith("/provider/notifications") ||
+        pathname?.startsWith("/provider/recurring-appointments") ||
+        pathname?.startsWith("/provider/express-booking") ||
+        pathname?.startsWith("/provider/front-desk")) return "More";
     return "";
   };
 
@@ -108,6 +111,9 @@ export function ProviderBottomNav() {
       "/provider/clients",
       "/provider/messaging",
       "/provider/more",
+      "/provider/sales",
+      "/provider/waitlist",
+      "/provider/orders",
     ].forEach((href) => router.prefetch(href));
   }, [router]);
 
@@ -170,9 +176,9 @@ export function ProviderBottomNav() {
                 aria-current={isActive ? "page" : undefined}
                 className={cn(
                   "flex flex-col items-center justify-center rounded-xl transition-all duration-200",
-                  "touch-manipulation active:scale-95 relative",
+                  "touch-manipulation active:scale-95 relative select-none",
                   "py-1.5 px-2 sm:py-2 sm:px-3",
-                  "min-w-[56px] sm:min-w-[64px] min-h-[44px]",
+                  "min-w-[56px] sm:min-w-[64px] min-h-[48px]",
                   isActive
                     ? `${tab.activeColor} ${tab.activeBg}`
                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
@@ -180,15 +186,16 @@ export function ProviderBottomNav() {
               >
                 <Icon 
                   className={cn(
-                    "transition-transform duration-200",
+                    "pointer-events-none transition-transform duration-200",
                     "w-5 h-5 sm:w-6 sm:h-6",
                     isActive && "scale-110"
                   )} 
                   strokeWidth={isActive ? 2.5 : 2}
+                  aria-hidden
                 />
                 <span 
                   className={cn(
-                    "mt-0.5 font-medium transition-colors duration-200",
+                    "pointer-events-none mt-0.5 font-medium transition-colors duration-200",
                     "text-[10px] sm:text-[11px]",
                     "whitespace-nowrap",
                     isActive ? "font-semibold" : "font-medium"
@@ -232,8 +239,8 @@ export function ProviderBottomNav() {
         </button>
       )}
 
-      {/* Spacer for content - responsive height */}
-      <div className="md:hidden h-16 sm:h-20" />
+      {/* Spacer: bottom nav + iOS home indicator */}
+      <div className="md:hidden shrink-0 h-[calc(4.5rem+env(safe-area-inset-bottom,0px))]" aria-hidden />
     </>
   );
 }

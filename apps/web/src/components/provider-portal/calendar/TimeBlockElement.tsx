@@ -21,6 +21,8 @@ interface TimeBlockElementProps {
   onTimeBlockClick?: (block: TimeBlock) => void;
   /** "day" for full rendering, "week" for compact */
   variant: "day" | "week";
+  /** Defaults to desktop hour height; pass mobile row height when rendering on mobile calendars. */
+  pixelsPerHour?: number;
 }
 
 function TimeBlockElementComponent({
@@ -29,15 +31,17 @@ function TimeBlockElementComponent({
   useMangomintMode,
   onTimeBlockClick,
   variant,
+  pixelsPerHour: pixelsPerHourProp,
 }: TimeBlockElementProps) {
   const parsedRange = parseTimeRange(block.start_time, block.end_time);
   if (!parsedRange) return null;
 
+  const px = pixelsPerHourProp ?? HOUR_HEIGHT;
   const { startHour: hour, startMinute: min, endHour: endH, endMinute: endM } = parsedRange;
   const durationMinutes = (endH * 60 + endM) - (hour * 60 + min);
-  const top = (hour - startHour) * HOUR_HEIGHT + (min / 60) * HOUR_HEIGHT;
+  const top = (hour - startHour) * px + (min / 60) * px;
   const minH = variant === "day" ? 28 : 24;
-  const height = Math.max((durationMinutes / 60) * HOUR_HEIGHT, minH);
+  const height = Math.max((durationMinutes / 60) * px, minH);
 
   const isAvailability = checkIsAvailabilityOverlay(block);
   const colors = getBlockColors(block, useMangomintMode);
@@ -74,7 +78,7 @@ function TimeBlockElementComponent({
   return (
     <div
       className={cn(
-        "absolute left-1 right-1 rounded-md px-2 py-1 transition-opacity",
+        "absolute left-1 right-1 rounded-md px-2 py-1 transition-opacity z-[8]",
         !isAvailability && "cursor-pointer hover:opacity-90",
       )}
       style={{
@@ -116,7 +120,8 @@ export const TimeBlockElement = memo(TimeBlockElementComponent, (prev, next) =>
   prev.block.end_time === next.block.end_time &&
   prev.startHour === next.startHour &&
   prev.useMangomintMode === next.useMangomintMode &&
-  prev.variant === next.variant,
+  prev.variant === next.variant &&
+  prev.pixelsPerHour === next.pixelsPerHour,
 );
 
 TimeBlockElement.displayName = "TimeBlockElement";

@@ -65,22 +65,41 @@ export async function POST(request: NextRequest) {
         .single();
       exportData.extendedProfile = userProfile;
 
-      // Collect bookings
-      const { data: bookings } = await supabase
-        .from("bookings")
-        .select("*")
-        .or(`customer_id.eq.${user.id},provider_id.eq.${user.id}`);
-      exportData.bookings = bookings || [];
+      const { data: providerRows } = await supabase.from("providers").select("id").eq("user_id", user.id);
+      const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
 
-      // Collect messages and conversations
-      const { data: conversations } = await supabase
-        .from("conversations")
-        .select("*")
-        .or(`customer_id.eq.${user.id},provider_id.eq.${user.id}`);
-      exportData.conversations = conversations || [];
+      // Bookings: customer_id is the user; provider_id references providers(id), not users.id
+      let bookings: Record<string, unknown>[] = [];
+      if (providerIds.length > 0) {
+        const { data: asCustomer } = await supabase.from("bookings").select("*").eq("customer_id", user.id);
+        const { data: asProvider } = await supabase.from("bookings").select("*").in("provider_id", providerIds);
+        const byId = new Map<string, Record<string, unknown>>();
+        for (const b of [...(asCustomer || []), ...(asProvider || [])]) {
+          byId.set((b as { id: string }).id, b as Record<string, unknown>);
+        }
+        bookings = [...byId.values()];
+      } else {
+        const { data } = await supabase.from("bookings").select("*").eq("customer_id", user.id);
+        bookings = data || [];
+      }
+      exportData.bookings = bookings;
 
-      if (conversations && conversations.length > 0) {
-        const conversationIds = conversations.map(c => c.id);
+      // Conversations: provider_id references providers(id)
+      let conversations: Record<string, unknown>[] = [];
+      if (providerIds.length > 0) {
+        const { data } = await supabase
+          .from("conversations")
+          .select("*")
+          .or(`customer_id.eq.${user.id},provider_id.in.(${providerIds.join(",")})`);
+        conversations = data || [];
+      } else {
+        const { data } = await supabase.from("conversations").select("*").eq("customer_id", user.id);
+        conversations = data || [];
+      }
+      exportData.conversations = conversations;
+
+      if (conversations.length > 0) {
+        const conversationIds = conversations.map((c) => (c as { id: string }).id);
         const { data: messages } = await supabase
           .from("messages")
           .select("*")
@@ -90,12 +109,21 @@ export async function POST(request: NextRequest) {
         exportData.messages = [];
       }
 
-      // Collect reviews
-      const { data: reviews } = await supabase
-        .from("reviews")
-        .select("*")
-        .or(`reviewer_id.eq.${user.id},reviewee_id.eq.${user.id}`);
-      exportData.reviews = reviews || [];
+      // Reviews: customer_id and provider_id (provider business), not reviewer_id/reviewee_id
+      let reviews: Record<string, unknown>[] = [];
+      if (providerIds.length > 0) {
+        const { data: asCustomer } = await supabase.from("reviews").select("*").eq("customer_id", user.id);
+        const { data: asProvider } = await supabase.from("reviews").select("*").in("provider_id", providerIds);
+        const byId = new Map<string, Record<string, unknown>>();
+        for (const r of [...(asCustomer || []), ...(asProvider || [])]) {
+          byId.set((r as { id: string }).id, r as Record<string, unknown>);
+        }
+        reviews = [...byId.values()];
+      } else {
+        const { data } = await supabase.from("reviews").select("*").eq("customer_id", user.id);
+        reviews = data || [];
+      }
+      exportData.reviews = reviews;
 
       // Collect addresses
       const { data: addresses } = await supabase
@@ -140,12 +168,26 @@ export async function POST(request: NextRequest) {
         .eq("user_id", user.id);
       exportData.verifications = verifications || [];
 
-      // Collect custom requests
-      const { data: customRequests } = await supabase
-        .from("custom_requests")
-        .select("*")
-        .eq("user_id", user.id);
-      exportData.customRequests = customRequests || [];
+      let customRequests: Record<string, unknown>[] = [];
+      if (providerIds.length > 0) {
+        const { data: asCustomer } = await supabase
+          .from("custom_requests")
+          .select("*")
+          .eq("customer_id", user.id);
+        const { data: asProvider } = await supabase
+          .from("custom_requests")
+          .select("*")
+          .in("provider_id", providerIds);
+        const byId = new Map<string, Record<string, unknown>>();
+        for (const r of [...(asCustomer || []), ...(asProvider || [])]) {
+          byId.set((r as { id: string }).id, r as Record<string, unknown>);
+        }
+        customRequests = [...byId.values()];
+      } else {
+        const { data } = await supabase.from("custom_requests").select("*").eq("customer_id", user.id);
+        customRequests = data || [];
+      }
+      exportData.customRequests = customRequests;
 
       // Generate JSON file content
       const jsonContent = JSON.stringify(exportData, null, 2);

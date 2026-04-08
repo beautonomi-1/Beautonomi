@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, Search, User, Settings } from "lucide-react";
+import { Menu, User, Settings } from "lucide-react";
 import PlatformLogo from "../platform/PlatformLogo";
 import {
   Sheet,
@@ -81,26 +81,17 @@ const AccountSettingsNavbar: React.FC = () => {
             <PlatformLogo alt="Beautonomi Logo" className="h-10 w-auto" />
           </Link>
 
-          {/* Center: Simple Search (only on mobile) */}
-          <div className="flex-1 flex items-center justify-center max-w-md mx-4 md:hidden">
-            <Link
-              href="/search"
-              className="flex items-center bg-white rounded-full border border-gray-300 shadow-sm hover:shadow-md transition-shadow w-full px-4 py-2"
-            >
-              <Search className="h-4 w-4 text-gray-400 mr-2" />
-              <span className="text-sm text-gray-500">Search providers...</span>
-            </Link>
-          </div>
+          {/* Mobile search is in the main bottom nav; keep header light here */}
 
           {/* Right: Profile & Menu */}
           <div className="flex items-center gap-3 flex-shrink-0">
             {/* Desktop: Account Settings Link */}
             <Link
-              href="/account-settings"
+              href="/profile"
               className="hidden md:flex items-center gap-2 text-sm font-normal text-gray-700 hover:text-primary transition-colors"
             >
               <Settings className="h-5 w-5" />
-              <span>Account</span>
+              <span>Profile</span>
             </Link>
 
             {/* Notifications Bell - Only show when user is logged in */}
@@ -125,18 +116,11 @@ const AccountSettingsNavbar: React.FC = () => {
                     <p className="text-xs text-gray-500 truncate">{user.email}</p>
                   </div>
                   <Link
-                    href="/account-settings"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    onClick={() => setIsPopupVisible(false)}
-                  >
-                    Account Settings
-                  </Link>
-                  <Link
                     href="/profile"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     onClick={() => setIsPopupVisible(false)}
                   >
-                    Profile
+                    Profile and account
                   </Link>
                   <Link
                     href="/explore/saved"

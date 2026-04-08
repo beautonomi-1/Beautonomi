@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_SESSION_START, EVENT_SESSION_END } from "@/lib/analytics/amplitude/types";
+import { getMarketingAttributionForEvents } from "@/lib/analytics/amplitude/marketing-attribution";
 
 /**
  * Tracks session_start and session_end events
@@ -17,10 +18,19 @@ export default function SessionTracker() {
 
     // Track session start (only once)
     if (!hasTrackedStart.current) {
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       track(EVENT_SESSION_START, {
         referrer: typeof document !== "undefined" ? document.referrer : undefined,
-        utm_source: typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("utm_source") : undefined,
-        utm_campaign: typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("utm_campaign") : undefined,
+        utm_source: params?.get("utm_source") ?? undefined,
+        utm_medium: params?.get("utm_medium") ?? undefined,
+        utm_campaign: params?.get("utm_campaign") ?? undefined,
+        utm_term: params?.get("utm_term") ?? undefined,
+        utm_content: params?.get("utm_content") ?? undefined,
+        utm_id: params?.get("utm_id") ?? undefined,
+        gclid: params?.get("gclid") ?? undefined,
+        fbclid: params?.get("fbclid") ?? undefined,
+        msclkid: params?.get("msclkid") ?? undefined,
+        ...getMarketingAttributionForEvents(),
       });
       hasTrackedStart.current = true;
     }

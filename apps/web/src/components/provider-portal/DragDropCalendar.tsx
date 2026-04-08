@@ -36,12 +36,13 @@ import { Button } from "@/components/ui/button";
 
 import { format, addMinutes } from "date-fns";
 import { toast } from "sonner";
-import type { Appointment, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
+import type { Appointment, AvailabilityBlockDisplay, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
 import { 
   isMangomintModeEnabled, 
   canPlace, 
   toMangomintAppointment,
   toMangomintBlock,
+  availabilityDisplayToMangomintBlock,
   snapToIncrement,
   timeToMinutes,
   minutesToTime,
@@ -120,6 +121,8 @@ interface DragDropProviderProps {
   allAppointments?: Appointment[];
   /** Time blocks for conflict checking */
   timeBlocks?: TimeBlock[];
+  /** Availability + staff-unavailability overlays (same rules as public booking blocks) */
+  availabilityBlocks?: AvailabilityBlockDisplay[];
   /** Whether to enable conflict validation (Mangomint mode) */
   enableConflictValidation?: boolean;
   onReschedule: (
@@ -135,6 +138,7 @@ export function DragDropProvider({
   teamMembers,
   allAppointments = [],
   timeBlocks = [],
+  availabilityBlocks = [],
   enableConflictValidation = isMangomintModeEnabled(),
   onReschedule,
 }: DragDropProviderProps) {
@@ -153,6 +157,8 @@ export function DragDropProvider({
 
   const dragStateRef = React.useRef<DragState | null>(null);
   dragStateRef.current = dragState;
+  const dropTargetRef = React.useRef<DropTarget | null>(null);
+  dropTargetRef.current = dropTarget;
 
   const startDrag = useCallback((appointment: Appointment) => {
     const next: DragState = {
@@ -183,11 +189,16 @@ export function DragDropProvider({
       .filter(apt => apt.scheduled_date === target.date) // Same day only
       .map(apt => toMangomintAppointment(apt));
 
-    // Convert time blocks
-    const mangomintBlocks: MangomintBlock[] = timeBlocks
-      .filter(block => block.date === target.date)
-      .filter(block => !block.team_member_id || block.team_member_id === target.staffId)
-      .map(block => toMangomintBlock(block));
+    // Convert time blocks + availability / staff-unavailability overlays
+    const fromTimeBlocks: MangomintBlock[] = timeBlocks
+      .filter((block) => block.date === target.date)
+      .filter((block) => !block.team_member_id || block.team_member_id === target.staffId)
+      .map((block) => toMangomintBlock(block));
+    const fromAvailability: MangomintBlock[] = availabilityBlocks
+      .filter((b) => b.date === target.date)
+      .filter((b) => !b.team_member_id || b.team_member_id === target.staffId)
+      .map((b) => availabilityDisplayToMangomintBlock(b));
+    const mangomintBlocks: MangomintBlock[] = [...fromTimeBlocks, ...fromAvailability];
 
     // Check if the new slot is valid
     const result = canPlace(
@@ -206,9 +217,10 @@ export function DragDropProvider({
     );
 
     return result;
-  }, [enableConflictValidation, allAppointments, timeBlocks]);
+  }, [enableConflictValidation, allAppointments, timeBlocks, availabilityBlocks]);
 
   const updateDropTarget = useCallback((target: DropTarget | null) => {
+    dropTargetRef.current = target;
     setDropTarget(target);
     setConflictError(null);
 
@@ -233,16 +245,19 @@ export function DragDropProvider({
   const endDrag = useCallback(() => {
     let confirmation: RescheduleConfirmation | null = null;
 
-    if (dragState && dropTarget) {
+    const currentDrag = dragStateRef.current;
+    const currentDrop = dropTargetRef.current;
+
+    if (currentDrag && currentDrop) {
       const hasChanged =
-        dropTarget.date !== dragState.originalDate ||
-        dropTarget.time !== dragState.originalTime ||
-        dropTarget.staffId !== dragState.originalStaffId;
+        currentDrop.date !== currentDrag.originalDate ||
+        currentDrop.time !== currentDrag.originalTime ||
+        currentDrop.staffId !== currentDrag.originalStaffId;
 
       if (hasChanged) {
-        const snappedTime = snapToIncrement(dropTarget.time, timeIncrement);
-        const effectiveTarget: DropTarget = { ...dropTarget, time: snappedTime };
-        const validation = validatePlacement(dragState.appointment, effectiveTarget);
+        const snappedTime = snapToIncrement(currentDrop.time, timeIncrement);
+        const effectiveTarget: DropTarget = { ...currentDrop, time: snappedTime };
+        const validation = validatePlacement(currentDrag.appointment, effectiveTarget);
 
         if (!validation.valid) {
           setConflictError(validation.reason || "Cannot place appointment here");
@@ -250,7 +265,7 @@ export function DragDropProvider({
         } else {
           const newStaff = teamMembers.find((m) => m.id === effectiveTarget.staffId);
           confirmation = {
-            appointment: dragState.appointment,
+            appointment: currentDrag.appointment,
             newDate: effectiveTarget.date,
             newTime: snappedTime,
             newStaffId: effectiveTarget.staffId,
@@ -265,11 +280,12 @@ export function DragDropProvider({
     }
 
     dragStateRef.current = null;
+    dropTargetRef.current = null;
     setIsDragging(false);
     setDragState(null);
     setDropTarget(null);
     setConflictError(null);
-  }, [dragState, dropTarget, teamMembers, validatePlacement, timeIncrement]);
+  }, [teamMembers, validatePlacement, timeIncrement]);
 
   const confirmReschedule = useCallback(async () => {
     if (!rescheduleConfirmation) return;
@@ -743,6 +759,7 @@ interface DroppableTimeSlotProps {
   staffId: string;
   children: React.ReactNode;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function DroppableTimeSlot({
@@ -751,6 +768,7 @@ export function DroppableTimeSlot({
   staffId,
   children,
   className,
+  style,
 }: DroppableTimeSlotProps) {
   const { isDragging, updateDropTarget, dropTarget, validationState, snapTime } = useDragDrop();
   const [_isOver, setIsOver] = useState(false);
@@ -819,6 +837,7 @@ export function DroppableTimeSlot({
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={style}
       className={cn(
         "transition-colors relative",
         isDragging && "bg-gray-50",

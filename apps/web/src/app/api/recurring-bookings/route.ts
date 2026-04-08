@@ -44,6 +44,8 @@ const recurringBookingSchema = z.object({
   }).optional().nullable(),
   payment_method: z.enum(["card", "cash"]).default("card"),
   is_active: z.boolean().default(true),
+  /** When the customer already completed a booking for this occurrence (e.g. checkout), avoids duplicate cron booking. */
+  last_booking_date: z.string().date().optional(),
 });
 
 /**
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
         location_id: validated.location_id,
         payment_method: validated.payment_method,
         is_active: validated.is_active,
-        last_booking_date: null,
+        last_booking_date: validated.last_booking_date ?? null,
         metadata: {
           services: validated.services,
           address: validated.address,

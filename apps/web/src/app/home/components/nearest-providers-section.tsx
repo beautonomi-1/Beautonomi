@@ -1,8 +1,8 @@
 "use client";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ArrowRight, MapPin } from "lucide-react";
 import Link from "next/link";
-import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
+import { FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { PublicProviderCard } from "@/types/beautonomi";
@@ -11,7 +11,8 @@ import { useUserLocation } from "@/hooks/useUserLocation";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
+import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
+import { cn } from "@/lib/utils";
 
 type NearestProvidersSectionProps = {
   categorySlug?: string;
@@ -28,6 +29,7 @@ const NearestProvidersSection = ({
     initialHydrated ? (initialProviders ?? []) : [],
   );
   const [isLoading, setIsLoading] = useState(() => !initialHydrated);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { location: userLocation, isLoading: locationLoading } = useUserLocation();
   const distanceConfig = useModuleConfig("distance") as { enabled?: boolean; default_radius_km?: number; max_radius_km?: number; step_km?: number } | undefined;
@@ -36,54 +38,50 @@ const NearestProvidersSection = ({
   const maxRadius = distanceConfig?.max_radius_km ?? 50;
   /** "all" = no distance filter (country-wide / tenant-wide); numeric = filter nearest list */
   const [radiusKm, setRadiusKm] = useState<number | "all">("all");
+  const prevInitialProvidersRef = useRef(initialProviders);
+  const prevCategoryRef = useRef(categorySlug);
 
   useEffect(() => {
-    const loadData = async (silent: boolean) => {
+    if (!initialHydrated) return;
+    if (prevInitialProvidersRef.current === initialProviders) return;
+    prevInitialProvidersRef.current = initialProviders;
+    setProviders(initialProviders ?? []);
+  }, [initialHydrated, initialProviders]);
+
+  useEffect(() => {
+    if (prevCategoryRef.current === categorySlug) return;
+    prevCategoryRef.current = categorySlug;
+    // Ensure category switches do not keep showing mismatched nearest cards.
+    setProviders([]);
+    setIsLoading(true);
+  }, [categorySlug]);
+
+  useEffect(() => {
+    if (locationLoading) return;
+
+    let cancelled = false;
+    const loadData = async () => {
+      const silent = providers.length > 0;
       try {
         if (!silent) setIsLoading(true);
+        else setIsRefreshing(true);
         setError(null);
 
-        // Get user location from localStorage (set by header, including IP-based location)
         let lat: number | null = null;
         let lng: number | null = null;
         let city: string | null = null;
         let country: string | null = null;
 
-        // Use location from useUserLocation hook (includes IP-based location)
         if (userLocation) {
           lat = userLocation.latitude;
           lng = userLocation.longitude;
-          // Try to extract city and country from address string
           const addressParts = userLocation.address.split(",").map((s) => s.trim());
           if (addressParts.length > 1) {
             city = addressParts[0];
             country = addressParts[addressParts.length - 1];
           }
-        } else if (!locationLoading) {
-          // If no location from hook and not loading, try browser geolocation as fallback.
-          // Note: The browser may use Google's network location service; a 403 in the console is from the browser, not our app.
-          if (navigator.geolocation) {
-            try {
-              const perms = navigator.permissions as Permissions | undefined;
-              if (perms?.query) {
-                const geolocationPermission = await perms.query({ name: "geolocation" as PermissionName });
-                if (geolocationPermission.state === "denied") {
-                  // Skip geolocation call entirely when browser already denied; avoids repeated browser console warnings.
-                  throw new Error("geolocation_permission_denied");
-                }
-              }
-              const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-                navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
-              });
-              lat = position.coords.latitude;
-              lng = position.coords.longitude;
-            } catch {
-              // Geolocation failed or denied — continue without coords (expected in many browsers)
-            }
-          }
         }
 
-        // Build query params
         const params = new URLSearchParams();
         if (lat && lng) {
           params.set("lat", lat.toString());
@@ -98,15 +96,11 @@ const NearestProvidersSection = ({
           params.set("category", categorySlug);
         }
 
-        const response = await fetcher.get<{
-          data: { nearest: PublicProviderCard[] };
-          error: null;
-        }>(`/api/public/home?${params.toString()}`, {
-          timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS,
-        });
-        setProviders(response.data.nearest || []);
+        const response = await fetchPublicHomeClient(params);
+        if (cancelled) return;
+        setProviders(response.data?.nearest ?? []);
       } catch (err) {
-        // Only set error for actual failures, not empty data
+        if (cancelled) return;
         if (err instanceof FetchTimeoutError || err instanceof FetchError) {
           const errorMessage =
             err instanceof FetchTimeoutError
@@ -115,37 +109,29 @@ const NearestProvidersSection = ({
           if (!silent) {
             setError(errorMessage);
           } else {
-            console.warn("Home nearest refetch failed (keeping SSR data):", err);
+            console.warn("Home nearest refetch failed (keeping previous data):", err);
           }
           if (!silent) {
             console.error("Error loading nearest providers:", err);
           }
         } else {
-          // For other errors, just log and show empty state
           console.error("Error loading nearest providers:", err);
-          setProviders([]);
+          if (!silent) setProviders([]);
         }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     };
 
-    // Wait for location resolution before first client fetch; RSC may already seed `nearest`
-    if (!locationLoading) {
-      if (initialHydrated) {
-        void loadData(true);
-      } else {
-        void loadData(false);
-      }
-    }
-  }, [
-    userLocation,
-    locationLoading,
-    useRadius,
-    radiusKm,
-    categorySlug,
-    initialHydrated,
-  ]);
+    void loadData();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userLocation, locationLoading, useRadius, radiusKm, categorySlug]);
 
   const handleRetry = () => {
     setError(null);
@@ -194,7 +180,13 @@ const NearestProvidersSection = ({
   }
 
   return (
-    <div className="mb-8 md:mb-12">
+    <div
+      className={cn(
+        "mb-8 md:mb-12",
+        isRefreshing && "opacity-60 transition-opacity duration-150",
+      )}
+      aria-busy={isRefreshing}
+    >
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex flex-wrap justify-between items-center gap-3 mb-4 md:mb-6">
           <div className="flex items-center gap-2">

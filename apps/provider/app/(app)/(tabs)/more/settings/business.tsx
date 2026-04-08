@@ -533,7 +533,7 @@ export default function BusinessDetailsScreen() {
               { key: "instagram_url", label: "Instagram", placeholder: "https://instagram.com/yourhandle" },
               { key: "facebook_url", label: "Facebook", placeholder: "https://facebook.com/yourpage" },
               { key: "tiktok_url", label: "TikTok", placeholder: "https://tiktok.com/@yourhandle" },
-              { key: "twitter_url", label: "X / Twitter", placeholder: "https://x.com/yourhandle" },
+              { key: "twitter_url", label: "X", placeholder: "https://x.com/yourhandle" },
             ] as const).map(({ key, label, placeholder }) => (
               <View key={key} style={twStyle("mb-4")}>
                 <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>{label}</Text>

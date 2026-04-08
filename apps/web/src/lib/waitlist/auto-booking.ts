@@ -114,6 +114,8 @@ export async function createAutoBooking(
         p_staff_id: staffId,
         p_start_at: slotDate.toISOString(),
         p_end_at: endTime.toISOString(),
+        p_entitlement_id: null,
+        p_entitlement_customer_id: null,
       }
     );
 

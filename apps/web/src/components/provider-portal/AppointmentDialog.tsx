@@ -30,6 +30,14 @@ import { cn } from "@/lib/utils";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Slider } from "@/components/ui/slider";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { toast } from "sonner";
+import {
+  formatApiErrorMessage,
+  isLikelyUuid,
+  subscriptionUpgradeHint,
+} from "@/lib/http/api-error";
+import { FetchError } from "@/lib/http/fetcher";
+import { useRouter } from "next/navigation";
 
 interface Client {
   id: string;
@@ -71,8 +79,10 @@ export function AppointmentDialog({
   onSuccess,
   onCheckout,
 }: AppointmentDialogProps) {
+  const router = useRouter();
   const { format: formatMoney } = useProviderMoneyFormat();
   const [isLoading, setIsLoading] = useState(false);
+  const [recurringSubscriptionRequired, setRecurringSubscriptionRequired] = useState(false);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
@@ -202,6 +212,10 @@ export function AppointmentDialog({
       }
     }
   }, [open, appointment, defaultDate, defaultTime, defaultTeamMemberId]);
+
+  useEffect(() => {
+    if (open) setRecurringSubscriptionRequired(false);
+  }, [open]);
 
   // Search clients as user types
   useEffect(() => {
@@ -582,9 +596,24 @@ export function AppointmentDialog({
 
       if (appointment) {
         await providerApi.updateAppointment(appointment.id, appointmentData);
+        toast.success("Appointment updated");
       } else {
         // Check if this is a recurring appointment
         if (formData.is_recurring && formData.recurrence_pattern) {
+          if (!formData.client_id?.trim()) {
+            toast.error(
+              "Repeating visits must use a saved client. Select a client from your list (not a one-off name only)."
+            );
+            setIsLoading(false);
+            return;
+          }
+          if (!isLikelyUuid(formData.client_id)) {
+            toast.error(
+              "Repeating visits need a valid customer profile. Select the client from search or create a new client."
+            );
+            setIsLoading(false);
+            return;
+          }
           const recurrenceRule = {
             pattern: formData.recurrence_pattern,
             interval: formData.recurrence_pattern === "biweekly" ? 2 : 1,
@@ -595,25 +624,45 @@ export function AppointmentDialog({
           try {
             await providerApi.createRecurringAppointment({
               ...appointmentData,
+              client_id: formData.client_id,
               recurrence_rule: recurrenceRule,
             } as any);
-          } catch (error) {
-            console.error("Failed to create recurring appointment:", error);
-            // Fallback to creating a single appointment if recurring fails
-            await providerApi.createAppointment(appointmentData);
+            toast.success("Repeating visit series created");
+          } catch (recErr) {
+            console.error("Failed to create recurring appointment:", recErr);
+            if (recErr instanceof FetchError && recErr.code === "SUBSCRIPTION_REQUIRED") {
+              setRecurringSubscriptionRequired(true);
+              toast.error(
+                formatApiErrorMessage(recErr, "Subscription required") + subscriptionUpgradeHint(recErr)
+              );
+              setIsLoading(false);
+              return;
+            }
+            const recurringReason = formatApiErrorMessage(recErr, "Unknown error");
+            const shortReason =
+              recurringReason.length > 160 ? `${recurringReason.slice(0, 157)}…` : recurringReason;
+            try {
+              await providerApi.createAppointment(appointmentData);
+              toast.success(
+                `Appointment booked once. Repeating schedule was not created: ${shortReason}`
+              );
+            } catch (singleErr) {
+              throw singleErr;
+            }
           }
         } else {
-          const createdAppointment = await providerApi.createAppointment(appointmentData);
-          console.log("Appointment created successfully:", createdAppointment);
+          await providerApi.createAppointment(appointmentData);
+          toast.success("Appointment created");
         }
       }
 
       // Show success message
       console.log("Appointment saved successfully, refreshing calendar...");
       
+      setIsLoading(false);
       // Close dialog first
       onOpenChange(false);
-      
+
       // Then trigger success callback to refresh calendar
       // Use setTimeout to ensure dialog closes before refresh
       setTimeout(() => {
@@ -622,13 +671,15 @@ export function AppointmentDialog({
       }, 300); // Increased delay to ensure API call completes
     } catch (error) {
       console.error("Failed to save appointment:", error);
-      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       console.error("Error details:", {
         error,
         formData,
         cart,
       });
-      alert(`Failed to save appointment: ${errorMessage}. Please check the console for details.`);
+      const msg =
+        formatApiErrorMessage(error, "Failed to save appointment") +
+        subscriptionUpgradeHint(error);
+      toast.error(msg);
       setIsLoading(false);
     }
   };
@@ -1096,6 +1147,23 @@ export function AppointmentDialog({
 
           {/* Recurring Appointment Option - Mangomint Style */}
           <div className="border-t pt-4 space-y-3">
+            {recurringSubscriptionRequired && (
+              <div
+                className="rounded-lg border border-amber-200/90 bg-amber-50/95 px-3 py-3 text-sm text-amber-950"
+                role="alert"
+              >
+                <p className="font-light leading-relaxed">
+                  Repeating visits need a plan that includes this feature.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-2 bg-[#FF0077] hover:bg-[#D60565] text-white"
+                  onClick={() => router.push("/provider/subscription")}
+                >
+                  View plans & billing
+                </Button>
+              </div>
+            )}
             <div className="flex items-start gap-3 p-3 sm:p-4 bg-gray-50 rounded-lg">
               <input
                 type="checkbox"

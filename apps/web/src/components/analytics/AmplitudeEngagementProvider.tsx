@@ -3,7 +3,6 @@
 import { useEffect, useRef, ReactNode } from "react";
 import * as amplitude from "@amplitude/analytics-browser";
 import { useAmplitudeContext } from "@/providers/AmplitudeProvider";
-import { useAuth } from "@/providers/AuthProvider";
 
 let engagementPluginRegistered = false;
 
@@ -14,16 +13,10 @@ let engagementPluginRegistered = false;
  */
 export default function AmplitudeEngagementProvider({ children }: { children: ReactNode }) {
   const { config, isInitialized } = useAmplitudeContext();
-  const { user } = useAuth();
   const pluginAttached = useRef(false);
 
   useEffect(() => {
-    if (
-      !isInitialized ||
-      !config?.api_key_public ||
-      (!config.surveys_enabled && !config.guides_enabled) ||
-      !user
-    ) {
+    if (!isInitialized || !config?.api_key_public || (!config.surveys_enabled && !config.guides_enabled)) {
       return;
     }
 
@@ -49,7 +42,7 @@ export default function AmplitudeEngagementProvider({ children }: { children: Re
     return () => {
       cancelled = true;
     };
-  }, [config, isInitialized, user]);
+  }, [config, isInitialized]);
 
   return <>{children}</>;
 }

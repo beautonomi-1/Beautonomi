@@ -57,6 +57,7 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     const onDemandRequestId = String(
       data.on_demand_request_id ?? data.id ?? "",
     );
+    const productOrderId = String(data.product_order_id ?? "").trim();
 
     // ── Superadmin template pushes (OneSignal data = { template_key, ...variables }) ──
     if (templateKey === "provider_new_message") {
@@ -94,6 +95,20 @@ function handleNotificationRoute(data: Record<string, unknown>) {
 
     if (templateKey === "low_stock_alert") {
       router.push("/(app)/(tabs)/more/products");
+      return;
+    }
+
+    if (
+      templateKey.includes("product_order") ||
+      templateKey === "provider_new_product_order"
+    ) {
+      if (productOrderId) {
+        router.push(
+          `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderId)}` as never,
+        );
+      } else {
+        router.push("/(app)/(tabs)/more/orders-hub" as never);
+      }
       return;
     }
 
@@ -240,6 +255,21 @@ function handleNotificationRoute(data: Record<string, unknown>) {
       // Waitlist notifications
       case "waitlist_update":
         router.push("/(app)/(tabs)/more/waitlist");
+        break;
+
+      case "product_order_update":
+      case "product_order_placed":
+        if (productOrderId) {
+          router.push(
+            `/(app)/(tabs)/more/orders-hub?order=${encodeURIComponent(productOrderId)}` as never,
+          );
+        } else {
+          router.push("/(app)/(tabs)/more/orders-hub" as never);
+        }
+        break;
+
+      case "product_return_requested":
+        router.push("/(app)/(tabs)/more/orders-hub?tab=returns" as never);
         break;
 
       // Subscription notifications

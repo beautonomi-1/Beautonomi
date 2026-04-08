@@ -193,6 +193,8 @@ export async function createBookingFromRecurringSeries(
       p_staff_id: primaryStaffId,
       p_start_at: startAt.toISOString(),
       p_end_at: endAt.toISOString(),
+      p_entitlement_id: null,
+      p_entitlement_customer_id: null,
     });
 
     if (rpcError) {

@@ -87,8 +87,12 @@ export default function PortalReschedulePage() {
 
     try {
       const dateStr = selectedDate.toISOString().split('T')[0];
+      const travelQ =
+        booking.location_type === "at_home"
+          ? `&travelBuffer=${encodeURIComponent(String(30))}`
+          : "";
       const response = await fetcher.get<{ data: { date: string; slots: TimeSlot[] } }>(
-        `/api/portal/availability?token=${token}&date=${dateStr}`
+        `/api/portal/availability?token=${token}&date=${dateStr}${travelQ}`
       );
       setAvailability(response.data?.slots || []);
     } catch {

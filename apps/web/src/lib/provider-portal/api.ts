@@ -5,6 +5,7 @@
 
 import { format as formatDate } from "date-fns";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { nextUpcomingOccurrenceYmd } from "@/lib/recurring/next-due-date";
 import {
   FetchError,
   FetchTimeoutError,
@@ -107,6 +108,14 @@ export interface ProviderApi {
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<Sale>>;
   createSale(data: Partial<Sale>): Promise<Sale>;
+  updateSale(
+    id: string,
+    data: Partial<{
+      payment_status: string;
+      payment_provider: string | null;
+      payment_provider_id: string | null;
+    }>,
+  ): Promise<Sale>;
 
   // Payments
   listPayments(
@@ -417,6 +426,69 @@ function toHhMmSs(time: string): string {
   return "10:00:00";
 }
 
+function mapRecurringDbRowToAppointment(
+  row: any,
+  nameFallbacks?: {
+    client_name?: string;
+    service_name?: string;
+    team_member_name?: string;
+  }
+): RecurringAppointment {
+  const rr = rruleToRecurrenceRule(row.recurrence_rule || "");
+  const t = row.start_time ? String(row.start_time).slice(0, 5) : "10:00";
+  const meta =
+    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+      ? (row.metadata as Record<string, unknown>)
+      : {};
+  const dm =
+    typeof meta.duration_minutes === "number" && Number.isFinite(meta.duration_minutes)
+      ? meta.duration_minutes
+      : 60;
+  const price =
+    typeof meta.price === "number" && Number.isFinite(meta.price)
+      ? meta.price
+      : typeof row.price === "number" && Number.isFinite(row.price)
+        ? row.price
+        : 0;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const startYmd = row.start_date || todayStr;
+  const next_occurrence_date = nextUpcomingOccurrenceYmd(
+    {
+      start_date: startYmd,
+      last_booking_date: row.last_booking_date ?? null,
+      frequency: row.frequency ?? null,
+      recurrence_rule: row.recurrence_rule ?? null,
+      end_date: row.end_date ?? null,
+    },
+    todayStr
+  );
+  return {
+    id: row.id,
+    series_id: row.id,
+    client_id: row.customer_id || undefined,
+    client_name: row.client_snapshot_name || nameFallbacks?.client_name || "Client",
+    service_id: row.service_id || "",
+    service_name: row.service_snapshot_title || nameFallbacks?.service_name || "",
+    team_member_id: row.staff_id || "",
+    team_member_name: row.staff_snapshot_name || nameFallbacks?.team_member_name || "",
+    scheduled_date: startYmd,
+    scheduled_time: t,
+    duration_minutes: dm,
+    price,
+    recurrence_rule: rr,
+    status: row.is_active === false ? "cancelled" : "booked",
+    is_exception: false,
+    created_date: row.created_at || new Date().toISOString(),
+    notes: row.notes || undefined,
+    location_id: row.location_id ?? null,
+    metadata: Object.keys(meta).length > 0 ? meta : undefined,
+    frequency: row.frequency ?? undefined,
+    last_booking_date: row.last_booking_date ?? undefined,
+    end_date: row.end_date ?? undefined,
+    next_occurrence_date,
+  };
+}
+
 function mapWaitlistPriorityField(p: unknown): "high" | "normal" | "low" {
   if (p === "high") return "high";
   if (p === "low") return "low";
@@ -706,6 +778,12 @@ export class ProviderApiClient implements ProviderApi {
       (apt as any).is_group_booking = booking.is_group_booking || false;
       (apt as any).group_booking_ref = booking.group_booking_ref || null;
       (apt as any).participants = booking.participants || [];
+      if (booking.provider_form_responses != null) {
+        (apt as any).provider_form_responses = booking.provider_form_responses;
+      }
+      if (booking.custom_field_values != null) {
+        (apt as any).custom_field_values = booking.custom_field_values;
+      }
       return apt;
     } catch (error) {
       console.error("Failed to fetch appointment:", error);
@@ -808,6 +886,16 @@ export class ProviderApiClient implements ProviderApi {
       ...(booking.referral_source_id !== undefined && { referral_source_id: booking.referral_source_id }),
       ...(booking.is_group_booking && { is_group_booking: true, group_booking_ref: booking.group_booking_ref || null }),
       ...(db_status !== undefined ? { db_status } : {}),
+      ...(booking.provider_form_responses != null &&
+      typeof booking.provider_form_responses === "object" &&
+      Object.keys(booking.provider_form_responses).length > 0
+        ? { provider_form_responses: booking.provider_form_responses }
+        : {}),
+      ...(booking.custom_field_values != null &&
+      typeof booking.custom_field_values === "object" &&
+      Object.keys(booking.custom_field_values).length > 0
+        ? { custom_field_values: booking.custom_field_values }
+        : {}),
     } as Appointment;
   }
 
@@ -1309,13 +1397,35 @@ export class ProviderApiClient implements ProviderApi {
     }
   }
 
+  async updateSale(
+    id: string,
+    data: Partial<{
+      payment_status: string;
+      payment_provider: string | null;
+      payment_provider_id: string | null;
+    }>,
+  ): Promise<Sale> {
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const response = await fetcher.patch<{ data?: Sale }>(`/api/provider/sales/${id}`, data);
+      const inner = (response as { data?: Sale })?.data;
+      if (!inner?.id) {
+        throw new Error("Failed to update sale");
+      }
+      return inner;
+    } catch (error: unknown) {
+      await this.handleApiError("/api/provider/sales", "PATCH", error, id, undefined, data);
+      throw error;
+    }
+  }
+
   async listPayments(
     filters?: FilterParams,
     pagination?: PaginationParams
   ): Promise<PaginatedResponse<PaymentTransaction>> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
-      
+
       // Build query parameters
       const params = new URLSearchParams();
       if (filters?.search) {
@@ -2615,6 +2725,7 @@ export class ProviderApiClient implements ProviderApi {
     amount: number; // Amount in Rands (API will convert to cents)
     currency?: string;
     appointment_id?: string;
+    booking_id?: string;
     sale_id?: string;
     metadata?: Record<string, unknown>;
   }): Promise<YocoPayment> {
@@ -2626,6 +2737,7 @@ export class ProviderApiClient implements ProviderApi {
         amount: data.amount, // In Rands
         currency: data.currency,
         appointment_id: data.appointment_id,
+        booking_id: data.booking_id,
         sale_id: data.sale_id,
         metadata: data.metadata,
       });
@@ -2981,32 +3093,7 @@ export class ProviderApiClient implements ProviderApi {
       );
     }
 
-    const mapRow = (row: any): RecurringAppointment => {
-      const rr = rruleToRecurrenceRule(row.recurrence_rule || "");
-      const t = row.start_time ? String(row.start_time).slice(0, 5) : "10:00";
-      return {
-        id: row.id,
-        series_id: row.id,
-        client_id: row.customer_id || undefined,
-        client_name: row.client_snapshot_name || "Client",
-        service_id: row.service_id || "",
-        service_name: row.service_snapshot_title || "",
-        team_member_id: row.staff_id || "",
-        team_member_name: row.staff_snapshot_name || "",
-        scheduled_date: row.start_date || new Date().toISOString().slice(0, 10),
-        scheduled_time: t,
-        duration_minutes: row.duration_minutes || 60,
-        price: row.price ?? 0,
-        recurrence_rule: rr,
-        status: row.is_active === false ? "cancelled" : "booked",
-        is_exception: false,
-        created_date: row.created_at || new Date().toISOString(),
-        notes: row.notes || undefined,
-        location_id: row.location_id ?? null,
-      };
-    };
-
-    const mapped = rows.map(mapRow);
+    const mapped = rows.map((row: any) => mapRecurringDbRowToAppointment(row));
     return {
       data: mapped,
       total,
@@ -3025,12 +3112,36 @@ export class ProviderApiClient implements ProviderApi {
       throw new Error("Customer is required for recurring appointments");
     }
     const rule = data.recurrence_rule as RecurrenceRule | string | undefined;
+    const ruleObj =
+      typeof rule === "object" && rule != null ? (rule as RecurrenceRule) : null;
     const rrule = recurrenceRuleToRrule(
-      (typeof rule === "object" && rule != null
-        ? rule
-        : { pattern: "weekly", interval: 1 }) as RecurrenceRule
+      (ruleObj ?? { pattern: "weekly", interval: 1 }) as RecurrenceRule
     );
-    const body = {
+    const simpleFreq =
+      ruleObj?.pattern === "weekly"
+        ? "weekly"
+        : ruleObj?.pattern === "biweekly"
+          ? "biweekly"
+          : ruleObj?.pattern === "monthly"
+            ? "monthly"
+            : null;
+    const cartItems = (data as { cart_items?: unknown }).cart_items;
+    const baseMeta =
+      data.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)
+        ? { ...(data.metadata as Record<string, unknown>) }
+        : {};
+    const metadata: Record<string, unknown> = {
+      ...baseMeta,
+      duration_minutes: data.duration_minutes ?? 60,
+      price: data.price ?? 0,
+    };
+    if (Array.isArray(cartItems)) metadata.cart_items = cartItems;
+
+    const sched = (data.scheduled_time || "10:00").trim();
+    const preferred_time =
+      sched.length >= 5 ? sched.slice(0, 5) : sched.length >= 1 ? sched : "10:00";
+
+    const body: Record<string, unknown> = {
       customer_id: customerId,
       service_id: data.service_id || undefined,
       staff_id: data.team_member_id || undefined,
@@ -3044,33 +3155,19 @@ export class ProviderApiClient implements ProviderApi {
       start_time: toHhMmSs(data.scheduled_time || "10:00:00"),
       notes: data.notes,
       is_active: data.status !== "cancelled",
+      metadata,
+      preferred_time,
     };
+    if (simpleFreq) body.frequency = simpleFreq;
     const res = (await fetcher.post(`/api/provider/recurring-appointments`, body)) as {
       data?: any;
     };
     const row = res?.data ?? res;
-    const rr = rruleToRecurrenceRule(row.recurrence_rule || rrule);
-    const t = row.start_time ? String(row.start_time).slice(0, 5) : String(body.start_time).slice(0, 5);
-    return {
-      id: row.id,
-      series_id: row.id,
-      client_id: row.customer_id,
-      client_name: data.client_name || "Client",
-      service_id: row.service_id || data.service_id || "",
-      service_name: data.service_name || "",
-      team_member_id: row.staff_id || data.team_member_id || "",
-      team_member_name: data.team_member_name || "",
-      scheduled_date: row.start_date || body.start_date,
-      scheduled_time: t,
-      duration_minutes: data.duration_minutes || 60,
-      price: data.price || 0,
-      recurrence_rule: rr,
-      status: row.is_active === false ? "cancelled" : "booked",
-      is_exception: false,
-      created_date: row.created_at || new Date().toISOString(),
-      notes: row.notes,
-      location_id: row.location_id ?? data.location_id ?? null,
-    };
+    return mapRecurringDbRowToAppointment(row, {
+      client_name: data.client_name,
+      service_name: data.service_name,
+      team_member_name: data.team_member_name,
+    });
   }
 
   async updateRecurringAppointment(
@@ -3082,37 +3179,27 @@ export class ProviderApiClient implements ProviderApi {
     if (data.scheduled_date) patch.start_date = data.scheduled_date;
     if (data.scheduled_time) patch.start_time = toHhMmSs(data.scheduled_time);
     if (data.notes !== undefined) patch.notes = data.notes;
-    if (data.recurrence_rule)
-      patch.recurrence_rule = recurrenceRuleToRrule(data.recurrence_rule as RecurrenceRule);
+    if (data.recurrence_rule) {
+      const rule = data.recurrence_rule as RecurrenceRule;
+      patch.recurrence_rule = recurrenceRuleToRrule(rule);
+      if (rule.end_date !== undefined) patch.end_date = rule.end_date;
+    }
     if (data.status === "cancelled") patch.is_active = false;
     if (data.status === "booked") patch.is_active = true;
+    if (data.metadata !== undefined) patch.metadata = data.metadata;
+    if (data.frequency !== undefined) patch.frequency = data.frequency;
+    if (data.end_date !== undefined) patch.end_date = data.end_date;
 
     const res = (await fetcher.patch(`/api/provider/recurring-appointments/${id}`, patch)) as {
       data?: any;
     };
     const row = res?.data ?? res;
-    const rr = rruleToRecurrenceRule(row.recurrence_rule || "");
-    const t = row.start_time ? String(row.start_time).slice(0, 5) : "10:00";
-    return {
-      id: row.id,
-      series_id: row.id,
-      client_id: row.customer_id,
-      client_name: data.client_name || "Client",
-      service_id: row.service_id || "",
-      service_name: data.service_name || "",
-      team_member_id: row.staff_id || "",
-      team_member_name: data.team_member_name || "",
-      scheduled_date: row.start_date,
-      scheduled_time: t,
-      duration_minutes: data.duration_minutes || 60,
-      price: data.price || 0,
-      recurrence_rule: rr,
-      status: row.is_active === false ? "cancelled" : "booked",
-      is_exception: true,
-      created_date: row.created_at,
-      notes: row.notes,
-      location_id: row.location_id ?? null,
-    };
+    const mapped = mapRecurringDbRowToAppointment(row, {
+      client_name: data.client_name,
+      service_name: data.service_name,
+      team_member_name: data.team_member_name,
+    });
+    return { ...mapped, is_exception: true };
   }
 
   async updateRecurringSeries(
@@ -3862,6 +3949,7 @@ export class ProviderApiClient implements ProviderApi {
       if (filters?.date_from) params.append("date_from", filters.date_from);
       if (filters?.date_to) params.append("date_to", filters.date_to);
       if (filters?.team_member_id) params.append("staff_id", filters.team_member_id);
+      if (filters?.location_id) params.append("location_id", filters.location_id);
       
       const response = await fetcher.get<{ data: any[] }>(`/api/provider/time-blocks?${params.toString()}`);
       return (response.data || []).map((tb: any) => ({

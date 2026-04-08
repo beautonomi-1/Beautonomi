@@ -19,6 +19,7 @@ import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { notifyProviderTeamUsers } from "@/lib/notifications/notify-provider-team";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 
 /**
  * GET /api/paystack/verify
@@ -134,7 +135,7 @@ export async function GET(request: NextRequest) {
               title: "New Product Order",
               message: `New product order ${po.order_number} received — ${fmtPo(amountMajor)}.`,
               data: { product_order_id: productOrderId, amount: amountMajor },
-              action_url: `/provider/ecommerce/orders`,
+              action_url: `/provider/ecommerce/orders?order=${encodeURIComponent(productOrderId)}`,
             });
           }
         }
@@ -252,6 +253,15 @@ export async function GET(request: NextRequest) {
         paymentReference: reference,
         paymentProvider: "paystack",
       });
+
+      try {
+        await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+          admin,
+          metadata as Record<string, unknown>,
+        );
+      } catch (recurringErr) {
+        console.error("[recurring] paystack verify booking path:", recurringErr);
+      }
 
       const { data: afterPay } = await admin
         .from("bookings")

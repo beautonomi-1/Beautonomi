@@ -15,8 +15,9 @@ import {
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "@/lib/api-client";
+import { api, isAuthError } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
+import { useAuth } from "@/providers/AuthProvider";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
@@ -41,6 +42,7 @@ export function SavedTabContent({
   initialTab,
 }: SavedTabContentProps) {
   useScreenTracking(screenName);
+  const { user } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { width, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const constraint =
@@ -142,6 +144,14 @@ export function SavedTabContent({
   }, []);
 
   const loadSavedPosts = useCallback(async (cursor?: string, isRefresh = false) => {
+    if (!user?.id) {
+      setSavedPosts([]);
+      setNextCursor(undefined);
+      setHasMore(false);
+      setPostsLoading(false);
+      setRefreshing(false);
+      return;
+    }
     if (isRefresh) {
       setRefreshing(true);
       setSavedPosts([]);
@@ -154,19 +164,25 @@ export function SavedTabContent({
       if (!cursor) loadCollections();
       const params = new URLSearchParams({ limit: "20" });
       if (cursor) params.set("cursor", cursor);
-      const res = await api.get<any>(`/api/explore/saved?${params}`);
+      const res = await api.get<{
+        data?: unknown[];
+        next_cursor?: string;
+        has_more?: boolean;
+      }>(`/api/explore/saved?${params}`);
       if (res.error) {
-        setError(res.error.message || "Failed to load saved posts");
+        const msg = res.error.message || "Failed to load saved posts";
+        setError(isAuthError(res) ? "Please sign in again to view saved posts." : msg);
       } else {
-        const d = res.data;
-        const posts = d?.data ?? [];
+        const d = res.data as Record<string, unknown> | null | undefined;
+        const raw = d?.data;
+        const posts = Array.isArray(raw) ? raw : [];
         if (cursor) {
           setSavedPosts((prev) => [...prev, ...posts]);
         } else {
           setSavedPosts(posts);
         }
-        setNextCursor(d?.next_cursor);
-        setHasMore(d?.has_more ?? false);
+        setNextCursor(typeof d?.next_cursor === "string" ? d.next_cursor : undefined);
+        setHasMore(Boolean(d?.has_more));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
@@ -174,7 +190,7 @@ export function SavedTabContent({
       setPostsLoading(false);
       setRefreshing(false);
     }
-  }, [loadCollections]);
+  }, [loadCollections, user?.id]);
 
   useEffect(() => {
     if (activeTab === "providers") {
@@ -298,10 +314,14 @@ export function SavedTabContent({
         : "No saved providers yet"
       : activeTab === "products"
         ? "No saved products yet"
-      : "No saved posts yet";
+        : activeTab === "posts" && !user
+          ? "Sign in to see saved posts"
+          : "No saved posts yet";
   const emptySubtitle =
     activeTab === "posts"
-      ? "Bookmark posts from Explore to see them here"
+      ? !user
+        ? "Your session may have expired — sign in again to load saved explore posts."
+        : "Bookmark posts from Explore to see them here"
       : activeTab === "products"
         ? "Save products to wishlist to see them here"
       : undefined;

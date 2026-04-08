@@ -72,6 +72,8 @@ export const bookingDraftSchema = z.object({
   addons: z.array(z.string().uuid("Invalid addon ID")).optional(),
   products: z.array(bookingProductLineSchema).optional(),
   package_id: z.string().uuid().optional().nullable(),
+  /** When redeeming a prepaid session row from `customer_package_entitlements` (must match `package_id`). */
+  customer_package_entitlement_id: z.string().uuid().optional().nullable(),
   tip_amount: z.number().min(0).optional(),
   travel_fee: z.number().min(0).optional(),
   special_requests: z.string().optional().nullable(),
@@ -104,8 +106,15 @@ export const bookingDraftSchema = z.object({
   reschedule_booking_id: z.string().uuid().optional().nullable(),
   /** Ordered resource UUIDs for offerings that require rooms/equipment (see booking-holds + consume flow). */
   resource_ids: z.array(z.string().uuid("Invalid resource ID")).optional(),
-  /** Minutes after service duration for mobile at-home slots; must match `/api/availability` `travelBuffer`. */
+  /** Minutes after service duration for mobile at-home slots; must match `/api/availability` `travelBuffer`. (Calendar also passes `providerId` to that route when staff is "any" — not part of this JSON body.) */
   availability_travel_buffer_minutes: z.coerce.number().int().min(0).max(360).optional(),
+  /** When enabled, recurring series is created after payment (Paystack metadata) or immediately if no card redirect. */
+  subscribe_recurring: z
+    .object({
+      enabled: z.boolean(),
+      frequency: z.enum(["weekly", "biweekly", "monthly"]),
+    })
+    .optional(),
 });
 
 export type PublicBookingValidatedBody = z.infer<typeof bookingDraftSchema>;
@@ -131,6 +140,7 @@ export function toBookingDraftFromPublicBody(body: PublicBookingValidatedBody): 
       totalPrice: p.totalPrice,
     })),
     package_id: body.package_id ?? undefined,
+    customer_package_entitlement_id: body.customer_package_entitlement_id ?? undefined,
     tip_amount: body.tip_amount ?? 0,
     travel_fee: body.travel_fee,
     special_requests: body.special_requests ?? undefined,
@@ -142,5 +152,6 @@ export function toBookingDraftFromPublicBody(body: PublicBookingValidatedBody): 
     gift_card_code: body.gift_card_code ?? undefined,
     use_wallet: body.use_wallet,
     resource_ids: body.resource_ids,
+    subscribe_recurring: body.subscribe_recurring,
   };
 }

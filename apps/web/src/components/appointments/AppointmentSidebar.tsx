@@ -82,6 +82,8 @@ import {
   Users,
   Package,
   Search,
+  Repeat,
+  Loader2,
 } from "lucide-react";
 
 import type {
@@ -94,6 +96,11 @@ import type {
 } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { fetcher } from "@/lib/http/fetcher";
+import {
+  formatApiErrorMessage,
+  isLikelyUuid,
+  subscriptionUpgradeHint,
+} from "@/lib/http/api-error";
 import {
   useAppointmentSidebar,
   openCreateMode,
@@ -200,6 +207,11 @@ interface CreateFormData {
   travelOverrideReason: string;
   hasTravelOverride: boolean;
   referralSourceId: string;
+  /** Set when client is chosen from search or after creating a client (required for recurring series). */
+  clientId: string;
+  isRecurring: boolean;
+  recurrencePattern: "daily" | "weekly" | "biweekly" | "monthly";
+  recurrenceEndDate: string;
 }
 
 type CancelReason = "normal" | "late_cancel" | "no_show";
@@ -311,10 +323,111 @@ export function AppointmentSidebar({
     travelOverrideReason: "",
     hasTravelOverride: false,
     referralSourceId: "",
+    clientId: "",
+    isRecurring: false,
+    recurrencePattern: "weekly",
+    recurrenceEndDate: "",
   });
+
+  /** Live hints from GET /api/provider/bookings/check-availability */
+  const [slotAvailability, setSlotAvailability] = useState<{
+    loading: boolean;
+    checked: boolean;
+    available: boolean;
+    conflicts: string[];
+  }>({ loading: false, checked: false, available: true, conflicts: [] });
+
+  useEffect(() => {
+    if (mode !== "create" && mode !== "edit") {
+      setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+      return;
+    }
+    if (!formData.date || !formData.startTime || formData.duration < 1) {
+      setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+      return;
+    }
+
+    const ac = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setSlotAvailability((prev) => ({ ...prev, loading: true }));
+      try {
+        const timePart =
+          formData.startTime.length === 5 ? `${formData.startTime}:00` : formData.startTime;
+        const scheduledLocal = new Date(`${formData.date}T${timePart}`);
+        if (Number.isNaN(scheduledLocal.getTime())) {
+          if (!ac.signal.aborted) {
+            setSlotAvailability({ loading: false, checked: false, available: true, conflicts: [] });
+          }
+          return;
+        }
+
+        const params = new URLSearchParams();
+        params.set("scheduled_at", scheduledLocal.toISOString());
+        params.set("duration_minutes", String(formData.duration));
+        if (formData.staffId) params.set("staff_ids", formData.staffId);
+        if (formData.kind !== AppointmentKind.AT_HOME && formData.locationId) {
+          params.set("location_id", formData.locationId);
+        }
+        if (mode === "edit" && activeBookingId) {
+          params.set("exclude_booking_id", activeBookingId);
+        }
+
+        const res = await fetch(`/api/provider/bookings/check-availability?${params.toString()}`, {
+          signal: ac.signal,
+        });
+        const body = (await res.json().catch(() => null)) as {
+          data?: { available?: boolean; conflicts?: string[] };
+        } | null;
+        if (ac.signal.aborted) return;
+        const payload = body?.data;
+        if (!res.ok || !payload) {
+          setSlotAvailability({
+            loading: false,
+            checked: false,
+            available: true,
+            conflicts: [],
+          });
+          return;
+        }
+        setSlotAvailability({
+          loading: false,
+          checked: true,
+          available: Boolean(payload.available),
+          conflicts: Array.isArray(payload.conflicts) ? payload.conflicts : [],
+        });
+      } catch (e) {
+        if ((e as Error).name === "AbortError") return;
+        setSlotAvailability({
+          loading: false,
+          checked: false,
+          available: true,
+          conflicts: [],
+        });
+      }
+    }, 450);
+
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [
+    mode,
+    formData.date,
+    formData.startTime,
+    formData.duration,
+    formData.staffId,
+    formData.locationId,
+    formData.kind,
+    activeBookingId,
+  ]);
 
   // Referral sources (for "Where did this client come from?")
   const [referralSources, setReferralSources] = useState<Array<{ id: string; name: string; description?: string | null; is_active: boolean }>>([]);
+
+  /** Provider form definitions (labels for `provider_form_responses` on the booking). */
+  const [providerFormDefs, setProviderFormDefs] = useState<
+    Array<{ id: string; title: string; form_type?: string; fields?: Array<{ id: string; name: string }> }>
+  >([]);
 
   // Cancel dialog
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -483,6 +596,40 @@ export function AppointmentSidebar({
     loadReferralSources();
   }, [isOpen, mode]);
 
+  // Load provider form titles/field names when viewing a booking with client form responses
+  useEffect(() => {
+    if (!isOpen || mode !== "view") {
+      setProviderFormDefs([]);
+      return;
+    }
+    const apt = selectedAppointment;
+    const responses = apt?.provider_form_responses;
+    if (
+      !apt ||
+      !responses ||
+      typeof responses !== "object" ||
+      Object.keys(responses).length === 0
+    ) {
+      setProviderFormDefs([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = (await fetcher.get("/api/provider/forms")) as {
+          data?: Array<{ id: string; title: string; form_type?: string; fields?: Array<{ id: string; name: string }> }>;
+        };
+        const forms = Array.isArray(res?.data) ? res.data : [];
+        if (!cancelled) setProviderFormDefs(forms);
+      } catch {
+        if (!cancelled) setProviderFormDefs([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, mode, selectedAppointment?.id, selectedAppointment?.provider_form_responses]);
+
   // Client search
   useEffect(() => {
     const searchClients = async () => {
@@ -554,6 +701,7 @@ export function AppointmentSidebar({
       clientName: client.full_name,
       clientEmail: client.email || "",
       clientPhone: client.phone || "",
+      clientId: client.id,
     }));
     setClientSearchQuery("");
     setClientSearchResults([]);
@@ -648,12 +796,19 @@ export function AppointmentSidebar({
       const client = data.data || data;
       const customer = client.customer || client;
       
+      const newCustomerId =
+        (customer.id as string | undefined) ||
+        (client as { id?: string; customer_id?: string }).id ||
+        (client as { customer_id?: string }).customer_id ||
+        "";
+
       // Update form data with new client
       setFormData(prev => ({
         ...prev,
         clientName: customer.full_name || `${newClientData.first_name} ${newClientData.last_name}`.trim(),
         clientEmail: customer.email || newClientData.email || "",
         clientPhone: customer.phone || newClientData.phone || "",
+        clientId: newCustomerId,
       }));
       
       // Reset and close dialog
@@ -1630,6 +1785,10 @@ export function AppointmentSidebar({
         travelOverrideReason: "",
         hasTravelOverride: false,
         referralSourceId: "",
+        clientId: "",
+        isRecurring: false,
+        recurrencePattern: "weekly",
+        recurrenceEndDate: "",
       }));
     } else if ((mode === "view" || mode === "edit") && selectedAppointment) {
       const kind = selectedAppointment.location_type === "at_home" 
@@ -1843,6 +2002,10 @@ export function AppointmentSidebar({
         travelOverrideReason: travelOverride?.reason || "",
         hasTravelOverride: !!travelOverride,
         referralSourceId: (selectedAppointment as any).referral_source_id ?? "",
+        clientId: selectedAppointment.client_id || "",
+        isRecurring: false,
+        recurrencePattern: "weekly",
+        recurrenceEndDate: "",
       });
     }
   }, [mode, draftSlot, selectedAppointment, locations, services, calculatePricing, defaultTaxRate]);
@@ -1917,12 +2080,28 @@ export function AppointmentSidebar({
       return;
     }
 
+    if (formData.isRecurring) {
+      if (!formData.clientId?.trim()) {
+        toast.error(
+          "Repeating visits must use a saved client. Select the client from search results or create a new client."
+        );
+        return;
+      }
+      if (!isLikelyUuid(formData.clientId)) {
+        toast.error(
+          "Repeating visits need a customer profile with a valid ID. Select the client from search or create a new client."
+        );
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const appointmentData: Partial<Appointment> = {
         client_name: formData.clientName,
         client_email: formData.clientEmail || undefined,
         client_phone: formData.clientPhone || undefined,
+        client_id: formData.clientId?.trim() || undefined,
         service_id: formData.serviceId, // Keep for backward compatibility
         service_name: formData.serviceName, // Keep for backward compatibility
         team_member_id: formData.staffId,
@@ -1968,15 +2147,75 @@ export function AppointmentSidebar({
         appointmentData.travel_fee = formData.travelFee;
       }
 
-      const created = await providerApi.createAppointment(appointmentData as any);
-      
-      toast.success("Appointment created successfully");
-      onAppointmentCreated?.(created);
+      if (formData.isRecurring && formData.clientId?.trim()) {
+        const addonPriceSum = (addons?: AppointmentService["addons"]) =>
+          addons?.reduce((sum, a) => sum + a.price, 0) || 0;
+        const addonDurationSum = (addons?: AppointmentService["addons"]) =>
+          addons?.reduce((sum, a) => sum + a.duration, 0) || 0;
+        const cart_items = [
+          ...formData.services.map((s) => ({
+            id: s.id,
+            type: "service" as const,
+            name: s.serviceName,
+            quantity: 1,
+            unit_price: s.price,
+            total: s.price + addonPriceSum(s.addons),
+            service_id: s.serviceId,
+            duration_minutes: s.duration + addonDurationSum(s.addons),
+          })),
+          ...formData.products.map((p) => ({
+            id: p.id,
+            type: "product" as const,
+            name: p.productName,
+            quantity: p.quantity,
+            unit_price: p.unitPrice,
+            total: p.totalPrice,
+            product_id: p.productId,
+          })),
+        ];
+        (appointmentData as any).cart_items = cart_items;
+
+        const recurrenceRule = {
+          pattern: formData.recurrencePattern,
+          interval: formData.recurrencePattern === "biweekly" ? 2 : 1,
+          end_date: formData.recurrenceEndDate || undefined,
+        };
+
+        try {
+          await providerApi.createRecurringAppointment({
+            ...appointmentData,
+            client_id: formData.clientId.trim(),
+            recurrence_rule: recurrenceRule,
+          } as any);
+          toast.success("Repeating visit series created");
+        } catch (recErr) {
+          console.error("Failed to create recurring series, falling back to single booking:", recErr);
+          const recurringReason = formatApiErrorMessage(recErr, "Unknown error");
+          const shortReason =
+            recurringReason.length > 160 ? `${recurringReason.slice(0, 157)}…` : recurringReason;
+          try {
+            await providerApi.createAppointment(appointmentData as any);
+            toast.success(
+              `Appointment booked once. Repeating schedule was not created: ${shortReason}`
+            );
+          } catch (singleErr) {
+            throw singleErr;
+          }
+        }
+      } else {
+        const created = await providerApi.createAppointment(appointmentData as any);
+        onAppointmentCreated?.(created);
+        toast.success("Appointment created successfully");
+      }
+
       onRefresh?.();
       closeSidebar();
     } catch (error) {
       console.error("Failed to create appointment:", error);
-      toast.error("Failed to create appointment");
+      toast.error(
+        formatApiErrorMessage(error, "Failed to create appointment") +
+          subscriptionUpgradeHint(error)
+      );
     } finally {
       setSaving(false);
     }
@@ -2102,11 +2341,9 @@ export function AppointmentSidebar({
       setTimeout(() => {
         switchToViewMode();
       }, 0);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Failed to update appointment:", error);
-      // Show more detailed error message
-      const errorMessage = error?.message || error?.details || "Failed to update appointment";
-      toast.error(errorMessage);
+      toast.error(formatApiErrorMessage(error, "Failed to update appointment"));
     } finally {
       setSaving(false);
     }
@@ -2635,7 +2872,12 @@ export function AppointmentSidebar({
                         onChange={(e) => {
                           const value = e.target.value;
                           setClientSearchQuery(value);
-                          setFormData(prev => ({ ...prev, clientName: value }));
+                          setFormData(prev => ({
+                            ...prev,
+                            clientName: value,
+                            clientId: "",
+                            ...(prev.isRecurring ? { isRecurring: false } : {}),
+                          }));
                           setShowClientSearch(value.length >= 2);
                         }}
                         onFocus={() => {
@@ -2654,7 +2896,12 @@ export function AppointmentSidebar({
                           type="button"
                           onClick={() => {
                             setClientSearchQuery("");
-                            setFormData(prev => ({ ...prev, clientName: "" }));
+                            setFormData(prev => ({
+                              ...prev,
+                              clientName: "",
+                              clientId: "",
+                              isRecurring: false,
+                            }));
                             setClientSearchResults([]);
                             setShowClientSearch(false);
                           }}
@@ -2734,6 +2981,73 @@ export function AppointmentSidebar({
                 </div>
               )}
             </div>
+
+            {mode === "create" && formData.kind !== AppointmentKind.WALK_IN && (
+              <>
+                <Separator />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Repeat className="w-4 h-4 text-gray-500 flex-shrink-0" aria-hidden />
+                      <Label
+                        htmlFor="sidebar-recurring"
+                        className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide cursor-pointer"
+                      >
+                        Repeating visit
+                      </Label>
+                    </div>
+                    <Switch
+                      id="sidebar-recurring"
+                      checked={formData.isRecurring}
+                      onCheckedChange={(v) => setFormData((prev) => ({ ...prev, isRecurring: v }))}
+                      disabled={!formData.clientId}
+                    />
+                  </div>
+                  {!formData.clientId ? (
+                    <p className="text-xs text-gray-500 font-light">
+                      Search and select a saved client, or create one, to enable a repeating schedule.
+                    </p>
+                  ) : null}
+                  {formData.isRecurring && formData.clientId ? (
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Repeat</Label>
+                        <Select
+                          value={formData.recurrencePattern}
+                          onValueChange={(v) =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              recurrencePattern: v as CreateFormData["recurrencePattern"],
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="weekly">Weekly</SelectItem>
+                            <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+                            <SelectItem value="monthly">Monthly</SelectItem>
+                            <SelectItem value="daily">Daily</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-gray-600">Series end date (optional)</Label>
+                        <Input
+                          type="date"
+                          value={formData.recurrenceEndDate}
+                          onChange={(e) =>
+                            setFormData((prev) => ({ ...prev, recurrenceEndDate: e.target.value }))
+                          }
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </>
+            )}
 
             {/* Group Participants Section (VIEW mode only) */}
             {mode === "view" && selectedAppointment?.is_group_booking && selectedAppointment?.participants && selectedAppointment.participants.length > 0 && (
@@ -2848,7 +3162,15 @@ export function AppointmentSidebar({
                         "w-full text-[10px] sm:text-[10px] md:text-xs px-1 sm:px-1.5 md:px-2 h-8 sm:h-8.5 md:h-9",
                         formData.kind === kind && "bg-gray-900 text-white"
                       )}
-                      onClick={() => setFormData(prev => ({ ...prev, kind }))}
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          kind,
+                          ...(kind === AppointmentKind.WALK_IN
+                            ? { isRecurring: false }
+                            : {}),
+                        }))
+                      }
                     >
                       <Icon className="w-3 h-3 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 mr-0.5 sm:mr-0.5 md:mr-1 flex-shrink-0" />
                       <span className="truncate">{label}</span>
@@ -3120,35 +3442,83 @@ export function AppointmentSidebar({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Input
-                    type="date"
-                    value={formData.date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                    className="flex-1 min-w-0 max-w-full box-border"
-                  />
-                  <Input
-                    type="time"
-                    value={formData.startTime}
-                    onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                    className="flex-1 min-w-0 max-w-full box-border"
-                  />
-                  <Select
-                    value={formData.duration.toString()}
-                    onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
-                  >
-                    <SelectTrigger className="flex-1 min-w-0 max-w-full box-border">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[15, 30, 45, 60, 75, 90, 120, 150, 180].map((d) => (
-                        <SelectItem key={d} value={d.toString()}>
-                          {d} min
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                <>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      type="date"
+                      value={formData.date}
+                      onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                      className="flex-1 min-w-0 max-w-full box-border"
+                    />
+                    <Input
+                      type="time"
+                      value={formData.startTime}
+                      onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                      className="flex-1 min-w-0 max-w-full box-border"
+                    />
+                    <Select
+                      value={formData.duration.toString()}
+                      onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
+                    >
+                      <SelectTrigger className="flex-1 min-w-0 max-w-full box-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[15, 30, 45, 60, 75, 90, 120, 150, 180].map((d) => (
+                          <SelectItem key={d} value={d.toString()}>
+                            {d} min
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {(mode === "create" || mode === "edit") && (
+                    <div
+                      className={cn(
+                        "mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
+                        slotAvailability.loading && "border-gray-200 bg-gray-50 text-gray-600",
+                        !slotAvailability.loading &&
+                          slotAvailability.checked &&
+                          slotAvailability.available &&
+                          "border-green-200 bg-green-50 text-green-900",
+                        !slotAvailability.loading &&
+                          slotAvailability.checked &&
+                          !slotAvailability.available &&
+                          "border-amber-200 bg-amber-50 text-amber-950",
+                      )}
+                      role="status"
+                      aria-live="polite"
+                    >
+                      {slotAvailability.loading ? (
+                        <span className="flex items-center gap-2">
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                          Checking slot availability…
+                        </span>
+                      ) : slotAvailability.checked ? (
+                        slotAvailability.available ? (
+                          <span className="font-medium">This time looks available for the selected staff and location.</span>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="font-semibold">This slot may not be available:</span>
+                            <ul className="list-disc pl-4 text-[11px] sm:text-xs">
+                              {slotAvailability.conflicts.map((c, i) => (
+                                <li key={`${i}-${c}`}>{c}</li>
+                              ))}
+                            </ul>
+                            <p className="text-[11px] text-amber-800/90 pt-1">
+                              You can still try to save; the server will reject the booking if the slot is taken.
+                            </p>
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-gray-500">
+                          Set date, time, and duration to see availability hints
+                          {formData.staffId ? "" : " (select staff for hours and booking overlap checks)"}.
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -4506,6 +4876,81 @@ export function AppointmentSidebar({
                 </p>
               </div>
             )}
+
+            {/* Online booking: platform custom fields (when loaded on appointment) */}
+            {mode === "view" &&
+              selectedAppointment?.custom_field_values &&
+              typeof selectedAppointment.custom_field_values === "object" &&
+              Object.keys(selectedAppointment.custom_field_values).length > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Additional booking details
+                  </Label>
+                  <div className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+                    {Object.entries(selectedAppointment.custom_field_values).map(([name, value]) => (
+                      <div key={name} className="flex justify-between gap-2 text-sm">
+                        <span className="text-gray-600">{name}</span>
+                        <span className="text-gray-900 font-medium text-right break-all">
+                          {value === null || value === undefined ? "—" : String(value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+            {/* Online booking: provider intake / consent / waiver forms */}
+            {mode === "view" &&
+              selectedAppointment?.provider_form_responses &&
+              typeof selectedAppointment.provider_form_responses === "object" &&
+              Object.keys(selectedAppointment.provider_form_responses).length > 0 && (
+                <div className="space-y-3">
+                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Client forms
+                  </Label>
+                  <div className="space-y-3">
+                    {Object.entries(selectedAppointment.provider_form_responses).map(([formId, fields]) => {
+                      if (!fields || typeof fields !== "object") return null;
+                      const formMeta = providerFormDefs.find((f) => f.id === formId);
+                      const formTitle = formMeta?.title ?? `Form ${formId.slice(0, 8)}…`;
+                      const getFieldLabel = (fieldKey: string) =>
+                        formMeta?.fields?.find((f) => f.id === fieldKey)?.name ?? fieldKey.slice(0, 8) + "…";
+                      const entries = Object.entries(fields as Record<string, unknown>).filter(
+                        ([k]) => k !== "_consent_document_url",
+                      );
+                      const consentUrl =
+                        typeof (fields as Record<string, unknown>)._consent_document_url === "string"
+                          ? ((fields as Record<string, unknown>)._consent_document_url as string)
+                          : undefined;
+                      return (
+                        <div key={formId} className="rounded-lg border border-gray-200 bg-gray-50/50 p-3 space-y-2">
+                          <p className="text-sm font-semibold text-gray-800">{formTitle}</p>
+                          <dl className="space-y-1.5">
+                            {entries.map(([fieldKey, value]) => (
+                              <div key={fieldKey} className="flex justify-between gap-2 text-sm">
+                                <dt className="text-gray-600">{getFieldLabel(fieldKey)}</dt>
+                                <dd className="text-gray-900 font-medium text-right break-all">
+                                  {value === null || value === undefined ? "—" : String(value)}
+                                </dd>
+                              </div>
+                            ))}
+                          </dl>
+                          {consentUrl ? (
+                            <a
+                              href={consentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs font-medium text-primary hover:underline inline-block"
+                            >
+                              View consent document
+                            </a>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
             {/* Notes */}
             <div className="space-y-3">

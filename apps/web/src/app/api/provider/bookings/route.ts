@@ -11,7 +11,12 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 import { mapStatusToProvider } from "@/lib/utils/booking-status";
-import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
+import {
+  checkBookingConflict,
+  checkBookingConflictForProvider,
+  checkActiveHoldOverlap,
+  canOverrideDoubleBooking,
+} from "@/lib/bookings/conflict-check";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import {
   createBookingsReadCacheKey,
@@ -41,6 +46,24 @@ function mapStatusToDatabase(frontendStatus: string): string {
 // Map database status to frontend status
 function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as any);
+}
+
+const MAX_PROVIDER_FORM_RESPONSES_BYTES = 120_000;
+
+/** Optional JSON map: form_id -> field values (same shape as checkout). */
+function parseProviderFormResponses(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+  try {
+    const s = JSON.stringify(raw);
+    if (s.length > MAX_PROVIDER_FORM_RESPONSES_BYTES) {
+      console.warn("provider_form_responses exceeded max size, ignoring");
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return raw as Record<string, unknown>;
 }
 
 function createWalkInEmail() {
@@ -305,6 +328,7 @@ async function handleGetProviderBookings(request: NextRequest) {
           const gb = (booking as { group_bookings?: { ref_number?: string } | Array<{ ref_number?: string }> }).group_bookings;
           return Array.isArray(gb) ? gb[0]?.ref_number ?? null : gb?.ref_number ?? null;
         })(),
+        provider_form_responses: booking.provider_form_responses ?? null,
       };
     });
 
@@ -339,6 +363,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const supabaseAdmin = await getSupabaseAdmin(); // Use admin client to bypass RLS
     const body = await request.json();
+    const providerFormResponses = parseProviderFormResponses(
+      (body as { provider_form_responses?: unknown }).provider_form_responses
+    );
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -616,6 +643,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       service_fee_amount: serviceFeeAmount,
       service_fee_paid_by: isWalkIn ? null : (body.service_fee_paid_by || 'customer'),
       referral_source_id: referralSourceId,
+      ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
     };
 
     // Validate required fields
@@ -657,6 +685,22 @@ async function handleCreateProviderBooking(request: NextRequest) {
 
     const allowOverride = await canOverrideDoubleBooking(supabaseAdmin, providerId);
     const useRpcPath = staffId != null && !allowOverride;
+
+    // Active customer holds block the window (same as public validate-booking).
+    const holdOverlap = await checkActiveHoldOverlap(
+      supabaseAdmin as any,
+      providerId,
+      startAt,
+      endAt,
+      { dbStaffId: staffId }
+    );
+    if (holdOverlap) {
+      return errorResponse(
+        "This time slot is no longer available. Please select another time.",
+        "CONFLICT",
+        409
+      );
+    }
 
     let booking: any;
 
@@ -734,6 +778,8 @@ async function handleCreateProviderBooking(request: NextRequest) {
         p_staff_id: staffId,
         p_start_at: startAt.toISOString(),
         p_end_at: pEndAt,
+        p_entitlement_id: null,
+        p_entitlement_customer_id: null,
       });
 
       if (rpcError) {
@@ -759,6 +805,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
           booking_source: bookingSource,
           referral_source_id: referralSourceId,
           discount_reason: body.discount_reason ?? null,
+          ...(providerFormResponses ? { provider_form_responses: providerFormResponses } : {}),
         })
         .eq("id", bookingId)
         .select(
@@ -777,6 +824,41 @@ async function handleCreateProviderBooking(request: NextRequest) {
       booking = createdBooking;
       console.log("Booking created successfully via RPC:", booking.id);
     } else {
+      // Direct insert: still enforce booking conflicts unless double-booking override (holds already checked).
+      if (!allowOverride) {
+        if (staffId) {
+          const directConflict = await checkBookingConflict(
+            supabaseAdmin as any,
+            staffId,
+            startAt,
+            endAt,
+            0
+          );
+          if (directConflict.hasConflict) {
+            return errorResponse(
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
+        } else {
+          const provConflict = await checkBookingConflictForProvider(
+            supabaseAdmin as any,
+            providerId,
+            startAt,
+            endAt,
+            0
+          );
+          if (provConflict.hasConflict) {
+            return errorResponse(
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
+        }
+      }
+
       // Direct insert (no staff, or provider allows double-booking override)
       console.log("Inserting booking with data:", JSON.stringify(bookingData, null, 2));
       const { data: insertedBooking, error } = await supabaseAdmin

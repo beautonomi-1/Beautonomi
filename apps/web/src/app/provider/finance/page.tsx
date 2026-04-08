@@ -30,6 +30,8 @@ interface EarningsData {
   total_earnings: number;
   pending_payouts: number;
   available_balance: number;
+  /** Days after an earning before it counts toward withdrawable balance (platform settings). */
+  payout_hold_days?: number;
   minimum_payout_amount?: number;
   this_month: number;
   last_month: number;
@@ -119,10 +121,14 @@ export default function ProviderFinance() {
         : `/api/provider/finance?range=${dateRange}`;
       
       const response = await fetcher.get<{
-        data: { earnings: EarningsData; transactions: Transaction[] };
-      }>(url);
-      setEarnings(response.data.earnings);
-      setTransactions(response.data.transactions);
+        data: { earnings: EarningsData; transactions: Transaction[] } | null;
+      }>(url, { staleTimeMs: 0 });
+      const payload = response.data;
+      if (!payload?.earnings) {
+        throw new Error("Invalid finance response");
+      }
+      setEarnings(payload.earnings);
+      setTransactions(Array.isArray(payload.transactions) ? payload.transactions : []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -294,7 +300,8 @@ export default function ProviderFinance() {
                 <DialogHeader>
                   <DialogTitle>Request Payout</DialogTitle>
                   <DialogDescription>
-                    Request a payout from your available balance
+                    Request a withdrawal up to your available balance. Amounts are validated against the same ledger
+                    used on the dashboard.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
@@ -414,7 +421,7 @@ export default function ProviderFinance() {
         </div>
 
         {/* Earnings Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
               <p className="text-sm text-gray-600">Total Earnings</p>
@@ -423,23 +430,36 @@ export default function ProviderFinance() {
             <p className="text-3xl font-semibold">
               {fmt(earnings.total_earnings)}
             </p>
+            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+              Net provider share from bookings and related ledger entries (same basis as payouts).
+            </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Available Balance</p>
+              <p className="text-sm text-gray-600">Available to withdraw</p>
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold text-green-600">
               {fmt(earnings.available_balance)}
             </p>
+            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+              Platform-held earnings minus completed payouts and your pending requests
+              {(earnings.payout_hold_days ?? 0) > 0
+                ? `, after a ${earnings.payout_hold_days}-day hold on new earnings`
+                : ""}
+              . Cash settled outside the app is not included.
+            </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
-              <p className="text-sm text-gray-600">Pending Payouts</p>
+              <p className="text-sm text-gray-600">Payout requests in queue</p>
               <Calendar className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-3xl font-semibold text-yellow-600">
               {fmt(earnings.pending_payouts)}
+            </p>
+            <p className="text-xs text-gray-500 mt-2 leading-relaxed">
+              Sum of your requests still pending or processing (already deducted from available balance).
             </p>
           </div>
         </div>
@@ -457,7 +477,7 @@ export default function ProviderFinance() {
             <p className="text-2xl font-semibold text-purple-600">
               {fmt(earnings.travel_fees_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">From at-home bookings</p>
+            <p className="text-xs text-gray-500 mt-1">Travel component (also inside service earnings)</p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
@@ -518,8 +538,13 @@ export default function ProviderFinance() {
               <p className="text-2xl font-semibold">
                 {fmt(earnings.last_month)}
               </p>
-              <p className="text-sm text-green-600 mt-1">
-                +{earnings.growth_percentage}% growth
+              <p
+                className={`text-sm mt-1 ${
+                  earnings.growth_percentage >= 0 ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                {earnings.growth_percentage >= 0 ? "+" : ""}
+                {earnings.growth_percentage}% vs previous period
               </p>
             </div>
           </div>
@@ -797,10 +822,14 @@ function TransactionRow({ transaction, onClick }: { transaction: Transaction; on
       </div>
       <div className="flex items-center gap-4">
         <p className={`font-semibold ${getTypeColor()}`}>
-          {transaction.type === "payout" || transaction.type === "refund"
+          {transaction.type === "payout" ||
+          transaction.type === "refund" ||
+          transaction.amount < 0 ||
+          (transaction.net !== undefined && transaction.net < 0)
             ? "-"
             : "+"}
-          {transaction.currency} {transaction.amount.toFixed(2)}
+          {transaction.currency}{" "}
+          {Math.abs(transaction.amount).toFixed(2)}
         </p>
         <span
           className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor()}`}

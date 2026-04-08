@@ -29,6 +29,9 @@ interface Role {
   is_active: boolean;
   member_count?: number;
 }
+interface TeamAccessPayload {
+  can_manage_team: boolean;
+}
 
 const PERMISSION_GROUPS = [
   {
@@ -82,6 +85,8 @@ export default function TeamRolesScreen() {
     description: "",
     permissions: {} as Record<string, boolean>,
   });
+  const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
+  const canManageTeam = teamAccess?.can_manage_team === true;
 
   const { data: roles, loading, refresh } = useApi<Role[]>(
     "/api/provider/roles"
@@ -124,12 +129,14 @@ export default function TeamRolesScreen() {
   }, [roles]);
 
   function openCreate() {
+    if (!canManageTeam) return;
     setEditing(null);
     setForm({ name: "", description: "", permissions: {} });
     setShowForm(true);
   }
 
   function openEdit(role: Role) {
+    if (!canManageTeam) return;
     setEditing(role);
     setForm({
       name: role.name,
@@ -140,6 +147,7 @@ export default function TeamRolesScreen() {
   }
 
   function duplicateRole(role: Role) {
+    if (!canManageTeam) return;
     setEditing(null);
     setForm({
       name: `${role.name} (Copy)`,
@@ -150,6 +158,7 @@ export default function TeamRolesScreen() {
   }
 
   function togglePermission(key: string) {
+    if (!canManageTeam) return;
     setForm((p) => ({
       ...p,
       permissions: { ...p.permissions, [key]: !p.permissions[key] },
@@ -157,6 +166,7 @@ export default function TeamRolesScreen() {
   }
 
   function toggleGroupAll(keys: string[]) {
+    if (!canManageTeam) return;
     const allEnabled = keys.every((k) => form.permissions[k]);
     setForm((p) => {
       const next = { ...p.permissions };
@@ -168,6 +178,7 @@ export default function TeamRolesScreen() {
   }
 
   function selectAllPermissions() {
+    if (!canManageTeam) return;
     setForm((p) => {
       const next = { ...p.permissions };
       ALL_PERMISSIONS.forEach((perm) => {
@@ -178,10 +189,15 @@ export default function TeamRolesScreen() {
   }
 
   function clearAllPermissions() {
+    if (!canManageTeam) return;
     setForm((p) => ({ ...p, permissions: {} }));
   }
 
   async function handleSave() {
+    if (!canManageTeam) {
+      Alert.alert("Permission", "You do not have permission to manage team roles.");
+      return;
+    }
     if (!form.name.trim()) {
       Alert.alert("Required", "Role name is required");
       return;
@@ -213,6 +229,7 @@ export default function TeamRolesScreen() {
   }
 
   function handleDelete(role: Role) {
+    if (!canManageTeam) return;
     if (role.member_count && role.member_count > 0) {
       Alert.alert(
         "Cannot Delete",
@@ -246,16 +263,23 @@ export default function TeamRolesScreen() {
       <ScreenHeader
         title="Team Roles"
         showBack
-        subtitle="Manage roles & permissions"
+        subtitle={canManageTeam ? "Manage roles & permissions" : "Role templates (read-only)"}
         rightAction={
-          <TouchableOpacity
-            style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
-            onPress={openCreate}
-          >
-            <Ionicons name="add" size={20} color="#fff" />
-          </TouchableOpacity>
+          canManageTeam ? (
+            <TouchableOpacity
+              style={twStyle("h-10 w-10 items-center justify-center rounded-full bg-gray-900")}
+              onPress={openCreate}
+            >
+              <Ionicons name="add" size={20} color="#fff" />
+            </TouchableOpacity>
+          ) : undefined
         }
       />
+      {!canManageTeam ? (
+        <Text style={twStyle("mb-3 px-1 text-xs text-gray-500")}>
+          Only owners or users with Manage team can create, edit, duplicate, or delete roles.
+        </Text>
+      ) : null}
 
       {roles && roles.length > 0 && (
         <View style={twStyle("mb-3 flex-row")}>
@@ -329,7 +353,9 @@ export default function TeamRolesScreen() {
               <TouchableOpacity
                 style={twStyle("rounded-xl border border-gray-100 bg-white p-4")}
                 onPress={() => openEdit(role)}
-                onLongPress={() =>
+                disabled={!canManageTeam}
+                onLongPress={() => {
+                  if (!canManageTeam) return;
                   Alert.alert(role.name, undefined, [
                     { text: "Cancel", style: "cancel" },
                     { text: "Edit", onPress: () => openEdit(role) },
@@ -342,8 +368,8 @@ export default function TeamRolesScreen() {
                       style: "destructive",
                       onPress: () => handleDelete(role),
                     },
-                  ])
-                }
+                  ]);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={twStyle("flex-row items-start justify-between")}>
@@ -369,11 +395,11 @@ export default function TeamRolesScreen() {
                       )}
                     </View>
                   </View>
-                  <TouchableOpacity onPress={() => handleDelete(role)}>
+                  <TouchableOpacity onPress={() => handleDelete(role)} disabled={!canManageTeam}>
                     <Ionicons
                       name="trash-outline"
                       size={16}
-                      color="#ef4444"
+                      color={canManageTeam ? "#ef4444" : "#d1d5db"}
                     />
                   </TouchableOpacity>
                 </View>

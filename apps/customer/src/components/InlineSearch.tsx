@@ -13,7 +13,6 @@ import {
   Keyboard,
   Modal,
   Pressable,
-  useWindowDimensions,
 } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -32,6 +31,8 @@ interface Suggestion {
 
 interface InlineSearchProps {
   onSearch?: (query: string) => void;
+  /** Home category filter — carried into search so results stay in context */
+  contextCategorySlug?: string;
 }
 
 const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -40,20 +41,17 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
   category: "grid-outline",
 };
 
-export function InlineSearch({ onSearch }: InlineSearchProps) {
+export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProps) {
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Re-render on dimension change (e.g. rotation); width not needed for current layout
-  useWindowDimensions();
 
   const expand = useCallback(() => {
     haptic.light();
     setExpanded(true);
-    setTimeout(() => inputRef.current?.focus(), 200);
   }, []);
 
   const collapse = useCallback(() => {
@@ -87,32 +85,55 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
     (text: string) => {
       setQuery(text);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => fetchSuggestions(text), 350);
+      const delay = text.length >= 2 ? 180 : 350;
+      debounceRef.current = setTimeout(() => fetchSuggestions(text), delay);
     },
     [fetchSuggestions],
   );
 
   const handleSubmit = useCallback(() => {
-    if (!query.trim()) return;
+    const q = query.trim();
+    if (!q && !contextCategorySlug) return;
     haptic.medium();
     collapse();
-    router.push({ pathname: "/(app)/(tabs)/search", params: { q: query.trim() } });
-    onSearch?.(query.trim());
-  }, [query, collapse, onSearch]);
+    router.push({
+      pathname: "/(app)/(tabs)/search",
+      params: {
+        ...(q ? { q } : {}),
+        ...(contextCategorySlug ? { category: contextCategorySlug } : {}),
+      },
+    });
+    if (q) onSearch?.(q);
+  }, [query, collapse, onSearch, contextCategorySlug]);
 
   const handleSuggestionTap = useCallback(
     (s: Suggestion) => {
       haptic.light();
       collapse();
       if (s.type === "provider") {
-        router.push({ pathname: "/(app)/(tabs)/search", params: { q: s.name } });
+        router.push({
+          pathname: "/(app)/(tabs)/search",
+          params: {
+            q: s.name,
+            ...(contextCategorySlug ? { category: contextCategorySlug } : {}),
+          },
+        });
       } else if (s.type === "category") {
-        router.push({ pathname: "/(app)/(tabs)/search", params: { category: s.slug ?? s.name?.toLowerCase() ?? "" } });
+        router.push({
+          pathname: "/(app)/(tabs)/search",
+          params: { category: s.slug ?? s.name?.toLowerCase() ?? "" },
+        });
       } else {
-        router.push({ pathname: "/(app)/(tabs)/search", params: { q: s.name } });
+        router.push({
+          pathname: "/(app)/(tabs)/search",
+          params: {
+            q: s.name,
+            ...(contextCategorySlug ? { category: contextCategorySlug } : {}),
+          },
+        });
       }
     },
-    [collapse],
+    [collapse, contextCategorySlug],
   );
 
   useEffect(() => {
@@ -120,6 +141,13 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
+
+  /** Single focus when expanded — avoids autoFocus + state updates fighting on Android (focus loss after first character). */
+  useEffect(() => {
+    if (!expanded) return;
+    const t = setTimeout(() => inputRef.current?.focus(), 120);
+    return () => clearTimeout(t);
+  }, [expanded]);
 
   return (
     <>
@@ -178,7 +206,7 @@ export function InlineSearch({ onSearch }: InlineSearchProps) {
                 onChangeText={handleTextChange}
                 onSubmitEditing={handleSubmit}
                 returnKeyType="search"
-                autoFocus
+                blurOnSubmit={false}
               />
               {loading ? (
                 <ActivityIndicator size="small" color={Colors.primary} style={{ marginLeft: 8 }} />

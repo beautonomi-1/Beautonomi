@@ -71,6 +71,7 @@ function CalendarGridComponent({
   businessTimezone,
 }: CalendarGridProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const headerStaffScrollRef = useRef<HTMLDivElement>(null);
   const currentTimeRef = useRef<HTMLDivElement>(null);
 
   const { preferences } = useCalendarPreferences();
@@ -137,7 +138,9 @@ function CalendarGridComponent({
   const getBlocksForStaff = useCallback(
     (staffId: string, date: Date): CalendarBlock[] => {
       const dateStr = format(date, "yyyy-MM-dd");
-      const tb = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const tbStaff = timeBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
+      const tbAll = timeBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
+      const tb = [...tbStaff, ...tbAll];
       const sa = availabilityBlocksByStaffAndDate.get(`${staffId}-${dateStr}`) || [];
       const aa = availabilityBlocksByStaffAndDate.get(`__all__-${dateStr}`) || [];
       return [
@@ -279,6 +282,31 @@ function CalendarGridComponent({
     tz,
   ]);
 
+  /** Keep staff header strip aligned with the day grid when columns overflow horizontally. */
+  useEffect(() => {
+    if (!isMultiStaffView) return;
+    const body = scrollContainerRef.current;
+    const head = headerStaffScrollRef.current;
+    if (!body || !head) return;
+
+    const syncHead = () => {
+      if (head.scrollLeft === body.scrollLeft) return;
+      head.scrollLeft = body.scrollLeft;
+    };
+    const syncBody = () => {
+      if (body.scrollLeft === head.scrollLeft) return;
+      body.scrollLeft = head.scrollLeft;
+    };
+
+    body.addEventListener("scroll", syncHead, { passive: true });
+    head.addEventListener("scroll", syncBody, { passive: true });
+    syncHead();
+    return () => {
+      body.removeEventListener("scroll", syncHead);
+      head.removeEventListener("scroll", syncBody);
+    };
+  }, [isMultiStaffView, displayMembers.length, selectedDate.getTime(), view]);
+
   // Preferences-derived values
   const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
   const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
@@ -315,46 +343,55 @@ function CalendarGridComponent({
   return (
     <div className="flex flex-1 h-full min-h-0 w-full max-w-full bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden box-border">
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header Row */}
-        <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white flex-shrink-0">
+        {/* Header Row — multi-staff: horizontal scroll synced with grid body */}
+        <div className="flex border-b border-gray-200 bg-gradient-to-b from-gray-50 to-white flex-shrink-0 min-w-0">
           <div className="flex-shrink-0 border-r border-gray-200" style={{ width: `${TIME_COLUMN_WIDTH}px` }} />
 
-          {isMultiStaffView
-            ? displayMembers.map((member, idx) => (
-                <StaffHeader
-                  key={member.id}
-                  member={member}
-                  index={idx}
-                  bookingCount={staffBookingCounts.get(member.id) ?? 0}
-                  hasContent={staffHasContent.get(member.id) ?? false}
-                  onViewWeekSchedule={onViewWeekSchedule}
-                  onPrintDaySchedule={onPrintDaySchedule}
-                  onEditWorkHours={onEditWorkHours}
-                  onSetDayOff={onSetDayOff}
-                />
-              ))
-            : dates.map((date, idx) => (
-                <div
-                  key={idx}
-                  className={cn(
-                    "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 py-3 text-center",
-                    isTodayInTz(date, tz) && "bg-primary/5",
-                  )}
-                >
-                  <p className="text-xs text-gray-500 uppercase font-medium tracking-wide">{format(date, "EEE")}</p>
-                  <p className={cn("text-xl font-bold mt-0.5", isTodayInTz(date, tz) ? "text-primary" : "text-gray-900")}>
-                    {format(date, "d")}
-                  </p>
-                </div>
-              ))}
+          {isMultiStaffView ? (
+            <div
+              ref={headerStaffScrollRef}
+              className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden"
+            >
+              <div className="flex min-w-max">
+                {displayMembers.map((member, idx) => (
+                  <StaffHeader
+                    key={member.id}
+                    member={member}
+                    index={idx}
+                    bookingCount={staffBookingCounts.get(member.id) ?? 0}
+                    hasContent={staffHasContent.get(member.id) ?? false}
+                    onViewWeekSchedule={onViewWeekSchedule}
+                    onPrintDaySchedule={onPrintDaySchedule}
+                    onEditWorkHours={onEditWorkHours}
+                    onSetDayOff={onSetDayOff}
+                  />
+                ))}
+              </div>
+            </div>
+          ) : (
+            dates.map((date, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  "flex-1 min-w-[90px] max-w-[200px] border-r border-gray-200 last:border-r-0 py-3 text-center",
+                  isTodayInTz(date, tz) && "bg-primary/5",
+                )}
+              >
+                <p className="text-xs text-gray-500 uppercase font-medium tracking-wide">{format(date, "EEE")}</p>
+                <p className={cn("text-xl font-bold mt-0.5", isTodayInTz(date, tz) ? "text-primary" : "text-gray-900")}>
+                  {format(date, "d")}
+                </p>
+              </div>
+            ))
+          )}
         </div>
 
         {/* Scrollable Time Grid */}
-        <div ref={scrollContainerRef} className="flex-1 overflow-auto relative">
-          <div className="flex min-h-full">
+        <div ref={scrollContainerRef} className="flex-1 overflow-auto relative min-w-0">
+          <div className="flex min-h-full min-w-max">
             <TimeColumn timeSlots={timeSlots} />
 
-            <div className="flex-1 flex relative isolate">
+            <div className="flex flex-row min-w-max relative isolate">
               <DragGhostOverlay hourHeight={HOUR_HEIGHT} startHour={startHour} />
 
               {isMultiStaffView
@@ -424,14 +461,26 @@ function CalendarGridComponent({
   );
 }
 
+function blockOverlaySig(blocks: AvailabilityBlockDisplay[] | undefined): string {
+  return (blocks ?? [])
+    .map((b) => `${b.id}-${b.date}-${b.start_time}-${b.team_member_id ?? ""}`)
+    .join("|");
+}
+
 export const CalendarGrid = memo(CalendarGridComponent, (prev, next) => {
   if (prev.appointments.length !== next.appointments.length) return false;
   if (prev.teamMembers.length !== next.teamMembers.length) return false;
   if (prev.timeBlocks?.length !== next.timeBlocks?.length) return false;
+  if (prev.availabilityBlocks?.length !== next.availabilityBlocks?.length) return false;
+  if (blockOverlaySig(prev.availabilityBlocks) !== blockOverlaySig(next.availabilityBlocks)) return false;
   if (prev.selectedDate.getTime() !== next.selectedDate.getTime()) return false;
   if (prev.view !== next.view) return false;
   if (prev.startHour !== next.startHour) return false;
   if (prev.endHour !== next.endHour) return false;
+
+  const prevTb = (prev.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
+  const nextTb = (next.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
+  if (prevTb !== nextTb) return false;
 
   const prevIds = prev.appointments.map((a) => `${a.id}-${a.scheduled_date}-${a.scheduled_time}-${a.status}`).join(",");
   const nextIds = next.appointments.map((a) => `${a.id}-${a.scheduled_date}-${a.scheduled_time}-${a.status}`).join(",");

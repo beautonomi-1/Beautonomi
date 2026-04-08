@@ -1,19 +1,20 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
+import { requireRoleInApi, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ALL_ADMIN_ROLES } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchAllProviderIdsForTenant } from "@/lib/tenant/admin-tenant-scope";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
 
 /**
  * GET /api/admin/nav-counts
- * Returns pending/open counts for admin sidebar badges (superadmin only).
- * Keys match admin nav hrefs so the shell can show counts per menu item.
+ * Returns pending/open counts for admin sidebar badges.
+ * Keys match admin nav `href`s so the shell can show counts per menu item.
+ * Uses any-admin auth (not a single section) so finance/trust/support roles still get badges.
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    await requireRoleInApi(ALL_ADMIN_ROLES, request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const tenantProviderIds = await fetchAllProviderIdsForTenant(supabase, tenantId);
@@ -29,6 +30,8 @@ export async function GET(request: NextRequest) {
       userReportsResult,
       productOrdersPendingResult,
       productReturnsResult,
+      providerSubsPastDueResult,
+      webhookFailures24hResult,
     ] = await Promise.all([
       supabase
         .from("user_verifications")
@@ -96,6 +99,33 @@ export async function GET(request: NextRequest) {
             .in("status", ["pending", "escalated"])
             .in("provider_id", tenantProviderIds)
         : Promise.resolve({ count: 0 }),
+      (async () => {
+        try {
+          const { count, error } = await supabase
+            .from("provider_subscriptions")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "past_due")
+            .eq("tenant_id", tenantId);
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
+      (async () => {
+        try {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+          const { count, error } = await supabase
+            .from("webhook_events")
+            .select("id", { count: "exact", head: true })
+            .eq("status", "failed")
+            .gte("created_at", since);
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
     ]);
 
     const counts: Record<string, number> = {
@@ -109,6 +139,8 @@ export async function GET(request: NextRequest) {
       "/admin/user-reports": userReportsResult.count ?? 0,
       "/admin/ecommerce/orders": productOrdersPendingResult.count ?? 0,
       "/admin/ecommerce/returns": productReturnsResult.count ?? 0,
+      "/admin/provider-subscriptions": providerSubsPastDueResult.count ?? 0,
+      "/admin/webhooks": webhookFailures24hResult.count ?? 0,
     };
 
     return successResponse(counts);

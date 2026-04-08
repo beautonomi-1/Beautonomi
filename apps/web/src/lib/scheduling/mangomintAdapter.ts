@@ -8,7 +8,7 @@
  * @module lib/scheduling/mangomintAdapter
  */
 
-import type { Appointment, TimeBlock } from "@/lib/provider-portal/types";
+import type { Appointment, AvailabilityBlockDisplay, TimeBlock } from "@/lib/provider-portal/types";
 import { addMinutes, parseISO } from "date-fns";
 import { APPOINTMENT_STATUS } from "@/lib/provider-portal/constants";
 
@@ -485,6 +485,40 @@ export function toMangomintBlock(timeBlock: TimeBlock): MangomintBlock {
 }
 
 /**
+ * Map availability / staff-unavailability calendar overlays to Mangomint blocks for {@link canPlace}.
+ * `staffId` empty means applies to all staff (same as provider-wide time blocks).
+ */
+export function availabilityDisplayToMangomintBlock(block: AvailabilityBlockDisplay): MangomintBlock {
+  const st = block.start_time.slice(0, 5);
+  const et = block.end_time.slice(0, 5);
+  const [startH, startM] = st.split(":").map(Number);
+  const [endH, endM] = et.split(":").map(Number);
+  const durationMinutes = endH * 60 + endM - (startH * 60 + startM);
+  const synthetic: TimeBlock = {
+    id: block.id,
+    name: (block.reason && block.reason.trim()) || block.block_type,
+    date: block.date,
+    start_time: st,
+    end_time: et,
+    team_member_id: block.team_member_id ?? undefined,
+    is_recurring: false,
+    is_active: true,
+    created_date: "",
+  };
+  return {
+    id: `avail-${block.id}`,
+    kind: BlockKind.TIME_BLOCK,
+    staffId: block.team_member_id || "",
+    startTime: st,
+    endTime: et,
+    durationMinutes,
+    name: synthetic.name,
+    description: block.block_type,
+    _original: synthetic,
+  };
+}
+
+/**
  * Generate virtual travel blocks for at-home appointments
  * These are computed blocks that don't exist in the database but 
  * should be visualized and considered for conflict checking
@@ -643,10 +677,12 @@ export function canPlace(
     }
   }
   
-  // Check against time blocks
+  // Check against time blocks / availability overlays (empty staffId = all staff)
   for (const block of timeBlocks) {
-    if (block.staffId !== targetSlot.staffId) continue;
-    
+    const appliesToStaff =
+      !block.staffId || block.staffId === targetSlot.staffId;
+    if (!appliesToStaff) continue;
+
     if (overlaps(targetSlot.time, targetEndTime, block.startTime, block.endTime)) {
       conflicts.push(`block:${block.id}`);
     }

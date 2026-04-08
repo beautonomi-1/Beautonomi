@@ -37,11 +37,19 @@ function CalendarDesktopViewComponent(props: CalendarDesktopViewProps) {
   return <CalendarGrid {...props} />;
 }
 
+function overlaySignature(blocks: AvailabilityBlockDisplay[] | undefined): string {
+  return (blocks ?? [])
+    .map((b) => `${b.id}-${b.date}-${b.start_time}-${b.end_time}-${b.team_member_id ?? ""}`)
+    .join("|");
+}
+
 export const CalendarDesktopView = memo(CalendarDesktopViewComponent, (prev, next) => {
   if (
     prev.appointments.length !== next.appointments.length ||
     prev.teamMembers.length !== next.teamMembers.length ||
     prev.timeBlocks?.length !== next.timeBlocks?.length ||
+    prev.availabilityBlocks?.length !== next.availabilityBlocks?.length ||
+    overlaySignature(prev.availabilityBlocks) !== overlaySignature(next.availabilityBlocks) ||
     prev.selectedDate.getTime() !== next.selectedDate.getTime() ||
     prev.view !== next.view ||
     prev.startHour !== next.startHour ||
@@ -49,6 +57,9 @@ export const CalendarDesktopView = memo(CalendarDesktopViewComponent, (prev, nex
   ) {
     return false;
   }
+  const prevTb = (prev.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}`).join(",");
+  const nextTb = (next.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}`).join(",");
+  if (prevTb !== nextTb) return false;
   const prevIds = prev.appointments.map(a => `${a.id}-${a.scheduled_date}-${a.scheduled_time}`).join(",");
   const nextIds = next.appointments.map(a => `${a.id}-${a.scheduled_date}-${a.scheduled_time}`).join(",");
   return prevIds === nextIds;

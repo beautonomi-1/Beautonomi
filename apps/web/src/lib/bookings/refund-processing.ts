@@ -104,6 +104,8 @@ export function describeCancellationRefund(
 
 export interface ProcessBookingRefundOptions {
   isLateCancellation: boolean;
+  /** When set, wallet credit will not exceed this (e.g. amount actually paid on the booking). */
+  maxWalletCredit?: number;
 }
 
 /**
@@ -121,11 +123,16 @@ export async function processBookingRefund(
   const supabaseAdmin = getSupabaseAdmin();
 
   try {
-    const refundAmount = computeCancellationRefundAmount(
+    let refundAmount = computeCancellationRefundAmount(
       bookingTotal,
       policy,
       options.isLateCancellation
     );
+
+    if (options.maxWalletCredit !== undefined) {
+      const cap = Math.max(0, Number(options.maxWalletCredit) || 0);
+      refundAmount = roundCurrency2(Math.min(refundAmount, cap));
+    }
 
     if (refundAmount <= 0) {
       return { success: true, amount: 0 };

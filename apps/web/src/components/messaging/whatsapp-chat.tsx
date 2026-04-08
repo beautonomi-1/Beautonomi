@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { format, isToday, isYesterday } from "date-fns";
 import CustomOfferModal from "./custom-offer-modal";
 import Image from "next/image";
+import { cn } from "@/lib/utils";
 
 interface Attachment {
   url: string;
@@ -39,6 +40,8 @@ interface Attachment {
   offer_id?: string;
   preferred_start_at?: string | null;
   withdrawn?: boolean;
+  /** Set when file URLs are past retention or removed server-side */
+  expired?: boolean;
 }
 
 interface Message {
@@ -671,9 +674,9 @@ export default function WhatsAppChat({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-100 overflow-hidden relative">
-      {/* Header - Beautonomi brand */}
-      <div className="bg-primary text-white px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 shadow-md sticky top-0 z-20 flex-shrink-0">
+    <div className="flex flex-col h-full min-h-0 bg-gray-100 overflow-hidden relative">
+      {/* Header - Beautonomi brand (column header; scroll is messages only) */}
+      <div className="bg-primary text-white px-3 md:px-4 py-3 flex items-center gap-2 md:gap-3 shadow-md z-20 flex-shrink-0">
         {onBack && (
           <button
             onClick={onBack}
@@ -830,13 +833,10 @@ export default function WhatsAppChat({
       {/* Messages Area - Scrollable container */}
       <div
         ref={messagesContainerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden p-3 md:p-4 space-y-2 bg-[#efeae2] bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cg%20fill%3D%22%23ddded6%22%20fill-opacity%3D%220.4%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] messages-container min-h-0 md:pb-4"
-        style={{ 
-          scrollBehavior: 'smooth',
-          WebkitOverflowScrolling: 'touch', // Smooth scrolling on iOS
-          paddingBottom: selectedFiles.length > 0 
-            ? 'calc(140px + 4rem + env(safe-area-inset-bottom, 0px))' // Input + previews + bottom nav (~64px/4rem)
-            : 'calc(80px + 4rem + env(safe-area-inset-bottom, 0px))', // Input + bottom nav on mobile
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-y-contain p-3 md:p-4 pb-2 md:pb-4 space-y-2 bg-[#efeae2] bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22%20viewBox%3D%220%200%2060%2060%22%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%3E%3Cg%20fill%3D%22none%22%20fill-rule%3D%22evenodd%22%3E%3Cg%20fill%3D%22%23ddded6%22%20fill-opacity%3D%220.4%22%3E%3Cpath%20d%3D%22M36%2034v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6%2034v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6%204V0H4v4H0v2h4v4h2V6h4V4H6z%22/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] messages-container"
+        style={{
+          scrollBehavior: "smooth",
+          WebkitOverflowScrolling: "touch",
         }}
       >
         {isLoading ? (
@@ -1041,7 +1041,12 @@ export default function WhatsAppChat({
                             .filter(a => a.type !== "custom_offer" && a.type !== "custom_request")
                             .map((attachment, idx) => (
                             <div key={idx} className="rounded-lg overflow-hidden">
-                              {isImage(attachment.type) ? (
+                              {attachment.expired || !attachment.url ? (
+                                <div className="flex items-center gap-2 p-3 bg-gray-100/80 rounded-lg border border-dashed border-gray-300 text-sm text-[#667781]">
+                                  <File className="w-5 h-5 shrink-0 opacity-60" />
+                                  <span>{attachment.name || "Attachment"} is no longer available (retention policy).</span>
+                                </div>
+                              ) : isImage(attachment.type) ? (
                                 <div className="relative max-w-full">
                                   <Image
                                     src={attachment.url}
@@ -1109,7 +1114,7 @@ export default function WhatsAppChat({
                             : "Delivered"
                         }
                       >
-                        {message.read_at ? "✓✓" : "✓✓"}
+                        {message.read_at ? "✓✓" : "✓"}
                       </span>
                     )}
                   </div>
@@ -1123,13 +1128,7 @@ export default function WhatsAppChat({
 
       {/* File Previews */}
       {selectedFiles.length > 0 && (
-        <div 
-          className="bg-white px-3 md:px-4 py-2 border-t border-gray-200 flex-shrink-0 fixed md:relative left-0 right-0"
-          style={{
-            zIndex: 55, // Above bottom nav (z-50) but below input (z-60)
-            bottom: 'calc(4rem + 5rem + env(safe-area-inset-bottom, 0px))', // Above input bar (~80px/5rem) + bottom nav (~64px/4rem)
-          }}
-        >
+        <div className="bg-white px-3 md:px-4 py-2 border-t border-gray-200 flex-shrink-0 relative z-10">
           <div className="flex items-start gap-2 overflow-x-auto pb-2">
             {selectedFiles.map((file, index) => (
               <div key={index} className="relative flex-shrink-0">
@@ -1173,13 +1172,12 @@ export default function WhatsAppChat({
         </div>
       )}
 
-      {/* Input Area - WhatsApp style - Sticky at bottom - Above bottom nav (z-50) */}
-      <div 
-        className="bg-white px-3 md:px-4 py-2 md:py-3 border-t border-gray-200 flex-shrink-0 md:sticky md:bottom-0 fixed left-0 right-0"
-        style={{
-          zIndex: 60, // Above bottom nav (z-50)
-          bottom: 'calc(4rem + env(safe-area-inset-bottom, 0px))', // ~64px (4rem) for bottom nav height on mobile
-        }}
+      {/* Input area: in-flow footer; provider shell adds bottom padding for mobile nav */}
+      <div
+        className={cn(
+          "bg-white px-3 md:px-4 py-2 md:py-3 border-t border-gray-200 flex-shrink-0 relative z-10",
+          "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] md:pb-2"
+        )}
       >
         <div className="flex items-end gap-2">
           {/* Hidden file input */}

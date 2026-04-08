@@ -42,9 +42,9 @@
 
 ---
 
-## Web Middleware Auth
+## Web proxy auth (Next.js 16)
 
-**File:** `apps/web/src/middleware.ts`
+**File:** `apps/web/src/proxy.ts` (`export async function proxy` — not `middleware.ts`)
 
 | Route Pattern | Protection |
 |---------------|------------|
@@ -54,7 +54,7 @@
 | `/admin/*` | `superadmin` only |
 | `/api/*` | Skipped (self-authenticating) |
 
-**Issue:** The middleware file contains **duplicate code blocks** for route-skip checks (lines ~106-119 and ~124-138). This is a maintenance risk.
+**Note:** Keep route-skip and role checks **centralized** in `proxy.ts` so behavior does not diverge across copies.
 
 ---
 
@@ -171,7 +171,7 @@ Common permission keys found in route guards:
 | 4 | 🟠 **HIGH** | Cron routes use only shared secret (no IP allowlist) | `apps/web/src/app/api/cron/*/route.ts` |
 | 5 | 🟡 **MEDIUM** | `/api/availability` exposes scheduling data publicly | `apps/web/src/app/api/availability/route.ts` |
 | 6 | 🟡 **MEDIUM** | Admin impersonation lacks audit trail completeness | `apps/web/src/app/api/admin/users/[id]/impersonate/route.ts` |
-| 7 | 🟡 **MEDIUM** | Middleware duplicate code blocks | `apps/web/src/middleware.ts` |
+| 7 | 🟡 **MEDIUM** | Duplicate route-skip / auth branches in proxy | `apps/web/src/proxy.ts` |
 | 8 | 🔵 **LOW** | Placeholder Supabase URL fallback | `apps/web/src/lib/supabase/server.ts` |
 | 9 | 🔵 **LOW** | Provider mobile app lacks OAuth | `apps/provider/src/providers/AuthProvider.tsx` |
 | 10 | 🔵 **LOW** | `/api/explore/debug` has no auth | `apps/web/src/app/api/explore/debug/route.ts` |
@@ -184,7 +184,7 @@ Common permission keys found in route guards:
 - [x] **CRITICAL:** Add auth to notification send endpoints — Done: `requireRoleInApi(['superadmin', 'provider_owner'])` added
 - [x] **HIGH:** Audit and add RLS to `finance_transactions`, `payment_transactions`, `webhook_events` — Done: Migration 230
 - [x] **HIGH:** Add IP allowlisting for cron routes (Vercel cron IPs) — Done: `verifyCronRequest()` helper with Vercel ID verification, all 5 cron routes updated
-- [x] **MEDIUM:** Fix duplicate middleware code blocks — Done: removed duplicate route-skip blocks
+- [x] **MEDIUM:** Fix duplicate boundary logic — Done: consolidated in `proxy.ts` (no `middleware.ts`)
 - [x] **MEDIUM:** Add complete audit logging for admin impersonation — Done: reason required, rate limiting (5/hour), IP/user-agent logged, end-session audit entry
 - [x] **MEDIUM:** Replace Supabase placeholder URL with loud error — Done: `FATAL` error thrown in `server.ts` if URL/key missing or placeholder
 - [x] **LOW:** Consider adding OAuth to provider mobile app — Done: Google + Apple OAuth added matching customer app patterns

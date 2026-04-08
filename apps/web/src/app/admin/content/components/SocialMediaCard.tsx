@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { Edit, Trash2, Facebook, Twitter, Linkedin, Instagram, Youtube, ArrowRight } from "lucide-react";
+import { Edit, Trash2, Facebook, Linkedin, Instagram, Youtube, ArrowRight } from "lucide-react";
+import { FaXTwitter } from "react-icons/fa6";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -21,7 +22,8 @@ interface SocialMediaCardProps {
 
 const iconMap: Record<string, React.ReactNode> = {
   facebook: <Facebook className="w-5 h-5" />,
-  twitter: <Twitter className="w-5 h-5" />,
+  twitter: <FaXTwitter className="w-5 h-5" aria-hidden />,
+  x: <FaXTwitter className="w-5 h-5" aria-hidden />,
   linkedin: <Linkedin className="w-5 h-5" />,
   instagram: <Instagram className="w-5 h-5" />,
   youtube: <Youtube className="w-5 h-5" />,

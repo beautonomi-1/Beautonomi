@@ -341,6 +341,35 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        const locationIdForCalendar =
+          location_type === "at_salon" ? location_id ?? null : null;
+        {
+          const { isProviderCalendarWindowBlocked } = await import(
+            "@/lib/public-booking/provider-calendar-block-overlap"
+          );
+          for (const line of bookingServicesSnapshot) {
+            const segStart = new Date(line.scheduled_start_at);
+            const segEnd = new Date(line.scheduled_end_at);
+            const buf = offeringBufferMinutesById.get(line.offering_id) ?? 15;
+            const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
+            const cal = await isProviderCalendarWindowBlocked(supabase, {
+              providerId: provider_id,
+              locationId: locationIdForCalendar,
+              staffId: line.staff_id ?? null,
+              startAt: segStart,
+              endAt: effectiveEnd,
+            });
+            if (cal.blocked) {
+              return handleApiError(
+                new Error("This time slot is no longer available. Please select another time."),
+                "This time slot is no longer available. Please select another time.",
+                "CONFLICT",
+                409
+              );
+            }
+          }
+        }
+
         // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff
         const distinctSnapshotStaffIds = [
           ...new Set(

@@ -614,19 +614,37 @@ export async function sendTemplateNotification(
         )
       : channels;
 
+  let channelsToSend: NotificationChannel[] = [...activeChannels];
+  if (options?.appType === "customer" && userIds.length > 0) {
+    const { intersectChannelsForCustomerRecipients } = await import(
+      "@/lib/notifications/customer-notification-channels"
+    );
+    const nonPref = channelsToSend.filter((c) => c !== "email" && c !== "sms" && c !== "push");
+    const triad = channelsToSend.filter((c): c is "email" | "sms" | "push" =>
+      c === "email" || c === "sms" || c === "push"
+    );
+    const allowed = await intersectChannelsForCustomerRecipients(
+      getSupabaseAdmin(),
+      userIds,
+      templateKey,
+      triad
+    );
+    channelsToSend = [...nonPref, ...allowed];
+  }
+
   const notificationPayload: any = {
     include_external_user_ids: userIds,
-    channels: activeChannels,
+    channels: channelsToSend,
     headings: { en: title },
     contents: { en: body },
     data: { template_key: templateKey, ...variables },
   };
 
-  if (activeChannels.includes("email")) {
+  if (channelsToSend.includes("email")) {
     notificationPayload.email_subject = emailSubject;
     notificationPayload.email_body = emailBody;
   }
-  if (activeChannels.includes("sms")) {
+  if (channelsToSend.includes("sms")) {
     notificationPayload.sms_body = smsBody;
   }
   if (templateUrl) notificationPayload.url = templateUrl;
@@ -704,9 +722,13 @@ export async function sendTemplateNotification(
     }
     const { data: devices } = await query;
     const playerIds = devices?.map((d: any) => d.onesignal_player_id) || [];
-    if (playerIds.length > 0 && activeChannels.includes("push")) {
+    if (playerIds.length > 0 && channelsToSend.includes("push")) {
       notificationPayload.include_player_ids = playerIds;
     }
+  }
+
+  if (channelsToSend.length === 0) {
+    return { success: true, message: "No external channels enabled for recipients (preferences)" };
   }
 
   return await sendOneSignalNotification(notificationPayload, options);

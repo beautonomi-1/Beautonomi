@@ -40,7 +40,7 @@ Enterprise-grade platform service zone management for Beautonomi Superadmin: hie
 
 ## API contracts
 
-All under `/api/admin/service-zones/*` (superadmin only). Response shape: `{ data, error }`.
+All under `/api/admin/service-zones/*` require **`requireAdminSection(ADMIN_SECTION_OPERATIONS)`** (superadmin and `admin_operations` by default; tenant assignment rules apply per `api-helpers`). Response shape: `{ data, error }`.
 
 | Method | Path | Purpose |
 |--------|------|---------|

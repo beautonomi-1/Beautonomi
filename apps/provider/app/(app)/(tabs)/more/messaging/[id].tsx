@@ -27,6 +27,9 @@ import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { Image } from "expo-image";
+import * as ImagePicker from "expo-image-picker";
+import { api } from "@/lib/api-client";
 
 interface CustomOfferAttachment {
   type: "custom_offer";
@@ -38,13 +41,39 @@ interface CustomOfferAttachment {
   withdrawn?: boolean;
 }
 
+/** Files from /api/me/messages/upload or legacy URLs in JSON */
+interface FileLikeAttachment {
+  url?: string;
+  type?: string;
+  name?: string;
+  size?: number;
+  expired?: boolean;
+}
+
 interface Message {
   id: string;
   content: string;
   sender_type: "provider" | "customer";
   created_at: string;
   read_at: string | null;
-  attachments?: CustomOfferAttachment[];
+  attachments?: Array<CustomOfferAttachment | FileLikeAttachment | { type?: string }>;
+}
+
+function isImageMime(t?: string) {
+  return typeof t === "string" && t.startsWith("image/");
+}
+function isVideoMime(t?: string) {
+  return typeof t === "string" && t.startsWith("video/");
+}
+
+function fileLikeAttachments(attachments: Message["attachments"]): FileLikeAttachment[] {
+  if (!Array.isArray(attachments)) return [];
+  return attachments.filter((a): a is FileLikeAttachment => {
+    if (!a || typeof a !== "object") return false;
+    const t = (a as { type?: string }).type;
+    if (t === "custom_offer" || t === "custom_request") return false;
+    return true;
+  }) as FileLikeAttachment[];
 }
 
 interface ConversationDetail {
@@ -67,6 +96,7 @@ export default function ChatScreen() {
 
   const [message, setMessage] = useState("");
   const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const {
@@ -136,7 +166,7 @@ export default function ChatScreen() {
           if (m.sender_role !== "customer") return;
           setRealtimeMessages((prev) => {
             if (prev.some((p) => p.id === m.id)) return prev;
-            const att: CustomOfferAttachment[] = Array.isArray(m.attachments) ? m.attachments : [];
+            const att = Array.isArray(m.attachments) ? m.attachments : [];
             return [
               ...prev,
               {
@@ -145,7 +175,7 @@ export default function ChatScreen() {
                 sender_type: (m.sender_role === "customer" ? "customer" : "provider") as "provider" | "customer",
                 created_at: m.created_at,
                 read_at: m.read_at ?? null,
-                attachments: att,
+                attachments: att as Message["attachments"],
               },
             ];
           });
@@ -199,6 +229,53 @@ export default function ChatScreen() {
       setOptimisticMessage(null);
     }
   }, [message, conversationId, sending, sendMessage, refresh]);
+
+  const handleAttachImage = useCallback(async () => {
+    if (!conversationId || sending || uploading) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Allow photo library access to attach images.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.85,
+    });
+    if (result.canceled || !result.assets?.[0]) return;
+    const asset = result.assets[0];
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("conversation_id", conversationId);
+      formData.append(
+        "files",
+        {
+          uri: asset.uri,
+          name: asset.fileName || "photo.jpg",
+          type: asset.mimeType || "image/jpeg",
+        } as unknown as Blob
+      );
+      const res = await api.fetch<{ attachments?: FileLikeAttachment[] }>("/api/me/messages/upload", {
+        method: "POST",
+        body: formData,
+      });
+      if (res.error) {
+        Alert.alert("Upload failed", res.error.message || "Could not upload file");
+        return;
+      }
+      const payload = res.data as { attachments?: FileLikeAttachment[] } | null;
+      const atts = payload?.attachments ?? [];
+      if (!atts.length) {
+        Alert.alert("Upload failed", "No file was uploaded.");
+        return;
+      }
+      const { error } = await sendMessage({ content: "📎 Attachment", attachments: atts } as never);
+      if (error) Alert.alert("Error", error);
+      else await refresh();
+    } finally {
+      setUploading(false);
+    }
+  }, [conversationId, sending, uploading, sendMessage, refresh]);
 
   const handleWithdrawOffer = useCallback(
     async (offerId: string) => {
@@ -366,13 +443,77 @@ export default function ChatScreen() {
               }
               renderItem={({ item: msg }: { item: Message }) => {
                 const isMe = msg.sender_type === "provider";
-                const offer = msg.attachments?.find((a: { type?: string }) => a.type === "custom_offer");
+                const offer = msg.attachments?.find(
+                  (a): a is CustomOfferAttachment =>
+                    !!a && typeof a === "object" && (a as { type?: string }).type === "custom_offer"
+                );
                 const showOfferCard = !!offer;
+                const hasCustomRequest = msg.attachments?.some((a: { type?: string }) => a.type === "custom_request");
+                const files = fileLikeAttachments(msg.attachments);
+                const hasText = !!(msg.content && msg.content.trim());
+
+                const renderFileRow = (att: FileLikeAttachment, idx: number) => {
+                  const key = `${msg.id}-f-${idx}-${att.name || att.url || idx}`;
+                  if (att.expired || !att.url) {
+                    return (
+                      <View
+                        key={key}
+                        style={twStyle(
+                          `max-w-[85%] rounded-xl px-3 py-2.5 border border-dashed border-gray-300 ${isMe ? "bg-primary/5" : "bg-gray-50"}`
+                        )}
+                      >
+                        <Text style={twStyle(`text-sm ${isMe ? "text-primary" : "text-gray-600"}`)}>
+                          {(att.name || "Attachment") + " — no longer available (retention policy)."}
+                        </Text>
+                      </View>
+                    );
+                  }
+                  if (isImageMime(att.type)) {
+                    return (
+                      <TouchableOpacity key={key} activeOpacity={0.9} onPress={() => Linking.openURL(att.url!)}>
+                        <Image
+                          source={{ uri: att.url }}
+                          style={{ width: 220, height: 220, borderRadius: 12 }}
+                          contentFit="cover"
+                          cachePolicy="memory-disk"
+                        />
+                      </TouchableOpacity>
+                    );
+                  }
+                  if (isVideoMime(att.type)) {
+                    return (
+                      <TouchableOpacity
+                        key={key}
+                        onPress={() => Linking.openURL(att.url!)}
+                        style={twStyle(
+                          `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
+                        )}
+                      >
+                        <Ionicons name="videocam-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 10 }} />
+                        <Text style={twStyle("text-sm text-gray-800 flex-1")} numberOfLines={2}>
+                          {att.name || "Video — tap to open"}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  }
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      onPress={() => Linking.openURL(att.url!)}
+                      style={twStyle(
+                        `max-w-[85%] rounded-xl px-3 py-3 flex-row items-center border ${isMe ? "border-primary/30 bg-primary/5" : "border-gray-200 bg-white"}`
+                      )}
+                    >
+                      <Ionicons name="document-text-outline" size={22} color={isMe ? Colors.primary : "#6b7280"} style={{ marginRight: 10 }} />
+                      <Text style={twStyle("text-sm text-gray-800 flex-1")} numberOfLines={2}>
+                        {att.name || "Document — tap to open"}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                };
 
                 return (
-                  <View
-                    style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}
-                  >
+                  <View style={twStyle(`mb-3 ${isMe ? "items-end" : "items-start"}`)}>
                     {showOfferCard ? (
                       <View
                         style={twStyle(`max-w-[85%] rounded-2xl overflow-hidden ${
@@ -423,17 +564,43 @@ export default function ChatScreen() {
                         </View>
                       </View>
                     ) : null}
-                    {(!showOfferCard || !!msg.content) ? (
+
+                    {hasCustomRequest ? (
                       <View
-                        style={twStyle(`max-w-[80%] rounded-2xl px-4 py-2.5 ${showOfferCard ? "mt-1" : ""} ${
-                          isMe ? "rounded-br-sm bg-primary" : "rounded-bl-sm bg-gray-100"
-                        }`)}
+                        style={twStyle(
+                          `max-w-[85%] rounded-xl px-3 py-2 mb-1 border border-blue-100 ${isMe ? "bg-blue-50 self-end" : "bg-blue-50 self-start"}`
+                        )}
                       >
-                        <Text
-                          style={twStyle(`text-[15px] leading-5 ${isMe ? "text-white" : "text-gray-900"}`)}
-                        >
-                          {msg.content || " "}
-                        </Text>
+                        <Text style={twStyle("text-xs font-semibold text-blue-900")}>Custom request</Text>
+                        <Text style={twStyle("text-xs text-blue-800 mt-0.5")}>Open the web portal to view full details.</Text>
+                      </View>
+                    ) : null}
+
+                    {files.length > 0 ? (
+                      <View style={twStyle(`gap-2 ${showOfferCard || hasCustomRequest ? "mt-1" : ""}`)}>
+                        {files.map((att, idx) => renderFileRow(att, idx))}
+                        {files.length > 0 && !hasText ? (
+                          <View style={twStyle("flex-row items-center justify-end mt-0.5")}>
+                            <Text style={[twStyle("text-[11px] text-gray-400"), { marginRight: 4 }]}>{formatTime(msg.created_at)}</Text>
+                            {isMe ? (
+                              <Ionicons
+                                name={msg.read_at ? "checkmark-done" : "checkmark"}
+                                size={14}
+                                color="#6b7280"
+                              />
+                            ) : null}
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    {hasText ? (
+                      <View
+                        style={twStyle(`max-w-[80%] rounded-2xl px-4 py-2.5 ${
+                          showOfferCard || files.length > 0 || hasCustomRequest ? "mt-1" : ""
+                        } ${isMe ? "rounded-br-sm bg-primary" : "rounded-bl-sm bg-gray-100"}`)}
+                      >
+                        <Text style={twStyle(`text-[15px] leading-5 ${isMe ? "text-white" : "text-gray-900"}`)}>{msg.content.trim()}</Text>
                         <View style={twStyle("flex-row items-center justify-end mt-1")}>
                           <Text style={[twStyle(`text-[11px] ${isMe ? "text-white/80" : "text-gray-400"}`), { marginRight: 4 }]}>
                             {formatTime(msg.created_at)}
@@ -454,6 +621,18 @@ export default function ChatScreen() {
             />
 
             <View style={twStyle("border-t border-gray-100 px-3 py-2 flex-row items-end")}>
+              <TouchableOpacity
+                onPress={handleAttachImage}
+                disabled={sending || uploading}
+                style={twStyle("w-11 h-11 rounded-full bg-gray-100 items-center justify-center mr-2")}
+                accessibilityLabel="Attach photo"
+              >
+                {uploading ? (
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                ) : (
+                  <Ionicons name="image-outline" size={22} color={Colors.primary} />
+                )}
+              </TouchableOpacity>
               <TextInput
                 style={[twStyle("flex-1 border border-gray-200 rounded-2xl px-4 py-2.5 text-[15px] text-gray-900 max-h-24 bg-gray-50"), { marginRight: 8 }]}
                 placeholder="Message..."
@@ -462,11 +641,11 @@ export default function ChatScreen() {
                 onChangeText={setMessage}
                 multiline
                 maxLength={2000}
-                editable={!sending}
+                editable={!sending && !uploading}
               />
               <TouchableOpacity
                 onPress={handleSend}
-                disabled={!message.trim() || sending}
+                disabled={!message.trim() || sending || uploading}
                 style={{
                   width: 44,
                   height: 44,

@@ -48,14 +48,13 @@ export async function GET(request: NextRequest) {
         .eq("location_id", locationId);
       if (assignmentError) throw assignmentError;
       staffIdsAtLocation = assignments?.map((a) => a.staff_id) ?? [];
+      // No rows in provider_staff_locations for this salon: do not hide all blocks — show provider-wide + unassigned.
       if (staffIdsAtLocation.length === 0) {
-        return successResponse([]);
+        staffIdsAtLocation = null;
       }
     }
 
-    let query = supabase
-      .from("time_blocks")
-      .select(`
+    const selectColumns = `
         id,
         staff_id,
         blocked_time_type_id,
@@ -69,28 +68,63 @@ export async function GET(request: NextRequest) {
         notes,
         provider_staff:staff_id(id, name:users(full_name)),
         blocked_time_types:blocked_time_type_id(id, name, color)
-      `)
-      .eq("provider_id", providerId)
-      .order("date", { ascending: true });
+      `;
 
-    if (staffId) {
-      query = query.eq("staff_id", staffId);
-    } else if (staffIdsAtLocation && staffIdsAtLocation.length > 0) {
-      query = query.in("staff_id", staffIdsAtLocation);
-    }
+    const applyStaffScope = (q: any) => {
+      if (staffId) {
+        return q.eq("staff_id", staffId);
+      }
+      if (staffIdsAtLocation && staffIdsAtLocation.length > 0) {
+        return q.or(`staff_id.is.null,staff_id.in.(${staffIdsAtLocation.join(",")})`);
+      }
+      return q;
+    };
 
-    if (dateFrom) {
-      query = query.gte("date", dateFrom);
-    }
+    let timeBlocks: any[] = [];
 
-    if (dateTo) {
-      query = query.lte("date", dateTo);
-    }
+    if (dateFrom && dateTo) {
+      let qRange = supabase
+        .from("time_blocks")
+        .select(selectColumns)
+        .eq("provider_id", providerId);
+      qRange = applyStaffScope(qRange);
+      qRange = qRange.gte("date", dateFrom).lte("date", dateTo).order("date", { ascending: true });
 
-    const { data: timeBlocks, error } = await query;
+      let qRecurring = supabase
+        .from("time_blocks")
+        .select(selectColumns)
+        .eq("provider_id", providerId)
+        .eq("is_recurring", true)
+        .lte("date", dateTo);
+      qRecurring = applyStaffScope(qRecurring);
+      qRecurring = qRecurring.order("date", { ascending: true });
 
-    if (error) {
-      throw error;
+      const [resRange, resRecurring] = await Promise.all([qRange, qRecurring]);
+      if (resRange.error) throw resRange.error;
+      if (resRecurring.error) throw resRecurring.error;
+
+      const byId = new Map<string, any>();
+      for (const row of resRange.data || []) byId.set(row.id, row);
+      for (const row of resRecurring.data || []) byId.set(row.id, row);
+      timeBlocks = Array.from(byId.values()).sort((a, b) =>
+        String(a.date).localeCompare(String(b.date)),
+      );
+    } else {
+      let query = supabase
+        .from("time_blocks")
+        .select(selectColumns)
+        .eq("provider_id", providerId);
+      query = applyStaffScope(query);
+      if (dateFrom) {
+        query = query.gte("date", dateFrom);
+      }
+      if (dateTo) {
+        query = query.lte("date", dateTo);
+      }
+      query = query.order("date", { ascending: true });
+      const { data, error } = await query;
+      if (error) throw error;
+      timeBlocks = data || [];
     }
 
     // Transform response
@@ -103,8 +137,8 @@ export async function GET(request: NextRequest) {
       blocked_time_type_color: block.blocked_time_types?.color || null,
       name: block.name,
       date: block.date,
-      start_time: block.start_time.substring(0, 5),
-      end_time: block.end_time.substring(0, 5),
+      start_time: String(block.start_time ?? "00:00:00").substring(0, 5),
+      end_time: String(block.end_time ?? "00:00:00").substring(0, 5),
       is_recurring: block.is_recurring,
       recurring_pattern: block.recurring_pattern,
       is_active: block.is_active,

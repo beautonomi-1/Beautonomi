@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import type mapboxgl from "mapbox-gl";
+import type { GeoJSONSource, Map, MapMouseEvent, Popup } from "mapbox-gl";
 import { fetcher } from "@/lib/http/fetcher";
 import { Activity, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,24 @@ function fuzzCoord(c: number, meters: number): number {
   return Number((c + delta).toFixed(5));
 }
 
+function escapeHtml(s: string) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+}
+
+interface CustomerMarker {
+  user_id: string;
+  lat: number;
+  lng: number;
+  display_name: string;
+  email: string | null;
+  phone: string | null;
+  city: string | null;
+  country: string | null;
+  address_label: string | null;
+  source: "saved_address" | "booking_address";
+  last_seen_at: string | null;
+}
+
 interface MapState {
   providers: Array<{
     provider_id: string;
@@ -64,18 +82,22 @@ interface MapState {
     salon_name?: string;
     status: string;
   }>;
+  customer_markers?: CustomerMarker[];
   summary: {
     active_providers: number;
     active_at_home: number;
     at_salon: number;
     en_route: number;
     arrived: number;
+    customers_mapped?: number;
   };
 }
 
 export default function LiveMapTab() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const mapRef = useRef<Map | null>(null);
+  /** Set when mapbox-gl is dynamically loaded (needed for Popup, etc.). */
+  const mapboxModuleRef = useRef<typeof import("mapbox-gl").default | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [mapState, setMapState] = useState<MapState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,6 +118,7 @@ export default function LiveMapTab() {
   const [configForm, setConfigForm] = useState({ arrivalRadius: 100, retentionDays: 30 });
   const [mapboxAccessToken, setMapboxAccessToken] = useState<string | null | undefined>(undefined);
   const [mapboxStyleUrl, setMapboxStyleUrl] = useState<string | null>(null);
+  const customerPopupRef = useRef<Popup | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,7 +157,7 @@ export default function LiveMapTab() {
 
   const loadMapState = useCallback(async () => {
     try {
-      const res = await fetcher.get<{ data: MapState }>("/api/admin/gods-eye/map-state");
+      const res = await fetcher.get<{ data: MapState }>("/api/admin/gods-eye/map-state?customer_markers_max=2500");
       setMapState(res.data ?? null);
       setError(null);
     } catch (e) {
@@ -173,6 +196,7 @@ export default function LiveMapTab() {
       ]);
       const mb = mapboxModule.default;
       if (cancelled || !containerRef.current) return;
+      mapboxModuleRef.current = mb;
 
       const map = new mb.Map({
         container: containerRef.current,
@@ -190,6 +214,7 @@ export default function LiveMapTab() {
       cancelled = true;
       mapRef.current?.remove();
       mapRef.current = null;
+      mapboxModuleRef.current = null;
       setMapReady(false);
     };
   }, [mapboxAccessToken, mapboxStyleUrl]);
@@ -198,10 +223,11 @@ export default function LiveMapTab() {
     const map = mapRef.current;
     if (!map || !mapReady || !mapState) return;
 
-    const applyFuzz = (lat: number, lng: number) =>
+    /** Returns GeoJSON position [lng, lat] */
+    const applyFuzz = (lat: number, lng: number): [number, number] =>
       privacyMode && !selectedBookingId
-        ? [fuzzCoord(lat, 200), fuzzCoord(lng, 200)]
-        : [lat, lng];
+        ? [fuzzCoord(lng, 200), fuzzCoord(lat, 200)]
+        : [lng, lat];
 
     const providerPoints: GeoJSON.Feature<GeoJSON.Point>[] = mapState.providers
       .filter((p) => p.last_lat != null && p.last_lng != null)
@@ -234,6 +260,21 @@ export default function LiveMapTab() {
       };
     });
 
+    const customerPoints: GeoJSON.Feature<GeoJSON.Point>[] = (mapState.customer_markers ?? []).map((c) => {
+      const [lng, lat] = applyFuzz(c.lat, c.lng);
+      return {
+        type: "Feature" as const,
+        properties: {
+          user_id: c.user_id,
+          display_name: c.display_name,
+          source: c.source,
+          city: c.city,
+          kind: "customer",
+        },
+        geometry: { type: "Point" as const, coordinates: [lng, lat] },
+      };
+    });
+
     const lineFeatures: GeoJSON.Feature<GeoJSON.LineString>[] = mapState.at_home_bookings
       .filter(
         (b) =>
@@ -256,10 +297,11 @@ export default function LiveMapTab() {
       });
 
     const sources: [string, GeoJSON.FeatureCollection][] = [
+      ["lines", { type: "FeatureCollection", features: lineFeatures }],
+      ["customers", { type: "FeatureCollection", features: customerPoints }],
       ["providers", { type: "FeatureCollection", features: providerPoints }],
       ["at-home-targets", { type: "FeatureCollection", features: atHomeTargets }],
       ["salons", { type: "FeatureCollection", features: salonPoints }],
-      ["lines", { type: "FeatureCollection", features: lineFeatures }],
     ];
 
     const removeLayer = (id: string) => {
@@ -270,7 +312,7 @@ export default function LiveMapTab() {
     };
 
     sources.forEach(([id, data]) => {
-      if (map.getSource(id)) (map.getSource(id) as mapboxgl.GeoJSONSource).setData(data);
+      if (map.getSource(id)) (map.getSource(id) as GeoJSONSource).setData(data);
       else map.addSource(id, { type: "geojson", data });
     });
 
@@ -282,6 +324,19 @@ export default function LiveMapTab() {
         paint: {
           "line-color": ["case", ["get", "arrived"], "#22c55e", "#3b82f6"],
           "line-width": 2,
+        },
+      });
+    }
+    if (!map.getLayer("customers-layer")) {
+      map.addLayer({
+        id: "customers-layer",
+        type: "circle",
+        source: "customers",
+        paint: {
+          "circle-color": "#059669",
+          "circle-radius": 7,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#fff",
         },
       });
     }
@@ -310,7 +365,28 @@ export default function LiveMapTab() {
       });
     }
 
-    const onClick = (e: mapboxgl.MapMouseEvent) => {
+    const onClick = (e: MapMouseEvent) => {
+      customerPopupRef.current?.remove();
+      const customerFeat = map.queryRenderedFeatures(e.point, { layers: ["customers-layer"] })[0];
+      if (customerFeat?.properties?.user_id) {
+        const uid = String(customerFeat.properties.user_id);
+        const name = String(customerFeat.properties.display_name ?? "Customer");
+        const src =
+          customerFeat.properties.source === "saved_address" ? "Saved address" : "Last booking location";
+        const city = customerFeat.properties.city ? String(customerFeat.properties.city) : "";
+        const html = `
+          <div style="font-size:13px;max-width:260px">
+            <div style="font-weight:600;margin-bottom:4px">${escapeHtml(name)}</div>
+            <div style="color:#64748b;font-size:11px;margin-bottom:8px">${escapeHtml(src)}${city ? ` · ${escapeHtml(city)}` : ""}</div>
+            <a href="/admin/users/${uid}" style="color:#2563eb;font-weight:500">Open user profile →</a>
+          </div>`;
+        const mb = mapboxModuleRef.current;
+        if (mb) {
+          customerPopupRef.current = new mb.Popup({ closeButton: true }).setLngLat(e.lngLat).setHTML(html).addTo(map);
+        }
+        return;
+      }
+
       const features = map.queryRenderedFeatures(e.point);
       let bookingId: string | null = null;
       const fWithBooking = features.find((x) => x.properties?.booking_id);
@@ -463,6 +539,10 @@ export default function LiveMapTab() {
                 <span>At salon</span>
                 <span className="font-medium">{mapState?.summary?.at_salon ?? 0}</span>
               </div>
+              <div className="flex justify-between">
+                <span>Customers (map)</span>
+                <span className="font-medium">{mapState?.summary?.customers_mapped ?? mapState?.customer_markers?.length ?? 0}</span>
+              </div>
             </div>
           </div>
           {config && (
@@ -476,7 +556,9 @@ export default function LiveMapTab() {
               <p className="text-xs text-gray-600">Arrival: {config.tracking_arrival_radius_meters}m · Retention: {config.retention_days_raw_pings} days</p>
             </div>
           )}
-          <p className="text-xs text-gray-400">Polling every 10s. Blue = provider, gray = customer target, purple = salon.</p>
+          <p className="text-xs text-gray-400">
+            Polling every 10s. Emerald = customers (traction), blue = provider, gray = active at-home target, purple = salon.
+          </p>
         </div>
 
         <Dialog open={configOpen} onOpenChange={setConfigOpen}>

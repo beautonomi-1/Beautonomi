@@ -5,7 +5,14 @@ import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 
-const _SORT_OPTIONS = ["published_at_desc", "published_at_asc", "like_count_desc", "comment_count_desc", "created_at_desc"] as const;
+const _SORT_OPTIONS = [
+  "published_at_desc",
+  "published_at_asc",
+  "like_count_desc",
+  "comment_count_desc",
+  "save_count_desc",
+  "created_at_desc",
+] as const;
 
 /**
  * GET /api/admin/explore/posts
@@ -25,7 +32,10 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const dateFrom = searchParams.get("date_from");
     const dateTo = searchParams.get("date_to");
-    const sort = (searchParams.get("sort") || "published_at_desc") as (typeof _SORT_OPTIONS)[number];
+    const sortRaw = searchParams.get("sort") || "published_at_desc";
+    const sort = (_SORT_OPTIONS as readonly string[]).includes(sortRaw)
+      ? (sortRaw as (typeof _SORT_OPTIONS)[number])
+      : "published_at_desc";
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 100);
     const offset = Math.max(0, parseInt(searchParams.get("offset") || "0", 10));
 
@@ -48,6 +58,7 @@ export async function GET(request: NextRequest) {
         published_at,
         like_count,
         comment_count,
+        save_count,
         is_hidden,
         moderation_notes,
         moderated_at,
@@ -95,6 +106,9 @@ export async function GET(request: NextRequest) {
         break;
       case "comment_count_desc":
         query = query.order("comment_count", { ascending: false }).order("published_at", { ascending: false });
+        break;
+      case "save_count_desc":
+        query = query.order("save_count", { ascending: false }).order("published_at", { ascending: false });
         break;
       case "created_at_desc":
         query = query.order("created_at", { ascending: false }).order("id", { ascending: false });

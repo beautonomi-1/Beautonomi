@@ -93,6 +93,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Service menu and add-ons",
     items: [
       { title: "Services menu", description: "Service offerings", href: "/provider/settings/services/menu", mobileRoute: "/(app)/(tabs)/more/catalogue" },
+      { title: "Packages", description: "Bundles of services and products", href: "/provider/settings/services/packages", mobileRoute: "/(app)/(tabs)/more/packages-list" },
       { title: "Service add-ons", description: "Add-ons and upgrades", href: "/provider/settings/addons", mobileRoute: "/(app)/(tabs)/more/settings/service-addons" },
       { title: "Memberships", description: "Membership plans", href: "/provider/settings/services/memberships", mobileRoute: "/(app)/(tabs)/more/membership-plans" },
     ],
@@ -126,7 +127,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Permissions", description: "Team permissions", href: "/provider/settings/team/permissions", mobileRoute: "/(app)/(tabs)/more/settings/staff-permissions" },
       { title: "Commissions", description: "Commission rates", href: "/provider/settings/team/commissions", mobileRoute: "/(app)/(tabs)/more/settings/team-commissions" },
       { title: "Time off types", description: "Time off categories", href: "/provider/settings/team/time-off-types", mobileRoute: "/(app)/(tabs)/more/settings/time-off-types" },
-      { title: "Team notifications", description: "Per-member notification preferences", href: "/provider/settings/team/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notifications-settings" },
+      { title: "Team notifications", description: "Per-member notification preferences", href: "/provider/settings/team/notifications", mobileRoute: "/(app)/(tabs)/more/settings/team-staff-notifications" },
     ],
   },
   {

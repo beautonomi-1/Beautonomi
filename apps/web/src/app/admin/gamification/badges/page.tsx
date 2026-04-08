@@ -239,7 +239,10 @@ export default function AdminProviderBadgesPage() {
   const handleRecalculateAll = async () => {
     try {
       setIsRecalculating(true);
-      const res = await fetcher.put<{ data?: { providers_processed?: number } }>("/api/admin/gamification/backfill/initialize");
+      const res = await fetcher.put<{ data?: { providers_processed?: number } }>(
+        "/api/admin/gamification/backfill/initialize",
+        { confirm: "INITIALIZE_ALL" }
+      );
       const count = res?.data?.providers_processed ?? 0;
       toast.success(`Recalculated badges for ${count} providers. Refresh the homepage or provider pages to see badges.`);
     } catch (e: any) {

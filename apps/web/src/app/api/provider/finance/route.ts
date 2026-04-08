@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getAvailablePayoutBalance } from "@/lib/provider/available-payout-balance";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -20,6 +21,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const locationId = searchParams.get("location_id");
     const providerId = await getProviderIdForUser(user.id, supabase);
+
+    /** Ledger + booking_payment enrichment bypass RLS so rows with null booking_id (payouts, gift cards, etc.) still load. */
+    const db = getSupabaseAdmin();
     
     if (!providerId) {
       const { data: platformRow } = await (supabase as any)
@@ -85,10 +89,10 @@ export async function GET(request: NextRequest) {
     const startIso = range === "all" ? "1970-01-01T00:00:00.000Z" : startDate.toISOString();
     const nowIso = now.toISOString();
 
-    // Build finance transactions query
-    const financeQuery = supabase
+    // Build finance transactions query (service role: full ledger for this provider)
+    const financeQuery = db
       .from("finance_transactions")
-      .select("id, transaction_type, amount, net, created_at, description, booking_id")
+      .select("id, transaction_type, amount, net, fees, commission, created_at, description, booking_id")
       .eq("provider_id", providerId)
       .gte("created_at", startIso)
       .lte("created_at", nowIso)
@@ -108,13 +112,13 @@ export async function GET(request: NextRequest) {
     
     if (bookingIds.length > 0) {
       // Fetch bookings
-      const { data: bookings } = await supabase
+      const { data: bookings } = await db
         .from("bookings")
         .select("id, booking_source, location_id")
         .in("id", bookingIds);
       
       // Fetch payment provider from booking_payments (to check if walk-in paid via Paystack)
-      let bookingPaymentsQuery = supabase
+      let bookingPaymentsQuery = db
         .from("booking_payments")
         .select("booking_id, payment_provider")
         .in("booking_id", bookingIds)
@@ -203,11 +207,27 @@ export async function GET(request: NextRequest) {
 
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
-    const travelFeesTotal = sumNet(["travel_fee"]);
-    const travelFeesThisPeriod = sumNet(["travel_fee"], { start: startDate, end: now });
-    const refundsTotal = rows
-      .filter((r: any) => r.transaction_type === "provider_earnings")
-      .reduce((s: number, r: any) => s + (Number(r.net || 0) < 0 ? Number(r.net || 0) : 0), 0);
+    /** Travel fee rows store gross in `amount` with net=0 (travel is included in provider_earnings). */
+    const sumTravelFeeAmount = (within?: { start: Date; end: Date }) =>
+      rows
+        .filter((r: any) => r.transaction_type === "travel_fee")
+        .filter((r: any) => {
+          if (!within) return true;
+          const d = new Date(r.created_at);
+          return d >= within.start && d <= within.end;
+        })
+        .reduce((s: number, r: any) => s + Number(r.amount || 0), 0);
+    const travelFeesTotal = sumTravelFeeAmount();
+    const travelFeesThisPeriod = sumTravelFeeAmount({ start: startDate, end: now });
+    const refundsTotal = rows.reduce((s: number, r: any) => {
+      if (r.transaction_type === "refund") {
+        return s + Math.abs(Number(r.net ?? r.amount ?? 0));
+      }
+      if (r.transaction_type === "provider_earnings" && Number(r.net ?? 0) < 0) {
+        return s + Math.abs(Number(r.net ?? 0));
+      }
+      return s;
+    }, 0);
 
     const thisMonthTotal = providerEarningsThis;
     const lastMonthTotal = providerEarningsLast;
@@ -230,7 +250,7 @@ export async function GET(request: NextRequest) {
     const minimumPayoutAmount = Number(payoutSettingsData.minimum_payout_amount ?? 100);
 
     // Available balance and pending payouts: use ledger + payouts table (aligned with payouts API validation).
-    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(supabase, providerId, {
+    const { availableBalance, pendingPayoutsSum } = await getAvailablePayoutBalance(db, providerId, {
       holdDays,
       tenantId: providerTenantId,
     });
@@ -242,6 +262,7 @@ export async function GET(request: NextRequest) {
     const visibleTransactionTypes = [
       "provider_earnings",
       "refund",
+      "payout",
       "tip",
       "travel_fee",
       "service_fee",
@@ -261,8 +282,8 @@ export async function GET(request: NextRequest) {
         type:
           r.transaction_type === "refund"
             ? ("refund" as const)
-            : r.transaction_type === "provider_earnings" || r.transaction_type === "walk_in_additional_charge"
-            ? ("booking" as const)
+            : r.transaction_type === "payout"
+            ? ("payout" as const)
             : ("booking" as const),
         date: r.created_at,
         amount: Number(r.amount || 0),
@@ -279,6 +300,7 @@ export async function GET(request: NextRequest) {
         total_earnings: providerEarningsTotal,
         pending_payouts: pendingPayouts,
         available_balance: availableBalance,
+        payout_hold_days: holdDays,
         minimum_payout_amount: minimumPayoutAmount,
         this_month: thisMonthTotal,
         last_month: lastMonthTotal,

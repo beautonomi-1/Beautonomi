@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/subscription-metrics
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const supabaseAdmin = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
@@ -34,12 +36,14 @@ export async function GET(request: NextRequest) {
           price_yearly,
           currency
         ),
-        providers:provider_id (
+        providers:provider_id!inner (
           id,
           business_name,
-          slug
+          slug,
+          tenant_id
         )
       `)
+      .eq("providers.tenant_id", tenantId)
       .in("status", ["active", "trialing"]);
 
     if (startDate) {
@@ -102,7 +106,8 @@ export async function GET(request: NextRequest) {
     // 4. Get subscription statistics
     const { data: allSubscriptions, error: _allError } = await supabaseAdmin
       .from("provider_subscriptions")
-      .select("id, status, billing_period, started_at, expires_at");
+      .select("id, status, billing_period, started_at, expires_at, providers:provider_id!inner(tenant_id)")
+      .eq("providers.tenant_id", tenantId);
 
     let totalSubscriptions = 0;
     let activeCount = 0;
@@ -174,8 +179,10 @@ export async function GET(request: NextRequest) {
           subscription_plans:plan_id (
             price_monthly,
             price_yearly
-          )
+          ),
+          providers:provider_id!inner(tenant_id)
         `)
+        .eq("providers.tenant_id", tenantId)
         .in("status", ["active", "trialing"])
         .lte("started_at", monthEnd.toISOString())
         .or(`expires_at.is.null,expires_at.gte.${month.toISOString()}`);

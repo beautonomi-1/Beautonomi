@@ -2302,7 +2302,7 @@ function Step3BusinessDetails({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="twitter" className="text-sm font-semibold text-slate-800">
-                Twitter / X
+                X
               </Label>
               <Input
                 id="twitter"
@@ -2317,7 +2317,7 @@ function Step3BusinessDetails({
                     },
                   });
                 }}
-                placeholder="https://twitter.com/yourhandle"
+                placeholder="https://x.com/yourhandle"
                 className={inputClass}
               />
             </div>

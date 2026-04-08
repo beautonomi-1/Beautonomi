@@ -9,7 +9,7 @@ export default function AccountSettingsLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-white overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white w-full max-w-full">
       <AccountSettingsNavbar />
       <main className="min-h-screen pb-20 md:pb-0 w-full max-w-full overflow-x-hidden">
         {children}

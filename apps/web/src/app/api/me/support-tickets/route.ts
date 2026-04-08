@@ -2,14 +2,19 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabase/api-helpers";
-import { notifySupportTicketCreated } from "@/lib/notifications/notification-service";
+import {
+  notifySupportTicketCreated,
+  notifySupportStaffInboxActivity,
+  resolveSupportTicketStaffRecipients,
+} from "@/lib/notifications/notification-service";
 import { z } from "zod";
 import { normalizeSupportTicketCategory } from "@/lib/support/ticket-categories";
+import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
 
 const createTicketSchema = z.object({
   subject: z.string().min(1, "Subject is required").max(200, "Subject too long"),
   message: z.string().min(1, "Message is required").max(5000, "Message too long"),
-  priority: z.enum(["low", "medium", "high"]).optional().default("medium"),
+  priority: z.enum(["low", "medium", "high", "urgent"]).optional().default("medium"),
   category: z.string().max(120).optional(),
 });
 
@@ -45,6 +50,15 @@ export async function POST(request: NextRequest) {
       throw ticketError;
     }
 
+    const createdAt = ticket.created_at as string | undefined;
+    if (createdAt) {
+      const slaDue = computeSlaResolutionDueIso(createdAt, validated.priority);
+      await adminSupabase
+        .from("support_tickets")
+        .update({ sla_resolution_due_at: slaDue })
+        .eq("id", ticket.id);
+    }
+
     // Create initial message
     const { data: message, error: messageError } = await adminSupabase
       .from("support_ticket_messages")
@@ -74,6 +88,19 @@ export async function POST(request: NextRequest) {
       );
     } catch (notifyErr) {
       console.error("Support ticket created notification failed:", notifyErr);
+    }
+
+    try {
+      const staffIds = await resolveSupportTicketStaffRecipients(null);
+      await notifySupportStaffInboxActivity(
+        staffIds,
+        ticket.ticket_number || ticket.id,
+        `New ticket: ${validated.subject.slice(0, 200)}`,
+        ticket.id,
+        ["email", "push"]
+      );
+    } catch (staffNotifyErr) {
+      console.error("Support staff new-ticket notification failed:", staffNotifyErr);
     }
 
     return successResponse({

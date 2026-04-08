@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
@@ -8,6 +9,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { hapticLight } from "@/lib/haptics-safe";
 
 type Earnings = { total_earnings?: number; pending_payouts?: number; available_balance?: number; this_month?: number };
 type FinanceResponse = { earnings?: Earnings; transactions?: unknown[] };
@@ -49,6 +51,7 @@ export default function FinanceHubScreen() {
   const total = earnings?.total_earnings ?? 0;
   const pending = earnings?.pending_payouts ?? 0;
   const available = earnings?.available_balance ?? 0;
+  const thisMonth = earnings?.this_month;
   const currency = getTenantDefaultCurrency();
 
   return (
@@ -65,6 +68,11 @@ export default function FinanceHubScreen() {
           <Text style={{ marginTop: 4, fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>
             {currency} {typeof total === "number" ? total.toLocaleString() : "—"}
           </Text>
+          {typeof thisMonth === "number" && thisMonth > 0 && (
+            <Text style={{ marginTop: 8, fontSize: 14, color: Colors.gray[600] }}>
+              This month: {currency} {thisMonth.toLocaleString()}
+            </Text>
+          )}
           {(pending > 0 || available > 0) && (
             <View style={{ marginTop: 8 }}>
               {available > 0 && <Text style={{ fontSize: 14, color: "#15803d" }}>Available: {currency} {available.toLocaleString()}</Text>}
@@ -72,6 +80,57 @@ export default function FinanceHubScreen() {
             </View>
           )}
         </View>
+
+        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[500], marginBottom: 10 }}>Quick actions</Text>
+        <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
+          <TouchableOpacity
+            onPress={() => {
+              hapticLight();
+              router.push("/(app)/(tabs)/more/payouts" as never);
+            }}
+            style={{
+              flex: 1,
+              minHeight: 88,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.gray[200],
+              backgroundColor: Colors.gray[50],
+              padding: 14,
+              justifyContent: "space-between",
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Payouts"
+          >
+            <Ionicons name="cash-outline" size={22} color={Colors.primary} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Payouts</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>In app</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              hapticLight();
+              router.push("/(app)/(tabs)/more/payroll" as never);
+            }}
+            style={{
+              flex: 1,
+              minHeight: 88,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.gray[200],
+              backgroundColor: Colors.gray[50],
+              padding: 14,
+              justifyContent: "space-between",
+            }}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="Payroll"
+          >
+            <Ionicons name="people-outline" size={22} color={Colors.primary} />
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Payroll</Text>
+            <Text style={{ fontSize: 11, color: Colors.gray[500] }}>In app</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tabs)/more/finance-billing-hub" as never)}
           style={{ borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 16 }}

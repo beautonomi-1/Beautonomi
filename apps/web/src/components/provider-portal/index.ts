@@ -1,6 +1,8 @@
 // Calendar Components
 export { CalendarMobileView } from "./CalendarMobileView";
 export { CalendarDesktopView } from "./CalendarDesktopView";
+export { CalendarDesktopWithDnd } from "./CalendarDesktopWithDnd";
+export { CalendarMobileWithDnd } from "./CalendarMobileWithDnd";
 export { CalendarGrid } from "./CalendarGrid";
 export { CalendarList } from "./CalendarList";
 export { CalendarLegend } from "./CalendarLegend";

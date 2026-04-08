@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Megaphone } from "lucide-react";
-import { fetcher } from "@/lib/http/fetcher";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import ProviderCard from "./provider-card-dynamic";
 import { useModuleConfig, useFeatureFlag } from "@/providers/ConfigBundleProvider";
 import { useUserLocation } from "@/hooks/useUserLocation";
-import { PUBLIC_HOME_CLIENT_TIMEOUT_MS } from "@/app/home/home-public-api";
+import { fetchPublicHomeClient } from "@/app/home/fetch-public-home-client";
+import { cn } from "@/lib/utils";
 
 /**
  * Sponsored / boosted listings. Only rendered when ads module is enabled and API returns sponsored.
@@ -31,11 +31,31 @@ export default function SponsoredSection({
     initialHydrated ? (initialProviders ?? []) : [],
   );
   const [isLoading, setIsLoading] = useState(() => enabled && !initialHydrated);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const prevInitialProvidersRef = useRef(initialProviders);
+  const prevCategoryRef = useRef(categorySlug);
+
+  useEffect(() => {
+    if (!initialHydrated) return;
+    if (prevInitialProvidersRef.current === initialProviders) return;
+    prevInitialProvidersRef.current = initialProviders;
+    setProviders(initialProviders ?? []);
+  }, [initialHydrated, initialProviders]);
+
+  useEffect(() => {
+    if (prevCategoryRef.current === categorySlug) return;
+    prevCategoryRef.current = categorySlug;
+    setProviders([]);
+    setIsLoading(true);
+  }, [categorySlug]);
 
   useEffect(() => {
     if (!enabled) return;
-    const load = async (silent: boolean) => {
+    let cancelled = false;
+    const load = async () => {
+      const silent = providers.length > 0;
       if (!silent) setIsLoading(true);
+      else setIsRefreshing(true);
       try {
         const params = new URLSearchParams();
         if (userLocation?.latitude != null && userLocation?.longitude != null) {
@@ -45,37 +65,37 @@ export default function SponsoredSection({
         if (categorySlug && categorySlug !== "all") {
           params.set("category", categorySlug);
         }
-        const query = params.toString();
-        const res = await fetcher.get<{ data: { sponsored?: PublicProviderCard[] } }>(
-          `/api/public/home${query ? `?${query}` : ""}`,
-          { timeoutMs: PUBLIC_HOME_CLIENT_TIMEOUT_MS },
-        );
+        const res = await fetchPublicHomeClient(params);
+        if (cancelled) return;
         setProviders(res.data?.sponsored ?? []);
       } catch {
-        setProviders([]);
+        if (!cancelled) setProviders([]);
       } finally {
-        setIsLoading(false);
+        if (!cancelled) {
+          setIsLoading(false);
+          setIsRefreshing(false);
+        }
       }
     };
-    if (!initialHydrated) {
-      void load(false);
-      return;
-    }
-    if (userLocation?.latitude != null && userLocation?.longitude != null) {
-      void load(true);
-    }
-  }, [
-    enabled,
-    userLocation?.latitude,
-    userLocation?.longitude,
-    categorySlug,
-    initialHydrated,
-  ]);
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, userLocation?.latitude, userLocation?.longitude, categorySlug]);
 
-  if (!enabled || isLoading || providers.length === 0) return null;
+  if (!enabled) return null;
+  if (isLoading && providers.length === 0) return null;
+  if (!isLoading && !isRefreshing && providers.length === 0) return null;
 
   return (
-    <section className="mb-8 md:mb-12">
+    <section
+      className={cn(
+        "mb-8 md:mb-12",
+        isRefreshing && "opacity-60 transition-opacity duration-150",
+      )}
+      aria-busy={isRefreshing}
+    >
       <div className="max-w-[2340px] mx-auto px-4 md:px-8 lg:px-20">
         <div className="flex items-center justify-between mb-4 md:mb-6">
           <div className="flex items-center gap-2">

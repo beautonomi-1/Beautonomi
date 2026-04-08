@@ -18,10 +18,28 @@ import {
   Settings,
   ChevronRight,
   Wallet,
+  Clock,
+  Repeat,
+  UserCheck,
+  Monitor,
+  Link2,
+  PiggyBank,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const hubSections = [
+  {
+    title: "Operations",
+    description: "Waitlist, recurring visits, waiting room, and front desk",
+    items: [
+      { label: "Waitlist", href: "/provider/waitlist", icon: Clock },
+      { label: "Recurring appointments", href: "/provider/recurring-appointments", icon: Repeat },
+      { label: "Waiting room", href: "/provider/waiting-room", icon: UserCheck },
+      { label: "Front desk", href: "/provider/front-desk", icon: Monitor },
+      { label: "Booking links", href: "/provider/express-booking", icon: Link2 },
+    ],
+  },
   {
     title: "Schedule",
     description: "Time blocks and team days off",
@@ -61,10 +79,12 @@ const hubSections = [
   },
   {
     title: "Finance",
-    description: "Earnings and payouts",
+    description: "Earnings, payouts, and pay runs",
     items: [
       { label: "Finance Hub", href: "/provider/more/finance-hub", icon: Wallet },
       { label: "Finance & Earnings", href: "/provider/finance", icon: Wallet },
+      { label: "Payouts", href: "/provider/payouts", icon: Coins },
+      { label: "Payroll", href: "/provider/team/payroll", icon: PiggyBank },
       { label: "Payout Accounts", href: "/provider/settings/payout-accounts", icon: Wallet },
     ],
   },
@@ -86,7 +106,7 @@ export default function ProviderMorePage() {
     <div>
       <PageHeader
         title="More"
-        subtitle="Schedule, resources, forms, orders, and settings"
+        subtitle="Operations, schedule, resources, forms, orders, and settings"
         breadcrumbs={[
           { label: "Home", href: "/provider/dashboard" },
           { label: "More" },

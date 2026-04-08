@@ -12,6 +12,20 @@ import { writeAuditLog } from "@/lib/audit/audit";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
+/** Full URL or relative path under /public (e.g. /images/learn/...) */
+const optionalMediaUrl = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => {
+    if (v === undefined || v === null) return null;
+    const s = String(v).trim();
+    return s === "" ? null : s;
+  })
+  .refine(
+    (s) => s === null || /^https?:\/\//i.test(s) || s.startsWith("/"),
+    { message: "Must be a full URL (https://…) or a path starting with /" },
+  );
+
 const articleSchema = z.object({
   category_id: z.string().uuid(),
   title: z.string().min(1, "Title is required"),
@@ -25,7 +39,8 @@ const articleSchema = z.object({
   is_internal: z.boolean().optional().default(false),
   published_at: z.string().datetime().nullable().optional(),
   scheduled_at: z.string().datetime().nullable().optional(),
-  image_url: z.string().url().nullable().optional(),
+  image_url: optionalMediaUrl,
+  hero_video_url: optionalMediaUrl,
   featured_order: z.number().int().min(0).nullable().optional(),
 });
 

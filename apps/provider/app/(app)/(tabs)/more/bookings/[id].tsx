@@ -17,7 +17,7 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
 import * as Location from "expo-location";
-import { useApi, useApiMutation } from "@/hooks/useApi";
+import { useApi, useApiMutation, useApiPost } from "@/hooks/useApi";
 import { useYocoIntegration } from "@/hooks/useYoco";
 import { YocoPaymentSheet } from "@/components/YocoPaymentSheet";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -41,7 +41,12 @@ import {
   ARRIVAL_PIN_PROVIDER_HEADING,
   ARRIVAL_PIN_PROVIDER_SUBTEXT,
   ARRIVAL_PIN_TOAST_PROVIDER_INCOMPLETE,
+  PROVIDER_EXCELLENCE_DASHBOARD_CTA,
+  PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE,
+  PROVIDER_ON_PLATFORM_PAYMENT_NUDGE,
+  PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE,
 } from "@beautonomi/utils";
+import { buildSaleItemsFromBookingDetail } from "@/lib/build-sale-items-from-booking";
 
 function extractIsoDatePart(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -158,7 +163,10 @@ type BookingDetail = {
     product_variant?: { option_values?: unknown } | unknown;
   }[];
   services?: {
+    offering_id?: string;
+    service_id?: string;
     offering_name?: string;
+    staff_id?: string | null;
     staff_name?: string | null;
     scheduled_start_at?: string;
     duration_minutes?: number;
@@ -257,6 +265,7 @@ export default function BookingDetailScreen() {
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const locationPermissionDeniedRef = useRef(false);
 
   const durationMinutes = useMemo(
     () =>
@@ -291,10 +300,29 @@ export default function BookingDetailScreen() {
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
   const [refunding, setRefunding] = useState(false);
+  const [paymentExcellenceDismissed, setPaymentExcellenceDismissed] = useState(false);
 
-  // Pay with Yoco (card payment then mark paid)
+  // Pay with Yoco (pending POS sale → terminal with sale_id → finalize sale + mark booking paid)
   const [showYocoPayment, setShowYocoPayment] = useState(false);
   const { integration: yocoIntegration } = useYocoIntegration();
+  const yocoBookingSaleIdRef = useRef<string | null>(null);
+  const [yocoBookingSaleId, setYocoBookingSaleId] = useState<string | null>(null);
+  /** Amount (booking currency) we will send to mark-paid after Yoco — matches terminal charge. */
+  const yocoPendingChargeAmountRef = useRef<number | null>(null);
+  /** Outstanding at the time the pending POS sale was created — used to invalidate stale sales after other payments. */
+  const yocoPendingSaleOutstandingSnapshotRef = useRef<number | null>(null);
+  const { execute: createBookingPosSale, loading: preparingYocoSale } = useApiPost<
+    Record<string, unknown>,
+    { id: string }
+  >("/api/provider/sales");
+
+  useEffect(() => {
+    yocoBookingSaleIdRef.current = null;
+    setYocoBookingSaleId(null);
+    yocoPendingChargeAmountRef.current = null;
+    yocoPendingSaleOutstandingSnapshotRef.current = null;
+    setPaymentExcellenceDismissed(false);
+  }, [bookingIdStr]);
 
   // Additional charges (fetch when booking loaded)
   const { data: additionalChargesData, refresh: refreshCharges } = useApi<{ charges: AdditionalCharge[] }>(
@@ -363,13 +391,23 @@ export default function BookingDetailScreen() {
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
 
   const isAtHomeFromData = data?.location_type === "at_home";
-  const isEnRouteFromData = data?.current_stage === "provider_on_way";
+  const isJourneyTrackingStageFromData =
+    data?.current_stage === "provider_on_way" || data?.current_stage === "provider_arrived";
   useEffect(() => {
-    if (!id || !isAtHomeFromData || !isEnRouteFromData || Platform.OS === "web") return;
+    if (!id || !isAtHomeFromData || !isJourneyTrackingStageFromData || Platform.OS === "web") return;
     const sendLocation = async () => {
       try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== "granted") return;
+        if (locationPermissionDeniedRef.current) return;
+        const currentPerm = await Location.getForegroundPermissionsAsync();
+        let status = currentPerm.status;
+        if (status !== "granted" && currentPerm.canAskAgain) {
+          const req = await Location.requestForegroundPermissionsAsync();
+          status = req.status;
+        }
+        if (status !== "granted") {
+          locationPermissionDeniedRef.current = true;
+          return;
+        }
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
@@ -382,6 +420,7 @@ export default function BookingDetailScreen() {
         // Ignore; next interval will retry
       }
     };
+    locationPermissionDeniedRef.current = false;
     sendLocation();
     const interval = setInterval(sendLocation, 45000);
     locationIntervalRef.current = interval;
@@ -391,7 +430,7 @@ export default function BookingDetailScreen() {
         locationIntervalRef.current = null;
       }
     };
-  }, [id, isAtHomeFromData, isEnRouteFromData]);
+  }, [id, isAtHomeFromData, isJourneyTrackingStageFromData]);
 
   // Reschedule form sync (must be before early return to satisfy rules of hooks)
   useEffect(() => {
@@ -610,8 +649,153 @@ export default function BookingDetailScreen() {
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
   const outstanding = totalAmount - totalPaid + totalRefunded;
+  const netPaidAfterRefunds = totalPaid - totalRefunded;
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
+  const maxRefundable = Math.max(0, netPaidAfterRefunds);
+
+  async function openYocoCheckout() {
+    if (!id) return;
+    const chargeAmount = Number(outstanding.toFixed(2));
+    if (chargeAmount <= 0) {
+      Alert.alert(
+        "Nothing to charge",
+        outstanding < 0
+          ? "This booking has no remaining balance to collect (it may be overpaid). Pull to refresh if you just recorded a payment elsewhere."
+          : "There is no remaining balance on this booking.",
+      );
+      return;
+    }
+    if (!canMarkPaid) {
+      Alert.alert(
+        "Not ready to pay",
+        "Start or complete the booking before recording a card payment.",
+      );
+      return;
+    }
+    let saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
+    const snap = yocoPendingSaleOutstandingSnapshotRef.current;
+    if (
+      saleId &&
+      snap != null &&
+      Number.isFinite(snap) &&
+      Math.abs(snap - chargeAmount) > 0.02
+    ) {
+      yocoBookingSaleIdRef.current = null;
+      setYocoBookingSaleId(null);
+      yocoPendingSaleOutstandingSnapshotRef.current = null;
+      saleId = null;
+    }
+    if (!saleId) {
+      const builtItems = buildSaleItemsFromBookingDetail(b);
+      if (builtItems.length === 0) {
+        Alert.alert("Cannot charge", "Could not build sale lines for this booking.");
+        return;
+      }
+      let items = builtItems;
+      let subtotal = typeof b.subtotal === "number" && b.subtotal > 0
+        ? b.subtotal
+        : builtItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
+      let taxAmount = typeof b.tax_amount === "number" ? b.tax_amount : 0;
+      let discountAmount = typeof b.discount_amount === "number" ? b.discount_amount : 0;
+      const bookingTotal = typeof b.total_amount === "number" ? b.total_amount : subtotal + taxAmount - discountAmount;
+
+      // If this is a partial/remaining payment, keep sale math aligned to charged amount.
+      if (Math.abs(chargeAmount - bookingTotal) > 0.01) {
+        items = [{
+          item_id: null,
+          type: "service",
+          name: "Booking balance due",
+          quantity: 1,
+          unit_price: chargeAmount,
+        }];
+        subtotal = chargeAmount;
+        taxAmount = 0;
+        discountAmount = 0;
+      }
+
+      const trRaw = typeof b.tax_rate === "number" ? b.tax_rate : 0;
+      const taxRate = trRaw > 1 ? trRaw / 100 : trRaw;
+      const staffId = b.services?.[0]?.staff_id ?? null;
+      const { data: saleData, error } = await createBookingPosSale({
+        customer_id: customerId,
+        location_id: b.location_id ?? null,
+        staff_id: staffId,
+        sale_date: b.scheduled_at,
+        items: items.map((i) => ({
+          item_id: i.item_id,
+          type: i.type,
+          name: i.name,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+        })),
+        subtotal,
+        tax_rate: taxRate,
+        tax_amount: taxAmount,
+        discount_amount: discountAmount,
+        total_amount: chargeAmount,
+        payment_method: "yoco",
+        payment_status: "pending",
+        notes: `Booking ${b.booking_number ?? id}`,
+      });
+      if (error) {
+        Alert.alert("Error", error);
+        return;
+      }
+      if (!saleData?.id) {
+        Alert.alert("Error", "Could not prepare card payment.");
+        return;
+      }
+      saleId = saleData.id;
+      yocoBookingSaleIdRef.current = saleId;
+      setYocoBookingSaleId(saleId);
+      yocoPendingSaleOutstandingSnapshotRef.current = chargeAmount;
+    }
+    yocoPendingChargeAmountRef.current = chargeAmount;
+    setShowYocoPayment(true);
+  }
+
+  async function finalizeYocoBookingPayment(result: { reference: string }) {
+    if (!id || !result.reference) return;
+    const saleId = yocoBookingSaleIdRef.current ?? yocoBookingSaleId;
+    if (!saleId) {
+      Alert.alert("Error", "Missing sale record. Try again.");
+      return;
+    }
+    const patchRes = await api.patch(`/api/provider/sales/${saleId}`, {
+      payment_status: "completed",
+      payment_provider: "yoco",
+      payment_provider_id: result.reference,
+    });
+    if (patchRes.error) {
+      Alert.alert(
+        "Update failed",
+        "The terminal payment succeeded but the sale could not be finalized. Check Sales for a pending entry.",
+      );
+      return;
+    }
+    const chargeForBooking = yocoPendingChargeAmountRef.current ?? outstanding;
+    const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
+      payment_method: "card",
+      reference: result.reference,
+      amount: Number(chargeForBooking.toFixed(2)),
+    });
+    if (res.error) {
+      Alert.alert(
+        "Booking payment",
+        `The sale was saved, but updating the booking failed: ${res.error}`,
+      );
+      await refresh();
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    yocoBookingSaleIdRef.current = null;
+    setYocoBookingSaleId(null);
+    yocoPendingChargeAmountRef.current = null;
+    yocoPendingSaleOutstandingSnapshotRef.current = null;
+    setShowYocoPayment(false);
+    await refresh();
+  }
 
   const isConflictError = (msg: string | null) =>
     msg != null && msg.includes("modified by another user");
@@ -755,9 +939,14 @@ export default function BookingDetailScreen() {
 
   const handleMarkPaid = async () => {
     if (!id) return;
+    if (outstanding <= 0) {
+      Alert.alert("Nothing to record", "There is no remaining balance to mark as paid.");
+      return;
+    }
     setMarkingPaid(true);
     const res = await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
       payment_method: markPaidMethod,
+      amount: Number(outstanding.toFixed(2)),
     });
     setMarkingPaid(false);
     if (res.error) {
@@ -772,6 +961,13 @@ export default function BookingDetailScreen() {
     const amount = parseFloat(refundAmount);
     if (!Number.isFinite(amount) || amount <= 0) {
       Alert.alert("Invalid amount", "Enter a valid refund amount.");
+      return;
+    }
+    if (amount > maxRefundable + 0.01) {
+      Alert.alert(
+        "Refund too large",
+        `You can refund up to ${b.currency ?? getTenantDefaultCurrency()} ${maxRefundable.toFixed(2)} (net of refunds already issued).`,
+      );
       return;
     }
     const reason = refundReason.trim();
@@ -1080,6 +1276,17 @@ export default function BookingDetailScreen() {
             <Text style={twStyle("text-sm text-violet-900 leading-5 mb-3")}>
               You travel to the client. Flow: confirm the booking, then Start journey when you leave, Mark arrived, then verify with their PIN and/or QR (per your settings), then start service.
             </Text>
+            <Text style={twStyle("text-xs text-violet-900/90 leading-5 mb-2")}>{PROVIDER_HOUSE_CALL_EXCELLENCE_NUDGE}</Text>
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push("/(app)/(tabs)/more/rewards" as any);
+              }}
+              accessibilityRole="button"
+              accessibilityLabel={PROVIDER_EXCELLENCE_DASHBOARD_CTA}
+            >
+              <Text style={twStyle("text-xs font-semibold text-violet-800")}>{PROVIDER_EXCELLENCE_DASHBOARD_CTA} →</Text>
+            </TouchableOpacity>
             {addressLine ? (
               <TouchableOpacity
                 onPress={openMapsUrl}
@@ -1435,6 +1642,7 @@ export default function BookingDetailScreen() {
         {isAtSalon && (clientArrivedAtSalon || canCheckInAtSalon) && (
           <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
             <Text style={twStyle("text-sm font-medium text-gray-700 mb-3")}>At salon</Text>
+            <Text style={twStyle("text-xs text-gray-600 leading-5 mb-3")}>{PROVIDER_SALON_CHECKIN_EXCELLENCE_NUDGE}</Text>
             {clientArrivedAtSalon ? (
               <View style={twStyle("rounded-lg bg-purple-50 border border-purple-200 py-2 px-3")}>
                 <Text style={twStyle("text-sm font-medium text-purple-800")}>
@@ -1584,9 +1792,42 @@ export default function BookingDetailScreen() {
                 Paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toLocaleString()}
               </Text>
             )}
+            {totalRefunded > 0 && (
+              <Text style={twStyle("text-sm text-orange-700 mt-0.5")}>
+                Refunded: {b.currency ?? getTenantDefaultCurrency()} {totalRefunded.toLocaleString()}
+              </Text>
+            )}
+            {outstanding < 0 && (
+              <Text style={twStyle("text-sm text-blue-700 mt-0.5")}>
+                Credit / overpayment: {b.currency ?? getTenantDefaultCurrency()}{" "}
+                {Math.abs(outstanding).toLocaleString()} — no further payment due.
+              </Text>
+            )}
             {outstanding > 0 && (
               <Text style={twStyle("text-sm font-medium text-amber-600 mt-0.5")}>
                 Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toLocaleString()}
+              </Text>
+            )}
+            {outstanding > 0 && !paymentExcellenceDismissed && (
+              <View
+                style={twStyle(
+                  "mt-3 rounded-lg border border-emerald-200 bg-emerald-50/90 p-3 flex-row items-start gap-2"
+                )}
+              >
+                <Text style={twStyle("flex-1 text-xs text-emerald-950 leading-5")}>{PROVIDER_ON_PLATFORM_PAYMENT_NUDGE}</Text>
+                <TouchableOpacity
+                  onPress={() => setPaymentExcellenceDismissed(true)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss payment tip"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close" size={18} color="#047857" />
+                </TouchableOpacity>
+              </View>
+            )}
+            {totalPaid > 0 && outstanding > 0 && (
+              <Text style={twStyle("text-xs text-gray-500 mt-1.5")}>
+                Part of this booking is already paid. Mark paid, Yoco, or a payment link will only collect the remaining balance.
               </Text>
             )}
             <View style={twStyle("flex-row flex-wrap gap-2 mt-3")}>
@@ -1605,10 +1846,15 @@ export default function BookingDetailScreen() {
                   </TouchableOpacity>
                   {yocoIntegration?.is_enabled && outstanding > 0 && (
                     <TouchableOpacity
-                      onPress={() => setShowYocoPayment(true)}
+                      onPress={() => void openYocoCheckout()}
+                      disabled={preparingYocoSale}
                       style={twStyle("rounded-xl border border-primary bg-primary/10 py-2.5 px-4")}
                     >
-                      <Text style={twStyle("font-medium text-primary")}>Pay with Yoco</Text>
+                      {preparingYocoSale ? (
+                        <ActivityIndicator size="small" color={Colors.primary} />
+                      ) : (
+                        <Text style={twStyle("font-medium text-primary")}>Pay with Yoco</Text>
+                      )}
                     </TouchableOpacity>
                   )}
                 </>
@@ -1642,7 +1888,7 @@ export default function BookingDetailScreen() {
               {canRefund && (
                 <TouchableOpacity
                   onPress={() => {
-                    setRefundAmount(totalPaid.toFixed(2));
+                    setRefundAmount(maxRefundable.toFixed(2));
                     setShowRefund(true);
                   }}
                   style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
@@ -1871,6 +2117,11 @@ export default function BookingDetailScreen() {
       <BottomSheet visible={showMarkPaid} onClose={() => setShowMarkPaid(false)} title="Mark as paid">
         <View>
           <Text style={twStyle("text-sm text-gray-600 mb-2")}>Outstanding: {b.currency ?? getTenantDefaultCurrency()} {outstanding.toFixed(2)}</Text>
+          {totalPaid > 0 ? (
+            <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+              This records another payment toward the booking (e.g. after cash, EFT, or Paystack). Only the remaining balance is applied.
+            </Text>
+          ) : null}
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Payment method</Text>
           <View style={twStyle("flex-row flex-wrap gap-2 mb-4")}>
             {PAYMENT_METHODS.map((pm) => (
@@ -1890,7 +2141,13 @@ export default function BookingDetailScreen() {
       {/* Refund modal */}
       <BottomSheet visible={showRefund} onClose={() => { setShowRefund(false); setRefundReason(""); }} title="Issue refund">
         <View>
-          <Text style={twStyle("text-sm text-gray-600 mb-2")}>Total paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toFixed(2)}</Text>
+          <Text style={twStyle("text-sm text-gray-600 mb-1")}>
+            Net collected: {b.currency ?? getTenantDefaultCurrency()} {netPaidAfterRefunds.toFixed(2)}
+            {totalRefunded > 0 ? ` (paid ${totalPaid.toFixed(2)}, refunded ${totalRefunded.toFixed(2)})` : ""}
+          </Text>
+          <Text style={twStyle("text-xs text-gray-500 mb-2")}>
+            Maximum refund now: {b.currency ?? getTenantDefaultCurrency()} {maxRefundable.toFixed(2)}. Refunds increase what the client may still owe on this booking.
+          </Text>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Refund amount</Text>
           <TextInput
             style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900 mb-4")}
@@ -1910,7 +2167,9 @@ export default function BookingDetailScreen() {
             multiline
             textAlignVertical="top"
           />
-          <Text style={twStyle("text-xs text-gray-500 mb-3")}>{"Refund will be added to the customer's wallet."}</Text>
+          <Text style={twStyle("text-xs text-gray-500 mb-3")}>
+            Refund is processed per your platform rules (e.g. wallet or original payment method). The booking balance will update after this succeeds.
+          </Text>
           <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
       </BottomSheet>
@@ -2021,23 +2280,16 @@ export default function BookingDetailScreen() {
         </View>
       </BottomSheet>
 
-      {/* Yoco card payment then mark paid */}
+      {/* Yoco: pending POS sale → terminal (sale_id + booking_id) → complete sale + mark booking paid */}
       <YocoPaymentSheet
         visible={showYocoPayment}
         onClose={() => setShowYocoPayment(false)}
         amountCents={Math.round(outstanding * 100)}
         currency={b.currency ?? getTenantDefaultCurrency()}
         bookingId={id}
+        saleId={yocoBookingSaleId ?? undefined}
         description={`Booking ${b.booking_number ?? id}`}
-        onPaymentSuccess={async (result) => {
-          if (!id) return;
-          await postMutation(`/api/provider/bookings/${id}/mark-paid`, {
-            payment_method: "card",
-            reference: result.reference,
-          });
-          refresh();
-          setShowYocoPayment(false);
-        }}
+        onPaymentSuccess={(result) => void finalizeYocoBookingPayment(result)}
       />
 
       {/* Provider post-completion modal: once per booking when opening a completed booking */}

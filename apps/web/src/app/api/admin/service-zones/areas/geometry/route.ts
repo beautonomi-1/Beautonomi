@@ -5,7 +5,7 @@ import { requireAdminSection,
   handleApiError,
   errorResponse,
  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -23,7 +23,7 @@ const bodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const body = await request.json();
     const parse = bodySchema.safeParse(body);
     if (!parse.success) {

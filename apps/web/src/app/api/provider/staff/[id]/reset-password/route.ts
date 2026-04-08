@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { isProviderOwner, hasPermission } from "@/lib/auth/permissions";
 
 /**
  * POST /api/provider/staff/[id]/reset-password
@@ -12,9 +13,22 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+
+    if (user.role !== "superadmin") {
+      const canReset =
+        (await isProviderOwner(user.id)) || (await hasPermission(user.id, "manage_team"));
+      if (!canReset) {
+        return handleApiError(
+          new Error("Only owners or users with Manage team can send reset emails."),
+          "Forbidden",
+          "FORBIDDEN",
+          403
+        );
+      }
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);

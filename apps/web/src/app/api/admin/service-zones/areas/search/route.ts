@@ -6,7 +6,7 @@ import {
   handleApiError,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 
 const MAX_GROUPS = 40;
 /** Rows scanned per dimension to estimate postal counts (cap for performance). */
@@ -27,7 +27,7 @@ export type AreaSearchHit = {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const { searchParams } = new URL(request.url);
     const country = searchParams.get("country")?.trim();

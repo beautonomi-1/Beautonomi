@@ -2,7 +2,7 @@ import React from "react";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseAnonPublicClient } from "@/lib/supabase/public-read";
 import { PLATFORM_CONTACT_HREF } from "@/lib/routes/platform-contact";
 import { Mail, Phone, HelpCircle } from "lucide-react";
 
@@ -24,7 +24,8 @@ export const revalidate = 300;
 
 async function getAboutSections(): Promise<AboutSection[]> {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = createSupabaseAnonPublicClient();
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from("about_us_content")
       .select("section_key, title, content, image_url")
@@ -52,9 +53,9 @@ export default async function AboutPage() {
   );
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-
+      <div className="w-full max-w-full overflow-x-hidden">
       {/* Hero — first section (e.g. Our Mission) — Revolut-style bold hero */}
       {hero && (
         <section className="relative bg-gradient-to-b from-[#FF0077]/5 to-white pt-16 md:pt-24 pb-20 md:pb-28">
@@ -205,6 +206,7 @@ export default async function AboutPage() {
         </section>
       )}
 
+      </div>
       <Footer />
       <BottomNav />
     </div>

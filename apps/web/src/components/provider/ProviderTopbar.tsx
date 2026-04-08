@@ -90,6 +90,10 @@ export function ProviderTopbar() {
       ["/provider/resources", "Resources"],
       ["/provider/subscription", "Subscription"],
       ["/provider/orders", "Orders"],
+      ["/provider/recurring-appointments", "Recurring"],
+      ["/provider/express-booking", "Booking links"],
+      ["/provider/front-desk", "Front desk"],
+      ["/provider/gamification", "Rewards"],
     ];
     for (const [prefix, title] of segments) {
       if (pathname.startsWith(prefix)) return title;
@@ -153,7 +157,7 @@ export function ProviderTopbar() {
             <DropdownMenuTrigger asChild>
               <Button 
                 aria-label="Quick actions"
-                className="h-9 w-9 md:w-auto md:gap-2 md:px-4 p-0 md:p-2 rounded-full md:rounded-md"
+                className="min-h-[44px] min-w-[44px] h-11 w-11 shrink-0 md:h-9 md:w-auto md:min-h-0 md:min-w-0 md:gap-2 md:px-4 p-0 md:p-2 rounded-full md:rounded-md touch-manipulation"
                 style={{
                   backgroundColor: branding?.primary_color || "#FF0077",
                 }}

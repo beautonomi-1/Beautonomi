@@ -5,6 +5,24 @@
 
 import * as amplitude from "@amplitude/analytics-react-native";
 import type { AmplitudeConfig } from "./types";
+import { applyUserPropertiesToIdentify } from "./identify-helpers";
+
+/** Web shim: minimal context when customer/provider run in Expo web. */
+export function getMobileAnalyticsAttribution(): Record<string, string> {
+  return { platform: "web", device_type: "web", app_version: "expo-web" };
+}
+
+export async function captureMarketingAttributionFromUrl(_url?: string | null): Promise<void> {}
+
+export async function refreshMarketingAttributionCache(): Promise<void> {}
+
+export function getCachedMarketingForEvents(): Record<string, string> {
+  return {};
+}
+
+export function getCachedFirstTouchForIdentify(): Record<string, string> {
+  return {};
+}
 
 let isInitialized = false;
 
@@ -58,13 +76,8 @@ function createClient(): AnalyticsClient {
       try {
         amplitude.setUserId(userId);
         if (userProperties && Object.keys(userProperties).length > 0) {
-          const identify = new amplitude.Identify();
-          for (const [k, v] of Object.entries(userProperties)) {
-            if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-              identify.set(k, v);
-            }
-          }
-          amplitude.identify(identify);
+          const identifyObj = applyUserPropertiesToIdentify(amplitude.Identify, userProperties);
+          amplitude.identify(identifyObj);
         }
       } catch {}
     },

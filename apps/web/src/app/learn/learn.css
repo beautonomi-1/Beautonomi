@@ -29,3 +29,25 @@
   border-width: 1px;
   border-color: rgba(228, 228, 231, 0.5);
 }
+
+/* Inline callout blocks inside article HTML (seed / CMS) */
+.learn-article-body .learn-cta-box {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #fdf2f8 0%, #fce7f3 100%);
+  border: 1px solid #fbcfe8;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+@media (min-width: 640px) {
+  .learn-article-body .learn-cta-box {
+    padding: 1.25rem 1.5rem;
+  }
+}
+.learn-article-body .learn-cta-box p {
+  margin: 0;
+}
+.learn-article-body .learn-cta-box p + p {
+  margin-top: 0.5rem;
+}

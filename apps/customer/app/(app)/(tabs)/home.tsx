@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, memo } from "react";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import {
   View,
@@ -27,6 +27,7 @@ import { useHomeData } from "@/features/home/useHomeData";
 import { useGlobalCategories, getCategoryIcon, getGlobalCategoryImageUri } from "@/features/home/useGlobalCategories";
 import { ProviderCard } from "@/components/ProviderCard";
 import { AddressPicker } from "@/components/AddressPicker";
+import { InstallAppBanner } from "@/components/InstallAppBanner";
 import { SaveAddressModal, type SaveAddressPayload } from "@/components/SaveAddressModal";
 import type { AddressPickerSelection } from "@/components/AddressPicker";
 import { api } from "@/lib/api-client";
@@ -156,7 +157,13 @@ const styles = StyleSheet.create({
     flexShrink: 0,
     position: "relative",
   },
-  navSearchMargin: { marginRight: 16 },
+  navSearchMargin: {
+    marginRight: 16,
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   categoryRow: {
     paddingVertical: 12,
     borderBottomWidth: 1,
@@ -279,6 +286,8 @@ function ProviderSection({
   contentPadding,
   isFirst,
   onViewMore,
+  feedOriginLat,
+  feedOriginLng,
 }: {
   title: string;
   providers: PublicProviderCard[];
@@ -287,6 +296,8 @@ function ProviderSection({
   contentPadding: number;
   isFirst?: boolean;
   onViewMore?: () => void;
+  feedOriginLat?: number | null;
+  feedOriginLng?: number | null;
 }) {
   if (providers.length === 0) return null;
 
@@ -313,6 +324,8 @@ function ProviderSection({
               showHottestBadge={badge === "hottest"}
               showNearestBadge={badge === "nearest"}
               showUpcomingBadge={badge === "upcoming"}
+              feedOriginLat={feedOriginLat}
+              feedOriginLng={feedOriginLng}
             />
           </View>
         ))}
@@ -321,12 +334,13 @@ function ProviderSection({
   );
 }
 
-function CategoryPill({
+const CategoryPill = memo(function CategoryPill({
   label,
   imageUri,
   ionIcon,
   active = false,
   onPress,
+  imagePriority = "normal",
 }: {
   label: string;
   /** Remote icon from API (`EXPO_PUBLIC_APP_URL` + `/images/...`) */
@@ -334,6 +348,7 @@ function CategoryPill({
   ionIcon?: keyof typeof Ionicons.glyphMap;
   active?: boolean;
   onPress?: () => void;
+  imagePriority?: "low" | "normal" | "high";
 }) {
   return (
     <TouchableOpacity
@@ -363,6 +378,7 @@ function CategoryPill({
             opacity: active ? 1 : 0.52,
           }}
           contentFit="contain"
+          priority={imagePriority}
           accessibilityIgnoresInvertColors
         />
       ) : ionIcon ? (
@@ -384,7 +400,7 @@ function CategoryPill({
       </Text>
     </TouchableOpacity>
   );
-}
+});
 
 export default function HomeScreen() {
   useScreenTracking("Home");
@@ -411,6 +427,11 @@ export default function HomeScreen() {
 
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
+
+  const searchContextCategorySlug =
+    activeCategory === "All"
+      ? undefined
+      : globalCategories.find((c) => c.name === activeCategory)?.slug;
 
   const { data, loading, refreshing, error, refetch } = useHomeData(
     effectiveLat,
@@ -531,6 +552,8 @@ export default function HomeScreen() {
           </View>
         </SafeAreaView>
 
+        <InstallAppBanner />
+
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
           <View style={styles.navLeftGroup}>
             <TouchableOpacity
@@ -571,16 +594,16 @@ export default function HomeScreen() {
           </View>
           <View style={styles.navRightGroup}>
             <View style={styles.navSearchMargin}>
-              <InlineSearch />
+              <InlineSearch contextCategorySlug={searchContextCategorySlug} />
             </View>
             <TouchableOpacity
               onPress={() => {
                 haptic.selection();
-                router.push("/(app)/account-settings/wishlists");
+                router.push("/(app)/(tabs)/saved" as any);
               }}
               accessibilityRole="button"
-              accessibilityLabel="Wishlist"
-              accessibilityHint="Open saved providers and wishlists"
+              accessibilityLabel="Saved"
+              accessibilityHint="Open saved providers, products, and posts"
               style={styles.navSearchMargin}
             >
               <Ionicons name="heart-outline" size={24} color="#333" />
@@ -635,7 +658,7 @@ export default function HomeScreen() {
               ionIcon="apps-outline"
               onPress={() => handleCategoryPress("All")}
             />
-            {globalCategories.map((cat) => {
+            {globalCategories.map((cat, idx) => {
               const remote = getGlobalCategoryImageUri(cat.icon ?? cat.icon_name);
               return (
                 <CategoryPill
@@ -643,6 +666,7 @@ export default function HomeScreen() {
                   label={cat.name}
                   active={activeCategory === cat.name}
                   imageUri={remote}
+                  imagePriority={idx < 4 ? "high" : "normal"}
                   ionIcon={
                     remote
                       ? undefined
@@ -690,6 +714,8 @@ export default function HomeScreen() {
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
                   isFirst
+                  feedOriginLat={effectiveLat}
+                  feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/top-rated")}
                 />
                 <ProviderSection
@@ -698,6 +724,8 @@ export default function HomeScreen() {
                   badge="sponsored"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  feedOriginLat={effectiveLat}
+                  feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/sponsored")}
                 />
                 <ProviderSection
@@ -706,6 +734,8 @@ export default function HomeScreen() {
                   badge="nearest"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  feedOriginLat={effectiveLat}
+                  feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/nearest")}
                 />
                 <ProviderSection
@@ -714,6 +744,8 @@ export default function HomeScreen() {
                   badge="hottest"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  feedOriginLat={effectiveLat}
+                  feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/hottest")}
                 />
                 <ProviderSection
@@ -722,6 +754,8 @@ export default function HomeScreen() {
                   badge="upcoming"
                   cardWidth={cardWidth}
                   contentPadding={contentPadding}
+                  feedOriginLat={effectiveLat}
+                  feedOriginLng={effectiveLng}
                   onViewMore={() => router.push("/(app)/more-providers/upcoming")}
                 />
               </View>

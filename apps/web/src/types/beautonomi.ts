@@ -327,6 +327,8 @@ export interface BookingDraft {
     productVariantId?: string | null;
   }>; // Product line items
   package_id?: string;
+  /** Redeem one session from this entitlement (API validates + decrements). */
+  customer_package_entitlement_id?: string;
   tip_amount: number;
   travel_fee?: number; // Travel fee for at-home services only
   special_requests?: string;
@@ -339,6 +341,10 @@ export interface BookingDraft {
   use_wallet?: boolean;
   /** Resource IDs to assign (ordered: one per required slot per service). When set, used for validation and assignment. */
   resource_ids?: string[];
+  subscribe_recurring?: {
+    enabled: boolean;
+    frequency: 'weekly' | 'biweekly' | 'monthly';
+  };
 }
 
 export interface BookingService {

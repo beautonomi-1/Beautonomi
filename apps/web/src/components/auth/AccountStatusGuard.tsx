@@ -4,14 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoadingTimeout from "@/components/ui/loading-timeout";
-
-/** Routes that do not require auth; render children immediately without waiting for auth. */
-const PUBLIC_ROUTES_PREFIXES = ["/learn", "/help", "/login", "/signup", "/forgot-password", "/partner-profile", "/category", "/explore", "/gift-card", "/privacy-policy", "/terms-and-condition", "/accessibility", "/against-discrimination", "/BCover-for-partners", "/beautonomi-friendly", "/career", "/resources", "/become-a-partner"];
-
-function isPublicRoute(pathname: string | null): boolean {
-  if (!pathname) return false;
-  return pathname === "/" || PUBLIC_ROUTES_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/"));
-}
+import { isCustomerShellPublicRoute } from "@/lib/navigation/customer-shell-public-routes";
 
 /**
  * AccountStatusGuard - Redirects suspended/deactivated users to appropriate pages
@@ -82,8 +75,8 @@ export default function AccountStatusGuard({ children }: { children: React.React
     checkAccountStatus();
   }, [user, isLoading, pathname, router, signOut]);
 
-  // On public routes (e.g. /learn), never block on auth — render immediately
-  if (isPublicRoute(pathname)) {
+  // Marketplace + bookings + shop shell: render immediately; account-status effect still redirects if needed.
+  if (isCustomerShellPublicRoute(pathname)) {
     return <>{children}</>;
   }
 

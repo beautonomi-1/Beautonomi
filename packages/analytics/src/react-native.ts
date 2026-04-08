@@ -11,6 +11,22 @@ import { add as amplitudeAdd } from "@amplitude/analytics-react-native";
 import { getPlugin, handleURL as engagementHandleURL } from "@amplitude/plugin-engagement-react-native";
 import { SessionReplayPlugin } from "@amplitude/plugin-session-replay-react-native";
 import type { AmplitudeConfig } from "./types";
+import { applyUserPropertiesToIdentify } from "./identify-helpers";
+import { getMobileAnalyticsAttribution } from "./mobile-attribution";
+import {
+  captureMarketingAttributionFromUrl,
+  refreshMarketingAttributionCache,
+  getCachedMarketingForEvents,
+  getCachedFirstTouchForIdentify,
+} from "./marketing-attribution-native";
+
+export { getMobileAnalyticsAttribution };
+export {
+  captureMarketingAttributionFromUrl,
+  refreshMarketingAttributionCache,
+  getCachedMarketingForEvents,
+  getCachedFirstTouchForIdentify,
+};
 
 let isInitialized = false;
 let currentConfig: AmplitudeConfig | null = null;
@@ -18,6 +34,19 @@ let engagementEnabled = false;
 /** Last session replay choice; mismatch → reset + re-init (e.g. sign-in). */
 let lastEnableSessionReplay: boolean | undefined = undefined;
 let lastPortal: "client" | "provider" | null = null;
+
+/** Merged into every track / screen for cross-device funnels (non-PII). */
+let cachedEventAttribution: Record<string, string> | null = null;
+function getCachedEventAttribution(): Record<string, string> {
+  if (!cachedEventAttribution) {
+    try {
+      cachedEventAttribution = getMobileAnalyticsAttribution();
+    } catch {
+      cachedEventAttribution = {};
+    }
+  }
+  return cachedEventAttribution;
+}
 
 export interface AnalyticsClient {
   track: (eventType: string, eventProperties?: Record<string, unknown>) => void;
@@ -56,6 +85,11 @@ export async function initAnalytics(
     lastEnableSessionReplay === enableSessionReplay &&
     lastPortal === portal
   ) {
+    try {
+      await refreshMarketingAttributionCache();
+    } catch {
+      /* ignore */
+    }
     return createClient();
   }
 
@@ -101,6 +135,12 @@ export async function initAnalytics(
       }
     }
 
+    try {
+      await refreshMarketingAttributionCache();
+    } catch {
+      /* ignore */
+    }
+
     return createClient();
   } catch (err) {
     console.warn("[Amplitude] Init failed:", err);
@@ -143,7 +183,12 @@ function createClient(): AnalyticsClient {
     track: (eventType: string, eventProperties?: Record<string, unknown>) => {
       if (!isInitialized) return;
       try {
-        amplitude.track(eventType, eventProperties as Record<string, any>);
+        const merged = {
+          ...getCachedEventAttribution(),
+          ...getCachedMarketingForEvents(),
+          ...eventProperties,
+        } as Record<string, any>;
+        amplitude.track(eventType, merged);
       } catch {}
     },
     identify: (userId: string, userProperties?: Record<string, unknown>) => {
@@ -151,13 +196,8 @@ function createClient(): AnalyticsClient {
       try {
         amplitude.setUserId(userId);
         if (userProperties && Object.keys(userProperties).length > 0) {
-          const identify = new amplitude.Identify();
-          for (const [k, v] of Object.entries(userProperties)) {
-            if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
-              identify.set(k, v);
-            }
-          }
-          amplitude.identify(identify);
+          const identifyObj = applyUserPropertiesToIdentify(amplitude.Identify, userProperties);
+          amplitude.identify(identifyObj);
         }
         bootEngagement(userId);
       } catch {}
@@ -165,7 +205,11 @@ function createClient(): AnalyticsClient {
     screen: (screenName: string) => {
       if (!isInitialized) return;
       try {
-        amplitude.track("$screen_view", { $screen_name: screenName });
+        amplitude.track("$screen_view", {
+          ...getCachedEventAttribution(),
+          ...getCachedMarketingForEvents(),
+          $screen_name: screenName,
+        } as Record<string, any>);
       } catch {}
     },
     reset: () => {

@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Legacy admin chrome (sidebar, nav counts, search). Used only by `app/admin/layout.tsx` when
+ * Next serves embedded admin pages — not used by the Vite SPA (`apps/admin-web`).
+ */
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -52,6 +56,11 @@ import {
   Smartphone,
   Link2,
   Network,
+  Share2,
+  FolderOpen,
+  MapPinned,
+  Boxes,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -124,6 +133,7 @@ const navGroups: NavGroup[] = [
     section: ADMIN_SECTION_PROVIDERS_OPERATIONS,
     items: [
       { title: "Providers", href: "/admin/providers", icon: Building2 },
+      { title: "Provider distance", href: "/admin/providers/distance-settings", icon: MapPinned },
       { title: "Staff", href: "/admin/staff", icon: UserCheck },
       { title: "Bookings", href: "/admin/bookings", icon: Calendar },
       { title: "Reviews", href: "/admin/reviews", icon: Star },
@@ -162,8 +172,11 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Content", href: "/admin/content", icon: FileText },
       { title: "Learning Center", href: "/admin/content/learning", icon: GraduationCap },
+      { title: "CMS resources", href: "/admin/content/resources", icon: FolderOpen },
       { title: "Catalog", href: "/admin/catalog", icon: Tag },
+      { title: "Global categories", href: "/admin/catalog/global-categories", icon: Globe2 },
       { title: "Explore", href: "/admin/explore", icon: ImageIcon },
+      { title: "Add-ons", href: "/admin/addons", icon: Boxes },
     ],
   },
   {
@@ -205,7 +218,7 @@ const navGroups: NavGroup[] = [
     label: "Operations",
     section: ADMIN_SECTION_OPERATIONS,
     items: [
-      { title: "Market Coverage", href: "/admin/service-zones", icon: Globe2, superadminOnly: true },
+      { title: "Market Coverage", href: "/admin/service-zones", icon: Globe2 },
       { title: "System Health", href: "/admin/system-health", icon: Activity },
       { title: "Monitoring", href: "/admin/monitoring", icon: Activity },
       { title: "Security", href: "/admin/security", icon: Shield },
@@ -218,10 +231,17 @@ const navGroups: NavGroup[] = [
       { title: "Settings", href: "/admin/settings", icon: Settings },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers },
+      {
+        title: "Compliance purge",
+        href: "/admin/control-plane/compliance",
+        icon: ShieldAlert,
+        superadminOnly: true,
+      },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
+      { title: "Referral sources", href: "/admin/referral-sources", icon: Share2 },
       { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
     ],
   },

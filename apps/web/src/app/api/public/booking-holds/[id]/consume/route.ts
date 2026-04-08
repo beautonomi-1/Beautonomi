@@ -15,6 +15,8 @@ import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
 import { formatPublicCustomerBookingLimitMessage } from "@/lib/subscriptions/subscription-limit-messages";
 import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
 import { bookingProductLineSchema } from "@/lib/public-booking/booking-draft-schema";
+import { insertCustomerRecurringSeriesFromPaidBooking } from "@/lib/recurring/insert-customer-recurring-from-paid-booking";
+import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { z } from "zod";
 
 const consumeBodySchema = z.object({
@@ -64,6 +66,13 @@ const consumeBodySchema = z.object({
   package_id: z.string().uuid().optional().nullable(),
   /** Alias for `package_id` (e.g. mobile / analytics naming) — same `service_packages.id` on the booking */
   primary_package_id: z.string().uuid().optional().nullable(),
+  /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
+  subscribe_recurring: z
+    .object({
+      enabled: z.boolean(),
+      frequency: z.enum(["weekly", "biweekly", "monthly"]),
+    })
+    .optional(),
 });
 
 export async function POST(
@@ -136,6 +145,7 @@ export async function POST(
     const packageId = parsed.success
       ? (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined
       : undefined;
+    const subscribeRecurringReq = parsed.success ? parsed.data.subscribe_recurring : undefined;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isGiftCardsEnabledForTenant(marketTenantId);
@@ -350,6 +360,23 @@ export async function POST(
       draft.resource_ids = resourceIds;
     }
 
+    if (
+      subscribeRecurringReq?.enabled === true &&
+      subscribeRecurringEligible({
+        subscribe_recurring: { enabled: true, frequency: subscribeRecurringReq.frequency },
+        reschedule_booking_id: rescheduleBookingId ?? null,
+        is_group_booking: isGroupBooking,
+        has_group_participants: Boolean(
+          groupParticipants && Array.isArray(groupParticipants) && groupParticipants.length > 0,
+        ),
+      })
+    ) {
+      draft.subscribe_recurring = {
+        enabled: true,
+        frequency: subscribeRecurringReq.frequency,
+      };
+    }
+
     const baseUrl =
       process.env.NEXT_PUBLIC_APP_URL ||
       process.env.VERCEL_URL
@@ -440,10 +467,46 @@ export async function POST(
         .eq("id", bookingId);
     }
 
+    let recurring_subscription:
+      | { created: true }
+      | { created: false; pending?: true; message?: string }
+      | undefined;
+
+    if (subscribeRecurringReq?.enabled === true) {
+      if (!bookingId) {
+        recurring_subscription = { created: false, message: "Booking was not created." };
+      } else if (rescheduleBookingId) {
+        recurring_subscription = { created: false, message: "Not available when rescheduling." };
+      } else if (
+        isGroupBooking === true &&
+        Array.isArray(groupParticipants) &&
+        groupParticipants.length > 0
+      ) {
+        recurring_subscription = { created: false, message: "Not available for group bookings." };
+      } else if (bookingData?.data?.payment_url) {
+        recurring_subscription = { created: false, pending: true };
+      } else {
+        const recurringPay = paymentMethod === "cash" ? "cash" : "card";
+        const subResult = await insertCustomerRecurringSeriesFromPaidBooking({
+          admin: adminSupabase,
+          bookingId,
+          customerId: user.id,
+          frequency: subscribeRecurringReq.frequency,
+          paymentMethod: recurringPay,
+        });
+        if (subResult.ok === false) {
+          recurring_subscription = { created: false, message: subResult.message };
+        } else {
+          recurring_subscription = { created: true };
+        }
+      }
+    }
+
     return successResponse({
       booking_id: bookingData?.data?.booking_id,
       booking_number: bookingData?.data?.booking_number,
       payment_url: bookingData?.data?.payment_url,
+      ...(recurring_subscription ? { recurring_subscription } : {}),
     });
   } catch (error) {
     return handleApiError(error, "Failed to complete booking");

@@ -1,9 +1,30 @@
-import { NextRequest } from 'next/server';
-import { getSupabaseServer } from '@/lib/supabase/server';
-import { requireAdminSection, successResponse, handleApiError } from '@/lib/supabase/api-helpers';
-import { ADMIN_SECTION_OVERVIEW } from '@/lib/admin-sections';
-import { resolveAdminApiTenantId } from '@/lib/tenant/admin-request-tenant';
-import { fetchFinanceLedgerRowsForTenant } from '@/lib/admin/finance-ledger-tenant';
+import { NextRequest } from "next/server";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+
+/** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
+const LEDGER_TOTAL_MONTHS = 24;
+
+async function tenantCustomerCountFallback(
+  supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
+  tenantId: string
+): Promise<number> {
+  const { count, error } = await supabase
+    .from("users")
+    .select("*", { count: "exact", head: true })
+    .eq("role", "customer")
+    .eq("preferred_home_tenant_id", tenantId);
+  if (error) {
+    console.error("tenantCustomerCountFallback:", error);
+    return 0;
+  }
+  return count ?? 0;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -11,10 +32,10 @@ export async function GET(request: NextRequest) {
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    
+
     if (!supabase) {
       console.error("Failed to get Supabase client");
-      return handleApiError(new Error("Database connection failed"), 'Failed to load dashboard data');
+      return handleApiError(new Error("Database connection failed"), "Failed to load dashboard data");
     }
 
     const now = new Date();
@@ -23,25 +44,73 @@ export async function GET(request: NextRequest) {
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
 
-    // Run all count queries in parallel for better performance
-    // Handle errors gracefully for each query
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data: rpcCount, error: rpcErr } = await supabaseAdmin.rpc("admin_dashboard_tenant_customer_count", {
+      p_tenant_id: tenantId,
+    });
+    let totalCustomers =
+      typeof rpcCount === "number" ? rpcCount : (rpcCount != null ? Number(rpcCount) : NaN);
+    let customerCountUsesFallback = false;
+    if (rpcErr || Number.isNaN(totalCustomers)) {
+      customerCountUsesFallback = true;
+      if (rpcErr) console.warn("admin_dashboard_tenant_customer_count RPC failed (migration applied?):", rpcErr.message);
+      totalCustomers = await tenantCustomerCountFallback(supabase, tenantId);
+    }
+
     const queryResults = await Promise.allSettled([
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer'),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer').gte('created_at', startOfMonth.toISOString()),
-      supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'customer').gte('created_at', startOfLastMonth.toISOString()).lte('created_at', endOfLastMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId).gte('created_at', startOfMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'active').eq('tenant_id', tenantId).gte('created_at', startOfLastMonth.toISOString()).lte('created_at', endOfLastMonth.toISOString()),
+      supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId)
+        .gte("created_at", startOfMonth.toISOString()),
+      supabase
+        .from("users")
+        .select("*", { count: "exact", head: true })
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId)
+        .gte("created_at", startOfLastMonth.toISOString())
+        .lte("created_at", endOfLastMonth.toISOString()),
+      supabase.from("providers").select("*", { count: "exact", head: true }).eq("status", "active").eq("tenant_id", tenantId),
+      supabase
+        .from("providers")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+        .eq("tenant_id", tenantId)
+        .gte("created_at", startOfMonth.toISOString()),
+      supabase
+        .from("providers")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "active")
+        .eq("tenant_id", tenantId)
+        .gte("created_at", startOfLastMonth.toISOString())
+        .lte("created_at", endOfLastMonth.toISOString()),
       supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfToday.toISOString()),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfMonth.toISOString()),
-      supabase.from("bookings").select("*", { count: "exact", head: true }).eq("tenant_id", tenantId).gte("created_at", startOfLastMonth.toISOString()).lte("created_at", endOfLastMonth.toISOString()),
-      supabase.from('providers').select('*', { count: 'exact', head: true }).eq('status', 'pending_approval').eq('tenant_id', tenantId)
+      supabase
+        .from("bookings")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .gte("created_at", startOfToday.toISOString()),
+      supabase
+        .from("bookings")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .gte("created_at", startOfMonth.toISOString()),
+      supabase
+        .from("bookings")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .gte("created_at", startOfLastMonth.toISOString())
+        .lte("created_at", endOfLastMonth.toISOString()),
+      supabase
+        .from("providers")
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending_approval")
+        .eq("tenant_id", tenantId),
     ]);
 
-    // Extract counts with error handling
-    const getCount = (result: PromiseSettledResult<any>) => {
-      if (result.status === 'rejected') {
+    const getCount = (result: PromiseSettledResult<{ count?: number | null; error?: unknown }>) => {
+      if (result.status === "rejected") {
         console.error("Query rejected:", result.reason);
         return 0;
       }
@@ -52,168 +121,144 @@ export async function GET(request: NextRequest) {
       return result.value.count || 0;
     };
 
-    const totalUsers = getCount(queryResults[0]);
-    const usersThisMonth = getCount(queryResults[1]);
-    const usersLastMonth = getCount(queryResults[2]);
-    const totalProviders = getCount(queryResults[3]);
-    const providersThisMonth = getCount(queryResults[4]);
-    const providersLastMonth = getCount(queryResults[5]);
-    const totalBookings = getCount(queryResults[6]);
-    const bookingsToday = getCount(queryResults[7]);
-    const bookingsThisMonth = getCount(queryResults[8]);
-    const bookingsLastMonth = getCount(queryResults[9]);
-    const pendingApprovals = getCount(queryResults[10]);
+    const usersThisMonth = getCount(queryResults[0]);
+    const usersLastMonth = getCount(queryResults[1]);
+    const totalProviders = getCount(queryResults[2]);
+    const providersThisMonth = getCount(queryResults[3]);
+    const providersLastMonth = getCount(queryResults[4]);
+    const totalBookings = getCount(queryResults[5]);
+    const bookingsToday = getCount(queryResults[6]);
+    const bookingsThisMonth = getCount(queryResults[7]);
+    const bookingsLastMonth = getCount(queryResults[8]);
+    const pendingApprovals = getCount(queryResults[9]);
 
-    // Revenue streams from finance ledger - optimized to avoid fetching all rows
-    // For total, we'll calculate from last 2 years to avoid timeout (can be made configurable)
-    const twoYearsAgo = new Date(now.getFullYear() - 2, 0, 1);
-    
-    const sumLedger = async (startISO: string, endISO?: string) => {
+    const ledgerStart = new Date(now.getFullYear(), now.getMonth() - LEDGER_TOTAL_MONTHS, 1);
+
+    const sumLedger = async (startISO: string, endISO?: string | null) => {
       try {
         const ledgerRows = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
           start: startISO,
           end: endISO ?? null,
         });
-        const rows = ledgerRows;
-        
-        // Calculate sums using in-memory aggregation
-        type LedgerRow = { transaction_type?: string; amount?: number; net?: number; fees?: number };
-        const sum = (types: string[], field: "amount" | "net") =>
-          (rows as LedgerRow[]).filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r[field] ?? 0), 0);
-        const sumFees = (types: string[]) =>
-          (rows as LedgerRow[]).filter((r) => types.includes(r.transaction_type ?? "")).reduce((s, r) => s + Number(r.fees ?? 0), 0);
-        
-        return {
-          service_collected_net: sum(["payment", "additional_charge_payment"], "amount"),
-          platform_commission_gross: sum(["payment", "additional_charge_payment"], "net"),
-          platform_refund_impact: sum(["refund"], "net"),
-          platform_commission_net: sum(["payment", "additional_charge_payment"], "net") + sum(["refund"], "net"),
-          gateway_fees: sumFees(["payment", "additional_charge_payment"]),
-          platform_take_net: (sum(["payment", "additional_charge_payment"], "net") + sum(["refund"], "net")) - sumFees(["payment", "additional_charge_payment"]),
-          tips_gross: sum(["tip"], "amount"),
-          taxes_gross: sum(["tax"], "amount"),
-          subscription_net: sum(["provider_subscription_payment"], "net"),
-          subscription_gateway_fees: sumFees(["provider_subscription_payment"]),
-          gift_cards: sum(["gift_card_sale"], "amount"),
-          memberships: sum(["membership_sale"], "amount"),
-          refunds_gross: sum(["refund"], "amount"),
-        };
+        return aggregateFinanceLedgerRows(ledgerRows);
       } catch (err) {
         console.error("Error in sumLedger:", err);
-        // Return zeros on error
-        return {
-          service_collected_net: 0,
-          platform_commission_gross: 0,
-          platform_refund_impact: 0,
-          platform_commission_net: 0,
-          gateway_fees: 0,
-          platform_take_net: 0,
-          tips_gross: 0,
-          taxes_gross: 0,
-          subscription_net: 0,
-          subscription_gateway_fees: 0,
-          gift_cards: 0,
-          memberships: 0,
-          refunds_gross: 0,
-        };
+        return aggregateFinanceLedgerRows([]);
       }
     };
 
-    // Run recent period queries in parallel (these should be fast)
-    // Wrap in try-catch to handle any errors
-    let today, thisMonth, lastMonth, total;
+    let today: ReturnType<typeof aggregateFinanceLedgerRows>;
+    let thisMonth: ReturnType<typeof aggregateFinanceLedgerRows>;
+    let lastMonth: ReturnType<typeof aggregateFinanceLedgerRows>;
+    let total: ReturnType<typeof aggregateFinanceLedgerRows>;
+
     try {
-      [
-        today,
-        thisMonth,
-        lastMonth
-      ] = await Promise.all([
+      [today, thisMonth, lastMonth, total] = await Promise.all([
         sumLedger(startOfToday.toISOString()),
         sumLedger(startOfMonth.toISOString()),
-        sumLedger(startOfLastMonth.toISOString(), endOfLastMonth.toISOString())
+        sumLedger(startOfLastMonth.toISOString(), endOfLastMonth.toISOString()),
+        sumLedger(ledgerStart.toISOString()),
       ]);
-
-      // For total, use last 2 years instead of all time to avoid timeout
-      // In production, consider using a materialized view or cached aggregation
-      total = await sumLedger(twoYearsAgo.toISOString());
     } catch (err) {
       console.error("Error calculating revenue:", err);
-      // Return zero values if revenue calculation fails
-      const zeroRevenue = {
-        service_collected_net: 0,
-        platform_commission_gross: 0,
-        platform_refund_impact: 0,
-        platform_commission_net: 0,
-        gateway_fees: 0,
-        platform_take_net: 0,
-        tips_gross: 0,
-        taxes_gross: 0,
-        subscription_net: 0,
-        subscription_gateway_fees: 0,
-        gift_cards: 0,
-        memberships: 0,
-        refunds_gross: 0,
-      };
-      today = zeroRevenue;
-      thisMonth = zeroRevenue;
-      lastMonth = zeroRevenue;
-      total = zeroRevenue;
+      const zero = aggregateFinanceLedgerRows([]);
+      today = zero;
+      thisMonth = zero;
+      lastMonth = zero;
+      total = zero;
     }
 
+    const platformNetTotal =
+      total.platform_take_net + total.subscription_net + total.ads_net;
     const revenueGrowth =
-      lastMonth.platform_take_net !== 0
-        ? Math.round(((thisMonth.platform_take_net - lastMonth.platform_take_net) / Math.abs(lastMonth.platform_take_net)) * 100)
+      lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net !== 0
+        ? Math.round(
+            ((thisMonth.platform_take_net +
+              thisMonth.subscription_net +
+              thisMonth.ads_net -
+              (lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net)) /
+              Math.abs(
+                lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net
+              )) *
+              100
+          )
         : 0;
 
-    // Calculate growth percentages
-    const usersGrowth = usersLastMonth && usersLastMonth > 0
-      ? Math.round(((usersThisMonth || 0) - usersLastMonth) / usersLastMonth * 100)
-      : (usersThisMonth || 0) > 0 ? 100 : 0;
-    
-    const providersGrowth = providersLastMonth && providersLastMonth > 0
-      ? Math.round(((providersThisMonth || 0) - providersLastMonth) / providersLastMonth * 100)
-      : (providersThisMonth || 0) > 0 ? 100 : 0;
-    
-    const bookingsGrowth = bookingsLastMonth && bookingsLastMonth > 0
-      ? Math.round(((bookingsThisMonth || 0) - bookingsLastMonth) / bookingsLastMonth * 100)
-      : (bookingsThisMonth || 0) > 0 ? 100 : 0;
+    const usersGrowth =
+      usersLastMonth && usersLastMonth > 0
+        ? Math.round(((usersThisMonth || 0) - usersLastMonth) / usersLastMonth * 100)
+        : (usersThisMonth || 0) > 0
+          ? 100
+          : 0;
 
+    const providersGrowth =
+      providersLastMonth && providersLastMonth > 0
+        ? Math.round(((providersThisMonth || 0) - providersLastMonth) / providersLastMonth * 100)
+        : (providersThisMonth || 0) > 0
+          ? 100
+          : 0;
+
+    const bookingsGrowth =
+      bookingsLastMonth && bookingsLastMonth > 0
+        ? Math.round(((bookingsThisMonth || 0) - bookingsLastMonth) / bookingsLastMonth * 100)
+        : (bookingsThisMonth || 0) > 0
+          ? 100
+          : 0;
+
+    const generatedAt = new Date().toISOString();
+
+    // `total_users` is historical JSON key = distinct market customers (not all user roles). See metrics_notes + SPA label.
     return successResponse({
-      total_users: totalUsers || 0,
+      total_users: totalCustomers,
       total_providers: totalProviders || 0,
       total_bookings: totalBookings || 0,
-      total_revenue: total.platform_take_net,
+      total_revenue: platformNetTotal,
       pending_approvals: pendingApprovals || 0,
       active_bookings_today: bookingsToday || 0,
-      revenue_today: today.platform_take_net,
-      revenue_this_month: thisMonth.platform_take_net,
+      revenue_today: today.platform_take_net + today.subscription_net + today.ads_net,
+      revenue_this_month: thisMonth.platform_take_net + thisMonth.subscription_net + thisMonth.ads_net,
       revenue_growth: revenueGrowth,
       users_growth: usersGrowth,
       providers_growth: providersGrowth,
       bookings_growth: bookingsGrowth,
 
-      // New breakdowns (all-time)
-      gmv_total: total.service_collected_net,
-      platform_net_total: total.platform_take_net + total.subscription_net,
+      generated_at: generatedAt,
+      customer_count_uses_fallback: customerCountUsesFallback,
+      customer_signups_this_month: usersThisMonth,
+      customer_signups_last_month: usersLastMonth,
+
+      gmv_total: total.service_collected_gross,
+      platform_net_total: platformNetTotal,
       platform_commission_gross_total: total.platform_commission_gross,
       platform_refund_impact_total: total.platform_refund_impact,
-      gateway_fees_total: total.gateway_fees,
+      gateway_fees_total: total.gateway_fees_services,
       subscription_net_total: total.subscription_net,
       subscription_gateway_fees_total: total.subscription_gateway_fees,
+      ads_net_total: total.ads_net,
       tips_total: total.tips_gross,
       taxes_total: total.taxes_gross,
-      gift_card_sales_total: total.gift_cards,
-      membership_sales_total: total.memberships,
+      gift_card_sales_total: total.gift_card_sales,
+      membership_sales_total: total.membership_sales,
       refunds_total: total.refunds_gross,
-      
-      // Gift card breakdowns
+
       gift_card_metrics: {
-        total_sales: total.gift_cards,
-        // Note: Redemptions are tracked separately via gift_card_redemptions table
-        // Outstanding liability = sum of active gift card balances
+        total_sales: total.gift_card_sales,
+      },
+
+      metrics_notes: {
+        ledger_window_months: LEDGER_TOTAL_MONTHS,
+        customer_count_basis:
+          "Distinct customers with preferred_home_tenant OR at least one booking in tenant (RPC).",
+        customer_count_fallback_basis:
+          "When the RPC is unavailable, count is customers with preferred_home_tenant only (understates market reach).",
+        customer_growth_basis:
+          "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
+        platform_net_includes: "Booking platform take + subscription net + ads net (matches finance summary).",
+        bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",
+        providers_growth_basis: "Active providers created this calendar month vs last month (tenant scope).",
       },
     });
   } catch (error) {
-    return handleApiError(error, 'Failed to load dashboard data');
+    return handleApiError(error, "Failed to load dashboard data");
   }
 }

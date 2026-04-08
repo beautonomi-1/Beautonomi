@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import Script from "next/script";
 import { useOneSignal } from "@/hooks/useOneSignal";
+import { useCookieConsent } from "@/providers/CookieConsentProvider";
 
 // Track if we've already warned about missing App ID (module-level to persist across renders)
 let hasWarnedAboutAppId = false;
@@ -13,6 +14,7 @@ let hasWarnedAboutAppId = false;
  * This should be included in authenticated layouts
  */
 export default function OneSignalProvider() {
+  const { isReady, allowsFunctional } = useCookieConsent();
   // Call the hook - it will wait for OneSignal to be available
   useOneSignal();
   const hasWarnedRef = useRef(false);
@@ -30,6 +32,10 @@ export default function OneSignalProvider() {
   }, [appId]);
   
   if (!appId) {
+    return null;
+  }
+
+  if (!isReady || !allowsFunctional) {
     return null;
   }
 

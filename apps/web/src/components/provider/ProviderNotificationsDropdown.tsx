@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
+import { deriveProviderPortalNotificationUrl } from "@/lib/provider/derive-provider-notification-url";
 
 interface Notification {
   id: string;
@@ -122,15 +123,11 @@ const formatTimeAgo = (timestamp: string) => {
 };
 
 function deriveNotificationUrl(notification: Notification): string | undefined {
-  if (notification.link) return notification.link;
-  const d = { ...notification.data, ...notification.metadata };
-  if (d?.booking_id) return `/provider/bookings/${d.booking_id}`;
-  if (d?.conversation_id) return `/provider/messaging?id=${d.conversation_id}`;
-  if (d?.appointment_id) return `/provider/calendar`;
-  if (d?.client_id) return `/provider/clients/${d.client_id}`;
-  if (d?.staff_id) return `/provider/team/members`;
-  if (d?.order_id) return `/provider/orders/${d.order_id}`;
-  return undefined;
+  return deriveProviderPortalNotificationUrl({
+    link: notification.link,
+    data: notification.data,
+    metadata: notification.metadata,
+  });
 }
 
 export function ProviderNotificationsDropdown() {
@@ -183,7 +180,7 @@ export function ProviderNotificationsDropdown() {
                 title: newNotification.title,
                 message: newNotification.message,
                 timestamp: newNotification.created_at,
-                link: newNotification.link || undefined,
+                link: newNotification.link ?? newNotification.action_url ?? undefined,
                 priority: (newNotification.priority || 'low') as 'low' | 'medium' | 'high',
                 read: newNotification.is_read || false,
                 metadata: newNotification.metadata,
@@ -276,7 +273,7 @@ export function ProviderNotificationsDropdown() {
   const handleNotificationClick = async (notification: Notification) => {
     if (!notification.read) {
       try {
-        await fetcher.post(`/api/provider/notifications/${notification.id}/read`);
+        await fetcher.post(`/api/provider/notifications/${notification.id}/read`, {});
         setNotifications((prev) =>
           prev.map((n) =>
             n.id === notification.id ? { ...n, read: true } : n
@@ -285,13 +282,19 @@ export function ProviderNotificationsDropdown() {
         setTotalUnread((prev) => Math.max(0, prev - 1));
       } catch (error) {
         console.error('Failed to mark notification as read:', error);
+        toast.error('Could not mark notification as read');
       }
     }
 
     const url = deriveNotificationUrl(notification);
     if (url) {
       setOpen(false);
-      router.push(url);
+      try {
+        router.push(url);
+      } catch (e) {
+        console.error('Navigation failed:', e);
+        toast.error('Could not open link for this notification');
+      }
     } else {
       setExpandedId((prev) => (prev === notification.id ? null : notification.id));
     }
@@ -316,7 +319,7 @@ export function ProviderNotificationsDropdown() {
 
   const handleMarkAllRead = async () => {
     try {
-      await fetcher.post('/api/provider/notifications/mark-all-read');
+      await fetcher.post('/api/provider/notifications/mark-all-read', {});
       setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       setTotalUnread(0);
       toast.success('All notifications marked as read');
@@ -404,10 +407,18 @@ export function ProviderNotificationsDropdown() {
                 const derivedUrl = deriveNotificationUrl(notification);
                 return (
                   <div key={notification.id}>
-                    <button
-                      onClick={() => handleNotificationClick(notification)}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          void handleNotificationClick(notification);
+                        }
+                      }}
+                      onClick={() => void handleNotificationClick(notification)}
                       className={cn(
-                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors",
+                        "w-full text-left p-3 sm:p-4 hover:bg-gray-50 transition-colors cursor-pointer",
                         !notification.read && "bg-blue-50/50"
                       )}
                     >
@@ -433,6 +444,7 @@ export function ProviderNotificationsDropdown() {
                                 <span className="w-2 h-2 bg-[#FF0077] rounded-full mt-1.5" />
                               )}
                               <button
+                                type="button"
                                 onClick={(e) => handleDeleteNotification(e, notification.id)}
                                 className="p-1 text-gray-400 hover:text-red-500 transition-colors rounded"
                                 title="Delete notification"
@@ -456,7 +468,7 @@ export function ProviderNotificationsDropdown() {
                           </div>
                         </div>
                       </div>
-                    </button>
+                    </div>
                     {isExpanded && !derivedUrl && (
                       <div className="px-4 pb-3 pt-0 ml-12 text-xs text-gray-500 space-y-1 border-b">
                         <p className="text-gray-600">{notification.message}</p>

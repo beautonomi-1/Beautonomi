@@ -18,6 +18,19 @@ export interface UserProperties {
   device_type?: string;
   platform?: string;
   portal?: string;
+  app_version?: string;
+  app_build?: string;
+  os_version?: string;
+  device_model?: string;
+  /** First-touch acquisition params (from localStorage), for marketing cohorts */
+  first_touch_utm_source?: string;
+  first_touch_utm_medium?: string;
+  first_touch_utm_campaign?: string;
+  first_touch_utm_term?: string;
+  first_touch_utm_content?: string;
+  first_touch_gclid?: string;
+  first_touch_fbclid?: string;
+  first_touch_msclkid?: string;
   /** Resolved from Host → tenant_domains on identify request (§14.7). */
   active_tenant_id?: string;
   active_tenant_slug?: string;
@@ -50,6 +63,15 @@ export interface UserProperties {
 /** Allowed Amplitude user property keys (no PII). Used for schema contract tests. */
 export const AMPLITUDE_USER_PROPERTY_KEYS = [
   "user_id", "role", "portal", "platform", "device_type",
+  "app_version", "app_build", "os_version", "device_model",
+  "first_touch_utm_source",
+  "first_touch_utm_medium",
+  "first_touch_utm_campaign",
+  "first_touch_utm_term",
+  "first_touch_utm_content",
+  "first_touch_gclid",
+  "first_touch_fbclid",
+  "first_touch_msclkid",
   "active_tenant_id", "active_tenant_slug", "preferred_home_tenant_id",
   "preferred_language", "signup_source",
   "country", "city", "has_email", "has_phone", "has_name", "analytics_consent",
@@ -95,7 +117,8 @@ export async function identifyUser(
   const properties: UserProperties = {
     user_id: userId,
     role,
-    device_type: detectDeviceType(),
+    /** Browser: UA-based; server (API route): placeholder until POST body merges real client value. */
+    device_type: typeof window !== "undefined" ? detectDeviceType() : "server",
   };
 
   if (activeTenant) {

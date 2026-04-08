@@ -128,6 +128,27 @@ const nextConfig = {
   // Headers for caching & security
   async headers() {
     return [
+      // Admin SPA static chunks (Vite) — long cache; hashed filenames.
+      {
+        source: '/admin/assets/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      // Admin HTML shell — short TTL when SPA routing is enabled (see `src/proxy.ts` + admin cutover docs).
+      {
+        source: '/admin/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'private, no-cache, no-store, must-revalidate',
+          },
+          { key: 'X-Robots-Tag', value: 'noindex, nofollow' },
+        ],
+      },
       // CORS for public booking / search endpoints — open to all origins so that
       // express booking links embedded in third-party sites work correctly.
       {
@@ -189,7 +210,7 @@ const nextConfig = {
             value: [
               "default-src 'self'",
               // Scripts: self + inline (Next hydration) + CDN SDKs
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.sentry.io https://cdn.onesignal.com https://cdn.amplitude.com https://maps.googleapis.com https://api.mapbox.com https://va.vercel-scripts.com https://vercel.live",
               // Styles: self + inline (Tailwind runtime)
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               // Fonts
@@ -210,15 +231,8 @@ const nextConfig = {
           },
         ],
       },
-      {
-        source: '/_next/static/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
-          },
-        ],
-      },
+      // Do not set Cache-Control on `/_next/static/*` — Next.js applies hashed-filename caching;
+      // overriding it triggers a production warning and can fight the framework defaults.
       {
         source: '/images/:path*',
         headers: [

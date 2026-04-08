@@ -8,6 +8,7 @@ import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
 import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 import { LearnBreadcrumb } from "../../components/learn-breadcrumb";
 import ArticleFeedback from "./article-feedback";
+import { LearnArticleHero } from "./learn-article-hero";
 
 export const revalidate = 600;
 
@@ -112,7 +113,7 @@ export default async function LearnArticlePage({ params }: { params: Params }) {
   const readMins = article.body ? Math.max(1, Math.ceil(article.body.split(/\s+/).length / 200)) : null;
 
   return (
-    <article className="space-y-6 max-w-3xl">
+    <article className="space-y-6 max-w-3xl w-full min-w-0 overflow-x-auto">
       <LearnBreadcrumb
         parents={article.parents ?? (cat ? [cat.title] : [])}
         parentSlugs={article.parent_slugs ?? (cat ? [cat.slug] : [])}
@@ -129,12 +130,11 @@ export default async function LearnArticlePage({ params }: { params: Params }) {
         </Link>
       )}
 
-      {article.image_url && (
-        <div className="relative w-full overflow-hidden rounded-lg bg-zinc-100 aspect-[16/10] max-h-[320px]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={article.image_url} alt="" className="h-full w-full object-cover" />
-        </div>
-      )}
+      <LearnArticleHero
+        title={article.title}
+        imageUrl={article.image_url}
+        heroVideoUrl={article.hero_video_url}
+      />
 
       <header>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-black">{article.title}</h1>
@@ -180,6 +180,8 @@ export default async function LearnArticlePage({ params }: { params: Params }) {
           "[&_figure]:block [&_figure]:my-5 [&_figure]:max-w-full [&_figure]:rounded-lg [&_figure]:overflow-hidden",
           "[&_figure_img]:my-0 [&_figure_img]:w-full [&_figure_img]:max-w-full [&_figure_img]:h-auto [&_figure_img]:rounded-t-lg",
           "[&_figcaption]:mt-2 [&_figcaption]:text-sm [&_figcaption]:text-zinc-500 [&_figcaption]:text-center [&_figcaption]:italic",
+          "[&_table]:block [&_table]:w-full [&_table]:text-sm [&_table]:max-w-full",
+          "[&_pre]:overflow-x-auto [&_pre]:text-xs [&_pre]:sm:text-sm [&_pre]:max-w-full",
         ].join(" ")}
         dangerouslySetInnerHTML={{ __html: html }}
       />

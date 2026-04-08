@@ -1,12 +1,60 @@
 import { NextRequest } from "next/server";
-import { SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
+import { isUuidString, SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import {
   loadAvailabilityConstraints,
   parseSyntheticProviderStaffId,
 } from "@/lib/availability/load-constraints";
+import { mergeUnionAnyStaffSlots } from "@/lib/availability/merge-any-staff-slots";
+import type { TimeSlot } from "@/lib/availability/types";
 import { getProviderIdForUser, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+
+/** Cap union queries so one request cannot fan out unbounded. */
+const MAX_STAFF_IDS_FOR_ANY = 35;
+
+async function computeSlotsForStaff(
+  supabase: NonNullable<Awaited<ReturnType<typeof getSupabaseServer>>>,
+  staffId: string,
+  date: string,
+  mode: string,
+  duration: number,
+  travelBuffer: number,
+  avoidGaps: boolean,
+  excludeHoldId?: string
+): Promise<TimeSlot[]> {
+  let providerIdForSettings: string | undefined;
+  const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
+  if (syntheticProviderId) {
+    providerIdForSettings = syntheticProviderId;
+  } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
+    const { data: staffRow } = await supabase
+      .from("provider_staff")
+      .select("provider_id")
+      .eq("id", staffId)
+      .maybeSingle();
+    providerIdForSettings = staffRow?.provider_id ?? undefined;
+  }
+
+  const constraints = await loadAvailabilityConstraints(
+    supabase,
+    staffId,
+    date,
+    providerIdForSettings,
+    { excludeHoldId }
+  );
+
+  return calculateAvailableSlots(
+    constraints,
+    duration,
+    date,
+    {
+      slotInterval: 15,
+      avoidGaps,
+      travelBuffer: mode === "mobile" ? travelBuffer : 0,
+    }
+  );
+}
 
 /**
  * GET /api/availability
@@ -15,24 +63,26 @@ import { getSupabaseServer } from "@/lib/supabase/server";
  * Uses loadAvailabilityConstraints + calculateAvailableSlots (same pipeline as
  * portal/me reschedule). For duration, pass total blocked minutes (e.g. sum of
  * service durations + buffers) so slots match the book flow.
+ *
  * Query params: staffId, date, mode, duration, travelBuffer, avoidGaps, excludeHoldId
+ *
+ * **`staffId=any` (or omitted):** returns **no slots** unless **`providerId`** (provider UUID)
+ * is passed — then slots are the **union** of availability across active staff (or the
+ * synthetic solo `provider-{uuid}` staff when the provider has no `provider_staff` rows).
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const staffId = searchParams.get("staffId");
+    const staffIdRaw = searchParams.get("staffId");
+    const providerIdParam = searchParams.get("providerId")?.trim() || undefined;
     const date = searchParams.get("date");
     const mode = searchParams.get("mode") || "salon";
-    const duration = parseInt(searchParams.get("duration") || "60");
-    const travelBuffer = parseInt(searchParams.get("travelBuffer") || "0");
+    const duration = parseInt(searchParams.get("duration") || "60", 10);
+    const travelBuffer = parseInt(searchParams.get("travelBuffer") || "0", 10);
     const avoidGaps = searchParams.get("avoidGaps") === "true";
     const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
 
     if (!date) {
-      return successResponse({ date, slots: [] });
-    }
-
-    if (!staffId || staffId === "any") {
       return successResponse({ date, slots: [] });
     }
 
@@ -41,11 +91,12 @@ export async function GET(request: NextRequest) {
       return handleApiError(new Error("Database connection failed"), "Failed to connect to database");
     }
 
-    // --- Optional auth: enrich response for authenticated users ---
     let authenticatedProviderId: string | null = null;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (user) {
         authenticatedProviderId = await getProviderIdForUser(user.id, supabase);
       }
@@ -53,49 +104,61 @@ export async function GET(request: NextRequest) {
       // Auth is optional — swallow errors and continue as public
     }
 
-    let providerIdForSettings: string | undefined;
-    const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
-    if (syntheticProviderId) {
-      providerIdForSettings = syntheticProviderId;
-    } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
-      const { data: staffRow } = await supabase
+    const staffIdTrim = staffIdRaw?.trim() ?? "";
+    const wantsAnyStaff = !staffIdTrim || staffIdTrim === "any";
+
+    let slots: TimeSlot[];
+
+    if (wantsAnyStaff) {
+      if (!providerIdParam || !isUuidString(providerIdParam)) {
+        return successResponse({ date, slots: [] });
+      }
+
+      const { data: staffRows } = await supabase
         .from("provider_staff")
-        .select("provider_id")
-        .eq("id", staffId)
-        .maybeSingle();
-      providerIdForSettings = staffRow?.provider_id ?? undefined;
+        .select("id")
+        .eq("provider_id", providerIdParam)
+        .eq("is_active", true)
+        .limit(MAX_STAFF_IDS_FOR_ANY);
+
+      const ids = (staffRows || []).map((r: { id: string }) => r.id);
+      const staffIdsToScan =
+        ids.length > 0 ? ids : [`${SYNTHETIC_PROVIDER_STAFF_PREFIX}${providerIdParam}`];
+
+      const slotArrays = await Promise.all(
+        staffIdsToScan.map((sid) =>
+          computeSlotsForStaff(
+            supabase,
+            sid,
+            date,
+            mode,
+            duration,
+            travelBuffer,
+            avoidGaps,
+            excludeHoldId
+          )
+        )
+      );
+      slots = mergeUnionAnyStaffSlots(slotArrays);
+    } else {
+      slots = await computeSlotsForStaff(
+        supabase,
+        staffIdTrim,
+        date,
+        mode,
+        duration,
+        travelBuffer,
+        avoidGaps,
+        excludeHoldId
+      );
     }
 
-    // Uses service role when configured so customers see shifts + all bookings on this staff (RLS would hide them).
-    const constraints = await loadAvailabilityConstraints(
-      supabase,
-      staffId,
-      date,
-      providerIdForSettings,
-      { excludeHoldId }
-    );
-
-    // Calculate available slots
-    const slots = calculateAvailableSlots(
-      constraints,
-      duration,
-      date,
-      {
-        slotInterval: 15,
-        avoidGaps,
-        travelBuffer: mode === "mobile" ? travelBuffer : 0,
-      }
-    );
-
-    // Build response — enrich when the caller is an authenticated provider/staff member
-    const response: Record<string, any> = {
+    const response: Record<string, unknown> = {
       date,
       slots,
     };
 
     if (authenticatedProviderId) {
-      // Authenticated provider/staff: include provider-specific context
-      // so the front-end can show richer booking UI (e.g. internal notes, buffer info)
       response.provider_context = {
         provider_id: authenticatedProviderId,
         is_own_staff: true,

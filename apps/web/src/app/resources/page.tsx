@@ -23,8 +23,9 @@ export default async function ResourcesPage() {
   const hasContent = !!content && Object.keys(content).length > 0;
 
   return (
-    <div className="min-h-screen bg-white pb-20 md:pb-0 overflow-x-hidden w-full max-w-full">
+    <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
+      <div className="w-full max-w-full overflow-x-hidden">
       <div className="max-w-3xl mx-auto px-4 md:px-8 py-10 md:py-16">
         <p className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">
           Resources
@@ -63,6 +64,7 @@ export default async function ResourcesPage() {
             </Link>
           </>
         )}
+      </div>
       </div>
       <Footer />
       <BottomNav />

@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createSupabaseAnonPublicClient } from "@/lib/supabase/public-read";
 
 export type PublicPageContent = {
   [sectionKey: string]: {
@@ -12,7 +12,8 @@ export async function getPublicPageContent(
   pageSlug: string
 ): Promise<PublicPageContent | null> {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = createSupabaseAnonPublicClient();
+    if (!supabase) return null;
     const { data, error } = await supabase
       .from("page_content")
       .select("section_key, content, content_type, metadata")

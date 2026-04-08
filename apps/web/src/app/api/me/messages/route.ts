@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { sanitizeMessageAttachmentsForResponse } from "@/lib/messaging/message-attachments";
 
 /**
  * Verify the caller has access to a conversation. Returns the role ("customer" | "provider").
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
       sender_name: m.sender?.full_name || "User",
       sender_role: m.sender_role,
       content: m.content,
-      attachments: m.attachments || [],
+      attachments: sanitizeMessageAttachmentsForResponse(m.attachments || [], m.created_at),
       created_at: m.created_at,
       read_at: m.read_at,
     }));

@@ -7,6 +7,18 @@ import {
   notFoundResponse,
   errorResponse,
 } from "@/lib/supabase/api-helpers";
+import { z } from "zod";
+import {
+  notifySupportStaffInboxActivity,
+  resolveSupportTicketStaffRecipients,
+} from "@/lib/notifications/notification-service";
+
+const attachmentSchema = z.object({
+  url: z.string().url(),
+  name: z.string(),
+  type: z.string(),
+  size: z.number().optional(),
+});
 
 /**
  * POST /api/me/support-tickets/[id]/messages
@@ -27,14 +39,22 @@ export async function POST(
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const message = typeof body?.message === "string" ? body.message.trim() : "";
+    let attachments: z.infer<typeof attachmentSchema>[] = [];
+    if (body?.attachments != null) {
+      const parsed = z.array(attachmentSchema).safeParse(body.attachments);
+      if (!parsed.success) {
+        return errorResponse("Invalid attachments payload", "VALIDATION_ERROR", 400);
+      }
+      attachments = parsed.data.slice(0, 10);
+    }
 
-    if (!message) {
-      return errorResponse("Message is required", "VALIDATION_ERROR", 400);
+    if (!message && attachments.length === 0) {
+      return errorResponse("Message or attachments are required", "VALIDATION_ERROR", 400);
     }
 
     const { data: ticket, error: ticketError } = await supabase
       .from("support_tickets")
-      .select("id, user_id")
+      .select("id, user_id, ticket_number, subject, assigned_to, status")
       .eq("id", id)
       .single();
 
@@ -46,23 +66,48 @@ export async function POST(
       return errorResponse("You can only reply to your own tickets", "FORBIDDEN", 403);
     }
 
+    const bodyText = message.slice(0, 10000) || (attachments.length ? "(attachment)" : "");
+
     const { data: newMessage, error: insertError } = await supabase
       .from("support_ticket_messages")
       .insert({
         ticket_id: id,
         user_id: user.id,
-        message: message.slice(0, 10000),
+        message: bodyText,
         is_internal: false,
+        attachments,
       })
       .select()
       .single();
 
     if (insertError) throw insertError;
 
-    await supabase
-      .from("support_tickets")
-      .update({ updated_at: new Date().toISOString() })
-      .eq("id", id);
+    const ticketUpdate: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+      last_customer_reply_at: new Date().toISOString(),
+    };
+    const st = String(ticket.status ?? "");
+    if (st === "open" || st === "in_progress") {
+      ticketUpdate.status = "waiting_customer";
+    }
+    await supabase.from("support_tickets").update(ticketUpdate).eq("id", id);
+
+    try {
+      const staffIds = await resolveSupportTicketStaffRecipients(ticket.assigned_to ?? null);
+      const previewText =
+        message.slice(0, 180) ||
+        (attachments.length ? `Sent ${attachments.length} attachment(s)` : "New reply");
+      const ellip = message.length > 180 ? "…" : "";
+      await notifySupportStaffInboxActivity(
+        staffIds,
+        ticket.ticket_number || id,
+        `Customer replied: ${previewText}${ellip}`,
+        id,
+        ["email", "push"]
+      );
+    } catch (notifyErr) {
+      console.error("Support staff reply notification failed:", notifyErr);
+    }
 
     return successResponse({ message: newMessage });
   } catch (error) {

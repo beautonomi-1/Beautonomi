@@ -6,6 +6,7 @@ import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout
 import { PageHeader } from "@/components/provider/PageHeader";
 import { ReportFilters, DateRange } from "../../components/ReportFilters";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, Users, Clock, DollarSign, Star } from "lucide-react";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
@@ -29,6 +30,8 @@ interface StaffPerformanceData {
     averageRating: number;
     totalReviews: number;
     commissionEarned: number;
+    commissionEnabled: boolean;
+    tipsEnabled: boolean;
   }>;
   summary: {
     totalStaff: number;
@@ -330,6 +333,26 @@ export default function StaffPerformanceReport() {
                           <p className="text-xs text-gray-500">
                             {staff.totalHours.toFixed(1)} hours
                           </p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {staff.commissionEnabled ? (
+                              <Badge variant="secondary" className="text-[10px] font-normal">
+                                Commission
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                                No commission
+                              </Badge>
+                            )}
+                            {staff.tipsEnabled ? (
+                              <Badge variant="secondary" className="text-[10px] font-normal">
+                                Tips
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-[10px] font-normal text-muted-foreground">
+                                No tips
+                              </Badge>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="text-right py-3 px-4 text-sm text-gray-900">

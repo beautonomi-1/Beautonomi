@@ -4,6 +4,7 @@
 
 import * as amplitude from "@amplitude/analytics-browser";
 import { sessionReplayPlugin } from "@amplitude/plugin-session-replay-browser";
+import { applyUserPropertiesToIdentify } from "./identify-helpers";
 import { AmplitudeConfig } from "./types";
 import { PluginPipeline, PluginContext } from "./plugins";
 
@@ -114,12 +115,9 @@ function createClient(pipeline: PluginPipeline): AmplitudeClient {
     identify: (userId: string, userProperties?: Record<string, any>) => {
       try {
         amplitude.setUserId(userId);
-        if (userProperties) {
-          const identify = new amplitude.Identify();
-          Object.entries(userProperties).forEach(([key, value]) => {
-            identify.set(key, value);
-          });
-          amplitude.identify(identify);
+        if (userProperties && Object.keys(userProperties).length > 0) {
+          const identifyObj = applyUserPropertiesToIdentify(amplitude.Identify, userProperties);
+          amplitude.identify(identifyObj);
         }
       } catch (error) {
         console.error("[Amplitude] Error identifying user:", error);
@@ -128,11 +126,8 @@ function createClient(pipeline: PluginPipeline): AmplitudeClient {
 
     setUserProperties: (userProperties: Record<string, any>) => {
       try {
-        const identify = new amplitude.Identify();
-        Object.entries(userProperties).forEach(([key, value]) => {
-          identify.set(key, value);
-        });
-        amplitude.identify(identify);
+        const identifyObj = applyUserPropertiesToIdentify(amplitude.Identify, userProperties);
+        amplitude.identify(identifyObj);
       } catch (error) {
         console.error("[Amplitude] Error setting user properties:", error);
       }

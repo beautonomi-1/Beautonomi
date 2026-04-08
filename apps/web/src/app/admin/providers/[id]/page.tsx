@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   CreditCard,
   Building,
+  Trash2,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -34,11 +35,13 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import Link from "next/link";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
+import { CompliancePurgeProviderDialog } from "@/components/admin/CompliancePurgeProviderDialog";
 
 interface Provider {
   id: string;
@@ -104,6 +107,8 @@ export default function ProviderDetailPage() {
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [statusAction, setStatusAction] = useState<"approve" | "suspend" | "reject" | "reactivate">("approve");
   const [statusReason, setStatusReason] = useState("");
+  const [compliancePurgeOpen, setCompliancePurgeOpen] = useState(false);
+
   const [payoutAccounts, setPayoutAccounts] = useState<
     Array<{
       id: string;
@@ -764,7 +769,40 @@ export default function ProviderDetailPage() {
               </div>
             </TabsContent>
           </Tabs>
+
+          <div className="mt-10 rounded-xl border-2 border-red-200 bg-red-50/50 p-6">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-red-900">Compliance: purge provider organization</h2>
+                <p className="mt-2 max-w-3xl text-sm text-red-900/85">
+                  Permanently removes this provider&apos;s business data (cascading bookings, catalogue,
+                  locations, and related records), deletes every linked team member&apos;s login, then the
+                  owner&apos;s account. Use only for regulatory requirements or verified data-subject /
+                  erasure requests.{" "}
+                  <span className="font-semibold">Cannot be undone.</span>
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                className="shrink-0"
+                onClick={() => setCompliancePurgeOpen(true)}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Purge organization…
+              </Button>
+            </div>
+          </div>
         </div>
+
+        <CompliancePurgeProviderDialog
+          open={compliancePurgeOpen}
+          onOpenChange={setCompliancePurgeOpen}
+          providerId={provider.id}
+          providerEmail={provider.email}
+          ownerEmail={provider.owner.email}
+          onComplete={() => router.push("/admin/providers")}
+        />
 
         {/* Status Change Dialog */}
         <Dialog open={showStatusDialog} onOpenChange={setShowStatusDialog}>

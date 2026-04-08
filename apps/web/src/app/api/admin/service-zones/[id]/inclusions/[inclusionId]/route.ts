@@ -7,7 +7,7 @@ import {
   handleApiError,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
+import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
 
 /**
  * DELETE /api/admin/service-zones/[id]/inclusions/[inclusionId]
@@ -18,7 +18,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; inclusionId: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
+    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: zone_id, inclusionId } = await params;

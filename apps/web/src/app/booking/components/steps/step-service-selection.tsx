@@ -33,6 +33,7 @@ interface Service {
   title: string;
   description?: string;
   duration: number;
+  bufferMinutes?: number;
   price: number;
   currency: string;
   category: string;
@@ -199,6 +200,7 @@ export default function StepServiceSelection({
             id: baseRow.id,
             title: baseRow.title,
             duration: baseRow.duration,
+            bufferMinutes: baseRow.bufferMinutes ?? 0,
             price: baseRow.price,
             currency: baseRow.currency,
             staffId: defaultStaffId,
@@ -242,6 +244,8 @@ export default function StepServiceSelection({
           id: v.id,
           title: v.title || v.variant_name || parentWithVariant.title,
           duration: v.duration ?? v.duration_minutes ?? parentWithVariant.duration,
+          bufferMinutes:
+            v.bufferMinutes ?? v.buffer_minutes ?? parentWithVariant.bufferMinutes ?? 0,
           price: v.price ?? parentWithVariant.price,
           currency: v.currency ?? parentWithVariant.currency,
           staffId: defaultStaffId,
@@ -463,6 +467,7 @@ export default function StepServiceSelection({
             id: service.id,
             title: service.title,
             duration: service.duration,
+            bufferMinutes: service.bufferMinutes ?? 0,
             price: service.price,
             currency: service.currency,
             staffId,
@@ -516,6 +521,8 @@ export default function StepServiceSelection({
               id: variant.id,
               title: variant.title || variant.variant_name || variant.title,
               duration: variant.duration,
+              bufferMinutes:
+                variant.bufferMinutes ?? variant.buffer_minutes ?? currentService?.bufferMinutes ?? 0,
               price: variant.price,
               currency: variant.currency,
               ...(isBaseOption ? {} : { baseServiceId: serviceId }),

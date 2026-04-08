@@ -23,10 +23,10 @@ export function resolvePostLoginHref(returnTo: string | string[] | undefined): H
       return { pathname: "/(app)/book-checkout", params: p };
     }
   }
-  if (t.startsWith("/(app)/product-checkout")) {
+  if (t.startsWith("/(app)/(tabs)/shop/product-checkout") || t.startsWith("/(app)/product-checkout")) {
     const q = t.includes("?") ? t.split("?")[1] : "";
     const pid = new URLSearchParams(q).get("provider_id");
-    if (pid) return { pathname: "/(app)/product-checkout", params: { provider_id: pid } };
+    if (pid) return { pathname: "/(app)/(tabs)/shop/product-checkout", params: { provider_id: pid } };
   }
   if (t.startsWith("/(app)/product-detail")) {
     const q = t.includes("?") ? t.split("?")[1] : "";

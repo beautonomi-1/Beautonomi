@@ -283,6 +283,10 @@ export interface Appointment {
   service_fee_amount?: number;
   /** Optional version for optimistic locking (PATCH) */
   version?: number;
+  /** Intake/consent/waiver answers from online checkout (`bookings.provider_form_responses`). */
+  provider_form_responses?: Record<string, Record<string, unknown>> | null;
+  /** Platform booking custom fields (from `custom_field_values` when loaded). */
+  custom_field_values?: Record<string, string | number | boolean | null> | null;
 }
 
 /**
@@ -558,6 +562,14 @@ export interface RecurringAppointment {
   notes?: string;
   /** Branch for recurring rule (when multi-location) */
   location_id?: string | null;
+  /** DB `metadata` (e.g. duration_minutes, price overrides from provider UI). */
+  metadata?: Record<string, unknown>;
+  /** Simple cadence when set (customer + cron paths). */
+  frequency?: string | null;
+  last_booking_date?: string | null;
+  end_date?: string | null;
+  /** Next due occurrence on or after today (computed). */
+  next_occurrence_date?: string | null;
 }
 
 /**

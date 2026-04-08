@@ -6,10 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
-import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap, Clock, MapPin } from "lucide-react";
+import { CreditCard, Banknote, Loader2, Tag, Heart, FileText, Zap, Clock, MapPin, Repeat } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { useModuleConfig, useFeatureFlag, useConfigBundle } from "@/providers/ConfigBundleProvider";
 import {
@@ -32,6 +33,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { CustomFieldDefinition } from "@/components/custom-fields/CustomFieldsForm";
+import { NATIVE_STORE } from "@/lib/store/native-app-store";
 
 interface ProviderFormField {
   id: string;
@@ -134,8 +136,8 @@ function resolvePrefillProductLines(
   return out;
 }
 
-const IOS_APP_URL_CONTINUE = "https://apps.apple.com/app/beautonomi";
-const ANDROID_APP_URL_CONTINUE = "https://play.google.com/store/apps/details?id=com.beautonomi";
+const IOS_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultAppStoreUrl;
+const ANDROID_APP_URL_CONTINUE = NATIVE_STORE.customer.defaultPlayStoreUrl;
 
 function MobileAppNudge() {
   const [show, setShow] = useState(false);
@@ -204,6 +206,9 @@ function BookContinueContent() {
   /** From booking flow when a service package was selected (`?package=` or Packages UI) — forwarded to consume as `package_id`. */
   const [consumePackageId, setConsumePackageId] = useState<string | null>(null);
   const [requestingNow, setRequestingNow] = useState(false);
+  const [subscribeRecurring, setSubscribeRecurring] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
+  const [groupBookingForRecurring, setGroupBookingForRecurring] = useState(false);
   const { user } = useAuth();
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
@@ -284,6 +289,22 @@ function BookContinueContent() {
           if (savedAddons) {
             const parsed = JSON.parse(savedAddons) as string[];
             setAddonIds(Array.isArray(parsed) ? parsed : []);
+          }
+          try {
+            const rawGroup = sessionStorage.getItem("beautonomi_booking_group");
+            if (rawGroup) {
+              const parsed = JSON.parse(rawGroup) as {
+                isGroupBooking?: boolean;
+                groupParticipants?: unknown[];
+              };
+              setGroupBookingForRecurring(
+                Boolean(parsed?.isGroupBooking && Array.isArray(parsed.groupParticipants) && parsed.groupParticipants.length > 0)
+              );
+            } else {
+              setGroupBookingForRecurring(false);
+            }
+          } catch {
+            setGroupBookingForRecurring(false);
           }
           const savedPromo = sessionStorage.getItem("beautonomi_booking_promotion_code");
           if (savedPromo?.trim()) setPromotionCode(savedPromo.trim());
@@ -629,11 +650,20 @@ function BookContinueContent() {
       } catch {
         // ignore
       }
+      if (
+        subscribeRecurring &&
+        user &&
+        !rescheduleBookingId &&
+        !groupBookingForRecurring
+      ) {
+        payload.subscribe_recurring = { enabled: true, frequency: recurringFrequency };
+      }
       const res = await fetcher.post<{
         data?: {
           booking_id?: string;
           booking_number?: string;
           payment_url?: string | null;
+          recurring_subscription?: { created: boolean; pending?: boolean; message?: string };
         };
       }>(`/api/public/booking-holds/${holdId}/consume`, payload, {
         timeoutMs: 120_000,
@@ -645,9 +675,30 @@ function BookContinueContent() {
       const bookingNumber = data?.booking_number;
 
       if (paymentUrl) {
+        if (subscribeRecurring && user) {
+          const sub = data?.recurring_subscription;
+          if (sub?.pending) {
+            toast.info(
+              "Complete payment to save your repeating schedule. It will appear under Account settings → Recurring bookings after payment succeeds.",
+            );
+          }
+        }
         setStatus("redirecting");
         window.location.href = paymentUrl;
         return;
+      }
+
+      if (subscribeRecurring && user) {
+        const sub = data?.recurring_subscription;
+        if (sub?.created) {
+          toast.success("Repeating schedule saved. Manage it under Account settings → Recurring bookings.");
+        } else if (sub?.pending) {
+          toast.info(
+            "Your repeating schedule will be saved after payment completes.",
+          );
+        } else if (sub && sub.created === false && sub.message) {
+          toast.error(sub.message);
+        }
       }
 
       try {
@@ -964,6 +1015,57 @@ function BookContinueContent() {
               </p>
             )}
           </div>
+
+          {user && !rescheduleBookingId && !groupBookingForRecurring && (
+            <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
+              <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>
+                <Repeat className="h-4 w-4" style={{ color: BOOKING_ACCENT }} />
+                Repeat this booking
+              </h2>
+              <p className="text-sm" style={{ color: BOOKING_TEXT_SECONDARY }}>
+                When enabled, we save the same services on a repeating schedule as soon as your booking is created.
+                You pay per visit unless you pay in the app. External payment pages still get the repeat schedule—you can
+                manage it under Account settings.
+              </p>
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="subscribe-recurring"
+                  checked={subscribeRecurring}
+                  onCheckedChange={(c) => setSubscribeRecurring(c === true)}
+                  className="mt-1"
+                />
+                <div className="space-y-2 flex-1 min-w-0">
+                  <Label
+                    htmlFor="subscribe-recurring"
+                    className="text-sm font-medium cursor-pointer"
+                    style={{ color: BOOKING_TEXT_PRIMARY }}
+                  >
+                    Turn on repeating visits
+                  </Label>
+                  {subscribeRecurring && (
+                    <div className="space-y-1">
+                      <Label htmlFor="recurring-freq" className="text-xs text-muted-foreground">
+                        How often
+                      </Label>
+                      <select
+                        id="recurring-freq"
+                        value={recurringFrequency}
+                        onChange={(e) =>
+                          setRecurringFrequency(e.target.value as "weekly" | "biweekly" | "monthly")
+                        }
+                        className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm min-h-[44px]"
+                        style={{ borderColor: BOOKING_BORDER }}
+                      >
+                        <option value="weekly">Every week</option>
+                        <option value="biweekly">Every 2 weeks</option>
+                        <option value="monthly">Every month</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-3xl p-5 space-y-3 border" style={cardStyle}>
             <h2 className="font-medium flex items-center gap-2" style={{ color: BOOKING_TEXT_PRIMARY }}>

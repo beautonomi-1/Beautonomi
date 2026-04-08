@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ComponentProps } from "react";
-import { Tabs, router, useFocusEffect } from "expo-router";
+import { Tabs, useFocusEffect } from "expo-router";
 import { Platform, TouchableOpacity, View, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -144,6 +144,7 @@ export default function TabsLayout() {
         name="cart"
         options={{
           title: "Cart",
+          headerShown: true,
           tabBarIcon: ({ focused, color }) => (
             <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
               <Ionicons name={focused ? "cart" : "cart-outline"} size={24} color={color} />
@@ -168,16 +169,6 @@ export default function TabsLayout() {
                 </View>
               )}
             </View>
-          ),
-          tabBarButton: (props) => (
-            <TouchableOpacity
-              {...(props as React.ComponentProps<typeof TouchableOpacity>)}
-              onPress={() => {
-                haptic.selection();
-                router.push("/(app)/cart" as any);
-              }}
-              activeOpacity={0.7}
-            />
           ),
         }}
       />
@@ -208,6 +199,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="explore" options={{ href: null }} />
       <Tabs.Screen name="search" options={{ href: null }} />
       <Tabs.Screen name="saved" options={{ href: null }} />
+      <Tabs.Screen name="shop" options={{ href: null, headerShown: false }} />
       </Tabs>
     </View>
   );

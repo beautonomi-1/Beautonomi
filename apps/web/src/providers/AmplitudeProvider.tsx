@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./AuthProvider";
+import { useCookieConsent } from "./CookieConsentProvider";
 import { initAmplitude, hardResetAmplitudeBrowser, AmplitudeClient } from "@/lib/analytics/amplitude/client";
 import { fetchAmplitudeConfig } from "@/lib/analytics/amplitude/config";
 import { AmplitudeConfig } from "@/lib/analytics/amplitude/types";
@@ -36,6 +37,7 @@ export function AmplitudeProvider({ children, portal }: AmplitudeProviderProps) 
   const [config, setConfig] = useState<AmplitudeConfig | null>(null);
   const pathname = usePathname();
   const { user, role } = useAuth();
+  const { isReady: consentReady, allowsAnalytics } = useCookieConsent();
   const isDev = process.env.NODE_ENV !== "production";
 
   useEffect(() => {
@@ -46,6 +48,24 @@ export function AmplitudeProvider({ children, portal }: AmplitudeProviderProps) 
         // Superadmin: no analytics SDK (no events, no identify)
         if (role === "superadmin") {
           hardResetAmplitudeBrowser();
+          if (mounted) {
+            setAmplitude(null);
+            setIsInitialized(false);
+          }
+          return;
+        }
+
+        if (!consentReady) {
+          if (mounted) {
+            setAmplitude(null);
+            setIsInitialized(false);
+          }
+          return;
+        }
+
+        if (!allowsAnalytics) {
+          hardResetAmplitudeBrowser();
+          if (mounted && isDev) console.log("[Amplitude] Skipped: cookie or account analytics consent");
           if (mounted) {
             setAmplitude(null);
             setIsInitialized(false);
@@ -73,37 +93,6 @@ export function AmplitudeProvider({ children, portal }: AmplitudeProviderProps) 
             setIsInitialized(false);
           }
           return;
-        }
-
-        // Logged-in users: fail-closed — do not init if consent cannot be verified or is declined
-        if (user) {
-          try {
-            const res = await fetch("/api/me/analytics/consent", { credentials: "same-origin" });
-            if (!res.ok) {
-              if (mounted && isDev) console.log("[Amplitude] Skipped: consent check failed (fail-closed)");
-              if (mounted) {
-                setAmplitude(null);
-                setIsInitialized(false);
-              }
-              return;
-            }
-            const json = await res.json();
-            if (json.data?.analytics_consent === false) {
-              if (mounted && isDev) console.log("[Amplitude] Disabled by user consent");
-              if (mounted) {
-                setAmplitude(null);
-                setIsInitialized(false);
-              }
-              return;
-            }
-          } catch {
-            if (mounted && isDev) console.log("[Amplitude] Skipped: consent check error (fail-closed)");
-            if (mounted) {
-              setAmplitude(null);
-              setIsInitialized(false);
-            }
-            return;
-          }
         }
 
         // Session replay only for authenticated users who passed consent above; anonymous = no replay
@@ -143,7 +132,7 @@ export function AmplitudeProvider({ children, portal }: AmplitudeProviderProps) 
     return () => {
       mounted = false;
     };
-  }, [portal, pathname, user, role, isDev]);
+  }, [portal, pathname, user, role, isDev, consentReady, allowsAnalytics]);
 
   // Identify user when they log in (do not track superadmin)
   useEffect(() => {

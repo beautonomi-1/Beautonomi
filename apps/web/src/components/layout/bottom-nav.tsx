@@ -21,7 +21,7 @@ export default function BottomNav() {
 
   const loggedInTabs = [
     { name: "Home", icon: Home, link: "/", isLink: true },
-    { name: "Explore", icon: Search, link: "/explore", isLink: true },
+    { name: "Search", icon: Search, link: "/search", isLink: true },
     { name: "Bookings", icon: Calendar, link: "/bookings", isLink: true },
     { name: "Chats", icon: MessageSquare, link: "/inbox", isLink: true },
     { name: "Profile", icon: User, link: "/profile", isLink: true },
@@ -29,7 +29,7 @@ export default function BottomNav() {
 
   const guestTabs = [
     { name: "Home", icon: Home, link: "/", isLink: true },
-    { name: "Explore", icon: Search, link: "/explore", isLink: true },
+    { name: "Search", icon: Search, link: "/search", isLink: true },
     { name: "Wishlists", icon: Heart, link: "/account-settings/wishlists", isLink: true },
     { name: "Log in", icon: User, link: "#", isLink: false },
   ] as const;
@@ -42,8 +42,8 @@ export default function BottomNav() {
   // Determine active tab based on current pathname
   const getActiveTab = () => {
     if (pathname === "/") return "Home";
-    if (pathname === "/explore") return "Explore";
-    if (pathname?.startsWith("/explore/saved")) return "Saved";
+    if (pathname === "/search") return "Search";
+    if (pathname?.startsWith("/explore")) return "";
     if (pathname?.startsWith("/account-settings/wishlists")) return "Wishlists";
     // Bookings: check both /bookings and /account-settings/bookings
     if (pathname?.startsWith("/bookings") || pathname?.startsWith("/account-settings/bookings")) return "Bookings";
@@ -61,7 +61,7 @@ export default function BottomNav() {
       return "Profile";
     }
     if (!showSignedInNav && pathname?.startsWith("/account-settings")) return "Log in";
-    return "Explore";
+    return "";
   };
 
   const activeTab = getActiveTab();
@@ -105,25 +105,25 @@ export default function BottomNav() {
         isVisible ? "translate-y-0" : "translate-y-full"
       }`}
     >
-      <nav className="flex items-center justify-between py-2 px-1 sm:px-2 pb-1 w-full max-w-full overflow-x-hidden">
+      <nav className="flex items-stretch justify-between py-2 px-1 sm:px-2 pb-1 w-full max-w-full overflow-x-hidden gap-0.5">
         {tabs.map((tab) => {
-          const content = (
-            <div
-              className={`flex flex-col items-center justify-center py-2 px-1 sm:px-2 flex-1 min-w-0 rounded-lg transition-colors ${
-                activeTab === tab.name 
-                  ? "text-[#FF0077] bg-pink-50" 
-                  : "text-gray-600 hover:text-[#FF0077]"
-              }`}
-            >
-              <tab.icon className="w-5 h-5 flex-shrink-0" />
-              <span className="text-[10px] mt-0.5 font-medium truncate w-full text-center">{tab.name}</span>
-            </div>
-          );
+          const active = activeTab === tab.name;
+          const itemClass = `flex flex-col items-center justify-center py-2 px-1 sm:px-2 flex-1 min-w-0 min-h-[48px] rounded-lg transition-colors touch-manipulation select-none ${
+            active ? "text-[#FF0077] bg-pink-50" : "text-gray-600 hover:text-[#FF0077] active:text-[#FF0077]"
+          }`;
 
           if (tab.isLink) {
             return (
-              <Link key={tab.name} href={tab.link}>
-                {content}
+              <Link
+                key={tab.name}
+                href={tab.link}
+                className={itemClass}
+                aria-current={active ? "page" : undefined}
+              >
+                <tab.icon className="w-5 h-5 flex-shrink-0 pointer-events-none" aria-hidden />
+                <span className="text-[10px] mt-0.5 font-medium truncate w-full text-center pointer-events-none">
+                  {tab.name}
+                </span>
               </Link>
             );
           }
@@ -131,10 +131,14 @@ export default function BottomNav() {
           return (
             <button
               key={tab.name}
+              type="button"
               onClick={(e) => handleTabClick(tab, e)}
-              className="flex-shrink-0"
+              className={`${itemClass} bg-transparent border-0 p-0 appearance-none`}
             >
-              {content}
+              <tab.icon className="w-5 h-5 flex-shrink-0 pointer-events-none" aria-hidden />
+              <span className="text-[10px] mt-0.5 font-medium truncate w-full text-center pointer-events-none">
+                {tab.name}
+              </span>
             </button>
           );
         })}

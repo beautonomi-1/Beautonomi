@@ -1,0 +1,573 @@
+import { useCallback, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Download, TrendingDown, TrendingUp } from "lucide-react";
+import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
+import { adminApi } from "@/lib/adminClient";
+import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
+import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
+import { AdminPanel } from "@/components/ui/AdminPanel";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
+import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToolbarButtonClass } from "@/lib/adminUi";
+import {
+  AdminDataTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+} from "@/components/admin/AdminDataTable";
+import { EmptyState } from "@/components/ui/EmptyState";
+
+const TX_LIMIT = 50;
+
+type FinancePeriod = { start_date: string | null; end_date: string | null };
+
+type FinanceSummary = {
+  service_collected_gross: number;
+  service_collected_net: number;
+  gateway_fees: number;
+  platform_commission_gross: number;
+  platform_refund_impact: number;
+  platform_commission_net: number;
+  platform_take_net: number;
+  tips_gross: number;
+  taxes_gross: number;
+  subscription_collected_gross: number;
+  subscription_net: number;
+  subscription_gateway_fees: number;
+  ads_net: number;
+  ads_gross: number;
+  ads_gateway_fees: number;
+  total_platform_take_net: number;
+  provider_earnings: number;
+  cancellation_fees_retained: number;
+  refunds_gross: number;
+  gift_card_sales: number;
+  membership_sales: number;
+  wallet_topup_revenue: number;
+  referral_payouts: number;
+  total_platform_take_after_referrals: number;
+  gmv_growth: number;
+  period: FinancePeriod;
+};
+
+type FinanceTransaction = {
+  id: string;
+  transaction_type: string;
+  amount: number;
+  fees: number;
+  commission: number;
+  net: number;
+  created_at?: string;
+  booking?: { id?: string; booking_number?: string } | null;
+};
+
+type TransactionsEnvelope = {
+  data: FinanceTransaction[];
+  meta?: { page: number; limit: number; total: number; has_more: boolean };
+};
+
+function SummaryMetricCard({
+  label,
+  value,
+  trend,
+}: {
+  label: string;
+  value: number;
+  trend?: number;
+}) {
+  return (
+    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-2">
+        <span className="text-xs font-medium text-gray-500">{label}</span>
+        {trend !== undefined && Number.isFinite(trend) ? (
+          <span
+            className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium ${
+              trend >= 0 ? "text-green-700" : "text-red-700"
+            }`}
+            title="vs prior period (services collected gross)"
+          >
+            {trend >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+            {formatAdminNumber(Math.abs(trend))}%
+          </span>
+        ) : null}
+      </div>
+      <p className="mt-1 text-lg font-semibold tabular-nums text-gray-900">{formatAdminCurrency(value)}</p>
+    </div>
+  );
+}
+
+export function FinanceOverviewPage() {
+  const { allowed, denied } = useAdminSectionPage(
+    ADMIN_SECTION_FINANCE,
+    "Finance access is required."
+  );
+  const [sp, setSp] = useSearchParams();
+  const start = sp.get("start_date") ?? "";
+  const end = sp.get("end_date") ?? "";
+  const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
+  const txType = sp.get("type") || "all";
+  const rangeKey = `${start}|${end}`;
+  const txFilters = useMemo(
+    () => ({ range: rangeKey, page, type: txType, limit: TX_LIMIT }),
+    [rangeKey, page, txType]
+  );
+
+  const [exportErr, setExportErr] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const walletFlagQ = useTenantFeatureFlags([TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_WALLET], allowed);
+  const showWalletDisabledBanner =
+    walletFlagQ.isSuccess &&
+    walletFlagQ.data?.features?.[TENANT_PAYMENT_FEATURE_KEYS.PAYMENT_WALLET] === false;
+
+  const patchParams = useCallback(
+    (patch: Record<string, string | null>, resetPage = false) => {
+      const next = new URLSearchParams(sp);
+      for (const [k, v] of Object.entries(patch)) {
+        if (v === null || v === "") next.delete(k);
+        else next.set(k, v);
+      }
+      if (resetPage) next.delete("page");
+      setSp(next, { replace: true });
+    },
+    [sp, setSp]
+  );
+
+  const summaryQ = useQuery({
+    queryKey: adminQueryKeys.finance.summary(rangeKey),
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (start) p.set("start_date", start);
+      if (end) p.set("end_date", end);
+      const qs = p.toString();
+      return adminApi.getJson<FinanceSummary>(`/api/admin/finance/summary${qs ? `?${qs}` : ""}`, {
+        timeoutMs: 90_000,
+      });
+    },
+    enabled: allowed,
+  });
+
+  const txQ = useQuery({
+    queryKey: adminQueryKeys.finance.transactions(txFilters),
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (start) p.set("start_date", start);
+      if (end) p.set("end_date", end);
+      p.set("page", String(page));
+      p.set("limit", String(TX_LIMIT));
+      if (txType !== "all") p.set("type", txType);
+      return adminApi.getRawJson<TransactionsEnvelope>(`/api/admin/finance/transactions?${p}`, {
+        timeoutMs: 90_000,
+      });
+    },
+    enabled: allowed,
+  });
+
+  const summary = summaryQ.data;
+  const transactions = txQ.data?.data ?? [];
+  const meta = txQ.data?.meta;
+  const total = meta?.total ?? 0;
+
+  /** Booking-side fees vs ledger refund lines (same summary range). */
+  const cancellationReconciliation = useMemo(() => {
+    if (!summary) return null;
+    const cancellationFeesRetained = summary.cancellation_fees_retained ?? 0;
+    const ledgerRefundAmountSum = summary.refunds_gross;
+    const bookingSideNet = cancellationFeesRetained + ledgerRefundAmountSum;
+    return {
+      cancellationFeesRetained,
+      ledgerRefundAmountSum,
+      bookingSideNet,
+      platformRefundImpact: summary.platform_refund_impact,
+    };
+  }, [summary]);
+
+  const runExport = async () => {
+    setExportErr(null);
+    setExportBusy(true);
+    try {
+      const p = new URLSearchParams();
+      if (start) p.set("start_date", start);
+      if (end) p.set("end_date", end);
+      if (txType !== "all") p.set("transaction_type", txType);
+      const qs = p.toString();
+      const blob = await adminApi.downloadBlob(`/api/admin/export/finance${qs ? `?${qs}` : ""}`, {
+        timeoutMs: 120_000,
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `finance-export-${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      a.remove();
+    } catch (e) {
+      setExportErr(e instanceof Error ? e.message : "Export failed");
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  if (denied) return denied;
+
+  if (summaryQ.isLoading) {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Finance" description="Ledger summary and transactions" />
+        <AdminPanel>
+          <AdminPageSkeleton rows={8} />
+        </AdminPanel>
+      </div>
+    );
+  }
+
+  if (summaryQ.error) {
+    if (isAdminApiAuthFailure(summaryQ.error)) return <PermissionDenied />;
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Finance" description="Ledger summary and transactions" />
+        <AdminPanel>
+          <AdminRetryBlock message={summaryQ.error.message} onRetry={() => void summaryQ.refetch()} />
+        </AdminPanel>
+      </div>
+    );
+  }
+
+  const periodLabel =
+    summary?.period?.start_date && summary?.period?.end_date
+      ? `Custom range: ${summary.period.start_date} → ${summary.period.end_date}`
+      : "Rolling month (default) — set dates below for a fixed range";
+
+  return (
+    <div className="space-y-6">
+      <AdminPageHeader
+        title="Finance"
+        description="Platform financial metrics and ledger transactions (same APIs as legacy admin)."
+      />
+      {showWalletDisabledBanner ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <code className="rounded bg-amber-100 px-1">payment_wallet</code> is off — customers cannot pay from wallet
+          balance in checkout. Refunds may still credit wallets; see product docs for your market.
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-gray-600">{periodLabel}</p>
+        <button
+          type="button"
+          className={adminToolbarButtonClass(exportBusy)}
+          disabled={exportBusy}
+          onClick={() => void runExport()}
+        >
+          <span className="inline-flex items-center gap-2">
+            <Download className="h-4 w-4" />
+            Export CSV
+          </span>
+        </button>
+      </div>
+      {exportErr ? <p className="text-sm text-red-700">{exportErr}</p> : null}
+
+      <AdminPanel>
+        <h2 className="mb-4 text-base font-semibold text-gray-900">Filters</h2>
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
+          <label className="block min-w-[10rem] flex-1 text-sm">
+            <span className="text-gray-600">Start date</span>
+            <input
+              type="date"
+              value={start}
+              onChange={(e) => patchParams({ start_date: e.target.value || null }, true)}
+              className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm"
+            />
+          </label>
+          <label className="block min-w-[10rem] flex-1 text-sm">
+            <span className="text-gray-600">End date</span>
+            <input
+              type="date"
+              value={end}
+              onChange={(e) => patchParams({ end_date: e.target.value || null }, true)}
+              className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm"
+            />
+          </label>
+          <label className="block min-w-[10rem] text-sm">
+            <span className="text-gray-600">Transaction type</span>
+            <select
+              value={txType}
+              onChange={(e) => patchParams({ type: e.target.value === "all" ? null : e.target.value }, true)}
+              className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-sm"
+            >
+              <option value="all">All</option>
+              <option value="payment">Payment</option>
+              <option value="refund">Refund</option>
+              <option value="payout">Payout</option>
+              <option value="fee">Fee</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className={adminToolbarButtonClass(false)}
+            onClick={() => {
+              const next = new URLSearchParams(sp);
+              next.delete("start_date");
+              next.delete("end_date");
+              next.delete("page");
+              next.delete("type");
+              setSp(next, { replace: true });
+            }}
+          >
+            Clear dates &amp; filters
+          </button>
+        </div>
+      </AdminPanel>
+
+      {summary ? (
+        <>
+          <details className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-800">
+            <summary className="cursor-pointer font-medium text-gray-900">How these numbers relate</summary>
+            <ul className="mt-2 list-inside list-disc space-y-1 text-gray-700">
+              <li>
+                <strong>Services collected (gross)</strong> is GMV from bookings (services, add-ons, travel, tips) before
+                deductions.
+              </li>
+              <li>
+                <strong>Platform take (net)</strong> is commission after gateway fees; <strong>Provider earnings</strong>{" "}
+                is what providers keep after commission.
+              </li>
+              <li>
+                Referral wallet credits are a platform expense; <strong>Total platform take (after referrals &amp; wallet)</strong>{" "}
+                includes wallet top-ups and subtracts referral payouts.
+              </li>
+              <li>
+                <strong>Cancellation fees retained</strong> sums <code className="rounded bg-gray-100 px-1">bookings.cancellation_fee</code> for
+                cancellations in the date range. <strong>Refunds (gross)</strong> sums ledger <code className="rounded bg-gray-100 px-1">refund</code>{" "}
+                row amounts (wallet credits). <strong>Provider earnings</strong> still reflects original payment rows; use the reconciliation panel
+                below to compare booking fees vs refund lines.
+              </li>
+            </ul>
+          </details>
+
+          <AdminPanel>
+            <h2 className="mb-4 text-base font-semibold text-gray-900">Core revenue</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryMetricCard
+                label="Services collected (gross)"
+                value={summary.service_collected_gross}
+                trend={summary.gmv_growth}
+              />
+              <SummaryMetricCard label="Commission (gross)" value={summary.platform_commission_gross} />
+              <SummaryMetricCard label="Platform take (net)" value={summary.platform_take_net} />
+              <SummaryMetricCard label="Provider earnings" value={summary.provider_earnings} />
+            </div>
+          </AdminPanel>
+
+          <AdminPanel>
+            <h2 className="mb-4 text-base font-semibold text-gray-900">Deductions &amp; other flows</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryMetricCard label="Gateway fees" value={summary.gateway_fees} />
+              <SummaryMetricCard label="Refunds (gross)" value={summary.refunds_gross} />
+              <SummaryMetricCard label="Cancellation fees retained" value={summary.cancellation_fees_retained ?? 0} />
+              <SummaryMetricCard label="Gift card sales" value={summary.gift_card_sales} />
+              <SummaryMetricCard label="Membership sales" value={summary.membership_sales} />
+              <SummaryMetricCard label="Wallet top-up revenue" value={summary.wallet_topup_revenue ?? 0} />
+              <SummaryMetricCard label="Referral payouts" value={summary.referral_payouts ?? 0} />
+            </div>
+          </AdminPanel>
+
+          {cancellationReconciliation ? (
+            <AdminPanel>
+              <h2 className="mb-2 text-base font-semibold text-gray-900">Cancellation &amp; refund reconciliation</h2>
+              <p className="mb-4 text-sm text-gray-600">
+                Compare policy retention on cancelled bookings (booking table) with wallet credits recorded in the finance ledger for the same period.
+              </p>
+              <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                <table className="w-full min-w-[20rem] text-sm">
+                  <tbody className="divide-y divide-gray-100">
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
+                        Cancellation fees retained (bookings)
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
+                        {formatAdminCurrency(cancellationReconciliation.cancellationFeesRetained)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
+                        Ledger refund rows (sum of amount)
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
+                        {formatAdminCurrency(cancellationReconciliation.ledgerRefundAmountSum)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-semibold text-gray-900">
+                        Net (fees + ledger refund amounts)
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums font-semibold text-gray-900">
+                        {formatAdminCurrency(cancellationReconciliation.bookingSideNet)}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
+                        Platform commission refund impact (sum of refund net)
+                      </th>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
+                        {formatAdminCurrency(cancellationReconciliation.platformRefundImpact)}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-3 text-xs text-gray-500">
+                Not all refunds are cancellation-related; not every cancellation produces a ledger row in-range. Export transactions and filter type{" "}
+                <span className="font-mono text-gray-700">refund</span> for detail.
+              </p>
+            </AdminPanel>
+          ) : null}
+
+          <AdminPanel>
+            <h2 className="mb-4 text-base font-semibold text-gray-900">Subscriptions, ads, tips &amp; tax</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryMetricCard label="Subscription revenue (net)" value={summary.subscription_net} />
+              <SummaryMetricCard label="Ads revenue (net)" value={summary.ads_net ?? 0} />
+              <SummaryMetricCard label="Subscription fees (gross)" value={summary.subscription_collected_gross} />
+              <SummaryMetricCard label="Tips (gross)" value={summary.tips_gross} />
+              <SummaryMetricCard label="Taxes (gross)" value={summary.taxes_gross} />
+            </div>
+          </AdminPanel>
+
+          <AdminPanel>
+            <h2 className="mb-4 text-base font-semibold text-gray-900">Platform totals</h2>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <SummaryMetricCard label="Total platform take (net)" value={summary.total_platform_take_net} />
+              <SummaryMetricCard
+                label="Total platform take (after referrals & wallet)"
+                value={summary.total_platform_take_after_referrals ?? summary.total_platform_take_net}
+              />
+            </div>
+          </AdminPanel>
+        </>
+      ) : null}
+
+      <AdminPanel>
+        <h2 className="mb-4 text-base font-semibold text-gray-900">Transactions</h2>
+        {txQ.error ? (
+          isAdminApiAuthFailure(txQ.error) ? (
+            <PermissionDenied />
+          ) : (
+            <AdminRetryBlock message={txQ.error.message} onRetry={() => void txQ.refetch()} />
+          )
+        ) : txQ.isLoading ? (
+          <p className="text-sm text-gray-600">Loading transactions…</p>
+        ) : transactions.length === 0 ? (
+          <EmptyState title="No transactions" description="Try widening the date range or changing the type filter." />
+        ) : (
+          <>
+            <p className="mb-3 text-sm text-gray-600">{formatAdminNumber(total)} total in this range (paginated)</p>
+            <div className="hidden overflow-x-auto md:block">
+              <AdminDataTable>
+                <AdminTableHead>
+                  <tr>
+                    <AdminTh>Date</AdminTh>
+                    <AdminTh>Type</AdminTh>
+                    <AdminTh>Amount</AdminTh>
+                    <AdminTh>Fees</AdminTh>
+                    <AdminTh>Net</AdminTh>
+                    <AdminTh>Booking</AdminTh>
+                  </tr>
+                </AdminTableHead>
+                <AdminTableBody>
+                  {transactions.map((tx) => (
+                    <tr key={tx.id}>
+                      <AdminTd>{tx.created_at ? new Date(tx.created_at).toLocaleString() : "—"}</AdminTd>
+                      <AdminTd className="capitalize">{tx.transaction_type}</AdminTd>
+                      <AdminTd className="tabular-nums">{formatAdminCurrency(tx.amount)}</AdminTd>
+                      <AdminTd className="tabular-nums text-gray-600">{formatAdminCurrency(tx.fees)}</AdminTd>
+                      <AdminTd className="tabular-nums font-medium">{formatAdminCurrency(tx.net)}</AdminTd>
+                      <AdminTd>
+                        {tx.booking?.id ? (
+                          <Link
+                            to={adminSpaTo(`/admin/bookings/${encodeURIComponent(tx.booking.id)}`)}
+                            className="text-primary underline"
+                          >
+                            {tx.booking.booking_number || tx.booking.id.slice(0, 8)}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </AdminTd>
+                    </tr>
+                  ))}
+                </AdminTableBody>
+              </AdminDataTable>
+            </div>
+
+            <div className="divide-y divide-gray-200 md:hidden">
+              {transactions.map((tx) => (
+                <div key={tx.id} className="py-3">
+                  <div className="flex justify-between gap-2">
+                    <span className="font-medium capitalize">{tx.transaction_type}</span>
+                    <span className="tabular-nums font-semibold">{formatAdminCurrency(tx.net)}</span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">
+                    {tx.created_at ? new Date(tx.created_at).toLocaleString() : "—"}
+                  </div>
+                  {tx.booking?.id ? (
+                    <div className="mt-1 text-xs">
+                      <Link
+                        to={adminSpaTo(`/admin/bookings/${encodeURIComponent(tx.booking.id)}`)}
+                        className="text-primary underline"
+                      >
+                        Booking {tx.booking.booking_number || tx.booking.id.slice(0, 8)}
+                      </Link>
+                    </div>
+                  ) : null}
+                  {tx.amount !== tx.net ? (
+                    <div className="mt-1 text-xs text-gray-600">
+                      Gross {formatAdminCurrency(tx.amount)}
+                      {tx.fees > 0 ? ` · Fees ${formatAdminCurrency(tx.fees)}` : null}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+
+            {total > TX_LIMIT ? (
+              <div className="mt-4 flex flex-col items-stretch justify-between gap-3 border-t border-gray-100 pt-4 sm:flex-row sm:items-center">
+                <p className="text-sm text-gray-700">
+                  Showing {(page - 1) * TX_LIMIT + 1}–{Math.min(page * TX_LIMIT, total)} of {total}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    className={adminToolbarButtonClass(page <= 1)}
+                    disabled={page <= 1}
+                    onClick={() => patchParams({ page: String(page - 1) })}
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    className={adminToolbarButtonClass(!meta?.has_more)}
+                    disabled={!meta?.has_more}
+                    onClick={() => patchParams({ page: String(page + 1) })}
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+      </AdminPanel>
+    </div>
+  );
+}

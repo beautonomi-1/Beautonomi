@@ -23,6 +23,11 @@ import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
+import {
+  creditWalletForProductOrderIfNeeded,
+  restockProductOrderLineItems,
+} from "@/lib/orders/product-order-lifecycle";
+import { tryCreateCustomerRecurringFromPaystackChargeMetadata } from "@/lib/recurring/try-create-recurring-from-paystack-metadata";
 
 async function lastResortCurrencyFromTenantId(
   tenantId: string | null | undefined,
@@ -200,6 +205,14 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
 
   if (bookingData.payment_status === "paid" && bookingData.payment_reference === reference) {
     console.log(`Payment ${reference} already processed`);
+    try {
+      await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+        supabase,
+        metadata as Record<string, unknown> | undefined,
+      );
+    } catch (recurringErr) {
+      console.error("[recurring] charge.success idempotent recurring hook:", recurringErr);
+    }
     return;
   }
 
@@ -503,6 +516,15 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     }
   }
 
+  try {
+    await tryCreateCustomerRecurringFromPaystackChargeMetadata(
+      supabase,
+      metadata as Record<string, unknown> | undefined,
+    );
+  } catch (recurringErr) {
+    console.error("[recurring] charge.success recurring hook:", recurringErr);
+  }
+
   // Send OneSignal notifications
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
@@ -577,10 +599,53 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
 
 // ─── charge.failed internals ─────────────────────────────────────────────────
 
+async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase: SupabaseClient) {
+  const { reference, metadata } = data;
+  if (!reference || !metadata?.product_order_id) return;
+
+  const productOrderId = String(metadata.product_order_id);
+
+  const { data: order } = await (supabase.from("product_orders") as any)
+    .select("id, customer_id, provider_id, tenant_id, wallet_amount, currency, payment_status, status")
+    .eq("id", productOrderId)
+    .maybeSingle();
+
+  if (!order) return;
+  const o = order as Record<string, unknown> & {
+    id: string;
+    customer_id: string;
+    provider_id: string;
+    tenant_id?: string | null;
+    wallet_amount?: number | string | null;
+    currency?: string | null;
+    payment_status?: string;
+  };
+
+  if (o.payment_status !== "pending") return;
+
+  await creditWalletForProductOrderIfNeeded(supabase, o, "Wallet refund (card payment failed)", "product_order_payment_failed");
+
+  await restockProductOrderLineItems(supabase, o.id);
+
+  await (supabase.from("product_orders") as any)
+    .update({
+      payment_status: "failed",
+      status: "cancelled",
+      cancelled_at: new Date().toISOString(),
+      cancellation_reason: "Card payment failed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", o.id);
+}
+
 async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, message, gateway_response } = data;
 
   if (!reference || !metadata?.booking_id) {
+    if (metadata?.product_order_id) {
+      await handleProductOrderChargeFailed(data, supabase);
+      return;
+    }
     if (metadata?.custom_offer_id) {
       await handleCustomOfferFailed({ reference, metadata, message, gateway_response }, supabase);
       return;

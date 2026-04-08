@@ -62,11 +62,11 @@ function resolveScreenshotHref(path: string, query: Record<string, string>): Hre
       return { pathname: "/(app)/book-checkout", params: { hold_id: holdId } };
     }
     case "cart":
-      return "/(app)/cart";
+      return "/(app)/(tabs)/cart";
     case "shop":
-      return "/(app)/shop";
+      return "/(app)/(tabs)/shop";
     case "product-checkout":
-      return "/(app)/product-checkout";
+      return "/(app)/(tabs)/shop/product-checkout";
     case "booking-detail": {
       if (!bookingId) return null;
       return { pathname: "/(app)/booking-detail", params: { id: bookingId } };

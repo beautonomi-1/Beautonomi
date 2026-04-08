@@ -39,6 +39,7 @@ export async function GET(
         customer_id,
         provider_id,
         rating,
+        customer_rating,
         comment,
         service_ratings,
         staff_rating,

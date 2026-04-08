@@ -16,6 +16,9 @@ const createRecurringSchema = z.object({
   start_time: z.string().regex(/^\d{2}:\d{2}:\d{2}$/, "Time must be in HH:MM:SS format"), // TIME format
   notes: z.string().optional(),
   is_active: z.boolean().optional().default(true),
+  frequency: z.string().min(1).optional().nullable(),
+  preferred_time: z.string().optional().nullable(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
@@ -34,7 +37,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",
@@ -109,7 +112,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check subscription allows recurring appointments
-    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId);
+    const recurringAccess = await checkRecurringAppointmentFeatureAccess(providerId, supabase);
     if (!recurringAccess.enabled) {
       return errorResponse(
         "Recurring appointments require a subscription upgrade. Please upgrade to Starter plan or higher.",

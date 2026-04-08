@@ -11,7 +11,7 @@ There are **three related concepts**:
 | Concept | Table(s) | Who manages it | Role |
 |--------|-----------|----------------|------|
 | **Mapbox credentials** | `mapbox_config`, `platform_secrets` | Superadmin (`/admin/mapbox`) | Powers server-side Mapbox APIs and browser maps (public token). |
-| **Platform zones** | `platform_zones`, `platform_zone_inclusions`, `platform_zone_exclusions` | Superadmin (`/admin/service-zones`, partly `/admin/mapbox`) | Defines **where the platform operates** using PostGIS geometry built from postal/city/town/province inclusions minus exclusions. |
+| **Platform zones** | `platform_zones`, `platform_zone_inclusions`, `platform_zone_exclusions` | Operations admins — `admin_operations` or superadmin (`/admin/service-zones`, partly `/admin/mapbox`; APIs: `ADMIN_SECTION_OPERATIONS`) | Defines **where the platform operates** using PostGIS geometry built from postal/city/town/province inclusions minus exclusions. |
 | **Provider service zones** | `service_zones` | Providers / admin tools | **Per-provider** polygons/radius/postal/city zones used for house-call logic and `/api/mapbox/check-zone` when rows exist. |
 
 **`provider_zone_selections`** (from migration `173_create_two_tier_zone_system.sql`) links providers to **platform** zones with travel pricing; the control-plane UI focuses on shaping `platform_zones.geometry`, not that join table.

@@ -21,6 +21,7 @@ import { processPayment } from "./_helpers/process-payment";
 import { releaseBookingSlotAfterPaymentFailure } from "./_helpers/release-booking-slot-after-payment-failure";
 import { validateBooking } from "./_helpers/validate-booking";
 import { checkBookingCreationRateLimit, incrementBookingCreation } from "@/lib/rate-limit/booking-creation";
+import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { NextResponse } from "next/server";
 
 /**
@@ -270,11 +271,40 @@ export async function POST(request: NextRequest) {
             savedPaymentMethodId,
           });
 
+          let recurring_subscription:
+            | { created: true }
+            | { created: false; pending?: true; message?: string }
+            | undefined;
+          if (validatedDraft.subscribe_recurring?.enabled) {
+            if (
+              !subscribeRecurringEligible({
+                subscribe_recurring: validatedDraft.subscribe_recurring,
+                reschedule_booking_id: validatedDraft.reschedule_booking_id,
+                is_group_booking: validatedDraft.is_group_booking,
+                has_group_participants: Boolean(
+                  validatedDraft.group_participants && validatedDraft.group_participants.length > 0,
+                ),
+              })
+            ) {
+              recurring_subscription = {
+                created: false,
+                message: validatedDraft.reschedule_booking_id
+                  ? "Not available when rescheduling."
+                  : "Not available for group bookings.",
+              };
+            } else if (paymentUrl) {
+              recurring_subscription = { created: false, pending: true };
+            } else {
+              recurring_subscription = { created: true };
+            }
+          }
+
           // 7. Return response
           return successResponse({
             booking_id: booking.id,
             booking_number: booking.booking_number,
             payment_url: paymentUrl,
+            ...(recurring_subscription ? { recurring_subscription } : {}),
           });
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {

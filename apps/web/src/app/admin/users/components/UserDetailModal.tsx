@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { CompliancePurgeUserDialog } from "@/components/admin/CompliancePurgeUserDialog";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import type { UserRole } from "@/types/beautonomi";
 
@@ -39,7 +40,7 @@ const SIGNUP_SOURCE_LABELS: Record<string, string> = {
   google: "Google",
   social_instagram: "Instagram",
   social_facebook: "Facebook",
-  social_twitter: "Twitter/X",
+  social_twitter: "X",
   friend_or_family: "Friend or family",
   blog_or_article: "Blog or article",
   app_store: "App Store",
@@ -105,7 +106,7 @@ export default function UserDetailModal({
   const [isResettingPassword, setIsResettingPassword] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [isSuspending, setIsSuspending] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [purgeOpen, setPurgeOpen] = useState(false);
    
   const [, _setSuspensionReason] = useState("");
 
@@ -266,38 +267,6 @@ export default function UserDetailModal({
     }
   };
 
-  const handleDelete = async () => {
-    if (!displayUser) return;
-    
-    const confirmMessage = `WARNING: This will permanently delete ${displayUser.full_name || displayUser.email} and all their data. This action cannot be undone.\n\nType "DELETE" to confirm:`;
-    const confirmation = prompt(confirmMessage);
-    
-    if (confirmation !== "DELETE") {
-      toast.info("Deletion cancelled");
-      return;
-    }
-
-    if (
-      !confirm(
-        `Final confirmation: Are you absolutely sure you want to permanently delete ${displayUser.full_name || displayUser.email}? This cannot be undone!`
-      )
-    ) {
-      return;
-    }
-
-    try {
-      setIsDeleting(true);
-      await fetcher.delete(`/api/admin/users/${displayUser.id}`);
-      toast.success("User deleted successfully");
-      onClose();
-      onUpdate();
-    } catch (error: any) {
-      toast.error(error.message || "Failed to delete user");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   const getRoleBadgeColor = (role: UserRole) => {
     switch (role) {
       case "superadmin":
@@ -326,6 +295,7 @@ export default function UserDetailModal({
   if (!displayUser) return null;
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -698,29 +668,21 @@ export default function UserDetailModal({
                 <div className="space-y-2">
                   <Button
                     variant="destructive"
-                    onClick={handleDelete}
-                    disabled={isDeleting || displayUser.role === "superadmin"}
+                    onClick={() => setPurgeOpen(true)}
+                    disabled={displayUser.role === "superadmin"}
                     className="w-full sm:w-auto"
                   >
-                    {isDeleting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                        Deleting...
-                      </>
-                    ) : (
-                      <>
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Delete User Permanently
-                      </>
-                    )}
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Purge account &amp; data…
                   </Button>
                   {displayUser.role === "superadmin" && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Superadmin accounts cannot be deleted
+                      Superadmin accounts cannot be purged from here
                     </p>
                   )}
                   <p className="text-xs text-red-600 mt-1">
-                    This action cannot be undone. All user data will be permanently deleted.
+                    Opens the compliance purge flow (reason, email match, confirmation phrase, and audit
+                    report).
                   </p>
                 </div>
               </div>
@@ -729,5 +691,17 @@ export default function UserDetailModal({
         </Tabs>
       </DialogContent>
     </Dialog>
+
+    <CompliancePurgeUserDialog
+      open={purgeOpen}
+      onOpenChange={setPurgeOpen}
+      userId={displayUser.id}
+      userEmail={displayUser.email}
+      onComplete={() => {
+        onClose();
+        onUpdate();
+      }}
+    />
+    </>
   );
 }
