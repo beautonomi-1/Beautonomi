@@ -26,11 +26,12 @@ export async function getAvailablePayoutBalance(
   const holdDays = options?.holdDays ?? 0;
   const availableFrom = holdDays > 0 ? new Date(now.getTime() - holdDays * 24 * 60 * 60 * 1000).toISOString() : allTime;
 
+  // cancellation_fee: provider-retained income when a customer cancels late; included in balance.
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, created_at, booking_id")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout", "refund"])
+    .in("transaction_type", ["provider_earnings", "payout", "refund", "cancellation_fee"])
     .gte("created_at", allTime)
     .lte("created_at", nowIso)
     .order("created_at", { ascending: false });
@@ -88,6 +89,12 @@ export async function getAvailablePayoutBalance(
     }
     if (row.transaction_type === "refund") {
       if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      continue;
+    }
+    if (row.transaction_type === "cancellation_fee") {
+      // Cancellation fees are retained by the provider (compensation for late cancellations).
+      // They are always platform-processed (never walk-in cash), so no exclusion needed.
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }

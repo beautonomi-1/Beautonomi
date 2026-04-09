@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Plus } from "lucide-react";
+import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Plus, AlertCircle, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/calendar/ics";
@@ -21,6 +21,8 @@ interface BookingDetails {
   location_type: "at_home" | "at_salon";
   total_amount: number;
   currency: string;
+  wallet_amount?: number;
+  total_paid?: number;
   services: Array<{
     title?: string;
     offering_name?: string;
@@ -229,7 +231,7 @@ export default function BookingConfirmationPage() {
       <BeautonomiHeader />
       
       <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Success Header */}
+        {/* Success Header — status-aware */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -241,15 +243,28 @@ export default function BookingConfirmationPage() {
             transition={{ type: "spring", stiffness: 200, damping: 15 }}
             className="inline-block mb-4"
           >
-            <CheckCircle className="w-20 h-20 text-green-500" />
+            {booking.status === "confirmed" || booking.status === "completed" ? (
+              <CheckCircle className="w-20 h-20 text-green-500" />
+            ) : (
+              <AlertCircle className="w-20 h-20 text-yellow-500" />
+            )}
           </motion.div>
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Booking Confirmed!
+            {booking.status === "confirmed" || booking.status === "completed"
+              ? "Booking Confirmed!"
+              : "Booking Received!"}
           </h1>
           <p className="text-gray-600">
-            Your booking has been confirmed. We've sent a confirmation email to{" "}
-            {booking.client_info?.email || "your email"}.
+            {booking.status === "confirmed" || booking.status === "completed"
+              ? <>Your booking has been confirmed. We&apos;ve sent a confirmation to{" "}{booking.client_info?.email || "your email"}.</>
+              : "Your payment was received. Your booking is awaiting provider confirmation — you'll be notified once it's confirmed."}
           </p>
+          {booking.status === "pending" && (
+            <div className="mt-3 inline-flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-full px-4 py-1.5 text-sm text-yellow-800">
+              <Clock className="w-4 h-4" />
+              Providers typically confirm within 8 hours
+            </div>
+          )}
           <p className="text-sm text-gray-500 mt-2">
             Booking #{booking.booking_number}
           </p>
@@ -344,13 +359,29 @@ export default function BookingConfirmationPage() {
             </div>
 
             {/* Total */}
-            <div className="border-t pt-4">
-              <div className="flex justify-between items-center mb-2">
+            <div className="border-t pt-4 space-y-2">
+              <div className="flex justify-between items-center">
                 <span className="text-lg font-semibold text-gray-900">Total</span>
                 <span className="text-2xl font-bold text-primary">
                   {formatCurrency(booking.total_amount, booking.currency)}
                 </span>
               </div>
+              {/* Show wallet credit if part of total was covered by wallet */}
+              {(booking.wallet_amount ?? 0) > 0 && (
+                <div className="flex justify-between items-center text-sm text-green-700">
+                  <span className="flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5" />
+                    Wallet credit applied
+                  </span>
+                  <span className="font-medium">−{formatCurrency(booking.wallet_amount!, booking.currency)}</span>
+                </div>
+              )}
+              {(booking.wallet_amount ?? 0) > 0 && (booking.total_paid ?? 0) > 0 && (
+                <div className="flex justify-between items-center text-sm text-gray-600">
+                  <span>Paid via card</span>
+                  <span className="font-medium">{formatCurrency(booking.total_paid!, booking.currency)}</span>
+                </div>
+              )}
               {booking.payment_provider === "cash" ? (
                 <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
                   <p className="text-sm text-amber-800 font-medium">
@@ -363,7 +394,7 @@ export default function BookingConfirmationPage() {
                 <p className="text-sm text-gray-500 mt-1">
                   Payment status:{" "}
                   <span className={booking.payment_status === "paid" ? "text-green-600 font-medium" : "text-yellow-600 font-medium"}>
-                    {booking.payment_status === "paid" ? "Paid" : "Pending"}
+                    {booking.payment_status === "paid" ? "Paid in full" : booking.payment_status === "partially_paid" ? "Partially paid" : "Pending"}
                   </span>
                 </p>
               )}
@@ -460,17 +491,18 @@ export default function BookingConfirmationPage() {
           </Button>
         </div>
 
-        {/* Help Text */}
-        <div className="mt-8 p-4 bg-blue-50 rounded-lg">
-          <p className="text-sm text-blue-900">
-            <strong>What's next?</strong>{" "}
+        {/* Help Text — status-aware */}
+        <div className={`mt-8 p-4 rounded-lg ${booking.status === "pending" ? "bg-yellow-50 border border-yellow-200" : "bg-blue-50"}`}>
+          <p className={`text-sm ${booking.status === "pending" ? "text-yellow-900" : "text-blue-900"}`}>
+            <strong>What&apos;s next?</strong>{" "}
             {booking.payment_provider === "cash"
               ? booking.location_type === "at_home"
                 ? "Your provider will be on their way at the scheduled time. Have your cash ready for when they arrive."
                 : "Simply arrive at the salon at your scheduled time and pay cash at the counter."
-              : "You'll receive a confirmation email with all the details."}{" "}
-            If you need to make changes or cancel, please contact the provider directly or visit
-            your bookings page.
+              : booking.status === "pending"
+                ? "Your booking is waiting for the provider to confirm. You'll receive a notification once it's confirmed — this usually happens within 8 hours. If you need to make changes, visit your bookings page."
+                : "You'll receive a confirmation email with all the details."}{" "}
+            {booking.status !== "pending" && "If you need to make changes or cancel, please contact the provider directly or visit your bookings page."}
           </p>
         </div>
       </div>

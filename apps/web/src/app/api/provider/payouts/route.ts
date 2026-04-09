@@ -186,11 +186,17 @@ export async function POST(request: NextRequest) {
       bank_account_id: payoutAccountId,
     };
 
+    // Generate a human-readable payout number: PAY-YYYYMMDD-XXXXX
+    const now = new Date();
+    const dateStamp = now.toISOString().slice(0, 10).replace(/-/g, "");
+    const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+    const payoutNumber = `PAY-${dateStamp}-${randomSuffix}`;
+
     const { data: payout, error: payoutError } = await supabaseAdmin
       .from("payouts")
       .insert({
         provider_id: providerId,
-        payout_number: "",
+        payout_number: payoutNumber,
         amount: numAmount,
         currency: payoutCurrency,
         status: "pending",
@@ -199,13 +205,31 @@ export async function POST(request: NextRequest) {
         platform_fee_amount: 0,
         platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 15),
         net_amount: numAmount,
-        scheduled_at: new Date().toISOString(),
+        scheduled_at: now.toISOString(),
       })
       .select()
       .single();
 
     if (payoutError) {
       throw payoutError;
+    }
+
+    // Concurrent payout guard: re-check balance now that our pending payout is in the table.
+    // getAvailablePayoutBalance sums pending+processing payouts as a reserve, so if another
+    // request slipped through simultaneously, the balance will now be negative.
+    const { availableBalance: balancePostInsert } = await getAvailablePayoutBalance(
+      getSupabaseAdmin(),
+      providerId,
+      { holdDays, tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null }
+    );
+    if (balancePostInsert < -1e-6) {
+      // Race condition detected — roll back our payout row and reject.
+      await supabaseAdmin.from("payouts").delete().eq("id", payout.id);
+      return errorResponse(
+        `Insufficient balance after concurrent check. Available: ${Math.max(0, balancePostInsert + numAmount).toFixed(2)}, Requested: ${numAmount}. Another payout may have been submitted simultaneously.`,
+        "INSUFFICIENT_BALANCE",
+        400
+      );
     }
 
 

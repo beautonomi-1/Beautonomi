@@ -178,7 +178,7 @@ export async function GET(request: NextRequest) {
       .filter(item => !item.completed)
       .slice(0, 3);
 
-    return successResponse({
+    const res = successResponse({
       completed,
       total,
       percentage,
@@ -186,6 +186,8 @@ export async function GET(request: NextRequest) {
       topItems,
       avatar_url: userData.avatar_url ?? null,
     });
+    res.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");
+    return res;
   } catch (error) {
     return handleApiError(error, "Failed to calculate profile completion");
   }

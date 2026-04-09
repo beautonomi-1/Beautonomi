@@ -199,6 +199,33 @@ export async function processPayment(
           .eq("id", booking.id);
 
         amountToCollect = Math.max(0, amountToCollect - walletAmountApplied);
+
+        // For split wallet+card payments, record the wallet portion in finance_transactions immediately.
+        // The Paystack/card portion will be recorded by the webhook after payment succeeds.
+        // This ensures the full collected amount is always visible in the ledger.
+        if (amountToCollect > 0 && walletAmountApplied > 0) {
+          try {
+            const splitWalletTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+              tenant_id: booking.tenant_id ?? flagTenantId ?? null,
+              provider_id: draft.provider_id,
+            });
+            await (supabase.from("finance_transactions") as any).insert({
+              booking_id: booking.id,
+              provider_id: draft.provider_id,
+              tenant_id: splitWalletTenantId,
+              transaction_type: "wallet_payment",
+              amount: walletAmountApplied,
+              fees: 0,
+              commission: 0,
+              net: walletAmountApplied,
+              description: `Wallet contribution for booking ${booking.booking_number} (split payment — card covers remainder)`,
+              created_at: new Date().toISOString(),
+            });
+          } catch (ledgerErr: any) {
+            // Non-fatal: log and continue — the booking and wallet debit already succeeded
+            console.error("[wallet-split-ledger] failed to insert wallet_payment entry:", ledgerErr?.message || ledgerErr);
+          }
+        }
       }
     } catch (e: any) {
       return handleApiError(e, e?.message || "Wallet payment failed", "WALLET_ERROR", 400);
@@ -585,10 +612,26 @@ async function insertNoGatewayLedger(
 
   const providerEarnings = subtractMoney(v.commissionBase, platformCommission) + v.travelFee + v.tipAmount;
 
-  const internalRef =
-    walletAmountApplied > 0
-      ? `wallet_booking_${booking.id}`
-      : `giftcard_booking_${booking.id}`;
+  // Determine the settlement method label for ledger descriptions and provider field.
+  // Priority: wallet > gift_card > package/entitlement (zero-cost)
+  const settlementMethod =
+    walletAmountApplied > 0 && giftCardAmountApplied > 0
+      ? "wallet_and_gift_card"
+      : walletAmountApplied > 0
+        ? "wallet"
+        : giftCardAmountApplied > 0
+          ? "gift_card"
+          : "package_entitlement";
+  const settlementLabel =
+    settlementMethod === "wallet_and_gift_card"
+      ? "wallet + gift card"
+      : settlementMethod === "wallet"
+        ? "wallet"
+        : settlementMethod === "gift_card"
+          ? "gift card"
+          : "package/entitlement";
+
+  const internalRef = `${settlementMethod}_booking_${booking.id}`;
 
   await (supabase.from("payment_transactions") as any).insert({
     booking_id: booking.id,
@@ -597,16 +640,18 @@ async function insertNoGatewayLedger(
     fees: 0,
     net_amount: v.totalAmount,
     status: "success",
-    provider: walletAmountApplied > 0 ? "wallet" : "gift_card",
+    provider: settlementMethod === "wallet_and_gift_card" ? "wallet" : settlementMethod,
     transaction_type: "charge",
     metadata: {
-      kind: walletAmountApplied > 0 ? "wallet_booking" : "gift_card_booking",
+      kind: `${settlementMethod}_booking`,
       gift_card_amount_applied: giftCardAmountApplied,
       wallet_amount_applied: walletAmountApplied,
+      settlement_method: settlementMethod,
     },
     created_at: new Date().toISOString(),
   });
 
+  const now = new Date().toISOString();
   await (supabase.from("finance_transactions") as any).insert([
     {
       booking_id: booking.id,
@@ -617,8 +662,8 @@ async function insertNoGatewayLedger(
       fees: 0,
       commission: platformCommission,
       net: platformCommission,
-      description: `Payment for booking ${booking.booking_number} (gift card)`,
-      created_at: new Date().toISOString(),
+      description: `Payment for booking ${booking.booking_number} (${settlementLabel})`,
+      created_at: now,
     },
     {
       booking_id: booking.id,
@@ -629,33 +674,37 @@ async function insertNoGatewayLedger(
       fees: 0,
       commission: 0,
       net: providerEarnings,
-      description: `Provider earnings for booking ${booking.booking_number} (gift card)`,
-      created_at: new Date().toISOString(),
+      description: `Provider earnings for booking ${booking.booking_number} (${settlementLabel})`,
+      created_at: now,
     },
-    {
-      booking_id: booking.id,
-      provider_id: draft.provider_id,
-      tenant_id: financeTenantId,
-      transaction_type: "tip",
-      amount: v.tipAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tip for booking ${booking.booking_number}`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: booking.id,
-      provider_id: draft.provider_id,
-      tenant_id: financeTenantId,
-      transaction_type: "tax",
-      amount: v.taxAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tax for booking ${booking.booking_number}`,
-      created_at: new Date().toISOString(),
-    },
+    ...(v.tipAmount > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "tip",
+          amount: v.tipAmount,
+          fees: 0,
+          commission: 0,
+          net: v.tipAmount,
+          description: `Tip for booking ${booking.booking_number}`,
+          created_at: now,
+        }]
+      : []),
+    ...(v.taxAmount > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "tax",
+          amount: v.taxAmount,
+          fees: 0,
+          commission: 0,
+          net: 0,
+          description: `Tax for booking ${booking.booking_number}`,
+          created_at: now,
+        }]
+      : []),
     ...(v.travelFee > 0
       ? [
           {
@@ -666,9 +715,9 @@ async function insertNoGatewayLedger(
             amount: v.travelFee,
             fees: 0,
             commission: 0,
-            net: 0,
+            net: v.travelFee,
             description: `Travel fee for booking ${booking.booking_number}`,
-            created_at: new Date().toISOString(),
+            created_at: now,
           },
         ]
       : []),
@@ -684,9 +733,69 @@ async function insertNoGatewayLedger(
             commission: 0,
             net: v.serviceFeeAmount,
             description: `Service fee for booking ${booking.booking_number}`,
-            created_at: new Date().toISOString(),
+            created_at: now,
           },
         ]
+      : []),
+    // Record wallet and gift-card payment sources as separate ledger entries for full audit trail
+    ...(walletAmountApplied > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "wallet_payment",
+          amount: walletAmountApplied,
+          fees: 0,
+          commission: 0,
+          net: walletAmountApplied,
+          description: `Wallet payment for booking ${booking.booking_number}`,
+          created_at: now,
+        }]
+      : []),
+    ...(giftCardAmountApplied > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "gift_card_payment",
+          amount: giftCardAmountApplied,
+          fees: 0,
+          commission: 0,
+          net: giftCardAmountApplied,
+          description: `Gift card payment for booking ${booking.booking_number}`,
+          created_at: now,
+        }]
+      : []),
+    // Gift card liability reduction: when a gift card is redeemed the gift_card_sale entry
+    // (recorded at purchase time) represents a deferred liability. The redemption unwinds it.
+    ...(giftCardAmountApplied > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "gift_card_liability_reduction",
+          amount: giftCardAmountApplied,
+          fees: 0,
+          commission: 0,
+          net: -giftCardAmountApplied,
+          description: `Gift card liability redeemed for booking ${booking.booking_number}`,
+          created_at: now,
+        }]
+      : []),
+    // Promotion discount: record as a negative revenue line so GMV vs net revenue is clear.
+    ...(v.promoDiscountAmount > 0
+      ? [{
+          booking_id: booking.id,
+          provider_id: draft.provider_id,
+          tenant_id: financeTenantId,
+          transaction_type: "promotion_discount",
+          amount: v.promoDiscountAmount,
+          fees: 0,
+          commission: 0,
+          net: -v.promoDiscountAmount,
+          description: `Promotion discount applied to booking ${booking.booking_number}`,
+          created_at: now,
+        }]
       : []),
   ]);
 }

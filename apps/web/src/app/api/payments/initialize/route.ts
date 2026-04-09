@@ -10,6 +10,8 @@ import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-pa
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveBookingPaystackAmount } from "@/lib/payments/resolve-paystack-initialize-amount";
 import { revalidateBookingSlotBeforePayment } from "@/lib/bookings/revalidate-booking-slot-before-payment";
+import { checkPaymentInitRateLimit } from "@/lib/rate-limit/payment-initialize";
+import { getRateLimitHeaders } from "@/lib/rate-limit/headers";
 
 /**
  * POST /api/payments/initialize
@@ -21,6 +23,20 @@ export async function POST(request: Request) {
     const auth = await requireRole(["customer"]);
     if (!auth) {
       return unauthorizedResponse("Authentication required");
+    }
+
+    const rateLimitResult = await checkPaymentInitRateLimit(request, auth.user?.id);
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: "Too many payment requests. Please wait a moment before trying again.",
+            code: "RATE_LIMITED",
+          },
+        },
+        { status: 429, headers: getRateLimitHeaders(rateLimitResult) }
+      );
     }
 
     const supabase = await getSupabaseServer();

@@ -20,7 +20,7 @@ const AccountProfileSections = dynamic(
 );
 
 const AccountSettingsPage: React.FC = () => {
-  const { user, isLoading: isLoadingAuth } = useAuth();
+  const { user } = useAuth();
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
@@ -31,11 +31,13 @@ const AccountSettingsPage: React.FC = () => {
 
       <EmailVerificationBanner />
 
-      {!isLoadingAuth && (
-        <div className="mb-8 md:mb-10">
-          <AccountProfileSections />
-        </div>
-      )}
+      {/* Start rendering (and data-fetching) immediately — don't gate on auth.
+          AccountProfileSections calls /api/me/profile-bundle which validates the
+          session server-side, so it will return 401 if the user isn't signed in
+          and the component will show its own empty/error state gracefully. */}
+      <div className="mb-8 md:mb-10">
+        <AccountProfileSections />
+      </div>
 
       {user && (
         <div className="mb-6">

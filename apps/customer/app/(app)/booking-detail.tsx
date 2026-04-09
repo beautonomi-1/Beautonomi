@@ -944,10 +944,19 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
               </View>
+              {/* Wallet credit applied — only shown when wallet was used */}
+              {Number((booking as any).wallet_amount || 0) > 0 && (
+                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
+                </View>
+              )}
               {booking.payment_status && (
                 <View style={{ marginTop: 8, flexDirection: "row", alignItems: "center" }}>
-                  <View style={{ height: 8, width: 8, borderRadius: 4, marginRight: 8, backgroundColor: booking.payment_status === "paid" ? "#22C55E" : "#F59E0B" }} />
-                  <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>{booking.payment_status}</Text>
+                  <View style={{ height: 8, width: 8, borderRadius: 4, marginRight: 8, backgroundColor: booking.payment_status === "paid" ? "#22C55E" : booking.payment_status === "partially_paid" ? "#F59E0B" : "#9CA3AF" }} />
+                  <Text style={{ fontSize: 12, color: Colors.gray[500], textTransform: "capitalize" }}>
+                    {booking.payment_status === "paid" ? "Paid in full" : booking.payment_status === "partially_paid" ? "Partially paid" : booking.payment_status}
+                  </Text>
                 </View>
               )}
               {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (

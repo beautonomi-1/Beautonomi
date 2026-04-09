@@ -194,38 +194,47 @@ export async function POST(request: Request) {
           .eq("source", "paystack");
       }
 
-      // Add to reconciliation queue for charge events
-      if (eventType === "charge.success" || eventType === "charge.failed") {
-        const bookingId = event?.data?.metadata?.booking_id;
-        const reference = event?.data?.reference;
-
-        if (bookingId && reference) {
-          try {
-            await (supabase.from("payment_reconciliation_queue") as any).insert({
-              booking_id: bookingId,
-              payment_reference: reference,
-              payment_provider: "paystack",
-              status: "pending",
-              error_message: processingError.message,
-              attempt_count: 1,
-              next_retry_at: new Date(
-                Date.now() + 5 * 60 * 1000,
-              ).toISOString(),
-            });
-          } catch (reconError) {
-            console.error(
-              "Failed to add to reconciliation queue:",
-              reconError,
-            );
-          }
+      // Add to reconciliation queue for all charge/transfer events as an audit trail.
+      const bookingId = event?.data?.metadata?.booking_id;
+      const reference = event?.data?.reference;
+      if (bookingId && reference) {
+        try {
+          await (supabase.from("payment_reconciliation_queue") as any).insert({
+            booking_id: bookingId,
+            payment_reference: reference,
+            payment_provider: "paystack",
+            status: "pending",
+            error_message: processingError.message,
+            attempt_count: 1,
+            next_retry_at: new Date(
+              Date.now() + 5 * 60 * 1000,
+            ).toISOString(),
+          });
+        } catch (reconError) {
+          console.error(
+            "Failed to add to reconciliation queue:",
+            reconError,
+          );
         }
       }
 
-      // Still return 200 to Paystack (we'll retry manually)
-          return NextResponse.json({
-            received: true,
-            error: processingError.message,
-          });
+      // For critical money-movement events (charge.success, transfer.*), return 500 so
+      // Paystack retries automatically. All handlers for these event types are idempotent
+      // (they check for existing records before inserting), so retries are safe.
+      // For informational or non-critical events, return 200 to stop retry loops.
+      const RETRYABLE_EVENTS = ["charge.success", "transfer.success", "transfer.failed", "transfer.reversed", "refund.processed"];
+      if (RETRYABLE_EVENTS.includes(eventType) || eventType.startsWith("transfer.")) {
+        return NextResponse.json(
+          { received: false, error: processingError.message },
+          { status: 500 }
+        );
+      }
+
+      // Non-critical events: acknowledge to stop retries, reconcile manually via queue.
+      return NextResponse.json({
+        received: true,
+        error: processingError.message,
+      });
         }
       } catch (error) {
         console.error("Unexpected error in /api/payments/webhook:", error);

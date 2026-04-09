@@ -350,6 +350,15 @@ export async function GET(
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
+      wallet_amount: Number((bookingData as Record<string, unknown>).wallet_amount ?? 0),
+      gift_card_amount: Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0),
+      outstanding_balance: (() => {
+        const tot = Number(bookingData.total_amount ?? 0);
+        const paid = Number(bookingData.total_paid ?? 0);
+        const wallet = Number((bookingData as Record<string, unknown>).wallet_amount ?? 0);
+        const gift = Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0);
+        return Math.max(0, tot - paid - wallet - gift);
+      })(),
       currency: bookingData.currency || lastResortCurrency,
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
       payment_method: null, // payment_method_id is the actual column
@@ -891,6 +900,46 @@ export async function PATCH(
 
     if (updateError) {
       throw updateError;
+    }
+
+    // When a provider cancels a booking and applies a cancellation fee, record it in the
+    // finance ledger so it appears in revenue and accounting reports.
+    const updatedToCancelled = updateData.status === "cancelled";
+    const appliedCancelFee = Number(updateData.cancellation_fee ?? (currentBooking as Record<string, unknown>)?.cancellation_fee ?? 0);
+    if (updatedToCancelled && appliedCancelFee > 0) {
+      try {
+        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
+        const providerAdminForLedger = getSupabaseAdmin();
+        const bookingTenantId = (currentBooking as Record<string, unknown>)?.tenant_id as string | null;
+        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(providerAdminForLedger, {
+          tenant_id: bookingTenantId,
+          provider_id: providerId,
+        });
+        const bookingRef = (currentBooking as Record<string, unknown>)?.booking_number as string | undefined;
+        // Idempotent: only insert if no existing cancellation_fee row for this booking
+        const { data: existingCancelFeeRow } = await providerAdminForLedger
+          .from("finance_transactions")
+          .select("id")
+          .eq("booking_id", id)
+          .eq("transaction_type", "cancellation_fee")
+          .maybeSingle();
+        if (!existingCancelFeeRow) {
+          await providerAdminForLedger.from("finance_transactions").insert({
+            tenant_id: cancelFeeTenantId,
+            booking_id: id,
+            provider_id: providerId,
+            transaction_type: "cancellation_fee",
+            amount: appliedCancelFee,
+            fees: 0,
+            commission: 0,
+            net: appliedCancelFee,
+            description: `Cancellation fee retained for booking ${bookingRef ?? id} (provider cancellation)`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (cancelFeeErr) {
+        console.error("[provider PATCH] cancellation_fee ledger insert failed:", cancelFeeErr);
+      }
     }
 
     // Send "client arrived" notification if requested (in-salon only, server-side)

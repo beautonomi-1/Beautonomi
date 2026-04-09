@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -55,11 +56,27 @@ export async function GET(request: NextRequest) {
     const fromDate = fromParam ? new Date(fromParam + "T00:00:00") : defaultFrom;
     const toDate = toParam ? new Date(toParam + "T23:59:59") : defaultTo;
 
-    const { totalRevenue, revenueByBooking, revenueByDate: _rd } = await getProviderRevenue(
-      supabase,
+    const supabaseAdmin = getSupabaseAdmin();
+    const { totalRevenue, revenueByBooking: _rbk, revenueByDate: _rd } = await getProviderRevenue(
+      supabaseAdmin,
       providerId,
       fromDate,
       toDate
+    );
+
+    // Platform commission: sum the `net` field of "payment" ledger rows — that is the actual
+    // platform commission taken before provider earnings were calculated.
+    // This is ledger-based and not affected by payout timing, giving an accurate statement.
+    const { data: commissionRows } = await supabaseAdmin
+      .from("finance_transactions")
+      .select("net")
+      .eq("provider_id", providerId)
+      .eq("transaction_type", "payment")
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
+    const totalPlatformCommission = (commissionRows || []).reduce(
+      (s: number, r: any) => s + Math.max(0, Number(r.net ?? 0)),
+      0
     );
 
     const { data: payoutsRows } = await supabase
@@ -72,7 +89,7 @@ export async function GET(request: NextRequest) {
 
     const payouts = (payoutsRows || []).map((p: any) => ({
       id: p.id,
-      payout_number: p.payout_number,
+      payout_number: p.payout_number || p.id.slice(0, 8).toUpperCase(),
       amount: Number(p.amount ?? 0),
       net_amount: Number(p.net_amount ?? p.amount ?? 0),
       currency: p.currency || lastResortCurrency,
@@ -84,7 +101,8 @@ export async function GET(request: NextRequest) {
     const totalPayouts = payouts
       .filter((p: any) => p.status === "completed")
       .reduce((s: number, p: any) => s + p.net_amount, 0);
-    const totalPlatformFees = Math.max(0, totalRevenue - totalPayouts);
+    // Use ledger-derived commission rather than (revenue - payouts) which has timing issues.
+    const totalPlatformFees = totalPlatformCommission;
 
     return successResponse({
       period: {

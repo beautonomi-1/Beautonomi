@@ -132,7 +132,9 @@ export async function GET(request: NextRequest) {
       password_changed_at: u.password_changed_at ?? null,
     };
 
-    return successResponse(formattedData);
+    const res = successResponse(formattedData);
+    res.headers.set("Cache-Control", "private, max-age=30, stale-while-revalidate=60");
+    return res;
   } catch (error) {
     // Log the error for debugging
     console.error("Error in GET /api/me/profile:", error);

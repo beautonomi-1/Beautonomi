@@ -24,6 +24,16 @@ export type FinanceLedgerAggregate = {
   gift_card_sales: number;
   membership_sales: number;
   refunds_gross: number;
+  /** Wallet credits applied to bookings (wallet-only or split wallet+card payments). */
+  wallet_collected: number;
+  /** Gift card credits applied to bookings (gift-card-only or split gift-card+card payments). */
+  gift_card_collected: number;
+  /** Cancellation fees retained by the platform/provider (negative in customer P&L, positive in platform revenue). */
+  cancellation_fees_retained: number;
+  /** Total discount value applied via promotion codes (reduces net revenue). */
+  promotion_discounts: number;
+  /** Gift card liability reduced when gift cards are redeemed (offsets gift_card_sales on balance sheet). */
+  gift_card_liability_reductions: number;
 };
 
 type Row = Pick<FinanceLedgerRow, "transaction_type" | "amount" | "fees" | "net">;
@@ -41,9 +51,18 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const gatewayFeesServices = sumFees(tx, ["payment", "additional_charge_payment"]);
 
+  // bookingGmv: The full value of services rendered, combining gateway-paid amounts (recorded
+  // under "payment") with wallet and gift card credits (recorded under wallet_payment /
+  // gift_card_payment). Tip, tax, travel fee, and service fee are additive line items.
+  // NOTE: wallet_payment and gift_card_payment are only present for gateway-less (fully covered)
+  // bookings. For split wallet+card bookings, wallet_payment is added by process-payment.ts at
+  // booking creation and idempotently by charge-success.ts, so do not double-count with "payment".
+  const walletCollected = sum(tx, ["wallet_payment"], "amount");
+  const giftCardCollected = sum(tx, ["gift_card_payment"], "amount");
   const bookingGmv =
     sum(tx, ["payment"], "amount") +
-    sum(tx, ["provider_earnings"], "amount") +
+    walletCollected +
+    giftCardCollected +
     sum(tx, ["tip"], "amount") +
     sum(tx, ["tax"], "amount") +
     sum(tx, ["travel_fee"], "amount") +
@@ -53,9 +72,14 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
   const serviceCollectedGross = bookingGmv + additionalChargeGross;
   const serviceCollectedNet = serviceCollectedGross - gatewayFeesServices;
 
+  const cancellationFeesRetained = sum(tx, ["cancellation_fee"], "net");
+  const promotionDiscounts = sum(tx, ["promotion_discount"], "amount");
+  const giftCardLiabilityReductions = sum(tx, ["gift_card_liability_reduction"], "amount");
+
   const platformCommissionGross = sum(tx, ["payment", "additional_charge_payment"], "net");
   const platformRefundImpact = sum(tx, ["refund"], "net");
-  const platformCommissionNet = platformCommissionGross + platformRefundImpact;
+  // Cancellation fees retained are additional platform/provider revenue beyond commissions
+  const platformCommissionNet = platformCommissionGross + platformRefundImpact + cancellationFeesRetained;
 
   const platformTakeNet = platformCommissionNet - gatewayFeesServices;
 
@@ -87,5 +111,10 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     gift_card_sales: sum(tx, ["gift_card_sale"], "amount"),
     membership_sales: sum(tx, ["membership_sale"], "amount"),
     refunds_gross: sum(tx, ["refund"], "amount"),
+    wallet_collected: walletCollected,
+    gift_card_collected: giftCardCollected,
+    cancellation_fees_retained: cancellationFeesRetained,
+    promotion_discounts: promotionDiscounts,
+    gift_card_liability_reductions: giftCardLiabilityReductions,
   };
 }

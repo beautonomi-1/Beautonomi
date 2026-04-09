@@ -112,19 +112,22 @@ export async function GET(request: NextRequest) {
       averageRating = sum / reviewsData.length;
     }
     
-    // Calculate total earnings from finance_ledger (same as dashboard) for consistency
-    // This includes provider_earnings from bookings, add-ons, gift cards, memberships, and refund impacts
+    // Calculate net earnings from finance_transactions for accuracy:
+    // Sum provider_earnings (positive) + refund impact (negative) + cancellation_fee (positive).
+    // This matches the payout balance logic so gamification reflects real financial position.
     const { data: ledgerRows } = await supabaseAdmin
-      .from('finance_ledger')
+      .from('finance_transactions')
       .select('net, transaction_type')
       .eq('provider_id', providerId)
-      .eq('transaction_type', 'provider_earnings');
+      .in('transaction_type', ['provider_earnings', 'refund', 'cancellation_fee']);
     
     let totalEarnings = 0;
     if (ledgerRows) {
       totalEarnings = ledgerRows.reduce((sum, row) => {
         return sum + (Number(row.net ?? 0) || 0);
       }, 0);
+      // Floor at zero: gamification should never show negative earnings (edge case with large refunds)
+      totalEarnings = Math.max(0, totalEarnings);
     }
 
     // Calculate progress to next badge

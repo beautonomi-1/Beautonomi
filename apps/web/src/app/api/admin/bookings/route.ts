@@ -126,34 +126,45 @@ export async function GET(request: NextRequest) {
     const _locationsMap = new Map(locationsData.map((l) => [l.id, l]));
     void _locationsMap;
 
-    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
-    const transformedBookings = (bookings as BookingFull[]).map((booking) => ({
-      id: booking.id,
-      booking_number: booking.booking_number,
-      customer_id: booking.customer_id,
-      provider_id: booking.provider_id,
-      status: booking.status,
-      location_type: booking.location_type,
-      location_id: booking.location_id,
-      address: booking.address || null,
-      scheduled_at: booking.scheduled_at,
-      completed_at: booking.completed_at || null,
-      cancelled_at: booking.cancelled_at || null,
-      cancellation_reason: booking.cancellation_reason || null,
-      services: booking.services || [],
-      addons: booking.addons || [],
-      package_id: booking.package_id || null,
-      subtotal: booking.subtotal || 0,
-      tip_amount: booking.tip_amount || 0,
-      total_amount: booking.total_amount || 0,
-      currency: booking.currency || lastResortCurrency,
-      payment_status: booking.payment_status,
-      payment_method: booking.payment_method || null,
-      special_requests: booking.special_requests || null,
-      loyalty_points_earned: booking.loyalty_points_earned || 0,
-      created_at: booking.created_at,
-      updated_at: booking.updated_at,
-    }));
+    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
+    const transformedBookings = (bookings as BookingFull[]).map((booking) => {
+      const totalAmount = Number(booking.total_amount ?? 0);
+      const totalPaid = Number(booking.total_paid ?? 0);
+      const walletAmount = Number(booking.wallet_amount ?? 0);
+      const giftCardAmount = Number(booking.gift_card_amount ?? 0);
+      const outstandingBalance = Math.max(0, totalAmount - totalPaid - walletAmount - giftCardAmount);
+      return {
+        id: booking.id,
+        booking_number: booking.booking_number,
+        customer_id: booking.customer_id,
+        provider_id: booking.provider_id,
+        status: booking.status,
+        location_type: booking.location_type,
+        location_id: booking.location_id,
+        address: booking.address || null,
+        scheduled_at: booking.scheduled_at,
+        completed_at: booking.completed_at || null,
+        cancelled_at: booking.cancelled_at || null,
+        cancellation_reason: booking.cancellation_reason || null,
+        services: booking.services || [],
+        addons: booking.addons || [],
+        package_id: booking.package_id || null,
+        subtotal: booking.subtotal || 0,
+        tip_amount: booking.tip_amount || 0,
+        total_amount: totalAmount,
+        total_paid: totalPaid,
+        wallet_amount: walletAmount,
+        gift_card_amount: giftCardAmount,
+        outstanding_balance: outstandingBalance,
+        currency: booking.currency || lastResortCurrency,
+        payment_status: booking.payment_status,
+        payment_method: booking.payment_method || null,
+        special_requests: booking.special_requests || null,
+        loyalty_points_earned: booking.loyalty_points_earned || 0,
+        created_at: booking.created_at,
+        updated_at: booking.updated_at,
+      };
+    });
 
     // Return array directly to match frontend expectations (same as providers)
     return successResponse(transformedBookings);

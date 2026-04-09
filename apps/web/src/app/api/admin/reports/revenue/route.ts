@@ -43,49 +43,67 @@ export async function GET(request: NextRequest) {
     }
 
     // Get revenue by day
+    // Includes total_amount (GMV) + actual cash collected (total_paid + wallet_amount + gift_card).
+    // total_amount = the service price — what was charged to the customer (GMV).
+    // actual_collected = total_paid (gateway) + wallet_amount + gift_card_amount — real money received.
     const { data: bookings } = await supabase
       .from('bookings')
-      .select('scheduled_at, total_amount, status, provider_id')
+      .select('scheduled_at, total_amount, total_paid, wallet_amount, gift_card_amount, status, provider_id, payment_status')
       .eq('tenant_id', tenantId)
       .gte('scheduled_at', startDate.toISOString())
       .lte('scheduled_at', endDate.toISOString())
       .in('status', ['completed', 'confirmed']);
 
-    const revenueByDay: Record<string, { revenue: number; bookings: number }> = {};
-    const revenueByProvider: Record<string, { revenue: number; bookings: number; provider_name: string }> = {};
+    const revenueByDay: Record<string, { revenue: number; actual_collected: number; bookings: number }> = {};
+    const revenueByProvider: Record<string, { revenue: number; actual_collected: number; bookings: number; provider_name: string }> = {};
     const revenueByStatus: Record<string, { revenue: number; bookings: number }> = {};
 
     let totalRevenue = 0;
+    let totalActualCollected = 0;
+    let totalWalletRevenue = 0;
+    let totalGatewayRevenue = 0;
+    let totalGiftCardRevenue = 0;
 
-    type BookingRow = { scheduled_at?: string; total_amount?: number; provider_id?: string; status?: string };
+    type BookingRow = { scheduled_at?: string; total_amount?: number; total_paid?: number; wallet_amount?: number; gift_card_amount?: number; provider_id?: string; status?: string; payment_status?: string };
     (bookings || []).forEach((booking: BookingRow) => {
       const date = new Date(booking.scheduled_at ?? "").toISOString().split('T')[0];
-      const amount = booking.total_amount ?? 0;
+      const gmvAmount = Number(booking.total_amount ?? 0);
+      const gatewayAmount = Number(booking.total_paid ?? 0);
+      const walletAmount = Number(booking.wallet_amount ?? 0);
+      const giftCardAmount = Number(booking.gift_card_amount ?? 0);
+      const collectedAmount = gatewayAmount + walletAmount + giftCardAmount;
 
-      // By day
+      // By day (GMV + actual collected)
       if (!revenueByDay[date]) {
-        revenueByDay[date] = { revenue: 0, bookings: 0 };
+        revenueByDay[date] = { revenue: 0, actual_collected: 0, bookings: 0 };
       }
-      revenueByDay[date].revenue += amount;
+      revenueByDay[date].revenue += gmvAmount;
+      revenueByDay[date].actual_collected += collectedAmount;
       revenueByDay[date].bookings += 1;
 
       // By provider
       if (booking.provider_id) {
         if (!revenueByProvider[booking.provider_id]) {
-          revenueByProvider[booking.provider_id] = { revenue: 0, bookings: 0, provider_name: 'Unknown' };
+          revenueByProvider[booking.provider_id] = { revenue: 0, actual_collected: 0, bookings: 0, provider_name: 'Unknown' };
         }
-        revenueByProvider[booking.provider_id].revenue += amount;
+        revenueByProvider[booking.provider_id].revenue += gmvAmount;
+        revenueByProvider[booking.provider_id].actual_collected += collectedAmount;
         revenueByProvider[booking.provider_id].bookings += 1;
       }
 
       // By status
-      if (!revenueByStatus[booking.status]) {
-        revenueByStatus[booking.status] = { revenue: 0, bookings: 0 };
+      const status = booking.status ?? "unknown";
+      if (!revenueByStatus[status]) {
+        revenueByStatus[status] = { revenue: 0, bookings: 0 };
       }
-      revenueByStatus[booking.status].revenue += amount;
-      revenueByStatus[booking.status].bookings += 1;
+      revenueByStatus[status].revenue += gmvAmount;
+      revenueByStatus[status].bookings += 1;
 
-      totalRevenue += amount;
+      totalRevenue += gmvAmount;
+      totalActualCollected += collectedAmount;
+      totalWalletRevenue += walletAmount;
+      totalGatewayRevenue += gatewayAmount;
+      totalGiftCardRevenue += giftCardAmount;
     });
 
     // Get provider names
@@ -112,10 +130,33 @@ export async function GET(request: NextRequest) {
       revenueByDayArray.push({
         date: dateStr,
         revenue: revenueByDay[dateStr]?.revenue || 0,
+        actual_collected: revenueByDay[dateStr]?.actual_collected || 0,
         bookings: revenueByDay[dateStr]?.bookings || 0,
       });
       current.setDate(current.getDate() + 1);
     }
+
+    // Additional ledger metrics from finance_transactions (new accounting types)
+    const cancellationFeeRows = await fetchFinanceLedgerRowsForTenant(
+      supabase,
+      tenantId,
+      { start: startDate.toISOString(), end: endDate.toISOString() },
+      { transactionType: "cancellation_fee" }
+    );
+    const promoDiscountRows = await fetchFinanceLedgerRowsForTenant(
+      supabase,
+      tenantId,
+      { start: startDate.toISOString(), end: endDate.toISOString() },
+      { transactionType: "promotion_discount" }
+    );
+    const totalCancellationFeesRetained = (cancellationFeeRows || []).reduce(
+      (s, r) => s + Number(r.net ?? r.amount ?? 0),
+      0
+    );
+    const totalPromotionDiscounts = (promoDiscountRows || []).reduce(
+      (s, r) => s + Number(r.amount ?? 0),
+      0
+    );
 
     // Get gift card metrics
     const salesTransactions = await fetchFinanceLedgerRowsForTenant(
@@ -206,7 +247,16 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       period,
+      // GMV: total booking value at time of booking (what was charged)
       totalRevenue,
+      // Actual collected: gateway + wallet + gift card (real money/credit received)
+      totalActualCollected,
+      // Breakdown of how actual_collected is composed
+      collectionBreakdown: {
+        gateway: totalGatewayRevenue,
+        wallet: totalWalletRevenue,
+        gift_card: totalGiftCardRevenue,
+      },
       revenueByDay: revenueByDayArray,
       revenueByProvider: Object.values(revenueByProvider).sort((a, b) => b.revenue - a.revenue),
       revenueByService: [], // Can be enhanced later
@@ -222,6 +272,11 @@ export async function GET(request: NextRequest) {
         salesByDay: salesByDayArray,
         redemptionsByDay: redemptionsByDayArray,
       },
+      // Cancellation and promotion analytics (from finance_transactions ledger)
+      cancellationFeesRetained: totalCancellationFeesRetained,
+      promotionDiscountsGiven: totalPromotionDiscounts,
+      // Net revenue = GMV minus refunds minus promotion discounts
+      netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load revenue report');

@@ -102,9 +102,17 @@ function CheckoutSuccessContent() {
   const showBookingLink = !!(resolvedBookingId || bookingNumber);
   const paymentType = searchParams?.get("payment_type");
 
-  const [bookingForCalendar, setBookingForCalendar] = useState<{
+  const [bookingData, setBookingData] = useState<{
     selected_datetime: string;
     booking_number: string;
+    status?: string;
+    payment_status?: string;
+    total_amount?: number;
+    total_paid?: number;
+    wallet_amount?: number;
+    gift_card_amount?: number;
+    outstanding_balance?: number;
+    currency?: string;
     services: Array<{ offering_name?: string; title?: string; duration_minutes?: number; duration?: number }>;
     provider?: { business_name?: string };
     location?: { address?: string; name?: string };
@@ -112,16 +120,24 @@ function CheckoutSuccessContent() {
     location_type?: string;
   } | null>(null);
 
+  const bookingForCalendar = bookingData;
+
   useEffect(() => {
     if (!resolvedBookingId || isWaitlist) return;
     fetch(`/api/me/bookings/${resolvedBookingId}`, { credentials: "include" })
       .then((r) => r.ok ? r.json() : null)
       .then((json) => {
         const data = json?.data;
-        if (data?.selected_datetime) setBookingForCalendar(data);
+        if (data?.selected_datetime) setBookingData(data);
       })
       .catch(() => {});
   }, [resolvedBookingId, isWaitlist]);
+
+  const isConfirmed = bookingData?.status === "confirmed" || bookingData?.status === "completed";
+  const isPendingApproval = bookingData?.status === "pending" && !isWaitlist;
+  const walletAmountUsed = Number(bookingData?.wallet_amount ?? 0);
+  const giftCardAmountUsed = Number(bookingData?.gift_card_amount ?? 0);
+  const isSplitPayment = (walletAmountUsed > 0 || giftCardAmountUsed > 0) && Number(bookingData?.total_paid ?? 0) > 0;
 
   const totalDurationMinutes = bookingForCalendar?.services?.reduce(
     (sum, s) => sum + (s.duration_minutes ?? s.duration ?? 0),
@@ -244,18 +260,59 @@ function CheckoutSuccessContent() {
           ) : (
             <>
               <h1 className="text-2xl font-bold mb-2" style={{ color: TEXT_PRIMARY }}>
-                {showBookingLink ? "Booking confirmed!" : "Payment received"}
+                {isPendingApproval
+                  ? "Booking received!"
+                  : showBookingLink
+                    ? "Booking confirmed!"
+                    : "Payment received"}
               </h1>
               {bookingNumber && (
                 <p className="text-xs font-bold tracking-wider uppercase mb-2" style={{ color: ACCENT }}>
                   Booking #{bookingNumber}
                 </p>
               )}
-              <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
-                {showBookingLink
-                  ? "Your appointment is confirmed. You\u2019ll receive a reminder before your visit."
-                  : "Thanks\u2014your payment is being processed. Check your bookings shortly."}
-              </p>
+              {isPendingApproval ? (
+                <>
+                  <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                    Your payment is received. The provider will confirm your appointment shortly.
+                  </p>
+                  <div className="mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    Providers typically confirm within 8 hours
+                  </div>
+                </>
+              ) : (
+                <p className="text-sm leading-relaxed" style={{ color: TEXT_SECONDARY }}>
+                  {showBookingLink
+                    ? "Your appointment is confirmed. You\u2019ll receive a reminder before your visit."
+                    : "Thanks\u2014your payment is being processed. Check your bookings shortly."}
+                </p>
+              )}
+              {isSplitPayment && (
+                <div className="mt-3 rounded-xl px-4 py-3 text-left space-y-1.5" style={{ background: "#F5F3FF", border: "1px solid #DDD6FE" }}>
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7C3AED" }}>Payment breakdown</p>
+                  {walletAmountUsed > 0 && (
+                    <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
+                      <span>Wallet credit</span>
+                      <span>{bookingData?.currency ?? ""} {walletAmountUsed.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {giftCardAmountUsed > 0 && (
+                    <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
+                      <span>Gift card</span>
+                      <span>{bookingData?.currency ?? ""} {giftCardAmountUsed.toFixed(2)}</span>
+                    </div>
+                  )}
+                  {Number(bookingData?.total_paid ?? 0) > 0 && (
+                    <div className="flex justify-between text-xs" style={{ color: "#5B21B6" }}>
+                      <span>Card payment</span>
+                      <span>{bookingData?.currency ?? ""} {Number(bookingData?.total_paid ?? 0).toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

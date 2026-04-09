@@ -9,13 +9,14 @@ import {
   errorResponse,
 } from "@/lib/supabase/api-helpers";
 
-/** Payment method key used in response (normalized from booking_payments and sales). */
-const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "paystack", "yoco", "gift_card", "other"] as const;
+/** Payment method key used in response (normalized from booking_payments, bookings.wallet_amount, and sales). */
+const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "paystack", "yoco", "gift_card", "wallet", "other"] as const;
 
 export interface EndOfDayResponse {
   date: string;
   byPaymentMethod: Record<string, number>;
   bookingPaymentsTotal: number;
+  walletTotal: number;
   salesTotal: number;
   total: number;
   bookingCount: number;
@@ -101,6 +102,7 @@ export async function GET(request: NextRequest) {
 
     let bookingPaymentsTotal = 0;
     let bookingCount = 0;
+    const bpBookingIds = new Set<string>(); // bookings already counted via booking_payments
     for (const row of bpRowList) {
       if (!providerBookingIds.has(row.booking_id)) continue;
       const amount = Number(row.amount ?? 0);
@@ -108,6 +110,28 @@ export async function GET(request: NextRequest) {
       byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
       bookingPaymentsTotal += amount;
       bookingCount += 1;
+      bpBookingIds.add(row.booking_id);
+    }
+
+    // Wallet-only bookings have no booking_payments row — read wallet_amount directly from bookings.
+    // Only include bookings that were scheduled on this day and not already counted above.
+    let walletTotal = 0;
+    if (providerBookingIds.size > 0) {
+      const { data: walletBookings } = await supabaseAdmin
+        .from("bookings")
+        .select("id, wallet_amount, scheduled_at, location_id")
+        .eq("provider_id", providerId)
+        .gte("scheduled_at", dayStart)
+        .lt("scheduled_at", dayEndISO)
+        .gt("wallet_amount", 0);
+      for (const wb of (walletBookings ?? []) as { id: string; wallet_amount?: number; location_id?: string }[]) {
+        if (bpBookingIds.has(wb.id)) continue; // already counted the card leg
+        if (locationId && wb.location_id !== locationId) continue;
+        const walletAmt = Number(wb.wallet_amount ?? 0);
+        byPaymentMethod["wallet"] = (byPaymentMethod["wallet"] || 0) + walletAmt;
+        walletTotal += walletAmt;
+        bookingCount += 1;
+      }
     }
 
     // Sales: provider_id, optional location_id, sale_date in day
@@ -135,12 +159,13 @@ export async function GET(request: NextRequest) {
     }
     const salesCount = (salesRows || []).length;
 
-    const total = bookingPaymentsTotal + salesTotal;
+    const total = bookingPaymentsTotal + walletTotal + salesTotal;
 
     const response: EndOfDayResponse = {
       date: dateStr,
       byPaymentMethod,
       bookingPaymentsTotal,
+      walletTotal,
       salesTotal,
       total,
       bookingCount,
@@ -157,6 +182,9 @@ function normalizePaymentMethod(m: string | null): string {
   if (!m) return "other";
   const lower = m.toLowerCase();
   if ((PAYMENT_METHODS as readonly string[]).includes(lower)) return lower;
+  // Aliases
   if (lower === "bank_transfer") return "bank_transfer";
+  if (lower === "wallet_credit" || lower === "wallet_payment") return "wallet";
+  if (lower === "credit_card" || lower === "debit_card") return "card";
   return "other";
 }
