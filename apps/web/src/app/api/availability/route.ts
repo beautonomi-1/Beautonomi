@@ -21,7 +21,9 @@ async function computeSlotsForStaff(
   duration: number,
   travelBuffer: number,
   avoidGaps: boolean,
-  excludeHoldId?: string
+  excludeHoldId?: string,
+  /** All active staff IDs for the provider — used for time-off/day-off parity queries. */
+  allStaffIdsForParity?: string[]
 ): Promise<TimeSlot[]> {
   let providerIdForSettings: string | undefined;
   const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
@@ -41,7 +43,23 @@ async function computeSlotsForStaff(
     staffId,
     date,
     providerIdForSettings,
-    { excludeHoldId }
+    {
+      excludeHoldId,
+      // Mirror the public slug availability route: apply staff_days_off, staff_time_off,
+      // and availability_blocks so the web booking flow honours the same blocks as the
+      // customer mobile app and the portal reschedule flow.
+      ...(providerIdForSettings
+        ? {
+            publicCalendarParity: {
+              providerId: providerIdForSettings,
+              date,
+              locationId: undefined,
+              slotStaffId: staffId,
+              staffIdsForTimeOff: allStaffIdsForParity ?? (staffId ? [staffId] : undefined),
+            },
+          }
+        : {}),
+    }
   );
 
   return calculateAvailableSlots(
@@ -135,7 +153,8 @@ export async function GET(request: NextRequest) {
             duration,
             travelBuffer,
             avoidGaps,
-            excludeHoldId
+            excludeHoldId,
+            ids.length > 0 ? ids : undefined
           )
         )
       );
@@ -150,6 +169,7 @@ export async function GET(request: NextRequest) {
         travelBuffer,
         avoidGaps,
         excludeHoldId
+        // allStaffIdsForParity: undefined — will default to [staffIdTrim] inside
       );
     }
 

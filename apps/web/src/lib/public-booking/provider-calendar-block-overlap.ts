@@ -6,6 +6,7 @@
 
 import { addDays, format, startOfDay } from "date-fns";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
 export type ProviderCalendarBlockCheck = {
   providerId: string;
@@ -118,6 +119,53 @@ export async function isProviderCalendarWindowBlocked(
     const { start: bs, end: be } = timeBlockLocalInterval(d, tb.start_time as string, tb.end_time as string);
     if (intervalsOverlap(startAt, endAt, bs, be)) {
       return { blocked: true, reason: "Overlaps time block" };
+    }
+  }
+
+  // ── Recurring time_blocks whose origin date predates the booking window ──
+  // Mirrors loadTimeBlocks in load-constraints.ts: blocks created on a past date with
+  // is_recurring=true must still block future slots (e.g. a weekly "Lunch Break").
+  const { data: recurringTbRows, error: recurringTbErr } = await supabase
+    .from("time_blocks")
+    .select("id, staff_id, date, start_time, end_time, is_recurring, recurring_pattern")
+    .eq("provider_id", providerId)
+    .eq("is_active", true)
+    .eq("is_recurring", true)
+    .lt("date", minYmd); // only blocks whose origin date is before the booking window
+
+  if (recurringTbErr) {
+    console.error("recurring time_blocks overlap check:", recurringTbErr);
+    return { blocked: true, reason: "Calendar block check failed" };
+  }
+
+  if (recurringTbRows && recurringTbRows.length > 0) {
+    const bookingDays = localDaysBetweenInclusive(startAt, endAt);
+    for (const tb of recurringTbRows) {
+      if (!appliesToStaff(tb.staff_id)) continue;
+      const originDateStr = typeof tb.date === "string" ? tb.date : minYmd;
+      const originDate = new Date(`${originDateStr}T12:00:00`);
+      const originDayOfWeek = originDate.getDay();
+
+      for (const day of bookingDays) {
+        const targetDate = new Date(`${day}T12:00:00`);
+        let applies = false;
+        if (tb.recurring_pattern) {
+          applies = expandRecurringPattern(
+            tb.recurring_pattern as Parameters<typeof expandRecurringPattern>[0],
+            originDateStr,
+            day
+          );
+        } else {
+          // Fallback: no explicit pattern → repeat weekly on same weekday (matches loadTimeBlocks).
+          applies = targetDate.getDay() === originDayOfWeek && targetDate >= originDate;
+        }
+        if (!applies) continue;
+
+        const { start: bs, end: be } = timeBlockLocalInterval(day, tb.start_time as string, tb.end_time as string);
+        if (intervalsOverlap(startAt, endAt, bs, be)) {
+          return { blocked: true, reason: "Overlaps recurring time block" };
+        }
+      }
     }
   }
 

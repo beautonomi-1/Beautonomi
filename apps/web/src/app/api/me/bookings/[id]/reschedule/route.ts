@@ -165,9 +165,25 @@ export async function POST(
       totalDuration += dur + buf;
     });
 
-    // Load availability constraints for new date
+    // Load availability constraints for new date.
+    // Pass publicCalendarParity so staff_days_off / staff_time_off / availability_blocks
+    // block the same windows here that customers see in the booking flow.
     const newDate = newDatetime.toISOString().split('T')[0];
-    const constraints = await loadAvailabilityConstraints(supabase, staffId, newDate);
+    const constraints = await loadAvailabilityConstraints(
+      supabase,
+      staffId,
+      newDate,
+      booking.provider_id,
+      {
+        publicCalendarParity: {
+          providerId: booking.provider_id,
+          date: newDate,
+          locationId: undefined,
+          slotStaffId: staffId,
+          staffIdsForTimeOff: [staffId],
+        },
+      }
+    );
 
     // Check if new slot is available
     const slots = calculateAvailableSlots(

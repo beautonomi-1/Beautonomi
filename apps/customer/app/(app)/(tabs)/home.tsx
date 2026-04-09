@@ -100,51 +100,57 @@ const styles = StyleSheet.create({
   addressBarChevron: { marginLeft: 8 },
   navRow: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
+    position: "relative",
   },
   navLeftGroup: {
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    minWidth: 80,
+    zIndex: 1,
   },
   navLogo: {
     width: 28,
     height: 28,
     borderRadius: 6,
   },
+  // Absolutely positioned so Home/Explore are always centred in the full row width,
+  // regardless of how wide the left (logo) and right (icons) groups are.
   navCenterGroup: {
-    flex: 1,
+    position: "absolute",
+    left: 0,
+    right: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 0,
+    // Pointer events pass through to the left/right groups beneath this layer.
+    pointerEvents: "box-none",
   },
   navTab: {
     alignItems: "center",
+    flexDirection: "column",
     paddingBottom: 4,
-    flexDirection: "row",
-    marginRight: 24,
+    paddingHorizontal: 10,
   },
   navTabActive: {
     borderBottomWidth: 2,
     borderBottomColor: Colors.primary,
   },
-  navTabExplore: { marginRight: 24 },
-  navTabLabel: { marginLeft: 8 },
-  navTabLabelExplore: { marginLeft: 6 },
+  navTabExplore: {},
+  navTabLabel: { marginTop: 3, fontSize: 11 },
+  navTabLabelExplore: { marginTop: 3, fontSize: 11 },
   navNewBadge: {
     backgroundColor: Colors.primary,
     paddingHorizontal: 4,
     paddingVertical: 2,
     borderRadius: 4,
     alignSelf: "center",
-    marginLeft: 6,
+    marginTop: 2,
   },
   navNewBadgeText: { fontSize: 8, color: Colors.white, fontWeight: "700" },
   navCenterSpacer: {
@@ -155,12 +161,19 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    position: "relative",
+    zIndex: 1,
+    gap: 2,
+  },
+  navIconBtn: {
+    width: 36,
+    height: 36,
+    alignItems: "center",
+    justifyContent: "center",
   },
   navSearchMargin: {
-    marginRight: 16,
-    minWidth: 44,
-    minHeight: 44,
+    marginRight: 4,
+    minWidth: 36,
+    minHeight: 36,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -555,6 +568,7 @@ export default function HomeScreen() {
         <InstallAppBanner />
 
         <View style={[styles.navRow, { paddingHorizontal: contentPadding }]}>
+          {/* Left: logo */}
           <View style={styles.navLeftGroup}>
             <TouchableOpacity
               onPress={() => router.push("/(app)/(tabs)/home")}
@@ -565,6 +579,8 @@ export default function HomeScreen() {
               <Image source={require("../../../assets/favicon.png")} style={styles.navLogo} />
             </TouchableOpacity>
           </View>
+
+          {/* Center: Home / Explore — absolutely positioned so it is truly screen-centred */}
           <View style={styles.navCenterGroup}>
             <TouchableOpacity
               style={[styles.navTab, styles.navTabActive]}
@@ -572,18 +588,18 @@ export default function HomeScreen() {
               accessibilityLabel="Home tab"
               accessibilityState={{ selected: true }}
             >
-              <Ionicons name="home" size={18} color={Colors.primary} />
-              <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "500" }]}>Home</Text>
+              <Ionicons name="home" size={20} color={Colors.primary} />
+              <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "600" }]}>Home</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.navTab, styles.navTabExplore]}
+              style={styles.navTab}
               onPress={() => router.push("/(app)/(tabs)/explore")}
               accessibilityRole="button"
               accessibilityLabel="Explore tab"
               accessibilityHint="Navigate to the Explore feed"
               accessibilityState={{ selected: false }}
             >
-              <Ionicons name="compass-outline" size={18} color={Colors.gray[500]} />
+              <Ionicons name="compass-outline" size={20} color={Colors.gray[500]} />
               <Text style={[styles.navTabLabelExplore, { color: Colors.gray[500], fontWeight: "500" }]}>
                 Explore
               </Text>
@@ -592,6 +608,8 @@ export default function HomeScreen() {
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* Right: search · wishlist · notifications — uniform icon buttons */}
           <View style={styles.navRightGroup}>
             <View style={styles.navSearchMargin}>
               <InlineSearch contextCategorySlug={searchContextCategorySlug} />
@@ -604,9 +622,9 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Saved"
               accessibilityHint="Open saved providers, products, and posts"
-              style={styles.navSearchMargin}
+              style={styles.navIconBtn}
             >
-              <Ionicons name="heart-outline" size={24} color="#333" />
+              <Ionicons name="heart-outline" size={22} color="#333" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -616,25 +634,25 @@ export default function HomeScreen() {
               accessibilityRole="button"
               accessibilityLabel="Notifications"
               accessibilityHint="Show recent notifications"
-              style={{ position: "relative" }}
+              style={styles.navIconBtn}
             >
-              <Ionicons name="notifications-outline" size={24} color="#333" />
+              <Ionicons name="notifications-outline" size={22} color="#333" />
               {unreadCount > 0 ? (
                 <View
                   style={{
                     position: "absolute",
-                    top: -4,
-                    right: -4,
-                    minWidth: 18,
-                    height: 18,
-                    borderRadius: 9,
+                    top: 2,
+                    right: 2,
+                    minWidth: 16,
+                    height: 16,
+                    borderRadius: 8,
                     backgroundColor: Colors.primary,
                     alignItems: "center",
                     justifyContent: "center",
-                    paddingHorizontal: 4,
+                    paddingHorizontal: 3,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>
+                  <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </Text>
                 </View>

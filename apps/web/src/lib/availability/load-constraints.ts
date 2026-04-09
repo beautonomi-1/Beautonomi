@@ -45,7 +45,27 @@ const WEEKDAY_KEYS = new Set([
 const DEFAULT_OPEN = '09:00';
 const DEFAULT_CLOSE = '18:00';
 
-type WorkingHoursDay = { is_open?: boolean; open_time?: string; close_time?: string };
+/**
+ * Working hours can be stored in two formats depending on the UI that saved them:
+ *
+ * Format A (availability engine / mobile provider app):
+ *   { monday: { is_open: true, open_time: "09:00", close_time: "18:00" } }
+ *
+ * Format B (web operating-hours settings page / OperatingHoursEditor component):
+ *   { monday: { open: "09:00", close: "18:00", closed: false } }
+ *
+ * resolveWorkingHoursDay handles both so either save path produces valid shifts.
+ */
+type WorkingHoursDay = {
+  // Format A
+  is_open?: boolean;
+  open_time?: string;
+  close_time?: string;
+  // Format B
+  open?: string;
+  close?: string;
+  closed?: boolean;
+};
 
 /**
  * Resolve one day from working_hours JSON. Empty `{}` or null schedule → default weekday hours.
@@ -67,14 +87,18 @@ function resolveWorkingHoursDay(
   if (day === undefined) {
     return null;
   }
-  if (day.is_open === false) {
+
+  // Detect closed: Format A uses is_open===false, Format B uses closed===true
+  const isClosed = day.is_open === false || day.closed === true;
+  if (isClosed) {
     return null;
   }
-  return {
-    open: true,
-    openTime: (day.open_time || DEFAULT_OPEN).trim(),
-    closeTime: (day.close_time || DEFAULT_CLOSE).trim(),
-  };
+
+  // Resolve times: prefer Format A keys, fall back to Format B keys
+  const openTime = (day.open_time || day.open || DEFAULT_OPEN).trim();
+  const closeTime = (day.close_time || day.close || DEFAULT_CLOSE).trim();
+
+  return { open: true, openTime, closeTime };
 }
 
 /**
@@ -349,22 +373,23 @@ export async function loadTimeBlocks(
   date: string,
   providerId?: string
 ): Promise<TimeBlock[]> {
-  // Query time blocks for the specific date
-  // staff_id = null means applies to all staff
-  const query = supabase
+  // Query time blocks for the specific date.
+  // Supabase query builders are immutable — each filter call returns a new object,
+  // so every conditional filter must be reassigned.
+  let query = supabase
     .from('time_blocks')
     .select('*')
     .eq('date', date)
     .eq('is_active', true);
 
   if (providerId) {
-    query.eq('provider_id', providerId);
+    query = query.eq('provider_id', providerId);
   }
 
   if (staffId) {
-    query.or(`staff_id.eq.${staffId},staff_id.is.null`);
+    query = query.or(`staff_id.eq.${staffId},staff_id.is.null`);
   } else {
-    query.is('staff_id', null);
+    query = query.is('staff_id', null);
   }
 
   const { data: blocks, error } = await query;
@@ -374,43 +399,50 @@ export async function loadTimeBlocks(
     return [];
   }
 
-  if (!blocks) {
-    return [];
-  }
-
-  // Also check for recurring blocks
-  const recurringQuery = supabase
+  // Query recurring time blocks that started before or on the target date.
+  // Exclude blocks whose original date already matches (they were already captured above).
+  let recurringQuery = supabase
     .from('time_blocks')
     .select('*')
     .eq('is_recurring', true)
-    .eq('is_active', true);
+    .eq('is_active', true)
+    .lt('date', date); // only blocks whose origin date is before the target date
 
   if (providerId) {
-    recurringQuery.eq('provider_id', providerId);
+    recurringQuery = recurringQuery.eq('provider_id', providerId);
   }
 
   if (staffId) {
-    recurringQuery.or(`staff_id.eq.${staffId},staff_id.is.null`);
+    recurringQuery = recurringQuery.or(`staff_id.eq.${staffId},staff_id.is.null`);
   } else {
-    recurringQuery.is('staff_id', null);
+    recurringQuery = recurringQuery.is('staff_id', null);
   }
 
   const { data: recurringBlocks, error: recurringError } = await recurringQuery;
 
-  if (!recurringError && recurringBlocks) {
+  if (!recurringError && recurringBlocks && recurringBlocks.length > 0) {
+    const targetDateObj = new Date(`${date}T12:00:00`);
+    const targetDayOfWeek = targetDateObj.getDay();
+
     const expandedRecurring = recurringBlocks
       .filter((block) => {
-        if (!block.recurring_pattern) return false;
-        return expandRecurringPattern(
-          block.recurring_pattern as any,
-          block.date,
-          date
-        );
+        const originalDate = new Date(`${block.date}T12:00:00`);
+        if (targetDateObj < originalDate) return false;
+
+        if (block.recurring_pattern) {
+          // Explicit pattern stored (JSON with frequency/days/end_date)
+          return expandRecurringPattern(block.recurring_pattern as any, block.date, date);
+        }
+
+        // Fallback: no explicit pattern but is_recurring=true → weekly on same weekday.
+        // This handles blocks created without a recurring_pattern (e.g. via mobile app or
+        // legacy UI that only set is_recurring without a structured pattern).
+        return originalDate.getDay() === targetDayOfWeek;
       })
       .map((block) => ({
         ...block,
-        date, // Override date with target date
-        is_recurring: false, // Mark as expanded
+        date, // Override to target date so slot-overlap checks use the right day
+        is_recurring: false, // Mark as expanded (prevents double-counting)
       }));
 
     return [...(blocks || []), ...expandedRecurring] as TimeBlock[];

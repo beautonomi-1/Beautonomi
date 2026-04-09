@@ -96,7 +96,7 @@ export function SetDayOffDialog({
 
           <div className="space-y-2">
             <Label>Date</Label>
-            <Popover modal={false}>
+            <Popover modal={true}>
               <PopoverTrigger asChild>
                 <Button
                   variant="outline"
@@ -109,12 +109,13 @@ export function SetDayOffDialog({
                   {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-[100]" align="start">
+              <PopoverContent className="w-auto p-0 z-[300]" align="start">
                 <Calendar
                   mode="single"
                   selected={selectedDate}
                   onSelect={setSelectedDate}
                   initialFocus
+                  disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
                 />
               </PopoverContent>
             </Popover>

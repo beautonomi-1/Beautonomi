@@ -76,7 +76,32 @@ export async function POST(
 
       if (firstService?.staff_id) {
         const newDate = newDatetime.toISOString().split('T')[0];
-        const constraints = await loadAvailabilityConstraints(supabase, firstService.staff_id, newDate);
+
+        // Resolve provider_id so publicCalendarParity can block day-offs / time-off.
+        const { data: staffProviderRow } = await supabase
+          .from('provider_staff')
+          .select('provider_id')
+          .eq('id', firstService.staff_id)
+          .maybeSingle();
+        const groupProviderIdForParity = staffProviderRow?.provider_id as string | undefined;
+
+        const constraints = await loadAvailabilityConstraints(
+          supabase,
+          firstService.staff_id,
+          newDate,
+          groupProviderIdForParity,
+          groupProviderIdForParity
+            ? {
+                publicCalendarParity: {
+                  providerId: groupProviderIdForParity,
+                  date: newDate,
+                  locationId: undefined,
+                  slotStaffId: firstService.staff_id,
+                  staffIdsForTimeOff: [firstService.staff_id],
+                },
+              }
+            : undefined
+        );
         
         // Total blocked span = sum(durations) + sum(buffers) across all group booking services
         let totalDuration = 0;

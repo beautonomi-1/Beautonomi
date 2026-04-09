@@ -219,14 +219,46 @@ export async function requireRoleInApi(
           .select("id, role, full_name")
           .eq("id", authUser.id)
           .single();
-        if (!userData || !userData.role) throw new Error("User profile not found. Please contact support.");
-        let userRole = userData.role as UserRole;
+
+        // Self-heal: if public.users row is missing or has no role (trigger may not have run,
+        // e.g. for phone-only signups or users created before the trigger was deployed),
+        // create it now with admin privileges so the user can authenticate immediately.
+        let resolvedUserData = userData;
+        if (!userData || !userData.role) {
+          const admin = getSupabaseAdmin();
+          const placeholderEmail = authUser.email ?? `${authUser.id}@phone.local`;
+          const { data: upserted } = await admin
+            .from("users")
+            .upsert(
+              {
+                id: authUser.id,
+                email: placeholderEmail,
+                full_name:
+                  (authUser.user_metadata?.full_name as string | undefined) ??
+                  (authUser.user_metadata?.name as string | undefined) ??
+                  null,
+                phone: (authUser.user_metadata?.phone as string | undefined) ?? null,
+                role: "customer" as UserRole,
+              },
+              { onConflict: "id" }
+            )
+            .select("id, role, full_name")
+            .single();
+          if (!upserted || !upserted.role) throw new Error("User profile not found. Please contact support.");
+          resolvedUserData = upserted;
+          // Also ensure the wallet exists for this newly-created row.
+          await admin
+            .from("user_wallets")
+            .upsert({ user_id: authUser.id, currency: "ZAR" }, { onConflict: "user_id", ignoreDuplicates: true });
+        }
+
+        let userRole = resolvedUserData!.role as UserRole;
         // Customer with active provider_staff row gets provider_staff access for provider APIs
         if (userRole === "customer" && roles.includes("provider_staff")) {
           const { data: staffRow } = await supabase
             .from("provider_staff")
             .select("id")
-            .eq("user_id", userData.id)
+            .eq("user_id", resolvedUserData!.id)
             .eq("is_active", true)
             .limit(1)
             .maybeSingle();
@@ -234,7 +266,7 @@ export async function requireRoleInApi(
         }
         if (!roles.includes(userRole))
           throw new Error(`Insufficient permissions: requires one of ${roles.join(", ")}`);
-        return { user: { id: userData.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: userData.full_name } };
+        return { user: { id: resolvedUserData!.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: resolvedUserData!.full_name } };
       } catch (err) {
         throw err;
       }

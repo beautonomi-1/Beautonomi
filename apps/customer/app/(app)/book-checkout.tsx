@@ -1412,6 +1412,16 @@ export default function BookCheckoutScreen() {
 
       if (res.error) {
         haptic.error();
+        const errStatus = (res.error as { status?: number }).status;
+        // If the server rejects with 401 or 403, the session has expired mid-checkout.
+        // Redirect to login so the user can re-authenticate and return to complete the booking.
+        if (errStatus === 401 || errStatus === 403) {
+          router.replace({
+            pathname: "/(auth)/login",
+            params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
+          });
+          return;
+        }
         setError(getApiErrorMessage(res.error, "Failed to complete booking"));
         return;
       }
@@ -2791,11 +2801,24 @@ export default function BookCheckoutScreen() {
             <CancellationPolicy policy={hold.cancellation_policy} currency={currency} contentPadding={contentPadding} t={t} />
 
             {/* Error banner */}
-            {error && (
-              <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
-                <Text style={{ color: "#B91C1C", fontSize: 13 }}>{error}</Text>
-              </View>
-            )}
+            {error && (() => {
+              const isSlotError = /expired|no longer available|not available|unavailable/i.test(error);
+              return (
+                <View style={{ backgroundColor: "#FEF2F2", borderRadius: 12, padding: 12, marginBottom: 16 }}>
+                  <Text style={{ color: "#B91C1C", fontSize: 13 }}>{error}</Text>
+                  {isSlotError && (
+                    <TouchableOpacity
+                      onPress={() => router.back()}
+                      style={{ marginTop: 8, alignSelf: "flex-start", paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "#B91C1C" }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t("checkout.selectNewTime")}
+                    >
+                      <Text style={{ color: "#fff", fontSize: 12, fontWeight: "600" }}>{t("checkout.selectNewTime")}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })()}
           </ScrollView>
 
           {/* ═══ Sticky Bottom CTA ═══ */}
