@@ -3,9 +3,9 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import type { ApiResponse } from "@/lib/supabase/api-helpers";
 
-/** Public data; short cache reduces repeat latency (nav, home, headers). */
+/** Public data; browser + CDN cache so repeat navigation (home → category → back) is instant. */
 const CACHE_CONTROL =
-  "public, s-maxage=60, stale-while-revalidate=300";
+  "public, max-age=300, s-maxage=300, stale-while-revalidate=600";
 
 /**
  * GET /api/public/categories/global

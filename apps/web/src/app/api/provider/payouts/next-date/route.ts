@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/provider/payouts/next-date
@@ -24,14 +25,23 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: platformRow } = await (supabase as any)
-      .from("platform_settings")
-      .select("settings")
-      .eq("is_active", true)
-      .limit(1)
+    // Fetch the provider's tenant so settings are scoped correctly in a multi-tenant deployment.
+    const { data: prow } = await supabase
+      .from("providers")
+      .select("tenant_id")
+      .eq("id", providerId)
       .maybeSingle();
+    const providerTenantId = (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null;
 
-    const payouts = (platformRow?.settings as any)?.payouts ?? {};
+    const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
+      supabase: supabase as any,
+      table: "platform_settings",
+      tenantId: providerTenantId,
+      select: "settings",
+      apply: (q) => q.eq("is_active", true),
+      orderBy: { column: "updated_at", ascending: false },
+    });
+    const payouts = ((scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings as any)?.payouts ?? {};
     const schedule = payouts.payout_schedule ?? "weekly";
     const minimum = payouts.minimum_payout_amount ?? 100;
     const holdDays = payouts.payout_hold_days ?? 0;

@@ -503,7 +503,7 @@ export default function BookCheckoutScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   /** Shown after a successful booking before navigating to booking-detail */
-  const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string } | null>(null);
+  const [bookingConfirmedData, setBookingConfirmedData] = useState<{ bookingId?: string; providerName?: string; date?: string; time?: string; services?: string; bookingStatus?: string } | null>(null);
   const [consuming, setConsuming] = useState(false);
   const [requestingNow, setRequestingNow] = useState(false);
   const onDemandAcceptEnabled = useFeatureFlag("on_demand_accept_customer_enabled");
@@ -1147,7 +1147,7 @@ export default function BookCheckoutScreen() {
     }
   }, [giftCardCode]);
 
-  const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string) => {
+  const navigateToBooking = useCallback((bookingId?: string, previousBookingId?: string, bookingStatus?: string) => {
     haptic.success();
     clearPendingExcludeHoldId().catch(() => {});
     AsyncStorage.removeItem("beautonomi_booking_addons").catch(() => {});
@@ -1191,6 +1191,7 @@ export default function BookCheckoutScreen() {
       date: bookingDate,
       time: bookingTime,
       services: serviceNames || undefined,
+      bookingStatus,
     });
 
     const navigate = () => {
@@ -1445,6 +1446,7 @@ export default function BookCheckoutScreen() {
         // Poll booking status to confirm payment went through (mirrors web /checkout/success verify logic).
         // The Paystack webhook may fire before or shortly after the browser closes.
         let confirmedBookingId = bookingId;
+        let confirmedBookingStatus: string | undefined;
         if (bookingId) {
           const MAX_ATTEMPTS = 8;
           const POLL_INTERVAL_MS = 2000;
@@ -1456,6 +1458,7 @@ export default function BookCheckoutScreen() {
               const statusVal = (check.data as { status?: string } | null)?.status;
               if (statusVal && statusVal !== "pending_payment") {
                 confirmedBookingId = bookingId;
+                confirmedBookingStatus = statusVal;
                 break;
               }
             } catch {
@@ -1471,7 +1474,7 @@ export default function BookCheckoutScreen() {
         trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
         trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaid);
         notifyRecurringSubscription();
-        navigateToBooking(confirmedBookingId, routeRescheduleBookingId ?? undefined);
+        navigateToBooking(confirmedBookingId, routeRescheduleBookingId ?? undefined, confirmedBookingStatus);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
@@ -2214,6 +2217,34 @@ export default function BookCheckoutScreen() {
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827" }}>{t("checkout.total")}</Text>
                 <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827" }}>{formatCurrency(total, currency)}</Text>
               </View>
+
+              {/* Wallet credit breakdown — shown when wallet covers part/all of total */}
+              {(paymentMethod === "card" && useWallet && walletBalance > 0) && (() => {
+                const walletApplied = Math.min(walletBalance, total);
+                const paystackRemainder = Math.max(0, total - walletApplied);
+                return (
+                  <>
+                    <View style={{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 10, borderStyle: "dashed" }} />
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
+                      <Text style={{ fontSize: 13, color: "#059669", fontWeight: "600" }}>-{formatCurrency(walletApplied, currency)}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", backgroundColor: "#F3F4F6", borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: "#111827" }}>
+                        {paystackRemainder <= 0 ? "Covered by wallet" : "You pay via card"}
+                      </Text>
+                      <Text style={{ fontSize: 16, fontWeight: "800", color: "#111827" }}>
+                        {formatCurrency(paystackRemainder, currency)}
+                      </Text>
+                    </View>
+                    {paystackRemainder <= 0 && (
+                      <Text style={{ fontSize: 11, color: "#059669", marginTop: 4, textAlign: "center" }}>
+                        Your wallet fully covers this booking — no card charge needed
+                      </Text>
+                    )}
+                  </>
+                );
+              })()}
             </View>
 
             {/* ═══ Tip (optional) ═══ */}
@@ -2876,20 +2907,35 @@ export default function BookCheckoutScreen() {
             shadowRadius: 40,
             elevation: 20,
           }}>
-            {/* Animated icon */}
-            <View style={{
-              width: 88, height: 88, borderRadius: 44,
-              backgroundColor: `${Colors.primary}12`,
-              borderWidth: 2, borderColor: `${Colors.primary}30`,
-              alignItems: "center", justifyContent: "center",
-              marginBottom: 20,
-            }}>
-              <Ionicons name="checkmark-circle" size={52} color={Colors.primary} />
-            </View>
+            {/* Animated icon — green for confirmed, amber for pending provider approval */}
+            {(() => {
+              const isPending = bookingConfirmedData.bookingStatus === "pending";
+              const iconName = isPending ? "time-outline" : "checkmark-circle";
+              const iconColor = isPending ? "#F59E0B" : Colors.primary;
+              const bgColor = isPending ? "#FEF3C7" : `${Colors.primary}12`;
+              const borderColor = isPending ? "#FCD34D" : `${Colors.primary}30`;
+              return (
+                <View style={{
+                  width: 88, height: 88, borderRadius: 44,
+                  backgroundColor: bgColor,
+                  borderWidth: 2, borderColor,
+                  alignItems: "center", justifyContent: "center",
+                  marginBottom: 20,
+                }}>
+                  <Ionicons name={iconName as any} size={52} color={iconColor} />
+                </View>
+              );
+            })()}
 
             <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827", textAlign: "center", marginBottom: 6 }}>
-              Booking confirmed!
+              {bookingConfirmedData.bookingStatus === "pending" ? "Booking received!" : "Booking confirmed!"}
             </Text>
+
+            {bookingConfirmedData.bookingStatus === "pending" && (
+              <Text style={{ fontSize: 13, color: "#92400E", textAlign: "center", backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>
+                Awaiting provider confirmation — usually within 8 hours
+              </Text>
+            )}
 
             {bookingConfirmedData.providerName && (
               <Text style={{ fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 16 }}>

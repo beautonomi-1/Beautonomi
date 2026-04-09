@@ -254,6 +254,42 @@ export async function GET(request: NextRequest) {
         paymentProvider: "paystack",
       });
 
+      // Failsafe: if the DB trigger set payment_status to "partially_paid" because it
+      // only sums booking_payments rows and doesn't account for wallet_amount, we fix it here.
+      {
+        const { data: fsRow } = await admin
+          .from("bookings")
+          .select("total_amount, total_paid, wallet_amount, payment_status, status, provider_id, confirmed_at")
+          .eq("id", bookingId)
+          .maybeSingle();
+        if (fsRow) {
+          const fsTotalAmount = Number((fsRow as Record<string, unknown>).total_amount ?? 0);
+          const fsTotalPaid = Number((fsRow as Record<string, unknown>).total_paid ?? 0);
+          const fsWalletAmount = Number((fsRow as Record<string, unknown>).wallet_amount ?? 0);
+          const fsPs = (fsRow as Record<string, unknown>).payment_status as string || "pending";
+          if (
+            fsTotalAmount > 0 &&
+            fsTotalPaid + fsWalletAmount >= fsTotalAmount - 0.01 &&
+            fsPs !== "paid"
+          ) {
+            const fsUpdates: Record<string, unknown> = { payment_status: "paid" };
+            // Re-apply auto-confirm in case it was skipped due to partially_paid status
+            if (fsRow.provider_id) {
+              const { getAppointmentSettingsFromDB } = await import("@/lib/provider-portal/appointment-settings");
+              const fsSettings = await getAppointmentSettingsFromDB(admin, fsRow.provider_id as string);
+              const fsStatus = (fsRow as Record<string, unknown>).status as string;
+              if (!fsSettings.requireConfirmationForBookings && fsStatus !== "confirmed" && fsStatus !== "completed") {
+                fsUpdates.status = "confirmed";
+                if (!(fsRow as Record<string, unknown>).confirmed_at) {
+                  fsUpdates.confirmed_at = new Date().toISOString();
+                }
+              }
+            }
+            await admin.from("bookings").update(fsUpdates).eq("id", bookingId);
+          }
+        }
+      }
+
       try {
         await tryCreateCustomerRecurringFromPaystackChargeMetadata(
           admin,

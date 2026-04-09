@@ -436,31 +436,36 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     });
   }
 
+  const webhookNow = new Date().toISOString();
   await supabase.from("finance_transactions").insert([
-    {
-      booking_id: metadata.booking_id,
-      provider_id: bookingData.provider_id || null,
-      tenant_id: financeTenantId,
-      transaction_type: "tip",
-      amount: tipAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tip for booking ${bookingData.booking_number}`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: metadata.booking_id,
-      provider_id: bookingData.provider_id || null,
-      tenant_id: financeTenantId,
-      transaction_type: "tax",
-      amount: taxAmount,
-      fees: 0,
-      commission: 0,
-      net: 0,
-      description: `Tax for booking ${bookingData.booking_number}`,
-      created_at: new Date().toISOString(),
-    },
+    ...(tipAmount > 0
+      ? [{
+          booking_id: metadata.booking_id,
+          provider_id: bookingData.provider_id || null,
+          tenant_id: financeTenantId,
+          transaction_type: "tip",
+          amount: tipAmount,
+          fees: 0,
+          commission: 0,
+          net: tipAmount,
+          description: `Tip for booking ${bookingData.booking_number}`,
+          created_at: webhookNow,
+        }]
+      : []),
+    ...(taxAmount > 0
+      ? [{
+          booking_id: metadata.booking_id,
+          provider_id: bookingData.provider_id || null,
+          tenant_id: financeTenantId,
+          transaction_type: "tax",
+          amount: taxAmount,
+          fees: 0,
+          commission: 0,
+          net: 0,
+          description: `Tax for booking ${bookingData.booking_number}`,
+          created_at: webhookNow,
+        }]
+      : []),
     ...(travelFee > 0
       ? [
           {
@@ -471,15 +476,67 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
             amount: travelFee,
             fees: 0,
             commission: 0,
-            net: 0,
+            net: travelFee,
             description: `Travel fee for booking ${bookingData.booking_number}`,
-            created_at: new Date().toISOString(),
+            created_at: webhookNow,
           },
         ]
       : []),
   ]);
 
-  // Promotions: record usage (idempotent)
+  // For split wallet + card payments: record the wallet portion in the ledger.
+  // The card portion is recorded above (payment + provider_earnings rows).
+  // Check idempotency: only insert if no wallet_payment row exists yet for this booking.
+  const walletAmountApplied = Number(metadata.wallet_amount_applied ?? 0);
+  if (walletAmountApplied > 0) {
+    const { data: existingWalletEntry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "wallet_payment")
+      .maybeSingle();
+    if (!existingWalletEntry) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "wallet_payment",
+        amount: walletAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: walletAmountApplied,
+        description: `Wallet contribution for booking ${bookingData.booking_number} (split payment)`,
+        created_at: webhookNow,
+      });
+    }
+  }
+
+  // Gift card portion (split gift card + card payments)
+  const giftCardAmountApplied = Number(metadata.gift_card_amount_applied ?? 0);
+  if (giftCardAmountApplied > 0) {
+    const { data: existingGcEntry } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "gift_card_payment")
+      .maybeSingle();
+    if (!existingGcEntry) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "gift_card_payment",
+        amount: giftCardAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: giftCardAmountApplied,
+        description: `Gift card contribution for booking ${bookingData.booking_number} (split payment)`,
+        created_at: webhookNow,
+      });
+    }
+  }
+
+  // Promotions: record usage (idempotent) + dedicated discount ledger row
   try {
     const promoId = bookingData.promotion_id;
     const promoDiscount = Number(bookingData.promotion_discount_amount || 0);
@@ -507,6 +564,29 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
           .from("promotions")
           .update({ usage_count: nextCount })
           .eq("id", promoId);
+      }
+
+      // Finance ledger: record the discount as a negative revenue line so GMV vs net is
+      // transparent in reports. Idempotent: only insert if no existing row for this booking.
+      const { data: existingPromoEntry } = await supabase
+        .from("finance_transactions")
+        .select("id")
+        .eq("booking_id", metadata.booking_id)
+        .eq("transaction_type", "promotion_discount")
+        .maybeSingle();
+      if (!existingPromoEntry) {
+        await supabase.from("finance_transactions").insert({
+          booking_id: metadata.booking_id,
+          provider_id: bookingData.provider_id || null,
+          tenant_id: financeTenantId,
+          transaction_type: "promotion_discount",
+          amount: promoDiscount,
+          fees: 0,
+          commission: 0,
+          net: -promoDiscount,
+          description: `Promotion discount applied to booking ${bookingData.booking_number}`,
+          created_at: new Date().toISOString(),
+        });
       }
     }
   } catch (promoError) {

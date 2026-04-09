@@ -24,6 +24,11 @@ interface BookingListRow {
   status?: string;
   scheduled_at?: string;
   total_amount?: number;
+  total_paid?: number;
+  wallet_amount?: number;
+  gift_card_amount?: number;
+  outstanding_balance?: number;
+  payment_status?: string;
   currency?: string;
   services?: { offering_name?: string; name?: string }[];
 }
@@ -325,6 +330,27 @@ export function BookingsPage() {
                       <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium uppercase text-gray-700">
                         {b.status ?? "—"}
                       </span>
+                      {b.payment_status ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            b.payment_status === "paid"
+                              ? "bg-green-100 text-green-800"
+                              : b.payment_status === "partially_paid"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : b.payment_status === "refunded"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-orange-100 text-orange-800"
+                          }`}
+                        >
+                          {b.payment_status === "paid"
+                            ? "Paid"
+                            : b.payment_status === "partially_paid"
+                              ? "Partially paid"
+                              : b.payment_status === "refunded"
+                                ? "Refunded"
+                                : "Payment pending"}
+                        </span>
+                      ) : null}
                       <span className="font-semibold text-gray-900">#{b.booking_number ?? b.id.slice(0, 8)}</span>
                     </div>
                     <div className="mt-2 grid gap-1 text-sm text-gray-600 sm:grid-cols-2">
@@ -339,8 +365,28 @@ export function BookingsPage() {
                           : "—"}
                       </span>
                       <span>
-                        {b.currency} {b.total_amount?.toFixed(2) ?? "—"}
+                        <span className="font-medium">{b.currency} {b.total_amount?.toFixed(2) ?? "—"}</span>
+                        {(b.total_paid ?? 0) > 0 && (
+                          <span className="ml-1 text-xs text-gray-500">
+                            Paid: {b.currency} {(b.total_paid ?? 0).toFixed(2)}
+                          </span>
+                        )}
+                        {(b.wallet_amount ?? 0) > 0 && (
+                          <span className="ml-1 text-xs text-purple-700">
+                            +Wallet: {b.currency} {(b.wallet_amount ?? 0).toFixed(2)}
+                          </span>
+                        )}
+                        {(b.gift_card_amount ?? 0) > 0 && (
+                          <span className="ml-1 text-xs text-teal-700">
+                            +Gift card: {b.currency} {(b.gift_card_amount ?? 0).toFixed(2)}
+                          </span>
+                        )}
                       </span>
+                      {(b.outstanding_balance ?? 0) > 0 ? (
+                        <span className="font-medium text-red-600">
+                          Outstanding: {b.currency} {(b.outstanding_balance ?? 0).toFixed(2)}
+                        </span>
+                      ) : null}
                     </div>
                     {b.services && b.services.length > 0 ? (
                       <div className="mt-2 flex flex-wrap gap-1">

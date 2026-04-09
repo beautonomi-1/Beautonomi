@@ -130,7 +130,11 @@ const BeautonomiHeader: React.FC<BeautonomiHeaderProps> = ({
 
     const fetchCategories = async () => {
       try {
-        const response = await fetcher.get<{ data: any[] }>("/api/public/categories/global?all=true");
+        // Categories are mostly static; cache for 5 minutes so repeated navigation
+        // (home → category → back) never triggers a fresh network request.
+        const response = await fetcher.get<{ data: any[] }>("/api/public/categories/global?all=true", {
+          staleTimeMs: 5 * 60_000,
+        });
 
         if (response && response.data && Array.isArray(response.data) && response.data.length > 0) {
           const mappedCategories = response.data.map((cat: any) => ({

@@ -30,7 +30,7 @@ export async function syncBookingAfterPaystackSuccess(
   const { data: row, error } = await admin
     .from("bookings")
     .select(
-      "id, status, provider_id, total_amount, total_paid, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
+      "id, status, provider_id, total_amount, total_paid, wallet_amount, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -57,7 +57,16 @@ export async function syncBookingAfterPaystackSuccess(
   }
 
   const ps = (row.payment_status as string) || "pending";
-  const hasRecordedPayment = ps === "paid" || ps === "partially_paid";
+  // A partially_paid booking where wallet covered the rest is actually fully paid.
+  // The DB trigger only sums booking_payments rows (Paystack amounts), not wallet_amount.
+  // We re-derive the true paid status here to ensure correct accounting.
+  const totalPaid = Number((row as Record<string, unknown>).total_paid ?? 0);
+  const walletAmount = Number((row as Record<string, unknown>).wallet_amount ?? 0);
+  const totalAmount = Number((row as Record<string, unknown>).total_amount ?? 0);
+  const effectivelyPaid = totalPaid + walletAmount;
+  const isFullyCovered = totalAmount > 0 && effectivelyPaid >= totalAmount - 0.01; // 1-cent tolerance for rounding
+
+  const hasRecordedPayment = ps === "paid" || ps === "partially_paid" || isFullyCovered;
 
   if (!hasRecordedPayment) {
     if (Object.keys(updates).length > 0) {
@@ -71,6 +80,12 @@ export async function syncBookingAfterPaystackSuccess(
   }
   if (!row.paid_at) {
     updates.paid_at = now;
+  }
+
+  // When wallet + Paystack together cover the full amount, mark as fully paid regardless
+  // of what the DB trigger computed (trigger ignores wallet_amount).
+  if (isFullyCovered && ps !== "paid") {
+    updates.payment_status = "paid";
   }
 
   if (shouldAutoConfirm) {

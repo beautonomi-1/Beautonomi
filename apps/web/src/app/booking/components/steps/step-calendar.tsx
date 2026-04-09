@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
-import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin, X } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, X, CheckCircle2, Sun, Cloud, Moon, Sparkles } from "lucide-react";
 import { BookingState } from "../booking-flow";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -18,12 +18,15 @@ import {
   slicesFromBookingCart,
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 
-/** Aligns with typical online booking settings when this step has no provider settings prop. */
 const BOOKING_MAX_ADVANCE_DAYS = 90;
 const STRIP_DAYS = 21;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+const MONTHS_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function startOfLocalDay(d: Date): Date {
   const x = new Date(d);
@@ -48,7 +51,6 @@ function slotTimeOnSelectedDay(timeStr: string, day: Date): Date {
   return d;
 }
 
-/** Hide / block times that already passed when the selected day is today. */
 function isSlotTimeStillSelectable(timeStr: string, day: Date): boolean {
   const now = new Date();
   const ds = startOfLocalDay(day).getTime();
@@ -56,6 +58,13 @@ function isSlotTimeStillSelectable(timeStr: string, day: Date): boolean {
   if (ds < ts) return false;
   if (ds > ts) return true;
   return slotTimeOnSelectedDay(timeStr, day).getTime() > now.getTime();
+}
+
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
 interface StepCalendarProps {
@@ -76,6 +85,27 @@ interface AvailabilityData {
   slots: TimeSlot[];
 }
 
+/** Skeleton pill for loading state */
+function SlotSkeleton() {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div
+          key={i}
+          className="h-10 rounded-full bg-gray-100 animate-pulse"
+          style={{ width: `${64 + (i % 3) * 8}px`, animationDelay: `${i * 60}ms` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+const PERIOD_CONFIG = {
+  morning:   { Icon: Sun,   label: "Morning",   gradient: "from-amber-400 to-orange-400" },
+  afternoon: { Icon: Cloud, label: "Afternoon",  gradient: "from-sky-400 to-blue-500" },
+  evening:   { Icon: Moon,  label: "Evening",    gradient: "from-indigo-500 to-purple-600" },
+} as const;
+
 export default function StepCalendar({
   bookingState,
   updateBookingState,
@@ -83,19 +113,19 @@ export default function StepCalendar({
   providerSlug: _providerSlug,
 }: StepCalendarProps) {
   const searchParams = useSearchParams();
-  /** Own hold from `/book/continue?hold_id=` — exclude from “blocked” so checkout can still see the slot. */
   const excludeHoldId = searchParams.get("hold_id")?.trim() || undefined;
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(() =>
     coerceSelectedDate(bookingState.selectedDate)
   );
+  const stripScrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedDate(coerceSelectedDate(bookingState.selectedDate));
   }, [bookingState.selectedDate]);
+
   const [availability, setAvailability] = useState<AvailabilityData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [_availableDates, _setAvailableDates] = useState<Date[]>([]);
   const [showMonthCalendar, setShowMonthCalendar] = useState(false);
   const [monthViewDate, setMonthViewDate] = useState(() => {
     const n = new Date();
@@ -118,6 +148,11 @@ export default function StepCalendar({
     return availability.slots.filter((s) => isSlotTimeStillSelectable(s.time, selectedDay));
   }, [availability, selectedDay]);
 
+  const availableCount = useMemo(
+    () => selectableSlots.filter((s) => s.available).length,
+    [selectableSlots]
+  );
+
   useEffect(() => {
     if (!selectedDay || !bookingState.selectedTimeSlot || !availability?.slots) return;
     const row = availability.slots.find((s) => s.time === bookingState.selectedTimeSlot);
@@ -127,7 +162,6 @@ export default function StepCalendar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);
 
-  // Chained service + buffer minutes (+ add-on durations) — matches validate-booking / public slug span decomposition
   const totalDuration = useMemo(() => {
     const slices = slicesFromBookingCart(
       bookingState.selectedServices,
@@ -136,108 +170,68 @@ export default function StepCalendar({
     return availabilityRouteDurationMinutes(slices);
   }, [bookingState.selectedServices, bookingState.selectedAddons]);
 
-  // Use actual travel time if available, otherwise use configured default
   const travelBuffer = getTravelBuffer(bookingState.mode, bookingState.address?.travelTimeMinutes);
 
   const loadAvailability = useCallback(async () => {
     const day = coerceSelectedDate(selectedDate);
     if (!day) return;
-
     try {
       setIsLoading(true);
       const staffId = bookingState.selectedServices[0]?.staffId;
       const dateStr = formatLocalDateYYYYMMDD(day);
       const mode = bookingState.mode || "salon";
-
-      const holdParam = excludeHoldId
-        ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}`
-        : "";
+      const holdParam = excludeHoldId ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}` : "";
       const providerParam =
         bookingState.providerId && (!staffId || staffId === "any")
           ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
           : "";
-
       const response = await fetcher.get<{ data: AvailabilityData }>(
         `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}`,
         { staleTimeMs: 0 }
       );
-
       setAvailability(response.data);
     } catch (error) {
-      toast.error(
-        error instanceof FetchError
-          ? error.message
-          : "Failed to load availability"
-      );
+      toast.error(error instanceof FetchError ? error.message : "Failed to load availability");
     } finally {
       setIsLoading(false);
     }
-  }, [
-    selectedDate,
-    bookingState.selectedServices,
-    bookingState.mode,
-    travelBuffer,
-    totalDuration,
-    excludeHoldId,
-    bookingState.providerId,
-  ]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.providerId]);
 
   useEffect(() => {
-    if (selectedDate) {
-      loadAvailability();
-    }
+    if (selectedDate) loadAvailability();
   }, [selectedDate, loadAvailability]);
 
-  // Use Supabase Realtime for instant updates instead of polling
   useEffect(() => {
     if (!selectedDate) return;
+    const handleFocus = () => loadAvailability();
+    window.addEventListener("focus", handleFocus);
 
-    // Refresh on window focus (user might have booked in another tab)
-    const handleFocus = () => {
-      loadAvailability();
-    };
-    window.addEventListener('focus', handleFocus);
-
-    // Try to use Supabase Realtime for real-time updates
     let unsubscribe: (() => void) | null = null;
-    
     const setupRealtime = async () => {
       try {
-        const { getSupabaseClient } = await import('@/lib/supabase/client');
-        const { subscribeToBookings } = await import('@/lib/websocket/supabase-realtime');
+        const { getSupabaseClient } = await import("@/lib/supabase/client");
+        const { subscribeToBookings } = await import("@/lib/websocket/supabase-realtime");
         const supabase = getSupabaseClient();
-        
         if (bookingState.providerId) {
-          unsubscribe = subscribeToBookings(
-            supabase,
-            bookingState.providerId,
-            (event) => {
-              // Refresh availability when bookings or booking_services change
-              if (
-                event.type === 'booking_created' ||
-                event.type === 'booking_cancelled' ||
-                event.type === 'booking_services_changed' ||
-                event.type === 'availability_changed'
-              ) {
-                loadAvailability();
-              }
+          unsubscribe = subscribeToBookings(supabase, bookingState.providerId, (event) => {
+            if (
+              event.type === "booking_created" ||
+              event.type === "booking_cancelled" ||
+              event.type === "booking_services_changed" ||
+              event.type === "availability_changed"
+            ) {
+              loadAvailability();
             }
-          );
+          });
         }
-      } catch (error) {
-        console.warn('Realtime subscription failed, falling back to polling:', error);
-        // Fallback to polling if Realtime fails
-        const interval = setInterval(() => {
-          loadAvailability();
-        }, 30000);
+      } catch {
+        const interval = setInterval(() => loadAvailability(), 30000);
         return () => clearInterval(interval);
       }
     };
-
     setupRealtime();
-
     return () => {
-      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener("focus", handleFocus);
       if (unsubscribe) unsubscribe();
     };
   }, [selectedDate, bookingState.selectedServices, bookingState.mode, bookingState.providerId, loadAvailability]);
@@ -250,6 +244,18 @@ export default function StepCalendar({
   const handleTimeSelect = (time: string) => {
     updateBookingState({ selectedTimeSlot: time });
   };
+
+  // Auto-scroll date strip so selected date is centred
+  useEffect(() => {
+    if (!stripScrollRef.current || !selectedDay) return;
+    const strip = stripScrollRef.current;
+    const btn = strip.querySelector<HTMLElement>("[data-selected-date='true']");
+    if (!btn) return;
+    const btnLeft = btn.offsetLeft;
+    const btnWidth = btn.offsetWidth;
+    const stripWidth = strip.clientWidth;
+    strip.scrollTo({ left: btnLeft - stripWidth / 2 + btnWidth / 2, behavior: "smooth" });
+  }, [selectedDay]);
 
   const stripCount = Math.min(BOOKING_MAX_ADVANCE_DAYS, STRIP_DAYS);
   const stripDates: Date[] = [];
@@ -270,35 +276,49 @@ export default function StepCalendar({
   for (let d = 1; d <= daysInMonth; d++) monthDays.push(new Date(year, month, d));
 
   return (
-    <div className="px-4 py-6 space-y-6">
+    <div className="px-4 py-6 space-y-7">
+
+      {/* ── Header ── */}
       <div>
-        <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-          {t("booking.selectDateTime")}
-        </h2>
-        <p className="text-gray-600">
-          {t("booking.selectDate")}
+        <div className="flex items-center gap-2 mb-1">
+          <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
+            <CalendarDays className="w-4 h-4 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900">
+            {t("booking.selectDateTime")}
+          </h2>
+        </div>
+        <p className="text-sm text-gray-500 ml-10">
+          Choose a date and time that works for you
         </p>
+        {totalDuration > 0 && (
+          <div className="ml-10 mt-2 inline-flex items-center gap-1.5 rounded-full bg-primary/8 px-3 py-1 text-xs font-medium text-primary">
+            <Clock className="w-3 h-3" />
+            {formatDuration(totalDuration)} appointment
+          </div>
+        )}
         {bookingState.mode === "mobile" && (
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-2">
-            <MapPin className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-blue-900">
-                House Call Service
-              </p>
-              <p className="text-xs text-blue-700 mt-1">
-                A 30-minute travel buffer is included before and after your appointment
+          <motion.div
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-3 flex items-start gap-2.5 rounded-2xl bg-blue-50 border border-blue-100 px-4 py-3"
+          >
+            <MapPin className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-blue-900">House Call</p>
+              <p className="text-xs text-blue-600 mt-0.5">
+                A {travelBuffer}-minute travel buffer is included around your appointment
               </p>
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
 
-      {/* Date Selection */}
+      {/* ── Date Strip ── */}
       <div>
-        <div className="flex items-center justify-between mb-3 gap-2">
-          <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-            <Calendar className="w-4 h-4" />
-            {t("booking.selectDate")}
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">
+            Select a date
           </h3>
           <button
             type="button"
@@ -307,247 +327,353 @@ export default function StepCalendar({
               setMonthViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
               setShowMonthCalendar(true);
             }}
-            className="text-xs flex items-center gap-1 text-primary font-medium min-h-[44px] px-1"
+            className="flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 transition-colors rounded-lg px-2 py-1.5 hover:bg-primary/6 min-h-[36px]"
           >
-            <Calendar className="h-3.5 w-3.5" />
+            <CalendarDays className="w-3.5 h-3.5" />
             Full month
           </button>
         </div>
-        <div className="flex gap-2 overflow-x-auto scrollbar-hide pb-2">
+
+        <div
+          ref={stripScrollRef}
+          className="flex gap-2 overflow-x-auto scrollbar-hide pb-2 -mx-1 px-1 snap-x snap-mandatory"
+        >
           {stripDates.map((date) => {
-            const isSelected =
-              selectedDay?.toDateString() === date.toDateString();
+            const isSelected = selectedDay?.toDateString() === date.toDateString();
             const isToday = date.toDateString() === today.toDateString();
             const isPast = startOfLocalDay(date).getTime() < today.getTime() && !isToday;
-            const afterLast =
-              startOfLocalDay(date).getTime() > startOfLocalDay(lastSelectableDay).getTime();
+            const afterLast = startOfLocalDay(date).getTime() > startOfLocalDay(lastSelectableDay).getTime();
             const disabled = isPast || afterLast;
 
             return (
-              <button
+              <motion.button
                 key={date.toISOString()}
+                data-selected-date={isSelected ? "true" : undefined}
                 onClick={() => !disabled && handleDateSelect(date)}
                 disabled={disabled}
-                className={`flex-shrink-0 w-20 p-3 rounded-lg border-2 transition-all touch-target ${
+                whileTap={!disabled ? { scale: 0.95 } : undefined}
+                className={`snap-start shrink-0 flex flex-col items-center justify-center w-[72px] py-3 rounded-2xl border-2 transition-all duration-200 select-none ${
                   isSelected
-                    ? "border-primary bg-pink-50"
+                    ? "border-primary bg-primary text-white shadow-lg shadow-primary/30"
                     : disabled
-                      ? "border-gray-100 bg-gray-50 opacity-50"
-                      : "border-gray-200 bg-white hover:border-gray-300"
+                      ? "border-transparent bg-gray-50 opacity-35 cursor-not-allowed"
+                      : isToday
+                        ? "border-primary/30 bg-primary/5 hover:border-primary/60"
+                        : "border-gray-100 bg-white hover:border-gray-300 hover:shadow-sm"
                 }`}
                 aria-label={`Select ${formatDate(date)}`}
+                aria-pressed={isSelected}
               >
-                <div className="text-xs text-gray-600 mb-1">
-                  {date.toLocaleDateString("en-US", { weekday: "short" })}
-                </div>
-                <div
-                  className={`text-lg font-semibold ${
-                    isSelected ? "text-primary" : "text-gray-900"
+                <span
+                  className={`text-[10px] font-semibold uppercase tracking-wide mb-0.5 ${
+                    isSelected ? "text-white/70" : isToday ? "text-primary" : "text-gray-400"
+                  }`}
+                >
+                  {isToday ? "Today" : date.toLocaleDateString("en-US", { weekday: "short" })}
+                </span>
+                <span
+                  className={`text-xl font-bold leading-none ${
+                    isSelected ? "text-white" : "text-gray-900"
                   }`}
                 >
                   {date.getDate()}
-                </div>
-                <div className="text-xs text-gray-500">
+                </span>
+                <span
+                  className={`text-[10px] mt-0.5 ${
+                    isSelected ? "text-white/70" : "text-gray-400"
+                  }`}
+                >
                   {date.toLocaleDateString("en-US", { month: "short" })}
-                </div>
-              </button>
+                </span>
+              </motion.button>
             );
           })}
         </div>
       </div>
 
-      {showMonthCalendar && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40"
-          onClick={() => setShowMonthCalendar(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-3xl p-5 shadow-xl bg-white border border-gray-200"
-            onClick={(e) => e.stopPropagation()}
+      {/* ── Month Calendar Modal ── */}
+      <AnimatePresence>
+        {showMonthCalendar && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowMonthCalendar(false)}
           >
-            <div className="relative mb-4">
-              <button
-                type="button"
-                onClick={() => setShowMonthCalendar(false)}
-                className="absolute right-0 top-0 p-2 rounded-full text-gray-500"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-              <div className="flex items-center justify-center gap-3 pr-10">
+            <motion.div
+              className="w-full max-w-sm rounded-3xl bg-white shadow-2xl overflow-hidden"
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ type: "spring", damping: 28, stiffness: 340 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal header */}
+              <div className="flex items-center justify-between px-5 pt-5 pb-4">
                 <button
                   type="button"
-                  onClick={() => setMonthViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
+                  onClick={() => canPrevMonth && setMonthViewDate((p) => new Date(p.getFullYear(), p.getMonth() - 1, 1))}
                   disabled={!canPrevMonth}
-                  className="p-2 rounded-full disabled:opacity-30 disabled:pointer-events-none"
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
                   aria-label="Previous month"
                 >
-                  <ChevronLeft className="h-5 w-5" />
+                  <ChevronLeft className="w-5 h-5" />
                 </button>
-                <span className="font-semibold min-w-[10rem] text-center text-gray-900">
+                <span className="font-bold text-gray-900 text-base">
                   {MONTHS[month]} {year}
                 </span>
                 <button
                   type="button"
-                  onClick={() => setMonthViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
+                  onClick={() => canNextMonth && setMonthViewDate((p) => new Date(p.getFullYear(), p.getMonth() + 1, 1))}
                   disabled={!canNextMonth}
-                  className="p-2 rounded-full disabled:opacity-30 disabled:pointer-events-none"
+                  className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 disabled:opacity-30 disabled:pointer-events-none transition-colors"
                   aria-label="Next month"
                 >
-                  <ChevronRight className="h-5 w-5" />
+                  <ChevronRight className="w-5 h-5" />
                 </button>
               </div>
-            </div>
-            <div className="grid grid-cols-7 gap-1">
-              {WEEKDAYS.map((w) => (
-                <div key={w} className="text-center text-xs py-1 text-gray-500">
-                  {w}
-                </div>
-              ))}
-              {monthDays.map((d, i) => (
-                <div key={i} className="flex items-center justify-center">
-                  {d ? (
-                    (() => {
-                      const dayStart = startOfLocalDay(d);
-                      const beforeToday = dayStart.getTime() < today.getTime();
-                      const afterLast = dayStart.getTime() > startOfLocalDay(lastSelectableDay).getTime();
-                      const outOfRange = beforeToday || afterLast;
-                      const isSelected = selectedDay?.toDateString() === d.toDateString();
-                      const isTodayCell = d.toDateString() === today.toDateString();
-                      return (
-                        <button
-                          type="button"
-                          disabled={outOfRange}
-                          onClick={() => {
-                            if (outOfRange) return;
-                            handleDateSelect(d);
-                            setShowMonthCalendar(false);
-                          }}
-                          className={`w-10 h-10 rounded-xl text-sm font-medium ${
-                            outOfRange
-                              ? "opacity-35 cursor-not-allowed text-gray-400"
-                              : isSelected
-                                ? "bg-primary text-white"
-                                : isTodayCell
-                                  ? "bg-gray-200 text-gray-900"
-                                  : "hover:bg-black/5 text-gray-900"
-                          }`}
-                        >
-                          {d.getDate()}
-                        </button>
-                      );
-                    })()
-                  ) : null}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Time Slots */}
-      {selectedDay && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="space-y-3"
-        >
-          <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            Available Times
-          </h3>
-
-          {isLoading ? (
-            <div className="text-center py-8 text-gray-500">
-              Loading availability...
-            </div>
-          ) : availability && selectableSlots.length > 0 ? (
-            <div className="space-y-5">
-              {(
-                [
-                  { label: t("booking.morning"), key: "morning" as const },
-                  { label: t("booking.afternoon"), key: "afternoon" as const },
-                  { label: t("booking.evening"), key: "evening" as const },
-                ] as const
-              ).map(({ label, key }) => {
-                const groupSlots = selectableSlots.filter((s) => slotTimePeriod(s.time) === key);
-                if (groupSlots.length === 0) return null;
-                return (
-                  <div key={key} className="space-y-2">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</p>
-                    <div className="grid grid-cols-3 gap-2">
-                      {groupSlots.map((slot) => {
-                        const isSelected = bookingState.selectedTimeSlot === slot.time;
-                        const isUnavailable = !slot.available;
-
-                        return (
-                          <button
-                            key={slot.time}
-                            onClick={() => !isUnavailable && handleTimeSelect(slot.time)}
-                            disabled={isUnavailable}
-                            className={`p-3 rounded-lg border-2 text-sm font-medium transition-all touch-target ${
-                              isSelected
-                                ? "border-primary bg-pink-50 text-primary"
-                                : isUnavailable
-                                  ? "border-gray-100 bg-gray-50 text-gray-400 opacity-50"
-                                  : "border-gray-200 bg-white text-gray-900 hover:border-gray-300"
-                            }`}
-                            aria-label={`Select ${formatTime(slot.time)}`}
-                            title={slot.reason}
-                          >
-                            {formatTime(slot.time)}
-                          </button>
-                        );
-                      })}
-                    </div>
+              {/* Weekday labels */}
+              <div className="grid grid-cols-7 px-4 pb-2">
+                {WEEKDAYS.map((w) => (
+                  <div key={w} className="text-center text-[11px] font-semibold text-gray-400 py-1">
+                    {w}
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-8 space-y-4">
-              <div>
-                <p className="text-gray-500">No available slots for this date</p>
-                <p className="text-sm mt-1 text-gray-400">Please select another date</p>
+                ))}
               </div>
-              {bookingState.providerId && bookingState.selectedServices.length > 0 && (
-                <div className="pt-4">
-                  <AddToWaitlistButton
-                    providerId={bookingState.providerId}
-                    serviceId={bookingState.selectedServices[0]?.id}
-                    staffId={bookingState.selectedServices[0]?.staffId}
-                    preferredDate={selectedDay}
-                    onSuccess={() => {
-                      toast.success("Added to waitlist! We'll notify you when slots become available.");
-                    }}
-                    variant="outline"
-                    size="default"
-                    className="mx-auto"
-                  />
+
+              {/* Day grid */}
+              <div className="grid grid-cols-7 px-4 pb-5 gap-y-1">
+                {monthDays.map((d, i) => {
+                  if (!d) return <div key={i} />;
+                  const dayStart = startOfLocalDay(d);
+                  const outOfRange =
+                    dayStart.getTime() < today.getTime() ||
+                    dayStart.getTime() > startOfLocalDay(lastSelectableDay).getTime();
+                  const isSelected = selectedDay?.toDateString() === d.toDateString();
+                  const isTodayCell = d.toDateString() === today.toDateString();
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={outOfRange}
+                      onClick={() => {
+                        if (outOfRange) return;
+                        handleDateSelect(d);
+                        setShowMonthCalendar(false);
+                      }}
+                      className={`relative mx-auto w-9 h-9 flex items-center justify-center rounded-xl text-sm font-medium transition-all ${
+                        outOfRange
+                          ? "opacity-25 cursor-not-allowed text-gray-400"
+                          : isSelected
+                            ? "bg-primary text-white shadow-md shadow-primary/40"
+                            : isTodayCell
+                              ? "bg-primary/10 text-primary font-bold"
+                              : "hover:bg-gray-100 text-gray-900"
+                      }`}
+                    >
+                      {d.getDate()}
+                      {isTodayCell && !isSelected && (
+                        <span className="absolute bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="px-5 pb-5">
+                <button
+                  type="button"
+                  onClick={() => setShowMonthCalendar(false)}
+                  className="w-full py-3 rounded-2xl bg-gray-100 text-sm font-semibold text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Time Slots ── */}
+      <AnimatePresence mode="wait">
+        {selectedDay && (
+          <motion.div
+            key={selectedDay.toDateString()}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.22 }}
+            className="space-y-4"
+          >
+            {/* Section header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-gray-900">
+                  {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+                </h3>
+                {!isLoading && availability && (
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {availableCount === 0
+                      ? "No slots available"
+                      : `${availableCount} slot${availableCount !== 1 ? "s" : ""} available`}
+                  </p>
+                )}
+              </div>
+              {/* Legend */}
+              {!isLoading && availableCount > 0 && (
+                <div className="flex items-center gap-2 text-[11px] text-gray-400">
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-green-400" />
+                    Open
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-red-300" />
+                    Taken
+                  </span>
                 </div>
               )}
             </div>
-          )}
 
-          {bookingState.selectedTimeSlot && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="p-4 bg-green-50 border border-green-200 rounded-lg"
-            >
-              <p className="text-sm font-medium text-green-900">
-                Selected: {formatDate(selectedDay)} at{" "}
-                {formatTime(bookingState.selectedTimeSlot)}
-              </p>
-              {bookingState.mode === "mobile" && (
-                <p className="text-xs text-green-700 mt-1">
-                  Service duration: {totalDuration} min (includes travel time)
+            {isLoading ? (
+              <div className="space-y-5">
+                {["Morning", "Afternoon"].map((label) => (
+                  <div key={label}>
+                    <div className="h-4 w-20 rounded-full bg-gray-100 animate-pulse mb-3" />
+                    <SlotSkeleton />
+                  </div>
+                ))}
+              </div>
+            ) : selectableSlots.length > 0 ? (
+              <div className="space-y-6">
+                {(["morning", "afternoon", "evening"] as const).map((period) => {
+                  const { Icon, label, gradient } = PERIOD_CONFIG[period];
+                  const groupSlots = selectableSlots.filter((s) => slotTimePeriod(s.time) === period);
+                  if (groupSlots.length === 0) return null;
+                  const groupAvailCount = groupSlots.filter((s) => s.available).length;
+
+                  return (
+                    <motion.div
+                      key={period}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: period === "morning" ? 0 : period === "afternoon" ? 0.06 : 0.12 }}
+                    >
+                      {/* Period header */}
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className={`w-6 h-6 rounded-lg bg-gradient-to-br ${gradient} flex items-center justify-center`}>
+                          <Icon className="w-3.5 h-3.5 text-white" />
+                        </div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-600">{label}</span>
+                        <span className="ml-auto text-xs text-gray-400 font-medium">
+                          {groupAvailCount} open
+                        </span>
+                      </div>
+
+                      {/* Slot pills */}
+                      <div className="flex flex-wrap gap-2">
+                        {groupSlots.map((slot) => {
+                          const isSelected = bookingState.selectedTimeSlot === slot.time;
+                          const isUnavailable = !slot.available;
+
+                          return (
+                            <motion.button
+                              key={slot.time}
+                              onClick={() => !isUnavailable && handleTimeSelect(slot.time)}
+                              disabled={isUnavailable}
+                              whileTap={!isUnavailable ? { scale: 0.92 } : undefined}
+                              title={isUnavailable && slot.reason ? slot.reason : undefined}
+                              aria-label={isUnavailable ? `${formatTime(slot.time)} — unavailable` : `Select ${formatTime(slot.time)}`}
+                              aria-pressed={isSelected}
+                              className={`relative h-10 px-4 rounded-full text-sm font-semibold border transition-all duration-150 select-none ${
+                                isSelected
+                                  ? "bg-primary border-primary text-white shadow-lg shadow-primary/35 scale-105"
+                                  : isUnavailable
+                                    ? "border-red-200 bg-red-50/60 text-red-300 cursor-not-allowed line-through text-xs"
+                                    : "border-green-200 bg-green-50 text-green-800 hover:bg-green-100 hover:border-green-400 hover:shadow-sm"
+                              }`}
+                            >
+                              {formatTime(slot.time)}
+                              {isSelected && (
+                                <motion.span
+                                  layoutId="slot-check"
+                                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm"
+                                >
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-primary fill-primary" />
+                                </motion.span>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* Empty state */
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="py-10 flex flex-col items-center text-center"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+                  <CalendarDays className="w-8 h-8 text-gray-300" />
+                </div>
+                <p className="font-semibold text-gray-700">No slots for this day</p>
+                <p className="text-sm text-gray-400 mt-1 max-w-[200px]">
+                  Try another date or join the waitlist to be notified.
                 </p>
-              )}
-            </motion.div>
-          )}
-        </motion.div>
-      )}
+                {bookingState.providerId && bookingState.selectedServices.length > 0 && (
+                  <div className="mt-5">
+                    <AddToWaitlistButton
+                      providerId={bookingState.providerId}
+                      serviceId={bookingState.selectedServices[0]?.id}
+                      staffId={bookingState.selectedServices[0]?.staffId}
+                      preferredDate={selectedDay}
+                      onSuccess={() => toast.success("Added to waitlist! We'll notify you when slots open up.")}
+                      variant="outline"
+                      size="default"
+                      className="mx-auto"
+                    />
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Selection confirmation banner ── */}
+      <AnimatePresence>
+        {bookingState.selectedTimeSlot && selectedDay && (
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.97 }}
+            transition={{ type: "spring", damping: 24, stiffness: 300 }}
+            className="rounded-2xl overflow-hidden border border-primary/20"
+          >
+            <div className="bg-gradient-to-r from-primary/8 to-primary/4 px-4 py-3.5 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shrink-0">
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-gray-900 truncate">
+                  {selectedDay.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+                  {" · "}
+                  {formatTime(bookingState.selectedTimeSlot)}
+                </p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {formatDuration(totalDuration)} · Tap &quot;Next&quot; to continue
+                </p>
+              </div>
+              <CheckCircle2 className="w-5 h-5 text-primary shrink-0" />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

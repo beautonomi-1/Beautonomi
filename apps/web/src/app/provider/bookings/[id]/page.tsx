@@ -390,7 +390,10 @@ export default function ProviderBookingDetail() {
     const tp = booking.total_paid ?? 0;
     const tr = booking.total_refunded ?? 0;
     const ta = booking.total_amount ?? 0;
-    const outstandingAmt = ta - tp + tr;
+    const walletAmt = Number((booking as unknown as Record<string, unknown>).wallet_amount ?? 0);
+    const giftCardAmt = Number((booking as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+    // Subtract wallet and gift card credits already applied so we don't ask provider to collect what's already been paid
+    const outstandingAmt = ta - tp - walletAmt - giftCardAmt + tr;
     const paymentAmount = Number(outstandingAmt.toFixed(2));
     if (paymentAmount <= 0) {
       toast.error(
@@ -515,7 +518,9 @@ export default function ProviderBookingDetail() {
     const totalPaidLocal = b.total_paid ?? 0;
     const totalRefundedLocal = b.total_refunded ?? 0;
     const totalAmountLocal = b.total_amount ?? 0;
-    const outstandingLocal = totalAmountLocal - totalPaidLocal + totalRefundedLocal;
+      const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+      const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+    const outstandingLocal = totalAmountLocal - totalPaidLocal - walletLocal - giftLocal + totalRefundedLocal;
     const chargeAmount = Number(outstandingLocal.toFixed(2));
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
     const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
@@ -644,7 +649,9 @@ export default function ProviderBookingDetail() {
       const tp = b.total_paid ?? 0;
       const tr = b.total_refunded ?? 0;
       const ta = b.total_amount ?? 0;
-      const outstandingCalc = ta - tp + tr;
+      const walletCalc = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+      const giftCalc = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+      const outstandingCalc = ta - tp - walletCalc - giftCalc + tr;
 
       try {
         await providerApi.updateSale(saleId, {
@@ -868,7 +875,11 @@ export default function ProviderBookingDetail() {
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
   const totalAmount = b.total_amount ?? 0;
-  const outstanding = totalAmount - totalPaid + totalRefunded;
+  const walletAmountApplied = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+  const giftCardAmountApplied = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+  // Outstanding balance correctly subtracts wallet and gift card credits so providers
+  // don't see a phantom balance after split-payment bookings.
+  const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
@@ -1648,16 +1659,28 @@ export default function ProviderBookingDetail() {
               <span className="text-gray-600">Total</span>
               <span className="font-medium">{formatMoney(totalAmount)}</span>
             </div>
+            {walletAmountApplied > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Wallet credit</span>
+                <span className="font-medium text-purple-700">−{formatMoney(walletAmountApplied)}</span>
+              </div>
+            )}
+            {giftCardAmountApplied > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Gift card</span>
+                <span className="font-medium text-purple-700">−{formatMoney(giftCardAmountApplied)}</span>
+              </div>
+            )}
             {totalPaid > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Paid</span>
+                <span className="text-gray-600">Paid via card/gateway</span>
                 <span className="font-medium text-green-600">{formatMoney(totalPaid)}</span>
               </div>
             )}
             {totalRefunded > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Refunded</span>
-                <span className="font-medium text-red-600">{formatMoney(-totalRefunded)}</span>
+                <span className="font-medium text-red-600">−{formatMoney(totalRefunded)}</span>
               </div>
             )}
             {outstanding > 0 && (

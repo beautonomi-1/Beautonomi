@@ -22,9 +22,12 @@ export function UpcomingBookingPreview() {
   useEffect(() => {
     const load = async () => {
       try {
+        // 60 s stale: upcoming bookings don't change frequently and a brief
+        // delay before showing a just-confirmed booking is acceptable. Prevents
+        // a fresh network hit on every profile page visit.
         const response = await fetcher.get<{
           data: { items: BookingPreview[]; total: number };
-        }>("/api/me/bookings?status=upcoming&limit=1", { cache: "no-store" });
+        }>("/api/me/bookings?status=upcoming&limit=1", { staleTimeMs: 60_000 });
         const items = response.data?.items || [];
         setBooking(items[0] || null);
       } catch {

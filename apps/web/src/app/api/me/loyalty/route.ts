@@ -115,7 +115,7 @@ export async function GET(request: NextRequest) {
     // Calculate redemption value
     const redemptionValue = pointsBalance / redemptionRate;
 
-    return successResponse({
+    const res = successResponse({
       points_balance: pointsBalance,
       redemption_value: redemptionValue,
       redemption_currency: currency,
@@ -125,6 +125,9 @@ export async function GET(request: NextRequest) {
       available_milestones: milestones,
       history: pointsHistory,
     });
+    // Loyalty points change rarely; 60 s browser cache is safe here.
+    res.headers.set("Cache-Control", "private, max-age=60, stale-while-revalidate=120");
+    return res;
   } catch (error) {
     return handleApiError(error, "Failed to fetch loyalty points");
   }

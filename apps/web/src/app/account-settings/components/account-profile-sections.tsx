@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProfileHeaderNew from "@/components/profile/ProfileHeaderNew";
@@ -9,7 +9,7 @@ import PersonalInfoCard from "@/components/profile/PersonalInfoCard";
 import AboutSection from "@/components/profile/AboutSection";
 import BeautyPreferencesCard from "@/components/profile/BeautyPreferencesCard";
 import type { ProfileUser, ProfileData, CompletionData } from "@/types/profile";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
 import {
   getCompletionHref,
   isPersonalInfoFocusParam,
@@ -30,6 +30,24 @@ const CustomFieldsForm = dynamic(
   }
 );
 
+// ── Stable memoised wrappers ──────────────────────────────────────────────────
+// Prevents child components from re-rendering when only unrelated state
+// (e.g. completionData) changes. These components are heavy (forms, modals).
+
+const MemoProfileHeader = memo(ProfileHeaderNew);
+MemoProfileHeader.displayName = "MemoProfileHeader";
+
+const MemoPersonalInfoCard = memo(PersonalInfoCard);
+MemoPersonalInfoCard.displayName = "MemoPersonalInfoCard";
+
+const MemoBeautyPreferencesCard = memo(BeautyPreferencesCard);
+MemoBeautyPreferencesCard.displayName = "MemoBeautyPreferencesCard";
+
+const MemoAboutSection = memo(AboutSection);
+MemoAboutSection.displayName = "MemoAboutSection";
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function normalizeInterests(raw: unknown): string[] | null {
   if (raw == null) return null;
   if (Array.isArray(raw)) {
@@ -42,6 +60,17 @@ function normalizeInterests(raw: unknown): string[] | null {
 type MeProfilePayload = ProfileUser & {
   about?: string | null;
   interests?: unknown;
+};
+
+type ProfileBundle = {
+  profile: MeProfilePayload;
+  completion: {
+    completed: number;
+    total: number;
+    percentage: number;
+    topItems: CompletionData["topItems"];
+  };
+  loyalty_points: number;
 };
 
 const SECTION_QUERY_TO_ID: Record<string, string> = {
@@ -58,6 +87,10 @@ const SECTION_QUERY_TO_ID: Record<string, string> = {
   beauty_preferences: "beauty-preferences-section",
 };
 
+// Stale time: 30 s. Profile data only changes when the user explicitly saves.
+// After a save, we call clearFetcherCache() so the next read is fresh.
+const PROFILE_STALE_MS = 30_000;
+
 export default function AccountProfileSections() {
   const router = useRouter();
   const pathname = usePathname();
@@ -70,65 +103,45 @@ export default function AccountProfileSections() {
   const [loading, setLoading] = useState(true);
   const refreshPromiseRef = useRef<Promise<void> | null>(null);
 
-  const applyResponses = useCallback(
-    (
-      profileRes: { data: MeProfilePayload } | null,
-      completionRes: {
-        data: {
-          completed: number;
-          total: number;
-          percentage: number;
-          topItems: CompletionData["topItems"];
-        };
-      } | null,
-      loyaltyRes: { data: { points_balance?: number } } | null
-    ) => {
-      const raw = profileRes?.data;
-      if (raw) {
-        const { about: _a, interests: _i, ...rest } = raw;
-        setUser(rest as ProfileUser);
-        setProfileData({
-          about: raw.about ?? null,
-          interests: normalizeInterests(raw.interests),
-        });
-      }
+  const applyBundle = useCallback((bundle: ProfileBundle) => {
+    const { profile: raw, completion: comp, loyalty_points: pts } = bundle;
 
-      const comp = completionRes?.data;
-      if (comp) {
-        setCompletionData({
-          completed: comp.completed,
-          total: comp.total,
-          percentage: comp.percentage,
-          topItems: comp.topItems,
-        });
-      }
+    if (raw) {
+      const { about: _a, interests: _i, ...rest } = raw;
+      setUser(rest as ProfileUser);
+      setProfileData({
+        about: raw.about ?? null,
+        interests: normalizeInterests(raw.interests),
+      });
+    }
 
-      const pts = loyaltyRes?.data?.points_balance;
-      setLoyaltyPoints(typeof pts === "number" ? pts : null);
-    },
-    []
-  );
+    if (comp) {
+      setCompletionData({
+        completed: comp.completed,
+        total: comp.total,
+        percentage: comp.percentage,
+        topItems: comp.topItems,
+      });
+    }
 
-  const pullBundle = useCallback(async () => {
-    const bust = `_=${Date.now()}`;
-    const [profileRes, completionRes, loyaltyRes] = await Promise.all([
-      fetcher.get<{ data: MeProfilePayload }>(`/api/me/profile?${bust}`, {
-        staleTimeMs: 0,
-      }),
-      fetcher.get<{
-        data: {
-          completed: number;
-          total: number;
-          percentage: number;
-          topItems: CompletionData["topItems"];
-        };
-      }>(`/api/me/profile-completion?${bust}`, { staleTimeMs: 0 }),
-      fetcher
-        .get<{ data: { points_balance?: number } }>(`/api/me/loyalty?${bust}`, { staleTimeMs: 0 })
-        .catch(() => null),
-    ]);
-    applyResponses(profileRes, completionRes, loyaltyRes);
-  }, [applyResponses]);
+    setLoyaltyPoints(typeof pts === "number" ? pts : null);
+  }, []);
+
+  const pullBundle = useCallback(async (forceRefresh = false) => {
+    // When forcing a refresh after a save, clear the in-memory cache so we
+    // don't serve stale data. The browser HTTP cache will also be bypassed
+    // because we pass cache: "no-cache" via the fetchOptions below.
+    if (forceRefresh) {
+      clearFetcherCache();
+    }
+
+    const res = await fetcher.get<{ data: ProfileBundle }>(
+      "/api/me/profile-bundle",
+      { staleTimeMs: forceRefresh ? 0 : PROFILE_STALE_MS }
+    );
+
+    applyBundle(res.data);
+  }, [applyBundle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,7 +162,8 @@ export default function AccountProfileSections() {
     return () => {
       cancelled = true;
     };
-  }, [pullBundle, router, startTransition]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleUpdate = useCallback(async () => {
     if (refreshPromiseRef.current) {
@@ -157,7 +171,8 @@ export default function AccountProfileSections() {
     }
     const run = (async () => {
       try {
-        await pullBundle();
+        // Force-refresh after user explicitly saved something.
+        await pullBundle(true);
       } catch {
         startTransition(() => {
           router.refresh();
@@ -258,7 +273,7 @@ export default function AccountProfileSections() {
   return (
     <div className="space-y-5 md:space-y-6">
       <div id="profile-header">
-        <ProfileHeaderNew
+        <MemoProfileHeader
           user={user}
           onUpdate={handleUpdate}
           prefetchedLoyaltyPoints={loyaltyPoints}
@@ -274,7 +289,7 @@ export default function AccountProfileSections() {
       )}
 
       <div id="personal-info-section">
-        <PersonalInfoCard
+        <MemoPersonalInfoCard
           user={user}
           onUpdate={handleUpdate}
           completionFocus={personalInfoCompletionFocus}
@@ -284,12 +299,12 @@ export default function AccountProfileSections() {
 
       {profileData && (
         <div id="about-section">
-          <AboutSection about={profileData.about} />
+          <MemoAboutSection about={profileData.about} />
         </div>
       )}
 
       <div id="beauty-preferences-section">
-        <BeautyPreferencesCard
+        <MemoBeautyPreferencesCard
           preferences={user.beauty_preferences || {}}
           onUpdate={handleUpdate}
         />

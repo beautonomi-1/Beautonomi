@@ -156,20 +156,22 @@ export default function StepPayment({
     }
   }, [paystackEnabled, giftCardsEnabled, paymentMethod, cashEnabledOnPlatform]);
 
+  // Fetch platform fees only to determine cash availability.
+  // Tax and service fee amounts are computed by booking-flow.tsx from the same API and stored in
+  // bookingState — we trust those values here to keep fees perfectly consistent across all steps.
   useEffect(() => {
     let cancelled = false;
     fetcher
       .get<{ data?: { cash_enabled_on_platform?: boolean } }>("/api/public/platform-fees")
       .then((res) => {
         if (cancelled) return;
-        setCashEnabledOnPlatform((res?.data as any)?.cash_enabled_on_platform === true);
+        const d = res?.data as { cash_enabled_on_platform?: boolean } | undefined;
+        setCashEnabledOnPlatform(d?.cash_enabled_on_platform === true);
       })
       .catch(() => {
         if (!cancelled) setCashEnabledOnPlatform(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, []);
 
   const handleSetDefaultCard = async (cardId: string) => {
@@ -386,6 +388,9 @@ export default function StepPayment({
 
   totals.subtotal = totals.services + totals.addons + totals.products + totals.travelFee;
   totals.subtotalAfterDiscounts = getSubtotalAfterDiscounts(bookingState);
+  // Fee amounts come from bookingState (set by booking-flow.tsx on mount from /api/public/platform-fees).
+  // Do NOT re-estimate here — that would cause fees to appear/change between steps if platform-fees
+  // API responds at slightly different times. bookingState is the single source of truth.
   totals.total = totals.subtotalAfterDiscounts + totals.taxAmount + totals.serviceFeeAmount + totals.tipAmount;
 
   const createBookingDraft = async () => {
@@ -580,11 +585,17 @@ export default function StepPayment({
       try {
         bookingResult = await createBookingDraft();
       } catch (error: any) {
-        // Handle conflict errors (409) - time slot no longer available
-        if (error.status === 409 || error.code === 'CONFLICT') {
-          toast.error(error.message || "This time slot is no longer available. Please select another time.", {
-            duration: 5000,
-          });
+        // Handle conflict / availability overlap errors (409) — time slot taken since selection
+        const isAvailabilityConflict =
+          error.status === 409 ||
+          error.code === "CONFLICT" ||
+          error.code === "AVAILABILITY_OVERLAP" ||
+          /overlap|unavailable|already booked|conflict/i.test(error.message ?? "");
+        if (isAvailabilityConflict) {
+          toast.error(
+            "That time slot was just taken. Please choose another time.",
+            { duration: 6000 }
+          );
           onNavigateToStep("calendar");
           return;
         }
@@ -969,6 +980,33 @@ export default function StepPayment({
             <span>{t("booking.total")}</span>
             <span>{formatCurrency(totals.total, totals.currency)}</span>
           </div>
+
+          {/* Wallet split — show breakdown of what wallet covers vs what Paystack charges */}
+          {paymentMethod === "card" && useWallet && walletBalance > 0 && (() => {
+            const walletApplied = Math.min(walletBalance, totals.total);
+            const paystackRemainder = Math.max(0, totals.total - walletApplied);
+            return (
+              <div className="mt-3 pt-3 border-t border-dashed border-gray-300 space-y-1.5">
+                <div className="flex justify-between text-sm text-green-700">
+                  <span className="flex items-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5" />
+                    Wallet credit applied
+                  </span>
+                  <span className="font-medium">−{formatCurrency(walletApplied, walletCurrency)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
+                  <span>You pay via Paystack</span>
+                  <span>{paystackRemainder <= 0 ? formatCurrency(0, totals.currency) : formatCurrency(paystackRemainder, totals.currency)}</span>
+                </div>
+                {paystackRemainder <= 0 && (
+                  <p className="text-xs text-green-700 flex items-center gap-1">
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Wallet fully covers this booking — no card charge needed
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

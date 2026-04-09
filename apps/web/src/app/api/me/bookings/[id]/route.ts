@@ -273,11 +273,15 @@ export async function GET(
       outstanding_balance: (() => {
         const bookingTotal = Number(bookingData.total_amount ?? 0);
         const totalPaid = Number(bookingData.total_paid ?? 0);
+        // wallet_amount was debited from the customer's wallet balance at booking time and is
+        // NOT recorded in booking_payments (which only tracks gateway transactions). We must
+        // subtract it here so wallet-covered amounts don't show as outstanding balance.
+        const walletAmount = Number((bookingData as Record<string, unknown>).wallet_amount ?? 0);
         type AcRow = { status?: string; amount?: number };
         const unpaidCharges = (bookingData.additional_charges ?? [])
           .filter((ac: AcRow) => ac.status !== "paid" && ac.status !== "rejected")
           .reduce((sum: number, ac: AcRow) => sum + Number(ac.amount ?? 0), 0);
-        return Math.max(0, bookingTotal + unpaidCharges - totalPaid);
+        return Math.max(0, bookingTotal + unpaidCharges - totalPaid - walletAmount);
       })(),
       // Arrival verification (customer-holds-PIN: customer needs these to show PIN and countdown)
       arrival_otp_verified: bookingData.arrival_otp_verified ?? false,

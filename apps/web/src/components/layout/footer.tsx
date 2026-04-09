@@ -67,9 +67,11 @@ export default function Footer({
 
     const loadFooterData = async () => {
       try {
+        // Footer data is static; 10-minute in-memory cache prevents re-fetching on
+        // every page visit within a browsing session.
         const [linksResponse, settingsResponse] = await Promise.all([
-          fetcher.get<{ data: { links: FooterLink[]; appLinks: AppLink[] }; error: null }>("/api/public/footer-links"),
-          fetcher.get<{ data: FooterSettings; error: null }>("/api/public/footer-settings"),
+          fetcher.get<{ data: { links: FooterLink[]; appLinks: AppLink[] }; error: null }>("/api/public/footer-links", { staleTimeMs: 10 * 60_000 }),
+          fetcher.get<{ data: FooterSettings; error: null }>("/api/public/footer-settings", { staleTimeMs: 10 * 60_000 }),
         ]);
         
         if (linksResponse.data) {
@@ -101,7 +103,7 @@ export default function Footer({
             ios?: { app_store_url?: string; enabled?: boolean };
           };
           error: null;
-        }>(`/api/public/apps?type=${appContext}`);
+        }>(`/api/public/apps?type=${appContext}`, { staleTimeMs: 10 * 60_000 });
         if (cancelled || !res?.data) return;
         const links: AppLink[] = [];
         if (res.data.android?.enabled !== false && res.data.android?.download_url) {

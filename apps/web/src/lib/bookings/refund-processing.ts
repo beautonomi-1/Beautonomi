@@ -195,12 +195,14 @@ export async function processBookingRefund(
       return { success: false, error: "Failed to create refund record" };
     }
 
+    // Convention: amount = absolute refund value (positive, matching refund-events.ts).
+    // net = negative to correctly reduce platform net revenue in aggregate reports.
     const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
       tenant_id: walletTenantId,
       booking_id: bookingId,
       provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
       transaction_type: "refund",
-      amount: -refundAmount,
+      amount: refundAmount,
       fees: 0,
       commission: 0,
       net: -refundAmount,

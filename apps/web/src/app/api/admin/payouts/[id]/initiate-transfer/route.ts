@@ -117,11 +117,14 @@ export async function POST(
       acct = requestedAcct;
     }
     if (!acct?.recipient_code) {
+      // Fallback: prefer the primary account, then latest by created_at.
+      // is_primary desc ensures the account marked as primary is picked first.
       const { data: primaryAcct } = await supabase.from("provider_payout_accounts")
         .select("recipient_code, currency")
         .eq("provider_id", p.provider_id)
         .eq("active", true)
         .is("deleted_at", null)
+        .order("is_primary", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();

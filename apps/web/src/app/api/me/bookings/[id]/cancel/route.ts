@@ -354,6 +354,34 @@ export async function POST(
       }
     }
 
+    // Record retained cancellation fee as a dedicated finance_transaction so it appears
+    // in revenue reports and the admin ledger as platform-retained income.
+    // Convention: amount = absolute fee (positive), net = positive (platform keeps it).
+    if (cancellationFeeApplied > 0) {
+      try {
+        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
+        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+          tenant_id: provForCurrency?.tenant_id ?? null,
+          provider_id: booking.provider_id,
+        });
+        const bookingRef = (booking as { booking_number?: string }).booking_number || bookingId.slice(0, 8);
+        await adminSupabase.from("finance_transactions").insert({
+          tenant_id: cancelFeeTenantId,
+          booking_id: bookingId,
+          provider_id: booking.provider_id,
+          transaction_type: "cancellation_fee",
+          amount: cancellationFeeApplied,
+          fees: 0,
+          commission: 0,
+          net: cancellationFeeApplied,
+          description: `Cancellation fee retained for booking ${bookingRef} (${isLate ? "late cancellation" : "early cancellation"})`,
+          created_at: new Date().toISOString(),
+        });
+      } catch (feeErr) {
+        console.error("[cancel] failed to record cancellation_fee finance_transaction:", feeErr);
+      }
+    }
+
     // Track Amplitude event
     try {
       await trackServer(EVENT_BOOKING_CANCELLED, {

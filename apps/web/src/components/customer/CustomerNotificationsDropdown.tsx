@@ -109,7 +109,10 @@ export function CustomerNotificationsDropdown() {
   const loadNotifications = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>('/api/me/notifications');
+      // 30 s stale: notifications update every 2 minutes via the polling interval
+      // and in real-time via Supabase Realtime. A short cache prevents redundant
+      // network requests on every re-mount (e.g. tab switch, page navigation).
+      const response = await fetcher.get<{ data?: NotificationResponse } & NotificationResponse>('/api/me/notifications', { staleTimeMs: 30_000 });
       const data = response.data ?? response;
       setNotifications(data.notifications || []);
       setTotalUnread(data.total_unread || 0);
@@ -153,10 +156,12 @@ export function CustomerNotificationsDropdown() {
     const interval = setInterval(loadNotifications, 120000);
 
     return () => {
-      try {
-        channel?.unsubscribe();
-      } catch {
-        // ignore
+      if (channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch {
+          // ignore
+        }
       }
       clearInterval(interval);
     };

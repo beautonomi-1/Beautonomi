@@ -592,6 +592,13 @@ export default function BookScreen() {
     );
   }, [slots, selectedDay, minNoticeMinutes]);
 
+  // All future slots (available + unavailable) — used for the time grid so customers
+  // can see which times are blocked rather than having them silently disappear.
+  const displaySlots = useMemo(() => {
+    if (!selectedDay) return [];
+    return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
+  }, [slots, selectedDay, minNoticeMinutes]);
+
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(() => new Date());
   const appliedPrefillAddonsRef = useRef(false);
@@ -2865,7 +2872,7 @@ export default function BookScreen() {
                       Evening: { icon: "moon-outline", bgColor: "#EEF2FF", iconColor: "#6366F1" },
                     };
                     const byPeriod = { Morning: [] as AvailabilitySlot[], Afternoon: [] as AvailabilitySlot[], Evening: [] as AvailabilitySlot[] };
-                    selectableSlots.forEach((s) => {
+                    displaySlots.forEach((s) => {
                       const p = getPeriod(s.start);
                       byPeriod[p].push(s);
                     });
@@ -2924,33 +2931,57 @@ export default function BookScreen() {
                                   borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
                                 }}>
                                   <Text style={{ fontSize: 12, fontWeight: "700", color: meta.iconColor }}>
-                                    {list.length}
+                                    {list.filter((s) => s.is_available !== false).length}
                                   </Text>
                                 </View>
                                 <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={18} color="#9CA3AF" />
                               </Pressable>
                               {isOpen && (
-                                <View style={{ padding: 12, flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                                <View style={{ padding: 12 }}>
+                                  {/* Legend */}
+                                  <View style={{ flexDirection: "row", gap: 14, marginBottom: 10 }}>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: "#dcfce7", borderWidth: 1.5, borderColor: "#4ade80" }} />
+                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>Available</Text>
+                                    </View>
+                                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                                      <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: "#fee2e2", borderWidth: 1.5, borderColor: "#fca5a5" }} />
+                                      <Text style={{ fontSize: 10, color: "#6B7280" }}>Unavailable</Text>
+                                    </View>
+                                  </View>
+                                  <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
                                   {list.map((slot) => {
                                     const timeStr = formatTimeSafe(slot.start);
                                     const isSelected = selectedSlot?.start === slot.start;
+                                    const isUnavailable = slot.is_available === false;
                                     return (
                                       <TouchableOpacity
                                         key={slot.start}
                                         onPress={() => {
+                                          if (isUnavailable) return;
                                           haptic.medium();
                                           setSelectedSlot(slot);
                                         }}
-                                        activeOpacity={0.75}
+                                        activeOpacity={isUnavailable ? 1 : 0.75}
+                                        disabled={isUnavailable}
                                         style={{
                                           alignItems: "center",
                                           paddingHorizontal: 14,
                                           paddingVertical: 11,
                                           borderRadius: 14,
-                                          backgroundColor: isSelected ? Colors.primary : "rgba(0,0,0,0.03)",
+                                          backgroundColor: isSelected
+                                            ? Colors.primary
+                                            : isUnavailable
+                                              ? "#fee2e2"
+                                              : "#f0fdf4",
                                           borderWidth: 1.5,
-                                          borderColor: isSelected ? Colors.primary : "#E5E7EB",
+                                          borderColor: isSelected
+                                            ? Colors.primary
+                                            : isUnavailable
+                                              ? "#fca5a5"
+                                              : "#4ade80",
                                           minWidth: 78,
+                                          opacity: isUnavailable ? 0.65 : 1,
                                           shadowColor: Colors.primary,
                                           shadowOffset: { width: 0, height: 4 },
                                           shadowOpacity: isSelected ? 0.3 : 0,
@@ -2958,18 +2989,19 @@ export default function BookScreen() {
                                           elevation: isSelected ? 3 : 0,
                                         }}
                                         accessibilityRole="button"
-                                        accessibilityLabel={`Select time ${timeStr}`}
-                                        accessibilityState={{ selected: isSelected }}
+                                        accessibilityLabel={isUnavailable ? `${timeStr} — unavailable` : `Select time ${timeStr}`}
+                                        accessibilityState={{ selected: isSelected, disabled: isUnavailable }}
                                       >
-                                        <Text style={{ fontWeight: "700", fontSize: 14, color: isSelected ? "#fff" : "#111827" }}>
+                                        <Text style={{ fontWeight: "700", fontSize: 14, color: isSelected ? "#fff" : isUnavailable ? "#ef4444" : "#15803d" }}>
                                           {timeStr}
                                         </Text>
-                                        <Text style={{ fontSize: 9, fontWeight: "700", color: isSelected ? "rgba(255,255,255,0.8)" : "#16a34a", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.3 }}>
-                                          Open
+                                        <Text style={{ fontSize: 9, fontWeight: "700", color: isSelected ? "rgba(255,255,255,0.8)" : isUnavailable ? "#fca5a5" : "#16a34a", marginTop: 2, textTransform: "uppercase", letterSpacing: 0.3 }}>
+                                          {isUnavailable ? "Taken" : "Open"}
                                         </Text>
                                       </TouchableOpacity>
                                     );
                                   })}
+                                  </View>
                                 </View>
                               )}
                             </View>
