@@ -138,12 +138,16 @@ export default function Index() {
         return;
       }
 
-      setHasProfile(false);
+      // Non-404, non-retryable error (5xx, rate limit, malformed response, etc.).
+      // Show retry UI instead of sending to onboarding — the provider profile may well exist.
+      setHasProfile(null);
+      setProfileLoadError(true);
       setCheckingProfile(false);
     }).catch((e) => {
-      setHasProfile(false);
-      setCheckingProfile(false);
+      // Network/throw error — show retry UI; do NOT route to onboarding.
+      setHasProfile(null);
       setProfileLoadError(true);
+      setCheckingProfile(false);
     });
   };
 

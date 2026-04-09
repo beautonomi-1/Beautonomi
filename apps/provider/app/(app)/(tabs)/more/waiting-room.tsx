@@ -57,7 +57,7 @@ export default function WaitingRoomScreen() {
   const waitingRoomUrl = selectedLocationId
     ? `/api/provider/waiting-room?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/waiting-room";
-  const { data: entries, loading: waitingLoading, refresh: refreshWaiting } =
+  const { data: entries, loading: waitingLoading, error: waitingError, refresh: refreshWaiting } =
     useApi<WaitingRoomEntry[]>(waitingRoomUrl);
 
   const bookingsUrl =
@@ -205,6 +205,17 @@ export default function WaitingRoomScreen() {
             <Text style={twStyle("text-[10px] text-gray-600")}>Waiting now</Text>
           </View>
         </View>
+
+        {waitingError && entries === null && (
+          <View style={twStyle("mx-4 mb-4 rounded-xl border border-red-200 bg-red-50 p-3")}>
+            <View style={twStyle("flex-row items-center")}>
+              <Ionicons name="warning-outline" size={18} color="#dc2626" />
+              <Text style={twStyle("ml-2 flex-1 text-sm text-red-700")}>
+                Could not load check-in queue. Pull down to retry.
+              </Text>
+            </View>
+          </View>
+        )}
 
         {pendingCount > 0 && (
           <View style={twStyle("mx-4 mb-4 rounded-xl border border-amber-300 bg-amber-100/80 p-3")}>

@@ -224,7 +224,23 @@ export default function SubscriptionPage() {
     );
   }
 
-  const currentPlan = subscription?.plan || plans.find((p) => p.plan_id === subscription?.plan_id);
+  // The joined plan from the subscription API uses price_monthly/price_yearly; normalise to SubscriptionPlan shape
+  const rawPlan: any = subscription?.plan;
+  const currentPlanFromSubscription: SubscriptionPlan | null = rawPlan
+    ? {
+        id: rawPlan.id ?? "",
+        plan_id: rawPlan.id ?? subscription?.plan_id ?? "",
+        name: rawPlan.name ?? "",
+        price: rawPlan.price ?? rawPlan.price_monthly ?? 0,
+        currency: rawPlan.currency ?? "ZAR",
+        billing_period: subscription?.billing_period ?? "monthly",
+        features: Array.isArray(rawPlan.features) ? rawPlan.features : [],
+      }
+    : null;
+  const currentPlan =
+    currentPlanFromSubscription ||
+    plans.find((p) => p.plan_id === subscription?.plan_id || p.id === subscription?.plan_id) ||
+    null;
   const expiresAt = subscription?.expires_at ? new Date(subscription.expires_at) : null;
 
   return (
@@ -299,7 +315,7 @@ export default function SubscriptionPage() {
                   <div className="space-y-2">
                     <p className="font-medium">Features included:</p>
                     <ul className="space-y-1">
-                      {currentPlan.features.map((feature, index) => (
+                      {(currentPlan.features ?? []).map((feature, index) => (
                         <li key={index} className="flex items-center gap-2 text-sm">
                           <Check className="w-4 h-4 text-green-600" />
                           {feature}
@@ -342,7 +358,7 @@ export default function SubscriptionPage() {
                     className={
                       plan.is_popular
                         ? "border-2 border-[#FF0077] relative"
-                        : subscription?.plan_id === plan.id
+                        : subscription?.plan_id === plan.plan_id
                         ? "border-2 border-gray-300"
                         : ""
                     }
@@ -352,7 +368,7 @@ export default function SubscriptionPage() {
                         <Badge className="bg-[#FF0077] text-white">Most Popular</Badge>
                       </div>
                     )}
-                    {subscription?.plan_id === plan.id && (
+                    {subscription?.plan_id === plan.plan_id && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                         <Badge variant="secondary">Current Plan</Badge>
                       </div>
@@ -370,14 +386,14 @@ export default function SubscriptionPage() {
                     </CardHeader>
                     <CardContent>
                       <ul className="space-y-2 mb-4">
-                        {plan.features.map((feature, index) => (
+                        {(plan.features ?? []).map((feature, index) => (
                           <li key={index} className="flex items-center gap-2 text-sm">
                             <Check className="w-4 h-4 text-green-600" />
                             {feature}
                           </li>
                         ))}
                       </ul>
-                      {subscription?.plan_id !== plan.id && (
+                      {subscription?.plan_id !== plan.plan_id && (
                         <Button
                           className="w-full"
                           onClick={() => handleUpgrade(plan.id)}
@@ -428,7 +444,7 @@ function UpgradeDialog({
   const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
   return (
-    <Dialog open={open} onOpenChange={onClose}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose(); }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Upgrade Your Subscription</DialogTitle>

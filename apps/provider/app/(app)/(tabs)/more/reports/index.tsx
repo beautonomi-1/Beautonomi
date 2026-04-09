@@ -48,7 +48,7 @@ export default function ReportsIndex() {
   const router = useRouter();
   const { isTablet } = useResponsive();
   const [search, setSearch] = useState("");
-  const { data: analytics } = useApi<AnalyticsSummary>("/api/provider/analytics");
+  const { data: analytics, loading: analyticsLoading, error: analyticsError } = useApi<AnalyticsSummary>("/api/provider/analytics");
 
   useEffect(() => {
     trackScreenView("provider_reports");
@@ -81,7 +81,34 @@ export default function ReportsIndex() {
         subtitle="Same catalog as web — native views where available; “Web” opens the full report in your browser"
       />
 
-      {analytics ? (
+      {analyticsLoading && !analytics ? (
+        <View
+          style={{
+            marginBottom: 12,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: Colors.gray[100],
+            backgroundColor: "#f8fafc",
+            padding: 14,
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontSize: 13, color: Colors.gray[400] }}>Loading summary…</Text>
+        </View>
+      ) : analyticsError && !analytics ? (
+        <View
+          style={{
+            marginBottom: 12,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: "#fecaca",
+            backgroundColor: "#fef2f2",
+            padding: 14,
+          }}
+        >
+          <Text style={{ fontSize: 13, color: "#dc2626" }}>Could not load analytics summary. Pull to refresh.</Text>
+        </View>
+      ) : analytics ? (
         <View
           style={{
             marginBottom: 12,

@@ -17,7 +17,7 @@ type FinanceResponse = { earnings?: Earnings; transactions?: unknown[] };
 export default function FinanceHubScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const { data, loading, error, refresh } = useApi<FinanceResponse>("/api/provider/finance");
+  const { data, loading, error, refresh } = useApi<FinanceResponse>("/api/provider/finance?range=month");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

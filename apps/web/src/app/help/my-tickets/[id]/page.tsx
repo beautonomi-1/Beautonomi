@@ -23,6 +23,8 @@ type Message = {
   is_internal: boolean;
   created_at: string;
   user_id: string;
+  author_name?: string;
+  is_mine?: boolean;
 };
 
 type Ticket = {
@@ -162,17 +164,33 @@ export default function MyTicketDetailPage() {
             </CardHeader>
           </Card>
 
-          <div className="space-y-4 mb-8">
-            {messages.map((m) => (
-              <Card key={m.id}>
-                <CardContent className="py-4">
-                  <p className="whitespace-pre-wrap text-sm text-gray-800">{m.message}</p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(m.created_at).toLocaleString()}
-                  </p>
-                </CardContent>
-              </Card>
-            ))}
+          <div className="space-y-3 mb-8">
+            {messages.map((m) => {
+              const isOwn = m.is_mine === true;
+              const authorLabel = m.author_name ?? (isOwn ? "You" : "Support Team");
+              return (
+                <div
+                  key={m.id}
+                  className={`flex ${isOwn ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                      isOwn
+                        ? "bg-[#FF0077] text-white rounded-br-sm"
+                        : "bg-gray-100 text-gray-900 rounded-bl-sm"
+                    }`}
+                  >
+                    <p className={`text-xs font-semibold mb-1 ${isOwn ? "text-pink-100" : "text-gray-500"}`}>
+                      {authorLabel}
+                    </p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{m.message}</p>
+                    <p className={`text-xs mt-1.5 ${isOwn ? "text-pink-200" : "text-gray-400"}`}>
+                      {new Date(m.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           {canReply && (

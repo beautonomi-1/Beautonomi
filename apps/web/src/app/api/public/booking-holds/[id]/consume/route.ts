@@ -121,31 +121,36 @@ export async function POST(
 
     const body = await request.json();
     const parsed = consumeBodySchema.safeParse(body);
-    const clientInfo = parsed.success ? parsed.data.client_info : undefined;
-    const guestFingerprint = parsed.success ? parsed.data.guest_fingerprint_hash : undefined;
-    const paymentMethod = parsed.success ? parsed.data.payment_method : undefined;
-    const paymentMethodId = parsed.success ? parsed.data.payment_method_id : undefined;
-    const paymentOption = parsed.success ? parsed.data.payment_option : undefined;
-    const useWallet = parsed.success ? parsed.data.use_wallet : undefined;
-    const giftCardCode = parsed.success ? parsed.data.gift_card_code : undefined;
-    const customFieldValues = parsed.success ? parsed.data.custom_field_values : undefined;
-    const providerFormResponses = parsed.success ? parsed.data.provider_form_responses : undefined;
-    const addons = parsed.success ? parsed.data.addons : undefined;
-    const specialRequests = parsed.success ? parsed.data.special_requests : undefined;
-    const houseCallInstructions = parsed.success ? parsed.data.house_call_instructions : undefined;
-    const tipAmount = parsed.success ? parsed.data.tip_amount : undefined;
-    const promotionCode = parsed.success ? parsed.data.promotion_code : undefined;
-    const isGroupBooking = parsed.success ? parsed.data.is_group_booking : undefined;
-    const groupParticipants = parsed.success ? parsed.data.group_participants : undefined;
-    const resourceIdsFromBody = parsed.success ? parsed.data.resource_ids : undefined;
-    const saveCard = parsed.success ? parsed.data.save_card : undefined;
-    const setAsDefault = parsed.success ? parsed.data.set_as_default : undefined;
-    const rescheduleBookingId = parsed.success ? parsed.data.reschedule_booking_id : undefined;
-    const products = parsed.success ? parsed.data.products : undefined;
-    const packageId = parsed.success
-      ? (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined
-      : undefined;
-    const subscribeRecurringReq = parsed.success ? parsed.data.subscribe_recurring : undefined;
+    if (!parsed.success) {
+      return errorResponse(
+        "Invalid request body.",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+    const clientInfo = parsed.data.client_info;
+    const guestFingerprint = parsed.data.guest_fingerprint_hash;
+    const paymentMethod = parsed.data.payment_method;
+    const paymentMethodId = parsed.data.payment_method_id;
+    const paymentOption = parsed.data.payment_option;
+    const useWallet = parsed.data.use_wallet;
+    const giftCardCode = parsed.data.gift_card_code;
+    const customFieldValues = parsed.data.custom_field_values;
+    const providerFormResponses = parsed.data.provider_form_responses;
+    const addons = parsed.data.addons;
+    const specialRequests = parsed.data.special_requests;
+    const houseCallInstructions = parsed.data.house_call_instructions;
+    const tipAmount = parsed.data.tip_amount;
+    const promotionCode = parsed.data.promotion_code;
+    const isGroupBooking = parsed.data.is_group_booking;
+    const groupParticipants = parsed.data.group_participants;
+    const resourceIdsFromBody = parsed.data.resource_ids;
+    const saveCard = parsed.data.save_card;
+    const setAsDefault = parsed.data.set_as_default;
+    const rescheduleBookingId = parsed.data.reschedule_booking_id;
+    const products = parsed.data.products;
+    const packageId = (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined;
+    const subscribeRecurringReq = parsed.data.subscribe_recurring;
 
     if (giftCardCode?.trim()) {
       const giftCardsEnabled = await isGiftCardsEnabledForTenant(marketTenantId);
@@ -239,16 +244,18 @@ export async function POST(
       );
     }
 
-    // Verify ownership: user created it, guest fingerprint matches, or guest hold (created before auth)
+    // Verify ownership: user created it, or fingerprint matches (when fingerprint was stored),
+    // or the hold was created as a guest (null created_by_user_id) and has no fingerprint stored.
+    // Guest holds without fingerprints are for the guest-before-auth → OAuth → /book/continue flow.
+    // UUID randomness + the hold's short expiry window (~30 min) limit the practical IDOR risk.
     const userOwnsHold = hold.created_by_user_id === user.id;
-    const fingerprintMatch =
-      hold.guest_fingerprint_hash &&
-      guestFingerprint &&
-      hold.guest_fingerprint_hash === guestFingerprint;
-    // Guest hold: created before auth; user completed OAuth and landed on /book/continue?hold_id=...
+    const storedFingerprint = hold.guest_fingerprint_hash as string | null;
+    const fingerprintMatch = storedFingerprint && guestFingerprint === storedFingerprint;
     const isGuestHold = hold.created_by_user_id === null;
+    // If a fingerprint was stored on the hold, it MUST match — prevents session fixation when fingerprinting is active
+    const fingerprintRequired = Boolean(storedFingerprint);
 
-    if (!userOwnsHold && !fingerprintMatch && !isGuestHold) {
+    if (!userOwnsHold && !(!fingerprintRequired && isGuestHold) && !fingerprintMatch) {
       return handleApiError(
         new Error("Hold does not belong to this session"),
         "This hold cannot be used. Please start a new booking.",

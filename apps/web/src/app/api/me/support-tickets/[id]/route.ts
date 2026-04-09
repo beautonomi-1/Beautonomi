@@ -38,14 +38,25 @@ export async function GET(
 
     const { data: messages } = await supabase
       .from("support_ticket_messages")
-      .select("id, message, is_internal, created_at, user_id")
+      .select("id, message, is_internal, created_at, user_id, author:profiles(id, full_name, display_name)")
       .eq("ticket_id", id)
       .eq("is_internal", false)
       .order("created_at", { ascending: true });
 
+    // Resolve author names: current user = "You", staff/admin = display name or "Support Team"
+    const enrichedMessages = (messages || []).map((m: any) => {
+      const authorProfile = Array.isArray(m.author) ? m.author[0] : m.author;
+      const isCurrentUser = m.user_id === user.id;
+      const authorName = isCurrentUser
+        ? "You"
+        : (authorProfile?.display_name || authorProfile?.full_name || "Support Team");
+      const { author: _drop, ...rest } = m;
+      return { ...rest, author_name: authorName, is_mine: isCurrentUser };
+    });
+
     return successResponse({
       ticket,
-      messages: messages || [],
+      messages: enrichedMessages,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch support ticket");

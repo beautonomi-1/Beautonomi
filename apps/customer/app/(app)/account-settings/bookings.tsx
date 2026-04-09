@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, ActivityIndicator, Platform } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
@@ -64,38 +64,34 @@ export default function AccountBookingsScreen() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Supabase Realtime: live booking status updates
+  // Supabase Realtime: live booking status updates — trigger a full reload so status-tab transitions work correctly
+  const loadRef = useRef(load);
+  loadRef.current = load;
   useEffect(() => {
     if (!user?.id) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
-      .channel("booking-status-updates")
+      .channel(`booking-status-updates:${user.id}`)
       .on(
         "postgres_changes",
         {
-          event: "UPDATE",
+          event: "*",
           schema: "public",
           table: "bookings",
           filter: `customer_id=eq.${user.id}`,
         },
-        (payload) => {
-          const updated = payload.new as any;
-          setBookings((prev) =>
-            prev.map((b) =>
-              b.id === updated.id
-                ? {
-                    ...b,
-                    status: updated.status ?? b.status,
-                    total_amount: updated.total_amount ?? b.total_amount,
-                    scheduled_at: updated.scheduled_at ?? b.scheduled_at,
-                  }
-                : b,
-            ),
-          );
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            loadRef.current(true);
+          }, 500);
         },
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [user?.id]);

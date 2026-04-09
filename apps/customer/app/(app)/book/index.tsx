@@ -528,7 +528,9 @@ export default function BookScreen() {
   const selectedDay = useMemo(() => coerceSelectedDate(selectedDate), [selectedDate]);
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
+  const [slotLoadError, setSlotLoadError] = useState<string | null>(null);
   const [selectedSlot, setSelectedSlot] = useState<AvailabilitySlot | null>(null);
+  const loadSlotsCounterRef = useRef(0);
 
   const [creatingHold, setCreatingHold] = useState(false);
   const [addonsList, setAddonsList] = useState<{ id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[]>([]);
@@ -583,7 +585,11 @@ export default function BookScreen() {
 
   const selectableSlots = useMemo(() => {
     if (!selectedDay) return [];
-    return slots.filter((s) => isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes));
+    return slots.filter(
+      (s) =>
+        s.is_available !== false &&
+        isSlotStartStillSelectable(s.start, selectedDay, minNoticeMinutes),
+    );
   }, [slots, selectedDay, minNoticeMinutes]);
 
   const [calendarModalVisible, setCalendarModalVisible] = useState(false);
@@ -1013,22 +1019,34 @@ export default function BookScreen() {
     trackBookingStarted(bookingStartedProviderId, bookingStartedBusinessName);
   }, [bookingStartedProviderId, bookingStartedBusinessName]);
 
-  const effectiveDuration = selectedServices.length > 0
-    ? selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
-    : selectedVariant
+  // Sum duration of all selected add-ons to include in slot requests
+  const selectedAddonDuration = useMemo(
+    () =>
+      selectedAddonIds.reduce((sum, addonId) => {
+        const ao = addonsList.find((a) => a.id === addonId);
+        return sum + (ao?.duration_minutes || 0);
+      }, 0),
+    [selectedAddonIds, addonsList]
+  );
+
+  const effectiveDuration =
+    (selectedServices.length > 0
+      ? selectedServices.reduce((sum, s) => sum + s.duration_minutes, 0)
+      : selectedVariant
       ? selectedVariant.duration_minutes
       : selectedService
-        ? selectedService.variants?.[0]?.duration_minutes ?? selectedService.duration_minutes
-        : parseInt(duration_minutes || "60", 10);
+      ? selectedService.variants?.[0]?.duration_minutes ?? selectedService.duration_minutes
+      : parseInt(duration_minutes || "60", 10)) + selectedAddonDuration;
 
   const slotParams = useMemo(() => {
     if (selectedServices.length > 0) {
-      return buildSlotParamsFromSelectedServices(selectedServices);
+      const base = buildSlotParamsFromSelectedServices(selectedServices);
+      return { ...base, durationMinutes: base.durationMinutes + selectedAddonDuration };
     }
     if (!selectedService) {
       const dur = parseInt(duration_minutes || "60", 10);
       return {
-        durationMinutes: Number.isFinite(dur) && dur > 0 ? dur : 60,
+        durationMinutes: (Number.isFinite(dur) && dur > 0 ? dur : 60) + selectedAddonDuration,
         bufferMinutes: DEFAULT_SLOT_BUFFER_MINUTES,
       };
     }
@@ -1040,8 +1058,8 @@ export default function BookScreen() {
     const buf = selectedVariant
       ? resolveOfferingBufferMinutes(selectedService, selectedVariant.id)
       : resolveOfferingBufferMinutes(selectedService, null);
-    return { durationMinutes: dur || 60, bufferMinutes: buf };
-  }, [selectedServices, selectedVariant, selectedService, duration_minutes]);
+    return { durationMinutes: (dur || 60) + selectedAddonDuration, bufferMinutes: buf };
+  }, [selectedServices, selectedVariant, selectedService, duration_minutes, selectedAddonDuration]);
 
   const effectiveOfferingId = selectedServices.length > 0
     ? selectedServices[0].offeringId
@@ -1068,7 +1086,9 @@ export default function BookScreen() {
 
   const loadSlots = useCallback(async () => {
     if (!slug || !effectiveOfferingId || !selectedDay || !selectedStaff) return;
+    const requestId = ++loadSlotsCounterRef.current;
     setLoadingSlots(true);
+    setSlotLoadError(null);
     try {
       const dateStr = formatLocalDateYYYYMMDD(selectedDay);
       const staffQ = staffIdForPublicAvailabilityApi(selectedStaff);
@@ -1094,13 +1114,21 @@ export default function BookScreen() {
       const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
         `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
       );
+      if (loadSlotsCounterRef.current !== requestId) return;
+      if (res.error) {
+        setSlotLoadError((res.error as { message?: string })?.message ?? "Failed to load available times");
+        setSlots([]);
+        return;
+      }
       const data = (res.data ?? {}) as { slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] };
       setSlots(data.slots ?? data.data ?? []);
       setSelectedSlot(null);
     } catch {
+      if (loadSlotsCounterRef.current !== requestId) return;
+      setSlotLoadError("Failed to load available times");
       setSlots([]);
     } finally {
-      setLoadingSlots(false);
+      if (loadSlotsCounterRef.current === requestId) setLoadingSlots(false);
     }
   }, [
     slug,
@@ -1223,6 +1251,7 @@ export default function BookScreen() {
           const hasBookable = list.some((s) => {
             const start = s.start;
             if (!start) return false;
+            if (s.is_available === false) return false;
             if (isToday) return new Date(start).getTime() > now.getTime();
             return true;
           });
@@ -2755,6 +2784,19 @@ export default function BookScreen() {
                     {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
                       <Skeleton key={i} width={80} height={44} borderRadius={12} style={{ marginRight: 8, marginBottom: 8 }} />
                     ))}
+                  </View>
+                ) : slotLoadError ? (
+                  <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                    <Ionicons name="cloud-offline-outline" size={36} color="#D1D5DB" />
+                    <Text style={{ color: "#6B7280", marginTop: 8, fontSize: 14, textAlign: "center" }}>
+                      {slotLoadError}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => loadSlots()}
+                      style={{ backgroundColor: Colors.primary, borderRadius: 10, paddingHorizontal: contentPadding, paddingVertical: 10, marginTop: 12 }}
+                    >
+                      <Text style={{ color: "#fff", fontWeight: "600" }}>Retry</Text>
+                    </TouchableOpacity>
                   </View>
                 ) : slots.length === 0 ? (
                   <View style={{ alignItems: "center", paddingVertical: 24 }}>

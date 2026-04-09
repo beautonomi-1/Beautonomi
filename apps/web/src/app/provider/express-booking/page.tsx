@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
-import type { ExpressBookingLink } from "@/lib/provider-portal/types";
+import type { ExpressBookingLink, ServiceItem } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -400,7 +400,7 @@ function ExpressBookingLinkDialog({
     is_active: true,
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [services, setServices] = useState<any[]>([]);
+  const [services, setServices] = useState<ServiceItem[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [locations, setLocations] = useState<{ id: string; name: string }[]>([]);
 
@@ -446,7 +446,27 @@ function ExpressBookingLinkDialog({
         providerApi.listTeamMembers(),
         providerApi.listLocations().catch(() => []),
       ]);
-      setServices(categories.flatMap((cat) => cat.services));
+      // Include all bookable items: base services, variants (as siblings with parent_service_id), packages, addons
+      setServices(
+        categories.flatMap((cat) =>
+          (cat.services || []).flatMap((svc: any) => {
+            const variants: any[] = svc.variants || [];
+            if (variants.length > 0) {
+              // Keep parent as a label-only entry AND add each variant as a selectable item
+              return [
+                svc,
+                ...variants.map((v: any) => ({
+                  ...v,
+                  name: v.name || svc.name,
+                  parent_service_id: v.parent_service_id || svc.id,
+                  service_type: v.service_type || "variant",
+                })),
+              ];
+            }
+            return [svc];
+          })
+        )
+      );
       setTeamMembers(members);
       const salonLocs = Array.isArray(locs) ? locs.filter((l: { location_type?: string }) => (l.location_type || "salon") === "salon") : [];
       setLocations(salonLocs.map((l: { id: string; name: string }) => ({ id: l.id, name: l.name })));
@@ -463,6 +483,7 @@ function ExpressBookingLinkDialog({
       const slug = formData.short_code.trim().toLowerCase().replace(/[^a-z0-9-]/g, "") || undefined;
       if (!slug) {
         toast.error("Short code must contain at least one letter or number");
+        setIsLoading(false);
         return;
       }
       const linkData: any = {
@@ -565,26 +586,71 @@ function ExpressBookingLinkDialog({
           </div>
 
           <div>
-            <Label className="mb-2 block">Pre-select Services (Optional)</Label>
-            <p className="text-xs text-gray-500 mb-2">Select one or more; clients will see these pre-filled.</p>
-            <div className="max-h-40 overflow-y-auto border rounded-lg p-3 space-y-2">
+            <Label className="mb-2 block">Pre-select Services / Variants / Packages (Optional)</Label>
+            <p className="text-xs text-gray-500 mb-2">
+              Select one or more items; clients will see these pre-filled. Includes services, variants, and packages.
+            </p>
+            <div className="max-h-56 overflow-y-auto border rounded-lg p-3 space-y-1">
               {services.length === 0 ? (
                 <p className="text-sm text-gray-500">Loading services…</p>
               ) : (
-                services.map((service) => (
-                  <div key={service.id} className="flex items-center gap-2">
-                    <Checkbox
-                      id={`svc-${service.id}`}
-                      checked={formData.service_ids.includes(service.id)}
-                      onCheckedChange={() => toggleService(service.id)}
-                    />
-                    <Label htmlFor={`svc-${service.id}`} className="cursor-pointer text-sm font-normal flex-1">
-                      {service.name ?? service.title}
-                    </Label>
-                  </div>
-                ))
+                (() => {
+                  // Group: variants under parents; packages labelled
+                  const parents = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                  const variantMap = new Map<string, typeof services>();
+                  services.filter((s) => s.service_type === "variant" || s.parent_service_id).forEach((v) => {
+                    const key = v.parent_service_id ?? v.id;
+                    if (!variantMap.has(key)) variantMap.set(key, []);
+                    variantMap.get(key)!.push(v);
+                  });
+
+                  return parents.flatMap((svc) => {
+                    const variants = variantMap.get(svc.id) ?? [];
+                    if (variants.length > 0) {
+                      return [
+                        <p key={`hdr-${svc.id}`} className="text-xs font-semibold text-gray-500 uppercase tracking-wide pt-2 pb-1">
+                          {svc.name}
+                        </p>,
+                        ...variants.map((v) => (
+                          <div key={v.id} className="flex items-center gap-2 pl-2">
+                            <Checkbox
+                              id={`svc-${v.id}`}
+                              checked={formData.service_ids.includes(v.id)}
+                              onCheckedChange={() => toggleService(v.id)}
+                            />
+                            <Label htmlFor={`svc-${v.id}`} className="cursor-pointer text-sm font-normal flex-1">
+                              {v.variant_name ?? v.name}
+                              <span className="text-gray-400 ml-1">• {v.duration_minutes}min</span>
+                            </Label>
+                          </div>
+                        )),
+                      ];
+                    }
+                    return [
+                      <div key={svc.id} className="flex items-center gap-2">
+                        <Checkbox
+                          id={`svc-${svc.id}`}
+                          checked={formData.service_ids.includes(svc.id)}
+                          onCheckedChange={() => toggleService(svc.id)}
+                        />
+                        <Label htmlFor={`svc-${svc.id}`} className="cursor-pointer text-sm font-normal flex-1">
+                          {svc.name ?? (svc as any).title}
+                          {svc.service_type === "package" && (
+                            <span className="ml-1.5 text-xs bg-purple-100 text-purple-700 px-1 rounded">Package</span>
+                          )}
+                          {svc.service_type === "addon" && (
+                            <span className="ml-1.5 text-xs bg-blue-100 text-blue-700 px-1 rounded">Add-on</span>
+                          )}
+                        </Label>
+                      </div>,
+                    ];
+                  });
+                })()
               )}
             </div>
+            {formData.service_ids.length > 0 && (
+              <p className="text-xs text-green-600 mt-1">{formData.service_ids.length} item{formData.service_ids.length !== 1 ? "s" : ""} selected</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-4">

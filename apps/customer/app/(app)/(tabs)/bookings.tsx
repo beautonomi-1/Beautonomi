@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import type { Booking } from "@/types/api";
 import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
+import { supabase } from "@/lib/supabase/client";
 
 type BookingsTabType = "upcoming" | "past" | "cancelled";
 
@@ -163,6 +164,38 @@ export default function BookingsScreen() {
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [tab, setTab] = useState<BookingsTabType>("upcoming");
   const { data: bookings, loading, refreshing, error, refetch } = useBookings(tab);
+
+  // Real-time: refresh list when any of the customer's bookings change (status updates, confirmations, etc.)
+  const refetchRef = useRef(refetch);
+  refetchRef.current = refetch;
+  useEffect(() => {
+    if (!user?.id) return;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        refetchRef.current();
+      }, 600);
+    };
+    const channel = supabase
+      .channel(`bookings-list:customer:${user.id}`)
+      .on(
+        "postgres_changes" as never,
+        {
+          event: "*",
+          schema: "public",
+          table: "bookings",
+          filter: `customer_id=eq.${user.id}`,
+        },
+        scheduleRefresh,
+      )
+      .subscribe();
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const tabs: { key: BookingsTabType; label: string }[] = [
     { key: "upcoming", label: "Upcoming" },

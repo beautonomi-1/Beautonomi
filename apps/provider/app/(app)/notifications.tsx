@@ -46,6 +46,22 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
       ? data.product_order_id.trim()
       : "";
 
+  // Support tickets (check data.ticket_id first, then link path)
+  const ticketIdFromData = typeof data.ticket_id === "string" && data.ticket_id.trim() ? data.ticket_id.trim() : "";
+  if (ticketIdFromData) {
+    router.push(`/(app)/(tabs)/more/support-tickets/${ticketIdFromData}` as never);
+    return;
+  }
+  if (link.includes("support/tickets") || link.includes("help/my-tickets")) {
+    const m = link.match(/(?:support\/tickets|my-tickets)\/([a-f0-9-]{36})/i);
+    if (m) {
+      router.push(`/(app)/(tabs)/more/support-tickets/${m[1]}` as never);
+    } else {
+      router.push("/(app)/(tabs)/more/support-tickets" as never);
+    }
+    return;
+  }
+
   if (data.booking_id) {
     router.push(`/(app)/(tabs)/more/bookings/${data.booking_id}` as never);
     return;
@@ -101,8 +117,14 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
       const clientMatch = link.match(/\/([a-f0-9-]+)$/);
       if (clientMatch) {
         router.push(`/(app)/(tabs)/more/clients/${clientMatch[1]}` as never);
+      } else {
+        // Fallback to clients list when we can't extract a specific ID
+        router.push("/(app)/(tabs)/more/clients" as never);
       }
+      return;
     }
+    // Generic fallback — open the dashboard so tapping always does something
+    router.push("/(app)/(tabs)/dashboard" as never);
   }
 }
 

@@ -11,7 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Money } from "@/components/provider-portal/Money";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { NewSaleDialog } from "@/components/provider-portal/NewSaleDialog";
-import { Search, Filter, Plus, CreditCard, Calendar, User, ShoppingBag } from "lucide-react";
+import { Search, Plus, CreditCard, Calendar, User, ShoppingBag } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -57,11 +57,24 @@ function ProviderSalesContent() {
         location_id: selectedLocationId || undefined,
       };
 
-      if (dateRange === "month") {
-        const now = new Date();
+      const now = new Date();
+      if (dateRange === "today") {
+        const today = now.toISOString().split("T")[0];
+        filters.date_from = today;
+        filters.date_to = today;
+      } else if (dateRange === "week") {
+        const day = now.getDay();
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - day);
+        const weekEnd = new Date(now);
+        weekEnd.setDate(now.getDate() + (6 - day));
+        filters.date_from = weekStart.toISOString().split("T")[0];
+        filters.date_to = weekEnd.toISOString().split("T")[0];
+      } else if (dateRange === "month") {
         filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
         filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
       }
+      // "all" / "custom" send no date range — API returns all records
 
       const pagination: PaginationParams = { page, limit: 20 };
       const response = await providerApi.listSales(filters, pagination);
@@ -147,14 +160,10 @@ function ProviderSalesContent() {
             <SelectContent>
               <SelectItem value="today">Today</SelectItem>
               <SelectItem value="week">This Week</SelectItem>
-              <SelectItem value="month">Month to Date</SelectItem>
-              <SelectItem value="custom">Custom Range</SelectItem>
+              <SelectItem value="month">This Month</SelectItem>
+              <SelectItem value="all">All Time</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="h-12 px-4 md:h-10 md:px-3 active:scale-95 transition-transform">
-            <Filter className="w-5 h-5 md:w-4 md:h-4" />
-            <span className="ml-2 md:ml-2 md:hidden">Filter</span>
-          </Button>
         </div>
       </div>
 

@@ -163,7 +163,6 @@ export default function ChatScreen() {
         },
         (payload) => {
           const m = payload.new as any;
-          if (m.sender_role !== "customer") return;
           setRealtimeMessages((prev) => {
             if (prev.some((p) => p.id === m.id)) return prev;
             const att = Array.isArray(m.attachments) ? m.attachments : [];

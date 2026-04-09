@@ -194,8 +194,7 @@ export default function ReportsPage() {
   return (
     <SettingsDetailLayout
       breadcrumbs={[
-        { label: "Home", href: "/" },
-        { label: "Provider", href: "/provider" },
+        { label: "Dashboard", href: "/provider/dashboard" },
         { label: "Reports" },
       ]}
       showCloseButton={false}

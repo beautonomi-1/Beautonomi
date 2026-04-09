@@ -136,6 +136,21 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        // Verify payment amount matches booking total (prevent underpayment exploits)
+        const bookingTotal = Number((booking as { total_amount?: number }).total_amount ?? 0);
+        const paystackAmountMajor = amount / 100;
+        if (bookingTotal > 0 && Math.abs(paystackAmountMajor - bookingTotal) > 0.5) {
+          console.error('Paystack webhook: Amount mismatch', {
+            bookingId,
+            expected: bookingTotal,
+            received: paystackAmountMajor,
+          });
+          return NextResponse.json(
+            { error: 'Payment amount does not match booking total', code: 'AMOUNT_MISMATCH' },
+            { status: 400 },
+          );
+        }
+
         const paystackTxId =
           id !== undefined && id !== null ? String(id) : null;
         if (paystackTxId) {

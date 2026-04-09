@@ -148,9 +148,12 @@ export default function CataloguePage() {
                       Start now
                     </button>
                   </Link>
-                  <button className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[#FF0077] font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation">
-                    Learn more
-                  </button>
+                  <a
+                    href="/provider/catalogue/products"
+                    className="w-full sm:w-auto px-6 py-3 sm:py-2.5 text-[#FF0077] font-medium hover:underline active:opacity-70 min-h-[44px] touch-manipulation text-center"
+                  >
+                    Browse catalogue
+                  </a>
                 </div>
               </div>
             </SectionCard>

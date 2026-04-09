@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
     const body = await request.text();
     const params = new URLSearchParams(body);
 
-    const url = `${process.env.NEXT_PUBLIC_APP_URL}/api/webhooks/twilio`;
+    const url = `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/api/webhooks/twilio`;
     const sortedParams = Array.from(params.entries())
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([k, v]) => `${k}${v}`)

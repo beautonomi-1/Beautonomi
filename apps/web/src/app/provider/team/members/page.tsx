@@ -26,8 +26,9 @@ import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalPro
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import Link from "next/link";
 
-// Cache key for team members
-const TEAM_MEMBERS_CACHE_KEY = 'provider_team_members';
+// Cache key includes location so switching locations always fetches fresh data
+const teamMembersCacheKey = (locationId?: string | null) =>
+  locationId ? `provider_team_members:${locationId}` : 'provider_team_members';
 const TEAM_MEMBERS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 type TeamAccessPayload = {
   can_manage_team: boolean;
@@ -44,11 +45,11 @@ export default function ProviderTeamMembers() {
   const [canManageTeam, setCanManageTeam] = useState(false);
   const [teamAccessLoaded, setTeamAccessLoaded] = useState(false);
 
-  // Restore from cache on mount
+  // Restore from location-scoped cache on mount / when location changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
-        const cached = sessionStorage.getItem(TEAM_MEMBERS_CACHE_KEY);
+        const cached = sessionStorage.getItem(teamMembersCacheKey(selectedLocationId));
         if (cached) {
           const parsed = JSON.parse(cached);
           const cacheAge = Date.now() - (parsed.timestamp || 0);
@@ -61,7 +62,7 @@ export default function ProviderTeamMembers() {
         // Ignore cache errors
       }
     }
-  }, []);
+  }, [selectedLocationId]);
 
   useEffect(() => {
     if (!isLoadingProvider && provider) {
@@ -96,12 +97,11 @@ export default function ProviderTeamMembers() {
         setIsLoading(true);
       }
       const data = await providerApi.listTeamMembers(selectedLocationId || undefined);
-      console.log("Loaded team members:", data);
       setMembers(data);
-      // Cache the response
+      // Cache the response scoped to current location
       if (typeof window !== 'undefined' && data.length > 0) {
         try {
-          sessionStorage.setItem(TEAM_MEMBERS_CACHE_KEY, JSON.stringify({
+          sessionStorage.setItem(teamMembersCacheKey(selectedLocationId), JSON.stringify({
             data,
             timestamp: Date.now()
           }));

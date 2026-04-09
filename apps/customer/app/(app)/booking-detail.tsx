@@ -269,10 +269,13 @@ export default function BookingDetailScreen() {
     return () => clearInterval(interval);
   }, [needsPinDisplay, pinExpiresAt]);
 
-  // Realtime booking status updates
+  // Realtime booking status updates — trigger a silent reload instead of partial-merging the raw DB row
+  // to ensure joined fields (services, provider info, etc.) stay consistent.
+  const loadRef = useRef(load);
+  loadRef.current = load;
   useEffect(() => {
     if (!id) return;
-
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     const channel = supabase
       .channel(`booking-detail-${id}`)
       .on(
@@ -283,16 +286,19 @@ export default function BookingDetailScreen() {
           table: "bookings",
           filter: `id=eq.${id}`,
         },
-        (payload) => {
-          if (payload.new) {
-            setBooking((prev: any) => (prev ? { ...prev, ...payload.new } : prev));
+        () => {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            debounceTimer = null;
+            loadRef.current({ silent: true });
             haptic.success();
-          }
+          }, 400);
         },
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [id]);

@@ -8,6 +8,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  TextInput,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -286,10 +287,9 @@ export default function StaffScheduleScreen() {
   } = useApi<Shift[]>(shiftsUrl, { enabled: !!selectedStaffId });
 
   const { execute: saveShift, loading: creating } = useApiMutation("post");
-  const { loading: updating } = useApiMutation("post");
-  const { execute: deleteShift } = useApiMutation("delete");
+  const { execute: deleteShift, loading: deleting } = useApiMutation("delete");
 
-  const isSaving = creating || updating;
+  const isSaving = creating || deleting;
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -379,6 +379,20 @@ export default function StaffScheduleScreen() {
     };
 
     const staffId = form.staff_id;
+
+    // When editing and the day changed, delete the old shift first so we don't orphan it.
+    // The subsequent POST does an upsert keyed on (staff_id, day_of_week).
+    if (editingShift?.id && editingShift.day_of_week !== form.day_of_week) {
+      const { error: delErr } = await deleteShift(
+        `/api/provider/staff/${staffId}/shifts/${editingShift.id}`,
+        {},
+      );
+      if (delErr) {
+        Alert.alert("Error", delErr);
+        return;
+      }
+    }
+
     const { error } = await saveShift(
       `/api/provider/staff/${staffId}/shifts`,
       payload,
@@ -932,11 +946,19 @@ export default function StaffScheduleScreen() {
           Notes (optional)
         </Text>
         <View style={twStyle("mb-4")}>
-          <View style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
-            <Text style={twStyle("text-sm text-gray-900")}>
-              {form.notes || "No notes"}
-            </Text>
-          </View>
+          <TextInput
+            style={[
+              twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
+              { minHeight: 72, textAlignVertical: "top" },
+            ]}
+            placeholder="e.g. Split shift, on call..."
+            placeholderTextColor="#9ca3af"
+            value={form.notes}
+            onChangeText={(text) => setForm((prev) => ({ ...prev, notes: text }))}
+            multiline
+            maxLength={200}
+            accessibilityLabel="Shift notes"
+          />
         </View>
 
         {/* Save button */}

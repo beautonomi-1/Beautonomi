@@ -43,6 +43,17 @@ export function deriveProviderPortalNotificationUrl(
   n: ProviderNotificationLinkInput,
 ): string | undefined {
   const d = { ...(n.data ?? {}), ...(n.metadata ?? {}) };
+
+  // Support ticket — check metadata first (most reliable)
+  const rawTicketId = (d as { ticket_id?: unknown }).ticket_id;
+  const ticketId =
+    typeof rawTicketId === "string" && rawTicketId.trim() && isProviderNotificationUuid(rawTicketId)
+      ? rawTicketId.trim()
+      : null;
+  if (ticketId) {
+    return `/help/my-tickets/${ticketId}`;
+  }
+
   const productOrderId =
     (isProviderNotificationUuid(d.product_order_id) && String(d.product_order_id).trim()) ||
     (isProviderNotificationUuid((d as { order_id?: unknown }).order_id) &&
@@ -58,6 +69,18 @@ export function deriveProviderPortalNotificationUrl(
     const p = parsePathAndSearch(linkRaw);
     if (p) {
       const { pathname, searchParams } = p;
+
+      // Support ticket paths — /support/tickets/:id or /help/my-tickets/:id
+      if (pathname.startsWith("/support/tickets/") || pathname.startsWith("/help/my-tickets/")) {
+        const seg = pathname
+          .replace(/^\/(support\/tickets|help\/my-tickets)\/?/, "")
+          .split("/")
+          .filter(Boolean)[0];
+        if (seg && seg !== "{{ticket_id}}" && isProviderNotificationUuid(seg)) {
+          return `/help/my-tickets/${seg}`;
+        }
+        return "/help/my-tickets";
+      }
 
       // Customer app paths → provider portal
       if (pathname === "/product-orders" || pathname.startsWith("/product-orders/")) {
@@ -132,3 +155,4 @@ export function deriveProviderPortalNotificationUrl(
 
   return undefined;
 }
+

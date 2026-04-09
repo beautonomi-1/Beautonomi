@@ -1,6 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import {
-  InteractionManager,
   View,
   Text,
   TouchableOpacity,
@@ -614,7 +613,7 @@ export default function CalendarScreen() {
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
   const { user } = useAuth();
-  const { selectedLocationId: globalLocationId } = useProvider();
+  const { provider, selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();
 
@@ -642,18 +641,9 @@ export default function CalendarScreen() {
   );
 
   useEffect(() => {
-    if (!isFocused) {
-      setSecondaryEnabled(false);
-      return;
-    }
-    let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(() => {
-      if (!cancelled) setSecondaryEnabled(true);
-    });
-    return () => {
-      cancelled = true;
-      task.cancel?.();
-    };
+    // Enable secondary data (time blocks, availability, staff unavailability) immediately when
+    // the screen is focused so blocked / off times are always visible without requiring a tap.
+    setSecondaryEnabled(isFocused);
   }, [isFocused]);
 
   const [refreshing, setRefreshing] = useState(false);
@@ -776,7 +766,7 @@ export default function CalendarScreen() {
   );
 
   useEffect(() => {
-    if (!isFocused || !user?.id) return;
+    if (!isFocused || !provider?.id) return;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     const scheduleRefresh = () => {
       if (refreshTimer) return;
@@ -787,10 +777,10 @@ export default function CalendarScreen() {
     };
 
     const channel = supabase
-      .channel("calendar-bookings")
+      .channel(`calendar-bookings:${provider.id}`)
       .on(
         "postgres_changes" as never,
-        { event: "*", schema: "public", table: "bookings", filter: `provider_id=eq.${user.id}` },
+        { event: "*", schema: "public", table: "bookings", filter: `provider_id=eq.${provider.id}` },
         () => {
           scheduleRefresh();
         },
@@ -800,7 +790,7 @@ export default function CalendarScreen() {
       if (refreshTimer) clearTimeout(refreshTimer);
       supabase.removeChannel(channel);
     };
-  }, [isFocused, refresh, user?.id]);
+  }, [isFocused, refresh, provider?.id]);
 
   /* ─── Swipe navigation via PanResponder ─── */
   const panResponder = useMemo(
@@ -2097,7 +2087,13 @@ export default function CalendarScreen() {
                             >
                               <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
                               <Text style={{ fontSize: 14, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d MMM")}</Text>
-                              <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>
+                              {(() => {
+                                if (!operatingHours) return null;
+                                const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                                const sc = normalizeOperatingSchedule(operatingHours[dn]);
+                                if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700" }}>CLOSED</Text>;
+                                return <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>;
+                              })()}
                             </TouchableOpacity>
                             <View style={{ borderRightWidth: 1, borderRightColor: Colors.gray[50] }}>
                               {renderDayGrid(day, dayBookings, threeDayColWidth, false)}
@@ -2222,6 +2218,13 @@ export default function CalendarScreen() {
                           >
                             <Text style={{ fontSize: 10, color: Colors.gray[400] }}>{format(day, "EEE")}</Text>
                             <Text style={{ fontSize: 12, fontWeight: "700", color: isToday ? "#4f46e6" : Colors.gray[700] }}>{format(day, "d")}</Text>
+                            {(() => {
+                              if (!operatingHours) return null;
+                              const dn = DAY_NAMES[day.getDay()] ?? "monday";
+                              const sc = normalizeOperatingSchedule(operatingHours[dn]);
+                              if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700", marginTop: 1 }}>CLOSED</Text>;
+                              return null;
+                            })()}
                           </View>
                           <View style={{ borderRightWidth: 1, borderRightColor: Colors.gray[50] }}>
                             {renderDayGrid(day, dayBookings, dayColumnWidth, false)}
@@ -2317,6 +2320,19 @@ export default function CalendarScreen() {
         {fabOpen && (
           <View style={{ marginBottom: 12 }}>
             {[
+              {
+                label: "New Booking",
+                icon: "calendar-outline" as keyof typeof Ionicons.glyphMap,
+                color: "#4f46e5",
+                onPress: () => {
+                  setFabOpen(false);
+                  const now = new Date();
+                  const roundedMin = Math.ceil(now.getMinutes() / 15) * 15 % 60;
+                  const roundedHour = now.getHours() + (Math.ceil(now.getMinutes() / 15) >= 4 ? 1 : 0);
+                  const timeParam = `${String(roundedHour).padStart(2, "0")}:${String(roundedMin).padStart(2, "0")}`;
+                  router.push(`/(app)/(tabs)/more/bookings/new?date=${dateStr}&time=${timeParam}&status=${preferences.defaultNewAppointmentStatus}` as never);
+                },
+              },
               {
                 label: "Walk-in",
                 icon: "walk-outline" as keyof typeof Ionicons.glyphMap,

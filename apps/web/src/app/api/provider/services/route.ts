@@ -24,7 +24,9 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: services, error } = await supabase
+    const includeVariants = request.nextUrl?.searchParams.get("include_variants") === "true";
+
+    let query = supabase
       .from("offerings")
       .select(`
         *,
@@ -37,9 +39,14 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq("provider_id", providerId)
-      .eq("is_active", true)
-      .is("parent_service_id", null) // Exclude child variant rows — variants are managed via the service detail screen
-      .neq("service_type", "variant")
+      .eq("is_active", true);
+
+    if (!includeVariants) {
+      // Exclude child variant rows — variants are managed via the service detail screen
+      query = query.is("parent_service_id", null).neq("service_type", "variant");
+    }
+
+    const { data: services, error } = await query
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("title", { ascending: true });
 

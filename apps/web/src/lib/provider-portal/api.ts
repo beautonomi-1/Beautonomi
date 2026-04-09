@@ -923,6 +923,8 @@ export class ProviderApiClient implements ProviderApi {
         scheduled_at: scheduledAt.toISOString(),
         location_type: data.location_type || "at_salon",
         location_id: data.location_id || null,
+        // Package id (if appointment was created from a package)
+        package_id: (data as any).package_id || null,
         // Services array (new format)
         services: servicesArray.map((s: any) => ({
           serviceId: s.serviceId || s.service_id,
@@ -930,15 +932,20 @@ export class ProviderApiClient implements ProviderApi {
           duration: s.duration || s.duration_minutes,
           price: s.price,
           customization: s.customization || null,
-          staffId: s.staffId || s.staff_id || data.team_member_id || null, // Pass staff_id for each service
+          staffId: s.staffId || s.staff_id || data.team_member_id || null,
+          // Add-ons: extract addonId from each addon line attached to this service
+          add_on_ids: s.addons?.length
+            ? s.addons.map((a: any) => a.addonId || a.id).filter(Boolean)
+            : (s.add_on_ids || null),
         })),
-        // Products array (new format)
+        // Products array (new format) — include product_variant_id for variant-level stock/pricing
         products: productsArray.map((p: any) => ({
           productId: p.productId || p.product_id,
           productName: p.productName || p.product_name,
           quantity: p.quantity || 1,
           unitPrice: p.unitPrice || p.unit_price,
           totalPrice: p.totalPrice || p.total_price,
+          productVariantId: p.productVariantId || p.product_variant_id || null,
         })),
         // Pricing breakdown
         subtotal: data.subtotal || data.price || 0,
@@ -971,17 +978,13 @@ export class ProviderApiClient implements ProviderApi {
         referral_source_id: (data as any).referral_source_id ?? null,
       };
 
-      console.log("Creating appointment with data:", bookingData);
-
       const response = await fetcher.post<{ data: any }>("/api/provider/bookings", bookingData);
-      console.log("API response:", response);
       
       if (!response || !response.data) {
         throw new Error("Invalid response from API: " + JSON.stringify(response));
       }
       
       const booking = response.data;
-      console.log("Created booking:", booking);
 
       // Transform booking to appointment format
       const scheduledAtDate = new Date(booking.scheduled_at);
@@ -1123,9 +1126,13 @@ export class ProviderApiClient implements ProviderApi {
         updateData.service_customization = JSON.stringify(serviceCustomization);
       }
       
-      // Location type and address for at-home
+      // Location type, location_id, and address for at-home
       if (data.location_type) {
         updateData.location_type = data.location_type;
+      }
+      // Always forward location_id when it is explicitly provided (even on first-time set)
+      if ((data as any).location_id !== undefined) {
+        updateData.location_id = (data as any).location_id || null;
       }
       if (data.address_line1) {
         updateData.address_line1 = data.address_line1;
@@ -1174,6 +1181,12 @@ export class ProviderApiClient implements ProviderApi {
           duration: s.duration || s.duration_minutes,
           price: s.price,
           customization: s.customization || null,
+          // Per-service staff (falls back to appointment-level team_member_id)
+          staffId: s.staffId || s.staff_id || null,
+          // Add-ons attached to this service line
+          add_on_ids: s.addons?.length
+            ? s.addons.map((a: any) => a.addonId || a.id).filter(Boolean)
+            : (s.add_on_ids || null),
         }));
       }
       if ((data as any).products !== undefined) {
@@ -1183,7 +1196,12 @@ export class ProviderApiClient implements ProviderApi {
           quantity: p.quantity || 1,
           unitPrice: p.unitPrice || p.unit_price,
           totalPrice: p.totalPrice || p.total_price,
+          productVariantId: p.productVariantId || p.product_variant_id || null,
         }));
+      }
+      // Package id (preserve when updating a package-linked appointment)
+      if ((data as any).package_id !== undefined) {
+        updateData.package_id = (data as any).package_id || null;
       }
       
       // Cancellation
@@ -1484,8 +1502,8 @@ export class ProviderApiClient implements ProviderApi {
       const own_categories = categoriesResponse.data?.own_categories || [];
       console.log("Own categories count:", own_categories.length);
       
-      // Get services
-      const servicesResponse = await fetcher.get<{ data: any[] }>("/api/provider/services");
+      // Get services including variants so they can be grouped under parents
+      const servicesResponse = await fetcher.get<{ data: any[] }>("/api/provider/services?include_variants=true");
       console.log("Services API response:", servicesResponse);
       const services = servicesResponse.data || [];
       console.log("Services count:", services.length, services);

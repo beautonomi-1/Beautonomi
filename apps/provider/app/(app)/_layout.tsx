@@ -3,7 +3,9 @@
  * - Session: no session → redirect to /(auth)/login. Loading → show "Checking authentication…".
  * - RoleGate: ensures user has provider_owner or provider_staff (blocks and offers sign out otherwise).
  * - AccountStatusGuard: signs out and redirects if account is suspended or deactivated.
- * - Every API call from useApi / api uses Bearer token from Supabase; 401 triggers refresh then retry, then sign out so this layout redirects.
+ * - Every API call from useApi / api uses Bearer token from Supabase; 401 triggers refresh then retry once.
+ *   Sign out only occurs if Supabase itself rejects the refresh (session truly expired/revoked),
+ *   NOT on transient network failures or web API config issues (which would cause a login loop).
  */
 import { Fragment, useEffect, useMemo, useRef } from "react";
 import { View, Text, ActivityIndicator, Linking, Platform } from "react-native";

@@ -87,6 +87,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: true });
     }
 
+    // If payment already initialized, return existing URL to prevent duplicate Paystack sessions
+    if (offer.status === "payment_pending" && offer.payment_url) {
+      return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: false });
+    }
+
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
       await supabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
@@ -112,7 +117,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const { result } = pricing;
     const reference = `co_${id}_${Date.now()}`;
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
     const callbackUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
@@ -142,7 +147,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const paymentUrl = init.data.authorization_url;
 
-    await supabase.from("custom_offers")
+    const { error: updateError } = await supabase.from("custom_offers")
       .update({
         status: "payment_pending",
         payment_reference: reference,
@@ -150,6 +155,11 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         updated_at: new Date().toISOString(),
       })
       .eq("id", id);
+
+    if (updateError) {
+      console.error("[custom-offers/accept] failed to persist payment_pending:", updateError.message);
+      return handleApiError(new Error("Failed to save payment state"), "Unable to process payment. Please try again.", "DB_ERROR", 500);
+    }
 
     return successResponse({ paymentUrl });
   } catch (error) {

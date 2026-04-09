@@ -28,6 +28,8 @@ type Message = {
   is_internal: boolean;
   created_at: string;
   user_id: string;
+  author_name?: string | null;
+  is_mine?: boolean;
 };
 
 type Ticket = {
@@ -227,7 +229,9 @@ export default function SupportTicketDetailScreen() {
             <Text style={twStyle("text-lg font-semibold text-gray-900 mb-4")}>{ticket.subject}</Text>
 
             {messages.map((m) => {
-              const isOwn = m.user_id === user?.id;
+              const isOwn = m.is_mine ?? (m.user_id === user?.id);
+              const authorLabel = isOwn ? "You" : (m.author_name ?? "Support Team");
+              const initials = authorLabel === "You" ? "Me" : authorLabel.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
               return (
                 <View
                   key={m.id}
@@ -239,9 +243,9 @@ export default function SupportTicketDetailScreen() {
                   {!isOwn && (
                     <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 3, gap: 4 }}>
                       <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: Colors.primary, alignItems: "center", justifyContent: "center" }}>
-                        <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>S</Text>
+                        <Text style={{ color: "#fff", fontSize: 9, fontWeight: "700" }}>{initials}</Text>
                       </View>
-                      <Text style={{ fontSize: 11, color: Colors.gray[500], fontWeight: "600" }}>Support Team</Text>
+                      <Text style={{ fontSize: 11, color: Colors.gray[500], fontWeight: "600" }}>{authorLabel}</Text>
                     </View>
                   )}
                   <View

@@ -22,7 +22,7 @@ import {
 // Side-effect imports to register stub components with Turbopack (workaround for HMR bug)
 import "@/components/provider-portal/AppointmentDialogMobile";
 import "@/components/provider-portal/AppointmentDetailsModal";
-import { format, startOfWeek, endOfWeek, addDays } from "date-fns";
+import { format, startOfWeek, endOfWeek, addDays, parseISO } from "date-fns";
 import { dateRangeBoundsUtc, resolveTz, nowInTz } from "@/lib/dates/provider-tz";
 import { useRoutePerformance } from "@/lib/performance/useRoutePerformance";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -436,7 +436,16 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlockDisplay[]>(
     () => initialCalendar?.availabilityBlocks ?? [],
   );
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    // Initialise from URL ?date= param passed through SSR initialCalendar.dateFrom
+    if (initialCalendar?.dateFrom) {
+      try {
+        const d = parseISO(initialCalendar.dateFrom);
+        if (isValidDateValue(d)) return d;
+      } catch { /* ignore */ }
+    }
+    return new Date();
+  });
   const selectedDateSafe = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
   const [locationOperatingHours, setLocationOperatingHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null);
   
@@ -1175,11 +1184,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       return;
     }
     
-    const bizToday = nowInTz(businessTz);
+    // Use the currently-viewed calendar date (falls back to today if invalid)
+    const targetDate = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
     openCreateMode({
       staffId,
       staffName: staffMember?.name,
-      date: format(bizToday, "yyyy-MM-dd"),
+      date: format(targetDate, "yyyy-MM-dd"),
       startTime: "",
       locationId: currentLocation.id,
       locationName: currentLocation.name,

@@ -46,6 +46,9 @@ interface Service {
   duration_minutes: number;
   price: number;
   currency: string;
+  service_type?: string;
+  variant_name?: string | null;
+  parent_service_id?: string | null;
   add_ons?: AddOn[];
 }
 
@@ -139,7 +142,7 @@ interface PaymentSettings {
 
 export default function NewBookingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; time?: string; defaultStatus?: string; clientId?: string; client_id?: string }>();
+  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string }>();
   const { isTablet } = useResponsive();
   const { selectedLocationId } = useProvider();
   const tenantCurrency = getTenantDefaultCurrency();
@@ -152,7 +155,7 @@ export default function NewBookingScreen() {
       : "ZA";
 
   // --- API data ---
-  const { data: services, loading: servicesLoading } = useApi<Service[]>("/api/provider/services");
+  const { data: services, loading: servicesLoading } = useApi<Service[]>("/api/provider/services?include_variants=true");
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
@@ -209,17 +212,18 @@ export default function NewBookingScreen() {
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
 
-  // Pre-select client from navigation params
+  // Pre-select client from navigation params — fetch by ID for reliability
   const preselectedClientId = params.clientId || params.client_id;
   const { data: rawPreselectedClients } = useApi<ApiClient[]>(
-    `/api/provider/clients?search=`,
+    `/api/provider/clients?customer_id=${encodeURIComponent(preselectedClientId ?? "")}`,
     { enabled: !!preselectedClientId && !selectedClient }
   );
   useEffect(() => {
     if (preselectedClientId && rawPreselectedClients && !selectedClient) {
+      // API may return array filtered by customer_id; take first match
       const raw = rawPreselectedClients.find(
         (c) => c.customer_id === preselectedClientId || c.id === preselectedClientId
-      );
+      ) ?? rawPreselectedClients[0];
       if (raw) {
         setSelectedClient({
           id: raw.id,
@@ -435,12 +439,17 @@ export default function NewBookingScreen() {
       scheduled_at: scheduledAt,
       services: selectedServices.map((s) => {
         const svc = services?.find((sv) => sv.id === s.serviceId);
+        // Include add-on durations so the server builds the correct booking window
+        const addonDuration = s.addOnIds.reduce((acc, aoId) => {
+          const ao = svc?.add_ons?.find((a: { id: string; duration_minutes?: number }) => a.id === aoId);
+          return acc + (ao?.duration_minutes || 0);
+        }, 0);
         return {
           service_id: s.serviceId,
           staff_id: s.staffId || undefined,
           add_on_ids: s.addOnIds.length > 0 ? s.addOnIds : undefined,
           price: svc?.price || 0,
-          duration_minutes: svc?.duration_minutes || 60,
+          duration_minutes: (svc?.duration_minutes || 60) + addonDuration,
           currency: svc?.currency || getTenantDefaultCurrency(),
         };
       }),
@@ -456,7 +465,7 @@ export default function NewBookingScreen() {
       tax_rate: summary.taxRatePercent,
       total_amount: summary.total,
       currency: getTenantDefaultCurrency(),
-      status: params.defaultStatus || undefined,
+      status: params.status || params.defaultStatus || undefined,
       referral_source_id: referralSourceId.trim() || undefined,
     };
     if (summary.tipNum > 0) payload.tip_amount = summary.tipNum;
@@ -491,7 +500,7 @@ export default function NewBookingScreen() {
             {
               text: "View subscription",
               onPress: () =>
-                router.push("/(app)/(tabs)/more/subscription" as any),
+                router.push("/(app)/(tabs)/more/settings/subscription" as any),
             },
           ]
         );
@@ -918,87 +927,99 @@ export default function NewBookingScreen() {
                 <LoadingState fullScreen={false} message="Loading services..." />
               ) : (
                 <View style={twStyle("mb-4")}>
-                  {services?.map((service, svcIdx) => {
-                    const sel = selectedServices.find((s) => s.serviceId === service.id);
-                    const isSelected = !!sel;
-                    const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
+                  {(() => {
+                    if (!services) return null;
+                    const parentSvcs = services.filter((s) => !s.parent_service_id && s.service_type !== "variant");
+                    const variantSvcs = services.filter((s) => s.service_type === "variant" || !!s.parent_service_id);
+                    const variantsByParent = new Map<string, Service[]>();
+                    variantSvcs.forEach((v) => {
+                      const key = v.parent_service_id ?? v.id;
+                      if (!variantsByParent.has(key)) variantsByParent.set(key, []);
+                      variantsByParent.get(key)!.push(v);
+                    });
 
-                    return (
-                      <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
-                        <TouchableOpacity
-                          style={twStyle(`flex-row items-center justify-between rounded-xl border p-4 ${
-                            isSelected
-                              ? "border-indigo-500 bg-indigo-50"
-                              : "border-gray-100 bg-white"
-                          }`)}
-                          onPress={() => toggleService(service.id)}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: isSelected }}
-                          accessibilityLabel={`${service.title}, ${service.duration_minutes} minutes, ${formatCurrency(service.price, service.currency)}`}
-                        >
-                          <View style={twStyle("flex-1")}>
-                            <Text
-                              style={twStyle(`text-sm font-medium ${
-                                isSelected ? "text-indigo-900" : "text-gray-900"
-                              }`)}
-                            >
+                    const renderServiceRow = (service: Service, indent?: boolean) => {
+                      const sel = selectedServices.find((s) => s.serviceId === service.id);
+                      const isSelected = !!sel;
+                      const staffName = staffList?.find((s) => s.id === sel?.staffId)?.name;
+                      const displayName = service.variant_name
+                        ? `${service.title} · ${service.variant_name}`
+                        : service.title;
+                      return (
+                        <View key={service.id}>
+                          <TouchableOpacity
+                            style={[
+                              twStyle(`flex-row items-center justify-between rounded-xl border p-4 ${
+                                isSelected ? "border-indigo-500 bg-indigo-50" : "border-gray-100 bg-white"
+                              }`),
+                              indent ? { marginLeft: 12 } : undefined,
+                            ]}
+                            onPress={() => toggleService(service.id)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: isSelected }}
+                            accessibilityLabel={`${displayName}, ${service.duration_minutes} minutes`}
+                          >
+                            <View style={twStyle("flex-1")}>
+                              <Text style={twStyle(`text-sm font-medium ${isSelected ? "text-indigo-900" : "text-gray-900"}`)}>
+                                {displayName}
+                              </Text>
+                              <Text style={twStyle("text-xs text-gray-500")}>{formatDuration(service.duration_minutes)}</Text>
+                            </View>
+                            <View style={twStyle("flex-row items-center")}>
+                              <Text style={twStyle(`mr-3 text-sm font-semibold ${isSelected ? "text-indigo-700" : "text-gray-900"}`)}>
+                                {formatCurrency(service.price, service.currency)}
+                              </Text>
+                              <View style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${isSelected ? "bg-indigo-600" : "border border-gray-300"}`)}>
+                                {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                          {isSelected && (
+                            <View style={[twStyle("mt-1 mb-1 flex-row"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
+                              <TouchableOpacity
+                                style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginRight: 8 }]}
+                                onPress={() => setStaffPickerService(service.id)}
+                                accessibilityLabel={`Assign staff for ${displayName}`}
+                              >
+                                <Ionicons name="person-outline" size={14} color="#6b7280" />
+                                <Text style={twStyle("ml-1 text-xs text-gray-600")}>{staffName ?? "Assign Staff"}</Text>
+                              </TouchableOpacity>
+                              {service.add_ons && service.add_ons.length > 0 && (
+                                <TouchableOpacity
+                                  style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
+                                  onPress={() => setAddOnPickerService(service.id)}
+                                >
+                                  <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
+                                  <Text style={twStyle("ml-1 text-xs text-gray-600")}>Add-ons ({sel?.addOnIds.length ?? 0})</Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    };
+
+                    return parentSvcs.map((service, svcIdx) => {
+                      const variants = variantsByParent.get(service.id) ?? [];
+                      if (variants.length > 0) {
+                        return (
+                          <View key={service.id} style={svcIdx > 0 ? { marginTop: 12 } : undefined}>
+                            <Text style={twStyle("text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 px-1")}>
                               {service.title}
                             </Text>
-                            <Text style={twStyle("text-xs text-gray-500")}>
-                              {formatDuration(service.duration_minutes)}
-                            </Text>
-                          </View>
-                          <View style={twStyle("flex-row items-center")}>
-                            <Text
-                              style={twStyle(`mr-3 text-sm font-semibold ${
-                                isSelected ? "text-indigo-700" : "text-gray-900"
-                              }`)}
-                            >
-                              {formatCurrency(service.price, service.currency)}
-                            </Text>
-                            <View
-                              style={twStyle(`h-5 w-5 items-center justify-center rounded-md ${
-                                isSelected ? "bg-indigo-600" : "border border-gray-300"
-                              }`)}
-                            >
-                              {isSelected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                            <View style={twStyle("gap-y-2")}>
+                              {variants.map((v) => renderServiceRow(v, true))}
                             </View>
                           </View>
-                        </TouchableOpacity>
-
-                        {/* Staff + Add-ons for selected service */}
-                        {isSelected && (
-                          <View style={twStyle("ml-4 mt-1 mb-1 flex-row")}>
-                            {/* Staff picker button */}
-                            <TouchableOpacity
-                              style={[twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5"), { marginRight: 8 }]}
-                              onPress={() => setStaffPickerService(service.id)}
-                              accessibilityLabel={`Assign staff for ${service.title}`}
-                            >
-                              <Ionicons name="person-outline" size={14} color="#6b7280" />
-                              <Text style={twStyle("ml-1 text-xs text-gray-600")}>
-                                {staffName ?? "Assign Staff"}
-                              </Text>
-                            </TouchableOpacity>
-
-                            {/* Add-on picker button */}
-                            {service.add_ons && service.add_ons.length > 0 && (
-                              <TouchableOpacity
-                                style={twStyle("flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-1.5")}
-                                onPress={() => setAddOnPickerService(service.id)}
-                                accessibilityLabel={`Add-ons for ${service.title}`}
-                              >
-                                <Ionicons name="add-circle-outline" size={14} color="#6b7280" />
-                                <Text style={twStyle("ml-1 text-xs text-gray-600")}>
-                                  Add-ons ({sel?.addOnIds.length ?? 0})
-                                </Text>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
+                        );
+                      }
+                      return (
+                        <View key={service.id} style={svcIdx > 0 ? { marginTop: 8 } : undefined}>
+                          {renderServiceRow(service, false)}
+                        </View>
+                      );
+                    });
+                  })()}
                 </View>
               )}
 
@@ -1141,7 +1162,7 @@ export default function NewBookingScreen() {
               </View>
             )}
             <View style={twStyle("flex-row justify-between")}>
-              <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 15}%)</Text>
               <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, tenantCurrency)}</Text>
             </View>
             {summary.travelFeeNum > 0 && (
@@ -1316,6 +1337,7 @@ function ConfirmationView({
     tax: number;
     total: number;
     totalMinutes: number;
+    taxRatePercent?: number;
     travelFeeNum?: number;
     tipNum?: number;
   };
@@ -1376,7 +1398,7 @@ function ConfirmationView({
           </View>
         )}
         <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>VAT (15%)</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 15}%)</Text>
           <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, currency)}</Text>
         </View>
         {(summary.travelFeeNum ?? 0) > 0 && (
