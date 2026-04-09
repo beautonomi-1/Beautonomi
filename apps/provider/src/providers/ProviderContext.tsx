@@ -94,7 +94,7 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       if (fetchIdRef.current === myId) setLoading(false);
     }, PROFILE_LOAD_TIMEOUT_MS);
     try {
-      const [profileRes, roleRes, storedId] = await Promise.all([
+      const [profileRes, roleResFirst, storedId] = await Promise.all([
         api.get<ProviderProfile>("/api/provider/profile"),
         api.get<{ role: string }>("/api/me/role"),
         restoredRef.current ? Promise.resolve<string | null>(null) : AsyncStorage.getItem(LOCATION_STORAGE_KEY),
@@ -104,6 +104,22 @@ export function ProviderProvider({ children }: { children: ReactNode }) {
       if (fetchIdRef.current !== myId) return;
 
       restoredRef.current = true;
+
+      // Retry /api/me/role on 5xx errors (e.g. self-heal race for newly created user rows).
+      // Mirrors the customer RoleGate retry behaviour so the provider app also heals transparently.
+      let roleRes = roleResFirst;
+      const roleStatus = (roleResFirst.error as { status?: number } | undefined)?.status;
+      if (roleResFirst.error && roleStatus !== undefined && roleStatus >= 500) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+          if (fetchIdRef.current !== myId) return;
+          const retried = await api.get<{ role: string }>("/api/me/role");
+          roleRes = retried;
+          const retriedStatus = (retried.error as { status?: number } | undefined)?.status;
+          if (!retried.error || retriedStatus === undefined || retriedStatus < 500) break;
+        }
+        if (fetchIdRef.current !== myId) return;
+      }
 
       const pe = profileRes.error as { status?: number; code?: string; message?: string } | undefined;
       const isNoProviderRowYet =

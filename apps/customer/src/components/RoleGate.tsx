@@ -25,12 +25,14 @@ export function RoleGate({ children }: RoleGateProps) {
   const [blocked, setBlocked] = useState(false);
   const [errorType, setErrorType] = useState<ErrorType>(null);
   const fetchCountRef = useRef(0);
+  // cancelledRef is set by useEffect cleanup to prevent stale fetches from updating state.
+  const cancelledRef = useRef(false);
 
   const runFetch = useCallback(async () => {
     if (!user?.id) return;
     const myFetch = ++fetchCountRef.current;
+    cancelledRef.current = false;
 
-    let cancelled = false;
     setLoading(true);
     setErrorType(null);
     setBlocked(false);
@@ -44,19 +46,24 @@ export function RoleGate({ children }: RoleGateProps) {
       try {
         res = await api.get<{ role: UserRole }>("/api/me/role");
       } catch {
-        if (cancelled || fetchCountRef.current !== myFetch) return;
+        if (cancelledRef.current || fetchCountRef.current !== myFetch) return;
         setLoading(false);
         setErrorType("network");
         return;
       }
-      if (cancelled || fetchCountRef.current !== myFetch) return;
+      if (cancelledRef.current || fetchCountRef.current !== myFetch) return;
 
       if (res.error) {
         const status = (res.error as { status?: number }).status;
-        // Retry auth errors up to 4 times (iOS session commit lag)
-        if ((status === 401 || status === 403) && attempt < 4) {
+
+        // Retry auth errors (iOS session commit lag) AND 5xx errors (self-heal user row race)
+        const shouldRetry =
+          ((status === 401 || status === 403) && attempt < 4) ||
+          (status !== undefined && status >= 500 && attempt < 2);
+
+        if (shouldRetry) {
           await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
-          if (!cancelled && fetchCountRef.current === myFetch) {
+          if (!cancelledRef.current && fetchCountRef.current === myFetch) {
             return fetchRole(attempt + 1);
           }
           return;
@@ -93,18 +100,20 @@ export function RoleGate({ children }: RoleGateProps) {
     try {
       await fetchRole(0);
     } catch {
-      if (!cancelled && fetchCountRef.current === myFetch) {
+      if (!cancelledRef.current && fetchCountRef.current === myFetch) {
         setLoading(false);
         setErrorType("network");
       }
     }
-
-    return () => { cancelled = true; };
   }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
+    cancelledRef.current = false;
     void runFetch();
+    return () => {
+      cancelledRef.current = true;
+    };
   }, [user?.id, runFetch]);
 
   if (!user) return <>{children}</>;

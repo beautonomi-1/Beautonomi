@@ -36,6 +36,7 @@ interface TimeBlock {
   start_time: string;
   end_time: string;
   is_recurring: boolean;
+  recurring_pattern: { frequency: string; days?: number[] } | null;
   is_active: boolean;
   notes: string | null;
 }
@@ -50,6 +51,7 @@ export function TimeBlocksContent() {
   const [blockDate, setBlockDate] = useState(() => new Date());
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
+  const [isRecurring, setIsRecurring] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -77,6 +79,7 @@ export function TimeBlocksContent() {
     setBlockDate(new Date());
     setStartTime("09:00");
     setEndTime("17:00");
+    setIsRecurring(false);
     setAddOpen(true);
   };
 
@@ -97,6 +100,12 @@ export function TimeBlocksContent() {
       date: dateStr,
       start_time: startTime,
       end_time: endTime,
+      is_recurring: isRecurring,
+      // When recurring, default to weekly on the same weekday as the selected date.
+      // days[] uses JS getDay() convention: 0=Sun, 1=Mon … 6=Sat.
+      recurring_pattern: isRecurring
+        ? { frequency: "weekly", days: [blockDate.getDay()] }
+        : undefined,
       notes: notes.trim() || null,
     });
     if (err) {
@@ -192,11 +201,20 @@ export function TimeBlocksContent() {
                 />
               </View>
               <View style={twStyle("ml-3 flex-1")}>
-                <Text style={twStyle("text-base font-semibold text-gray-900")} numberOfLines={1}>
-                  {block.name}
-                </Text>
+                <View style={twStyle("flex-row items-center")}>
+                  <Text style={twStyle("flex-1 text-base font-semibold text-gray-900")} numberOfLines={1}>
+                    {block.name}
+                  </Text>
+                  {block.is_recurring && (
+                    <View style={twStyle("ml-2 rounded-full bg-blue-100 px-2 py-0.5")}>
+                      <Text style={twStyle("text-xs font-medium text-blue-700")}>Weekly</Text>
+                    </View>
+                  )}
+                </View>
                 <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
-                  {block.date} · {block.start_time} – {block.end_time}
+                  {block.is_recurring
+                    ? `Every ${format(new Date(`${block.date}T12:00:00`), "EEEE")} · ${block.start_time} – ${block.end_time}`
+                    : `${block.date} · ${block.start_time} – ${block.end_time}`}
                 </Text>
                 {block.team_member_name && (
                   <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
@@ -289,6 +307,46 @@ export function TimeBlocksContent() {
             }}
           />
         )}
+        {/* Repeat weekly toggle */}
+        <TouchableOpacity
+          onPress={() => setIsRecurring((v) => !v)}
+          style={twStyle("mb-4 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          activeOpacity={0.7}
+        >
+          <View style={twStyle("flex-row items-center")}>
+            <Ionicons name="repeat-outline" size={20} color={isRecurring ? "#2563eb" : "#6b7280"} />
+            <View style={twStyle("ml-3")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>Repeat weekly</Text>
+              {isRecurring && (
+                <Text style={twStyle("mt-0.5 text-xs text-blue-600")}>
+                  Repeats every {format(blockDate, "EEEE")}
+                </Text>
+              )}
+            </View>
+          </View>
+          <View
+            style={[
+              twStyle("h-6 w-11 rounded-full"),
+              { backgroundColor: isRecurring ? "#2563eb" : "#d1d5db" },
+            ]}
+          >
+            <View
+              style={[
+                twStyle("h-5 w-5 rounded-full bg-white"),
+                {
+                  marginTop: 2,
+                  marginLeft: isRecurring ? 22 : 2,
+                  shadowColor: "#000",
+                  shadowOffset: { width: 0, height: 1 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 1,
+                  elevation: 2,
+                },
+              ]}
+            />
+          </View>
+        </TouchableOpacity>
+
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
         <TextInput
           style={[
