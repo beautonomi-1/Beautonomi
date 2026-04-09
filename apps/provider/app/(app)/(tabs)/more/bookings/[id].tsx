@@ -169,6 +169,7 @@ type BookingDetail = {
     staff_id?: string | null;
     staff_name?: string | null;
     scheduled_start_at?: string;
+    scheduled_end_at?: string;
     duration_minutes?: number;
     price?: number;
     guest_name?: string | null;

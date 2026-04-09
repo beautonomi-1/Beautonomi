@@ -646,7 +646,7 @@ export function AppointmentDialog({
     // Recurring series cannot be checked out in one step — create the series via Save instead.
     if (!appointment && formData.is_recurring) {
       toast.warning(
-        "Recurring series cannot be checked out directly. The first appointment will be created and checked out. Use "Save" to create the full series.",
+        'Recurring series cannot be checked out directly. The first appointment will be created and checked out. Use "Save" to create the full series.',
         { duration: 6000 }
       );
     }

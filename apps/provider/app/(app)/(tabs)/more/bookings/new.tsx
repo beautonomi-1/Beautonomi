@@ -1337,6 +1337,7 @@ function ConfirmationView({
     tax: number;
     total: number;
     totalMinutes: number;
+    taxRatePercent?: number;
     travelFeeNum?: number;
     tipNum?: number;
   };
