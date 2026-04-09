@@ -114,7 +114,21 @@ function formatBudget(
 }
 
 function canAcceptOffer(offer: CustomRequestOffer): boolean {
-  if (offer.status === "paid" || offer.status === "expired" || offer.status === "withdrawn") return false;
+  if (
+    offer.status === "paid" ||
+    offer.status === "expired" ||
+    offer.status === "withdrawn" ||
+    offer.status === "payment_pending"
+  )
+    return false;
+  const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;
+  if (exp != null && exp < Date.now()) return false;
+  return true;
+}
+
+function canContinuePayment(offer: CustomRequestOffer): boolean {
+  if (offer.status !== "payment_pending") return false;
+  if (!offer.payment_url) return false;
   const exp = offer.expiration_at ? new Date(offer.expiration_at).getTime() : null;
   if (exp != null && exp < Date.now()) return false;
   return true;
@@ -134,6 +148,7 @@ function canCancelRequest(item: CustomRequest): boolean {
 function RequestCard({
   item,
   onAcceptPay,
+  onContinuePayment,
   onPressProvider,
   onCancel,
   refreshingOfferId,
@@ -141,6 +156,7 @@ function RequestCard({
 }: {
   item: CustomRequest;
   onAcceptPay: (offerId: string) => void;
+  onContinuePayment: (paymentUrl: string) => void;
   onPressProvider: () => void;
   onCancel: (requestId: string) => void;
   refreshingOfferId: string | null;
@@ -150,11 +166,36 @@ function RequestCard({
   const budget = formatBudget(item.budget_min, item.budget_max);
   const hasPaidOffer = item.offers?.some((o) => o.status === "paid");
   const hasPendingOffer = item.offers?.some(canAcceptOffer);
+  const hasPendingPayment = !hasPaidOffer && item.offers?.some(canContinuePayment);
   const isCancelled = item.status === "cancelled";
-  const statusLabel = isCancelled ? "Cancelled" : hasPaidOffer ? "Paid" : hasPendingOffer ? "Offer to accept" : item.status ?? "Pending";
+  const statusLabel = isCancelled
+    ? "Cancelled"
+    : hasPaidOffer
+      ? "Paid"
+      : hasPendingPayment
+        ? "Payment pending"
+        : hasPendingOffer
+          ? "Offer to accept"
+          : item.status ?? "Pending";
 
-  const statusBg = isCancelled ? "#FEE2E2" : hasPaidOffer ? "#DCFCE7" : hasPendingOffer ? "#FEF3C7" : Colors.gray[100];
-  const statusText = isCancelled ? "#B91C1C" : hasPaidOffer ? "#166534" : hasPendingOffer ? "#92400E" : Colors.gray[600];
+  const statusBg = isCancelled
+    ? "#FEE2E2"
+    : hasPaidOffer
+      ? "#DCFCE7"
+      : hasPendingPayment
+        ? "#EFF6FF"
+        : hasPendingOffer
+          ? "#FEF3C7"
+          : Colors.gray[100];
+  const statusText = isCancelled
+    ? "#B91C1C"
+    : hasPaidOffer
+      ? "#166534"
+      : hasPendingPayment
+        ? "#1D4ED8"
+        : hasPendingOffer
+          ? "#92400E"
+          : Colors.gray[600];
   const showCancel = canCancelRequest(item);
   const isCancelling = cancellingRequestId === item.id;
 
@@ -229,6 +270,20 @@ function RequestCard({
                     <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>Paid</Text>
                   ) : expired ? (
                     <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Expired</Text>
+                  ) : o.status === "withdrawn" ? (
+                    <Text style={{ fontSize: 14, color: Colors.gray[400] }}>Withdrawn</Text>
+                  ) : canContinuePayment(o) ? (
+                    <TouchableOpacity
+                      onPress={() => onContinuePayment(o.payment_url!)}
+                      disabled={isRefreshing}
+                      style={{ backgroundColor: "#1D4ED8", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}
+                    >
+                      {isRefreshing ? (
+                        <ActivityIndicator size="small" color={Colors.white} />
+                      ) : (
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Continue Payment</Text>
+                      )}
+                    </TouchableOpacity>
                   ) : canAccept ? (
                     <TouchableOpacity onPress={() => onAcceptPay(o.id)} disabled={isRefreshing} style={{ backgroundColor: Colors.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12 }}>
                       {isRefreshing ? <ActivityIndicator size="small" color={Colors.white} /> : <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Accept & Pay</Text>}
@@ -338,6 +393,14 @@ export default function CustomRequestsScreen() {
     []
   );
 
+  const handleContinuePayment = useCallback((paymentUrl: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({
+      pathname: "/(app)/in-app-browser",
+      params: { url: encodeURIComponent(paymentUrl), title: "Complete payment" },
+    });
+  }, []);
+
   const handlePressProvider = useCallback((item: CustomRequest) => {
     if (item.provider?.slug) {
       router.push({
@@ -396,6 +459,7 @@ export default function CustomRequestsScreen() {
           <RequestCard
             item={item}
             onAcceptPay={handleAcceptPay}
+            onContinuePayment={handleContinuePayment}
             onPressProvider={() => handlePressProvider(item)}
             onCancel={handleCancelRequest}
             refreshingOfferId={refreshingOfferId}

@@ -40,30 +40,13 @@ export async function signUp(data: SignUpData) {
   });
 
   if (authError) {
-    // Provide more detailed error information for debugging
     const errorMessage = authError.message || 'Unknown error occurred during signup';
-    console.error('Signup error details:', {
-      message: authError.message,
-      status: authError.status,
-      name: authError.name,
-      email: data.email,
-    });
+    console.error('Signup error:', { message: authError.message, status: authError.status });
     throw new Error(errorMessage);
   }
 
-  // Log successful signup details for debugging
-  console.log('Signup successful:', {
-    userId: authData.user?.id,
-    email: authData.user?.email,
-    hasSession: !!authData.session,
-    emailConfirmed: !!authData.user?.email_confirmed_at,
-    userCreated: !!authData.user,
-    sessionExpiresAt: authData.session?.expires_at,
-  });
-
-  // If no session but user was created, log a warning
   if (authData.user && !authData.session) {
-    console.warn('User created but no session returned. This may indicate email verification is enabled in Supabase settings.');
+    console.warn('User created but no session returned — email verification may be enabled.');
   }
 
   // User profile is created automatically via trigger

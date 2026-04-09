@@ -39,7 +39,7 @@ export default function ProviderBlastCampaigns() {
         subtitle="Promote your business with targeted campaigns"
         primaryAction={{
           label: "Start Campaign",
-          onClick: () => console.log("Start campaign"),
+          onClick: () => toast.info("Blast campaign builder coming soon. Stay tuned!"),
           icon: <Plus className="w-4 h-4 mr-2" />,
         }}
       />
@@ -57,7 +57,7 @@ export default function ProviderBlastCampaigns() {
             description="Reach your clients with targeted marketing messages, promote special offers, and increase bookings."
             action={{
               label: "Start now",
-              onClick: () => console.log("Start campaign"),
+              onClick: () => toast.info("Blast campaign builder coming soon. Stay tuned!"),
             }}
           />
         </SectionCard>

@@ -109,7 +109,7 @@ export async function POST(
         customer_id: user.id,
         payment_type: "additional_charge",
       },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${chargeId}`,
+      callback_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/account-settings/bookings/${bookingId}/payment-callback?charge_id=${chargeId}`,
       tenantId: paymentTenantId,
     });
 

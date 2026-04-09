@@ -7,6 +7,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
@@ -79,24 +80,24 @@ export default function NewSupportTicketScreen() {
           <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Category</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 20 }}>
             {CATEGORIES.map((c) => (
-              <View
+              <TouchableOpacity
                 key={c.value}
+                onPress={() => setCategory(c.value)}
+                accessibilityRole="button"
+                accessibilityState={{ selected: category === c.value }}
                 style={{
                   borderRadius: 20,
                   paddingHorizontal: 14,
-                  paddingVertical: 8,
+                  paddingVertical: 10,
                   borderWidth: 1.5,
                   borderColor: category === c.value ? Colors.primary : Colors.gray[200],
                   backgroundColor: category === c.value ? `${Colors.primary}12` : "#fff",
                 }}
               >
-                <Text
-                  onPress={() => setCategory(c.value)}
-                  style={{ fontSize: 13, fontWeight: "600", color: category === c.value ? Colors.primary : Colors.gray[600] }}
-                >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: category === c.value ? Colors.primary : Colors.gray[600] }}>
                   {c.label}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
 

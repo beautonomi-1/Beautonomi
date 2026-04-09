@@ -267,11 +267,21 @@ export default function BookingDetailScreen() {
   const locationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationPermissionDeniedRef = useRef(false);
 
-  const durationMinutes = useMemo(
-    () =>
-      (data?.services ?? []).reduce((s, svc) => s + (svc.duration_minutes ?? 0), 0) || 60,
-    [data?.services]
-  );
+  const durationMinutes = useMemo(() => {
+    const svcs = data?.services ?? [];
+    // Derive from scheduled times (includes add-on durations captured at booking creation)
+    if (svcs.length > 0 && data?.scheduled_at) {
+      const lastSvc = svcs[svcs.length - 1];
+      if (lastSvc.scheduled_end_at) {
+        const ms =
+          new Date(lastSvc.scheduled_end_at).getTime() -
+          new Date(data.scheduled_at).getTime();
+        const mins = Math.round(ms / 60000);
+        if (mins > 0) return mins;
+      }
+    }
+    return svcs.reduce((s, svc) => s + (svc.duration_minutes ?? 0), 0) || 60;
+  }, [data?.services, data?.scheduled_at]);
 
   // Reschedule
   const [showReschedule, setShowReschedule] = useState(false);

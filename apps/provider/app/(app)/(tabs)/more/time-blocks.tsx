@@ -46,6 +46,7 @@ export function TimeBlocksContent() {
   const [refreshing, setRefreshing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
   const [blockDate, setBlockDate] = useState(() => new Date());
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
@@ -72,6 +73,7 @@ export function TimeBlocksContent() {
 
   const openAdd = () => {
     setName("");
+    setNotes("");
     setBlockDate(new Date());
     setStartTime("09:00");
     setEndTime("17:00");
@@ -95,6 +97,7 @@ export function TimeBlocksContent() {
       date: dateStr,
       start_time: startTime,
       end_time: endTime,
+      notes: notes.trim() || null,
     });
     if (err) {
       Alert.alert("Error", err);
@@ -270,7 +273,7 @@ export function TimeBlocksContent() {
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>End time</Text>
         <TouchableOpacity
           onPress={() => setShowEndPicker(true)}
-          style={twStyle("mb-6 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
+          style={twStyle("mb-4 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}
         >
           <Ionicons name="time-outline" size={20} color="#6b7280" />
           <Text style={twStyle("ml-2 text-base text-gray-900")}>{endTime}</Text>
@@ -286,6 +289,19 @@ export function TimeBlocksContent() {
             }}
           />
         )}
+        <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Notes (optional)</Text>
+        <TextInput
+          style={[
+            twStyle("mb-6 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-900"),
+            { minHeight: 60, textAlignVertical: "top" },
+          ]}
+          placeholder="e.g. Team meeting, training"
+          placeholderTextColor="#9ca3af"
+          value={notes}
+          onChangeText={setNotes}
+          multiline
+          maxLength={200}
+        />
         <ActionButton
           label={creating ? "Adding…" : "Add block"}
           onPress={handleCreate}

@@ -10,7 +10,7 @@ import {
 } from "@/lib/public-booking/booking-draft-schema";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
 import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 
@@ -49,7 +49,12 @@ export async function POST(request: NextRequest) {
     async () => {
       try {
         const supabase = await getSupabaseServer();
-        const body = await request.json();
+        let body: unknown;
+        try {
+          body = await request.json();
+        } catch {
+          return errorResponse("Invalid request body.", "VALIDATION_ERROR", 400);
+        }
 
         // 1. Parse & validate input (normalize synthetic staff ids for DB FKs)
         let validatedDraft: PublicBookingValidatedBody;

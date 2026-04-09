@@ -191,8 +191,8 @@ export async function POST(request: NextRequest) {
           ],
         },
         callback_url: rawMeta.type === "product_order"
-          ? `${process.env.NEXT_PUBLIC_APP_URL}/shop/payment-callback`
-          : `${process.env.NEXT_PUBLIC_APP_URL}/booking/callback`,
+          ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
+          : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/booking/callback`,
       }),
     });
 

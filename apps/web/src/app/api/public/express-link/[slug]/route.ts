@@ -48,6 +48,9 @@ export async function GET(
 
     if (tenantProviderIds.length > 0) {
       linkQuery.in("provider_id", tenantProviderIds);
+    } else {
+      // No providers in this tenant — cannot safely resolve without scoping; fail fast.
+      return notFoundResponse("Booking link not found");
     }
 
     const { data: link, error: linkError } = await linkQuery.maybeSingle();

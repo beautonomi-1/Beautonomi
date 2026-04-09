@@ -186,7 +186,7 @@ export async function GET(
     }
 
     // Generate OAuth URL based on provider (state carries provider_id for callback)
-    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/provider/calendar/callback/${provider}`;
+    const redirectUri = `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/api/provider/calendar/callback/${provider}`;
     const state = encodeCalendarOAuthState(providerId);
 
     let authUrl = "";

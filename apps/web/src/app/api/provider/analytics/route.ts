@@ -38,20 +38,57 @@ export async function GET(request: NextRequest) {
     }
 
     const searchParams = request.nextUrl.searchParams;
-    const _period = searchParams.get("period") || "month";
+    const period = searchParams.get("period") || "month";
+    const locationId = searchParams.get("location_id") || null;
 
-    // Calculate date ranges
+    // Calculate date ranges based on period
     const now = new Date();
-    const thisMonthStart = startOfMonth(now);
-    const thisMonthEnd = endOfMonth(now);
-    const lastMonthStart = startOfMonth(subMonths(now, 1));
-    const lastMonthEnd = endOfMonth(subMonths(now, 1));
-    const _twelveMonthsAgo = subMonths(now, 12);
-    
-    // Ensure this month query only includes up to current date (not future)
+    let currentStart: Date;
+    let currentEnd: Date;
+    let previousStart: Date;
+    let previousEnd: Date;
+
+    if (period === "week") {
+      const dayOfWeek = now.getDay(); // 0 = Sunday
+      currentStart = new Date(now);
+      currentStart.setDate(now.getDate() - dayOfWeek);
+      currentStart.setHours(0, 0, 0, 0);
+      currentEnd = new Date(currentStart);
+      currentEnd.setDate(currentStart.getDate() + 6);
+      currentEnd.setHours(23, 59, 59, 999);
+      previousStart = new Date(currentStart);
+      previousStart.setDate(currentStart.getDate() - 7);
+      previousEnd = new Date(currentEnd);
+      previousEnd.setDate(currentEnd.getDate() - 7);
+    } else if (period === "year") {
+      currentStart = new Date(now.getFullYear(), 0, 1);
+      currentEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      previousStart = new Date(now.getFullYear() - 1, 0, 1);
+      previousEnd = new Date(now.getFullYear() - 1, 11, 31, 23, 59, 59, 999);
+    } else {
+      // Default: month
+      currentStart = startOfMonth(now);
+      currentEnd = endOfMonth(now);
+      previousStart = startOfMonth(subMonths(now, 1));
+      previousEnd = endOfMonth(subMonths(now, 1));
+    }
+
+    const thisMonthStart = currentStart;
+    const thisMonthEnd = currentEnd;
+    const lastMonthStart = previousStart;
+    const lastMonthEnd = previousEnd;
+
+    // Ensure current period query only includes up to now (not future)
     const thisMonthEndDate = now < thisMonthEnd ? now : thisMonthEnd;
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
+    // Build location-scoped booking query helper
+    const bookingBaseQuery = () => {
+      let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: false }).eq("provider_id", providerId);
+      if (locationId) q = q.eq("location_id", locationId);
+      return q;
+    };
 
     // Parallel queries for better performance
     const [
@@ -63,36 +100,18 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       // Revenue — same net as main provider dashboard revenue cards
       Promise.all([
-        getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, null, dashOpts),
-        getProviderRevenue(supabaseAdmin, providerId, thisMonthStart, thisMonthEndDate, null, dashOpts),
-        getProviderRevenue(supabaseAdmin, providerId, lastMonthStart, lastMonthEnd, null, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, new Date(0), now, locationId, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, thisMonthStart, thisMonthEndDate, locationId, dashOpts),
+        getProviderRevenue(supabaseAdmin, providerId, lastMonthStart, lastMonthEnd, locationId, dashOpts),
       ]),
       // Booking counts (parallel queries)
       Promise.all([
-        supabaseAdmin
-          .from("bookings")
-          .select("id, created_at", { count: "exact", head: true })
-          .eq("provider_id", providerId),
-        supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .eq("provider_id", providerId)
-          .gte("created_at", thisMonthStart.toISOString())
-          .lte("created_at", thisMonthEndDate.toISOString()),
-        supabaseAdmin
-          .from("bookings")
-          .select("id")
-          .eq("provider_id", providerId)
-          .gte("created_at", lastMonthStart.toISOString())
-          .lte("created_at", lastMonthEnd.toISOString()),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+        bookingBaseQuery().gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+        bookingBaseQuery().gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()),
       ]),
       // Upcoming bookings
-      supabaseAdmin
-        .from("bookings")
-        .select("id", { count: "exact", head: true })
-        .eq("provider_id", providerId)
-        .eq("status", "confirmed")
-        .gt("scheduled_at", now.toISOString()),
+      (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
       // Service popularity (simplified query)
       supabaseAdmin
         .from("booking_services")
@@ -107,10 +126,7 @@ export async function GET(request: NextRequest) {
         .eq("offerings.provider_id", providerId)
         .limit(1000), // Limit to prevent huge queries
       // Customer analytics
-      supabaseAdmin
-        .from("bookings")
-        .select("customer_id")
-        .eq("provider_id", providerId),
+      (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
     ]);
 
     // Extract revenue data
@@ -147,10 +163,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Revenue trends (last 12 months) - optimized single query approach
-    const _trends: Array<{ month: string; revenue: number; bookings: number }> = [];
+    // Revenue trends - 12 data points (months for month/year periods; weeks for week period)
     const trendPromises: Promise<{ month: string; revenue: number; bookings: number }>[] = [];
-    
+
     for (let i = 11; i >= 0; i--) {
       const monthDate = startOfMonth(subMonths(now, i));
       const monthEnd = endOfMonth(subMonths(now, i));
@@ -158,13 +173,12 @@ export async function GET(request: NextRequest) {
 
       trendPromises.push(
         Promise.all([
-          getProviderRevenue(supabaseAdmin, providerId, monthDate, monthEnd, null, dashOpts),
-          supabaseAdmin
-            .from("bookings")
-            .select("id", { count: "exact", head: true })
-            .eq("provider_id", providerId)
-            .gte("created_at", monthDate.toISOString())
-            .lte("created_at", monthEnd.toISOString()),
+          getProviderRevenue(supabaseAdmin, providerId, monthDate, monthEnd, locationId, dashOpts),
+          (() => {
+            let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", monthDate.toISOString()).lte("created_at", monthEnd.toISOString());
+            if (locationId) q = q.eq("location_id", locationId);
+            return q;
+          })(),
         ]).then(([revenueData, bookingsData]) => ({
           month: monthStr,
           revenue: revenueData.totalRevenue,

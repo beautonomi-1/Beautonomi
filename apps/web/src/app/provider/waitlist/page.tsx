@@ -6,12 +6,14 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, User, Phone, Mail, MessageSquare } from "lucide-react";
+import { Calendar, Clock, User, Phone, Mail, MessageSquare, Bell, CalendarPlus, Loader2 } from "lucide-react";
 import AuthGuard from "@/components/auth/auth-guard";
 import { SettingsDetailLayout, PageHeader } from "@/components/provider";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useWaitlistEntriesRealtime } from "@/hooks/useSupabaseRealtime";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface WaitlistEntry {
   id: string;
@@ -38,11 +40,13 @@ interface WaitlistEntry {
 }
 
 export default function ProviderWaitlistPage() {
+  const router = useRouter();
   const { provider, selectedLocationId } = useProviderPortal();
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<"all" | "waiting" | "contacted" | "booked">("waiting");
+  const [notifyingId, setNotifyingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadWaitlist();
@@ -74,6 +78,32 @@ export default function ProviderWaitlistPage() {
   }, []);
   const supabaseClient = getSupabaseClient();
   useWaitlistEntriesRealtime(supabaseClient, provider?.id, refreshWaitlist);
+
+  const handleContactCustomer = async (entry: WaitlistEntry) => {
+    setNotifyingId(entry.id);
+    try {
+      await fetcher.post(`/api/provider/waitlist/${entry.id}/notify`, {});
+      toast.success(`Notification sent to ${entry.customer_name}`);
+      loadWaitlist();
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to send notification");
+    } finally {
+      setNotifyingId(null);
+    }
+  };
+
+  const handleCreateBooking = (entry: WaitlistEntry) => {
+    const params = new URLSearchParams();
+    if (entry.customer_name) params.set("client_name", entry.customer_name);
+    if (entry.customer_email) params.set("client_email", entry.customer_email);
+    if (entry.customer_phone) params.set("client_phone", entry.customer_phone);
+    if (entry.service_id) params.set("service_id", entry.service_id);
+    if (entry.staff_id) params.set("staff_id", entry.staff_id);
+    if (entry.preferred_date) params.set("date", entry.preferred_date);
+    if (entry.preferred_time_start) params.set("time", entry.preferred_time_start);
+    params.set("waitlist_entry_id", entry.id);
+    router.push(`/provider/calendar?new=1&${params.toString()}`);
+  };
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
@@ -238,13 +268,42 @@ export default function ProviderWaitlistPage() {
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-4 border-t">
-                    <Button variant="outline" size="sm">
-                      Contact Customer
+                  <div className="flex gap-2 pt-4 border-t flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleContactCustomer(entry)}
+                      disabled={notifyingId === entry.id || entry.status === "contacted" || entry.status === "booked"}
+                    >
+                      {notifyingId === entry.id ? (
+                        <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                      ) : (
+                        <Bell className="w-3 h-3 mr-1.5" />
+                      )}
+                      {entry.status === "contacted" ? "Notified" : "Notify Customer"}
                     </Button>
-                    <Button variant="outline" size="sm">
-                      Create Booking
-                    </Button>
+                    {(entry.customer_email || entry.customer_phone) && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        asChild
+                      >
+                        <a href={entry.customer_email ? `mailto:${entry.customer_email}` : `tel:${entry.customer_phone}`}>
+                          <Mail className="w-3 h-3 mr-1.5" />
+                          {entry.customer_email ? "Email" : "Call"}
+                        </a>
+                      </Button>
+                    )}
+                    {entry.status !== "booked" && (
+                      <Button
+                        variant="default"
+                        size="sm"
+                        onClick={() => handleCreateBooking(entry)}
+                      >
+                        <CalendarPlus className="w-3 h-3 mr-1.5" />
+                        Create Booking
+                      </Button>
+                    )}
                   </div>
 
                   <p className="text-xs text-gray-500 mt-2">

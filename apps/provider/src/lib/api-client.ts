@@ -140,23 +140,38 @@ function isSessionInvalidError(error: { message?: string } | null): boolean {
   );
 }
 
-/** On 401: refresh session, retry once. Only sign out if session invalid (not on network errors). */
+/** On 401: refresh session, retry once. Only sign out when Supabase itself rejects the session. */
 async function withSessionRecovery<T>(
   fn: () => Promise<ApiResponse<T>>
 ): Promise<ApiResponse<T>> {
   const res = await fn();
   const status = (res.error as { status?: number } | undefined)?.status;
   if (status !== 401) return res;
+
   const { error: refreshError } = await supabase.auth.refreshSession();
   if (refreshError) {
+    // Only sign out when Supabase explicitly invalidates the session (expired/revoked),
+    // not for network failures, wrong APP_URL, or transient infra errors.
     if (isSessionInvalidError(refreshError)) {
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb("session_recovery", { outcome: "sign_out", reason: refreshError.message });
+      }
       await supabase.auth.signOut();
     }
     return res;
   }
+
   const retry = await fn();
-  if ((retry.error as { status?: number } | undefined)?.status === 401) {
-    await supabase.auth.signOut();
+  // If the web API still returns 401 after a *successful* Supabase token refresh, the Supabase
+  // session is valid — the rejection is coming from server config (wrong APP_URL, tenant header,
+  // server-side role check, etc.). Do NOT sign out; the user would lose a perfectly valid session
+  // and be stuck in a login loop. The caller/UI will surface the error instead.
+  if (isSentryEnabled()) {
+    const retryStatus = (retry.error as { status?: number } | undefined)?.status;
+    authFlowBreadcrumb("session_recovery", {
+      outcome: retryStatus === 401 ? "second_401_no_signout" : "retry_ok",
+      retryStatus,
+    });
   }
   return retry;
 }

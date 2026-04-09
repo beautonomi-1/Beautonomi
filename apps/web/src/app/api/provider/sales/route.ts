@@ -79,7 +79,12 @@ export async function GET(request: NextRequest) {
       salesQuery = salesQuery.lte('sale_date', `${dateTo}T23:59:59`);
     }
 
-    // Apply pagination
+    // Apply ref_number search at DB level so pagination counts are accurate
+    if (search) {
+      salesQuery = salesQuery.ilike('ref_number', `%${search}%`);
+    }
+
+    // Apply pagination after all filters
     salesQuery = salesQuery.range(offset, offset + limit - 1);
 
     const { data: sales, error: salesError, count } = await salesQuery;
@@ -200,12 +205,12 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Apply search filter if provided
+    // Apply secondary client_name filter post-fetch (ref_number is already filtered in DB)
     let filteredSales = transformedSales;
     if (search) {
       const searchLower = search.toLowerCase();
-      filteredSales = transformedSales.filter(s => 
-        s.ref_number.toLowerCase().includes(searchLower) ||
+      filteredSales = transformedSales.filter(s =>
+        (s.ref_number ?? "").toLowerCase().includes(searchLower) ||
         s.client_name?.toLowerCase().includes(searchLower)
       );
     }
@@ -260,12 +265,14 @@ export async function POST(request: NextRequest) {
       tax_rate,
       tax_amount,
       discount_amount,
+      tip_amount,
       total_amount,
       payment_method,
       payment_status,
       payment_reference,
       service_location_type,
       house_call_address,
+      is_walk_in,
       notes,
     } = body;
 
@@ -309,11 +316,17 @@ export async function POST(request: NextRequest) {
         total_amount: calculatedTotal,
         payment_method: payment_method || 'cash',
         payment_status: payment_status || 'completed',
-        notes: payment_reference 
-          ? `${notes || ''}\nPayment Reference: ${payment_reference}`.trim() 
-          : service_location_type === 'house-call' && house_call_address
-          ? `${notes || ''}\nHouse Call Address: ${house_call_address.address_line1}, ${house_call_address.city}${house_call_address.postal_code ? `, ${house_call_address.postal_code}` : ''}`.trim()
-          : (notes || null),
+        notes: (() => {
+          const parts: string[] = [];
+          if (notes) parts.push(notes);
+          if (payment_reference) parts.push(`Payment Reference: ${payment_reference}`);
+          if (service_location_type === 'house-call' && house_call_address) {
+            parts.push(`House Call Address: ${house_call_address.address_line1}, ${house_call_address.city}${house_call_address.postal_code ? `, ${house_call_address.postal_code}` : ''}`);
+          }
+          if (tip_amount && tip_amount > 0) parts.push(`Tip: ${tip_amount}`);
+          if (is_walk_in) parts.push('Walk-in');
+          return parts.length > 0 ? parts.join('\n') : null;
+        })(),
         created_by: user.id,
       })
       .select()

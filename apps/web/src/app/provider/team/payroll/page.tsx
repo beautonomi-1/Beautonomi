@@ -100,11 +100,15 @@ export default function PayrollPage() {
       <PageHeader
         title="Payroll"
         subtitle="Manage pay runs and staff payments"
-        primaryAction={{
-          label: "New Pay Run",
-          onClick: () => setIsCreateOpen(true),
-          icon: <Plus className="w-4 h-4 mr-2" />,
-        }}
+        primaryAction={
+          isOwner
+            ? {
+                label: "New Pay Run",
+                onClick: () => setIsCreateOpen(true),
+                icon: <Plus className="w-4 h-4 mr-2" />,
+              }
+            : undefined
+        }
       />
 
       {isLoading ? (

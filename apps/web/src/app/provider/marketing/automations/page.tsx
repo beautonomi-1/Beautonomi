@@ -348,7 +348,7 @@ export default function ProviderAutomations() {
               <p className="text-gray-600 mb-4">No {activeTab} automations yet</p>
               <Button
                 variant="outline"
-                onClick={() => console.log("Create automation")}
+                onClick={() => toast.info("Automation builder coming soon. Stay tuned!")}
               >
                 Create Automation
               </Button>

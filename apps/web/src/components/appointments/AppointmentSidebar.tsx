@@ -1182,7 +1182,8 @@ export function AppointmentSidebar({
         serviceId: newServices[0]?.serviceId || "",
         serviceName: newServices[0]?.serviceName || "",
         price: newServices[0]?.price || 0,
-        duration: newServices.reduce((sum, s) => sum + s.duration, 0),
+        // Include addon durations, consistent with addAddonToService / removeAddonFromService
+        duration: newServices.reduce((sum, s) => sum + s.duration + (s.addons?.reduce((a, ad) => a + ad.duration, 0) || 0), 0),
         subtotal: pricing.subtotal,
         taxAmount: pricing.taxAmount,
         totalAmount: pricing.totalAmount,
@@ -2137,6 +2138,8 @@ export function AppointmentSidebar({
       // Mark as provider-created (not from client portal)
       (appointmentData as any).booking_source = 'walk_in';
       (appointmentData as any).referral_source_id = formData.referralSourceId || null;
+      // Package id — set when appointment was built from a package
+      (appointmentData as any).package_id = selectedPackageId || null;
 
       // Add at-home fields if applicable
       if (formData.kind === AppointmentKind.AT_HOME) {
@@ -2270,16 +2273,18 @@ export function AppointmentSidebar({
       (updates as any).service_fee_paid_by = 'customer';
       (updates as any).services = formData.services;
       (updates as any).products = formData.products;
+      // Package id — carry forward if it was set from a package or changed
+      if (selectedPackageId !== null) {
+        (updates as any).package_id = selectedPackageId;
+      }
 
       // Include version for optimistic locking if available
       if ((selectedAppointment as any).version !== undefined) {
         (updates as any).version = (selectedAppointment as any).version;
       }
 
-      // Add location_id if changed
-      if (formData.locationId && formData.locationId !== selectedAppointment.location_id) {
-        (updates as any).location_id = formData.locationId;
-      }
+      // Always send location_id so it is preserved / updated correctly on PATCH
+      (updates as any).location_id = formData.locationId || null;
 
       // Add status if changed
       if (formData.status && formData.status !== selectedAppointment.status) {

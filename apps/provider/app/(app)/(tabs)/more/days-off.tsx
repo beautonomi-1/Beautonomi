@@ -45,6 +45,7 @@ interface DayOff {
 export function DaysOffContent() {
   const [daysOff, setDaysOff] = useState<DayOff[]>([]);
   const [loadingDaysOff, setLoadingDaysOff] = useState(false);
+  const [daysOffError, setDaysOffError] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedStaffIds, setSelectedStaffIds] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -60,29 +61,42 @@ export function DaysOffContent() {
   const loadDaysOff = useCallback(async () => {
     if (!activeStaff.length) {
       setDaysOff([]);
+      setDaysOffError(null);
       return;
     }
     setLoadingDaysOff(true);
+    setDaysOffError(null);
     try {
       const all: DayOff[] = [];
-      for (const member of activeStaff) {
-        const res = await api.get<unknown>(`/api/provider/staff/${member.id}/days-off`);
-        const raw = (res as any)?.data ?? (res as any);
-        const list = Array.isArray(raw) ? raw : [];
-        const mapped = list.map((d: any) => ({
-          id: d.id,
-          staff_id: d.staff_id ?? member.id,
-          team_member_id: d.staff_id ?? member.id,
-          team_member_name: member.name ?? "Staff",
-          date: d.date,
-          reason: d.reason ?? null,
-        }));
-        all.push(...mapped);
-      }
+      const errors: string[] = [];
+      await Promise.all(
+        activeStaff.map(async (member) => {
+          try {
+            const res = await api.get<unknown>(`/api/provider/staff/${member.id}/days-off`);
+            const raw = (res as any)?.data ?? (res as any);
+            const list = Array.isArray(raw) ? raw : [];
+            const mapped = list.map((d: any) => ({
+              id: d.id,
+              staff_id: d.staff_id ?? member.id,
+              team_member_id: d.staff_id ?? member.id,
+              team_member_name: member.name ?? "Staff",
+              date: d.date,
+              reason: d.reason ?? null,
+            }));
+            all.push(...mapped);
+          } catch {
+            errors.push(member.name ?? member.id);
+          }
+        })
+      );
       all.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setDaysOff(all);
+      if (errors.length > 0) {
+        setDaysOffError(`Could not load days off for: ${errors.join(", ")}. Pull to refresh.`);
+      }
     } catch (e) {
       console.error("Failed to load days off:", e);
+      setDaysOffError("Failed to load days off. Pull down to retry.");
       setDaysOff([]);
     } finally {
       setLoadingDaysOff(false);
@@ -172,6 +186,12 @@ export function DaysOffContent() {
           <RefreshControl refreshing={loadingStaff || loadingDaysOff} onRefresh={onRefresh} tintColor="#1a1f3c" />
         }
       >
+        {daysOffError && (
+          <View style={twStyle("mx-4 mb-3 flex-row items-start rounded-xl border border-red-200 bg-red-50 px-4 py-3")}>
+            <Ionicons name="warning-outline" size={16} color="#dc2626" style={{ marginTop: 1 }} />
+            <Text style={twStyle("ml-2 flex-1 text-sm text-red-700")}>{daysOffError}</Text>
+          </View>
+        )}
         {activeStaff.length === 0 ? (
           <EmptyState
             icon="people-outline"

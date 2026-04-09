@@ -158,9 +158,15 @@ export function handleApiError(
       code = "FORBIDDEN";
     }
 
-    Sentry.captureException(error, { extra: { code, status } });
+    Sentry.captureException(error, { extra: { code, status, originalMessage: error.message } });
+    // In production, never surface raw DB/internal error messages to clients on 5xx responses.
+    // 4xx errors use error.message since they are intentionally user-facing (validation, auth, etc.).
+    const clientMessage =
+      status >= 500
+        ? defaultMessage
+        : error.message || defaultMessage;
     return errorResponse(
-      error.message || defaultMessage,
+      clientMessage,
       code,
       status,
       process.env.NODE_ENV === "development" ? error.stack : undefined

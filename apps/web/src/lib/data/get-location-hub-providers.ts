@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { resolveTenantIdFromServerHeaders } from "@/lib/tenant/resolve-tenant-from-headers";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -44,13 +45,25 @@ function mapRowToCard(
 }
 
 /**
+ * Prefer service role: public /locations data joins `users` for `include_in_search_engines`, which
+ * anon clients cannot read under RLS. Falls back to server (anon) when SUPABASE_SERVICE_ROLE_KEY is unset (local dev).
+ */
+async function getSupabaseForPublicLocationHub() {
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    return await getSupabaseServer();
+  }
+}
+
+/**
  * Providers for /locations/* pages: scoped by city (optional) + country + optional global category.
  * Respects users.include_in_search_engines (same spirit as sitemap).
  */
 export const getLocationHubProviders = cache(
   async (query: LocationHubQuery): Promise<PublicProviderCard[]> => {
     try {
-      const supabase = await getSupabaseServer();
+      const supabase = await getSupabaseForPublicLocationHub();
       let tenantId: string;
       try {
         tenantId = await resolveTenantIdFromServerHeaders();
@@ -185,7 +198,7 @@ export const getLocationHubProviders = cache(
 export const getLocationHubCitiesForCountry = cache(
   async (countryMatch: string, tenantId: string): Promise<{ city: string; count: number }[]> => {
     try {
-      const supabase = await getSupabaseServer();
+      const supabase = await getSupabaseForPublicLocationHub();
       const { data: locRows, error } = await supabase
         .from("provider_locations")
         .select("city, provider_id, providers!inner(tenant_id, status)")

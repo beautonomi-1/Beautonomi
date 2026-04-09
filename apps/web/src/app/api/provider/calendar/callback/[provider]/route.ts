@@ -67,7 +67,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ provider: string }> }
 ) {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
   const redirectSuccess = `${baseUrl}/provider/settings/calendar-integration?success=true&provider=`;
   const redirectError = `${baseUrl}/provider/settings/calendar-integration?error=`;
 

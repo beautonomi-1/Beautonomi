@@ -1,6 +1,7 @@
 import { MetadataRoute } from "next";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { buildSeoRequestFromHeaders } from "@/lib/seo/build-seo-request";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
@@ -14,15 +15,21 @@ import { buildLocationHubSitemapEntries } from "@/lib/seo/location-sitemap-helpe
 export const dynamic = "force-dynamic";
 
 /**
- * Use a plain anon client for public read-only data (no cookies).
+ * Prefer service role so sitemap can read `users.include_in_search_engines` and location hub joins (anon RLS blocks).
+ * Falls back to anon when the service key is missing (local dev).
  */
 function getSupabaseForSitemap() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key || url.includes("placeholder")) {
+  if (!url || url.includes("placeholder")) {
     return null;
   }
-  return createClient<Database>(url, key);
+  try {
+    return getSupabaseAdmin();
+  } catch {
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!key) return null;
+    return createClient<Database>(url, key);
+  }
 }
 
 type ProviderTenantScope = { mode: "all" } | { mode: "none" } | { mode: "scoped"; tenantId: string };

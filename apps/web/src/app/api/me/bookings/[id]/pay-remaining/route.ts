@@ -119,7 +119,7 @@ export async function POST(
         customer_id: user.id,
         payment_type: "booking_remaining",
       },
-      callback_url: `${process.env.NEXT_PUBLIC_APP_URL}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`,
+      callback_url: `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/account-settings/bookings/${bookingId}/payment-callback?pay_remaining=1`,
       tenantId: paymentTenantId,
     });
 

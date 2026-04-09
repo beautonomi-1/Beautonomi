@@ -696,8 +696,16 @@ export default function BookCheckoutScreen() {
   /* Track hold expiry reactively — CountdownBar updates its own UI, but the main screen needs
      to disable the CTA and reflect the expired state without waiting for the next hold fetch. */
   useEffect(() => {
-    if (!hold?.expires_at) return;
-    if (getTimeRemaining(hold.expires_at).expired) { setIsSlotExpired(true); return; }
+    if (!hold?.expires_at) {
+      setIsSlotExpired(false);
+      return;
+    }
+    if (getTimeRemaining(hold.expires_at).expired) {
+      setIsSlotExpired(true);
+      return;
+    }
+    // Reset to false when a fresh (non-expired) hold is loaded
+    setIsSlotExpired(false);
     const timer = setInterval(() => {
       if (getTimeRemaining(hold.expires_at!).expired) {
         setIsSlotExpired(true);
@@ -1433,11 +1441,37 @@ export default function BookCheckoutScreen() {
           presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         });
         if (saveCard) refreshCards();
+
+        // Poll booking status to confirm payment went through (mirrors web /checkout/success verify logic).
+        // The Paystack webhook may fire before or shortly after the browser closes.
+        let confirmedBookingId = bookingId;
+        if (bookingId) {
+          const MAX_ATTEMPTS = 8;
+          const POLL_INTERVAL_MS = 2000;
+          for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            try {
+              const check = await api.get<{ status?: string; id?: string }>(
+                `/api/me/bookings/${encodeURIComponent(bookingId)}`
+              );
+              const statusVal = (check.data as { status?: string } | null)?.status;
+              if (statusVal && statusVal !== "pending_payment") {
+                confirmedBookingId = bookingId;
+                break;
+              }
+            } catch {
+              // ignore poll errors
+            }
+            if (attempt < MAX_ATTEMPTS - 1) {
+              await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+            }
+          }
+        }
+
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
-        trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);
-        trackPaymentSuccess(bookingId ?? hold_id, amountPaid);
+        trackBookingConfirmed(confirmedBookingId ?? hold_id, paymentMethod, total);
+        trackPaymentSuccess(confirmedBookingId ?? hold_id, amountPaid);
         notifyRecurringSubscription();
-        navigateToBooking(bookingId, routeRescheduleBookingId ?? undefined);
+        navigateToBooking(confirmedBookingId, routeRescheduleBookingId ?? undefined);
       } else {
         if (selectedCardId && !useNewCard && savedCards.length > 0) refreshCards();
         trackBookingConfirmed(bookingId ?? hold_id, paymentMethod, total);

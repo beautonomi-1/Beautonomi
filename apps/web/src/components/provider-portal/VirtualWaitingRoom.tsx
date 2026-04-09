@@ -15,9 +15,10 @@ import { playRingtone } from "@/lib/on-demand/ringtone";
 
 interface VirtualWaitingRoomProps {
   onEntrySelect?: (entry: WaitingRoomEntry) => void;
+  locationId?: string;
 }
 
-export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWaitingRoomProps) {
+export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect, locationId }: VirtualWaitingRoomProps) {
   const [entries, setEntries] = useState<WaitingRoomEntry[]>([]);
   const [_isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -37,12 +38,15 @@ export function VirtualWaitingRoom({ onEntrySelect: _onEntrySelect }: VirtualWai
     // Auto-refresh every 30 seconds
     const interval = setInterval(loadEntries, 30000);
     return () => clearInterval(interval);
-  }, [statusFilter]);
+  }, [statusFilter, locationId]);
 
   const loadEntries = async () => {
     try {
       setIsLoading(true);
-      const response = await providerApi.listWaitingRoomEntries();
+      const filters: { status?: string; location_id?: string } = {};
+      if (statusFilter !== "all") filters.status = statusFilter;
+      if (locationId) filters.location_id = locationId;
+      const response = await providerApi.listWaitingRoomEntries(Object.keys(filters).length ? filters : undefined);
       const waitingCount = response.filter((e) => e.status === "waiting").length;
       if (
         onDemandConfig.enabled &&

@@ -303,7 +303,7 @@ export default function PackagesScreen() {
                   )}
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(pkg.price)}</Text>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(pkg.price, pkg.currency)}</Text>
                   {pkg.discount_percentage != null && pkg.discount_percentage > 0 && (
                     <Text style={{ fontSize: 12, color: "#16a34a" }}>{pkg.discount_percentage}% off</Text>
                   )}

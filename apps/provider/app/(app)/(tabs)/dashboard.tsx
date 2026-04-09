@@ -554,7 +554,7 @@ export default function DashboardScreen() {
             activeOpacity={0.85}
             onPress={() => {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-              router.push("/(app)/(tabs)/more/subscription" as any);
+              router.push("/(app)/(tabs)/more/settings/subscription" as any);
             }}
             style={{
               marginBottom: 16,
