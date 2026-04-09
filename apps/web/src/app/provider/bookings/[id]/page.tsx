@@ -390,8 +390,8 @@ export default function ProviderBookingDetail() {
     const tp = booking.total_paid ?? 0;
     const tr = booking.total_refunded ?? 0;
     const ta = booking.total_amount ?? 0;
-    const walletAmt = Number((booking as Record<string, unknown>).wallet_amount ?? 0);
-    const giftCardAmt = Number((booking as Record<string, unknown>).gift_card_amount ?? 0);
+    const walletAmt = Number((booking as unknown as Record<string, unknown>).wallet_amount ?? 0);
+    const giftCardAmt = Number((booking as unknown as Record<string, unknown>).gift_card_amount ?? 0);
     // Subtract wallet and gift card credits already applied so we don't ask provider to collect what's already been paid
     const outstandingAmt = ta - tp - walletAmt - giftCardAmt + tr;
     const paymentAmount = Number(outstandingAmt.toFixed(2));
@@ -518,8 +518,8 @@ export default function ProviderBookingDetail() {
     const totalPaidLocal = b.total_paid ?? 0;
     const totalRefundedLocal = b.total_refunded ?? 0;
     const totalAmountLocal = b.total_amount ?? 0;
-    const walletLocal = Number((b as Record<string, unknown>).wallet_amount ?? 0);
-    const giftLocal = Number((b as Record<string, unknown>).gift_card_amount ?? 0);
+      const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+      const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
     const outstandingLocal = totalAmountLocal - totalPaidLocal - walletLocal - giftLocal + totalRefundedLocal;
     const chargeAmount = Number(outstandingLocal.toFixed(2));
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
@@ -649,8 +649,8 @@ export default function ProviderBookingDetail() {
       const tp = b.total_paid ?? 0;
       const tr = b.total_refunded ?? 0;
       const ta = b.total_amount ?? 0;
-      const walletCalc = Number((b as Record<string, unknown>).wallet_amount ?? 0);
-      const giftCalc = Number((b as Record<string, unknown>).gift_card_amount ?? 0);
+      const walletCalc = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+      const giftCalc = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
       const outstandingCalc = ta - tp - walletCalc - giftCalc + tr;
 
       try {
@@ -875,8 +875,8 @@ export default function ProviderBookingDetail() {
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
   const totalAmount = b.total_amount ?? 0;
-  const walletAmountApplied = Number((b as Record<string, unknown>).wallet_amount ?? 0);
-  const giftCardAmountApplied = Number((b as Record<string, unknown>).gift_card_amount ?? 0);
+  const walletAmountApplied = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+  const giftCardAmountApplied = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
   // Outstanding balance correctly subtracts wallet and gift card credits so providers
   // don't see a phantom balance after split-payment bookings.
   const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;

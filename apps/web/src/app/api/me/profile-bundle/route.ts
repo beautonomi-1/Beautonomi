@@ -56,9 +56,9 @@ export async function GET(request: NextRequest) {
         .order("submitted_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
-      supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id }).then(
-        ({ data, error }) => error ? 0 : (Number(data ?? 0))
-      ).catch(() => 0),
+      Promise.resolve(
+        supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id })
+      ).then(({ data, error }) => (error ? 0 : Number(data ?? 0))).catch(() => 0),
     ]);
 
     if (userResult.status === "rejected" || !("value" in userResult) || userResult.value.error) {
@@ -84,12 +84,9 @@ export async function GET(request: NextRequest) {
 
     // ── Sync email if needed (non-blocking) ───────────────────────────────────
     if (authUser?.email && userData.email !== authUser.email) {
-      supabase
-        .from("users")
-        .update({ email: authUser.email })
-        .eq("id", user.id)
-        .then(() => {})
-        .catch(() => {});
+      void Promise.resolve(
+        supabase.from("users").update({ email: authUser.email }).eq("id", user.id)
+      ).catch(() => {});
       userData.email = authUser.email;
     }
 
