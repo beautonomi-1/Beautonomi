@@ -13,6 +13,7 @@ import {
   type ProviderBookingStatus,
 } from "@/lib/utils/booking-status";
 import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -687,6 +688,21 @@ export async function PATCH(
             409
           );
         }
+      }
+
+      const rescheduleCalBlock = await isProviderCalendarWindowBlocked(supabaseAdmin, {
+        providerId,
+        locationId: (location_id ?? (currentBooking as { location_id?: string | null }).location_id) || undefined,
+        staffId: staffId ?? null,
+        startAt: newStart,
+        endAt: newEnd,
+      });
+      if (rescheduleCalBlock.blocked) {
+        return errorResponse(
+          rescheduleCalBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
+          "CALENDAR_BLOCK",
+          409,
+        );
       }
     }
 

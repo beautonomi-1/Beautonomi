@@ -193,7 +193,13 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
     return () => clearTimeout(t);
   }, [session?.user?.id, checked]);
 
-  if (!session) return <>{children}</>;
+  if (!session) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </View>
+    );
+  }
   if (!checked) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>

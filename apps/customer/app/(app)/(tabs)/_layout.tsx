@@ -13,6 +13,7 @@ import { onCartUpdated } from "@/lib/cart-events";
 import { haptic } from "@/lib/haptics";
 import { guestCartItemCount, loadGuestCartLines } from "@/lib/guest-cart";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
+import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
 
 function fetchCartCount(setCount: (n: number) => void, isUser: boolean) {
   if (!isUser) {
@@ -59,7 +60,8 @@ export default function TabsLayout() {
     return unsubscribe;
   }, [user]);
 
-  const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
+  const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
 
   const tabsWrapperStyle =
     Platform.OS === "web"
@@ -98,8 +100,10 @@ export default function TabsLayout() {
           borderTopWidth: 1,
           borderTopColor: Colors.gray[200],
           height: TAB_BAR_HEIGHT,
+          minHeight: TAB_BAR_HEIGHT,
+          flexShrink: 0,
           paddingTop: 8,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+          paddingBottom: safeBottom,
           ...Shadows.tabBar,
           ...(isTablet ? { paddingHorizontal: 40 } : {}),
           // On web, avoid position:fixed (broken with RNW flexbox); keep tab bar in flow at bottom.

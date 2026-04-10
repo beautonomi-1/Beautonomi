@@ -22,6 +22,7 @@ import { Colors, shadow } from "@/constants/colors";
 import { APP_URL, IOS_APP_STORE_ID } from "@/config/public-env";
 import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 
 type IconName = keyof typeof Ionicons.glyphMap;
 
@@ -40,6 +41,7 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const { unreadCount } = useNotifications();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom(24);
   const contentContainerStyle = isTablet
     ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
     : {};
@@ -177,7 +179,7 @@ export default function ProfileScreen() {
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.gray[50] }} />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 120, ...contentContainerStyle }}
+        contentContainerStyle={{ paddingBottom: tabScrollPaddingBottom, ...contentContainerStyle }}
         contentInsetAdjustmentBehavior="automatic"
         accessibilityLabel="Profile content"
         accessibilityRole="none"
@@ -695,12 +697,13 @@ export default function ProfileScreen() {
 
 /* ─── Logged-out state ─── */
 function LoggedOutProfile() {
+  const tabScrollPaddingBottom = useTabContentPaddingBottom(24);
   return (
     <View style={{ flex: 1, backgroundColor: Colors.white }}>
       <SafeAreaView edges={["top"]} style={{ backgroundColor: Colors.white }} />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: tabScrollPaddingBottom }}
       >
       <View style={{ paddingHorizontal: 20, paddingTop: 24 }}>
         <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>

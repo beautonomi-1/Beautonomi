@@ -559,6 +559,7 @@ export default function BookCheckoutScreen() {
     hasVariants?: boolean;
     defaultVariantId?: string | null;
     defaultVariantPrice?: number;
+    variants?: { id: string; retail_price: number }[];
   }[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[]>([]);
   const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
@@ -833,6 +834,9 @@ export default function BookCheckoutScreen() {
                   hasVariants: Boolean(p.hasVariants),
                   defaultVariantId,
                   defaultVariantPrice,
+                  variants: Array.isArray(p.variants)
+                    ? p.variants.map((v: any) => ({ id: v.id, retail_price: Number(v.retail_price) || 0 }))
+                    : undefined,
                 };
               })
             : []
@@ -848,18 +852,24 @@ export default function BookCheckoutScreen() {
       try {
         const raw = await AsyncStorage.getItem("beautonomi_booking_product_cart");
         if (!raw?.trim() || cancelled) return;
-        const lines = JSON.parse(raw) as { product_id: string; quantity: number }[];
+        const lines = JSON.parse(raw) as { product_id: string; product_variant_id?: string; quantity: number }[];
         if (!Array.isArray(lines)) return;
         const merged = lines
           .map((line) => {
             const p = productsList.find((x) => x.id === line.product_id);
             if (!p) return null;
             const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+            const variantId = line.product_variant_id ?? p.defaultVariantId ?? null;
+            let variantPrice: number | undefined;
+            if (variantId && p.hasVariants && Array.isArray(p.variants)) {
+              const v = p.variants.find((v) => v.id === variantId);
+              if (v) variantPrice = v.retail_price;
+            }
             return {
               productId: p.id,
-              productVariantId: p.defaultVariantId ?? null,
+              productVariantId: variantId,
               name: p.name,
-              price: Number(p.retail_price) || 0,
+              price: variantPrice ?? Number(p.retail_price) || 0,
               quantity: q,
               currency: p.currency || getTenantDefaultCurrency(),
             };

@@ -19,6 +19,7 @@ import {
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
@@ -29,6 +30,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { APP_URL } from "@/config/public-env";
 import { shareProvider } from "@/lib/share-provider";
 import { Colors, Shadows } from "@/constants/colors";
+import { TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
 import { Skeleton } from "@/components/Skeleton";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
@@ -785,6 +787,10 @@ export default function PartnerProfileScreen() {
   const { user } = useAuth();
   const { width: screenWidth } = useWindowDimensions();
   const { contentPadding } = useResponsive();
+  const insets = useSafeAreaInsets();
+  const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const stickyBarPaddingBottom = 12 + bottomSafe;
+  const scrollSpacerForStickyBar = 56 + bottomSafe;
 
   const [provider, setProvider] = useState<PublicProviderDetail | null>(null);
   const [services, setServices] = useState<ProviderServicesResponse | null>(null);
@@ -2239,16 +2245,16 @@ export default function PartnerProfileScreen() {
               </View>
             )}
 
-            {/* Extra bottom spacing for sticky bar */}
-            <View style={{ height: 80 }} />
+            {/* Extra bottom spacing for sticky bar (clears Message + Book + home indicator) */}
+            <View style={{ height: scrollSpacerForStickyBar }} />
           </View>
         </ScrollView>
 
         {/* ═══════════ STICKY BOTTOM: Message + Book ═══════════ */}
         <View style={{
-          flexDirection: "row", paddingHorizontal: contentPadding, paddingVertical: 12,
+          flexDirection: "row", paddingHorizontal: contentPadding, paddingTop: 12,
           borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
-          paddingBottom: 28,
+          paddingBottom: stickyBarPaddingBottom,
         }}>
           <TouchableOpacity
             onPress={handleMessage}

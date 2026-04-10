@@ -8,7 +8,8 @@ import { Colors } from "@/constants/colors";
 import type { UserRole } from "@beautonomi/types";
 import { authFlowBreadcrumb, isSentryEnabled, setAuthFlowTags } from "@/lib/sentry";
 
-const ALLOWED_ROLES: UserRole[] = ["provider_owner", "provider_staff"];
+/** provider_onboarding: explicit DB role or legacy; same app access as owner/staff until onboarding completes */
+const ALLOWED_ROLES: UserRole[] = ["provider_owner", "provider_staff", "provider_onboarding"];
 
 type BlockReason = "network" | "role" | "api";
 

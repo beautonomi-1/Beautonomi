@@ -160,11 +160,13 @@ export async function createBookingRecord(
     await adminSupabase.from("bookings").update(atHomePatch).eq("id", bookingId);
   }
 
-  const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
-  if (loyaltyPointsUsed > 0) {
+  if (v.loyaltyPointsRedeemed > 0) {
     await adminSupabase
       .from("bookings")
-      .update({ loyalty_points_used: loyaltyPointsUsed })
+      .update({
+        loyalty_points_used: v.loyaltyPointsRedeemed,
+        loyalty_discount_amount: v.loyaltyDiscountAmount,
+      })
       .eq("id", bookingId);
   }
 

@@ -206,11 +206,16 @@ export default function OperatingHoursSettings() {
           )}
 
           {/* Info Note */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Operating hours determine when customers can book appointments at this location.
-              Make sure to keep these hours up to date to avoid booking conflicts.
+              <strong>How operating hours work:</strong>
             </p>
+            <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+              <li>These hours determine when customers can book appointments at this location.</li>
+              <li>Staff members without custom work hours will follow these location hours.</li>
+              <li>Staff with <strong>Custom Work Hours</strong> enabled use their own schedule instead.</li>
+              <li>Time blocks (breaks, meetings) further restrict availability within these hours.</li>
+            </ul>
           </div>
         </div>
       </SectionCard>

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
+import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
@@ -105,19 +106,41 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 2) Time blocks (breaks, time off) – treat as unavailable
-    const { data: timeBlocks } = await supabaseAdmin
+    // 2) Time blocks (breaks, time off) – treat as unavailable; includes recurring expansion
+    const { data: dateTimeBlocks } = await supabaseAdmin
       .from("time_blocks")
       .select("id, staff_id, name, date, start_time, end_time, is_active")
       .eq("provider_id", providerId)
       .eq("date", dateStr)
       .eq("is_active", true);
 
-    (timeBlocks || []).forEach((block: any) => {
+    const { data: recurringTimeBlocks } = await supabaseAdmin
+      .from("time_blocks")
+      .select("id, staff_id, name, date, start_time, end_time, is_active, is_recurring, recurring_pattern")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .eq("is_recurring", true)
+      .lt("date", dateStr);
+
+    const expandedRecurring = (recurringTimeBlocks || [])
+      .filter((block: any) => {
+        const originDate = new Date(`${block.date}T12:00:00`);
+        const targetDate = new Date(`${dateStr}T12:00:00`);
+        if (targetDate < originDate) return false;
+        if (block.recurring_pattern) {
+          return expandRecurringPattern(block.recurring_pattern, block.date, dateStr);
+        }
+        return targetDate.getDay() === originDate.getDay();
+      })
+      .map((block: any) => ({ ...block, date: dateStr }));
+
+    const timeBlocks = [...(dateTimeBlocks || []), ...expandedRecurring];
+
+    (timeBlocks).forEach((block: any) => {
       const startPart = typeof block.start_time === "string" ? block.start_time.slice(0, 5) : "00:00";
       const endPart = typeof block.end_time === "string" ? block.end_time.slice(0, 5) : "23:59";
-      const blockStart = new Date(`${block.date}T${startPart}:00`);
-      const blockEnd = new Date(`${block.date}T${endPart}:00`);
+      const blockStart = new Date(`${dateStr}T${startPart}:00`);
+      const blockEnd = new Date(`${dateStr}T${endPart}:00`);
       if (startTime < blockEnd && endTime > blockStart) {
         const appliesToStaff = !block.staff_id || staffIds.length === 0 || staffIds.includes(block.staff_id);
         if (appliesToStaff) {
@@ -198,6 +221,35 @@ export async function GET(request: NextRequest) {
       if (startTime < abEnd && endTime > abStart) {
         conflicts.push("Blocked time (unavailable)");
         break;
+      }
+    }
+
+    // 5) Staff days off and time off
+    if (staffIds.length > 0) {
+      const { data: daysOffRows } = await supabaseAdmin
+        .from("staff_days_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .eq("date", dateStr)
+        .in("staff_id", staffIds)
+        .or("is_approved.is.null,is_approved.eq.true");
+      const staffOnDayOff = new Set((daysOffRows || []).map((r: any) => r.staff_id as string));
+
+      const { data: timeOffRows } = await supabaseAdmin
+        .from("staff_time_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr)
+        .in("staff_id", staffIds)
+        .not("status", "eq", "denied");
+      for (const row of timeOffRows || []) {
+        if (row.staff_id) staffOnDayOff.add(row.staff_id as string);
+      }
+
+      const affectedStaff = staffIds.filter((sid) => staffOnDayOff.has(sid));
+      if (affectedStaff.length > 0) {
+        conflicts.push("Staff is on a day off or time off");
       }
     }
 

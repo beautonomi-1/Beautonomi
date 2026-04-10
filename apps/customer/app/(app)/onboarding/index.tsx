@@ -412,8 +412,8 @@ export default function CustomerOnboarding() {
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {
-      // Network/unexpected failure — mark locally so we don't re-prompt on cold start.
-      try { await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1"); } catch { /* ignore */ }
+      Alert.alert("Network error", "Could not complete setup. Please check your connection and try again.");
+      return;
     } finally {
       setSaving(false);
     }

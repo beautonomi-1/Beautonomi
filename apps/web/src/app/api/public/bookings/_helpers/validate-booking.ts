@@ -59,6 +59,8 @@ export interface ValidatedBookingData {
 
   totalAmount: number;
   loyaltyPointsEarned: number;
+  loyaltyDiscountAmount: number;
+  loyaltyPointsRedeemed: number;
 
   /** Appointment status determined by provider settings */
   appointmentStatus: string;
@@ -869,6 +871,33 @@ export async function validateBooking(
         promotionId = promo.id;
       }
     }
+
+    // Fallback: check `coupons` table if not found in `promotions`
+    if (!promotionId) {
+      const { data: coupon } = await (supabase.from("coupons") as any)
+        .select("id, code, discount_type, discount_value, max_discount, is_active, expires_at, max_uses, used_count")
+        .eq("code", promoCode)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (coupon) {
+        const now = new Date();
+        const notExpired = !coupon.expires_at || new Date(coupon.expires_at) >= now;
+        const underLimit = !coupon.max_uses || (coupon.used_count || 0) < coupon.max_uses;
+
+        if (notExpired && underLimit) {
+          if (coupon.discount_type === "percentage") {
+            promoDiscountAmount = percentOf(prePromoSubtotal, Number(coupon.discount_value || 0));
+            if (coupon.max_discount)
+              promoDiscountAmount = Math.min(promoDiscountAmount, Number(coupon.max_discount));
+          } else {
+            promoDiscountAmount = Number(coupon.discount_value || 0);
+          }
+          promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, prePromoSubtotal));
+          promotionId = coupon.id;
+        }
+      }
+    }
   }
 
   const subtotal = Math.max(0, prePromoSubtotal - promoDiscountAmount);
@@ -1000,6 +1029,71 @@ export async function validateBooking(
   if (loyaltyRule?.points_per_currency_unit) {
     loyaltyPointsEarned = Math.floor(totalAmount * Number(loyaltyRule.points_per_currency_unit));
   }
+
+  // ── Loyalty redemption ──────────────────────────────────────────────────
+  let loyaltyDiscountAmount = 0;
+  let loyaltyPointsRedeemed = 0;
+  const loyaltyPointsRequested = Number(validatedDraft.loyalty_points_used ?? 0);
+
+  if (loyaltyPointsRequested > 0) {
+    const { data: loyaltyConfig } = await supabase
+      .from("loyalty_point_config")
+      .select("redemption_rate, min_redemption_points, max_redemption_percentage, is_active")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!loyaltyConfig) {
+      return handleApiError(
+        new Error("Loyalty points system not configured"),
+        "Loyalty points are currently unavailable.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const redemptionRate = Number(loyaltyConfig.redemption_rate) || 10;
+    const minPoints = Number(loyaltyConfig.min_redemption_points) || 0;
+    const maxPct = Number(loyaltyConfig.max_redemption_percentage) || 100;
+
+    if (loyaltyPointsRequested < minPoints) {
+      return handleApiError(
+        new Error(`Minimum ${minPoints} loyalty points required`),
+        `You need at least ${minPoints} points to redeem.`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const { data: balanceData } = await supabase.rpc(
+      "get_customer_available_points" as any,
+      { customer_uuid: customerId },
+    );
+    const availableBalance = Number(balanceData) || 0;
+
+    if (loyaltyPointsRequested > availableBalance) {
+      return handleApiError(
+        new Error("Insufficient loyalty points"),
+        "You don't have enough loyalty points for this redemption.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    let discount = loyaltyPointsRequested / redemptionRate;
+    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
+    if (discount > maxDiscount) {
+      discount = maxDiscount;
+      loyaltyPointsRedeemed = Math.floor(maxDiscount * redemptionRate);
+    } else {
+      loyaltyPointsRedeemed = loyaltyPointsRequested;
+    }
+
+    loyaltyDiscountAmount = Math.round(discount * 100) / 100;
+  }
+
+  const totalAmountAfterLoyalty = Math.max(0, totalAmount - loyaltyDiscountAmount);
 
   // ── Appointment status ───────────────────────────────────────────────────
   const { determineAppointmentStatusFromDB } = await import(
@@ -1374,10 +1468,15 @@ export async function validateBooking(
   }
 
   const selectedDatetime = new Date(draft.selected_datetime);
-  const bookingEndFromServices = new Date(selectedDatetime.getTime() + totalDuration * 60000);
-  // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s
-  // after the guest signs in and pays (recomputed duration can extend past the slot grid window).
-  const bookingEnd = holdReservedEndAt ?? bookingEndFromServices;
+  const effectiveDuration = groupTotalDurationMinutes != null && groupTotalDurationMinutes > totalDuration
+    ? groupTotalDurationMinutes
+    : totalDuration;
+  const bookingEndFromServices = new Date(selectedDatetime.getTime() + effectiveDuration * 60000);
+  // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s.
+  // For group bookings, if participants extend the duration past the hold window, use the computed end instead.
+  const bookingEnd = holdReservedEndAt && bookingEndFromServices <= holdReservedEndAt
+    ? holdReservedEndAt
+    : bookingEndFromServices;
 
   // ── Provider calendar blocks (time blocks, availability, staff off) ─────
   // Same sources as GET /api/public/providers/[slug]/availability; prevents bypass when draft skipped staff conflict paths.
@@ -1407,6 +1506,56 @@ export async function validateBooking(
           "CONFLICT",
           409,
         );
+      }
+    }
+  }
+
+  // ── Working hours guard (defense in depth) ────────────────────────────────
+  // Verify each service segment falls within the staff/location working hours.
+  // If slot APIs served a bad slot, this is the last line of defense.
+  {
+    const DAY_KEYS_GUARD = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+    const { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } = await import(
+      "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic"
+    );
+
+    for (const line of bookingServicesData) {
+      const segStart = new Date(line.scheduled_start_at);
+      const segEnd = new Date(line.scheduled_end_at);
+      const staffIdForGuard = line.staff_id ?? `provider-${draft.provider_id}`;
+      const dateStr = segStart.toISOString().slice(0, 10);
+      const dayIdx = new Date(`${dateStr}T12:00:00`).getDay();
+      const dayKey = DAY_KEYS_GUARD[dayIdx];
+
+      const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
+        supabaseAdmin,
+        draft.provider_id,
+        staffIdForGuard,
+        dayKey,
+      );
+
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const parseHHMM = (t: string): number => {
+          const [h, m] = t.split(":").map(Number);
+          return (h || 0) * 60 + (m || 0);
+        };
+        const openMin = parseHHMM(wh.open_time);
+        const closeMin = parseHHMM(wh.close_time);
+        const segStartMin = segStart.getHours() * 60 + segStart.getMinutes();
+        const segEndMin = segEnd.getHours() * 60 + segEnd.getMinutes();
+
+        if (closeMin > openMin && (segStartMin < openMin || segEndMin > closeMin)) {
+          console.warn(
+            `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${segEnd.toISOString()} ` +
+            `outside working hours ${wh.open_time}–${wh.close_time} for staff ${staffIdForGuard}`
+          );
+          return handleApiError(
+            new Error("Booking falls outside working hours"),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409,
+          );
+        }
       }
     }
   }
@@ -1444,8 +1593,10 @@ export async function validateBooking(
     serviceFeePercentage,
     serviceFeeConfigId,
 
-    totalAmount,
+    totalAmount: totalAmountAfterLoyalty,
     loyaltyPointsEarned,
+    loyaltyDiscountAmount,
+    loyaltyPointsRedeemed,
 
     appointmentStatus,
 

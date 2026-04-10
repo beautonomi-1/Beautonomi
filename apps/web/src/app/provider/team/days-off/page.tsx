@@ -155,6 +155,14 @@ export default function DaysOffPage() {
         }}
       />
 
+      <div className="mt-4 mb-4 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+        <p className="text-sm text-emerald-800">
+          <strong>How days off work:</strong> Days off fully block a staff member&apos;s availability for the entire day.
+          Customers will not see any bookable slots for that staff member on their day off.
+          For partial-day blocks, use <a href="/provider/time-blocks" className="underline font-medium">Time Blocks</a> instead.
+        </p>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <SectionCard className="p-3 sm:p-4">

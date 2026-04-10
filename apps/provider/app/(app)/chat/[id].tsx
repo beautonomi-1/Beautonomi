@@ -23,7 +23,7 @@ export default function ChatRedirectScreen() {
   }, [conversationId, router]);
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
       <ScreenHeader title="Conversation" onBack={() => router.back()} />
       <View style={twStyle("flex-1 items-center justify-center py-12")}>
         <ActivityIndicator size="large" />

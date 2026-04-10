@@ -15,7 +15,7 @@ import { useBookings } from "@/features/bookings/useBookings";
 import { haptic } from "@/lib/haptics";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { Booking } from "@/types/api";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
@@ -160,6 +160,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
 
 export default function BookingsScreen() {
   useScreenTracking("Bookings");
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [tab, setTab] = useState<BookingsTabType>("upcoming");
@@ -295,7 +296,7 @@ export default function BookingsScreen() {
           contentContainerStyle={{
             paddingHorizontal: contentPadding,
             paddingTop: contentPadding,
-            paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+            paddingBottom: tabScrollPaddingBottom,
           }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />

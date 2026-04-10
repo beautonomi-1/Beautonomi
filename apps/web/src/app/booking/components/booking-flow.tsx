@@ -480,7 +480,10 @@ export default function BookingFlow() {
           const response = await fetch(`/api/public/providers/${encodeURIComponent(providerSlug)}`);
           const data = await response.json();
           if (data.data?.id) {
-            updateBookingState({ providerId: data.data.id });
+            updateBookingState({
+              providerId: data.data.id,
+              taxRate: Number(data.data.tax_rate_percent) || 0,
+            });
           }
           // If provider opted out of search engine indexing, inject a noindex meta into this page
           if (data.data?.seo_indexable === false) {

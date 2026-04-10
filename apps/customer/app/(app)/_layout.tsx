@@ -73,7 +73,14 @@ function handleCustomerDeepLink(url: string): boolean {
 }
 
 export default function AppLayout() {
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !session) {
+      router.replace("/(auth)/login" as never);
+    }
+  }, [authLoading, session]);
+
   /** Stable per signed-in user — do NOT key on access_token (it changes on refresh and caused repeat router.replace / “swiping” on iOS). */
   const userId = session?.user?.id ?? null;
   /** Last user id we ran the onboarding deep-link guard for (token refresh keeps same id → no re-run). */

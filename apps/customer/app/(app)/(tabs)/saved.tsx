@@ -2,7 +2,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { View, Text, StyleSheet } from "react-native";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useResponsive } from "@/hooks/useResponsive";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { SavedTabContent } from "@/components/SavedTabContent";
 
 /**
@@ -12,10 +12,11 @@ import { SavedTabContent } from "@/components/SavedTabContent";
 export default function SavedScreen() {
   const { user, loading } = useAuth();
   const { contentPadding } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
 
   if (loading) {
     return (
-      <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
+      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.loading}>Loading...</Text>
         </View>
@@ -25,7 +26,7 @@ export default function SavedScreen() {
 
   if (!user) {
     return (
-      <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
+      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.emptyTitle}>Saved</Text>
           <Text style={styles.emptySubtitle}>

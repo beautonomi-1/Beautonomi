@@ -185,8 +185,12 @@ export default function StepCalendar({
         bookingState.providerId && (!staffId || staffId === "any")
           ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
           : "";
+      const locationParam =
+        bookingState.selectedLocationId
+          ? `&locationId=${encodeURIComponent(bookingState.selectedLocationId)}`
+          : "";
       const response = await fetcher.get<{ data: AvailabilityData }>(
-        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}`,
+        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}`,
         { staleTimeMs: 0 }
       );
       setAvailability(response.data);
@@ -195,7 +199,7 @@ export default function StepCalendar({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.providerId]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.providerId, bookingState.selectedLocationId]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();

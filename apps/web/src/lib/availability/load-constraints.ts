@@ -776,9 +776,7 @@ export async function loadAvailabilityConstraints(
 
   const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
-    workHoursEnabled
-      ? loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId)
-      : Promise.resolve([]),
+    loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
     syntheticProviderId
       ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date)
       : loadExistingBookings(db, effectiveStaffId, date),
@@ -826,6 +824,25 @@ export async function loadAvailabilityConstraints(
     );
   }
 
+  // PR 7: work_hours_enabled=false means "use location hours".
+  // Resolve shifts from the primary location so the calculator uses the
+  // shift-based path instead of hardcoded 09:00-18:00.
+  let effectiveWorkHoursEnabled = workHoursEnabled;
+  if (!workHoursEnabled && resolvedProviderId) {
+    const fallbackStaffIdForShift =
+      effectiveStaffId ?? staffId ?? `${SYNTHETIC_PROVIDER_STAFF_PREFIX}${resolvedProviderId}`;
+    const locationShifts = await buildStaffShiftsFromPrimaryLocation(
+      db,
+      resolvedProviderId,
+      date,
+      fallbackStaffIdForShift
+    );
+    if (locationShifts.length > 0) {
+      staffShifts = locationShifts;
+      effectiveWorkHoursEnabled = true;
+    }
+  }
+
   let parityBookings: BookingService[] = [];
   if (options?.publicCalendarParity && resolvedProviderId) {
     const pc = options.publicCalendarParity;
@@ -847,7 +864,7 @@ export async function loadAvailabilityConstraints(
     timeBlocks,
     existingBookings: [...existingBookings, ...holdBlocks, ...parityBookings],
     providerSettings,
-    workHoursEnabled,
+    workHoursEnabled: effectiveWorkHoursEnabled,
   } as AvailabilityConstraints & {
     providerSettings?: { avoidGaps: boolean; allowDoubleBookingManual: boolean };
     workHoursEnabled?: boolean;

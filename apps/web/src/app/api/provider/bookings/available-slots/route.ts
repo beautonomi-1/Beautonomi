@@ -3,6 +3,7 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
+import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
 const SLOT_START_H = 6;
 const SLOT_END_H = 22;
@@ -153,13 +154,64 @@ export async function GET(request: NextRequest) {
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
     const { data: dayBookings } = await bookingsQuery;
 
-    // Fetch time blocks for that day
-    const { data: timeBlocks } = await supabaseAdmin
+    // Fetch time blocks for that day (date-matched)
+    const { data: dateTimeBlocks } = await supabaseAdmin
       .from("time_blocks")
       .select("id, staff_id, date, start_time, end_time, is_active")
       .eq("provider_id", providerId)
       .eq("date", dateStr)
       .eq("is_active", true);
+
+    // Fetch recurring time blocks whose origin date is before today
+    const { data: recurringTimeBlocks } = await supabaseAdmin
+      .from("time_blocks")
+      .select("id, staff_id, date, start_time, end_time, is_active, is_recurring, recurring_pattern")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .eq("is_recurring", true)
+      .lt("date", dateStr);
+
+    const expandedRecurring = (recurringTimeBlocks || [])
+      .filter((block: any) => {
+        const originDate = new Date(`${block.date}T12:00:00`);
+        const targetDate = new Date(`${dateStr}T12:00:00`);
+        if (targetDate < originDate) return false;
+        if (block.recurring_pattern) {
+          return expandRecurringPattern(block.recurring_pattern, block.date, dateStr);
+        }
+        return targetDate.getDay() === originDate.getDay();
+      })
+      .map((block: any) => ({ ...block, date: dateStr }));
+
+    const timeBlocks = [...(dateTimeBlocks || []), ...expandedRecurring];
+
+    // Fetch staff days off and time off
+    const staffIdsForPto = staffIds.length > 0 ? staffIds : [];
+    let staffDaysOff: string[] = [];
+    if (staffIdsForPto.length > 0) {
+      const { data: daysOffRows } = await supabaseAdmin
+        .from("staff_days_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .eq("date", dateStr)
+        .in("staff_id", staffIdsForPto)
+        .or("is_approved.is.null,is_approved.eq.true");
+      staffDaysOff = (daysOffRows || []).map((r: any) => r.staff_id);
+
+      const { data: timeOffRows } = await supabaseAdmin
+        .from("staff_time_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr)
+        .in("staff_id", staffIdsForPto)
+        .not("status", "eq", "denied");
+      for (const row of timeOffRows || []) {
+        if (row.staff_id && !staffDaysOff.includes(row.staff_id)) {
+          staffDaysOff.push(row.staff_id);
+        }
+      }
+    }
 
     // Fetch availability_blocks overlapping this day (provider-level breaks/unavailable)
     const startOfDayIso = `${dateStr}T00:00:00`;
@@ -227,6 +279,11 @@ export async function GET(request: NextRequest) {
           : bookingEndDefault;
         blockedIntervals.push({ start, end });
       }
+    }
+
+    // If all requested staff are on PTO/day off, no slots available
+    if (staffIds.length > 0 && staffIds.every((sid) => staffDaysOff.includes(sid))) {
+      return successResponse({ slots: [], date: dateStr });
     }
 
     for (const slot of slotTimes) {

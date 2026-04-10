@@ -24,7 +24,7 @@ import { api } from "@/lib/api-client";
 import { haptic } from "@/lib/haptics";
 import { MasonryList } from "@/components/MasonryList";
 import type { ExplorePost } from "@/types/api";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { Skeleton } from "@/components/Skeleton";
 
@@ -469,6 +469,7 @@ export default function ExploreScreen() {
   useScreenTracking("Explore");
   const { user } = useAuth();
   const { width, columns, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const contentWidth = Math.min(width, contentMaxWidth) - contentPadding * 2;
   const cardWidth = (contentWidth - (columns - 1) * GAP) / columns;
   const contentContainerStyle = isTablet
@@ -711,7 +712,7 @@ export default function ExploreScreen() {
           }
           contentContainerStyle={{
             paddingHorizontal: contentPadding,
-            paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+            paddingBottom: tabScrollPaddingBottom,
           }}
         ListHeaderComponent={
           <View style={{ paddingTop: 4, paddingBottom: 4 }}>

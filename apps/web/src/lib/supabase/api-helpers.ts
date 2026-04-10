@@ -253,6 +253,31 @@ export async function requireRoleInApi(
         }
 
         let userRole = resolvedUserData!.role as UserRole;
+        const admin = getSupabaseAdmin();
+
+        // Owner registered in providers but users.role still "customer" (common before /api/me/role
+        // runs its upgrade, or when mobile loads /api/provider/profile in parallel with /api/me/role).
+        // Must match server-side checks in /api/me/role — otherwise Bearer + profile GET returns 403.
+        if (
+          userRole === "customer" &&
+          (roles.includes("provider_owner" as UserRole) ||
+            roles.includes("provider_staff" as UserRole))
+        ) {
+          const { data: ownsProvider } = await admin
+            .from("providers")
+            .select("id")
+            .eq("user_id", resolvedUserData!.id)
+            .limit(1)
+            .maybeSingle();
+          if (ownsProvider) {
+            userRole = "provider_owner" as UserRole;
+            await admin
+              .from("users")
+              .update({ role: "provider_owner" })
+              .eq("id", resolvedUserData!.id);
+          }
+        }
+
         // Customer with active provider_staff row gets provider_staff access for provider APIs
         if (userRole === "customer" && roles.includes("provider_staff")) {
           const { data: staffRow } = await supabase
@@ -264,7 +289,18 @@ export async function requireRoleInApi(
             .maybeSingle();
           if (staffRow) userRole = "provider_staff";
         }
-        if (!roles.includes(userRole))
+
+        // DB may store provider_onboarding (legacy / explicit). Allow only when the route is not
+        // admin/superadmin-scoped: require at least one of customer / provider_owner / provider_staff
+        // in the allowed list (never treat as superadmin-only).
+        const routeAcceptsProviderOnboarding =
+          userRole === ("provider_onboarding" as UserRole) &&
+          roles.some((r) =>
+            ["customer", "provider_owner", "provider_staff"].includes(r as string)
+          );
+        const roleAllowed = roles.includes(userRole) || routeAcceptsProviderOnboarding;
+
+        if (!roleAllowed)
           throw new Error(`Insufficient permissions: requires one of ${roles.join(", ")}`);
         return { user: { id: resolvedUserData!.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: resolvedUserData!.full_name } };
       } catch (err) {

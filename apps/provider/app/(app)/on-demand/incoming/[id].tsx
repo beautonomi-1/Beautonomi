@@ -109,7 +109,7 @@ export default function OnDemandIncomingScreen() {
 
   if (loading && !data) {
     return (
-      <ScreenContainer scrollable={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <ScreenHeader title="Incoming request" onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
@@ -120,7 +120,7 @@ export default function OnDemandIncomingScreen() {
 
   if (error || !request) {
     return (
-      <ScreenContainer scrollable={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <ScreenHeader title="Incoming request" onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState
@@ -137,7 +137,7 @@ export default function OnDemandIncomingScreen() {
   const scheduledAt = payload.scheduled_at;
 
   return (
-    <ScreenContainer>
+    <ScreenContainer edges={["top"]} reserveTabBarSpace={false}>
       <ScreenHeader title="Incoming request" onBack={() => router.back()} />
       <View style={twStyle("px-2 pt-4")}>
         {canRespond && (

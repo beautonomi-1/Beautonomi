@@ -115,6 +115,14 @@ export default function ProviderShifts() {
         }}
       />
 
+      <div className="mt-4 mb-2 bg-indigo-50 border border-indigo-200 rounded-lg p-4">
+        <p className="text-sm text-indigo-800">
+          <strong>How shifts work:</strong> Shifts define when each staff member is available for bookings.
+          You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00) for the same day.
+          Staff with <strong>Custom Work Hours</strong> disabled in their settings will use the location&apos;s operating hours instead.
+        </p>
+      </div>
+
       {/* Week Navigation */}
       <SectionCard className="mb-6">
         <div className="flex items-center justify-between">

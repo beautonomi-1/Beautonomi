@@ -32,6 +32,7 @@ export default function StepPromotions({
   const [loyaltyPoints, setLoyaltyPoints] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [redemptionRate, setRedemptionRate] = useState(10);
   const [platformFeeSettings, setPlatformFeeSettings] = useState<{
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
@@ -122,10 +123,13 @@ export default function StepPromotions({
 
   const loadLoyaltyBalance = async () => {
     try {
-      const response = await fetcher.get<{ data: { balance: number } }>(
+      const response = await fetcher.get<{ data: { balance: number; redemption_rate?: number } }>(
         "/api/me/loyalty/balance"
       );
       setLoyaltyBalance(response.data?.balance || 0);
+      if (response.data?.redemption_rate) {
+        setRedemptionRate(response.data.redemption_rate);
+      }
     } catch (error) {
       // Silently handle 404 - loyalty balance endpoint may not exist yet
       if (error instanceof FetchError && error.status === 404) {
@@ -214,7 +218,7 @@ export default function StepPromotions({
   };
 
   const handleLoyaltyUse = (points: number) => {
-    const discount = points * 0.1; // 1 point = 0.1 currency unit
+    const discount = Math.round((points / redemptionRate) * 100) / 100;
     updateBookingState({
       promotions: {
         ...bookingState.promotions,
@@ -368,7 +372,7 @@ export default function StepPromotions({
               You have {loyaltyBalance.toLocaleString()} points
             </p>
             <p className="text-xs text-blue-700 mb-3">
-              Value: {formatCurrency(loyaltyBalance * 0.1, tenantCurrency)} (1 point = 0.1{" "}
+              Value: {formatCurrency(loyaltyBalance / redemptionRate, tenantCurrency)} ({redemptionRate} points = 1{" "}
               {bookingState.selectedServices[0]?.currency || tenantCurrency})
             </p>
             {bookingState.promotions.loyaltyPointsUsed ? (

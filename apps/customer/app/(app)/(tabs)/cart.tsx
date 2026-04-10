@@ -17,6 +17,7 @@ import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
+import { tabBarOuterHeight, TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -177,8 +178,9 @@ export default function CartScreen() {
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
-  const bottomChromePadding = 12 + insets.bottom;
-  const scrollBottomPadding = 88 + bottomChromePadding;
+  const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const bottomChromePadding = 12 + bottomSafe;
+  const scrollBottomPadding = 28 + tabBarOuterHeight(insets.bottom) + bottomChromePadding;
 
   return (
     <>
@@ -246,10 +248,10 @@ export default function CartScreen() {
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>Your cart is empty</Text>
             <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
-              Browse providers and add products to get started.
+              Browse the shop and add products to get started.
             </Text>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/explore" as any)}
+              onPress={() => router.push("/(app)/(tabs)/shop" as any)}
               style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 32, backgroundColor: Colors.primary, borderRadius: 12 }}
             >
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Browse products</Text>

@@ -14,14 +14,22 @@ export async function GET() {
     return errorResponse("Authentication required", "UNAUTHORIZED", 401);
   }
 
-  const { data: balanceData, error: balanceError } = await supabase.rpc("get_user_loyalty_balance", {
-    p_user_id: user.id,
-  });
+  const [balanceResult, configResult] = await Promise.all([
+    supabase.rpc("get_user_loyalty_balance", { p_user_id: user.id }),
+    supabase
+      .from("loyalty_point_config")
+      .select("redemption_rate")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  if (!balanceError && balanceData != null) {
-    const n = typeof balanceData === "number" ? balanceData : Number(balanceData);
-    return successResponse({ balance: Number.isFinite(n) ? n : 0 });
-  }
+  const balance =
+    !balanceResult.error && balanceResult.data != null
+      ? (() => { const n = Number(balanceResult.data); return Number.isFinite(n) ? n : 0; })()
+      : 0;
+  const redemptionRate = Number(configResult.data?.redemption_rate) || 10;
 
-  return successResponse({ balance: 0 });
+  return successResponse({ balance, redemption_rate: redemptionRate });
 }

@@ -8,6 +8,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { normalizeWorkingHours } from "@/lib/availability/normalize-working-hours";
 
 /**
  * GET /api/provider/settings/operating-hours
@@ -106,7 +107,7 @@ export async function PATCH(request: NextRequest) {
 
     const { data: updated, error } = await supabase
       .from("provider_locations")
-      .update({ working_hours: workingHours })
+      .update({ working_hours: normalizeWorkingHours(workingHours) ?? workingHours })
       .eq("id", locationId)
       .eq("provider_id", providerId)
       .select("id, name, working_hours, is_active, is_primary")

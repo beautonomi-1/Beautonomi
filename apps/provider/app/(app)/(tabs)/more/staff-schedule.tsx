@@ -472,6 +472,12 @@ export default function StaffScheduleScreen() {
         }
       />
 
+      <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
+        <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
+          Schedules define when each staff member is available for bookings. You can set multiple shifts per day (split shifts).
+        </Text>
+      </View>
+
       {/* ── Add team member CTA: one flow with shifts on Team screen ── */}
       <TouchableOpacity
         style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 py-2.5")}

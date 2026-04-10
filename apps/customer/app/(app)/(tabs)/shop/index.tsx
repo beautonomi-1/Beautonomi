@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useCart } from "@/features/shop/useCart";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
@@ -53,6 +54,7 @@ interface ProductsResponse {
 export default function ShopScreen() {
   const router = useRouter();
   const { contentPadding } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const cart = useCart();
   const fb = getTenantDefaultCurrency();
@@ -479,7 +481,7 @@ export default function ShopScreen() {
             data={products}
             keyExtractor={productKeyExtractor}
             numColumns={2}
-            contentContainerStyle={{ padding: contentPadding, paddingBottom: 100 }}
+            contentContainerStyle={{ padding: contentPadding, paddingBottom: tabScrollPaddingBottom }}
             columnWrapperStyle={{ gap: 12 }}
             ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchProducts({ pageNum: 1, isRefresh: true })} colors={[PRIMARY]} />}

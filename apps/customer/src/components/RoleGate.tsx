@@ -116,7 +116,14 @@ export function RoleGate({ children }: RoleGateProps) {
     };
   }, [user?.id, runFetch]);
 
-  if (!user) return <>{children}</>;
+  if (!user) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={{ marginTop: 16, color: Colors.gray[600] }}>Loading…</Text>
+      </View>
+    );
+  }
   if (loading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white }}>

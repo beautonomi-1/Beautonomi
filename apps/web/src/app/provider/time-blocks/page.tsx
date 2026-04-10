@@ -104,6 +104,14 @@ export default function TimeBlocksPage() {
         subtitle="Block out time for breaks, meetings, or unavailable periods"
       />
 
+      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <p className="text-sm text-amber-800">
+          <strong>How time blocks work:</strong> Time blocks prevent customers from booking during specific periods
+          (e.g. lunch breaks, team meetings). They apply within operating hours and staff schedules.
+          Recurring blocks repeat automatically each week. Blocks assigned to &quot;All team members&quot; apply to everyone.
+        </p>
+      </div>
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="blocks">

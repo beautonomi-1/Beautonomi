@@ -22,8 +22,7 @@ async function computeSlotsForStaff(
   travelBuffer: number,
   avoidGaps: boolean,
   excludeHoldId?: string,
-  /** All active staff IDs for the provider — used for time-off/day-off parity queries. */
-  allStaffIdsForParity?: string[]
+  locationId?: string,
 ): Promise<TimeSlot[]> {
   let providerIdForSettings: string | undefined;
   const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
@@ -53,9 +52,9 @@ async function computeSlotsForStaff(
             publicCalendarParity: {
               providerId: providerIdForSettings,
               date,
-              locationId: undefined,
+              locationId: locationId ?? undefined,
               slotStaffId: staffId,
-              staffIdsForTimeOff: allStaffIdsForParity ?? (staffId ? [staffId] : undefined),
+              staffIdsForTimeOff: staffId ? [staffId] : undefined,
             },
           }
         : {}),
@@ -99,6 +98,7 @@ export async function GET(request: NextRequest) {
     const travelBuffer = parseInt(searchParams.get("travelBuffer") || "0", 10);
     const avoidGaps = searchParams.get("avoidGaps") === "true";
     const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
+    const locationId = searchParams.get("locationId")?.trim() || undefined;
 
     if (!date) {
       return successResponse({ date, slots: [] });
@@ -154,7 +154,7 @@ export async function GET(request: NextRequest) {
             travelBuffer,
             avoidGaps,
             excludeHoldId,
-            ids.length > 0 ? ids : undefined
+            locationId,
           )
         )
       );
@@ -168,8 +168,8 @@ export async function GET(request: NextRequest) {
         duration,
         travelBuffer,
         avoidGaps,
-        excludeHoldId
-        // allStaffIdsForParity: undefined — will default to [staffIdTrim] inside
+        excludeHoldId,
+        locationId,
       );
     }
 

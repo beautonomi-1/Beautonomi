@@ -18,6 +18,7 @@ import {
   canOverrideDoubleBooking,
 } from "@/lib/bookings/conflict-check";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import {
   createBookingsReadCacheKey,
   getCachedProviderBookingsList,
@@ -722,6 +723,21 @@ async function handleCreateProviderBooking(request: NextRequest) {
         );
       }
 
+      const calBlock = await isProviderCalendarWindowBlocked(supabaseAdmin as any, {
+        providerId,
+        locationId: body.location_id ?? undefined,
+        staffId: staffId ?? null,
+        startAt,
+        endAt,
+      });
+      if (calBlock.blocked) {
+        return errorResponse(
+          calBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
+          "CALENDAR_BLOCK",
+          409,
+        );
+      }
+
       // Build RPC payload (booking_services shape for create_booking_with_locking)
       const pBookingServices =
         body.services && Array.isArray(body.services) && body.services.length > 0
@@ -856,6 +872,21 @@ async function handleCreateProviderBooking(request: NextRequest) {
               409
             );
           }
+        }
+
+        const directCalBlock = await isProviderCalendarWindowBlocked(supabaseAdmin as any, {
+          providerId,
+          locationId: body.location_id ?? undefined,
+          staffId: staffId ?? null,
+          startAt,
+          endAt,
+        });
+        if (directCalBlock.blocked) {
+          return errorResponse(
+            directCalBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
+            "CALENDAR_BLOCK",
+            409,
+          );
         }
       }
 

@@ -1118,6 +1118,9 @@ export default function BookScreen() {
       if (excludeHoldIdForSlots) {
         params.set("excludeHoldId", excludeHoldIdForSlots);
       }
+      if (locationType === "at_home") {
+        params.set("travel_buffer_minutes", "30");
+      }
       const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
         `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
       );
@@ -1247,6 +1250,9 @@ export default function BookScreen() {
         if (excludeHoldIdForSlots) {
           params.set("excludeHoldId", excludeHoldIdForSlots);
         }
+        if (locationType === "at_home") {
+          params.set("travel_buffer_minutes", "30");
+        }
         try {
           const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
             `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
@@ -1353,9 +1359,13 @@ export default function BookScreen() {
     if (step === "time" && selectedDay && selectedStaff) loadSlots();
   }, [step, selectedDay, selectedStaff, loadSlots]);
 
-  // Fetch addons on extras step, or earlier when express prefill includes `addons` (match web booking)
+  // Fetch addons for ALL selected services and union the results
+  const allOfferingIds = useMemo(
+    () => selectedServices.map((s) => s.offeringId).filter(Boolean),
+    [selectedServices],
+  );
   useEffect(() => {
-    if (!slug || !effectiveOfferingId) {
+    if (!slug || allOfferingIds.length === 0) {
       setAddonsList([]);
       return;
     }
@@ -1364,18 +1374,31 @@ export default function BookScreen() {
       setAddonsList([]);
       return;
     }
-    api
-      .get<{ data?: { all_addons?: { id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[] }; all_addons?: unknown[] }>(
-        `/api/public/providers/${encodeURIComponent(slug)}/services/${effectiveOfferingId}/addons`
-      )
-      .then((res) => {
-        const data = (res.data ?? res) as any;
-        const raw = data?.data?.all_addons ?? data?.all_addons ?? [];
-        const list = Array.isArray(raw) ? raw : [];
-        setAddonsList(list);
-      })
-      .catch(() => setAddonsList([]));
-  }, [step, slug, effectiveOfferingId, addonsParam]);
+    Promise.all(
+      allOfferingIds.map((oid) =>
+        api
+          .get<any>(`/api/public/providers/${encodeURIComponent(slug)}/services/${oid}/addons`)
+          .then((res) => {
+            const data = (res.data ?? res) as any;
+            const raw = data?.data?.all_addons ?? data?.all_addons ?? [];
+            return Array.isArray(raw) ? raw : [];
+          })
+          .catch(() => [] as any[]),
+      ),
+    ).then((results) => {
+      const seen = new Set<string>();
+      const merged: typeof addonsList = [];
+      for (const list of results) {
+        for (const addon of list) {
+          if (!seen.has(addon.id)) {
+            seen.add(addon.id);
+            merged.push(addon);
+          }
+        }
+      }
+      setAddonsList(merged);
+    });
+  }, [step, slug, allOfferingIds.join(","), addonsParam]);
 
   useEffect(() => {
     if (appliedPrefillAddonsRef.current) return;

@@ -811,12 +811,15 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     }
   }
 
-  // Update booking payment status
+  // Update booking: mark payment as failed AND cancel the booking to release the slot
   const { error: updateError } = await supabase.from("bookings")
     .update({
       payment_status: "failed",
       payment_reference: reference,
       payment_provider: "paystack",
+      status: "cancelled",
+      cancellation_reason: "Payment failed",
+      cancelled_at: new Date().toISOString(),
     })
     .eq("id", metadata.booking_id);
 

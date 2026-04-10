@@ -16,7 +16,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { ConversationSkeleton } from "@/components/Skeleton";
 
 interface Conversation {
@@ -39,6 +39,7 @@ function formatTime(iso: string | null | undefined) {
 }
 
 export default function ChatsScreen() {
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   useScreenTracking("Chats");
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const { user, loading: authLoading, refreshSession } = useAuth();
@@ -245,7 +246,7 @@ export default function ChatsScreen() {
         contentContainerStyle={{
           paddingHorizontal: contentPadding,
           paddingTop: contentPadding,
-          paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+          paddingBottom: tabScrollPaddingBottom,
         }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />

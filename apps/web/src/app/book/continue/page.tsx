@@ -204,6 +204,10 @@ function BookContinueContent() {
   const [prefillGiftCardCode, setPrefillGiftCardCode] = useState("");
   /** From booking flow when a service package was selected (`?package=` or Packages UI) — forwarded to consume as `package_id`. */
   const [consumePackageId, setConsumePackageId] = useState<string | null>(null);
+  const [providerTaxRate, setProviderTaxRate] = useState(0);
+  const [platformServiceFee, setPlatformServiceFee] = useState<{ type: "percentage" | "fixed"; percentage: number; fixed: number }>({
+    type: "percentage", percentage: 0, fixed: 0,
+  });
   const [requestingNow, setRequestingNow] = useState(false);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
@@ -269,6 +273,34 @@ function BookContinueContent() {
           gift_cards: (data as { gift_cards?: boolean }).gift_cards,
         };
         setHold(holdData);
+
+        {
+          const slugForLookup = holdData.provider_slug;
+          const taxFeePromises: Promise<any>[] = [
+            fetcher.get<any>("/api/public/platform-fees").catch(() => null),
+          ];
+          if (slugForLookup) {
+            taxFeePromises.push(
+              fetcher.get<any>(`/api/public/providers/${encodeURIComponent(slugForLookup)}`).catch(() => null),
+            );
+          }
+          Promise.all(taxFeePromises).then(([feeRes, providerRes]) => {
+            if (providerRes) {
+              const prov = (providerRes as any)?.data ?? providerRes;
+              if (prov?.tax_rate_percent != null) {
+                setProviderTaxRate(Number(prov.tax_rate_percent) || 0);
+              }
+            }
+            const feeData = (feeRes as any)?.data ?? feeRes;
+            if (feeData) {
+              setPlatformServiceFee({
+                type: feeData.platform_service_fee_type ?? "percentage",
+                percentage: Number(feeData.platform_service_fee_percentage) || 0,
+                fixed: Number(feeData.platform_service_fee_fixed) || 0,
+              });
+            }
+          });
+        }
 
         try {
           const savedClient = sessionStorage.getItem("beautonomi_booking_client");
@@ -766,12 +798,12 @@ function BookContinueContent() {
       const addonsSum = addonDetails.reduce((sum, a) => sum + (Number(a.price) || 0), 0);
       const productsSum = prefillConsumeProducts.reduce((s, p) => s + p.totalPrice, 0);
       const amount = servicesTotal + addonsSum + productsSum + (hold.travel_fee ?? 0);
-      const res = await fetcher.get<{ valid?: boolean; discount_value?: number; message?: string }>(
+      const res = await fetcher.get<{ valid?: boolean; discount_amount?: number; discount_value?: number; message?: string }>(
         `/api/public/promo-codes/validate?code=${encodeURIComponent(promotionCode.trim())}&amount=${amount}`
       );
       const data = res as any;
-      if (data?.valid && data?.discount_value != null) {
-        setPromoDiscount(Number(data.discount_value));
+      if (data?.valid && (data?.discount_amount != null || data?.discount_value != null)) {
+        setPromoDiscount(Number(data.discount_amount ?? data.discount_value));
       } else {
         setPromoDiscount(null);
         setPromoError(data?.message ?? "Invalid or expired code");
@@ -795,7 +827,14 @@ function BookContinueContent() {
     const promoDiscountAmount = promoDiscount ?? 0;
     const subtotalBeforePromo = servicesTotal + addonsTotal + productsFromLinkTotal + travelFee;
     const subtotalAfterPromo = Math.max(0, subtotalBeforePromo - promoDiscountAmount);
-    const totalAmount = subtotalAfterPromo + tipAmount;
+    const taxAmount = providerTaxRate > 0
+      ? Number(((subtotalAfterPromo * providerTaxRate) / 100).toFixed(2))
+      : 0;
+    const serviceFeeAmount =
+      platformServiceFee.type === "percentage"
+        ? Number(((subtotalAfterPromo * platformServiceFee.percentage) / 100).toFixed(2))
+        : platformServiceFee.fixed;
+    const totalAmount = subtotalAfterPromo + taxAmount + serviceFeeAmount + tipAmount;
     const currency = hold.booking_services_snapshot[0]?.currency ?? tenantCurrency;
     const startDate = new Date(hold.start_at);
     const timeStr = startDate.toLocaleTimeString([], {
@@ -882,11 +921,22 @@ function BookContinueContent() {
               </div>
             )}
             <div className="border-t border-white/10 pt-3 space-y-2">
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-80">Tax{providerTaxRate > 0 ? ` (${providerTaxRate}%)` : ""}</span>
+                  <span className="opacity-95">{formatCurrency(taxAmount, currency)}</span>
+                </div>
+              )}
+              {serviceFeeAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="opacity-80">Service fee{platformServiceFee.type === "percentage" && platformServiceFee.percentage > 0 ? ` (${platformServiceFee.percentage}%)` : ""}</span>
+                  <span className="opacity-95">{formatCurrency(serviceFeeAmount, currency)}</span>
+                </div>
+              )}
               <div className="flex justify-between text-sm">
                 <span className="opacity-80">Tip (optional)</span>
                 <span className="opacity-95">{formatCurrency(tipAmount, currency)}</span>
               </div>
-              <p className="text-xs opacity-75">Tax may be applied at checkout where required.</p>
               <div className="flex justify-between font-semibold text-lg pt-2">
                 <span>Total</span>
                 <span style={{ color: BOOKING_ACCENT }}>{formatCurrency(totalAmount, currency)}</span>

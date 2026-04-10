@@ -240,15 +240,18 @@ export async function processPayment(
     );
     const shouldAutoConfirmStatus = !appointmentSettings.requireConfirmationForBookings;
 
-    const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
-    if (loyaltyPointsUsed > 0) {
+    const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
+    if (loyaltyPointsRedeemed > 0) {
       await (supabase.from("bookings") as any)
-        .update({ loyalty_points_used: loyaltyPointsUsed })
+        .update({
+          loyalty_points_used: loyaltyPointsRedeemed,
+          loyalty_discount_amount: v.loyaltyDiscountAmount ?? 0,
+        })
         .eq("id", booking.id);
       try {
         await (supabase.from("loyalty_point_transactions") as any).insert({
           user_id: v.customerId,
-          points: loyaltyPointsUsed,
+          points: loyaltyPointsRedeemed,
           transaction_type: "redeemed",
           description: `Redeemed for booking ${booking.booking_number}`,
           reference_id: booking.id,
@@ -353,7 +356,7 @@ export async function processPayment(
         );
       }
 
-      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
+      const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       const chargeResult = await chargeAuthorization(
         savedCard.provider_payment_method_id,
         email,
@@ -374,7 +377,8 @@ export async function processPayment(
           commission_base: v.commissionBase,
           payment_method_id: savedPaymentMethodId,
           hold_id: validatedDraft.hold_id || null,
-          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
           ...(recurringSubscribeEligible
             ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
             : {}),
@@ -467,7 +471,7 @@ export async function processPayment(
       });
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
-      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
+      const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       const paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
@@ -494,7 +498,8 @@ export async function processPayment(
           save_card: saveCard,
           set_as_default: setAsDefault,
           hold_id: validatedDraft.hold_id || undefined,
-          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
           ...(recurringSubscribeEligible
             ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
             : {}),

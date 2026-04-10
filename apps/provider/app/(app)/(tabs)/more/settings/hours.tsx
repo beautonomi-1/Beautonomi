@@ -471,6 +471,12 @@ export default function OperatingHoursScreen() {
         subtitle="Set your business hours for each day"
       />
 
+      <View style={{ backgroundColor: "#DBEAFE", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
+        <Text style={{ fontSize: 13, color: "#1E40AF", lineHeight: 18 }}>
+          These hours determine when customers can book at this location. Staff without custom work hours will follow these hours automatically.
+        </Text>
+      </View>
+
       {/* Location picker (if multiple) */}
       {locations && locations.length > 1 && (
         <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white px-4 py-3")}>

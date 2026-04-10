@@ -16,6 +16,11 @@ interface ScreenFrameProps {
   refreshing?: boolean;
   /** Pull-to-refresh callback */
   onRefresh?: () => void;
+  /**
+   * When false, children are wrapped in a flex View instead of ScrollView.
+   * Use for screens that contain FlatList / nested vertical scroll (ScrollView inside ScrollView breaks layout).
+   */
+  scrollable?: boolean;
 }
 
 export function ScreenFrame({
@@ -28,6 +33,7 @@ export function ScreenFrame({
   paddingBottom = STACK_CONTENT_PADDING_BOTTOM,
   refreshing = false,
   onRefresh,
+  scrollable = true,
 }: ScreenFrameProps) {
   if (loading) {
     return (
@@ -60,6 +66,13 @@ export function ScreenFrame({
       <View style={{ flex: 1, backgroundColor: Colors.white, alignItems: "center", justifyContent: "center", padding: 24 }}>
         <Text style={{ textAlign: "center", fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>{empty.title}</Text>
         {empty.message && <Text style={{ textAlign: "center", color: Colors.gray[600] }}>{empty.message}</Text>}
+      </View>
+    );
+  }
+  if (!scrollable) {
+    return (
+      <View style={{ flex: 1, backgroundColor: Colors.white }}>
+        {children}
       </View>
     );
   }

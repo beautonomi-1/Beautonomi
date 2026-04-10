@@ -903,10 +903,12 @@ export function TeamMemberCreateEditDialog({
                     <div className="flex-1 min-w-0">
                       <Label className="text-sm sm:text-base font-semibold text-gray-900 cursor-pointer flex items-center gap-2">
                         <Clock className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF0077]" />
-                        Work Hours Enabled
+                        Custom Work Hours
                       </Label>
                       <p className="text-xs sm:text-sm text-gray-600 mt-1.5 leading-relaxed">
-                        Enable work hours and schedule management for this staff member
+                        {formData.work_hours_enabled
+                          ? "This staff member uses their own custom schedule. Availability is based on their shifts and working hours."
+                          : "This staff member follows the location\u2019s operating hours. Toggle on to set a custom schedule."}
                       </p>
                     </div>
                   </div>
