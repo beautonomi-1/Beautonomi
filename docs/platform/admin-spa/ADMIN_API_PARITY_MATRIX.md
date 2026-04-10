@@ -153,28 +153,29 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 72 | `/admin/settings/app-version` | W5 | platform_config | Y | `GET/PATCH /api/admin/app-version` | |
 | 73 | `/admin/settings/feature-flags` | W5 | platform_config | Y | Via `@/lib/feature-flags` → `GET/POST/PATCH/DELETE /api/admin/feature-flags` | **Parallel** to control-plane flags UI |
 | 74 | `/admin/settings/team-permissions` | W5 | platform_config | Y (superadmin only) | `GET /api/admin/settings/section-permissions`, `PUT` same (matrix editor) | |
+| 74b | `/admin/settings/admin-team` | W5 | platform_config | Y (superadmin only) | `GET/POST /api/admin/settings/admin-team`, `PATCH/DELETE /api/admin/settings/admin-team/[id]` | List platform admins, invite by email, change role, deactivate, remove access |
 | 75 | `/admin/custom-fields` | W5 | platform_config | Y | `GET/POST/PATCH/DELETE /api/admin/custom-fields` | |
-| 76 | `/admin/control-plane` | W5 | platform_config | N | — | Server redirect → overview |
+| 76 | `/admin/control-plane` | W5 | platform_config | N | — | Redirect → `/admin/control-plane/overview` (no SPA page needed) |
 | 77 | `/admin/control-plane/overview` | W5 | platform_config | Y | — | Card hub only |
-| 78 | `/admin/control-plane/feature-flags` | W5 | platform_config | N | `GET /api/admin/feature-flags`, `POST /api/admin/control-plane/flags-preview` | |
-| 79 | `/admin/control-plane/integrations` | W5 | platform_config | N | — | Hub (links only) |
-| 80 | `/admin/control-plane/integrations/sumsub` | W5 | platform_config | N | `GET/PUT .../control-plane/integrations/sumsub` | |
-| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | N | `GET/PUT .../gemini` | |
-| 82 | `/admin/control-plane/integrations/aura` | W5 | platform_config | N | `GET/PUT .../aura` | |
-| 83 | `/admin/control-plane/modules/ads` | W5 | platform_config | N | `GET/PUT .../modules/ads`, packs CRUD | |
-| 84 | `/admin/control-plane/modules/on-demand` | W5 | platform_config | N | `GET/PUT .../on-demand` | |
-| 85 | `/admin/control-plane/modules/ai` | W5 | platform_config | N | `GET/PUT .../modules/ai` | |
-| 86 | `/admin/control-plane/modules/ai/templates` | W5 | platform_config | N | Templates CRUD under `.../ai/templates` | |
-| 87 | `/admin/control-plane/modules/ai/entitlements` | W5 | platform_config | N | `GET/POST .../entitlements` | |
-| 88 | `/admin/control-plane/modules/ai/usage` | W5 | platform_config | N | `GET .../usage` | |
-| 89 | `/admin/control-plane/modules/ranking` | W5 | platform_config | N | `GET/PUT .../ranking`, `POST /api/admin/ranking/recompute` | |
-| 90 | `/admin/control-plane/modules/ranking/scores` | W5 | platform_config | N | `GET /api/admin/ranking/scores`, recompute | |
-| 91 | `/admin/control-plane/modules/distance` | W5 | platform_config | N | `GET/PUT .../distance` | |
-| 92 | `/admin/control-plane/modules/safety` | W5 | platform_config | N | `GET/PUT .../safety` | |
-| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | N | `GET /api/admin/safety/logs` | |
-| 94 | `/admin/control-plane/maintenance` | W5 | platform_config | N | `GET/PATCH /api/admin/maintenance` | |
-| 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | N | `GET /api/admin/maintenance-notify` | |
-| 96 | `/admin/control-plane/audit-log` | W5 | platform_config | N | `GET /api/admin/control-plane/config-change-log` | |
+| 78 | `/admin/control-plane/feature-flags` | W5 | platform_config | Y | `GET /api/admin/feature-flags`, `POST /api/admin/control-plane/flags-preview` | List + resolver preview |
+| 79 | `/admin/control-plane/integrations` | W5 | platform_config | Y | — | Card hub (links to sumsub/gemini/aura/mapbox/settings/amplitude) |
+| 80 | `/admin/control-plane/integrations/sumsub` | W5 | platform_config | Y | `GET/PUT .../control-plane/integrations/sumsub` | |
+| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | Y | `GET/PUT .../gemini` | |
+| 82 | `/admin/control-plane/integrations/aura` | W5 | platform_config | Y | `GET/PUT .../aura` | |
+| 83 | `/admin/control-plane/modules/ads` | W5 | platform_config | Y | `GET/PUT .../modules/ads`, `GET/POST/DELETE .../modules/ads/packs` | |
+| 84 | `/admin/control-plane/modules/on-demand` | W5 | platform_config | Y | `GET/PUT .../on-demand` | |
+| 85 | `/admin/control-plane/modules/ai` | W5 | platform_config | Y | `GET/PUT .../modules/ai` | |
+| 86 | `/admin/control-plane/modules/ai/templates` | W5 | platform_config | Y | `GET/POST/PATCH/DELETE .../ai/templates`, `.../ai/templates/[id]` | Full CRUD |
+| 87 | `/admin/control-plane/modules/ai/entitlements` | W5 | platform_config | Y | `GET/POST .../entitlements` | |
+| 88 | `/admin/control-plane/modules/ai/usage` | W5 | platform_config | Y | `GET .../usage` | |
+| 89 | `/admin/control-plane/modules/ranking` | W5 | platform_config | Y | `GET/PUT .../ranking`, `POST /api/admin/ranking/recompute` | Weights editor + full recompute |
+| 90 | `/admin/control-plane/modules/ranking/scores` | W5 | platform_config | Y | `GET /api/admin/ranking/scores` | Provider score table + per-provider recompute |
+| 91 | `/admin/control-plane/modules/distance` | W5 | platform_config | Y | `GET/PUT .../distance` | |
+| 92 | `/admin/control-plane/modules/safety` | W5 | platform_config | Y | `GET/PUT .../safety` | |
+| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | Y | `GET /api/admin/safety/logs` | Read-only, filtered by event type |
+| 94 | `/admin/control-plane/maintenance` | W5 | platform_config | Y | `GET/PATCH /api/admin/maintenance` | Per-scope config + enable/disable + countdown |
+| 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | Y | `GET /api/admin/maintenance-notify` | Read-only list + CSV export, filtered by scope |
+| 96 | `/admin/control-plane/audit-log` | W5 | platform_config | Y | `GET /api/admin/control-plane/config-change-log` | Paginated, filtered by area + record key |
 
 ---
 

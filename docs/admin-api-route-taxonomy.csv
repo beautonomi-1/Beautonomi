@@ -221,6 +221,8 @@ path,class,note
 /api/admin/settings,T,"uses resolveAdminApiTenantId"
 /api/admin/settings/sales,T,"review: likely tenant-scoped ops"
 /api/admin/settings/section-permissions,T,"review: likely tenant-scoped ops"
+/api/admin/settings/admin-team,G,"superadmin-only; lists platform admin users and sends invites"
+/api/admin/settings/admin-team/[id],G,"superadmin-only; PATCH role/status, DELETE removes admin access"
 /api/admin/sms-templates/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/sms-templates,T,"review: likely tenant-scoped ops"
 /api/admin/staff/[id]/reset-password,T,"needs explicit tenant filter"
