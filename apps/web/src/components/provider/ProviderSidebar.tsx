@@ -75,8 +75,11 @@ const navigationSections = [
     title: "Schedule",
     items: [
       { icon: Calendar, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Clock, label: "Operating Hours", href: "/provider/settings/operating-hours", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CalendarRange, label: "Shifts", href: "/provider/team/shifts", permission: "view_team" as keyof StaffPermissions },
       { icon: CalendarRange, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
       { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" as keyof StaffPermissions },
+      { icon: CalendarOff, label: "Closed Periods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
   {

@@ -84,6 +84,11 @@ import {
   Search,
   Repeat,
   Loader2,
+  Timer,
+  AlertCircle,
+  Sparkles,
+  Tag,
+  Receipt,
 } from "lucide-react";
 
 import type {
@@ -1331,19 +1336,6 @@ export function AppointmentSidebar({
         throw new Error("Appointment ID is missing");
       }
       
-      console.log("Generating invoice for:", {
-        bookingId,
-        refNumber,
-        appointmentId: selectedAppointment.id,
-        clientName: selectedAppointment.client_name,
-        serviceName: selectedAppointment.service_name,
-        scheduledDate: selectedAppointment.scheduled_date,
-        status: selectedAppointment.status,
-        hasId: !!bookingId,
-        idType: typeof bookingId,
-        idLength: bookingId?.length
-      });
-      
       // Fetch booking receipt data from API (not platform invoices)
       const response = await fetch(`/api/provider/bookings/${bookingId}/receipt`);
       
@@ -1797,8 +1789,11 @@ export function AppointmentSidebar({
         recurrenceEndDate: "",
       }));
     } else if ((mode === "view" || mode === "edit") && selectedAppointment) {
-      const kind = selectedAppointment.location_type === "at_home" 
-        ? AppointmentKind.AT_HOME 
+      const bookingSource = (selectedAppointment as any).booking_source;
+      const kind = selectedAppointment.location_type === "at_home"
+        ? AppointmentKind.AT_HOME
+        : bookingSource === "walk_in"
+        ? AppointmentKind.WALK_IN
         : AppointmentKind.IN_SALON;
       
       // Extract travel override from metadata if present
@@ -1876,20 +1871,6 @@ export function AppointmentSidebar({
       const storedTotalAmount = selectedAppointment.total_amount || 0;
       const tipAmount = selectedAppointment.tip_amount || 0;
       
-      // Debug logging to help identify the issue
-      if (mode === "view") {
-        console.log("Appointment financial data:", {
-          appointmentId: selectedAppointment.id,
-          subtotal: storedSubtotal,
-          taxAmountRaw: taxAmountRaw,
-          taxAmount: storedTaxAmount,
-          totalAmount: storedTotalAmount,
-          tipAmount: tipAmount,
-          hasTaxAmount: !!(selectedAppointment as any).tax_amount,
-          appointmentKeys: Object.keys(selectedAppointment).filter(k => k.includes('tax') || k.includes('subtotal') || k.includes('total')),
-        });
-      }
-      
       // Calculate tax_rate from tax_amount if stored tax_rate is 0 or missing
       let storedTaxRate = (selectedAppointment as any).tax_rate;
       if (!storedTaxRate || storedTaxRate === 0) {
@@ -1952,10 +1933,8 @@ export function AppointmentSidebar({
         }
       }
       
-      // For walk-in appointments, always use 0 service fee
-      // Check if this is a walk-in appointment (booking_source is 'walk_in' or null/undefined for old appointments)
-      const bookingSource = (selectedAppointment as any).booking_source;
-      const isWalkIn = !bookingSource || bookingSource === 'walk_in';
+      const storedBookingSource = (selectedAppointment as any).booking_source;
+      const isWalkIn = !storedBookingSource || storedBookingSource === 'walk_in';
       
       // Use 0 service fee for walk-in appointments, otherwise use stored values
       const effectiveServiceFeePercentage = isWalkIn ? 0 : storedServiceFeePercentage;
@@ -2141,8 +2120,7 @@ export function AppointmentSidebar({
       (appointmentData as any).service_fee_paid_by = 'customer';
       (appointmentData as any).services = formData.services;
       (appointmentData as any).products = formData.products;
-      // Mark as provider-created (not from client portal)
-      (appointmentData as any).booking_source = 'walk_in';
+      (appointmentData as any).booking_source = formData.kind === AppointmentKind.WALK_IN ? 'walk_in' : 'provider';
       (appointmentData as any).referral_source_id = formData.referralSourceId || null;
       // Package id — set when appointment was built from a package
       (appointmentData as any).package_id = selectedPackageId || null;
@@ -2266,8 +2244,8 @@ export function AppointmentSidebar({
       // If updating an existing appointment that was created via provider, keep service fee at 0
       // Only preserve service fee if it was originally from client portal (check if it exists and > 0)
       const existingServiceFee = (selectedAppointment as any).service_fee_amount || 0;
-      const bookingSource = (selectedAppointment as any).booking_source;
-      if (existingServiceFee > 0 && bookingSource === 'online') {
+      const editBookingSource = (selectedAppointment as any).booking_source;
+      if (existingServiceFee > 0 && editBookingSource === 'online') {
         // Preserve existing service fee if it was from client portal booking
         (updates as any).service_fee_percentage = formData.serviceFeePercentage;
         (updates as any).service_fee_amount = formData.serviceFeeAmount;
@@ -2597,11 +2575,23 @@ export function AppointmentSidebar({
         isOpen && "animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:fade-in-0 sm:zoom-in-95 duration-300"
       )}>
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b bg-white flex-shrink-0 z-10">
+        <div className="flex flex-col flex-shrink-0 z-10">
+          <div className={cn(
+            "h-1 w-full",
+            mode === "create" ? "bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600" : mode === "edit" ? "bg-gradient-to-r from-amber-400 via-amber-500 to-orange-500" : "bg-gradient-to-r from-emerald-400 via-teal-500 to-emerald-600",
+          )} />
+          <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
           <div className="flex items-center gap-3 min-w-0 flex-1">
-            <h2 className="text-lg font-semibold text-gray-900 truncate">
-              {mode === "create" ? "New Appointment" : formData.clientName || "Appointment"}
-            </h2>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-semibold text-gray-900 truncate">
+                {mode === "create" ? "New Appointment" : formData.clientName || "Appointment"}
+              </h2>
+              {mode === "create" && formData.services.length > 0 && (
+                <p className="text-xs text-gray-500 truncate mt-0.5">
+                  {formData.services.length} service{formData.services.length !== 1 ? "s" : ""} · {formData.services.reduce((sum, s) => sum + s.duration + (s.addons?.reduce((a, ad) => a + ad.duration, 0) || 0), 0)} min · {formatMoney(formData.totalAmount)}
+                </p>
+              )}
+            </div>
             {mode === "view" && selectedAppointment && mangomintStatus && statusColors && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -2779,216 +2769,285 @@ export function AppointmentSidebar({
             </Button>
           </div>
         </div>
+        </div>
 
         {/* Content - Scrollable Area */}
         <div className="flex-1 min-h-0 overflow-hidden box-border relative">
           <ScrollArea className="absolute inset-0 w-full h-full box-border">
             <div className="p-2 sm:p-2.5 md:p-3 lg:p-4 pr-2 sm:pr-3 md:pr-4 lg:pr-6 pb-6 sm:pb-5 md:pb-4 space-y-2.5 sm:space-y-3 md:space-y-4 box-border w-full max-w-full overflow-x-hidden min-w-0">
-            {/* Status Actions (VIEW mode only) */}
+            {/* Status Actions — Workflow Progression (VIEW mode only) */}
             {mode === "view" && selectedAppointment && !isCanceled && (
-              <div className="space-y-2 min-w-0">
-                {/* In-salon only: client_arrived means client checked in at salon */}
-                {selectedAppointment.location_type !== "at_home" && mangomintStatus === AppointmentStatus.WAITING && (
-                  <div className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-purple-50 border border-purple-200">
-                    <Check className="w-4 h-4 text-purple-600 shrink-0" />
-                    <span className="text-sm font-medium text-purple-800">Client arrived – ready for service</span>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {/* Client Arrived: in-salon only (at-home uses provider_on_way/provider_arrived) */}
-                {selectedAppointment.location_type !== "at_home" && mangomintStatus !== AppointmentStatus.WAITING && mangomintStatus === AppointmentStatus.CONFIRMED && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-purple-600 border-purple-200 hover:bg-purple-50"
-                    onClick={() => handleStatusChange(AppointmentStatus.WAITING)}
-                    disabled={isSaving}
-                  >
-                    <Check className="w-3.5 h-3.5 mr-1" />
-                    Client Arrived
-                  </Button>
-                )}
-                {mangomintStatus === AppointmentStatus.WAITING && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-pink-600 border-pink-200 hover:bg-pink-50"
-                    onClick={() => handleStatusChange(AppointmentStatus.IN_SERVICE)}
-                    disabled={isSaving}
-                  >
-                    <Clock className="w-3.5 h-3.5 mr-1" />
-                    Mark In Service
-                  </Button>
-                )}
-                {mangomintStatus === AppointmentStatus.IN_SERVICE && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-gray-600 border-gray-200 hover:bg-gray-50"
-                    onClick={() => handleStatusChange(AppointmentStatus.COMPLETED)}
-                    disabled={isSaving}
-                  >
-                    <Check className="w-3.5 h-3.5 mr-1" />
-                    Mark Completed
-                  </Button>
-                )}
-                </div>
+              <div className="space-y-3 min-w-0">
+                {/* Workflow Progress Steps */}
+                {(() => {
+                  const isAtHome = selectedAppointment.location_type === "at_home";
+                  const steps = isAtHome
+                    ? [
+                        { key: "confirmed", label: "Confirmed", done: [AppointmentStatus.CONFIRMED, AppointmentStatus.WAITING, AppointmentStatus.IN_SERVICE, AppointmentStatus.COMPLETED].includes(mangomintStatus!) },
+                        { key: "in_service", label: "In Service", done: [AppointmentStatus.IN_SERVICE, AppointmentStatus.COMPLETED].includes(mangomintStatus!) },
+                        { key: "completed", label: "Completed", done: mangomintStatus === AppointmentStatus.COMPLETED },
+                      ]
+                    : [
+                        { key: "confirmed", label: "Confirmed", done: [AppointmentStatus.CONFIRMED, AppointmentStatus.WAITING, AppointmentStatus.IN_SERVICE, AppointmentStatus.COMPLETED].includes(mangomintStatus!) },
+                        { key: "arrived", label: "Arrived", done: [AppointmentStatus.WAITING, AppointmentStatus.IN_SERVICE, AppointmentStatus.COMPLETED].includes(mangomintStatus!) },
+                        { key: "in_service", label: "In Service", done: [AppointmentStatus.IN_SERVICE, AppointmentStatus.COMPLETED].includes(mangomintStatus!) },
+                        { key: "completed", label: "Completed", done: mangomintStatus === AppointmentStatus.COMPLETED },
+                      ];
+                  return (
+                    <div className="flex items-center gap-1 px-1">
+                      {steps.map((step, i) => (
+                        <div key={step.key} className="flex items-center gap-1 flex-1">
+                          <div className={cn(
+                            "flex-1 h-1.5 rounded-full transition-all",
+                            step.done ? "bg-emerald-500" : "bg-gray-200",
+                          )} />
+                          {i < steps.length - 1 && <div className="w-0.5" />}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+
+                {/* Next Action Button */}
+                {(() => {
+                  const isAtHome = selectedAppointment.location_type === "at_home";
+                  if (mangomintStatus === AppointmentStatus.COMPLETED) return null;
+                  
+                  const nextAction = !isAtHome && mangomintStatus === AppointmentStatus.CONFIRMED
+                    ? { status: AppointmentStatus.WAITING, label: "Client Arrived", icon: User, color: "purple" as const }
+                    : mangomintStatus === AppointmentStatus.WAITING || (isAtHome && mangomintStatus === AppointmentStatus.CONFIRMED)
+                    ? { status: AppointmentStatus.IN_SERVICE, label: "Start Service", icon: Clock, color: "pink" as const }
+                    : mangomintStatus === AppointmentStatus.IN_SERVICE
+                    ? { status: AppointmentStatus.COMPLETED, label: "Complete", icon: Check, color: "emerald" as const }
+                    : null;
+                    
+                  if (!nextAction) return null;
+                  const colorMap = {
+                    purple: "bg-purple-600 hover:bg-purple-700 shadow-purple-600/25 text-white",
+                    pink: "bg-pink-600 hover:bg-pink-700 shadow-pink-600/25 text-white",
+                    emerald: "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/25 text-white",
+                  };
+                  return (
+                    <Button
+                      className={cn("w-full h-10 rounded-xl text-sm font-semibold shadow-lg transition-all", colorMap[nextAction.color])}
+                      onClick={() => handleStatusChange(nextAction.status)}
+                      disabled={isSaving}
+                    >
+                      <nextAction.icon className="w-4 h-4 mr-2" />
+                      {nextAction.label}
+                    </Button>
+                  );
+                })()}
               </div>
             )}
 
             {/* Client Section */}
             <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                  <User className="w-3.5 h-3.5" />
                   Client
                 </Label>
                 {mode !== "view" && (
                   <button
                     type="button"
                     onClick={() => setShowNewClientDialog(true)}
-                    className="flex items-center gap-1.5 text-xs text-primary hover:text-primary-hover font-medium transition-colors"
+                    className="flex items-center gap-1.5 text-xs text-pink-600 hover:text-pink-700 font-medium transition-colors"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    Add new client
+                    New client
                   </button>
                 )}
               </div>
               {mode === "view" ? (
-                <div className="bg-gray-50 rounded-lg p-2 sm:p-2.5 md:p-3 overflow-hidden">
-                  <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3 min-w-0">
-                    <Avatar className="w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 flex-shrink-0">
-                      <AvatarFallback className="bg-gradient-to-br from-pink-500 to-orange-400 text-white font-semibold text-xs sm:text-xs md:text-sm">
+                <div className="rounded-xl border border-gray-200 p-3 overflow-hidden">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-pink-100">
+                      <AvatarFallback className="bg-gradient-to-br from-pink-500 to-rose-500 text-white font-semibold text-sm">
                         {formData.clientName.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0 overflow-hidden">
-                      <p className="font-medium text-sm sm:text-sm md:text-base text-gray-900 truncate">{formData.clientName}</p>
-                      {formData.clientPhone && (
-                        <p className="text-xs text-gray-500 break-all">{formData.clientPhone}</p>
-                      )}
-                      {formData.clientEmail && (
-                        <p className="text-xs text-gray-400 break-all">{formData.clientEmail}</p>
-                      )}
+                      <p className="font-semibold text-sm text-gray-900 truncate">{formData.clientName}</p>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {formData.clientPhone && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                            {formData.clientPhone}
+                          </span>
+                        )}
+                        {formData.clientEmail && (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-gray-400">
+                            <Mail className="w-3 h-3" />
+                            {formData.clientEmail}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2 overflow-hidden">
-                  <div className="relative">
+                  {/* Selected client card */}
+                  {formData.clientId && formData.clientName && (
+                    <div className="flex items-center gap-3 rounded-xl border border-pink-200 bg-pink-50/50 p-3">
+                      <Avatar className="w-9 h-9 flex-shrink-0">
+                        <AvatarFallback className="bg-gradient-to-br from-pink-500 to-rose-500 text-white font-semibold text-xs">
+                          {formData.clientName.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 truncate">{formData.clientName}</p>
+                        <p className="text-[11px] text-gray-500 truncate">
+                          {formData.clientPhone || formData.clientEmail || "Saved client"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setClientSearchQuery("");
+                          setFormData(prev => ({ ...prev, clientName: "", clientId: "", clientPhone: "", clientEmail: "", isRecurring: false }));
+                          setClientSearchResults([]);
+                        }}
+                        className="text-gray-400 hover:text-gray-600 flex-shrink-0"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                  {/* Search input - shown when no client selected or editing */}
+                  {!formData.clientId && (
                     <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <Input
-                        placeholder="Search or enter client name *"
-                        value={clientSearchQuery || formData.clientName}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          setClientSearchQuery(value);
-                          setFormData(prev => ({
-                            ...prev,
-                            clientName: value,
-                            clientId: "",
-                            ...(prev.isRecurring ? { isRecurring: false } : {}),
-                          }));
-                          setShowClientSearch(value.length >= 2);
-                        }}
-                        onFocus={() => {
-                          if (clientSearchQuery.length >= 2) {
-                            setShowClientSearch(true);
-                          }
-                        }}
-                        onBlur={() => {
-                          // Delay hiding to allow click on results
-                          setTimeout(() => setShowClientSearch(false), 200);
-                        }}
-                        className="w-full max-w-full box-border pl-10 pr-8"
-                      />
-                      {clientSearchQuery.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setClientSearchQuery("");
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <Input
+                          placeholder="Search or enter client name *"
+                          value={clientSearchQuery || formData.clientName}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setClientSearchQuery(value);
                             setFormData(prev => ({
                               ...prev,
-                              clientName: "",
+                              clientName: value,
                               clientId: "",
-                              isRecurring: false,
+                              ...(prev.isRecurring ? { isRecurring: false } : {}),
                             }));
-                            setClientSearchResults([]);
-                            setShowClientSearch(false);
+                            setShowClientSearch(value.length >= 2);
                           }}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                    {showClientSearch && (
-                      <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                        {clientSearchResults.length > 0 ? (
-                          <>
-                            {clientSearchResults.map((client) => (
-                              <button
-                                key={client.id}
-                                type="button"
-                                onClick={() => handleSelectClient(client)}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3"
-                              >
-                                <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                                  <span className="text-xs font-semibold text-primary">
-                                    {client.full_name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <span className="text-sm font-medium block truncate">
-                                    {client.full_name}
-                                  </span>
-                                  {(client.email || client.phone) && (
-                                    <span className="text-xs text-gray-500 block truncate">
-                                      {client.email || client.phone}
+                          onFocus={() => {
+                            if (clientSearchQuery.length >= 2) {
+                              setShowClientSearch(true);
+                            }
+                          }}
+                          onBlur={() => {
+                            setTimeout(() => setShowClientSearch(false), 200);
+                          }}
+                          className="w-full max-w-full box-border pl-10 pr-8 rounded-xl"
+                        />
+                        {clientSearchQuery.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setClientSearchQuery("");
+                              setFormData(prev => ({
+                                ...prev,
+                                clientName: "",
+                                clientId: "",
+                                isRecurring: false,
+                              }));
+                              setClientSearchResults([]);
+                              setShowClientSearch(false);
+                            }}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      {showClientSearch && (
+                        <div className="absolute z-50 w-full mt-1.5 bg-white border border-gray-200 rounded-xl shadow-xl max-h-60 overflow-y-auto">
+                          {clientSearchResults.length > 0 ? (
+                            <>
+                              {clientSearchResults.map((client) => (
+                                <button
+                                  key={client.id}
+                                  type="button"
+                                  onClick={() => handleSelectClient(client)}
+                                  className="w-full px-3.5 py-2.5 text-left hover:bg-pink-50/50 flex items-center gap-3 transition-colors first:rounded-t-xl"
+                                >
+                                  <Avatar className="w-8 h-8 flex-shrink-0">
+                                    <AvatarFallback className="bg-gradient-to-br from-pink-400 to-rose-400 text-white text-xs font-semibold">
+                                      {client.full_name.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium block truncate text-gray-900">
+                                      {client.full_name}
                                     </span>
-                                  )}
-                                </div>
-                              </button>
-                            ))}
-                            <div className="border-t border-gray-200">
+                                    {(client.email || client.phone) && (
+                                      <span className="text-[11px] text-gray-500 block truncate">
+                                        {client.phone || client.email}
+                                      </span>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                              <div className="border-t border-gray-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNewClientDialog(true)}
+                                  className="w-full px-3.5 py-2.5 text-left hover:bg-gray-50 flex items-center gap-3 text-pink-600 rounded-b-xl transition-colors"
+                                >
+                                  <div className="w-8 h-8 rounded-full bg-pink-50 flex items-center justify-center flex-shrink-0">
+                                    <Plus className="w-4 h-4" />
+                                  </div>
+                                  <span className="text-sm font-medium">Create new client</span>
+                                </button>
+                              </div>
+                            </>
+                          ) : clientSearchQuery.length >= 2 ? (
+                            <div className="p-5 text-center">
+                              <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                                <Search className="w-5 h-5 text-gray-400" />
+                              </div>
+                              <p className="text-sm text-gray-500 mb-2">No clients found</p>
                               <button
                                 type="button"
                                 onClick={() => setShowNewClientDialog(true)}
-                                className="w-full px-4 py-3 text-left hover:bg-gray-50 flex items-center gap-3 text-primary"
+                                className="text-sm text-pink-600 font-medium hover:text-pink-700 transition-colors"
                               >
-                                <Plus className="w-4 h-4" />
-                                <span className="text-sm font-medium">Create new client</span>
+                                + Create new client
                               </button>
                             </div>
-                          </>
-                        ) : clientSearchQuery.length >= 2 ? (
-                          <div className="p-4 text-center">
-                            <p className="text-sm text-gray-500 mb-2">No clients found</p>
-                            <button
-                              type="button"
-                              onClick={() => setShowNewClientDialog(true)}
-                              className="text-sm text-primary font-medium hover:underline"
-                            >
-                              Create new client
-                            </button>
-                          </div>
-                        ) : null}
+                          ) : null}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {/* Contact fields - collapsed into a row */}
+                  {!formData.clientId && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-gray-500 font-medium">Phone</label>
+                        <Input
+                          placeholder="Phone number"
+                          value={formData.clientPhone}
+                          onChange={(e) => setFormData(prev => ({ ...prev, clientPhone: e.target.value }))}
+                          className="w-full max-w-full box-border rounded-lg"
+                        />
                       </div>
-                    )}
-                  </div>
-                  <Input
-                    placeholder="Phone"
-                    value={formData.clientPhone}
-                    onChange={(e) => setFormData(prev => ({ ...prev, clientPhone: e.target.value }))}
-                    className="w-full max-w-full box-border"
-                  />
-                  <Input
-                    type="email"
-                    placeholder="Email"
-                    value={formData.clientEmail}
-                    onChange={(e) => setFormData(prev => ({ ...prev, clientEmail: e.target.value }))}
-                    className="w-full max-w-full box-border"
-                  />
+                      <div className="space-y-1">
+                        <label className="text-[11px] text-gray-500 font-medium">Email</label>
+                        <Input
+                          type="email"
+                          placeholder="Email address"
+                          value={formData.clientEmail}
+                          onChange={(e) => setFormData(prev => ({ ...prev, clientEmail: e.target.value }))}
+                          className="w-full max-w-full box-border rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -3144,49 +3203,84 @@ export function AppointmentSidebar({
             {/* Appointment Kind */}
             <div className="space-y-3">
               <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Type
+                Appointment Type
               </Label>
               {mode === "view" ? (
-                <div className="flex items-center gap-2">
-                  {formData.kind === AppointmentKind.AT_HOME && <Home className="w-4 h-4 text-blue-500" />}
-                  {formData.kind === AppointmentKind.WALK_IN && <PersonStanding className="w-4 h-4 text-amber-500" />}
-                  {formData.kind === AppointmentKind.IN_SALON && <Building2 className="w-4 h-4 text-gray-500" />}
-                  <span className="text-sm text-gray-700">
-                    {formData.kind === AppointmentKind.AT_HOME && "At-home service"}
-                    {formData.kind === AppointmentKind.WALK_IN && "Walk-in"}
-                    {formData.kind === AppointmentKind.IN_SALON && "In salon"}
-                  </span>
+                <div className={cn(
+                  "flex items-center gap-3 rounded-xl px-4 py-3",
+                  formData.kind === AppointmentKind.AT_HOME && "bg-blue-50 border border-blue-100",
+                  formData.kind === AppointmentKind.WALK_IN && "bg-amber-50 border border-amber-100",
+                  formData.kind === AppointmentKind.IN_SALON && "bg-gray-50 border border-gray-100",
+                )}>
+                  <div className={cn(
+                    "w-8 h-8 rounded-lg flex items-center justify-center",
+                    formData.kind === AppointmentKind.AT_HOME && "bg-blue-100",
+                    formData.kind === AppointmentKind.WALK_IN && "bg-amber-100",
+                    formData.kind === AppointmentKind.IN_SALON && "bg-gray-200",
+                  )}>
+                    {formData.kind === AppointmentKind.AT_HOME && <Home className="w-4 h-4 text-blue-600" />}
+                    {formData.kind === AppointmentKind.WALK_IN && <PersonStanding className="w-4 h-4 text-amber-600" />}
+                    {formData.kind === AppointmentKind.IN_SALON && <Building2 className="w-4 h-4 text-gray-600" />}
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">
+                      {formData.kind === AppointmentKind.AT_HOME && "At-Home Service"}
+                      {formData.kind === AppointmentKind.WALK_IN && "Walk-in"}
+                      {formData.kind === AppointmentKind.IN_SALON && "In Salon"}
+                    </span>
+                    <p className="text-xs text-gray-500">
+                      {formData.kind === AppointmentKind.AT_HOME && "Service at client's location"}
+                      {formData.kind === AppointmentKind.WALK_IN && "No prior booking required"}
+                      {formData.kind === AppointmentKind.IN_SALON && "Standard salon appointment"}
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-1 sm:gap-1.5 md:gap-2">
-                  {[
-                    { kind: AppointmentKind.IN_SALON, label: "In Salon", icon: Building2 },
-                    { kind: AppointmentKind.WALK_IN, label: "Walk-in", icon: PersonStanding },
-                    { kind: AppointmentKind.AT_HOME, label: "At Home", icon: Home },
-                  ].map(({ kind, label, icon: Icon }) => (
-                    <Button
-                      key={kind}
-                      type="button"
-                      variant={formData.kind === kind ? "default" : "outline"}
-                      size="sm"
-                      className={cn(
-                        "w-full text-[10px] sm:text-[10px] md:text-xs px-1 sm:px-1.5 md:px-2 h-8 sm:h-8.5 md:h-9",
-                        formData.kind === kind && "bg-gray-900 text-white"
-                      )}
-                      onClick={() =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          kind,
-                          ...(kind === AppointmentKind.WALK_IN
-                            ? { isRecurring: false }
-                            : {}),
-                        }))
-                      }
-                    >
-                      <Icon className="w-3 h-3 sm:w-3 sm:h-3 md:w-3.5 md:h-3.5 mr-0.5 sm:mr-0.5 md:mr-1 flex-shrink-0" />
-                      <span className="truncate">{label}</span>
-                    </Button>
-                  ))}
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { kind: AppointmentKind.IN_SALON, label: "In Salon", desc: "At your venue", icon: Building2, color: "gray" },
+                    { kind: AppointmentKind.WALK_IN, label: "Walk-in", desc: "No booking", icon: PersonStanding, color: "amber" },
+                    { kind: AppointmentKind.AT_HOME, label: "At Home", desc: "Client location", icon: Home, color: "blue" },
+                  ] as const).map(({ kind, label, desc, icon: Icon, color }) => {
+                    const isActive = formData.kind === kind;
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        className={cn(
+                          "flex flex-col items-center gap-1 rounded-xl p-3 transition-all duration-200 border-2 text-center",
+                          isActive && color === "gray" && "border-gray-900 bg-gray-900 text-white shadow-lg shadow-gray-900/20",
+                          isActive && color === "amber" && "border-amber-500 bg-amber-50 text-amber-900 shadow-lg shadow-amber-500/20",
+                          isActive && color === "blue" && "border-blue-500 bg-blue-50 text-blue-900 shadow-lg shadow-blue-500/20",
+                          !isActive && "border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50",
+                        )}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            kind,
+                            ...(kind === AppointmentKind.WALK_IN
+                              ? { isRecurring: false }
+                              : {}),
+                          }))
+                        }
+                      >
+                        <div className={cn(
+                          "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                          isActive && color === "gray" && "bg-white/20",
+                          isActive && color === "amber" && "bg-amber-200/60",
+                          isActive && color === "blue" && "bg-blue-200/60",
+                          !isActive && "bg-gray-100",
+                        )}>
+                          <Icon className="w-4 h-4" />
+                        </div>
+                        <span className="text-xs font-semibold leading-tight">{label}</span>
+                        <span className={cn(
+                          "text-[10px] leading-tight",
+                          isActive ? "opacity-80" : "text-gray-400",
+                        )}>{desc}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -3196,68 +3290,73 @@ export function AppointmentSidebar({
               <>
                 <Separator />
                 <div className="space-y-3">
-                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                    <Home className="w-3.5 h-3.5" />
                     Service Address
                   </Label>
                   {mode === "view" ? (
-                    <div className="bg-blue-50 rounded-lg p-3">
-                      <div className="flex items-start gap-2">
-                        <MapPin className="w-4 h-4 text-blue-500 mt-0.5" />
-                        <div className="text-sm text-gray-700">
-                          <p>{formData.addressLine1}</p>
-                          {formData.addressLine2 && <p>{formData.addressLine2}</p>}
-                          <p>{formData.addressCity} {formData.addressPostalCode}</p>
+                    <div className="rounded-xl border border-blue-200 bg-blue-50/60 overflow-hidden">
+                      <div className="flex items-start gap-3 p-3.5">
+                        <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <MapPin className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="text-sm text-gray-700 flex-1 min-w-0">
+                          <p className="font-medium">{formData.addressLine1}</p>
+                          {formData.addressLine2 && <p className="text-gray-500 text-xs mt-0.5">{formData.addressLine2}</p>}
+                          <p className="text-gray-500 text-xs mt-0.5">{formData.addressCity} {formData.addressPostalCode}</p>
                         </div>
                       </div>
                       {formData.travelFee > 0 && (
-                        <div className="mt-2 pt-2 border-t border-blue-100">
-                          <div className="flex justify-between items-center">
-                            <p className="text-sm text-blue-700">Travel fee</p>
-                            <p className="text-sm font-medium text-blue-700">
-                              {formatMoney(
-                                formData.hasTravelOverride && formData.travelFeeOverride !== null
-                                  ? formData.travelFeeOverride
-                                  : formData.travelFee
-                              )}
-                              {formData.hasTravelOverride && (
-                                <span className="ml-1 text-xs text-blue-500">(overridden)</span>
-                              )}
-                            </p>
-                          </div>
+                        <div className="px-3.5 py-2.5 bg-blue-100/50 border-t border-blue-200/60 flex justify-between items-center">
+                          <span className="text-xs text-blue-700 font-medium">Travel fee</span>
+                          <span className="text-sm font-semibold text-blue-800">
+                            {formatMoney(
+                              formData.hasTravelOverride && formData.travelFeeOverride !== null
+                                ? formData.travelFeeOverride
+                                : formData.travelFee
+                            )}
+                            {formData.hasTravelOverride && (
+                              <span className="ml-1 text-[11px] text-blue-500 font-normal">(overridden)</span>
+                            )}
+                          </span>
                         </div>
                       )}
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <Input
-                        placeholder="Street address *"
-                        value={formData.addressLine1}
-                        onChange={(e) => setFormData(prev => ({ ...prev, addressLine1: e.target.value }))}
-                        className="w-full max-w-full box-border"
-                      />
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] text-gray-500 font-medium">Street address *</label>
+                        <Input
+                          placeholder="123 Main Street"
+                          value={formData.addressLine1}
+                          onChange={(e) => setFormData(prev => ({ ...prev, addressLine1: e.target.value }))}
+                          className="w-full max-w-full box-border rounded-lg"
+                        />
+                      </div>
                       <Input
                         placeholder="Apartment, suite, etc."
                         value={formData.addressLine2}
                         onChange={(e) => setFormData(prev => ({ ...prev, addressLine2: e.target.value }))}
-                        className="w-full max-w-full box-border"
+                        className="w-full max-w-full box-border rounded-lg"
                       />
                       <div className="grid grid-cols-2 gap-2">
                         <Input
                           placeholder="City *"
                           value={formData.addressCity}
                           onChange={(e) => setFormData(prev => ({ ...prev, addressCity: e.target.value }))}
-                          className="w-full max-w-full box-border"
+                          className="w-full max-w-full box-border rounded-lg"
                         />
                         <Input
                           placeholder="Postal code"
                           value={formData.addressPostalCode}
                           onChange={(e) => setFormData(prev => ({ ...prev, addressPostalCode: e.target.value }))}
-                          className="w-full max-w-full box-border"
+                          className="w-full max-w-full box-border rounded-lg"
                         />
                       </div>
-                      <div className="bg-blue-50 rounded-lg p-2">
+                      <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 flex items-center gap-2">
+                        <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                         <p className="text-xs text-blue-700">
-                          <span className="font-medium">Calculated travel fee:</span> {formatMoney(formData.travelFee)}
+                          <span className="font-medium">Travel fee:</span> {formatMoney(formData.travelFee)}
                         </p>
                       </div>
                     </div>
@@ -3369,53 +3468,70 @@ export function AppointmentSidebar({
 
             {/* Staff & Location */}
             <div className="space-y-3">
-              <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+              <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                <Users className="w-3.5 h-3.5" />
                 Staff & Location
               </Label>
               {mode === "view" ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-700">
-                      {(teamMembers || []).find(m => m.id === formData.staffId)?.name || "Unassigned"}
-                    </span>
+                <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                  <div className="flex items-center gap-3 px-3.5 py-3">
+                    <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                      <User className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-gray-400 font-medium">Staff</p>
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {(teamMembers || []).find(m => m.id === formData.staffId)?.name || "Unassigned"}
+                      </p>
+                    </div>
                   </div>
                   {formData.kind !== AppointmentKind.AT_HOME && (
-                    <div className="flex items-center gap-2">
-                      <Building2 className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-700">
-                        {(salonLocations || []).find(l => l.id === formData.locationId)?.name || "No location"}
-                      </span>
+                    <div className="flex items-center gap-3 px-3.5 py-3">
+                      <div className="w-8 h-8 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0">
+                        <MapPin className="w-4 h-4 text-gray-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] text-gray-400 font-medium">Location</p>
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {(salonLocations || []).find(l => l.id === formData.locationId)?.name || "No location"}
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <Select value={formData.staffId} onValueChange={(v) => setFormData(prev => ({ ...prev, staffId: v }))}>
-                    <SelectTrigger className="w-full max-w-full min-w-0 box-border">
-                      <SelectValue placeholder="Select staff member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(teamMembers || []).map((member) => (
-                        <SelectItem key={member.id} value={member.id}>
-                          {member.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {formData.kind !== AppointmentKind.AT_HOME && salonLocations.length > 0 && (
-                    <Select value={formData.locationId} onValueChange={(v) => setFormData(prev => ({ ...prev, locationId: v }))}>
-                      <SelectTrigger className="w-full max-w-full min-w-0 box-border">
-                        <SelectValue placeholder="Select location" />
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-gray-500 font-medium">Assign staff</label>
+                    <Select value={formData.staffId} onValueChange={(v) => setFormData(prev => ({ ...prev, staffId: v }))}>
+                      <SelectTrigger className="w-full max-w-full min-w-0 box-border rounded-xl">
+                        <SelectValue placeholder="Select staff member" />
                       </SelectTrigger>
                       <SelectContent>
-                        {salonLocations.map((location) => (
-                          <SelectItem key={location.id} value={location.id}>
-                            {location.name}
+                        {(teamMembers || []).map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+                  {formData.kind !== AppointmentKind.AT_HOME && salonLocations.length > 0 && (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-gray-500 font-medium">Location</label>
+                      <Select value={formData.locationId} onValueChange={(v) => setFormData(prev => ({ ...prev, locationId: v }))}>
+                        <SelectTrigger className="w-full max-w-full min-w-0 box-border rounded-xl">
+                          <SelectValue placeholder="Select location" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {salonLocations.map((location) => (
+                            <SelectItem key={location.id} value={location.id}>
+                              {location.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                 </div>
               )}
@@ -3425,77 +3541,129 @@ export function AppointmentSidebar({
 
             {/* Date & Time */}
             <div className="space-y-3">
-              <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Date & Time
+              <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                <Calendar className="w-3.5 h-3.5" />
+                Schedule
               </Label>
               {mode === "view" && selectedAppointment ? (
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span className="text-sm text-gray-700 truncate">
-                      {selectedAppointment.scheduled_date ? (
-                        (() => {
-                          try {
-                            const dateValue = new Date(selectedAppointment.scheduled_date);
-                            return isNaN(dateValue.getTime()) ? selectedAppointment.scheduled_date : format(dateValue, "EEE, MMM d, yyyy");
-                          } catch {
-                            return selectedAppointment.scheduled_date;
-                          }
-                        })()
-                      ) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Clock className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    <span className="text-sm text-gray-700 truncate">
-                      {selectedAppointment.scheduled_time || "—"} ({selectedAppointment.duration_minutes} min)
-                    </span>
+                <div className="bg-gray-50 rounded-xl border border-gray-100 p-4">
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-white border border-gray-200 flex flex-col items-center justify-center shadow-sm flex-shrink-0">
+                      {(() => {
+                        try {
+                          const d = new Date(selectedAppointment.scheduled_date);
+                          if (!isNaN(d.getTime())) return (
+                            <>
+                              <span className="text-[10px] font-medium text-gray-500 uppercase leading-none">{format(d, "MMM")}</span>
+                              <span className="text-lg font-bold text-gray-900 leading-none">{format(d, "d")}</span>
+                            </>
+                          );
+                        } catch { /* fallback below */ }
+                        return <Calendar className="w-5 h-5 text-gray-400" />;
+                      })()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">
+                        {selectedAppointment.scheduled_date ? (
+                          (() => {
+                            try {
+                              const dateValue = new Date(selectedAppointment.scheduled_date);
+                              return isNaN(dateValue.getTime()) ? selectedAppointment.scheduled_date : format(dateValue, "EEEE, MMMM d, yyyy");
+                            } catch {
+                              return selectedAppointment.scheduled_date;
+                            }
+                          })()
+                        ) : "—"}
+                      </p>
+                      <div className="flex items-center gap-3 mt-1">
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-white px-2 py-0.5 rounded-md border border-gray-200">
+                          <Clock className="w-3 h-3" />
+                          {selectedAppointment.scheduled_time || "—"}
+                        </span>
+                        <span className="inline-flex items-center gap-1.5 text-xs text-gray-600 bg-white px-2 py-0.5 rounded-md border border-gray-200">
+                          <Timer className="w-3 h-3" />
+                          {selectedAppointment.duration_minutes} min
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
-                <>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Input
-                      type="date"
-                      value={formData.date}
-                      onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                      className="flex-1 min-w-0 max-w-full box-border"
-                    />
-                    <Input
-                      type="time"
-                      value={formData.startTime}
-                      onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                      className="flex-1 min-w-0 max-w-full box-border"
-                    />
-                    <Select
-                      value={formData.duration.toString()}
-                      onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
-                    >
-                      <SelectTrigger className="flex-1 min-w-0 max-w-full box-border">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[15, 30, 45, 60, 75, 90, 120, 150, 180].map((d) => (
-                          <SelectItem key={d} value={d.toString()}>
-                            {d} min
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-gray-500 font-medium">Date</label>
+                      <Input
+                        type="date"
+                        value={formData.date}
+                        onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] text-gray-500 font-medium">Time</label>
+                      <Input
+                        type="time"
+                        value={formData.startTime}
+                        onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
+                        className="w-full"
+                      />
+                    </div>
                   </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] text-gray-500 font-medium">Duration</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[15, 30, 45, 60, 90, 120].map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          className={cn(
+                            "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
+                            formData.duration === d
+                              ? "bg-gray-900 text-white border-gray-900 shadow-sm"
+                              : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50",
+                          )}
+                          onClick={() => setFormData(prev => ({ ...prev, duration: d }))}
+                        >
+                          {d >= 60 ? `${d / 60}h${d % 60 ? ` ${d % 60}m` : ''}` : `${d}m`}
+                        </button>
+                      ))}
+                      <Select
+                        value={![15, 30, 45, 60, 90, 120].includes(formData.duration) ? formData.duration.toString() : ""}
+                        onValueChange={(v) => setFormData(prev => ({ ...prev, duration: parseInt(v) }))}
+                      >
+                        <SelectTrigger className={cn(
+                          "w-auto h-auto px-3 py-1.5 rounded-lg text-xs font-medium border",
+                          ![15, 30, 45, 60, 90, 120].includes(formData.duration) ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200",
+                        )}>
+                          <span>{![15, 30, 45, 60, 90, 120].includes(formData.duration) ? `${formData.duration}m` : "Other"}</span>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[75, 150, 180, 210, 240].map((d) => (
+                            <SelectItem key={d} value={d.toString()}>
+                              {d >= 60 ? `${Math.floor(d / 60)}h ${d % 60 ? `${d % 60}m` : ''}` : `${d} min`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Availability Hint */}
                   {(mode === "create" || mode === "edit") && (
                     <div
                       className={cn(
-                        "mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed",
-                        slotAvailability.loading && "border-gray-200 bg-gray-50 text-gray-600",
+                        "rounded-xl border px-4 py-3 text-xs leading-relaxed transition-all",
+                        slotAvailability.loading && "border-gray-200 bg-gray-50/80 text-gray-600",
                         !slotAvailability.loading &&
                           slotAvailability.checked &&
                           slotAvailability.available &&
-                          "border-green-200 bg-green-50 text-green-900",
+                          "border-emerald-200 bg-emerald-50/80 text-emerald-900",
                         !slotAvailability.loading &&
                           slotAvailability.checked &&
                           !slotAvailability.available &&
-                          "border-amber-200 bg-amber-50 text-amber-950",
+                          "border-amber-200 bg-amber-50/80 text-amber-950",
+                        !slotAvailability.loading && !slotAvailability.checked && "border-gray-200 bg-gray-50/50 text-gray-500",
                       )}
                       role="status"
                       aria-live="polite"
@@ -3503,33 +3671,40 @@ export function AppointmentSidebar({
                       {slotAvailability.loading ? (
                         <span className="flex items-center gap-2">
                           <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                          Checking slot availability…
+                          Checking availability…
                         </span>
                       ) : slotAvailability.checked ? (
                         slotAvailability.available ? (
-                          <span className="font-medium">This time looks available for the selected staff and location.</span>
+                          <span className="flex items-center gap-2 font-medium">
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            Slot available for the selected staff and location
+                          </span>
                         ) : (
-                          <div className="space-y-1">
-                            <span className="font-semibold">This slot may not be available:</span>
-                            <ul className="list-disc pl-4 text-[11px] sm:text-xs">
+                          <div className="space-y-1.5">
+                            <span className="flex items-center gap-2 font-semibold">
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                              Potential scheduling conflict
+                            </span>
+                            <ul className="list-disc pl-6 text-[11px] sm:text-xs space-y-0.5">
                               {slotAvailability.conflicts.map((c, i) => (
                                 <li key={`${i}-${c}`}>{c}</li>
                               ))}
                             </ul>
-                            <p className="text-[11px] text-amber-800/90 pt-1">
-                              You can still try to save; the server will reject the booking if the slot is taken.
+                            <p className="text-[11px] text-amber-800/80 pt-0.5">
+                              You can still book — the server validates before confirming.
                             </p>
                           </div>
                         )
                       ) : (
-                        <span className="text-gray-500">
-                          Set date, time, and duration to see availability hints
-                          {formData.staffId ? "" : " (select staff for hours and booking overlap checks)"}.
+                        <span className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5" />
+                          Select date and time to check availability
+                          {!formData.staffId && " · Assign staff for shift checks"}
                         </span>
                       )}
                     </div>
                   )}
-                </>
+                </div>
               )}
             </div>
 
@@ -3596,13 +3771,19 @@ export function AppointmentSidebar({
             {/* Services & Products */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                  <Sparkles className="w-3.5 h-3.5" />
                   Services & Products
+                  {formData.services.length > 0 && (
+                    <span className="bg-gray-900 text-white text-[10px] px-1.5 py-0.5 rounded-full font-bold">
+                      {formData.services.length + formData.products.length}
+                    </span>
+                  )}
                 </Label>
-                {mode === "create" && (
+                {mode !== "view" && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-8">
+                      <Button variant="outline" size="sm" className="h-8 rounded-lg border-dashed">
                         <Plus className="w-3 h-3 mr-1" />
                         Add
                       </Button>
@@ -3610,26 +3791,24 @@ export function AppointmentSidebar({
                     <DropdownMenuContent align="end" className="w-56 z-[110]">
                       <DropdownMenuItem onClick={(e) => {
                         e.preventDefault();
-                        // Scroll to service selection dropdown and focus it
-                        const serviceSelect = document.querySelector('[placeholder="Add a service..."]') as HTMLElement;
+                        const serviceSelect = document.querySelector('[data-sidebar-service-select]') as HTMLElement;
                         if (serviceSelect) {
                           serviceSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
                           setTimeout(() => serviceSelect.click(), 100);
                         }
                       }}>
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Sparkles className="w-4 h-4 mr-2" />
                         Add Service
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={(e) => {
                         e.preventDefault();
-                        // Scroll to product selection dropdown and focus it
-                        const productSelect = document.querySelector('[placeholder="Select a product..."]') as HTMLElement;
+                        const productSelect = document.querySelector('[data-sidebar-product-select]') as HTMLElement;
                         if (productSelect) {
                           productSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
                           setTimeout(() => productSelect.click(), 100);
                         }
                       }}>
-                        <Plus className="w-4 h-4 mr-2" />
+                        <Tag className="w-4 h-4 mr-2" />
                         Add Product
                       </DropdownMenuItem>
                       {packages.length > 0 && (
@@ -3637,8 +3816,7 @@ export function AppointmentSidebar({
                           <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={(e) => {
                             e.preventDefault();
-                            // Scroll to package selection dropdown and focus it
-                            const packageSelect = document.querySelector('[placeholder="Add a package..."]') as HTMLElement;
+                            const packageSelect = document.querySelector('[data-sidebar-package-select]') as HTMLElement;
                             if (packageSelect) {
                               packageSelect.scrollIntoView({ behavior: 'smooth', block: 'center' });
                               setTimeout(() => packageSelect.click(), 100);
@@ -3654,105 +3832,134 @@ export function AppointmentSidebar({
                 )}
               </div>
 
+              {/* Empty State */}
+              {formData.services.length === 0 && formData.products.length === 0 && mode !== "view" && (
+                <div className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center">
+                  <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-2">
+                    <Sparkles className="w-5 h-5 text-gray-400" />
+                  </div>
+                  <p className="text-sm text-gray-500 font-medium">No services added yet</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Add services, products, or a package below</p>
+                </div>
+              )}
+
               {/* Services List */}
               {formData.services.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs text-gray-500">Services</Label>
-                  {formData.services.map((service) => {
+                  {formData.services.map((service, idx) => {
                     const serviceTotal = service.price + (service.addons?.reduce((sum, a) => sum + a.price, 0) || 0);
                     const serviceDuration = service.duration + (service.addons?.reduce((sum, a) => sum + a.duration, 0) || 0);
                     
                     return (
-                      <div key={service.id} className="bg-gray-50 rounded-lg p-3 space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className="font-medium text-sm text-gray-900 truncate">
-                                {service.serviceName}
-                                {service.variantName && (
-                                  <span className="text-xs text-purple-600 ml-1">({service.variantName})</span>
-                                )}
-                              </p>
-                              {mode !== "view" && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-6 w-6 flex-shrink-0"
-                                  onClick={() => removeService(service.id)}
-                                >
-                                  <X className="w-3 h-3" />
-                                </Button>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                              <span>{serviceDuration} min</span>
-                              {mode !== "view" && (
-                                <Input
-                                  type="number"
-                                  className="w-20 h-6 text-xs"
-                                  value={service.price}
-                                  onChange={(e) => {
-                                    const newPrice = parseFloat(e.target.value) || 0;
-                                    setFormData(prev => {
-                                      const newServices = prev.services.map(s => 
-                                        s.id === service.id ? { ...s, price: newPrice } : s
-                                      );
-                                      // Provider-created appointments always have 0 service fee
-                                      const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-                                      const pricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
-                                      return {
-                                        ...prev,
-                                        services: newServices,
-                                        subtotal: pricing.subtotal,
-                                        taxAmount: pricing.taxAmount,
-                                        totalAmount: pricing.totalAmount,
-                                      };
-                                    });
-                                  }}
-                                />
-                              )}
-                            </div>
-                            {/* Addons for this service */}
-                            {service.addons && service.addons.length > 0 && (
-                              <div className="mt-2 space-y-1 pl-2 border-l-2 border-gray-300">
-                                {service.addons.map((addon) => (
-                                  <div key={addon.id} className="flex items-center justify-between text-xs">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-gray-600">+ {addon.addonName}</span>
-                                      {mode !== "view" && (
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          className="h-4 w-4"
-                                          onClick={() => removeAddonFromService(service.id, addon.id)}
-                                        >
-                                          <X className="w-2.5 h-2.5" />
-                                        </Button>
-                                      )}
-                                    </div>
-                                    <span className="text-gray-700 font-medium">{formatMoney(addon.price)}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                            {/* Add addon button */}
-                            {mode !== "view" && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 text-xs mt-2"
-                                onClick={() => {
-                                  setSelectedServiceForAddon(service.id);
-                                  loadServiceAddons(service.serviceId);
-                                }}
-                              >
-                                <Plus className="w-3 h-3 mr-1" />
-                                Add add-on
-                              </Button>
-                            )}
+                      <div key={service.id} className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-all overflow-hidden">
+                        <div className="flex items-start gap-3 p-3">
+                          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-100 to-rose-100 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-xs font-bold text-pink-600">{idx + 1}</span>
                           </div>
-                          <p className="font-semibold text-sm text-gray-900 flex-shrink-0">{formatMoney(serviceTotal)}</p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-medium text-sm text-gray-900 truncate">
+                                  {service.serviceName}
+                                </p>
+                                {service.variantName && (
+                                  <span className="inline-flex items-center text-[11px] text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded-md mt-0.5 font-medium">
+                                    {service.variantName}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {mode !== "view" && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500"
+                                    onClick={() => removeService(service.id)}
+                                  >
+                                    <X className="w-3 h-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className="inline-flex items-center gap-1 text-[11px] text-gray-500">
+                                <Clock className="w-3 h-3" />
+                                {serviceDuration}m
+                              </span>
+                              {mode !== "view" ? (
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">R</span>
+                                  <Input
+                                    type="number"
+                                    className="w-20 h-6 text-xs pl-5 pr-1"
+                                    value={service.price}
+                                    onChange={(e) => {
+                                      const newPrice = parseFloat(e.target.value) || 0;
+                                      setFormData(prev => {
+                                        const newServices = prev.services.map(s => 
+                                          s.id === service.id ? { ...s, price: newPrice } : s
+                                        );
+                                        const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+                                        const pricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
+                                        return {
+                                          ...prev,
+                                          services: newServices,
+                                          subtotal: pricing.subtotal,
+                                          taxAmount: pricing.taxAmount,
+                                          totalAmount: pricing.totalAmount,
+                                        };
+                                      });
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <span className="text-xs font-semibold text-gray-900">{formatMoney(serviceTotal)}</span>
+                              )}
+                            </div>
+                          </div>
+                          {mode === "view" && (
+                            <p className="font-semibold text-sm text-gray-900 flex-shrink-0 mt-0.5">{formatMoney(serviceTotal)}</p>
+                          )}
                         </div>
+                        {/* Addons for this service */}
+                        {service.addons && service.addons.length > 0 && (
+                          <div className="px-3 pb-2 pl-14">
+                            <div className="space-y-1 border-l-2 border-pink-200 pl-3">
+                              {service.addons.map((addon) => (
+                                <div key={addon.id} className="flex items-center justify-between text-xs group/addon">
+                                  <div className="flex items-center gap-1.5">
+                                    <Plus className="w-2.5 h-2.5 text-pink-400" />
+                                    <span className="text-gray-600">{addon.addonName}</span>
+                                    {addon.duration > 0 && <span className="text-gray-400">+{addon.duration}m</span>}
+                                    {mode !== "view" && (
+                                      <button
+                                        className="opacity-0 group-hover/addon:opacity-100 text-gray-400 hover:text-red-500 transition-all"
+                                        onClick={() => removeAddonFromService(service.id, addon.id)}
+                                      >
+                                        <X className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                  <span className="text-gray-700 font-medium">{formatMoney(addon.price)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {mode !== "view" && (
+                          <div className="px-3 pb-2 pl-14">
+                            <button
+                              className="text-xs text-pink-600 hover:text-pink-700 font-medium flex items-center gap-1 transition-colors"
+                              onClick={() => {
+                                setSelectedServiceForAddon(service.id);
+                                loadServiceAddons(service.serviceId);
+                              }}
+                            >
+                              <Plus className="w-3 h-3" />
+                              Add extra
+                            </button>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -3762,87 +3969,96 @@ export function AppointmentSidebar({
               {/* Products List */}
               {formData.products.length > 0 && (
                 <div className="space-y-2">
-                  <Label className="text-xs text-gray-500">Products</Label>
                   {formData.products.map((product) => (
-                    <div key={product.id} className="bg-gray-50 rounded-lg p-3 flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className="font-medium text-sm text-gray-900 truncate">
-                            {product.productName}
-                            {product.productVariantName && <span className="text-gray-500 font-normal"> · {product.productVariantName}</span>}
-                          </p>
-                          {mode !== "view" && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 flex-shrink-0"
-                              onClick={() => removeProduct(product.id)}
-                            >
-                              <X className="w-3 h-3" />
-                            </Button>
-                          )}
+                    <div key={product.id} className="group rounded-xl border border-gray-200 bg-white hover:border-gray-300 transition-all p-3">
+                      <div className="flex items-start gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-100 to-indigo-100 flex items-center justify-center flex-shrink-0">
+                          <Tag className="w-3.5 h-3.5 text-blue-600" />
                         </div>
-                        <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                          {mode !== "view" ? (
-                            <>
-                              <span>Qty:</span>
-                              <div className="flex items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateProductQuantity(product.id, product.quantity - 1)}
-                                >
-                                  <Minus className="w-3 h-3" />
-                                </Button>
-                                <Input
-                                  type="number"
-                                  className="w-12 h-6 text-xs text-center"
-                                  value={product.quantity}
-                                  onChange={(e) => updateProductQuantity(product.id, parseInt(e.target.value) || 1)}
-                                />
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5"
-                                  onClick={() => updateProductQuantity(product.id, product.quantity + 1)}
-                                >
-                                  <Plus className="w-3 h-3" />
-                                </Button>
-                              </div>
-                              <span className="text-gray-400">×</span>
-                              <Input
-                                type="number"
-                                className="w-20 h-6 text-xs"
-                                value={product.unitPrice}
-                                onChange={(e) => {
-                                  const newPrice = parseFloat(e.target.value) || 0;
-                                  setFormData(prev => {
-                                    const newProducts = prev.products.map(p => 
-                                      p.id === product.id
-                                        ? { ...p, unitPrice: newPrice, totalPrice: newPrice * p.quantity }
-                                        : p
-                                    );
-                                    // Provider-created appointments always have 0 service fee
-                                    const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-                                    const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
-                                    return {
-                                      ...prev,
-                                      products: newProducts,
-                                      subtotal: pricing.subtotal,
-                                      taxAmount: pricing.taxAmount,
-                                      totalAmount: pricing.totalAmount,
-                                    };
-                                  });
-                                }}
-                              />
-                            </>
-                          ) : (
-                            <span>Qty: {product.quantity} × {formatMoney(product.unitPrice)}</span>
-                          )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="font-medium text-sm text-gray-900 truncate">
+                                {product.productName}
+                              </p>
+                              {product.productVariantName && (
+                                <span className="inline-flex items-center text-[11px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded-md mt-0.5 font-medium">
+                                  {product.productVariantName}
+                                </span>
+                              )}
+                            </div>
+                            {mode !== "view" && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 flex-shrink-0"
+                                onClick={() => removeProduct(product.id)}
+                              >
+                                <X className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1.5">
+                            {mode !== "view" ? (
+                              <>
+                                <div className="flex items-center rounded-lg border border-gray-200 overflow-hidden">
+                                  <button
+                                    className="px-2 py-1 text-gray-500 hover:bg-gray-50 transition-colors"
+                                    onClick={() => updateProductQuantity(product.id, product.quantity - 1)}
+                                  >
+                                    <Minus className="w-3 h-3" />
+                                  </button>
+                                  <Input
+                                    type="number"
+                                    className="w-10 h-6 text-xs text-center border-x border-gray-200 rounded-none"
+                                    value={product.quantity}
+                                    onChange={(e) => updateProductQuantity(product.id, parseInt(e.target.value) || 1)}
+                                  />
+                                  <button
+                                    className="px-2 py-1 text-gray-500 hover:bg-gray-50 transition-colors"
+                                    onClick={() => updateProductQuantity(product.id, product.quantity + 1)}
+                                  >
+                                    <Plus className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                <span className="text-[11px] text-gray-400">×</span>
+                                <div className="relative">
+                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">R</span>
+                                  <Input
+                                    type="number"
+                                    className="w-20 h-6 text-xs pl-5 pr-1"
+                                    value={product.unitPrice}
+                                    onChange={(e) => {
+                                      const newPrice = parseFloat(e.target.value) || 0;
+                                      setFormData(prev => {
+                                        const newProducts = prev.products.map(p => 
+                                          p.id === product.id
+                                            ? { ...p, unitPrice: newPrice, totalPrice: newPrice * p.quantity }
+                                            : p
+                                        );
+                                        const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+                                        const pricing = calculatePricing(prev.services, newProducts, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
+                                        return {
+                                          ...prev,
+                                          products: newProducts,
+                                          subtotal: pricing.subtotal,
+                                          taxAmount: pricing.taxAmount,
+                                          totalAmount: pricing.totalAmount,
+                                        };
+                                      });
+                                    }}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <span className="text-xs text-gray-500">Qty: {product.quantity} × {formatMoney(product.unitPrice)}</span>
+                            )}
+                          </div>
                         </div>
+                        {mode === "view" && (
+                          <p className="font-semibold text-sm text-gray-900 flex-shrink-0 mt-0.5">{formatMoney(product.totalPrice)}</p>
+                        )}
                       </div>
-                      <p className="font-semibold text-sm text-gray-900 flex-shrink-0">{formatMoney(product.totalPrice)}</p>
                     </div>
                   ))}
                 </div>
@@ -3882,7 +4098,7 @@ export function AppointmentSidebar({
                       }
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger data-sidebar-service-select>
                       <SelectValue placeholder="Add a service..." />
                     </SelectTrigger>
                     <SelectContent>
@@ -3964,7 +4180,7 @@ export function AppointmentSidebar({
                         }
                       }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger data-sidebar-product-select>
                         <SelectValue placeholder="Select a product..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -4022,7 +4238,7 @@ export function AppointmentSidebar({
                         }
                       }}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger data-sidebar-package-select>
                         <SelectValue placeholder="Add a package..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -4068,13 +4284,14 @@ export function AppointmentSidebar({
             {/* Pricing Breakdown */}
             <div className="space-y-2 sm:space-y-2.5 md:space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Pricing Breakdown
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                  <Receipt className="w-3.5 h-3.5" />
+                  Pricing
                 </Label>
                 {mode === "view" && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" className="h-7 sm:h-7.5 md:h-8 text-xs px-2">
+                      <Button variant="outline" size="sm" className="h-7 sm:h-7.5 md:h-8 text-xs px-2 rounded-lg">
                         <FileText className="w-3 h-3 mr-1" />
                         <span className="hidden xs:inline">Invoice</span>
                       </Button>
@@ -4093,85 +4310,91 @@ export function AppointmentSidebar({
                 )}
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-2 sm:p-2.5 md:p-3 space-y-1.5 sm:space-y-1.5 md:space-y-2">
-                {/* Subtotal */}
-                <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-medium text-gray-900">{formatMoney(formData.subtotal)}</span>
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="p-3 space-y-2 bg-white">
+                  {/* Subtotal */}
+                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                    <span className="text-gray-500">Subtotal</span>
+                    <span className="font-medium text-gray-900">{formatMoney(formData.subtotal)}</span>
+                  </div>
+                  
+                  {/* Discount */}
+                  {formData.discountAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-emerald-600 flex items-center gap-1">
+                        <Tag className="w-3 h-3" />
+                        Discount{formData.discountCode || formData.discountReason
+                          ? ` · ${formData.discountCode || formData.discountReason}`
+                          : ""}
+                      </span>
+                      <span className="font-medium text-emerald-600">-{formatMoney(formData.discountAmount)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Tax */}
+                  {formData.taxAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-gray-500">Tax ({(Math.round(formData.taxRate * 10000) / 100).toFixed(1)}%)</span>
+                      <span className="font-medium text-gray-700">{formatMoney(formData.taxAmount)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Travel Fee */}
+                  {formData.travelFee > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-gray-500 flex items-center gap-1">
+                        <MapPin className="w-3 h-3" />
+                        Travel Fee
+                      </span>
+                      <span className="font-medium text-gray-700">{formatMoney(formData.travelFee)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Service Fee */}
+                  {formData.serviceFeeAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-gray-500">Platform Fee ({(formData.serviceFeePercentage * 100).toFixed(1)}%)</span>
+                      <span className="font-medium text-gray-700">{formatMoney(formData.serviceFeeAmount)}</span>
+                    </div>
+                  )}
+                  
+                  {/* Tip */}
+                  {formData.tipAmount > 0 && (
+                    <div className="flex justify-between text-xs sm:text-xs md:text-sm">
+                      <span className="text-gray-500">Tip</span>
+                      <span className="font-medium text-gray-700">{formatMoney(formData.tipAmount)}</span>
+                    </div>
+                  )}
                 </div>
                 
-                {/* Discount */}
-                {formData.discountAmount > 0 && (
-                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                    <span className="text-gray-600">
-                      Discount{formData.discountCode || formData.discountReason
-                        ? ` (${formData.discountCode || formData.discountReason})`
-                        : ""}
-                    </span>
-                    <span className="font-medium text-red-600">{formatMoney(-formData.discountAmount)}</span>
-                  </div>
-                )}
-                
-                {/* Tax */}
-                {formData.taxAmount > 0 && (
-                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                    <span className="text-gray-600">Tax ({(Math.round(formData.taxRate * 10000) / 100).toFixed(1)}%)</span>
-                    <span className="font-medium text-gray-900">{formatMoney(formData.taxAmount)}</span>
-                  </div>
-                )}
-                
-                {/* Travel Fee */}
-                {formData.travelFee > 0 && (
-                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                    <span className="text-gray-600">Travel Fee</span>
-                    <span className="font-medium text-gray-900">{formatMoney(formData.travelFee)}</span>
-                  </div>
-                )}
-                
-                {/* Service Fee */}
-                {formData.serviceFeeAmount > 0 && (
-                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                    <span className="text-gray-600">Service Fee ({(formData.serviceFeePercentage * 100).toFixed(1)}%)</span>
-                    <span className="font-medium text-gray-900">{formatMoney(formData.serviceFeeAmount)}</span>
-                  </div>
-                )}
-                
-                {/* Tip */}
-                {formData.tipAmount > 0 && (
-                  <div className="flex justify-between text-xs sm:text-xs md:text-sm">
-                    <span className="text-gray-600">Tip</span>
-                    <span className="font-medium text-gray-900">{formatMoney(formData.tipAmount)}</span>
-                  </div>
-                )}
-                
-                <Separator />
-                
-                {/* Total */}
-                <div className="flex justify-between">
-                  <span className="font-semibold text-sm sm:text-sm md:text-base text-gray-900">Total</span>
-                  <span className="font-bold text-base sm:text-base md:text-lg text-gray-900">{formatMoney(formData.totalAmount)}</span>
+                {/* Total - gradient accent */}
+                <div className="bg-gradient-to-r from-gray-900 to-gray-800 px-3 py-3 flex justify-between items-center">
+                  <span className="font-semibold text-sm text-white/80">Total</span>
+                  <span className="font-bold text-lg text-white tracking-tight">{formatMoney(formData.totalAmount)}</span>
                 </div>
               </div>
               
               {/* Promo Code, Discount & Tip inputs (create/edit mode) */}
               {mode !== "view" && (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {/* Promo Code */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-gray-600">Promo Code</Label>
+                  <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+                    <label className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
+                      <Tag className="w-3 h-3" />
+                      Promo Code
+                    </label>
                     <div className="flex items-center gap-2">
                       <Input
                         type="text"
-                        placeholder="Enter promo code"
+                        placeholder="Enter code"
                         value={formData.discountCode || ""}
                         onChange={(e) => setFormData(prev => ({ ...prev, discountCode: e.target.value }))}
-                        className="flex-1 uppercase"
+                        className="flex-1 uppercase rounded-lg text-sm"
                       />
                       <Button
                         type="button"
-                        variant="outline"
                         size="sm"
-                        className="shrink-0"
+                        className="shrink-0 rounded-lg bg-gray-900 hover:bg-gray-800 text-white text-xs px-4"
                         onClick={async () => {
                         const code = formData.discountCode?.trim();
                         if (!code) {
@@ -4209,45 +4432,50 @@ export function AppointmentSidebar({
                       </Button>
                     </div>
                   </div>
-                  {/* Manual discount amount + reason */}
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-gray-600">Discount Amount</Label>
-                    <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      placeholder="0.00"
-                      value={formData.discountAmount ? String(formData.discountAmount) : ""}
-                      onChange={(e) => {
-                        const discount = parseFloat(e.target.value) || 0;
-                        setFormData(prev => {
-                          const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-                          const pricing = calculatePricing(prev.services, prev.products, prev.travelFee, discount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
-                          return {
-                            ...prev,
-                            discountAmount: discount,
-                            subtotal: pricing.subtotal,
-                            taxAmount: pricing.taxAmount,
-                            totalAmount: pricing.totalAmount,
-                          };
-                        });
-                      }}
-                      className="flex-1"
-                    />
-                    <Input
-                      type="text"
-                      placeholder="Reason (optional)"
-                      value={formData.discountReason || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, discountReason: e.target.value }))}
-                      className="flex-1"
-                    />
+                  {/* Manual discount */}
+                  <div className="grid grid-cols-5 gap-2">
+                    <div className="col-span-2 space-y-1">
+                      <label className="text-[11px] text-gray-500 font-medium">Discount</label>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">R</span>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          placeholder="0.00"
+                          value={formData.discountAmount ? String(formData.discountAmount) : ""}
+                          onChange={(e) => {
+                            const discount = parseFloat(e.target.value) || 0;
+                            setFormData(prev => {
+                              const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+                              const pricing = calculatePricing(prev.services, prev.products, prev.travelFee, discount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
+                              return {
+                                ...prev,
+                                discountAmount: discount,
+                                subtotal: pricing.subtotal,
+                                taxAmount: pricing.taxAmount,
+                                totalAmount: pricing.totalAmount,
+                              };
+                            });
+                          }}
+                          className="pl-6 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                    <div className="col-span-3 space-y-1">
+                      <label className="text-[11px] text-gray-500 font-medium">Reason</label>
+                      <Input
+                        type="text"
+                        placeholder="Optional"
+                        value={formData.discountReason || ""}
+                        onChange={(e) => setFormData(prev => ({ ...prev, discountReason: e.target.value }))}
+                        className="rounded-lg"
+                      />
                     </div>
                   </div>
+                  {/* Tip */}
                   <div className="space-y-2">
-                    <Label className="text-xs text-gray-600">Tip</Label>
-                    
-                    {/* Pill-shaped tip buttons - % based on (subtotal - discount) */}
+                    <label className="text-[11px] text-gray-500 font-medium">Tip</label>
                     <div className="flex flex-wrap gap-1.5">
                       {[
                         { label: "0%", value: 0 },
@@ -4287,10 +4515,10 @@ export function AppointmentSidebar({
                               }
                             }}
                             className={cn(
-                              "min-h-[32px] min-w-[36px] px-2.5 py-1 rounded-full text-[11px] font-medium transition-all touch-manipulation",
+                              "px-3 py-1.5 rounded-lg text-xs font-medium transition-all border",
                               isSelected
-                                ? "bg-primary text-white border border-primary shadow-sm"
-                                : "bg-gray-100 text-gray-700 border border-transparent hover:bg-gray-200 hover:border-gray-300"
+                                ? "bg-gray-900 text-white border-gray-900 shadow-sm"
+                                : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
                             )}
                           >
                             {option.label}
@@ -4299,36 +4527,38 @@ export function AppointmentSidebar({
                       })}
                     </div>
                     
-                    {/* Custom amount - show when Custom selected or non-preset value */}
+                    {/* Custom amount */}
                     {(() => {
                       const tipBase = Math.max(0, formData.subtotal - formData.discountAmount);
                       const presets = [0, tipBase * 0.05, tipBase * 0.10, tipBase * 0.20];
                       return customTipActive || !presets.some(p => Math.abs(formData.tipAmount - p) < 0.01);
                     })() && (
-                      <div className="flex items-center gap-2">
-                        <Label className="text-[11px] text-gray-500 shrink-0">Custom (R)</Label>
-                        <Input
-                          ref={customTipInputRef}
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          placeholder="0.00"
-                          value={formData.tipAmount > 0 ? formData.tipAmount.toFixed(2) : ""}
-                          onChange={(e) => {
-                            const tip = parseFloat(e.target.value) || 0;
-                            setFormData(prev => {
-                              const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-                              const pricing = calculatePricing(prev.services, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, tip);
-                              return {
-                                ...prev,
-                                tipAmount: tip,
-                                totalAmount: pricing.totalAmount,
-                              };
-                            });
-                          }}
-                          onBlur={() => setCustomTipActive(false)}
-                          className="h-8 text-sm flex-1 max-w-[100px]"
-                        />
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="relative flex-1 max-w-[120px]">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-gray-400 pointer-events-none">R</span>
+                          <Input
+                            ref={customTipInputRef}
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            placeholder="0.00"
+                            value={formData.tipAmount > 0 ? formData.tipAmount.toFixed(2) : ""}
+                            onChange={(e) => {
+                              const tip = parseFloat(e.target.value) || 0;
+                              setFormData(prev => {
+                                const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+                                const pricing = calculatePricing(prev.services, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, tip);
+                                return {
+                                  ...prev,
+                                  tipAmount: tip,
+                                  totalAmount: pricing.totalAmount,
+                                };
+                              });
+                            }}
+                            onBlur={() => setCustomTipActive(false)}
+                            className="h-8 text-sm pl-6 rounded-lg"
+                          />
+                        </div>
                       </div>
                     )}
                     
@@ -4346,14 +4576,15 @@ export function AppointmentSidebar({
             {mode === "view" && selectedAppointment && (
               <>
                 <div className="space-y-3">
-                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                    Payment Collection
+                  <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                    <CreditCard className="w-3.5 h-3.5" />
+                    Payment
                   </Label>
                   
-                  <div className="bg-gray-50 rounded-lg p-3 space-y-3">
+                  <div className="rounded-xl border border-gray-200 p-3 space-y-3">
                     {/* Payment Status Badge */}
                     <div className="flex items-center justify-between">
-                      <span className="text-xs text-gray-600">Status:</span>
+                      <span className="text-xs text-gray-500">Status</span>
                       {(() => {
                         // Determine actual payment status: if total_paid < total_amount, it's partially_paid
                         const totalPaid = (selectedAppointment as any).total_paid || 0;
@@ -4521,7 +4752,7 @@ export function AppointmentSidebar({
                                 const locationDevices = terminals.filter((t: any) => t.location_id === appointmentLocationId);
                                 if (locationDevices.length > 0) {
                                   terminals = locationDevices;
-                                  console.log(`Filtered to ${locationDevices.length} device(s) at this location`);
+                                  // filtered to location-specific devices
                                 } else {
                                   // No devices at this location, but show all as fallback
                                   console.warn('No Yoco devices found for this location, showing all devices');
@@ -4854,21 +5085,19 @@ export function AppointmentSidebar({
               </>
             )}
 
-            {/* Referral source (Where did this client come from?) */}
+            {/* Referral source */}
             {(mode === "create" || mode === "edit") && (
-              <div className="space-y-3">
-                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                  Where did this client come from?
-                </Label>
+              <div className="space-y-2">
+                <label className="text-[11px] text-gray-500 font-medium">How did this client find you?</label>
                 <Select
                   value={formData.referralSourceId || "none"}
                   onValueChange={(v) => setFormData(prev => ({ ...prev, referralSourceId: v === "none" ? "" : v }))}
                 >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select referral source (optional)" />
+                  <SelectTrigger className="w-full rounded-xl">
+                    <SelectValue placeholder="Select source (optional)" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">— None / Not specified —</SelectItem>
+                    <SelectItem value="none">Not specified</SelectItem>
                     {referralSources.map((s) => (
                       <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                     ))}
@@ -4964,27 +5193,26 @@ export function AppointmentSidebar({
               )}
 
             {/* Notes */}
-            <div className="space-y-3">
-              <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide">
-                Notes
-              </Label>
+            <div className="space-y-2">
+              <label className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
+                <StickyNote className="w-3 h-3" />
+                Internal notes
+              </label>
               {mode === "view" ? (
                 formData.notes ? (
-                  <div className="bg-gray-50 rounded-lg p-3">
-                    <div className="flex items-start gap-2">
-                      <StickyNote className="w-4 h-4 text-gray-400 mt-0.5" />
-                      <p className="text-sm text-gray-700">{formData.notes}</p>
-                    </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{formData.notes}</p>
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">No notes</p>
+                  <p className="text-xs text-gray-400 italic">No notes added</p>
                 )
               ) : (
                 <Textarea
-                  placeholder="Internal notes..."
+                  placeholder="Add notes visible only to your team…"
                   value={formData.notes}
                   onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  rows={3}
+                  rows={2}
+                  className="rounded-xl resize-none"
                 />
               )}
             </div>
@@ -5005,33 +5233,63 @@ export function AppointmentSidebar({
           </ScrollArea>
         </div>
 
-        {/* Footer - Add extra bottom padding on mobile to account for bottom navigation */}
-        <div className="p-2 sm:p-2.5 md:p-3 lg:p-4 pr-2 sm:pr-3 md:pr-4 lg:pr-6 border-t bg-white flex-shrink-0 box-border pb-20 md:pb-2 sm:pb-2.5 md:pb-3 lg:pb-4">
+        {/* Footer */}
+        <div className="border-t bg-white flex-shrink-0 box-border pb-safe">
           {mode === "create" && (
-            <Button
-              className="w-full bg-pink-600 hover:bg-pink-700 min-w-0 text-xs sm:text-sm"
-              onClick={handleCreate}
-              disabled={isSaving || !formData.clientName || !formData.serviceId}
-            >
-              <span className="truncate">{isSaving ? "Creating..." : "Book Appointment"}</span>
-            </Button>
+            <div className="p-3 sm:p-4 pb-20 md:pb-3 sm:pb-4 space-y-2">
+              {formData.services.length > 0 && (
+                <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+                  <span>{formData.services.length} service{formData.services.length !== 1 ? 's' : ''} · {formData.services.reduce((sum, s) => sum + s.duration + (s.addons?.reduce((a, ad) => a + ad.duration, 0) || 0), 0)} min</span>
+                  <span className="font-semibold text-gray-900 text-sm">{formatMoney(formData.totalAmount)}</span>
+                </div>
+              )}
+              <Button
+                className={cn(
+                  "w-full h-12 rounded-xl text-sm font-semibold shadow-lg transition-all",
+                  slotAvailability.checked && !slotAvailability.available
+                    ? "bg-amber-500 hover:bg-amber-600 shadow-amber-500/25"
+                    : "bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 shadow-pink-600/25",
+                )}
+                onClick={handleCreate}
+                disabled={isSaving || !formData.clientName || (!formData.serviceId && formData.services.length === 0)}
+              >
+                {isSaving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Creating…
+                  </span>
+                ) : slotAvailability.checked && !slotAvailability.available ? (
+                  <span className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" />
+                    Book Anyway
+                  </span>
+                ) : (
+                  "Book Appointment"
+                )}
+              </Button>
+            </div>
           )}
           {mode === "edit" && (
-            <div className="flex gap-2 min-w-0">
+            <div className="flex gap-2 p-3 sm:p-4 pb-20 md:pb-3 sm:pb-4">
               <Button
                 variant="outline"
-                className="flex-1 min-w-0 text-xs sm:text-sm"
+                className="flex-1 h-11 rounded-xl text-sm"
                 onClick={switchToViewMode}
                 disabled={isSaving}
               >
-                <span className="truncate">Cancel</span>
+                Cancel
               </Button>
               <Button
-                className="flex-1 min-w-0 bg-pink-600 hover:bg-pink-700 text-xs sm:text-sm"
+                className="flex-1 h-11 rounded-xl text-sm font-semibold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 shadow-lg shadow-pink-600/25"
                 onClick={handleUpdate}
                 disabled={isSaving}
               >
-                <span className="truncate">{isSaving ? "Saving..." : "Save Changes"}</span>
+                {isSaving ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving…
+                  </span>
+                ) : "Save Changes"}
               </Button>
             </div>
           )}

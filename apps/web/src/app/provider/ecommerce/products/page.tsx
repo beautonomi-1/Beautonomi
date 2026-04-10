@@ -6,7 +6,7 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Store, Plus, Search, Package } from "lucide-react";
+import { Store, Plus, Search, Package, ExternalLink } from "lucide-react";
 import Image from "next/image";
 import { displayRetailPriceMin } from "@/lib/provider-portal/product-inventory-metrics";
 
@@ -126,19 +126,19 @@ export default function ProviderProductsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Total Products</p>
-          <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+          <p className="text-lg font-bold text-gray-900">{products.length}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">For Sale (Retail)</p>
-          <p className="text-2xl font-bold text-pink-600">{retailCount}</p>
+          <p className="text-lg font-bold text-pink-600">{retailCount}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Internal Only</p>
-          <p className="text-2xl font-bold text-gray-600">{internalCount}</p>
+          <p className="text-lg font-bold text-gray-600">{internalCount}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Low / Out of Stock</p>
-          <p className="text-2xl font-bold text-red-600">
+          <p className="text-lg font-bold text-red-600">
             {lowStockCount + outOfStockCount}
           </p>
         </div>
@@ -173,6 +173,7 @@ export default function ProviderProductsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Stock</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Sale Type</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -238,6 +239,14 @@ export default function ProviderProductsPage() {
                     ) : (
                       <Badge variant="outline">Internal</Badge>
                     )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/provider/catalogue/products?edit=${p.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                      Edit <ExternalLink className="w-3 h-3" />
+                    </Link>
                   </td>
                 </tr>
               );

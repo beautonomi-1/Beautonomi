@@ -17,6 +17,6 @@ Optional follow-ups from the Provider Completeness and Expo Alignment audit. Add
 - **Current:** Scheme `provider` and Android intentFilters for `https://beautonomi.com/provider`; iOS `associatedDomains`: `applinks:beautonomi.com`, `applinks:www.beautonomi.com`.
 - **Recommendation:** Confirm the backend (or static host) serves:
   - **iOS:** `/.well-known/apple-app-site-association` (or `https://beautonomi.com/apple-app-site-association`) with an `applinks` entry for the provider app (e.g. `paths: ["/provider", "/provider/*"]`).
-  - **Android:** `https://beautonomi.com/.well-known/assetlinks.json` with a statement for `com.beautonomi.partner` and the correct SHA-256 fingerprint of the signing key.
+  - **Android:** `/.well-known/assetlinks.json` in `apps/web/public/` (deployed on Vercel) lists both `com.beautonomi.partner` and `com.beautonomi` with Play App Signing SHA-256 fingerprints; apex hosts must not redirect this path (see `src/proxy.ts`).
 
 Without these, `https://beautonomi.com/provider/...` links may open in the browser instead of the app when the app is installed.

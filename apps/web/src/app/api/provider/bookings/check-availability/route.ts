@@ -176,25 +176,38 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-    } else if (locationId) {
-      const { data: loc } = await supabaseAdmin
+    } else {
+      // Fallback: check primary location hours when no specific staff/location given
+      const locIdToCheck = locationId;
+      let locQuery = supabaseAdmin
         .from("provider_locations")
         .select("id, working_hours")
-        .eq("id", locationId)
         .eq("provider_id", providerId)
-        .single();
+        .eq("is_active", true);
+      if (locIdToCheck) {
+        locQuery = locQuery.eq("id", locIdToCheck);
+      } else {
+        locQuery = locQuery.order("is_primary", { ascending: false }).limit(1);
+      }
+      const { data: locs } = await locQuery;
+      const loc = locs?.[0];
       const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
-      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
-        const openMin = parseTimeToMinutes(wh.open_time);
-        const closeMin = parseTimeToMinutes(wh.close_time);
-        if (openMin !== null && closeMin !== null && closeMin > openMin) {
-          if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
-          for (const br of wh.breaks ?? []) {
-            const bs = parseTimeToMinutes(br.start);
-            const be = parseTimeToMinutes(br.end);
-            if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
-              conflicts.push("Overlaps break");
-              break;
+      if (wh) {
+        const isClosed = wh.is_open === false || (wh as Record<string, unknown>).closed === true;
+        if (isClosed) {
+          conflicts.push("Business is closed on this day");
+        } else if (wh.open_time && wh.close_time) {
+          const openMin = parseTimeToMinutes(wh.open_time);
+          const closeMin = parseTimeToMinutes(wh.close_time);
+          if (openMin !== null && closeMin !== null && closeMin > openMin) {
+            if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
+            for (const br of wh.breaks ?? []) {
+              const bs = parseTimeToMinutes(br.start);
+              const be = parseTimeToMinutes(br.end);
+              if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
+                conflicts.push("Overlaps break");
+                break;
+              }
             }
           }
         }

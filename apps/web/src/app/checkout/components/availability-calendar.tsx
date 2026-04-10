@@ -109,8 +109,6 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
   // Fallback slot generation (for when API is unavailable)
   const generateFallbackSlots = (date: Date): TimeSlot[] => {
-    const dayOfWeek = date.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
     const dateStr = formatDateForAPI(date);
     
     const slots: TimeSlot[] = [];
@@ -128,8 +126,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
           hour12: true,
         });
 
-        // Weekend: closed; Weekdays: all available by default
-        const isAvailable = !isWeekend;
+        const isAvailable = true;
 
         slots.push({
           id: `${dateStr}-${hour}-${minute}`,

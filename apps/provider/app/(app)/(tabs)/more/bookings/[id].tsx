@@ -174,6 +174,7 @@ type BookingDetail = {
     price?: number;
     guest_name?: string | null;
   }[];
+  booking_source?: string | null;
   /** Points earned for this booking (when completed); from provider_point_transactions */
   provider_points_earned?: number | null;
 };
@@ -1331,8 +1332,15 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
-            <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
-              <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
+            <View style={twStyle("flex-row items-center")}>
+              {b.booking_source === "walk_in" && (
+                <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
+                </View>
+              )}
+              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
+                <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
+              </View>
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>

@@ -78,12 +78,14 @@ export default function SubscriptionPage() {
       setError(null);
 
       const [subscriptionRes, plansRes] = await Promise.all([
-        fetcher.get<{ data: ProviderSubscription }>("/api/provider/subscription"),
+        fetcher.get<{ data: ProviderSubscription | null }>("/api/provider/subscription"),
         fetcher.get<{ data: SubscriptionPlan[] }>("/api/public/subscription-plans"),
       ]);
 
-      setSubscription(subscriptionRes.data);
-      setPlans(plansRes.data || []);
+      const sub = (subscriptionRes as any)?.data ?? null;
+      setSubscription(sub);
+      const rawPlans = (plansRes as any)?.data ?? [];
+      setPlans(Array.isArray(rawPlans) ? rawPlans : []);
     } catch (err) {
       const errorMessage =
         err instanceof FetchTimeoutError
@@ -315,7 +317,7 @@ export default function SubscriptionPage() {
                   <div className="space-y-2">
                     <p className="font-medium">Features included:</p>
                     <ul className="space-y-1">
-                      {(currentPlan.features ?? []).map((feature, index) => (
+                      {(Array.isArray(currentPlan.features) ? currentPlan.features : []).map((feature, index) => (
                         <li key={index} className="flex items-center gap-2 text-sm">
                           <Check className="w-4 h-4 text-green-600" />
                           {feature}
@@ -386,7 +388,7 @@ export default function SubscriptionPage() {
                     </CardHeader>
                     <CardContent>
                       <ul className="space-y-2 mb-4">
-                        {(plan.features ?? []).map((feature, index) => (
+                        {(Array.isArray(plan.features) ? plan.features : []).map((feature, index) => (
                           <li key={index} className="flex items-center gap-2 text-sm">
                             <Check className="w-4 h-4 text-green-600" />
                             {feature}

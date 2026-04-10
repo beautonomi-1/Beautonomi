@@ -21,6 +21,12 @@
   ],
   "headers": [
     {
+      "source": "/.well-known/assetlinks.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" }
+      ]
+    },
+    {
       "source": "/api/public/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "s-maxage=30, stale-while-revalidate=300" }

@@ -128,6 +128,11 @@ const nextConfig = {
   // Headers for caching & security
   async headers() {
     return [
+      // Android App Links — Google Play requires application/json and a 200 (no redirect) at this path per host.
+      {
+        source: '/.well-known/assetlinks.json',
+        headers: [{ key: 'Content-Type', value: 'application/json; charset=utf-8' }],
+      },
       // Admin SPA static chunks (Vite) — long cache; hashed filenames.
       {
         source: '/admin/assets/:path*',

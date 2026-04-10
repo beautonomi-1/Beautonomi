@@ -1277,7 +1277,7 @@ export function CalendarMobileView({
                                   }
                                 }}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md border-l-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
                                 )}
@@ -1660,7 +1660,7 @@ export function CalendarMobileView({
                                   }
                                 }}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
                                   "border-l-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
@@ -1766,7 +1766,7 @@ export function CalendarMobileView({
                                 key={apt.id}
                                 appointment={apt}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
                                   "border-l-[3px]",
                                 )}
@@ -2026,7 +2026,7 @@ export function CalendarMobileView({
                               }
                             }}
                             className={cn(
-                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
                               "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
                               apt.status === "cancelled" && useMangomintMode && "opacity-50",
@@ -2141,7 +2141,7 @@ export function CalendarMobileView({
                             key={apt.id}
                             appointment={apt}
                             className={cn(
-                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
                               "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
                             )}

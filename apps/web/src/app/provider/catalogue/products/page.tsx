@@ -280,8 +280,8 @@ export default function ProviderProducts() {
               <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{totalProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Total Products</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{totalProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Total Products</p>
             </div>
           </div>
         </SectionCard>
@@ -291,8 +291,8 @@ export default function ProviderProducts() {
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{lowStockProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Low Stock</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{lowStockProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Low Stock</p>
             </div>
           </div>
         </SectionCard>
@@ -302,8 +302,8 @@ export default function ProviderProducts() {
               <Package className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{outOfStockProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Out of Stock</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{outOfStockProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Out of Stock</p>
             </div>
           </div>
         </SectionCard>
@@ -313,10 +313,10 @@ export default function ProviderProducts() {
               <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">
+              <p className="text-base sm:text-lg font-semibold truncate">
                 <Money amount={totalInventoryValue} />
               </p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Inventory Value</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Inventory Value</p>
             </div>
           </div>
         </SectionCard>

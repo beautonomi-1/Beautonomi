@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.beautonomi.partner",
+      "sha256_cert_fingerprints": [
+        "A9:95:83:2E:E0:CE:A4:C8:90:BE:95:8C:35:DC:A9:2B:67:E3:C9:0B:5A:28:1B:33:46:28:62:84:51:64:12:A7"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.beautonomi",
+      "sha256_cert_fingerprints": [
+        "9D:A6:13:D8:B5:23:37:08:03:21:92:C7:E0:34:65:47:AD:4F:18:56:07:9D:3D:7D:6A:3B:8E:45:A7:16:20:86"
+      ]
+    }
+  }
+]

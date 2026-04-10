@@ -53,7 +53,7 @@ export default function OperatingHoursSettings() {
           thursday: { open: "09:00", close: "18:00", closed: false },
           friday: { open: "09:00", close: "18:00", closed: false },
           saturday: { open: "09:00", close: "18:00", closed: false },
-          sunday: { open: "09:00", close: "18:00", closed: true },
+          sunday: { open: "09:00", close: "18:00", closed: false },
         };
         setOperatingHours(location.operating_hours || defaultHours);
         setHasChanges(false);

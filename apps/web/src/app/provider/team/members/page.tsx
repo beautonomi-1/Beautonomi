@@ -75,9 +75,10 @@ export default function ProviderTeamMembers() {
     const loadAccess = async () => {
       try {
         const { fetcher } = await import("@/lib/http/fetcher");
-        const data = await fetcher.get<TeamAccessPayload>("/api/provider/team-access");
+        const res = await fetcher.get<{ data?: TeamAccessPayload }>("/api/provider/team-access");
         if (!mounted) return;
-        setCanManageTeam(data?.can_manage_team === true);
+        const payload = (res as any)?.data ?? res;
+        setCanManageTeam(payload?.can_manage_team === true);
       } catch {
         if (!mounted) return;
         setCanManageTeam(false);

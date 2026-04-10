@@ -237,7 +237,8 @@ export default function NewBookingScreen() {
     }
   }, [preselectedClientId, rawPreselectedClients, selectedClient]);
 
-  // --- Other ---
+  // --- Appointment type ---
+  const isWalkIn = params.walk_in === "true";
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
   const [addressSearchValue, setAddressSearchValue] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
@@ -459,7 +460,7 @@ export default function NewBookingScreen() {
       subtotal: summary.subtotal,
       discount_amount: summary.discountAmt || 0,
       discount_reason: discountValue
-        ? `${discountType === "percentage" ? discountValue + "%" : "R" + discountValue} discount`
+        ? `${discountType === "percentage" ? discountValue + "%" : formatCurrency(Number(discountValue) || 0, tenantCurrency)} discount`
         : undefined,
       tax_amount: summary.tax,
       tax_rate: summary.taxRatePercent,
@@ -467,6 +468,7 @@ export default function NewBookingScreen() {
       currency: getTenantDefaultCurrency(),
       status: params.status || params.defaultStatus || undefined,
       referral_source_id: referralSourceId.trim() || undefined,
+      booking_source: isWalkIn ? "walk_in" : "provider",
     };
     if (summary.tipNum > 0) payload.tip_amount = summary.tipNum;
     if (locationType === "at_home") {
@@ -524,7 +526,7 @@ export default function NewBookingScreen() {
       keyboardVerticalOffset={Platform.OS === "ios" ? 56 : 20}
     >
       <ScreenContainer>
-        <ScreenHeader title="New Booking" showBack />
+        <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
 
         {showConfirmation ? (
           <ConfirmationView
@@ -537,6 +539,7 @@ export default function NewBookingScreen() {
               `${newClientFirst} ${newClientLast}`.trim()
             }
             locationType={locationType}
+            isWalkIn={isWalkIn}
             serviceAddressSummary={
               locationType === "at_home" && addressLine1.trim()
                 ? [addressLine1, addressLine2, addressCity, addressStateProv, addressPostalCode, addressCountry]
@@ -563,6 +566,7 @@ export default function NewBookingScreen() {
                     onPress={() => setClientMode("search")}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: clientMode === "search" }}
+                    accessibilityLabel="Existing client"
                   >
                     <Text
                       style={twStyle(`text-sm font-medium ${
@@ -579,6 +583,7 @@ export default function NewBookingScreen() {
                     onPress={() => setClientMode("new")}
                     accessibilityRole="tab"
                     accessibilityState={{ selected: clientMode === "new" }}
+                    accessibilityLabel="New client"
                   >
                     <Text
                       style={twStyle(`text-sm font-medium ${
@@ -793,6 +798,7 @@ export default function NewBookingScreen() {
                     onPress={() => setLocationType(loc.val)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: locationType === loc.val }}
+                    accessibilityLabel={loc.label}
                   >
                     <Ionicons
                       name={loc.icon as any}
@@ -853,6 +859,7 @@ export default function NewBookingScreen() {
                     placeholderTextColor="#9ca3af"
                     value={addressLine1}
                     onChangeText={setAddressLine1}
+                    accessibilityLabel="Street address"
                   />
                   <Text style={twStyle("mb-1 mt-3 text-xs font-medium text-gray-600")}>Unit / apartment (optional)</Text>
                   <TextInput
@@ -861,6 +868,7 @@ export default function NewBookingScreen() {
                     placeholderTextColor="#9ca3af"
                     value={addressLine2}
                     onChangeText={setAddressLine2}
+                    accessibilityLabel="Unit or apartment"
                   />
                   <View style={[twStyle("flex-row"), { marginTop: 12 }]}>
                     <TextInput
@@ -869,6 +877,7 @@ export default function NewBookingScreen() {
                       placeholderTextColor="#9ca3af"
                       value={addressCity}
                       onChangeText={setAddressCity}
+                      accessibilityLabel="City"
                     />
                     <TextInput
                       style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -876,6 +885,7 @@ export default function NewBookingScreen() {
                       placeholderTextColor="#9ca3af"
                       value={addressStateProv}
                       onChangeText={setAddressStateProv}
+                      accessibilityLabel="Province or state"
                     />
                   </View>
                   <View style={[twStyle("flex-row"), { marginTop: 12 }]}>
@@ -885,6 +895,7 @@ export default function NewBookingScreen() {
                       placeholderTextColor="#9ca3af"
                       value={addressPostalCode}
                       onChangeText={setAddressPostalCode}
+                      accessibilityLabel="Postal code"
                     />
                     <TextInput
                       style={twStyle("flex-1 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
@@ -892,6 +903,7 @@ export default function NewBookingScreen() {
                       placeholderTextColor="#9ca3af"
                       value={addressCountry}
                       onChangeText={setAddressCountry}
+                      accessibilityLabel="Country"
                     />
                   </View>
                   <View style={{ marginTop: 12 }}>
@@ -903,6 +915,7 @@ export default function NewBookingScreen() {
                       value={travelFee}
                       onChangeText={setTravelFee}
                       keyboardType="decimal-pad"
+                      accessibilityLabel="Travel fee amount"
                     />
                   </View>
                 </View>
@@ -917,6 +930,7 @@ export default function NewBookingScreen() {
                 value={tipAmount}
                 onChangeText={setTipAmount}
                 keyboardType="decimal-pad"
+                accessibilityLabel="Tip amount"
               />
             </View>
 
@@ -1064,7 +1078,7 @@ export default function NewBookingScreen() {
                       discountType === "fixed" ? "text-white" : "text-gray-600"
                     }`)}
                   >
-                    R
+                    {tenantCurrency}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1083,6 +1097,7 @@ export default function NewBookingScreen() {
                     onPress={() => setPaymentMethod(pm.value)}
                     accessibilityRole="radio"
                     accessibilityState={{ checked: paymentMethod === pm.value }}
+                    accessibilityLabel={`Pay by ${pm.label}`}
                   >
                     <Ionicons
                       name={pm.icon}
@@ -1220,6 +1235,7 @@ export default function NewBookingScreen() {
                   }}
                   accessibilityRole="radio"
                   accessibilityState={{ checked: isActive }}
+                  accessibilityLabel={`Time ${slot}`}
                 >
                   <Text
                     style={twStyle(`text-sm font-medium ${
@@ -1324,6 +1340,7 @@ function ConfirmationView({
   selectedTime,
   clientName,
   locationType,
+  isWalkIn,
   serviceAddressSummary,
   paymentMethod,
   creating,
@@ -1346,6 +1363,7 @@ function ConfirmationView({
   selectedTime: string;
   clientName: string;
   locationType: string;
+  isWalkIn?: boolean;
   serviceAddressSummary?: string;
   paymentMethod: string;
   creating: boolean;
@@ -1366,7 +1384,7 @@ function ConfirmationView({
         <ConfirmRow label="Client" value={clientName} />
         <ConfirmRow label="Date" value={format(selectedDate, "EEE, MMM d, yyyy")} />
         <ConfirmRow label="Time" value={selectedTime} />
-        <ConfirmRow label="Location" value={locationType === "at_home" ? "At Home" : "At Salon"} />
+        <ConfirmRow label="Type" value={isWalkIn ? "Walk-in" : locationType === "at_home" ? "At Home" : "In Salon"} />
         {serviceAddressSummary ? (
           <View style={twStyle("border-b border-gray-50 py-2")}>
             <Text style={twStyle("text-sm text-gray-500")}>Service address</Text>
@@ -1420,7 +1438,7 @@ function ConfirmationView({
       </View>
 
       <ActionButton label="Confirm & Create Booking" onPress={onConfirm} loading={creating} fullWidth />
-      <TouchableOpacity style={twStyle("mt-3 items-center py-2")} onPress={onBack}>
+      <TouchableOpacity style={twStyle("mt-3 items-center py-2")} onPress={onBack} accessibilityLabel="Back to edit" accessibilityRole="button">
         <Text style={twStyle("text-sm font-medium text-gray-600")}>Back to Edit</Text>
       </TouchableOpacity>
     </View>

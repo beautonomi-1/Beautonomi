@@ -77,7 +77,7 @@ function formatTimeLabel(t: string): string {
 function defaultSchedule(): DayHours[] {
   return DAYS.map((day) => ({
     day,
-    is_open: day !== "Sunday",
+    is_open: true,
     open_time: "08:00",
     close_time: "18:00",
     breaks: [],
@@ -237,7 +237,7 @@ function locationHoursToSchedule(wh: LocationHours["workingHours"]): DayHours[] 
     const dh = wh[key];
     return {
       day,
-      is_open: dh?.is_open ?? day !== "Sunday",
+      is_open: dh?.is_open ?? true,
       open_time: dh?.open_time ?? "08:00",
       close_time: dh?.close_time ?? "18:00",
       breaks: dh?.breaks ?? [],
