@@ -287,6 +287,7 @@ export async function PATCH(request: NextRequest) {
         postal_code: address.postal_code || address.zip || "",
         country: address.country || "",
         is_default: true,
+        customer_managed_home: true,
       };
 
       if (existingAddress) {

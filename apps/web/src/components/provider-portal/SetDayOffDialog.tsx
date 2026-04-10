@@ -12,10 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { cn } from "@/lib/utils";
+import { format, startOfDay } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import type { TeamMember } from "@/lib/provider-portal/types";
@@ -36,12 +33,20 @@ export function SetDayOffDialog({
   onSuccess,
 }: SetDayOffDialogProps) {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(initialDate || new Date());
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => initialDate || new Date());
   const [reason, setReason] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const todayStart = startOfDay(new Date());
 
   React.useEffect(() => {
     if (open && initialDate) {
       setSelectedDate(initialDate);
+      setCalendarMonth(initialDate);
+    }
+    if (open && !initialDate) {
+      const d = new Date();
+      setSelectedDate(d);
+      setCalendarMonth(d);
     }
     if (!open) {
       setReason("");
@@ -63,10 +68,10 @@ export function SetDayOffDialog({
       setIsSaving(true);
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       
+      const trimmed = reason.trim();
       await fetcher.post(`/api/provider/staff/${staffMember.id}/days-off`, {
         date: dateStr,
-        reason: reason || undefined,
-        type: reason || "Day Off",
+        ...(trimmed ? { reason: trimmed } : {}),
       });
 
       toast.success(`Day off set for ${staffMember.name}`);
@@ -82,7 +87,7 @@ export function SetDayOffDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Set Day Off</DialogTitle>
         </DialogHeader>
@@ -96,29 +101,25 @@ export function SetDayOffDialog({
 
           <div className="space-y-2">
             <Label>Date</Label>
-            <Popover modal={true}>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    "w-full justify-start text-left font-normal",
-                    !selectedDate && "text-muted-foreground"
-                  )}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0 z-[300]" align="start">
-                <Calendar
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  initialFocus
-                  disabled={(d) => d < new Date(new Date().setHours(0, 0, 0, 0))}
-                />
-              </PopoverContent>
-            </Popover>
+            <p className="text-xs text-muted-foreground">Choose a day on the calendar below.</p>
+            <div className="rounded-xl border bg-card p-2 shadow-sm">
+              <div className="mb-2 text-sm font-medium tabular-nums">
+                {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : "Pick a date"}
+              </div>
+              <Calendar
+                mode="single"
+                month={calendarMonth}
+                onMonthChange={setCalendarMonth}
+                selected={selectedDate}
+                onSelect={(d) => {
+                  setSelectedDate(d);
+                  if (d) setCalendarMonth(d);
+                }}
+                initialFocus
+                disabled={(d) => d < todayStart}
+                className="mx-auto"
+              />
+            </div>
           </div>
 
           <div className="space-y-2">

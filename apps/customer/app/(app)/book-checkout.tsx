@@ -869,7 +869,7 @@ export default function BookCheckoutScreen() {
               productId: p.id,
               productVariantId: variantId,
               name: p.name,
-              price: variantPrice ?? Number(p.retail_price) || 0,
+              price: variantPrice ?? (Number(p.retail_price) || 0),
               quantity: q,
               currency: p.currency || getTenantDefaultCurrency(),
             };

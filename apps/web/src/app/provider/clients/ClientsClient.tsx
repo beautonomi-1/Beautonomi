@@ -67,8 +67,36 @@ import { ProviderClientRatingDialog } from "@/components/provider-portal/Provide
 import { EditRatingDialog } from "@/components/provider-portal/EditRatingDialog";
 import type { MergedProviderClient } from "@/lib/provider-portal/merge-provider-clients-list";
 import { mergeProviderClientsListFromSources } from "@/lib/provider-portal/merge-provider-clients-list";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 
 type Client = MergedProviderClient;
+
+/** Dialog form includes Mapbox-parsed address fields */
+type ClientFormData = Partial<Client> & {
+  address_display?: string;
+  address_state?: string;
+  address_postal_code?: string;
+  address_country?: string;
+  address_latitude?: number | null;
+  address_longitude?: number | null;
+};
+
+function buildAddressPayload(data: ClientFormData): Record<string, unknown> | undefined {
+  const line1 = (data.address || "").trim();
+  const city = (data.city || "").trim();
+  if (!line1 || !city) return undefined;
+  const country = (data.address_country || "ZA").trim() || "ZA";
+  return {
+    line1,
+    line2: "",
+    city,
+    state: (data.address_state || "").trim() || undefined,
+    postal_code: (data.address_postal_code || "").trim() || undefined,
+    country,
+    latitude: data.address_latitude ?? null,
+    longitude: data.address_longitude ?? null,
+  };
+}
 
 interface ClientHistory {
   id: string;
@@ -265,8 +293,9 @@ export function ClientsClient({
     setIsDetailSheetOpen(true);
   };
 
-  const handleSave = async (data: Partial<Client>) => {
+  const handleSave = async (data: ClientFormData) => {
     try {
+      const addr = data.home_address_read_only ? undefined : buildAddressPayload(data);
       if (selectedClient) {
         // Update existing client - use customer_id for unsaved clients
         const clientId = (selectedClient as any).is_saved ? selectedClient.id : null;
@@ -278,6 +307,7 @@ export function ClientsClient({
             tags: (data as any).tags || [],
             is_favorite: (data as any).is_favorite || false,
             date_of_birth: data.birth_date || null,
+            ...(addr ? { address: addr } : {}),
           });
           toast.success("Client updated successfully");
         } else if (customerId) {
@@ -287,6 +317,7 @@ export function ClientsClient({
             tags: (data as any).tags || [],
             is_favorite: (data as any).is_favorite || false,
             date_of_birth: data.birth_date || null,
+            ...(addr ? { address: addr } : {}),
           });
           toast.success("Client saved successfully");
         } else {
@@ -313,14 +344,7 @@ export function ClientsClient({
           phone: phoneNumber ? `${countryCode} ${phoneNumber}`.trim() : undefined,
           date_of_birth: data.birth_date || undefined,
           notes: data.notes || "",
-          address: data.address ? {
-            line1: data.address,
-            line2: "",
-            city: data.city || "",
-            state: "",
-            postal_code: "",
-            country: "ZA",
-          } : undefined,
+          ...(addr ? { address: addr } : {}),
           email_notifications_enabled: data.marketing_consent ?? true,
           sms_notifications_enabled: data.sms_consent ?? true,
         });
@@ -660,15 +684,22 @@ function ClientCreateEditDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   client: Client | null;
-  onSave: (data: Partial<Client>) => void;
+  onSave: (data: ClientFormData) => void;
 }) {
-  const [formData, setFormData] = useState<Partial<Client>>({
+  const [formData, setFormData] = useState<ClientFormData>({
     first_name: "",
     last_name: "",
     email: "",
     phone: "",
     address: "",
     city: "",
+    address_display: "",
+    address_state: "",
+    address_postal_code: "",
+    address_country: "ZA",
+    address_latitude: null,
+    address_longitude: null,
+    home_address_read_only: false,
     notes: "",
     birth_date: "",
     marketing_consent: false,
@@ -679,6 +710,9 @@ function ClientCreateEditDialog({
   useEffect(() => {
     if (open) {
       if (client) {
+        const display =
+          client.address_display ||
+          [client.address, client.city].filter(Boolean).join(", ");
         setFormData({
           first_name: client.first_name,
           last_name: client.last_name,
@@ -686,6 +720,13 @@ function ClientCreateEditDialog({
           phone: client.phone || "",
           address: client.address || "",
           city: client.city || "",
+          address_display: display,
+          address_state: client.address_state || "",
+          address_postal_code: client.address_postal_code || "",
+          address_country: client.address_country || "ZA",
+          address_latitude: client.address_latitude ?? null,
+          address_longitude: client.address_longitude ?? null,
+          home_address_read_only: client.home_address_read_only ?? false,
           notes: client.notes || "",
           birth_date: client.birth_date || "",
           marketing_consent: client.marketing_consent,
@@ -699,6 +740,13 @@ function ClientCreateEditDialog({
           phone: "",
           address: "",
           city: "",
+          address_display: "",
+          address_state: "",
+          address_postal_code: "",
+          address_country: "ZA",
+          address_latitude: null,
+          address_longitude: null,
+          home_address_read_only: false,
           notes: "",
           birth_date: "",
           marketing_consent: false,
@@ -778,15 +826,55 @@ function ClientCreateEditDialog({
           </div>
 
           <div className="w-full">
-            <Label htmlFor="address" className="text-sm sm:text-base">Address</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) =>
-                setFormData({ ...formData, address: e.target.value })
-              }
-              className="mt-1.5 min-h-[44px] touch-manipulation w-full"
-            />
+            <Label className="text-sm sm:text-base">Address (home / house call)</Label>
+            {formData.home_address_read_only ? (
+              <>
+                <div className="mt-1.5 rounded-md border border-border bg-muted/40 px-3 py-3 text-sm text-foreground">
+                  {formData.address_display ||
+                    [formData.address, formData.city].filter(Boolean).join(", ") ||
+                    "—"}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  This address was saved by the customer in their account. Only they can change it from the customer app or website.
+                </p>
+              </>
+            ) : (
+              <>
+                <AddressAutocomplete
+                  inputId="client-address"
+                  value={formData.address_display || ""}
+                  country="ZA"
+                  defaultCountryName="South Africa"
+                  placeholder="Start typing to search — Mapbox autocomplete"
+                  className="mt-1.5"
+                  inputClassName="min-h-[44px] touch-manipulation w-full"
+                  onInputChange={(v) =>
+                    setFormData((prev) => ({ ...prev, address_display: v }))
+                  }
+                  onChange={(a) => {
+                    const iso =
+                      a.country && /^[A-Za-z]{2}$/.test(a.country.trim())
+                        ? a.country.trim().toUpperCase()
+                        : "ZA";
+                    setFormData((prev) => ({
+                      ...prev,
+                      address_display:
+                        a.place_name || [a.address_line1, a.city].filter(Boolean).join(", "),
+                      address: a.address_line1,
+                      city: a.city,
+                      address_state: a.state || "",
+                      address_postal_code: a.postal_code || "",
+                      address_country: iso,
+                      address_latitude: a.latitude,
+                      address_longitude: a.longitude,
+                    }));
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Pick a suggestion for accurate travel distance on house calls. City must be set (included when you select a result).
+                </p>
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -798,6 +886,7 @@ function ClientCreateEditDialog({
                 onChange={(e) =>
                   setFormData({ ...formData, city: e.target.value })
                 }
+                disabled={formData.home_address_read_only}
                 className="mt-1.5 min-h-[44px] touch-manipulation w-full"
               />
             </div>

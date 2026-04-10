@@ -8,7 +8,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
-import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatCurrency } from "@/lib/format";
 
 type Product = {
   id: string;
@@ -17,7 +17,28 @@ type Product = {
   retail_price?: number;
   quantity?: number;
   stock_quantity?: number;
+  effective_quantity?: number;
+  has_variants?: boolean;
+  variants?: { retail_price?: number; quantity?: number }[];
 };
+
+function hubStockQty(p: Product): number | undefined {
+  if (typeof p.effective_quantity === "number") return p.effective_quantity;
+  if (p.has_variants && p.variants?.length) {
+    return p.variants.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+  }
+  const q = p.quantity ?? p.stock_quantity;
+  return q !== undefined ? Number(q) : undefined;
+}
+
+function hubPriceLabel(p: Product): string {
+  if (p.has_variants && p.variants?.length) {
+    const min = Math.min(...p.variants.map((v) => Number(v.retail_price ?? 0)));
+    return `From ${formatCurrency(min)}`;
+  }
+  if (typeof p.retail_price === "number") return formatCurrency(p.retail_price);
+  return "—";
+}
 
 type ProductsResponse = {
   products?: Product[];
@@ -29,24 +50,21 @@ type OrdersMetricsResponse = {
   pagination?: { total?: number };
 };
 
-type MetricsResponse = {
-  metrics?: {
-    total_revenue?: number;
-    order_count?: number;
-    pending_count?: number;
-    product_count?: number;
-    low_stock_count?: number;
-  };
+/** Flat payload from GET /api/provider/products/metrics (not nested under `metrics`). */
+type ProductMetricsPayload = {
+  totalProducts?: number;
+  lowStockProducts?: number;
+  outOfStockProducts?: number;
+  totalInventoryValue?: number;
 };
 
 export default function ProductsEcommerceHubScreen() {
   const router = useRouter();
-  const tenantCurrency = getTenantDefaultCurrency();
   const [refreshing, setRefreshing] = useState(false);
   const { data, loading, error, refresh } = useApi<ProductsResponse>(
     "/api/provider/products?limit=100"
   );
-  const { data: metricsData, refresh: refreshMetrics } = useApi<MetricsResponse>(
+  const { data: metricsData, refresh: refreshMetrics } = useApi<ProductMetricsPayload>(
     "/api/provider/products/metrics"
   );
   const { data: pendingOrdersData, refresh: refreshPendingOrders } = useApi<OrdersMetricsResponse>(
@@ -54,12 +72,15 @@ export default function ProductsEcommerceHubScreen() {
   );
 
   const products: Product[] = (data as ProductsResponse)?.products ?? [];
-  const metrics = (metricsData as MetricsResponse)?.metrics;
   const pendingOrdersCount = (pendingOrdersData as OrdersMetricsResponse)?.pagination?.total
     ?? (pendingOrdersData as OrdersMetricsResponse)?.orders?.length
     ?? 0;
-  const lowStockCount = metrics?.low_stock_count
-    ?? products.filter((p) => (p.quantity ?? p.stock_quantity ?? 0) > 0 && (p.quantity ?? p.stock_quantity ?? 0) <= 3).length;
+  const lowStockCount =
+    metricsData?.lowStockProducts ??
+    products.filter((p) => {
+      const q = hubStockQty(p) ?? 0;
+      return q > 0 && q <= 3;
+    }).length;
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -225,7 +246,9 @@ export default function ProductsEcommerceHubScreen() {
                 <Text style={{ fontSize: 13, color: "#8b5cf6", fontWeight: "600" }}>+ Add product</Text>
               </TouchableOpacity>
             </View>
-            {products.slice(0, 10).map((p) => (
+            {products.slice(0, 10).map((p) => {
+              const stock = hubStockQty(p);
+              return (
               <TouchableOpacity
                 key={p.id}
                 onPress={() => router.push({ pathname: "/(app)/(tabs)/more/product-form", params: { id: p.id } } as never)}
@@ -239,20 +262,15 @@ export default function ProductsEcommerceHubScreen() {
                   )}
                 </View>
                 <View style={{ alignItems: "flex-end" }}>
-                  {typeof p.retail_price === "number" && (
-                    <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>
-                      {tenantCurrency} {p.retail_price.toLocaleString()}
-                    </Text>
-                  )}
-                  {(p.quantity != null || p.stock_quantity != null) && (
-                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
-                      Stock: {p.quantity ?? p.stock_quantity}
-                    </Text>
+                  <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>{hubPriceLabel(p)}</Text>
+                  {stock !== undefined && (
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Stock: {stock}</Text>
                   )}
                   <Ionicons name="chevron-forward" size={18} color="#9ca3af" style={{ marginTop: 4 }} />
                 </View>
               </TouchableOpacity>
-            ))}
+              );
+            })}
             {products.length > 10 && (
               <TouchableOpacity
                 onPress={() => router.push("/(app)/(tabs)/more/products-hub" as never)}

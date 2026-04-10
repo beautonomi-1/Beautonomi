@@ -6,8 +6,15 @@ import {
   handleApiError,
   getProviderIdForUser,
   notFoundResponse,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  fetchDefaultAddressesForUsers,
+  parseAddressFromBody,
+  upsertCustomerDefaultAddress,
+  CustomerHomeAddressLockedError,
+} from "@/lib/provider-portal/user-default-address";
 
 /**
  * GET /api/provider/clients/[id]
@@ -370,10 +377,16 @@ export async function GET(
     // Sort history by date
     history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
+    const defaultAddrMap = await fetchDefaultAddressesForUsers(supabaseAdmin, [customerId]);
+    const customerWithAddress = {
+      ...customer,
+      default_address: defaultAddrMap.get(customerId) ?? null,
+    };
+
     return successResponse({
       id: client?.id || customerId,
       customer_id: customerId,
-      customer,
+      customer: customerWithAddress,
       notes: client?.notes || null,
       tags: client?.tags || [],
       is_favorite: client?.is_favorite || false,
@@ -467,6 +480,24 @@ export async function PATCH(
           .from("users")
           .update(userUpdates)
           .eq("id", client.customer_id);
+      }
+    }
+
+    const addressPayload = parseAddressFromBody(body);
+    if (addressPayload && client.customer_id) {
+      const supabaseAdmin = await getSupabaseAdmin();
+      try {
+        await upsertCustomerDefaultAddress(supabaseAdmin, client.customer_id, addressPayload);
+      } catch (e) {
+        if (e instanceof CustomerHomeAddressLockedError) {
+          return errorResponse(e.message, e.code, 403);
+        }
+        console.error("PATCH /provider/clients/[id]: address upsert failed", e);
+        return handleApiError(
+          e instanceof Error ? e : new Error("Failed to save address"),
+          "Failed to save client address",
+          400,
+        );
       }
     }
 

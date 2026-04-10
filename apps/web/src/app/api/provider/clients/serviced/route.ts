@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
 
 /**
  * GET /api/provider/clients/serviced
@@ -124,15 +125,22 @@ export async function GET(request: NextRequest) {
     const foundCustomerIds = new Set(customers?.map((c: any) => c.id) || []);
     const missingCustomerIds = customerIds.filter(id => !foundCustomerIds.has(id));
     
+    const foundIdsList = customers?.map((c: { id: string }) => c.id) || [];
+    const defaultAddrByUser = await fetchDefaultAddressesForUsers(supabaseAdmin, foundIdsList);
+
     // Include found customers
-    const servicedCustomers = customers?.map((customer) => ({
-      customer_id: customer.id,
-      customer,
-      last_service_date: customerStats[customer.id].last_service_date,
-      total_bookings: customerStats[customer.id].total_bookings,
-      total_spent: customerStats[customer.id].total_spent,
-      is_saved: savedCustomerIds.has(customer.id),
-    })) || [];
+    const servicedCustomers =
+      customers?.map((customer) => ({
+        customer_id: customer.id,
+        customer: {
+          ...customer,
+          default_address: defaultAddrByUser.get(customer.id) ?? null,
+        },
+        last_service_date: customerStats[customer.id].last_service_date,
+        total_bookings: customerStats[customer.id].total_bookings,
+        total_spent: customerStats[customer.id].total_spent,
+        is_saved: savedCustomerIds.has(customer.id),
+      })) || [];
     
     // Include missing customers with minimal info (they exist in bookings but not in users table)
     const missingCustomers = missingCustomerIds.map((customerId) => ({
@@ -172,11 +180,15 @@ export async function GET(request: NextRequest) {
         const customer = item.customer;
         if (!customer) return false;
         
+        const da = (customer as { default_address?: { address_line1?: string; city?: string } | null })
+          .default_address;
+        const addrBlob = [da?.address_line1, da?.city].filter(Boolean).join(" ").toLowerCase();
+
         const nameMatch = customer.full_name?.toLowerCase().includes(searchLower);
         const emailMatch = customer.email?.toLowerCase().includes(searchLower);
         const phoneMatch = customer.phone?.toLowerCase().includes(searchLower);
-        
-        return nameMatch || emailMatch || phoneMatch;
+
+        return nameMatch || emailMatch || phoneMatch || addrBlob.includes(searchLower);
       });
     }
 

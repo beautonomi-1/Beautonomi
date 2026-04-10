@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { Plus, Trash2, Package } from "lucide-react";
 import type { OfferingCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { unpackProductsListPayload } from "@/lib/http/unpack-provider-fetch";
 
 interface Product {
   id: string;
@@ -63,12 +64,12 @@ export default function CreatePackagePage() {
       // Load both services and products in parallel
       const [servicesResponse, productsResponse] = await Promise.all([
         fetcher.get<{ data: OfferingCard[] }>("/api/provider/services"),
-        fetcher.get<{ data: Product[]; total?: number }>("/api/provider/products?limit=1000"),
+        fetcher.get<unknown>("/api/provider/products?limit=1000"),
       ]);
-      setServices(servicesResponse.data || []);
-      // Products API returns { data: { data: [], total, ... } } structure
-      const productsData = (productsResponse as any).data?.data || productsResponse.data || [];
-      setProducts(productsData.filter((p: Product) => p.is_active !== false));
+      const svcPayload = servicesResponse.data;
+      setServices(Array.isArray(svcPayload) ? svcPayload : []);
+      const productsData = unpackProductsListPayload(productsResponse) as Product[];
+      setProducts(productsData.filter((p) => p.is_active !== false));
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to load items");
       console.error("Error loading items:", err);

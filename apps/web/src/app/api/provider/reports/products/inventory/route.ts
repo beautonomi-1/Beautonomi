@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
+import {
+  displayRetailPriceMin,
+  effectiveStockQuantity,
+  retailStockValue,
+} from "@/lib/provider-portal/product-inventory-metrics";
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,10 +38,9 @@ export async function GET(request: NextRequest) {
         404
       );
     }
-    // Get products for this provider
     const { data: products, error: productsError } = await supabaseAdmin
       .from('products')
-      .select('id, name, category, retail_price, quantity, low_stock_level, track_stock_quantity, is_active')
+      .select('id, name, category, retail_price, quantity, low_stock_level, track_stock_quantity, is_active, has_variants, product_variants(quantity, retail_price)')
       .eq('provider_id', providerId)
       .order('name', { ascending: true });
 
@@ -48,37 +52,55 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Calculate inventory metrics
-    const totalProducts = products?.length || 0;
-    const activeProducts = products?.filter((p) => p.is_active).length || 0;
+    const rows = products || [];
+
+    const shapeRow = (p: (typeof rows)[number]) => {
+      const stock_quantity = effectiveStockQuantity(p);
+      const price = displayRetailPriceMin(p);
+      const retail_line_value = retailStockValue(p);
+      return {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        has_variants: p.has_variants,
+        is_active: p.is_active,
+        track_stock_quantity: p.track_stock_quantity,
+        low_stock_level: p.low_stock_level,
+        quantity: stock_quantity,
+        stock_quantity,
+        price,
+        retail_price: price,
+        retail_line_value,
+      };
+    };
+
+    const totalProducts = rows.length;
+    const activeProducts = rows.filter((p) => p.is_active).length;
     const inactiveProducts = totalProducts - activeProducts;
-    const totalStockValue = products?.reduce((sum, p) => {
-      const quantity = Number(p.quantity || 0);
-      const price = Number(p.retail_price || 0);
-      return sum + (quantity * price);
-    }, 0) || 0;
+    const totalStockValue = rows.reduce((sum, p) => sum + retailStockValue(p), 0);
 
-    const lowStockProducts = products?.filter((p) => {
-      if (!p.track_stock_quantity) return false;
-      const quantity = Number(p.quantity || 0);
-      const lowStockLevel = Number(p.low_stock_level || 5);
-      return quantity > 0 && quantity <= lowStockLevel;
-    }) || [];
+    const lowStockProducts = rows
+      .filter((p) => {
+        if (p.track_stock_quantity === false) return false;
+        const q = effectiveStockQuantity(p);
+        const lowStockLevel = Number(p.low_stock_level || 5);
+        return q > 0 && q <= lowStockLevel;
+      })
+      .map(shapeRow);
 
-    const outOfStockProducts = products?.filter((p) => {
-      if (!p.track_stock_quantity) return false;
-      const quantity = Number(p.quantity || 0);
-      return quantity === 0;
-    }) || [];
+    const outOfStockProducts = rows
+      .filter((p) => {
+        if (p.track_stock_quantity === false) return false;
+        return effectiveStockQuantity(p) === 0;
+      })
+      .map(shapeRow);
 
-    // Group by category
     const categoryMap = new Map<string, { count: number; stockValue: number }>();
-    products?.forEach((product) => {
+    rows.forEach((product) => {
       const category = product.category || "Uncategorized";
       const existing = categoryMap.get(category) || { count: 0, stockValue: 0 };
       existing.count += 1;
-      const quantity = product.track_stock_quantity ? Number(product.quantity || 0) : 0;
-      existing.stockValue += quantity * Number(product.retail_price || 0);
+      existing.stockValue += retailStockValue(product);
       categoryMap.set(category, existing);
     });
 
@@ -94,7 +116,7 @@ export async function GET(request: NextRequest) {
       lowStockProducts: lowStockProducts.slice(0, 20),
       outOfStockProducts: outOfStockProducts.slice(0, 20),
       categoryBreakdown,
-      allProducts: products || [],
+      allProducts: rows.map(shapeRow),
     });
   } catch (error) {
     return handleApiError(error, "INVENTORY_ERROR", 500);

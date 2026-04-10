@@ -8,6 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Store, Plus, Search, Package } from "lucide-react";
 import Image from "next/image";
+import { displayRetailPriceMin } from "@/lib/provider-portal/product-inventory-metrics";
+
+interface ProductVariantRow {
+  quantity?: number;
+  retail_price?: number;
+}
 
 interface Product {
   id: string;
@@ -16,10 +22,39 @@ interface Product {
   category: string | null;
   retail_price: number;
   quantity: number;
+  effective_quantity?: number;
+  has_variants?: boolean;
+  variants?: ProductVariantRow[];
+  track_stock_quantity?: boolean;
+  low_stock_level?: number;
   image_urls: string[];
   is_active: boolean;
   retail_sales_enabled: boolean;
   created_at: string;
+}
+
+function productStockQty(p: Product): number {
+  if (typeof p.effective_quantity === "number") return p.effective_quantity;
+  if (p.has_variants && p.variants?.length) {
+    return p.variants.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+  }
+  return Number(p.quantity) || 0;
+}
+
+function productListRetail(p: Product): { from: boolean; amount: number } {
+  if (p.has_variants && p.variants?.length) {
+    const amount = displayRetailPriceMin({
+      has_variants: true,
+      retail_price: p.retail_price,
+      quantity: p.quantity,
+      product_variants: p.variants.map((v) => ({
+        quantity: v.quantity,
+        retail_price: v.retail_price,
+      })),
+    });
+    return { from: true, amount };
+  }
+  return { from: false, amount: Number(p.retail_price) || 0 };
 }
 
 export default function ProviderProductsPage() {
@@ -59,8 +94,16 @@ export default function ProviderProductsPage() {
 
   const retailCount = products.filter((p) => p.retail_sales_enabled).length;
   const internalCount = products.filter((p) => !p.retail_sales_enabled).length;
-  const lowStockCount = products.filter((p) => p.quantity <= 5 && p.quantity > 0).length;
-  const outOfStockCount = products.filter((p) => p.quantity === 0).length;
+  const lowStockCount = products.filter((p) => {
+    if (p.track_stock_quantity === false) return false;
+    const q = productStockQty(p);
+    const low = Number(p.low_stock_level) || 5;
+    return q > 0 && q <= low;
+  }).length;
+  const outOfStockCount = products.filter((p) => {
+    if (p.track_stock_quantity === false) return false;
+    return productStockQty(p) === 0;
+  }).length;
 
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
@@ -133,7 +176,11 @@ export default function ProviderProductsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {filtered.map((p) => {
+                const qty = productStockQty(p);
+                const low = Number(p.low_stock_level) || 5;
+                const retail = productListRetail(p);
+                return (
                 <tr key={p.id} className="border-b hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -157,18 +204,27 @@ export default function ProviderProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.category ?? "—"}</td>
-                  <td className="px-4 py-3 font-semibold">{formatMoney(Number(p.retail_price))}</td>
+                  <td className="px-4 py-3 font-semibold">
+                    {retail.from ? (
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        <span className="text-xs font-normal text-gray-500">From</span>
+                        {formatMoney(retail.amount)}
+                      </span>
+                    ) : (
+                      formatMoney(retail.amount)
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={
-                        p.quantity === 0
+                        qty === 0
                           ? "text-red-600 font-semibold"
-                          : p.quantity <= 5
+                          : qty <= low
                           ? "text-amber-600 font-medium"
                           : "text-gray-700"
                       }
                     >
-                      {p.quantity === 0 ? "Out of stock" : p.quantity}
+                      {qty === 0 ? "Out of stock" : qty}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -184,7 +240,8 @@ export default function ProviderProductsPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
           </div>

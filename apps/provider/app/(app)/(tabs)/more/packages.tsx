@@ -23,6 +23,7 @@ import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Colors } from "@/constants/colors";
+import { normalizePackagesList, normalizeProductsList } from "@/lib/unpack-provider-api";
 
 interface PackageItem {
   id: string;
@@ -74,22 +75,22 @@ export default function PackagesScreen() {
   const [editingPkg, setEditingPkg] = useState<ServicePackage | null>(null);
   const [showItemPicker, setShowItemPicker] = useState(false);
 
-  const { data: rawPackages, loading, refresh } = useApi<any>("/api/provider/packages");
+  const { data: rawPackages, loading, refresh } = useApi<unknown>("/api/provider/packages");
   const { data: services } = useApi<ServiceOption[]>("/api/provider/services");
-  const { data: rawProducts } = useApi<any>("/api/provider/products");
+  const { data: rawProducts } = useApi<unknown>("/api/provider/products?limit=500");
   const { execute: createPackage, loading: creating } = useApiPost<any, any>("/api/provider/packages");
   const { execute: updatePkg, loading: updating } = useApiMutation("patch");
   const { execute: deletePkg } = useApiMutation("delete");
 
-  const packages: ServicePackage[] = useMemo(() => {
-    if (!rawPackages) return [];
-    return rawPackages.packages ?? rawPackages ?? [];
-  }, [rawPackages]);
+  const packages: ServicePackage[] = useMemo(
+    () => normalizePackagesList(rawPackages) as ServicePackage[],
+    [rawPackages]
+  );
 
-  const products: ProductOption[] = useMemo(() => {
-    if (!rawProducts) return [];
-    return rawProducts.products ?? rawProducts ?? [];
-  }, [rawProducts]);
+  const products: ProductOption[] = useMemo(
+    () => normalizeProductsList(rawProducts) as ProductOption[],
+    [rawProducts]
+  );
 
   const [form, setForm] = useState({
     name: "",
@@ -139,7 +140,7 @@ export default function PackagesScreen() {
       price: String(pkg.price),
       discount_percentage: pkg.discount_percentage ? String(pkg.discount_percentage) : "",
       is_active: pkg.is_active,
-      items: pkg.items.map((it) => ({
+      items: (pkg.items ?? []).map((it) => ({
         offering_id: it.offering_id ?? undefined,
         product_id: it.product_id ?? undefined,
         quantity: it.quantity,
@@ -311,7 +312,7 @@ export default function PackagesScreen() {
               </View>
 
               <View style={{ marginTop: 12, borderRadius: 8, backgroundColor: Colors.gray[50], padding: 12 }}>
-                {pkg.items.map((item: PackageItem, i: number) => (
+                {(pkg.items ?? []).map((item: PackageItem, i: number) => (
                   <View key={item.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: i > 0 ? 6 : 0 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                       <Ionicons name={item.offering_id ? "cut-outline" : "cube-outline"} size={14} color="#6b7280" />
@@ -324,7 +325,7 @@ export default function PackagesScreen() {
                     )}
                   </View>
                 ))}
-                {pkg.items.length === 0 && (
+                {(pkg.items ?? []).length === 0 && (
                   <Text style={{ fontSize: 12, color: Colors.gray[400] }}>No items</Text>
                 )}
               </View>

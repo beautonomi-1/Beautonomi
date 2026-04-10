@@ -498,6 +498,7 @@ export async function GET(
         id: loc.id,
         provider_id: loc.provider_id,
         name: loc.name,
+        is_primary: loc.is_primary ?? false,
         address_line1: loc.address_line1,
         address_line2: loc.address_line2,
         city: loc.city,

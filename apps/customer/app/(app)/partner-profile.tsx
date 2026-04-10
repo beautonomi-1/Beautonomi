@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, type ReactNode } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import {
   Modal,
   ActivityIndicator,
   TextInput,
+  StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -81,9 +82,121 @@ interface MembershipPlan {
   benefits?: string[];
 }
 
-/* ═══════════════════════════════════════════
-   Sub-components
-   ═══════════════════════════════════════════ */
+const OPENING_DAY_ORDER = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"] as const;
+
+type DayHoursNormalized = { closed: boolean; open?: string; close?: string };
+
+function normalizeDayHours(value: unknown): DayHoursNormalized | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const closed = raw.is_closed === true || raw.closed === true || raw.is_open === false;
+  const open =
+    typeof raw.open === "string" ? raw.open : typeof raw.open_time === "string" ? raw.open_time : undefined;
+  const close =
+    typeof raw.close === "string" ? raw.close : typeof raw.close_time === "string" ? raw.close_time : undefined;
+  return { closed, open, close };
+}
+
+function parseHoursSource(input: unknown): Record<string, unknown> | null {
+  if (!input) return null;
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof input === "object") return input as Record<string, unknown>;
+  return null;
+}
+
+function hasNonEmptyHours(hours: Record<string, unknown> | null): hours is Record<string, unknown> {
+  return Boolean(hours && Object.keys(hours).length > 0);
+}
+
+function readDayValue(hoursData: Record<string, unknown>, day: string): unknown {
+  const entries = Object.entries(hoursData);
+  const target = day.toLowerCase();
+  const direct = entries.find(([k]) => k.toLowerCase() === target);
+  if (direct) return direct[1];
+  const abbrev = target.slice(0, 3);
+  const short = entries.find(([k]) => k.toLowerCase().slice(0, 3) === abbrev);
+  return short?.[1];
+}
+
+function formatWeekScheduleFromHoursData(hoursData: Record<string, unknown>): { day: string; hours: string }[] {
+  return OPENING_DAY_ORDER.map((day) => {
+    const normalized = normalizeDayHours(readDayValue(hoursData, day));
+    if (!normalized || normalized.closed || !normalized.open || !normalized.close) {
+      return { day: day.charAt(0).toUpperCase() + day.slice(1), hours: "Closed" };
+    }
+    return {
+      day: day.charAt(0).toUpperCase() + day.slice(1),
+      hours: `${normalized.open} – ${normalized.close}`,
+    };
+  });
+}
+
+function openingTimeSectionsForAbout(locations: ProviderLocation[]): { placeLabel: string; schedule: { day: string; hours: string }[] }[] {
+  const withParsed = locations
+    .map((loc) => ({ loc, data: parseHoursSource(loc.working_hours) }))
+    .filter((x): x is { loc: ProviderLocation; data: Record<string, unknown> } => hasNonEmptyHours(x.data));
+
+  if (withParsed.length === 0) return [];
+
+  const score = (loc: ProviderLocation) => {
+    const salon = (loc.location_type || "salon") === "salon" ? 2 : 0;
+    const primary = loc.is_primary ? 1 : 0;
+    return salon + primary;
+  };
+
+  withParsed.sort((a, b) => score(b.loc) - score(a.loc));
+
+  return withParsed.map(({ loc, data }) => ({
+    placeLabel: loc.name?.trim() || [loc.city, loc.country].filter(Boolean).join(", ") || "Location",
+    schedule: formatWeekScheduleFromHoursData(data),
+  }));
+}
+
+function AboutOpeningTimes({ locations, contentPadding }: { locations: ProviderLocation[]; contentPadding: number }) {
+  const sections = openingTimeSectionsForAbout(locations);
+  if (sections.length === 0) return null;
+  return (
+    <View style={{ backgroundColor: "#F9FAFB", borderRadius: 14, padding: contentPadding, marginBottom: 16 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+        <Ionicons name="time-outline" size={18} color={Colors.primary} style={{ marginRight: 6 }} />
+        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Opening times</Text>
+      </View>
+      {sections.map((section, si) => (
+        <View key={`${section.placeLabel}-${si}`} style={{ marginBottom: si < sections.length - 1 ? 14 : 0 }}>
+          {sections.length > 1 ? (
+            <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[600], marginBottom: 8 }}>{section.placeLabel}</Text>
+          ) : null}
+          {section.schedule.map((row, ri) => (
+            <View
+              key={row.day}
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+                paddingVertical: 8,
+                ...(ri < section.schedule.length - 1
+                  ? { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Colors.gray[200] }
+                  : {}),
+              }}
+            >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[800] }}>{row.day}</Text>
+              <Text style={{ fontSize: 13, color: Colors.gray[600], marginLeft: 12, textAlign: "right", flex: 1 }}>{row.hours}</Text>
+            </View>
+          ))}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+
 
 function Tag({ label, color }: { label: string; color: string }) {
   return (
@@ -130,63 +243,132 @@ function TrustModule({
   rating,
   review_count,
   onPressSetAddress,
+  onPressReviews,
 }: {
   distance_km?: number | null;
   rating: number;
   review_count: number;
   onPressSetAddress?: () => void;
+  /** Opens Reviews tab — rating & review cells use this for one coherent “social proof” affordance */
+  onPressReviews?: () => void;
 }) {
   const missingDistance = distance_km == null;
+  const ratingLabel = rating > 0 ? rating.toFixed(1) : "—";
+  const reviewLabel = review_count.toLocaleString();
+  const micro = {
+    fontSize: 10,
+    fontWeight: "600" as const,
+    color: Colors.gray[500],
+    letterSpacing: 0.6,
+    textTransform: "uppercase" as const,
+    marginTop: 6,
+    textAlign: "center" as const,
+  };
+
+  const iconBubble = (bg: string, children: ReactNode) => (
+    <View
+      style={{
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: bg,
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 8,
+      }}
+    >
+      {children}
+    </View>
+  );
+
+  const divider = <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: Colors.gray[200], alignSelf: "stretch", marginVertical: 12 }} />;
+
   return (
-    <View style={{ flexDirection: "row", borderTopWidth: 1, borderBottomWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FAFAFA" }}>
+    <View
+      style={{
+        flexDirection: "row",
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderColor: Colors.gray[200],
+        backgroundColor: Colors.gray[50],
+        paddingHorizontal: 4,
+      }}
+    >
       <TouchableOpacity
-        style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}
+        style={{ flex: 1, alignItems: "center", paddingVertical: 16, paddingHorizontal: 6, minHeight: 112, justifyContent: "flex-start" }}
         onPress={missingDistance ? onPressSetAddress : undefined}
         disabled={!missingDistance || !onPressSetAddress}
-        activeOpacity={missingDistance ? 0.7 : 1}
+        activeOpacity={missingDistance ? 0.72 : 1}
+        accessibilityRole={missingDistance && onPressSetAddress ? "button" : "text"}
+        accessibilityLabel={
+          missingDistance
+            ? onPressSetAddress
+              ? "Distance unknown. Set your address to see how far this provider is."
+              : "Distance not available"
+            : `About ${distance_km!.toFixed(1)} kilometres from you`
+        }
       >
-        <Ionicons name="location-outline" size={18} color="#6B7280" />
-        <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 4 }}>Distance</Text>
+        {iconBubble(Colors.primaryLight, <Ionicons name="navigate-outline" size={19} color={Colors.primary} />)}
         {missingDistance ? (
           <Text
             style={{
-              fontSize: 12,
-              fontWeight: "600",
-              color: onPressSetAddress ? Colors.primary : "#111",
+              fontSize: 15,
+              fontWeight: "700",
+              color: onPressSetAddress ? Colors.primary : Colors.gray[800],
               textAlign: "center",
-              marginTop: 2,
-              paddingHorizontal: 4,
             }}
+            numberOfLines={2}
           >
-            {onPressSetAddress ? "Set your address" : "—"}
+            {onPressSetAddress ? "Set address" : "—"}
           </Text>
         ) : (
-          <Text style={{ fontSize: 13, fontWeight: "700", color: "#111" }}>{`${distance_km.toFixed(1)} km`}</Text>
-        )}
-      </TouchableOpacity>
-      <View style={{ width: 1, backgroundColor: "#E5E7EB" }} />
-      <View style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}>
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Ionicons name="star" size={18} color="#FACC15" style={{ marginRight: 3 }} />
-          <Text style={{ fontSize: 15, fontWeight: "700", color: "#111" }}>
-            {rating > 0 ? rating.toFixed(1) : "0.0"}
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>
+            {`${distance_km.toFixed(1)} km`}
           </Text>
+        )}
+        <Text style={micro}>Distance</Text>
+      </TouchableOpacity>
+
+      {divider}
+
+      <TouchableOpacity
+        style={{ flex: 1, alignItems: "center", paddingVertical: 16, paddingHorizontal: 6, minHeight: 112, justifyContent: "flex-start" }}
+        onPress={onPressReviews}
+        disabled={!onPressReviews}
+        activeOpacity={onPressReviews ? 0.72 : 1}
+        accessibilityRole={onPressReviews ? "button" : "text"}
+        accessibilityLabel={`Average rating ${rating > 0 ? rating.toFixed(1) : "not yet rated"} out of five. ${onPressReviews ? "Opens reviews." : ""}`}
+      >
+        {iconBubble("rgba(245, 158, 11, 0.15)", <Ionicons name="star" size={18} color="#D97706" />)}
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>{ratingLabel}</Text>
+          {rating > 0 ? (
+            <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.gray[500], marginTop: 2, marginLeft: 4 }}>/5</Text>
+          ) : null}
         </View>
-        <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>Rating</Text>
-      </View>
-      <View style={{ width: 1, backgroundColor: "#E5E7EB" }} />
-      <View style={{ flex: 1, alignItems: "center", paddingVertical: 14 }}>
-        <Text style={{ fontSize: 15, fontWeight: "700", color: "#111" }}>{review_count.toLocaleString()}</Text>
-        <Text style={{ fontSize: 10, color: "#6B7280", marginTop: 2 }}>
-          {review_count === 1 ? "Review" : "Reviews"}
-        </Text>
-      </View>
+        <Text style={micro}>Rating</Text>
+      </TouchableOpacity>
+
+      {divider}
+
+      <TouchableOpacity
+        style={{ flex: 1, alignItems: "center", paddingVertical: 16, paddingHorizontal: 6, minHeight: 112, justifyContent: "flex-start" }}
+        onPress={onPressReviews}
+        disabled={!onPressReviews}
+        activeOpacity={onPressReviews ? 0.72 : 1}
+        accessibilityRole={onPressReviews ? "button" : "text"}
+        accessibilityLabel={`${review_count} ${review_count === 1 ? "review" : "reviews"}.${onPressReviews ? " Opens reviews." : ""}`}
+      >
+        {iconBubble(Colors.gray[100], <Ionicons name="chatbubbles-outline" size={18} color={Colors.gray[600]} />)}
+        <Text style={{ fontSize: 17, fontWeight: "800", color: Colors.gray[900], letterSpacing: -0.3 }}>{reviewLabel}</Text>
+        <Text style={micro}>{review_count === 1 ? "Review" : "Reviews"}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 /* ─── Section Tabs ─── */
-const TAB_KEYS = ["services", "packages", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "about"] as const;
+const TAB_KEYS = ["services", "packages", "products", "photos", "locations", "team", "reviews", "memberships", "giftcard", "custom_service", "about"] as const;
 type TabKey = (typeof TAB_KEYS)[number];
 
 const TAB_LABELS: Record<TabKey, string> = {
@@ -199,6 +381,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   reviews: "Reviews",
   memberships: "Memberships",
   giftcard: "Giftcard",
+  custom_service: "Custom request",
   about: "About",
 };
 
@@ -1300,6 +1483,9 @@ export default function PartnerProfileScreen() {
 
   /* ── Derived state ── */
   const activeCat = services?.categories?.find((c) => c.id === activeCategory);
+  const acceptsCustom =
+    provider.accepts_custom_requests !== false;
+
   const visibleTabs = TAB_KEYS.filter((t) => {
     if (t === "services") return (services?.total_services ?? 0) > 0;
     if (t === "packages") return true;
@@ -1307,6 +1493,7 @@ export default function PartnerProfileScreen() {
     if (t === "photos") return images.length > 1;
     if (t === "locations") return (provider.locations?.length ?? 0) > 0;
     if (t === "team") return provider.business_type === "salon" && (provider.staff_count ?? 0) > 0;
+    if (t === "custom_service") return acceptsCustom;
     if (t === "about") return true;
     return true;
   });
@@ -1478,6 +1665,10 @@ export default function PartnerProfileScreen() {
               rating={provider.rating}
               review_count={provider.review_count}
               onPressSetAddress={() => router.push("/(app)/account-settings/addresses")}
+              onPressReviews={() => {
+                setActiveTab("reviews");
+                haptic.selection();
+              }}
             />
 
             {/* Description */}
@@ -1921,32 +2112,105 @@ export default function PartnerProfileScreen() {
               {/* ── REVIEWS (live data) ── */}
               {activeTab === "reviews" && (
                 <View>
-                  <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Reviews</Text>
-                  {/* Aggregate */}
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
+                    <View
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: Colors.primaryLight,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      <Ionicons name="ribbon-outline" size={22} color={Colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Reviews</Text>
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 3, lineHeight: 16 }}>
+                        Average rating and breakdown from clients
+                      </Text>
+                    </View>
+                  </View>
+                  {/* Aggregate summary */}
                   {provider.review_count > 0 && (
-                    <View style={{
-                      flexDirection: "row", alignItems: "center", marginBottom: 16,
-                      backgroundColor: "#F9FAFB", borderRadius: 18, padding: contentPadding,
-                      borderWidth: 1, borderColor: "#E5E7EB",
-                    }}>
-                      <View style={{ alignItems: "center", marginRight: 14, minWidth: 96 }}>
-                        <Text style={{ fontSize: 34, fontWeight: "800", color: "#111827", lineHeight: 36 }}>{provider.rating.toFixed(1)}</Text>
-                        <View style={{ marginTop: 4 }}>
-                          <StarRow rating={provider.rating} size={16} />
-                        </View>
-                        <Text style={{ fontSize: 12, color: "#6B7280", marginTop: 6, textAlign: "center" }}>
-                          {provider.review_count} {provider.review_count === 1 ? "review" : "reviews"}
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "stretch",
+                        marginBottom: 18,
+                        backgroundColor: Colors.white,
+                        borderRadius: 16,
+                        paddingVertical: 16,
+                        paddingHorizontal: 14,
+                        borderWidth: 1,
+                        borderColor: Colors.gray[200],
+                        ...Shadows.cardSubtle,
+                      }}
+                    >
+                      <View style={{ alignItems: "center", width: 108, paddingRight: 12, justifyContent: "center" }}>
+                        <Text style={{ fontSize: 36, fontWeight: "800", color: Colors.gray[900], lineHeight: 38, letterSpacing: -0.8 }}>
+                          {provider.rating.toFixed(1)}
                         </Text>
+                        <Text style={{ fontSize: 11, fontWeight: "600", color: Colors.gray[500], marginTop: 2, letterSpacing: 0.2 }}>
+                          out of 5
+                        </Text>
+                        <View style={{ marginTop: 8 }}>
+                          <StarRow rating={provider.rating} size={14} />
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", marginTop: 10, maxWidth: 108 }}>
+                          <Ionicons name="chatbubbles-outline" size={15} color={Colors.gray[500]} style={{ marginRight: 5 }} />
+                          <Text style={{ fontSize: 12, color: Colors.gray[600], fontWeight: "600", flex: 1, flexWrap: "wrap" }} numberOfLines={2}>
+                            {provider.review_count.toLocaleString()}{" "}
+                            {provider.review_count === 1 ? "review" : "reviews"}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ flex: 1, paddingLeft: 12 }}>
+                      <View style={{ width: StyleSheet.hairlineWidth, backgroundColor: Colors.gray[200], alignSelf: "stretch" }} />
+                      <View style={{ flex: 1, paddingLeft: 14, justifyContent: "center", minWidth: 0 }}>
+                        <Text
+                          style={{
+                            fontSize: 10,
+                            fontWeight: "700",
+                            color: Colors.gray[500],
+                            letterSpacing: 0.5,
+                            textTransform: "uppercase",
+                            marginBottom: 8,
+                          }}
+                        >
+                          Star distribution
+                        </Text>
                         {[5, 4, 3, 2, 1].map((star) => {
                           const count = reviews.filter((r) => Math.round(r.rating) === star).length;
                           const pct = reviews.length > 0 ? (count / reviews.length) * 100 : 0;
                           return (
-                            <View key={star} style={{ flexDirection: "row", alignItems: "center", marginTop: star === 5 ? 0 : 4 }}>
-                              <Text style={{ fontSize: 11, color: "#6B7280", width: 12, textAlign: "right", marginRight: 6 }}>{star}</Text>
-                              <View style={{ flex: 1, height: 6, borderRadius: 3, backgroundColor: "#E5E7EB" }}>
-                                <View style={{ width: `${pct}%` as `${number}%`, height: 6, borderRadius: 3, backgroundColor: "#FACC15" }} />
+                            <View
+                              key={star}
+                              style={{ flexDirection: "row", alignItems: "center", marginTop: star === 5 ? 0 : 5 }}
+                            >
+                              <View style={{ flexDirection: "row", alignItems: "center", width: 44, justifyContent: "flex-end" }}>
+                                <Text style={{ fontSize: 12, fontWeight: "700", color: Colors.gray[700], marginRight: 3 }}>{star}</Text>
+                                <Ionicons name="star" size={12} color="#EAB308" />
+                              </View>
+                              <View
+                                style={{
+                                  flex: 1,
+                                  marginLeft: 10,
+                                  height: 7,
+                                  borderRadius: 4,
+                                  backgroundColor: Colors.gray[200],
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <View
+                                  style={{
+                                    width: `${pct}%` as `${number}%`,
+                                    height: 7,
+                                    borderRadius: 4,
+                                    backgroundColor: "#EAB308",
+                                  }}
+                                />
                               </View>
                             </View>
                           );
@@ -2032,6 +2296,81 @@ export default function PartnerProfileScreen() {
                       <Text style={{ color: "#6B7280", fontSize: 14, marginTop: 8 }}>No membership plans available yet.</Text>
                     </View>
                   )}
+                </View>
+              )}
+
+              {/* ── CUSTOM SERVICE REQUEST (same entry point as web “Request Custom Service” tab) ── */}
+              {activeTab === "custom_service" && acceptsCustom && (
+                <View>
+                  <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 12 }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        backgroundColor: Colors.primaryLight,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginRight: 12,
+                      }}
+                    >
+                      <Ionicons name="sparkles" size={24} color={Colors.primary} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>Request custom service</Text>
+                      <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 4, lineHeight: 18 }}>
+                        Tailored to you — {provider.business_name} will reply with a quote or questions.
+                      </Text>
+                    </View>
+                  </View>
+                  <View
+                    style={{
+                      backgroundColor: "#EFF6FF",
+                      borderRadius: 14,
+                      padding: contentPadding,
+                      borderWidth: 1,
+                      borderColor: "#BFDBFE",
+                      marginBottom: 18,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+                      <Ionicons name="information-circle-outline" size={20} color="#2563EB" style={{ marginRight: 10, marginTop: 1 }} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>How it works</Text>
+                        <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 20, marginBottom: 10 }}>
+                          Describe what you need, optional budget and photos, then submit. You’ll chat with the provider about timing and pricing.
+                        </Text>
+                        <View>
+                          {["Share your vision and any must-haves", "Add inspiration photos if helpful", "Get a personalized offer in messages"].map((line, i) => (
+                            <View key={line} style={{ flexDirection: "row", alignItems: "flex-start", marginTop: i === 0 ? 0 : 6 }}>
+                              <Text style={{ color: Colors.primary, fontWeight: "700", marginRight: 8, marginTop: 1 }}>•</Text>
+                              <Text style={{ flex: 1, fontSize: 13, color: Colors.gray[700], lineHeight: 20 }}>{line}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/custom-request-create",
+                        params: { provider_id: provider.id, provider_name: provider.business_name },
+                      })
+                    }
+                    style={{
+                      backgroundColor: Colors.primary,
+                      borderRadius: 12,
+                      paddingVertical: 16,
+                      alignItems: "center",
+                      flexDirection: "row",
+                      justifyContent: "center",
+                      ...Shadows.cardSmall,
+                    }}
+                  >
+                    <Ionicons name="create-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 16 }}>Start your request</Text>
+                  </TouchableOpacity>
                 </View>
               )}
 
@@ -2122,6 +2461,8 @@ export default function PartnerProfileScreen() {
                       )}
                     </View>
                   </View>
+
+                  <AboutOpeningTimes locations={provider.locations ?? []} contentPadding={contentPadding} />
 
                   {/* Specialties / categories */}
                   {provider.categories?.length > 0 && (
@@ -2228,22 +2569,6 @@ export default function PartnerProfileScreen() {
                 </View>
               )}
             </View>
-
-            {/* ── Request Custom Service ── */}
-            {provider.accepts_custom_requests && (
-              <View style={{ paddingHorizontal: contentPadding, paddingBottom: 16 }}>
-                <TouchableOpacity
-                  onPress={() => router.push({ pathname: "/(app)/custom-request-create", params: { provider_id: provider.id, provider_name: provider.business_name } })}
-                  style={{
-                    borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 12, paddingVertical: 14,
-                    alignItems: "center", flexDirection: "row", justifyContent: "center", borderStyle: "dashed",
-                  }}
-                >
-                  <Ionicons name="sparkles-outline" size={18} color={Colors.primary} style={{ marginRight: 8 }} />
-                  <Text style={{ color: Colors.primary, fontWeight: "600", fontSize: 15 }}>Request Custom Service</Text>
-                </TouchableOpacity>
-              </View>
-            )}
 
             {/* Extra bottom spacing for sticky bar (clears Message + Book + home indicator) */}
             <View style={{ height: scrollSpacerForStickyBar }} />

@@ -42,6 +42,7 @@ export interface PublicProviderCard {
 export interface ProviderLocation {
   id: string;
   name: string;
+  is_primary?: boolean;
   address_line1: string;
   address_line2?: string | null;
   city: string;
@@ -53,6 +54,8 @@ export interface ProviderLocation {
   phone?: string | null;
   /** 'salon' = clients can visit; 'base' = distance/travel only (mobile-only) */
   location_type?: "salon" | "base";
+  /** JSON object or string; keys like monday..sunday with { open, close, is_closed? } */
+  working_hours?: unknown;
 }
 
 export interface PublicProviderDetail {

@@ -19,6 +19,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Colors } from "@/constants/colors";
+import { formatCurrency } from "@/lib/format";
 
 interface InventoryProduct {
   id: string;
@@ -144,7 +145,7 @@ export function InventoryContent() {
             <View style={{ marginBottom: 4, height: 32, width: 32, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#dbeafe" }}>
               <Ionicons name="cash-outline" size={18} color="#2563eb" />
             </View>
-            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>R {Number(totalStockValue).toFixed(0)}</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900] }}>{formatCurrency(Number(totalStockValue))}</Text>
             <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Stock value</Text>
           </View>
         </View>
@@ -235,7 +236,7 @@ export function InventoryContent() {
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>{c.category}</Text>
                   <View style={{ flexDirection: "row", alignItems: "center" }}>
                     <Text style={{ fontSize: 12, color: Colors.gray[500], marginRight: 12 }}>{c.count} items</Text>
-                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>R {Number(c.stockValue).toFixed(0)}</Text>
+                    <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>{formatCurrency(Number(c.stockValue))}</Text>
                   </View>
                 </View>
               ))}

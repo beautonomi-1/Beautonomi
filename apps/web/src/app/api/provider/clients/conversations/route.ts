@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { fetchDefaultAddressesForUsers } from "@/lib/provider-portal/user-default-address";
 
 /**
  * GET /api/provider/clients/conversations
@@ -150,23 +151,30 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    const foundIdsList = customers?.map((c: { id: string }) => c.id) || [];
+    const defaultAddrByUser = await fetchDefaultAddressesForUsers(supabaseAdmin, foundIdsList);
+
     // Combine data
-    const conversationCustomers = customers?.map((customer) => {
-      const convData = customerConversations[customer.id];
-      const bookingData = bookingStats[customer.id];
-      
-      return {
-        customer_id: customer.id,
-        customer,
-        last_message_date: convData?.last_message_date || null,
-        conversation_count: convData?.conversation_count || 0,
-        last_service_date: bookingData?.last_service_date || null,
-        total_bookings: bookingData?.total_bookings || 0,
-        total_spent: bookingData?.total_spent || 0,
-        is_saved: savedCustomerIds.has(customer.id),
-        has_booked: !!bookingData,
-      };
-    }) || [];
+    const conversationCustomers =
+      customers?.map((customer) => {
+        const convData = customerConversations[customer.id];
+        const bookingData = bookingStats[customer.id];
+
+        return {
+          customer_id: customer.id,
+          customer: {
+            ...customer,
+            default_address: defaultAddrByUser.get(customer.id) ?? null,
+          },
+          last_message_date: convData?.last_message_date || null,
+          conversation_count: convData?.conversation_count || 0,
+          last_service_date: bookingData?.last_service_date || null,
+          total_bookings: bookingData?.total_bookings || 0,
+          total_spent: bookingData?.total_spent || 0,
+          is_saved: savedCustomerIds.has(customer.id),
+          has_booked: !!bookingData,
+        };
+      }) || [];
 
     // Sort by last message date (most recent first)
     conversationCustomers.sort((a, b) => {
@@ -183,11 +191,15 @@ export async function GET(request: NextRequest) {
         const customer = item.customer;
         if (!customer) return false;
         
+        const da = (customer as { default_address?: { address_line1?: string; city?: string } | null })
+          .default_address;
+        const addrBlob = [da?.address_line1, da?.city].filter(Boolean).join(" ").toLowerCase();
+
         const nameMatch = customer.full_name?.toLowerCase().includes(searchLower);
         const emailMatch = customer.email?.toLowerCase().includes(searchLower);
         const phoneMatch = customer.phone?.toLowerCase().includes(searchLower);
-        
-        return nameMatch || emailMatch || phoneMatch;
+
+        return nameMatch || emailMatch || phoneMatch || addrBlob.includes(searchLower);
       });
     }
 

@@ -468,24 +468,23 @@ export function ProductCreateEditDialog({
       const imageUrl = data.data?.url;
       if (!imageUrl) throw new Error("No URL returned from upload");
 
-      // Filter out any base64 URLs and old main image if replacing
-      const cleanImageUrls = formData.imageUrls.filter(
-        (u) => !u.startsWith("data:") && u !== formData.mainImageUrl
-      );
-
       if (isMain) {
-        setFormData({
-          ...formData,
-          mainImageUrl: imageUrl,
-          imageUrls: [imageUrl, ...cleanImageUrls],
+        setFormData((prev) => {
+          const cleanImageUrls = prev.imageUrls.filter(
+            (u) => !u.startsWith("data:") && u !== prev.mainImageUrl
+          );
+          return {
+            ...prev,
+            mainImageUrl: imageUrl,
+            imageUrls: [imageUrl, ...cleanImageUrls],
+          };
         });
       } else {
-        if (!formData.imageUrls.includes(imageUrl)) {
-          setFormData({
-            ...formData,
-            imageUrls: [...cleanImageUrls, imageUrl],
-          });
-        }
+        setFormData((prev) => {
+          const withoutDataUrls = prev.imageUrls.filter((u) => !u.startsWith("data:"));
+          if (withoutDataUrls.includes(imageUrl)) return prev;
+          return { ...prev, imageUrls: [...withoutDataUrls, imageUrl] };
+        });
       }
 
       toast.success("Image uploaded successfully");

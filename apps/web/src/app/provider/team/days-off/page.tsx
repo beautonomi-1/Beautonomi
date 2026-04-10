@@ -10,13 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Calendar } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CalendarIcon, Plus, X, Users, Calendar as CalendarIcon2 } from "lucide-react";
-import { format } from "date-fns";
+import { Plus, X, Users, Calendar as CalendarIcon2 } from "lucide-react";
+import { format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
+import { FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -41,7 +41,12 @@ export default function DaysOffPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedMembers, setSelectedMembers] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
+  /** Keeps the calendar view in sync when picking a date or opening the dialog. */
+  const [calendarMonth, setCalendarMonth] = useState<Date>(() => new Date());
   const [reason, setReason] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const todayStart = startOfDay(new Date());
 
   useEffect(() => {
     loadData();
@@ -81,6 +86,7 @@ export default function DaysOffPage() {
   const handleAddDayOff = () => {
     setSelectedMembers([]);
     setSelectedDate(undefined);
+    setCalendarMonth(new Date());
     setReason("");
     setIsDialogOpen(true);
   };
@@ -92,24 +98,50 @@ export default function DaysOffPage() {
     }
 
     try {
+      setIsSaving(true);
       const { fetcher } = await import("@/lib/http/fetcher");
       const dateStr = format(selectedDate, "yyyy-MM-dd");
-      
-      // Save days off for all selected members
-      for (const memberId of selectedMembers) {
-        await fetcher.post(`/api/provider/staff/${memberId}/days-off`, {
-          date: dateStr,
-          reason: reason,
-          type: reason, // Use reason as type for now
-        });
+      const trimmedReason = reason.trim();
+      const body: { date: string; reason?: string } = { date: dateStr };
+      if (trimmedReason) body.reason = trimmedReason;
+
+      const results = await Promise.allSettled(
+        selectedMembers.map((memberId) =>
+          fetcher.post(`/api/provider/staff/${memberId}/days-off`, body)
+        )
+      );
+
+      const ok = results.filter((r) => r.status === "fulfilled").length;
+      const failed = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+
+      if (ok === selectedMembers.length) {
+        toast.success(`Day off set for ${ok} team member(s)`);
+        setIsDialogOpen(false);
+        loadData();
+        return;
       }
-      
-      toast.success(`Day off set for ${selectedMembers.length} team member(s)`);
-      setIsDialogOpen(false);
-      loadData();
-    } catch (error: any) {
+
+      if (ok > 0) {
+        toast.warning(
+          `Saved for ${ok} of ${selectedMembers.length}. ${failed.length} failed (e.g. duplicate date or network).`
+        );
+        loadData();
+        return;
+      }
+
+      const firstErr = failed[0]?.reason;
+      const msg =
+        firstErr instanceof FetchError
+          ? firstErr.message
+          : firstErr instanceof Error
+            ? firstErr.message
+            : "Failed to save day off";
+      toast.error(msg);
+    } catch (error: unknown) {
       console.error("Failed to save day off:", error);
-      toast.error(error?.message || "Failed to save day off");
+      toast.error(error instanceof Error ? error.message : "Failed to save day off");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -320,10 +352,16 @@ export default function DaysOffPage() {
                     className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
                     onClick={() => toggleMemberSelection(member.id)}
                   >
-                    <Checkbox
-                      checked={selectedMembers.includes(member.id)}
-                      onCheckedChange={() => toggleMemberSelection(member.id)}
-                    />
+                    <span
+                      className="inline-flex shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        checked={selectedMembers.includes(member.id)}
+                        onCheckedChange={() => toggleMemberSelection(member.id)}
+                      />
+                    </span>
                     <Avatar className="w-8 h-8">
                       <AvatarFallback className="bg-[#FF0077]/10 text-[#FF0077] text-xs">
                         {member.name.charAt(0)}
@@ -335,42 +373,74 @@ export default function DaysOffPage() {
               </div>
             </div>
 
-            {/* Date Selection */}
+            {/* Date — inline calendar avoids popover z-index / focus issues inside Dialog */}
             <div>
               <Label className="text-sm sm:text-base font-medium mb-2 block">Date *</Label>
-              <Popover modal={false}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
+              <p className="text-xs text-muted-foreground mb-3">
+                Tap a day to select. Past dates are disabled; use{" "}
+                <a href="/provider/time-blocks" className="underline font-medium text-foreground">
+                  Time blocks
+                </a>{" "}
+                for partial days.
+              </p>
+              <div
+                className={cn(
+                  "rounded-xl border bg-card p-2 sm:p-3 shadow-sm",
+                  "flex flex-col items-center sm:items-stretch"
+                )}
+              >
+                <div className="mb-2 w-full text-center sm:text-left">
+                  <span
                     className={cn(
-                      "w-full justify-start text-left font-normal min-h-[44px] touch-manipulation",
+                      "text-sm font-medium tabular-nums",
                       !selectedDate && "text-muted-foreground"
                     )}
+                    aria-live="polite"
                   >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(selectedDate, "PPP") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 z-[100]" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={setSelectedDate}
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
+                    {selectedDate ? format(selectedDate, "EEEE, MMMM d, yyyy") : "Choose a date below"}
+                  </span>
+                </div>
+                <Calendar
+                  mode="single"
+                  month={calendarMonth}
+                  onMonthChange={setCalendarMonth}
+                  selected={selectedDate}
+                  onSelect={(d) => {
+                    setSelectedDate(d);
+                    if (d) setCalendarMonth(d);
+                  }}
+                  disabled={(d) => d < todayStart}
+                  initialFocus
+                  className="mx-auto"
+                />
+              </div>
             </div>
 
             {/* Reason */}
             <div>
-              <Label htmlFor="reason" className="text-sm sm:text-base font-medium">Reason (Optional)</Label>
+              <Label htmlFor="reason" className="text-sm sm:text-base font-medium">
+                Reason (optional)
+              </Label>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {["Vacation", "Sick leave", "Personal", "Public holiday"].map((preset) => (
+                  <Button
+                    key={preset}
+                    type="button"
+                    variant={reason.trim() === preset ? "default" : "outline"}
+                    size="sm"
+                    className="h-8 rounded-full text-xs touch-manipulation"
+                    onClick={() => setReason(preset)}
+                  >
+                    {preset}
+                  </Button>
+                ))}
+              </div>
               <Input
                 id="reason"
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g., Vacation, Sick leave, Personal"
-                className="mt-1.5 min-h-[44px] touch-manipulation"
+                placeholder="Or type your own…"
+                className="mt-2 min-h-[44px] touch-manipulation"
               />
             </div>
           </div>
@@ -380,6 +450,7 @@ export default function DaysOffPage() {
               type="button"
               variant="outline"
               onClick={() => setIsDialogOpen(false)}
+              disabled={isSaving}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
               Cancel
@@ -387,9 +458,12 @@ export default function DaysOffPage() {
             <Button
               type="button"
               onClick={handleSaveDayOff}
+              disabled={
+                isSaving || !selectedDate || selectedMembers.length === 0 || teamMembers.length === 0
+              }
               className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
             >
-              Set Day Off
+              {isSaving ? "Saving…" : "Set Day Off"}
             </Button>
           </DialogFooter>
         </DialogContent>

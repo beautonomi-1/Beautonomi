@@ -187,7 +187,9 @@ export default function PartnerProfileClient({
               <TabsTrigger value="reviews" className={tabTriggerClass}>Reviews</TabsTrigger>
               <TabsTrigger value="memberships" className={tabTriggerClass}>Memberships</TabsTrigger>
               <TabsTrigger value="giftcard" className={tabTriggerClass}>Giftcard</TabsTrigger>
-              <TabsTrigger value="custom-service" className={tabTriggerClass}>Request Custom Service</TabsTrigger>
+              {provider.accepts_custom_requests !== false && (
+                <TabsTrigger value="custom-service" className={tabTriggerClass}>Request Custom Service</TabsTrigger>
+              )}
               <TabsTrigger value="about" className={tabTriggerClass}>About</TabsTrigger>
             </div>
           </TabsList>
@@ -222,13 +224,15 @@ export default function PartnerProfileClient({
           <TabsContent value="giftcard" className="mt-0">
             <PartnerBuy id={provider.id} slug={provider.slug} />
           </TabsContent>
-          <TabsContent value="custom-service" className="mt-0">
-            <RequestCustomServicePage
-              providerId={provider.id}
-              acceptsCustomRequests={provider.accepts_custom_requests !== false}
-              businessName={provider.business_name}
-            />
-          </TabsContent>
+          {provider.accepts_custom_requests !== false && (
+            <TabsContent value="custom-service" className="mt-0">
+              <RequestCustomServicePage
+                providerId={provider.id}
+                acceptsCustomRequests
+                businessName={provider.business_name}
+              />
+            </TabsContent>
+          )}
           <TabsContent value="about" className="mt-0">
             <PartnerAbout
               description={provider.description}

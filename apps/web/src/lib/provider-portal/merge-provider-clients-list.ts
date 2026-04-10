@@ -10,6 +10,15 @@ export interface MergedProviderClient {
   phone?: string;
   address?: string;
   city?: string;
+  /** Single-line display for Mapbox autocomplete (street + locality). */
+  address_display?: string;
+  address_state?: string;
+  address_postal_code?: string;
+  address_country?: string;
+  address_latitude?: number | null;
+  address_longitude?: number | null;
+  /** True when the customer saved their home address from the customer app/web. */
+  home_address_read_only?: boolean;
   notes?: string;
   tags?: string[];
   created_at: string;
@@ -31,6 +40,24 @@ export function mergeProviderClientsListFromSources(
   servicedData: { data?: unknown[] },
   conversationsData: { data?: unknown[] },
 ): MergedProviderClient[] {
+  const mapDefaultAddress = (customer: any) => {
+    const da = customer?.default_address;
+    if (!da) return {};
+    const line1 = da.address_line1 || "";
+    const city = da.city || "";
+    return {
+      address: line1,
+      city,
+      address_display: [line1, city].filter(Boolean).join(", "),
+      address_state: da.state || undefined,
+      address_postal_code: da.postal_code || undefined,
+      address_country: da.country || "ZA",
+      address_latitude: da.latitude != null ? Number(da.latitude) : null,
+      address_longitude: da.longitude != null ? Number(da.longitude) : null,
+      home_address_read_only: Boolean(da.customer_managed_home),
+    };
+  };
+
   const savedClients = (savedData.data || []).map((client: any) => {
     const fullName = client.customer?.full_name || "";
     const nameParts = fullName.trim().split(/\s+/);
@@ -40,6 +67,7 @@ export function mergeProviderClientsListFromSources(
       last_name: nameParts.slice(1).join(" ") || "",
       email: client.customer?.email || "",
       phone: client.customer?.phone || "",
+      ...mapDefaultAddress(client.customer),
       notes: client.notes || "",
       tags: client.tags || [],
       created_at: client.created_at,
@@ -67,6 +95,7 @@ export function mergeProviderClientsListFromSources(
         last_name: nameParts.slice(1).join(" ") || "",
         email: client.customer?.email || "",
         phone: client.customer?.phone || "",
+        ...mapDefaultAddress(client.customer),
         notes: "",
         tags: [],
         created_at: client.last_service_date,
@@ -98,6 +127,7 @@ export function mergeProviderClientsListFromSources(
         last_name: nameParts.slice(1).join(" ") || "",
         email: client.customer?.email || "",
         phone: client.customer?.phone || "",
+        ...mapDefaultAddress(client.customer),
         notes: "",
         tags: [],
         created_at: client.last_message_date || client.customer?.created_at,

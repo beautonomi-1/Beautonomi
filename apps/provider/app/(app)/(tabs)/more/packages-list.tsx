@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { Colors } from "@/constants/colors";
+import { normalizePackagesList } from "@/lib/unpack-provider-api";
 
 interface PackageItem {
   id: string;
@@ -39,19 +40,16 @@ interface ServicePackage {
   created_at: string;
 }
 
-interface PackagesResponse {
-  packages: ServicePackage[];
-}
-
 export default function PackagesListScreen() {
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
 
-  const { data, loading, error, refresh } = useApi<PackagesResponse | { data?: PackagesResponse }>(
-    "/api/provider/packages"
-  );
+  const { data, loading, error, refresh } = useApi<unknown>("/api/provider/packages");
 
-  const packagesList = (data as PackagesResponse)?.packages ?? (data as any)?.data?.packages ?? [];
+  const packagesList = useMemo(
+    () => normalizePackagesList(data) as ServicePackage[],
+    [data]
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -111,15 +109,15 @@ export default function PackagesListScreen() {
         )}
         <View style={{ marginTop: 8, borderTopWidth: 1, borderTopColor: Colors.gray[100], paddingTop: 8 }}>
           <Text style={{ fontSize: 12, fontWeight: "500", color: Colors.gray[500] }}>Includes</Text>
-          {pkg.items.slice(0, 3).map((item) => (
+          {(pkg.items ?? []).slice(0, 3).map((item) => (
             <Text key={item.id} style={{ marginTop: 2, fontSize: 14, color: Colors.gray[600] }} numberOfLines={1}>
               • {itemLabel(item)}
               {item.quantity > 1 ? ` (x${item.quantity})` : ""}
             </Text>
           ))}
-          {pkg.items.length > 3 && (
+          {(pkg.items ?? []).length > 3 && (
             <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[400] }}>
-              +{pkg.items.length - 3} more
+              +{(pkg.items ?? []).length - 3} more
             </Text>
           )}
         </View>

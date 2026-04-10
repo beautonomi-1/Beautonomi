@@ -1,7 +1,15 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { createClient } from "@supabase/supabase-js";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
+
+function supabaseServiceRole() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } },
+  );
+}
 
 const packageItemSchema = z.object({
   offering_id: z.string().uuid().optional(),
@@ -35,7 +43,7 @@ export async function GET(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = supabaseServiceRole();
     const { id } = await params;
 
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -92,7 +100,7 @@ export async function PATCH(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = supabaseServiceRole();
     const { id } = await params;
     const body = await request.json();
 
@@ -215,7 +223,7 @@ export async function DELETE(
 ) {
   try {
     const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = supabaseServiceRole();
     const { id } = await params;
 
     const providerId = await getProviderIdForUser(user.id, supabase);
