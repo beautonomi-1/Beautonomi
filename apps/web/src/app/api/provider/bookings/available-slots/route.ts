@@ -89,10 +89,71 @@ export async function GET(request: NextRequest) {
     const staffIds = staffIdsParam ? staffIdsParam.split(",").filter(Boolean) : [];
     const dayKey = dayKeyFromDate(dateStr);
 
-    // Working hours: when single staff or location provided, restrict slots to open/close and exclude breaks
+    // Always check location hours first to determine if the day is open
+    const breakRanges: Array<{ start: number; end: number }> = [];
     let openMin = SLOT_START_H * 60;
     let closeMin = (SLOT_END_H + 1) * 60 - 1;
-    const breakRanges: Array<{ start: number; end: number }> = [];
+    let locationDayClosed = false;
+
+    // Load primary location hours (always)
+    const { data: primaryLocations } = await supabaseAdmin
+      .from("provider_locations")
+      .select("id, working_hours")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
+      .limit(1);
+
+    const primaryLocWh = (primaryLocations?.[0]?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+    if (primaryLocWh) {
+      const isClosed = primaryLocWh.is_open === false || (primaryLocWh as Record<string, unknown>).closed === true;
+      if (isClosed) {
+        locationDayClosed = true;
+      } else if (primaryLocWh.open_time && primaryLocWh.close_time) {
+        const o = parseTimeToMinutes(primaryLocWh.open_time);
+        const c = parseTimeToMinutes(primaryLocWh.close_time);
+        if (o !== null && c !== null && c > o) {
+          openMin = o;
+          closeMin = c;
+        }
+      }
+    }
+
+    if (locationDayClosed) {
+      return successResponse({ slots: [], date: dateStr });
+    }
+
+    // Narrow further by specific location if provided
+    if (locationId && locationId !== primaryLocations?.[0]?.id) {
+      const { data: loc } = await supabaseAdmin
+        .from("provider_locations")
+        .select("id, working_hours")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+      if (wh) {
+        const isClosed = wh.is_open === false || (wh as Record<string, unknown>).closed === true;
+        if (isClosed) {
+          return successResponse({ slots: [], date: dateStr });
+        }
+        if (wh.open_time && wh.close_time) {
+          const o = parseTimeToMinutes(wh.open_time);
+          const c = parseTimeToMinutes(wh.close_time);
+          if (o !== null && c !== null && c > o) {
+            openMin = o;
+            closeMin = c;
+          }
+        }
+        for (const br of wh.breaks ?? []) {
+          const bs = parseTimeToMinutes(br.start);
+          const be = parseTimeToMinutes(br.end);
+          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
+        }
+      }
+    }
+
+    // Single staff: further narrow to staff working hours
     if (staffIds.length === 1) {
       const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
         supabaseAdmin,
@@ -105,29 +166,8 @@ export async function GET(request: NextRequest) {
         const o = parseTimeToMinutes(wh.open_time);
         const c = parseTimeToMinutes(wh.close_time);
         if (o !== null && c !== null && c > o) {
-          openMin = o;
-          closeMin = c;
-        }
-        for (const br of wh.breaks ?? []) {
-          const bs = parseTimeToMinutes(br.start);
-          const be = parseTimeToMinutes(br.end);
-          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
-        }
-      }
-    } else if (locationId) {
-      const { data: loc } = await supabaseAdmin
-        .from("provider_locations")
-        .select("id, working_hours")
-        .eq("id", locationId)
-        .eq("provider_id", providerId)
-        .single();
-      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
-      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
-        const o = parseTimeToMinutes(wh.open_time);
-        const c = parseTimeToMinutes(wh.close_time);
-        if (o !== null && c !== null && c > o) {
-          openMin = o;
-          closeMin = c;
+          openMin = Math.max(openMin, o);
+          closeMin = Math.min(closeMin, c);
         }
         for (const br of wh.breaks ?? []) {
           const bs = parseTimeToMinutes(br.start);

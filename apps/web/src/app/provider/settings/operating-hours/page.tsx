@@ -18,6 +18,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 
 interface Location {
   id: string;
@@ -93,6 +94,7 @@ export default function OperatingHoursSettings() {
       toast.success("Operating hours updated successfully");
       setHasChanges(false);
       invalidateSetupStatusCache();
+      invalidateProviderPortalCache();
       // Reload locations to get updated data
       await loadLocations();
     } catch (error: any) {

@@ -428,8 +428,8 @@ export function CalendarMobileView({
 
   const useMangomintMode = isMangomintModeEnabled();
   const { preferences } = useCalendarPreferences();
-  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
-  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
+  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 0) : 0;
+  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 23) : 23;
   const highContrast = useMangomintMode && !!preferences.highContrast;
 
   const timeBlocksByStaffAndDate = useMemo(() => {
@@ -1182,10 +1182,8 @@ export function CalendarMobileView({
                         return aptHour === slotHour;
                       });
                       const { hour } = parseTimeParts(time);
-                      const outsidePreferred = hour < workStart || hour >= workEnd;
                       const isOutside =
-                        isOutsideOperatingHours(day, hour, locationOperatingHours) ||
-                        outsidePreferred;
+                        isOutsideOperatingHours(day, hour, locationOperatingHours);
                       const slotHcStyle: React.CSSProperties | undefined =
                         isOutside && highContrast
                           ? {
@@ -1572,12 +1570,9 @@ export function CalendarMobileView({
                       const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
                       const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
-                      const outsidePreferred = hour < workStart || hour >= workEnd;
-                      const isNonWorking =
-                        isOutsideLocationHours ||
-                        outsideStaffHours ||
-                        inAvailabilityBlock ||
-                        outsidePreferred;
+                      const businessClosed = isOutsideLocationHours;
+                      const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
+                      const isNonWorking = businessClosed;
                       const slotHcStyle: React.CSSProperties | undefined =
                         isNonWorking && highContrast
                           ? {
@@ -1587,7 +1582,7 @@ export function CalendarMobileView({
                           : undefined;
                       const slotClassName = cn(
                         "h-[60px] border-b-2 border-gray-300 relative z-10 transition-colors group/slot",
-                        slotIdx % 2 === 1 && !isNonWorking ? "bg-gray-100/60" : !isNonWorking ? "bg-white" : null,
+                        slotIdx % 2 === 1 && !isNonWorking && !staffOff ? "bg-gray-100/60" : !isNonWorking && !staffOff ? "bg-white" : null,
                         isNonWorking
                           ? cn(
                               "cursor-not-allowed border-l-[5px] border-l-amber-500",
@@ -1595,13 +1590,22 @@ export function CalendarMobileView({
                                 "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                               highContrast && "bg-gray-900/25",
                             )
-                          : "cursor-pointer hover:bg-blue-50/30"
+                          : staffOff
+                            ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                            : "cursor-pointer hover:bg-blue-50/30"
                       );
                       const slotContent = (
                         <>
                           {isNonWorking && (
                             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                               <span className="text-[9px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1 py-0.5 rounded border border-amber-300 shadow-sm">
+                                Closed
+                              </span>
+                            </div>
+                          )}
+                          {staffOff && !isNonWorking && slotAppointments.length === 0 && (
+                            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                              <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
                                 Off
                               </span>
                             </div>
@@ -1610,7 +1614,7 @@ export function CalendarMobileView({
                           <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-gray-300 pointer-events-none" />
                           
                           {/* Hover indicator for empty slots */}
-                          {slotAppointments.length === 0 && (
+                          {slotAppointments.length === 0 && !staffOff && (
                             <div className="absolute inset-0 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
                               <Plus className="w-4 h-4 text-gray-300" />
                             </div>
@@ -1909,12 +1913,9 @@ export function CalendarMobileView({
                       availabilityBlocks,
                     )
                   : false;
-                const outsidePreferred = hour < workStart || hour >= workEnd;
-                const isNonWorking =
-                  isOutsideLocationHours ||
-                  outsideStaffHours ||
-                  inAvailabilityBlock ||
-                  outsidePreferred;
+                const businessClosed = isOutsideLocationHours;
+                const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
+                const isNonWorking = businessClosed;
                 const dateStr = selectedDateStr;
                 const rowHcStyle: React.CSSProperties | undefined =
                   isNonWorking && highContrast
@@ -1933,14 +1934,23 @@ export function CalendarMobileView({
                           "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                         highContrast && "bg-gray-900/20",
                       )
-                    : "cursor-pointer hover:bg-gray-50",
+                    : staffOff
+                      ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                      : "cursor-pointer hover:bg-gray-50",
                 );
                 const rowContent = (
                   <>
                     {isNonWorking && (
                       <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                         <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1.5 py-0.5 rounded border border-amber-300 shadow-sm">
-                          Unavailable
+                          Closed
+                        </span>
+                      </div>
+                    )}
+                    {staffOff && !isNonWorking && (
+                      <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                        <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
+                          Off
                         </span>
                       </div>
                     )}

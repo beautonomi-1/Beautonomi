@@ -105,31 +105,96 @@ export async function GET(request: NextRequest) {
       transformedShifts.map((s: any) => `${s.team_member_id}::${s.date}`)
     );
 
+    // Build schedule entries from staff_schedules + location hours fallback
     const scheduleEntries: any[] = [];
-    if (weekStart && schedules && schedules.length > 0) {
+    if (weekStart) {
+      const DAY_KEYS = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+      // Load location operating hours for fallback
+      const { data: locations } = await supabase
+        .from("provider_locations")
+        .select("working_hours")
+        .eq("provider_id", providerId)
+        .eq("is_active", true)
+        .order("is_primary", { ascending: false })
+        .limit(1);
+
+      const locationHours = (locations?.[0]?.working_hours as Record<string, any> | null) ?? null;
+
+      // Collect which staff IDs we know about
+      const allStaffIds = new Set<string>();
+      transformedShifts.forEach((s: any) => allStaffIds.add(s.team_member_id));
+      (schedules || []).forEach((s: any) => allStaffIds.add(s.staff_id));
+
+      // If filtering by staff, only include that staff
+      if (staffId) {
+        allStaffIds.clear();
+        allStaffIds.add(staffId);
+      } else {
+        // Also load all active staff for the provider
+        const { data: allStaff } = await supabase
+          .from("provider_staff")
+          .select("id")
+          .eq("provider_id", providerId)
+          .eq("is_active", true);
+        (allStaff || []).forEach((s: any) => allStaffIds.add(s.id));
+      }
+
+      const schedulesArr = schedules || [];
+      const scheduleByStaffDay = new Map<string, any>();
+      for (const sched of schedulesArr) {
+        scheduleByStaffDay.set(`${sched.staff_id}::${sched.day_of_week}`, sched);
+      }
+
       const start = new Date(weekStart + "T00:00:00");
       for (let i = 0; i < 7; i++) {
         const d = new Date(start);
         d.setDate(d.getDate() + i);
         const dow = d.getDay();
         const dateStr = formatDateLocal(d);
+        const dayKey = DAY_KEYS[dow];
 
-        for (const sched of schedules) {
-          if (sched.day_of_week !== dow) continue;
-          const key = `${sched.staff_id}::${dateStr}`;
+        for (const sid of allStaffIds) {
+          const key = `${sid}::${dateStr}`;
           if (shiftDateKeys.has(key)) continue;
-          scheduleEntries.push({
-            id: `schedule-${sched.staff_id}-${dow}`,
-            team_member_id: sched.staff_id,
-            team_member_name: "",
-            date: dateStr,
-            start_time: sched.start_time.substring(0, 5),
-            end_time: sched.end_time.substring(0, 5),
-            notes: null,
-            is_recurring: false,
-            recurring_pattern: null,
-            source: "schedule" as const,
-          });
+
+          const sched = scheduleByStaffDay.get(`${sid}::${dow}`);
+          if (sched) {
+            scheduleEntries.push({
+              id: `schedule-${sid}-${dow}`,
+              team_member_id: sid,
+              team_member_name: "",
+              date: dateStr,
+              start_time: sched.start_time.substring(0, 5),
+              end_time: sched.end_time.substring(0, 5),
+              notes: null,
+              is_recurring: false,
+              recurring_pattern: null,
+              source: "schedule" as const,
+            });
+          } else if (locationHours) {
+            // Fallback: generate shift from location operating hours
+            const dayData = locationHours[dayKey];
+            if (dayData && typeof dayData === "object") {
+              const isClosed = dayData.closed === true || dayData.is_open === false;
+              if (!isClosed) {
+                const openTime = (dayData.open_time || dayData.open || "09:00").toString().substring(0, 5);
+                const closeTime = (dayData.close_time || dayData.close || "18:00").toString().substring(0, 5);
+                scheduleEntries.push({
+                  id: `location-${sid}-${dow}`,
+                  team_member_id: sid,
+                  team_member_name: "",
+                  date: dateStr,
+                  start_time: openTime,
+                  end_time: closeTime,
+                  notes: null,
+                  is_recurring: false,
+                  recurring_pattern: null,
+                  source: "location" as const,
+                });
+              }
+            }
+          }
         }
       }
     }

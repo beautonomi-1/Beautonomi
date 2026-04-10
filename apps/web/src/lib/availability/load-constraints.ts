@@ -33,7 +33,8 @@ const DAY_KEYS = [
   'saturday',
 ] as const;
 
-const WEEKDAY_KEYS = new Set([
+const ALL_DAY_KEYS_SET = new Set([
+  'sunday',
   'monday',
   'tuesday',
   'wednesday',
@@ -42,7 +43,7 @@ const WEEKDAY_KEYS = new Set([
   'saturday',
 ]);
 
-/** When working_hours is empty or unset, Mon–Sat 09:00–18:00; Sunday closed. */
+/** When working_hours is empty or unset, all 7 days default to 09:00–18:00. */
 const DEFAULT_OPEN = '09:00';
 const DEFAULT_CLOSE = '18:00';
 
@@ -69,8 +70,9 @@ type WorkingHoursDay = {
 };
 
 /**
- * Resolve one day from working_hours JSON. Empty `{}` or null schedule → default weekday hours.
- * If the org set any day keys but omitted this weekday → closed (partial schedule).
+ * Resolve one day from working_hours JSON.
+ * Empty `{}` → defaults all 7 days to open (DEFAULT_OPEN–DEFAULT_CLOSE).
+ * If the org set any day keys but omitted this day → closed (partial schedule).
  */
 function resolveWorkingHoursDay(
   wh: Record<string, WorkingHoursDay>,
@@ -78,10 +80,10 @@ function resolveWorkingHoursDay(
 ): { open: boolean; openTime: string; closeTime: string } | null {
   const hasAnyKeys = Object.keys(wh).length > 0;
   const day = wh[dayKey];
-  const isWeekday = WEEKDAY_KEYS.has(dayKey);
+  const isKnownDay = ALL_DAY_KEYS_SET.has(dayKey);
 
   if (!hasAnyKeys) {
-    if (!isWeekday) return null;
+    if (!isKnownDay) return null;
     return { open: true, openTime: DEFAULT_OPEN, closeTime: DEFAULT_CLOSE };
   }
 
@@ -166,7 +168,7 @@ function constrainShiftsToLocationHours(
 
 /**
  * Primary active location hours (same ordering as public availability: primary first).
- * Uses the same `working_hours` resolution as staff JSON (empty `{}` → Mon–Fri default; partial keys apply).
+ * Uses the same `working_hours` resolution as staff JSON (empty `{}` → all 7 days default; partial keys apply).
  */
 async function buildStaffShiftsFromPrimaryLocation(
   db: SupabaseClient,
@@ -350,11 +352,11 @@ export async function checkWorkHoursEnabled(
     .single();
 
   if (error || !staffData) {
-    // Default to true if we can't determine (backward compatibility)
-    return true;
+    // Default to false (use location hours) when lookup fails
+    return false;
   }
 
-  return staffData.work_hours_enabled ?? true;
+  return staffData.work_hours_enabled ?? false;
 }
 
 /**
@@ -818,6 +820,48 @@ async function loadActiveBookingHoldsAsSyntheticBookings(
 }
 
 /**
+ * Load business closed periods (availability_blocks with block_type='unavailable')
+ * and convert them to synthetic booking segments so the slot calculator blocks them.
+ */
+async function loadBusinessClosedPeriods(
+  db: SupabaseClient,
+  providerId: string,
+  date: string,
+  staffId: string | null
+): Promise<BookingService[]> {
+  const dayStart = `${date}T00:00:00`;
+  const dayEnd = `${date}T23:59:59`;
+
+  const { data: blocks, error } = await db
+    .from('availability_blocks')
+    .select('id, start_at, end_at, staff_id, location_id')
+    .eq('provider_id', providerId)
+    .gt('end_at', dayStart)
+    .lt('start_at', dayEnd);
+
+  if (error || !blocks?.length) return [];
+
+  return blocks
+    .filter((blk) => {
+      const blockStaffId = blk.staff_id as string | null;
+      if (!blockStaffId) return true;
+      return staffId ? blockStaffId === staffId : true;
+    })
+    .map((blk) => ({
+      id: `closed:${blk.id}`,
+      booking_id: `closed:${blk.id}`,
+      offering_id: HOLD_SYNTHETIC_OFFERING_ID,
+      staff_id: staffId,
+      scheduled_start_at: blk.start_at as string,
+      scheduled_end_at: blk.end_at as string,
+      duration_minutes: 0,
+      buffer_minutes: 0,
+      processing_minutes: 0,
+      finishing_minutes: 0,
+    })) as BookingService[];
+}
+
+/**
  * Load provider settings (gap avoidance, etc.)
  */
 export async function loadProviderSettings(
@@ -909,7 +953,7 @@ export async function loadAvailabilityConstraints(
     syntheticProviderId ??
     (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
 
-  const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks] = await Promise.all([
+  const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks, closedPeriodBlocks] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
     loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
     syntheticProviderId
@@ -923,6 +967,9 @@ export async function loadAvailabilityConstraints(
       date,
       excludeHoldId: options?.excludeHoldId,
     }),
+    resolvedProviderId
+      ? loadBusinessClosedPeriods(db, resolvedProviderId, date, effectiveStaffId)
+      : Promise.resolve([]),
   ]);
 
   let staffShifts = shiftsRaw;
@@ -1006,7 +1053,7 @@ export async function loadAvailabilityConstraints(
   return {
     staffShifts,
     timeBlocks,
-    existingBookings: [...existingBookings, ...holdBlocks, ...parityBookings],
+    existingBookings: [...existingBookings, ...holdBlocks, ...parityBookings, ...closedPeriodBlocks],
     providerSettings,
     workHoursEnabled: effectiveWorkHoursEnabled,
   } as AvailabilityConstraints & {

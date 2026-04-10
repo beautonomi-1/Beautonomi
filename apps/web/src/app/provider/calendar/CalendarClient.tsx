@@ -659,11 +659,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   // Load location operating hours
   useEffect(() => {
-    // Skip if location hasn't changed
-    if (prevLocationIdRef.current === currentLocationId) {
-      return;
-    }
-
     prevLocationIdRef.current = currentLocationId || null;
 
     const loadLocationHours = async () => {
@@ -672,14 +667,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         return;
       }
 
-      // Check cache first
-      if (locationHoursCacheRef.current.has(currentLocationId)) {
-        const cached = locationHoursCacheRef.current.get(currentLocationId) ?? null;
-        setLocationOperatingHours(cached);
-        return;
-      }
-
-      // Try to get from salons array first
+      // Always read fresh from salons array (invalidated on operating hours save)
       const location = salons.find(s => s.id === currentLocationId) as any;
       const hours = location?.operating_hours || location?.working_hours;
       

@@ -25,6 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 
@@ -126,6 +127,7 @@ export default function LocationsSettings() {
       setShowDialog(false);
       setEditingLocation(null);
       invalidateSetupStatusCache();
+      invalidateProviderPortalCache();
       loadLocations();
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Failed to save location";

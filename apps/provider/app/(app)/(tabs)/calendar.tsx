@@ -868,15 +868,33 @@ export default function CalendarScreen() {
   }
 
   const todayHours = getHoursForDay(selectedDate);
-  // Day view uses day-specific hours (with 1hr buffer); week/3day use workday ± 1hr so closed time is visible
-  const startHour =
-    viewMode === "day"
-      ? todayHours.startHour
-      : Math.max(0, preferences.workdayStartHour - 1);
-  const endHour =
-    viewMode === "day"
-      ? todayHours.endHour
-      : Math.min(23, preferences.workdayEndHour + 1);
+  // All views use operating hours; week/3-day merge hours across all visible days
+  const { startHour, endHour } = useMemo(() => {
+    if (viewMode === "day") {
+      return { startHour: todayHours.startHour, endHour: todayHours.endHour };
+    }
+    const count = viewMode === "3day" ? 3 : 7;
+    let minH = 23;
+    let maxH = 0;
+    let hasOpen = false;
+    for (let i = 0; i < count; i++) {
+      const d = new Date(selectedDate);
+      d.setDate(d.getDate() + (viewMode === "week" ? i - selectedDate.getDay() : i));
+      const dh = getHoursForDay(d);
+      if (dh.isOpen) {
+        hasOpen = true;
+        minH = Math.min(minH, dh.startHour);
+        maxH = Math.max(maxH, dh.endHour);
+      }
+    }
+    if (!hasOpen) {
+      const fallback = Math.max(0, preferences.workdayStartHour - 1);
+      const fallbackEnd = Math.min(23, preferences.workdayEndHour + 1);
+      return { startHour: fallback, endHour: fallbackEnd };
+    }
+    return { startHour: minH, endHour: maxH };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedDate, todayHours.startHour, todayHours.endHour, todayHours.isOpen, operatingHours, preferences.workdayStartHour, preferences.workdayEndHour]);
 
   const gridRows = useMemo(() => {
     const rows: { hour: number; minute: number; label: string }[] = [];

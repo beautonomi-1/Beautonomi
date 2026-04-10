@@ -471,6 +471,8 @@ export function AppointmentSidebar({
   const [serviceAddons, setServiceAddons] = useState<Record<string, any[]>>({});
   const [loadingVariants, setLoadingVariants] = useState<Record<string, boolean>>({});
   const [loadingAddons, setLoadingAddons] = useState<Record<string, boolean>>({});
+  const variantsFetchedRef = useRef<Set<string>>(new Set());
+  const addonsFetchedRef = useRef<Set<string>>(new Set());
   const [selectedServiceForVariant, setSelectedServiceForVariant] = useState<string | null>(null);
   const [selectedServiceForAddon, setSelectedServiceForAddon] = useState<string | null>(null);
   
@@ -1075,47 +1077,50 @@ export function AppointmentSidebar({
 
   // Load service variants
   const loadServiceVariants = useCallback(async (serviceId: string) => {
-    if (serviceVariants[serviceId] || loadingVariants[serviceId]) return;
+    if (variantsFetchedRef.current.has(serviceId)) return;
+    variantsFetchedRef.current.add(serviceId);
     
     try {
       setLoadingVariants(prev => ({ ...prev, [serviceId]: true }));
       const response = await fetcher.get<{ data: { variants: any[] } }>(
         `/api/provider/services/${serviceId}/variants`
       );
-      if (response.data?.variants && response.data.variants.length > 0) {
-        setServiceVariants(prev => ({
-          ...prev,
-          [serviceId]: response.data.variants,
-        }));
-      }
+      const variants = response.data?.variants ?? [];
+      setServiceVariants(prev => ({
+        ...prev,
+        [serviceId]: variants,
+      }));
     } catch (error) {
       console.error("Error loading variants:", error);
+      setServiceVariants(prev => ({ ...prev, [serviceId]: [] }));
+      variantsFetchedRef.current.delete(serviceId);
     } finally {
       setLoadingVariants(prev => ({ ...prev, [serviceId]: false }));
     }
-  }, [serviceVariants, loadingVariants]);
+  }, []);
   
   // Load service addons
   const loadServiceAddons = useCallback(async (serviceId: string) => {
-    if (serviceAddons[serviceId] || loadingAddons[serviceId]) return;
+    if (addonsFetchedRef.current.has(serviceId)) return;
+    addonsFetchedRef.current.add(serviceId);
     
     try {
       setLoadingAddons(prev => ({ ...prev, [serviceId]: true }));
       const response = await fetcher.get<{ data: { addons: any[] } }>(
         `/api/provider/services/${serviceId}/addons`
       );
-      if (response.data?.addons && response.data.addons.length > 0) {
-        setServiceAddons(prev => ({
-          ...prev,
-          [serviceId]: response.data.addons,
-        }));
-      }
+      const addons = response.data?.addons ?? [];
+      setServiceAddons(prev => ({
+        ...prev,
+        [serviceId]: addons,
+      }));
     } catch (error) {
       console.error("Error loading addons:", error);
+      addonsFetchedRef.current.delete(serviceId);
     } finally {
       setLoadingAddons(prev => ({ ...prev, [serviceId]: false }));
     }
-  }, [serviceAddons, loadingAddons]);
+  }, []);
 
   // Helper functions to manage services
   const addService = useCallback((service: ServiceItem, variantId?: string, variantName?: string) => {
@@ -2009,7 +2014,8 @@ export function AppointmentSidebar({
         recurrenceEndDate: "",
       });
     }
-  }, [mode, draftSlot, selectedAppointment, locations, services, calculatePricing, defaultTaxRate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- services deliberately excluded to prevent form reset when catalog loads
+  }, [mode, draftSlot, selectedAppointment, locations, calculatePricing, defaultTaxRate]);
 
   // Ensure staffId from draftSlot is always set when in create mode
   // This is a separate effect to ensure it's set even if services haven't loaded yet
@@ -5122,7 +5128,9 @@ onRatingSubmitted={() => {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {selectedServiceForVariant && serviceVariants[selectedServiceForVariant] ? (
+            {selectedServiceForVariant && loadingVariants[selectedServiceForVariant] ? (
+              <p className="text-sm text-gray-500 text-center py-4">Loading variants...</p>
+            ) : selectedServiceForVariant && serviceVariants[selectedServiceForVariant]?.length ? (
               serviceVariants[selectedServiceForVariant].map((variant: any) => {
                 const baseService = services.find(s => s.id === selectedServiceForVariant);
                 return (
@@ -5158,9 +5166,22 @@ onRatingSubmitted={() => {
                   </button>
                 );
               })
-            ) : (
-              <p className="text-sm text-gray-500 text-center py-4">Loading variants...</p>
-            )}
+            ) : selectedServiceForVariant ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-gray-500">No variants available for this service.</p>
+                <button
+                  type="button"
+                  className="mt-2 text-sm text-blue-600 hover:underline"
+                  onClick={() => {
+                    const baseService = services.find(s => s.id === selectedServiceForVariant);
+                    if (baseService) addService(baseService);
+                    setSelectedServiceForVariant(null);
+                  }}
+                >
+                  Add base service instead
+                </button>
+              </div>
+            ) : null}
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

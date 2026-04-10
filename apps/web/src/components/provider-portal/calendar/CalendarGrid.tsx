@@ -307,9 +307,9 @@ function CalendarGridComponent({
     };
   }, [isMultiStaffView, displayMembers.length, selectedDate.getTime(), view]);
 
-  // Preferences-derived values
-  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
-  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
+  // Preferences-derived values — only used for visual emphasis, not for "Closed" labeling
+  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 0) : 0;
+  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 23) : 23;
   const highContrast = useMangomintMode && !!preferences.highContrast;
 
   // Pre-compute staff header booking counts
