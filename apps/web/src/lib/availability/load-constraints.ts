@@ -103,6 +103,68 @@ function resolveWorkingHoursDay(
 }
 
 /**
+ * Fetch the primary location's working_hours JSON for a provider.
+ * Returns null if no active location exists.
+ */
+async function getPrimaryLocationWorkingHours(
+  db: SupabaseClient,
+  providerId: string
+): Promise<Record<string, WorkingHoursDay> | null> {
+  const { data: locs, error } = await db
+    .from('provider_locations')
+    .select('id, working_hours')
+    .eq('provider_id', providerId)
+    .eq('is_active', true)
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+    .limit(1);
+
+  if (error || !locs?.length) return null;
+
+  const raw = locs[0].working_hours;
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+
+  const wh = raw as Record<string, WorkingHoursDay>;
+  if (Object.keys(wh).length === 0) return null;
+
+  return wh;
+}
+
+/**
+ * Apply location operating hours as a hard constraint on staff shifts.
+ * Called only when the location has explicit day-keyed hours.
+ * Closed days yield no shifts; open days clamp shift windows to the location window.
+ */
+function constrainShiftsToLocationHours(
+  staffShifts: StaffShift[],
+  locationWh: Record<string, WorkingHoursDay>,
+  date: string
+): StaffShift[] {
+  const dayKey = DAY_KEYS[new Date(`${date}T12:00:00`).getDay()];
+  const resolved = resolveWorkingHoursDay(locationWh, dayKey);
+
+  if (!resolved) {
+    return [];
+  }
+
+  const normalize = (t: string) => {
+    if (t.length >= 8) return t;
+    return t.length === 5 ? `${t}:00` : `${t}:00`;
+  };
+
+  const locOpen = normalize(resolved.openTime);
+  const locClose = normalize(resolved.closeTime);
+
+  return staffShifts
+    .map((s) => ({
+      ...s,
+      start_time: s.start_time < locOpen ? locOpen : s.start_time,
+      end_time: s.end_time > locClose ? locClose : s.end_time,
+    }))
+    .filter((s) => s.start_time < s.end_time);
+}
+
+/**
  * Primary active location hours (same ordering as public availability: primary first).
  * Uses the same `working_hours` resolution as staff JSON (empty `{}` → Mon–Fri default; partial keys apply).
  */
@@ -365,6 +427,54 @@ export async function loadStaffShifts(
   return (shifts || []) as StaffShift[];
 }
 
+function dedupeTimeBlocksById(rows: TimeBlock[]): TimeBlock[] {
+  const m = new Map<string, TimeBlock>();
+  for (const r of rows) {
+    m.set(r.id, r);
+  }
+  return [...m.values()];
+}
+
+async function loadActiveStaffIdsForProvider(
+  db: SupabaseClient,
+  providerId: string
+): Promise<string[]> {
+  const { data, error } = await db
+    .from('provider_staff')
+    .select('id')
+    .eq('provider_id', providerId)
+    .eq('is_active', true);
+  if (error || !data) return [];
+  return data.map((r) => r.id).filter(Boolean);
+}
+
+function expandRecurringTimeBlocksForDate(
+  recurringBlocks: TimeBlock[],
+  date: string
+): TimeBlock[] {
+  if (!recurringBlocks.length) return [];
+
+  const targetDateObj = new Date(`${date}T12:00:00`);
+  const targetDayOfWeek = targetDateObj.getDay();
+
+  return recurringBlocks
+    .filter((block) => {
+      const originalDate = new Date(`${block.date}T12:00:00`);
+      if (targetDateObj < originalDate) return false;
+
+      if (block.recurring_pattern) {
+        return expandRecurringPattern(block.recurring_pattern as any, block.date, date);
+      }
+
+      return originalDate.getDay() === targetDayOfWeek;
+    })
+    .map((block) => ({
+      ...block,
+      date,
+      is_recurring: false,
+    }));
+}
+
 /**
  * Load time blocks for a given staff member and date
  */
@@ -374,6 +484,53 @@ export async function loadTimeBlocks(
   date: string,
   providerId?: string
 ): Promise<TimeBlock[]> {
+  // Synthetic / org-level runs use staffId=null. Merge provider-wide (staff_id null) blocks
+  // with every active staff-scoped block so public availability matches the provider calendar.
+  if (!staffId && providerId) {
+    const staffIds = await loadActiveStaffIdsForProvider(supabase, providerId);
+
+    const baseDirect = () =>
+      supabase
+        .from('time_blocks')
+        .select('*')
+        .eq('date', date)
+        .eq('is_active', true)
+        .eq('provider_id', providerId);
+
+    const baseRecurring = () =>
+      supabase
+        .from('time_blocks')
+        .select('*')
+        .eq('is_recurring', true)
+        .eq('is_active', true)
+        .lt('date', date)
+        .eq('provider_id', providerId);
+
+    const [nullDirect, staffDirect] = await Promise.all([
+      baseDirect().is('staff_id', null),
+      staffIds.length ? baseDirect().in('staff_id', staffIds) : Promise.resolve({ data: [] as TimeBlock[], error: null }),
+    ]);
+
+    if (nullDirect.error) console.error('Error loading time blocks:', nullDirect.error);
+    if (staffDirect.error) console.error('Error loading time blocks (staff-scoped):', staffDirect.error);
+
+    const [nullRecurring, staffRecurring] = await Promise.all([
+      baseRecurring().is('staff_id', null),
+      staffIds.length
+        ? baseRecurring().in('staff_id', staffIds)
+        : Promise.resolve({ data: [] as TimeBlock[], error: null }),
+    ]);
+
+    if (nullRecurring.error) console.error('Error loading recurring time blocks:', nullRecurring.error);
+    if (staffRecurring.error) console.error('Error loading recurring time blocks (staff-scoped):', staffRecurring.error);
+
+    const direct = dedupeTimeBlocksById([...(nullDirect.data ?? []), ...(staffDirect.data ?? [])]);
+    const recurringRaw = dedupeTimeBlocksById([...(nullRecurring.data ?? []), ...(staffRecurring.data ?? [])]);
+    const expandedRecurring = expandRecurringTimeBlocksForDate(recurringRaw, date);
+
+    return dedupeTimeBlocksById([...direct, ...expandedRecurring]);
+  }
+
   // Query time blocks for the specific date.
   // Supabase query builders are immutable — each filter call returns a new object,
   // so every conditional filter must be reassigned.
@@ -422,30 +579,7 @@ export async function loadTimeBlocks(
   const { data: recurringBlocks, error: recurringError } = await recurringQuery;
 
   if (!recurringError && recurringBlocks && recurringBlocks.length > 0) {
-    const targetDateObj = new Date(`${date}T12:00:00`);
-    const targetDayOfWeek = targetDateObj.getDay();
-
-    const expandedRecurring = recurringBlocks
-      .filter((block) => {
-        const originalDate = new Date(`${block.date}T12:00:00`);
-        if (targetDateObj < originalDate) return false;
-
-        if (block.recurring_pattern) {
-          // Explicit pattern stored (JSON with frequency/days/end_date)
-          return expandRecurringPattern(block.recurring_pattern as any, block.date, date);
-        }
-
-        // Fallback: no explicit pattern but is_recurring=true → weekly on same weekday.
-        // This handles blocks created without a recurring_pattern (e.g. via mobile app or
-        // legacy UI that only set is_recurring without a structured pattern).
-        return originalDate.getDay() === targetDayOfWeek;
-      })
-      .map((block) => ({
-        ...block,
-        date, // Override to target date so slot-overlap checks use the right day
-        is_recurring: false, // Mark as expanded (prevents double-counting)
-      }));
-
+    const expandedRecurring = expandRecurringTimeBlocksForDate(recurringBlocks, date);
     return [...(blocks || []), ...expandedRecurring] as TimeBlock[];
   }
 
@@ -841,6 +975,15 @@ export async function loadAvailabilityConstraints(
     if (locationShifts.length > 0) {
       staffShifts = locationShifts;
       effectiveWorkHoursEnabled = true;
+    }
+  }
+
+  // Location operating hours act as a hard ceiling — if the location is
+  // explicitly closed for this day, no slots regardless of staff-level data.
+  if (resolvedProviderId && staffShifts.length > 0) {
+    const locationWh = await getPrimaryLocationWorkingHours(db, resolvedProviderId);
+    if (locationWh) {
+      staffShifts = constrainShiftsToLocationHours(staffShifts, locationWh, date);
     }
   }
 

@@ -47,6 +47,7 @@ export async function createBookingRecord(
     service_fee_paid_by: "customer",
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
+    tax_rate: v.taxRate ?? null,
     discount_amount: v.packageDiscountAmount + v.promoDiscountAmount,
     discount_code: v.promoCode || null,
     promotion_discount_amount: v.promoDiscountAmount,

@@ -512,8 +512,21 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
     });
 
+    // Include time blocks in the visible hour range (mobile + desktop); avoids clipping blocks above the grid.
+    timeBlocks.forEach((block) => {
+      const blockDateStr =
+        typeof block.date === "string" && block.date.length >= 10 ? block.date.slice(0, 10) : "";
+      if (!blockDateStr || !visibleDateStrs.has(blockDateStr)) return;
+      const { hour: h } = parseTimeFromUnknown(block.start_time, 0, 0);
+      const endParts = parseTimeFromUnknown(block.end_time, h, 0);
+      const endMinutes = endParts.hour * 60 + endParts.minute;
+      const endH = Math.min(23, Math.ceil(endMinutes / 60));
+      if (h < calculatedStartHour) calculatedStartHour = Math.max(0, h - 1);
+      if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
+    });
+
     return { startHour: calculatedStartHour, endHour: calculatedEndHour };
-  }, [locationOperatingHours, selectedDateSafe, dateView, appointments]);
+  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks]);
   
   const _timeBlockSidebarState = useTimeBlockSidebar();
   

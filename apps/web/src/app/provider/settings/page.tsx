@@ -30,6 +30,7 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Identity verification", description: "Verify your identity with Sumsub (KYC) for payouts", href: "/provider/settings/verification" },
       { title: "Service Zones", description: "Define service areas and zones for at-home bookings", href: "/provider/settings/service-zones" },
       { title: "Online booking", description: "Configure online booking settings", href: "/provider/settings/appointment-activity/online-booking" },
+      { title: "Group Appointments", description: "Enable and configure group booking for clients", href: "/provider/settings/appointment-activity/group-appointments" },
       { title: "Note Templates", description: "Create reusable note templates", href: "/provider/settings/note-templates" },
       { title: "Resources", description: "Manage resources and equipment", href: "/provider/settings/appointment-activity/resources" },
       { title: "Business closed periods", description: "Set holiday and closure dates", href: "/provider/settings/appointment-activity/closed-periods" },

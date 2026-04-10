@@ -631,7 +631,7 @@ function BookContinueContent() {
       const payload: Record<string, any> = {
         payment_method: paymentMethod,
         payment_option: paymentOption,
-        use_wallet: false,
+        use_wallet: undefined,
         custom_field_values: Object.keys(bookingCustomValues).length > 0 ? bookingCustomValues : undefined,
         provider_form_responses:
           Object.keys(providerFormValues).length > 0 ? providerFormValues : undefined,

@@ -546,6 +546,7 @@ export default function BookCheckoutScreen() {
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
+  const [groupBookingEnabled, setGroupBookingEnabled] = useState(false);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
@@ -726,6 +727,16 @@ export default function BookCheckoutScreen() {
       setProviderForms(Array.isArray(forms) ? forms : []);
     }).catch(() => setProviderForms([]));
   }, [hold?.provider_id]);
+
+  useEffect(() => {
+    if (!provider_slug) return;
+    api.get<{ enabled?: boolean; data?: { enabled?: boolean } }>(
+      `/api/public/providers/${encodeURIComponent(provider_slug)}/group-booking-settings`
+    ).then((res) => {
+      const data = (res as any).data ?? res;
+      setGroupBookingEnabled(!!data?.enabled);
+    }).catch(() => setGroupBookingEnabled(false));
+  }, [provider_slug]);
 
   useEffect(() => {
     if (!hold) return;
@@ -1817,7 +1828,8 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
-            {/* Group booking */}
+            {/* Group booking — only shown when provider enables online group booking */}
+            {groupBookingEnabled && (
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Group booking</Text>
@@ -1928,6 +1940,7 @@ export default function BookCheckoutScreen() {
                 </>
               )}
             </View>
+            )}
 
             {/* Products (add to booking) */}
             {productsList.length > 0 && (

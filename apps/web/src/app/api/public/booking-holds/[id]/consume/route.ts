@@ -66,6 +66,9 @@ const consumeBodySchema = z.object({
   package_id: z.string().uuid().optional().nullable(),
   /** Alias for `package_id` (e.g. mobile / analytics naming) — same `service_packages.id` on the booking */
   primary_package_id: z.string().uuid().optional().nullable(),
+  customer_package_entitlement_id: z.string().uuid().optional().nullable(),
+  loyalty_points_used: z.number().min(0).optional(),
+  membership_plan_id: z.string().uuid().optional().nullable(),
   /** Create customer recurring series: immediate when no Paystack redirect; otherwise after charge.success (Paystack metadata). */
   subscribe_recurring: z
     .object({
@@ -150,6 +153,9 @@ export async function POST(
     const rescheduleBookingId = parsed.data.reschedule_booking_id;
     const products = parsed.data.products;
     const packageId = (parsed.data.package_id ?? parsed.data.primary_package_id) ?? undefined;
+    const customerPackageEntitlementId = parsed.data.customer_package_entitlement_id;
+    const loyaltyPointsUsed = parsed.data.loyalty_points_used;
+    const membershipPlanId = parsed.data.membership_plan_id;
     const subscribeRecurringReq = parsed.data.subscribe_recurring;
 
     if (giftCardCode?.trim()) {
@@ -351,6 +357,9 @@ export async function POST(
       tip_amount: tipAmount ?? undefined,
       promotion_code: promotionCode ?? undefined,
       reschedule_booking_id: rescheduleBookingId ?? undefined,
+      customer_package_entitlement_id: customerPackageEntitlementId ?? undefined,
+      loyalty_points_used: loyaltyPointsUsed ?? undefined,
+      membership_plan_id: membershipPlanId ?? undefined,
     };
     if (isGroupBooking === true && Array.isArray(groupParticipants) && groupParticipants.length > 0) {
       draft.is_group_booking = true;
@@ -385,10 +394,11 @@ export async function POST(
     }
 
     const baseUrl =
-      process.env.NEXT_PUBLIC_APP_URL ||
-      process.env.VERCEL_URL
-        ? `https://${process.env.VERCEL_URL}`
-        : new URL(request.url).origin;
+      process.env.NEXT_PUBLIC_APP_URL
+        ? process.env.NEXT_PUBLIC_APP_URL
+        : process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : new URL(request.url).origin;
 
     const cookieHeader = request.headers.get("cookie") || "";
 

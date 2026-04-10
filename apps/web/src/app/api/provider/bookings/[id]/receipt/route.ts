@@ -122,7 +122,7 @@ export async function GET(
     const totalAmount =
       b.total_amount != null && !Number.isNaN(Number(b.total_amount))
         ? Number(b.total_amount)
-        : subtotal + travelFee + taxAmount + serviceFeeAmount + tipAmount - discountAmount - cancellationFee;
+        : subtotal + taxAmount + serviceFeeAmount + tipAmount - discountAmount - cancellationFee;
 
     const receiptData = {
       invoice_number: b.booking_number || `BKG-${b.id?.slice(0, 8)}`,

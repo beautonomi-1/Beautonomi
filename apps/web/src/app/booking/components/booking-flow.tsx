@@ -412,8 +412,21 @@ export default function BookingFlow() {
   useEffect(() => {
     if (!platformFeeSettings) return;
 
+    let servicesTotal = 0;
+    if (bookingState.isGroupBooking && bookingState.groupParticipants?.length) {
+      servicesTotal = bookingState.groupParticipants.reduce((total, participant) => {
+        const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
+          const service = bookingState.selectedServices.find((s) => s.id === serviceId);
+          return sum + (service?.price || 0);
+        }, 0);
+        return total + participantTotal;
+      }, 0);
+    } else {
+      servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+    }
+
     const subtotal =
-      bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0) +
+      servicesTotal +
       bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
       bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0) +
       (bookingState.address?.travelFee || 0);

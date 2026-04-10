@@ -208,7 +208,7 @@ export async function GET(
     const totalFromRow =
       booking.total_amount != null && !Number.isNaN(Number(booking.total_amount))
         ? Number(booking.total_amount)
-        : subtotal + tax + serviceFee + travelFee + tipAmount - discount - cancellationFee;
+        : subtotal + tax + serviceFee + tipAmount - discount - cancellationFee;
 
     const additionalCharges = (booking.additional_charges || []).map((ac: AdditionalChargeRow) => ({
       id: ac.id,

@@ -358,8 +358,22 @@ export async function validateBooking(
     const policyFields = await fetchGroupBookingPolicyFieldsFromDb(supabaseAdmin, draft.provider_id);
     const participants = validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>;
     const participantOfferingIds = participants.flatMap((p) => p.service_ids ?? p.serviceIds ?? []);
+
+    // Web UI includes "You" (primary) in group_participants; mobile only sends additional guests.
+    // Detect whether primary is already in participants by checking if the first participant's
+    // services match draft.services (the primary's services).
+    const primaryOfferIds = new Set(draft.services.map((s: { offering_id: string }) => s.offering_id));
+    const firstPServiceIds = participants[0]?.service_ids ?? (participants[0] as any)?.serviceIds ?? [];
+    const primaryInParticipants =
+      participants.length > 0 &&
+      firstPServiceIds.length > 0 &&
+      firstPServiceIds.every((id: string) => primaryOfferIds.has(id));
+    const additionalGuestCount = primaryInParticipants
+      ? Math.max(0, participants.length - 1)
+      : participants.length;
+
     const gp = evaluateGroupBookingPolicy({
-      additionalGuestCount: participants.length,
+      additionalGuestCount,
       ...policyFields,
       primaryOfferingIds: draft.services.map((s) => s.offering_id),
       participantOfferingIds,
@@ -1215,11 +1229,12 @@ export async function validateBooking(
     const servicesMap = new Map();
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       servicesMap.set(s.offering_id, {
         offering_id: off.id,
         staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price),
+        price: Number(off.price) + homeAdj,
         currency,
         buffer_minutes: Number(off.buffer_minutes || 0),
       });
@@ -1240,6 +1255,7 @@ export async function validateBooking(
         const s = draft.services.find((serv: any) => serv.offering_id === serviceId);
         if (!s) return null;
         const off = offeringById.get(s.offering_id);
+        const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
         const start = new Date(cursor);
         const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
         cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
@@ -1247,7 +1263,7 @@ export async function validateBooking(
           offering_id: off.id,
           staff_id: s.staff_id || null,
           duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price),
+          price: Number(off.price) + homeAdj,
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
@@ -1258,6 +1274,7 @@ export async function validateBooking(
     if (bookingServicesData.length === 0 && draft.services.length > 0) {
       const s = draft.services[0];
       const off = offeringById.get(s.offering_id);
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       const start = new Date(draft.selected_datetime);
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       bookingServicesData = [
@@ -1265,7 +1282,7 @@ export async function validateBooking(
           offering_id: off.id,
           staff_id: s.staff_id || null,
           duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price),
+          price: Number(off.price) + homeAdj,
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
@@ -1280,11 +1297,12 @@ export async function validateBooking(
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
 
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       return {
         offering_id: off.id,
         staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price),
+        price: Number(off.price) + homeAdj,
         currency,
         scheduled_start_at: start.toISOString(),
         scheduled_end_at: end.toISOString(),

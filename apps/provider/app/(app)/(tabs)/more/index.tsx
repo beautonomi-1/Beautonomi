@@ -56,6 +56,7 @@ const MENU_SECTIONS: { title: string; items: MenuItem[] }[] = [
     title: "Operations",
     items: [
       { icon: "book-outline", label: "Bookings & calendar", subtitle: "Appointments, waitlist & schedule", route: "/(app)/(tabs)/more/bookings-calendar-hub", color: "#6366f1", bg: "#eef2ff" },
+      { icon: "people-outline", label: "Group Bookings", subtitle: "Manage group appointments", route: "/(app)/(tabs)/more/group-bookings", color: "#8b5cf6", bg: "#ede9fe" },
       { icon: "construct-outline", label: "Resources & forms", subtitle: "Resources, intake & consent forms", route: "/(app)/(tabs)/more/resources-forms-hub", color: "#0d9488", bg: "#ccfbf1" },
       { icon: "chatbox-ellipses-outline", label: "Custom Requests", subtitle: "Client quotes & offers", route: "/(app)/(tabs)/more/custom-requests", color: "#f97316", bg: "#fff7ed" },
       { icon: "navigate-outline", label: "Routes", subtitle: "Optimize at-home trips", route: "/(app)/(tabs)/more/routes", color: "#3b82f6", bg: "#eff6ff" },

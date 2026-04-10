@@ -1133,7 +1133,7 @@ export function CalendarMobileView({
                       if (dayBlocks.length === 0) return null;
                       return (
                         <div
-                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          className="absolute inset-x-0 top-0 z-[15] pointer-events-none"
                           style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
                         >
                           {dayBlocks.map((block) => (
@@ -1527,7 +1527,7 @@ export function CalendarMobileView({
                       if (staffBlocks.length === 0) return null;
                       return (
                         <div
-                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          className="absolute inset-x-0 top-0 z-[15] pointer-events-none"
                           style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
                         >
                           {staffBlocks.map((block) => (
@@ -1858,7 +1858,7 @@ export function CalendarMobileView({
                 if (singleBlocks.length === 0) return null;
                 return (
                   <div
-                    className="absolute left-[58px] sm:left-[66px] right-0 top-0 z-[5] pointer-events-none"
+                    className="absolute left-[58px] sm:left-[66px] right-0 top-0 z-[15] pointer-events-none"
                     style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_SINGLE}px` }}
                   >
                     {singleBlocks.map((block) => (

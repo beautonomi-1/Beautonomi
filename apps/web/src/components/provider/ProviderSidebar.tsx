@@ -65,6 +65,7 @@ const navigationSections = [
     items: [
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
       { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: UsersRound, label: "Group Bookings", href: "/provider/group-bookings", permission: "view_calendar" as keyof StaffPermissions },
       { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
