@@ -1383,13 +1383,16 @@ export async function validateBooking(
     } else {
       const selectedDatetimeForConflict = new Date(draft.selected_datetime);
 
-      // Other guests' active holds vs each scheduled segment (including synthetic solo: dbStaffId null → provider-wide)
+      // Other guests' active holds vs each scheduled segment (including synthetic solo: dbStaffId null → provider-wide).
+      // Exclude the customer's own hold so it doesn't conflict with itself during checkout.
+      const ownHoldId = validatedDraft.hold_id ?? (draft as any).hold_id;
       for (const line of snapshotLines) {
         const { dbStaffId } = normalizePublicStaffIdForDatabase(line.staff_id);
         const segStart = new Date(line.scheduled_start_at);
         const segEnd = new Date(line.scheduled_end_at);
         const holdOverlap = await checkActiveHoldOverlap(supabaseAdmin, draft.provider_id, segStart, segEnd, {
           dbStaffId: dbStaffId ?? null,
+          excludeHoldId: ownHoldId,
         });
         if (holdOverlap) {
           return handleApiError(

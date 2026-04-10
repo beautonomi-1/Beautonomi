@@ -232,7 +232,7 @@ export async function checkActiveHoldOverlap(
   providerId: string,
   startAt: Date,
   endAt: Date,
-  options: { dbStaffId: string | null }
+  options: { dbStaffId: string | null; excludeHoldId?: string }
 ): Promise<boolean> {
   const nowIso = new Date().toISOString();
 
@@ -244,6 +244,10 @@ export async function checkActiveHoldOverlap(
     .gt('expires_at', nowIso)
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString());
+
+  if (options.excludeHoldId) {
+    q = q.neq('id', options.excludeHoldId);
+  }
 
   if (options.dbStaffId) {
     q = q.or(`staff_id.eq.${options.dbStaffId},staff_id.is.null`);
