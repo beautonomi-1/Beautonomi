@@ -1094,7 +1094,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   }, [loadData]);
 
   const navigateDate = (days: number) => {
-    // Optimistic update - update date immediately for instant feedback
     const baseDate = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
     const newDate = new Date(baseDate);
     if (dateView === "week") {
@@ -1104,11 +1103,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     } else {
       newDate.setDate(newDate.getDate() + days);
     }
-    // Update immediately - data will load in background
+    // Clear calendar cache so the next loadData call fetches fresh data
+    calendarCacheRef.current.clear();
     setSelectedDate(newDate);
   };
 
   const goToToday = () => {
+    calendarCacheRef.current.clear();
     setSelectedDate(nowInTz(businessTz));
   };
 
@@ -1530,6 +1531,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     selected={selectedDateSafe}
                     onSelect={(date) => {
                       if (date) {
+                        calendarCacheRef.current.clear();
                         setSelectedDate(date);
                         setIsDatePickerOpen(false);
                       }
@@ -1919,6 +1921,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               onRefresh={loadData}
               onDateChange={(date) => {
                 if (date instanceof Date && !isNaN(date.getTime())) {
+                  calendarCacheRef.current.clear();
                   setSelectedDate(date);
                 }
               }}

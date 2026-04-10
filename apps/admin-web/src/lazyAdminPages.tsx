@@ -294,3 +294,6 @@ export const ReferralSourcesPage = lazy(() =>
 export const AddonsListPage = lazy(() =>
   import("@/routes/ecommerce/AddonsListPage").then((m) => ({ default: m.AddonsListPage }))
 );
+export const AdminTeamPage = lazy(() =>
+  import("@/routes/settings/AdminTeamPage").then((m) => ({ default: m.AdminTeamPage }))
+);

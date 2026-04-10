@@ -636,7 +636,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
       total_amount: body.total_amount || body.subtotal || 0,
       currency: body.currency || lastResortCurrency,
       status: mapStatusToDatabase(finalStatus),
-      payment_status: "pending",
+      // For cash payments initiated by the provider, mark as paid immediately.
+      // All other methods (pay_later, payment_link, yoco_pos, gift_card) start as pending.
+      payment_status: body.payment_method === "cash" ? "paid" : "pending",
       special_requests: body.special_requests || null,
       loyalty_points_earned: 0,
       travel_fee: body.travel_fee || 0,

@@ -39,7 +39,36 @@ export async function GET(request: NextRequest) {
     }
 
     const now = new Date();
+
+    // Use tenant timezone for "today" / "this month" boundaries so that dashboard
+    // cards align with business hours rather than UTC midnight.
+    let tz = "UTC";
+    try {
+      const { data: tzRow } = await supabase
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const tzFromSettings = (tzRow?.settings as Record<string, unknown> | null)?.timezone as string | undefined;
+      if (tzFromSettings) tz = tzFromSettings;
+    } catch { /* ignore — fall back to UTC */ }
+
+    // Compute start-of-today in the tenant timezone via Intl
+    const formatter = new Intl.DateTimeFormat("en-US", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+    const parts = formatter.formatToParts(now);
+    const p: Record<string, number> = {};
+    for (const part of parts) {
+      if (part.type !== "literal") p[part.type] = parseInt(part.value, 10);
+    }
+    // Reconstruct UTC start-of-day in the tenant timezone
+    const startOfTodayLocal = new Date(`${p.year ?? now.getUTCFullYear()}-${String(p.month ?? now.getUTCMonth() + 1).padStart(2, "0")}-${String(p.day ?? now.getUTCDate()).padStart(2, "0")}T00:00:00`);
+    const offsetMinutes = startOfTodayLocal.getTime() - new Date(`${p.year ?? now.getUTCFullYear()}-${String(p.month ?? now.getUTCMonth() + 1).padStart(2, "0")}-${String(p.day ?? now.getUTCDate()).padStart(2, "0")}T00:00:00Z`).getTime();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    // Adjust today boundary for timezone offset
+    startOfToday.setTime(startOfToday.getTime() - offsetMinutes);
+
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -209,6 +238,7 @@ export async function GET(request: NextRequest) {
 
     // `total_users` is historical JSON key = distinct market customers (not all user roles). See metrics_notes + SPA label.
     return successResponse({
+      dashboard_timezone: tz,
       total_users: totalCustomers,
       total_providers: totalProviders || 0,
       total_bookings: totalBookings || 0,

@@ -33,12 +33,10 @@ export default function StepPromotions({
   const [isValidating, setIsValidating] = useState(false);
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
   const [redemptionRate, setRedemptionRate] = useState(10);
-  const [platformFeeSettings, setPlatformFeeSettings] = useState<{
-    platform_service_fee_type: "percentage" | "fixed";
-    platform_service_fee_percentage: number;
-    platform_service_fee_fixed: number;
-    show_service_fee_to_customer: boolean;
-  } | null>(null);
+  // NOTE: Platform fee settings are intentionally NOT fetched here.
+  // booking-flow.tsx is the single authoritative place that calculates taxAmount,
+  // serviceFeeAmount, and serviceFeePercentage and stores them in bookingState.
+  // This step must only update promotion amounts; the parent recalculates fees.
 
   /** Services + add-ons + products + travel — must match payment step `getSubtotalAfterDiscounts` inputs (excludes tax & service fee). */
   const cartTotal =
@@ -56,63 +54,7 @@ export default function StepPromotions({
       (bookingState.promotions.membershipDiscount || 0)
   );
 
-  // Load platform fee settings
-  useEffect(() => {
-    loadPlatformFeeSettings();
-  }, []);
 
-  // Calculate and update platform service fee when subtotal changes
-  useEffect(() => {
-    if (platformFeeSettings) {
-      const subtotal = cartTotal;
-      const discounts =
-        (bookingState.promotions.couponDiscount || 0) +
-        (bookingState.promotions.giftCardAmount || 0) +
-        (bookingState.promotions.loyaltyDiscount || 0) +
-        (bookingState.promotions.membershipDiscount || 0);
-      const subtotalAfterDiscounts = Math.max(0, subtotal - discounts);
-
-      const serviceFeeAmount =
-        platformFeeSettings.platform_service_fee_type === "percentage"
-          ? Number(((subtotalAfterDiscounts * platformFeeSettings.platform_service_fee_percentage) / 100).toFixed(2))
-          : platformFeeSettings.platform_service_fee_fixed;
-      
-      const serviceFeePercentage = platformFeeSettings.platform_service_fee_type === "percentage"
-        ? platformFeeSettings.platform_service_fee_percentage
-        : 0;
-
-      updateBookingState({ 
-        serviceFeeAmount,
-        serviceFeePercentage 
-      });
-    }
-  }, [cartTotal, bookingState.promotions, platformFeeSettings]);
-
-  const loadPlatformFeeSettings = async () => {
-    try {
-      const response = await fetcher.get<{
-        data: {
-          platform_service_fee_type: "percentage" | "fixed";
-          platform_service_fee_percentage: number;
-          platform_service_fee_fixed: number;
-          show_service_fee_to_customer: boolean;
-        };
-      }>("/api/public/platform-fees");
-
-      if (response.data) {
-        setPlatformFeeSettings(response.data);
-      }
-    } catch (error) {
-      console.error("Error loading platform fee settings:", error);
-      // Use defaults
-      setPlatformFeeSettings({
-        platform_service_fee_type: "percentage",
-        platform_service_fee_percentage: 5,
-        platform_service_fee_fixed: 0,
-        show_service_fee_to_customer: true,
-      });
-    }
-  };
 
   // Load loyalty balance
   useEffect(() => {

@@ -33,6 +33,8 @@ export interface Salon {
   /** Optional location hours payloads for calendar bootstrapping */
   operating_hours?: Record<string, WorkingHoursDay> | null;
   working_hours?: Record<string, WorkingHoursDay> | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /** Day key in working_hours: monday, tuesday, ... */

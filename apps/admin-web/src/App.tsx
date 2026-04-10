@@ -154,6 +154,7 @@ export default function App() {
           <Route path="referral-sources" element={<P.ReferralSourcesPage />} />
           <Route path="settings/tenant-domains" element={<P.TenantDomainsListPage />} />
           <Route path="settings/team-permissions" element={<P.TeamPermissionsMatrixPage />} />
+          <Route path="settings/admin-team" element={<P.AdminTeamPage />} />
           <Route path="content/learning" element={<P.LearningArticlesPage />} />
           <Route path="content/resources" element={<P.ContentResourcesPage />} />
           <Route path="content" element={<P.ContentHubPage />} />

@@ -3806,6 +3806,7 @@ export class ProviderApiClient implements ProviderApi {
     const { fetcher } = await import("@/lib/http/fetcher");
     const params = new URLSearchParams();
     if (filters?.status) params.append("status", filters.status);
+    if (filters?.search) params.append("search", filters.search);
     if (filters?.date_from) params.append("date_from", filters.date_from);
     if (filters?.date_to) params.append("date_to", filters.date_to);
     if (pagination?.page) params.append("page", String(pagination.page));

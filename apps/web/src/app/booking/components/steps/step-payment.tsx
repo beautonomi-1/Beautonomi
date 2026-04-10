@@ -12,7 +12,7 @@ import { BookingState, type BookingStep } from "../booking-flow";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
 import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { fetcher } from "@/lib/http/fetcher";
@@ -88,6 +88,8 @@ export default function StepPayment({
   onNavigateToStep,
 }: StepPaymentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const holdId = searchParams.get("hold_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -483,6 +485,7 @@ export default function StepPayment({
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
       loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
+      hold_id: holdId || null,
       ...(bookingState.mode === "mobile"
         ? {
             availability_travel_buffer_minutes: getTravelBuffer(

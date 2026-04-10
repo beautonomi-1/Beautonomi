@@ -128,6 +128,7 @@ import { NotificationToggle } from "@/components/calendar/NotificationToggle";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
 
 // ============================================================================
 // TYPES
@@ -221,6 +222,8 @@ interface CreateFormData {
   isRecurring: boolean;
   recurrencePattern: "daily" | "weekly" | "biweekly" | "monthly";
   recurrenceEndDate: string;
+  paymentMethod: "pay_later" | "cash" | "yoco_pos" | "payment_link" | "gift_card";
+  giftCardCode: string;
 }
 
 type CancelReason = "normal" | "late_cancel" | "no_show";
@@ -339,6 +342,8 @@ export function AppointmentSidebar({
     isRecurring: false,
     recurrencePattern: "weekly",
     recurrenceEndDate: "",
+    paymentMethod: "pay_later",
+    giftCardCode: "",
   });
 
   /** Live hints from GET /api/provider/bookings/check-availability */
@@ -727,23 +732,39 @@ export function AppointmentSidebar({
     // For at-home bookings, try to load the client's primary/default address
     if (formData.kind === AppointmentKind.AT_HOME) {
       try {
+        let addr: Record<string, any> | null = null;
+
+        // Try client detail endpoint first
         const res = await fetch(`/api/provider/clients/${client.id}`);
         if (res.ok) {
           const body = await res.json();
           const clientData = body?.data ?? body;
-          const addr = clientData?.customer?.default_address ?? clientData?.default_address;
-          if (addr) {
-            setFormData(prev => ({
-              ...prev,
-              addressLine1: addr.address_line1 || addr.line1 || "",
-              addressLine2: addr.address_line2 || addr.line2 || "",
-              addressCity: addr.city || "",
-              addressPostalCode: addr.postal_code || "",
-              addressCountry: addr.country || "",
-              addressLatitude: addr.latitude ?? null,
-              addressLongitude: addr.longitude ?? null,
-            }));
+          addr = clientData?.customer?.default_address ?? clientData?.default_address ?? null;
+        }
+
+        // Fallback: try the dedicated addresses endpoint
+        if (!addr) {
+          const addrRes = await fetch(`/api/provider/clients/${client.id}/addresses`);
+          if (addrRes.ok) {
+            const addrBody = await addrRes.json();
+            const addresses = addrBody?.data ?? addrBody ?? [];
+            if (Array.isArray(addresses) && addresses.length > 0) {
+              addr = addresses.find((a: any) => a.is_default || a.is_primary) ?? addresses[0];
+            }
           }
+        }
+
+        if (addr) {
+          setFormData(prev => ({
+            ...prev,
+            addressLine1: addr!.address_line1 || addr!.line1 || addr!.street || "",
+            addressLine2: addr!.address_line2 || addr!.line2 || "",
+            addressCity: addr!.city || "",
+            addressPostalCode: addr!.postal_code || addr!.postalCode || "",
+            addressCountry: addr!.country || "",
+            addressLatitude: addr!.latitude ?? addr!.lat ?? null,
+            addressLongitude: addr!.longitude ?? addr!.lng ?? null,
+          }));
         }
       } catch {
         // Client may not have an address on file
@@ -1826,6 +1847,8 @@ export function AppointmentSidebar({
         isRecurring: false,
         recurrencePattern: "weekly",
         recurrenceEndDate: "",
+        paymentMethod: "pay_later",
+        giftCardCode: "",
       }));
     } else if ((mode === "view" || mode === "edit") && selectedAppointment) {
       const bookingSource = (selectedAppointment as any).booking_source;
@@ -2033,6 +2056,8 @@ export function AppointmentSidebar({
         isRecurring: false,
         recurrencePattern: "weekly",
         recurrenceEndDate: "",
+        paymentMethod: (selectedAppointment as any).payment_method || "pay_later",
+        giftCardCode: "",
       });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- services deliberately excluded to prevent form reset when catalog loads
@@ -2069,33 +2094,41 @@ export function AppointmentSidebar({
     }
   }, [services]);
 
-  // Compute travel fee when address changes
+  // Compute travel fee when address or geocoded coordinates change
   useEffect(() => {
-    if (formData.kind === AppointmentKind.AT_HOME && formData.addressPostalCode) {
-      // Simple zone-based fee calculation using postal code prefix
-      const result = computeTravelFee(
-        null, // Would use actual salon location coordinates
-        {
-          line1: formData.addressLine1,
-          line2: formData.addressLine2,
-          city: formData.addressCity,
-          postalCode: formData.addressPostalCode,
-        }
-      );
-      if (result.fee >= 0) {
-        setFormData(prev => {
-          // Provider-created appointments always have 0 service fee
-          const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
-          const pricing = calculatePricing(prev.services, prev.products, result.fee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
-          return {
-            ...prev,
-            travelFee: result.fee,
-            totalAmount: pricing.totalAmount,
-          };
-        });
-      }
+    if (formData.kind !== AppointmentKind.AT_HOME) return;
+    if (!formData.addressPostalCode && !formData.addressLatitude) return;
+
+    // Resolve salon/location coordinates for distance-based fee
+    const selectedLocation = (locations || []).find((l) => l.id === formData.locationId);
+    const baseCoords =
+      selectedLocation?.latitude != null && selectedLocation?.longitude != null
+        ? { latitude: selectedLocation.latitude, longitude: selectedLocation.longitude }
+        : null;
+
+    const clientAddr = {
+      line1: formData.addressLine1,
+      line2: formData.addressLine2,
+      city: formData.addressCity,
+      postalCode: formData.addressPostalCode,
+      ...(formData.addressLatitude != null && formData.addressLongitude != null
+        ? { coordinates: { latitude: formData.addressLatitude, longitude: formData.addressLongitude } }
+        : {}),
+    };
+
+    const result = computeTravelFee(baseCoords, clientAddr);
+    if (result.fee >= 0) {
+      setFormData(prev => {
+        const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
+        const pricing = calculatePricing(prev.services, prev.products, result.fee, prev.discountAmount, prev.taxRate, serviceFeeToUse, prev.tipAmount);
+        return {
+          ...prev,
+          travelFee: result.fee,
+          totalAmount: pricing.totalAmount,
+        };
+      });
     }
-  }, [formData.kind, formData.addressPostalCode, formData.addressLine1, formData.addressLine2, formData.addressCity, calculatePricing]);
+  }, [formData.kind, formData.addressPostalCode, formData.addressLine1, formData.addressLine2, formData.addressCity, formData.addressLatitude, formData.addressLongitude, formData.locationId, locations, calculatePricing, mode]);
 
   // Handle create appointment
   const handleCreate = async () => {
@@ -2164,6 +2197,10 @@ export function AppointmentSidebar({
       (appointmentData as any).products = formData.products;
       (appointmentData as any).booking_source = formData.kind === AppointmentKind.WALK_IN ? 'walk_in' : 'provider';
       (appointmentData as any).referral_source_id = formData.referralSourceId || null;
+      (appointmentData as any).payment_method = formData.paymentMethod || 'pay_later';
+      if (formData.giftCardCode?.trim()) {
+        (appointmentData as any).gift_card_code = formData.giftCardCode.trim();
+      }
       // Package id — set when appointment was built from a package
       (appointmentData as any).package_id = selectedPackageId || null;
 
@@ -3660,26 +3697,20 @@ export function AppointmentSidebar({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] text-gray-500 font-medium">Date</label>
-                      <Input
-                        type="date"
-                        value={formData.date}
-                        onChange={(e) => setFormData(prev => ({ ...prev, date: e.target.value }))}
-                        className="w-full"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] text-gray-500 font-medium">Time</label>
-                      <Input
-                        type="time"
-                        value={formData.startTime}
-                        onChange={(e) => setFormData(prev => ({ ...prev, startTime: e.target.value }))}
-                        className="w-full"
-                      />
-                    </div>
-                  </div>
+                  {/* Visual slot picker replaces raw date/time inputs */}
+                  <AvailabilitySlotPicker
+                    staffId={formData.staffId}
+                    locationId={formData.locationId}
+                    providerId={portalProvider?.id}
+                    duration={formData.duration}
+                    selectedDate={formData.date}
+                    selectedTime={formData.startTime}
+                    onDateChange={(date) => setFormData(prev => ({ ...prev, date }))}
+                    onTimeChange={(time) => setFormData(prev => ({ ...prev, startTime: time }))}
+                    mode={formData.kind === AppointmentKind.AT_HOME ? "mobile" : "salon"}
+                  />
+
+                  {/* Duration pills */}
                   <div className="space-y-1.5">
                     <label className="text-[11px] text-gray-500 font-medium">Duration</label>
                     <div className="flex flex-wrap gap-1.5">
@@ -3719,59 +3750,27 @@ export function AppointmentSidebar({
                     </div>
                   </div>
 
-                  {/* Availability Hint */}
-                  {(mode === "create" || mode === "edit") && (
+                  {/* Availability conflict hint (secondary validation) */}
+                  {(mode === "create" || mode === "edit") && slotAvailability.checked && !slotAvailability.available && (
                     <div
-                      className={cn(
-                        "rounded-xl border px-4 py-3 text-xs leading-relaxed transition-all",
-                        slotAvailability.loading && "border-gray-200 bg-gray-50/80 text-gray-600",
-                        !slotAvailability.loading &&
-                          slotAvailability.checked &&
-                          slotAvailability.available &&
-                          "border-emerald-200 bg-emerald-50/80 text-emerald-900",
-                        !slotAvailability.loading &&
-                          slotAvailability.checked &&
-                          !slotAvailability.available &&
-                          "border-amber-200 bg-amber-50/80 text-amber-950",
-                        !slotAvailability.loading && !slotAvailability.checked && "border-gray-200 bg-gray-50/50 text-gray-500",
-                      )}
+                      className="rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-xs leading-relaxed text-amber-950"
                       role="status"
                       aria-live="polite"
                     >
-                      {slotAvailability.loading ? (
-                        <span className="flex items-center gap-2">
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                          Checking availability…
+                      <div className="space-y-1.5">
+                        <span className="flex items-center gap-2 font-semibold">
+                          <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                          Potential scheduling conflict
                         </span>
-                      ) : slotAvailability.checked ? (
-                        slotAvailability.available ? (
-                          <span className="flex items-center gap-2 font-medium">
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                            Slot available for the selected staff and location
-                          </span>
-                        ) : (
-                          <div className="space-y-1.5">
-                            <span className="flex items-center gap-2 font-semibold">
-                              <AlertCircle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                              Potential scheduling conflict
-                            </span>
-                            <ul className="list-disc pl-6 text-[11px] sm:text-xs space-y-0.5">
-                              {slotAvailability.conflicts.map((c, i) => (
-                                <li key={`${i}-${c}`}>{c}</li>
-                              ))}
-                            </ul>
-                            <p className="text-[11px] text-amber-800/80 pt-0.5">
-                              You can still book — the server validates before confirming.
-                            </p>
-                          </div>
-                        )
-                      ) : (
-                        <span className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5" />
-                          Select date and time to check availability
-                          {!formData.staffId && " · Assign staff for shift checks"}
-                        </span>
-                      )}
+                        <ul className="list-disc pl-6 text-[11px] sm:text-xs space-y-0.5">
+                          {slotAvailability.conflicts.map((c, i) => (
+                            <li key={`${i}-${c}`}>{c}</li>
+                          ))}
+                        </ul>
+                        <p className="text-[11px] text-amber-800/80 pt-0.5">
+                          You can still book — the server validates before confirming.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -5277,6 +5276,89 @@ export function AppointmentSidebar({
                   </div>
                 </div>
               )}
+
+            {/* Payment Method (CREATE mode) */}
+            {mode === "create" && (
+              <div className="space-y-2">
+                <Label className="text-[10px] sm:text-[10px] md:text-xs font-semibold text-gray-600 uppercase tracking-wide flex items-center gap-2">
+                  <CreditCard className="w-3.5 h-3.5" />
+                  Payment
+                </Label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([
+                    { value: "pay_later" as const, label: "Pay Later", icon: Clock },
+                    { value: "cash" as const, label: "Cash", icon: Receipt },
+                    { value: "yoco_pos" as const, label: "Card (Yoco)", icon: CreditCard },
+                    { value: "payment_link" as const, label: "Payment Link", icon: Send },
+                  ] as const).map(({ value, label, icon: Icon }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, paymentMethod: value }))}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-all",
+                        formData.paymentMethod === value
+                          ? "bg-gray-900 text-white border-gray-900 shadow-sm"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                      )}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* Gift card input */}
+                <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+                  <label className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" />
+                    Gift Card
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      placeholder="Enter gift card code"
+                      value={formData.giftCardCode}
+                      onChange={(e) => setFormData(prev => ({ ...prev, giftCardCode: e.target.value }))}
+                      className="flex-1 rounded-lg text-sm"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={!formData.giftCardCode.trim()}
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`/api/provider/gift-cards/validate?code=${encodeURIComponent(formData.giftCardCode.trim())}`);
+                          if (!res.ok) {
+                            toast.error("Invalid gift card code");
+                            return;
+                          }
+                          const body = await res.json();
+                          const gc = body?.data ?? body;
+                          const balance = gc?.balance ?? gc?.remaining_amount ?? 0;
+                          if (balance <= 0) {
+                            toast.error("Gift card has no remaining balance");
+                            return;
+                          }
+                          const applyAmount = Math.min(balance, formData.totalAmount);
+                          setFormData(prev => ({
+                            ...prev,
+                            discountAmount: prev.discountAmount + applyAmount,
+                            discountReason: `Gift card ${formData.giftCardCode}`,
+                          }));
+                          toast.success(`Gift card applied: ${formatMoney(applyAmount)} credit`);
+                        } catch {
+                          toast.error("Failed to validate gift card");
+                        }
+                      }}
+                      className="rounded-lg"
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Notes */}
             <div className="space-y-2">

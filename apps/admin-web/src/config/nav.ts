@@ -209,6 +209,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
       { title: "Referral sources", href: "/admin/referral-sources", icon: Share2 },
       { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
+      { title: "Admin team", href: "/admin/settings/admin-team", icon: UserCheck, superadminOnly: true },
     ],
   },
 ];

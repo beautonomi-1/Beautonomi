@@ -143,3 +143,85 @@ export async function POST(request: NextRequest) {
     return handleApiError(error, "Failed to update tax configuration");
   }
 }
+
+/**
+ * PATCH /api/admin/taxes
+ *
+ * Update an existing tax rate by id.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) return unauthorizedResponse("Authentication required");
+
+    const supabase = await getSupabaseServer(request);
+    const body = await request.json();
+    const { id, code, name, description, display_order, rate, included } = body;
+    if (!id) return handleApiError(new Error("id required"), "id required", "VALIDATION_ERROR", 400);
+
+    const { error } = await supabase
+      .from("reference_data")
+      .update({
+        code,
+        name,
+        description,
+        display_order,
+        metadata: { rate, included: included || false },
+      })
+      .eq("id", id)
+      .eq("type", "tax_rate");
+
+    if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.taxes.update_rate",
+      entity_type: "reference_data",
+      entity_id: id,
+      metadata: body,
+    });
+
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to update tax rate");
+  }
+}
+
+/**
+ * DELETE /api/admin/taxes
+ *
+ * Delete a tax rate by id (body: { id }).
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) return unauthorizedResponse("Authentication required");
+
+    const supabase = await getSupabaseServer(request);
+    const body = await request.json();
+    const { id } = body;
+    if (!id) return handleApiError(new Error("id required"), "id required", "VALIDATION_ERROR", 400);
+
+    const { error } = await supabase
+      .from("reference_data")
+      .delete()
+      .eq("id", id)
+      .eq("type", "tax_rate");
+
+    if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.taxes.delete_rate",
+      entity_type: "reference_data",
+      entity_id: id,
+      metadata: {},
+    });
+
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete tax rate");
+  }
+}

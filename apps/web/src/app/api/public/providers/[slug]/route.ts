@@ -159,6 +159,8 @@ export async function GET(
             is_verified,
             currency,
             years_in_business,
+            tax_rate_percent,
+            tips_enabled,
             user_id,
             users(include_in_search_engines)
           `)
@@ -542,6 +544,8 @@ export async function GET(
       distance_km: distance_km ?? undefined,
       /** Expose to clients so booking pages can add noindex when provider opted out */
       seo_indexable: includeInSearchEngines,
+      tax_rate_percent: providerData.tax_rate_percent ?? 0,
+      tips_enabled: providerData.tips_enabled ?? true,
     } as PublicProviderDetail;
 
     const response = NextResponse.json({

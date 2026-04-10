@@ -55,17 +55,18 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: bookings, error: bookErr } = await bookingQuery;
-    if (bookErr) throw bookErr;
+    if (bookErr) console.warn("gods-eye map-state: bookings query:", bookErr.message);
     const bookingList = bookings || [];
 
     const cutoff = timeWindowMins
       ? new Date(Date.now() - Number(timeWindowMins) * 60 * 1000).toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: recentProviderIds } = await admin
+    const { data: recentProviderIds, error: pingsErr } = await admin
       .from("provider_location_events")
       .select("provider_id")
       .gte("recorded_at", cutoff);
+    if (pingsErr) console.warn("gods-eye map-state: provider_location_events query:", pingsErr.message);
     const fromPings = [...new Set((recentProviderIds || []).map((r: PingRow) => r.provider_id))];
     const fromBookings = [...new Set(bookingList.map((b: BookingRow) => b.provider_id))];
     const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
@@ -106,7 +107,7 @@ export async function GET(request: NextRequest) {
       providerQuery = providerQuery.eq("status", providerStatus);
     }
     const { data: providers, error: provErr } = await providerQuery;
-    if (provErr) throw provErr;
+    if (provErr) console.warn("gods-eye map-state: providers query:", provErr.message);
     const providerList = providers || [];
     const providerIdsFilter = providerList.map((p: ProviderRow) => p.id);
 
@@ -132,13 +133,14 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    const { data: trackingStates } = await admin
+    const { data: trackingStates, error: trackingErr } = bookingList.length > 0 ? await admin
       .from("booking_tracking_state")
       .select("booking_id, provider_last_lat, provider_last_lng, provider_last_at, customer_target_lat, customer_target_lng, arrived_at_target, arrived_at, arrived_distance_m, last_distance_to_target_m, status")
       .in(
         "booking_id",
         bookingList.map((b: BookingRow) => b.id)
-      );
+      ) : { data: [], error: null };
+    if (trackingErr) console.warn("gods-eye map-state: booking_tracking_state query:", trackingErr.message);
 
     const trackingByBooking: Record<string, TrackingRow> = {};
     (trackingStates || []).forEach((t: TrackingRow) => {
