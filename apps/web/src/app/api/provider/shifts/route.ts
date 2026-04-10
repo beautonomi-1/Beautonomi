@@ -13,10 +13,21 @@ const createShiftSchema = z.object({
   recurring_pattern: z.any().optional(),
 });
 
+function formatDateLocal(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /**
  * GET /api/provider/shifts
  * 
- * Get provider's staff shifts
+ * Get provider's staff shifts merged with weekly schedules.
+ * Returns date-specific staff_shifts first, then fills gaps with
+ * staff_schedules (weekly template) so the grid always shows the
+ * effective schedule.
+ *
  * Query params: week_start (YYYY-MM-DD), staff_id (optional)
  */
 export async function GET(request: NextRequest) {
@@ -28,13 +39,12 @@ export async function GET(request: NextRequest) {
     const weekStart = searchParams.get('week_start');
     const staffId = searchParams.get('staff_id');
 
-    // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) {
       return notFoundResponse("Provider not found");
     }
 
-    let query = supabase
+    let shiftQuery = supabase
       .from("staff_shifts")
       .select(`
         id,
@@ -50,40 +60,81 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId)
       .order("date", { ascending: true });
 
-    // Filter by date range (week)
     if (weekStart) {
-      const start = new Date(weekStart);
+      const start = new Date(weekStart + "T00:00:00");
       const end = new Date(start);
       end.setDate(end.getDate() + 6);
-      query = query.gte("date", start.toISOString().split("T")[0])
-                   .lte("date", end.toISOString().split("T")[0]);
+      shiftQuery = shiftQuery.gte("date", formatDateLocal(start))
+                             .lte("date", formatDateLocal(end));
     }
 
-    // Filter by staff member
     if (staffId) {
-      query = query.eq("staff_id", staffId);
+      shiftQuery = shiftQuery.eq("staff_id", staffId);
     }
 
-    const { data: shifts, error } = await query;
+    let scheduleQuery = supabase
+      .from("staff_schedules")
+      .select("staff_id, day_of_week, start_time, end_time, is_working")
+      .eq("provider_id", providerId)
+      .eq("is_working", true);
 
-    if (error) {
-      throw error;
+    if (staffId) {
+      scheduleQuery = scheduleQuery.eq("staff_id", staffId);
     }
 
-    // Transform response to match expected format
+    const [{ data: shifts, error: shiftErr }, { data: schedules, error: schedErr }] =
+      await Promise.all([shiftQuery, scheduleQuery]);
+
+    if (shiftErr) throw shiftErr;
+    if (schedErr) throw schedErr;
+
     const transformedShifts = (shifts || []).map((shift: any) => ({
       id: shift.id,
       team_member_id: shift.staff_id,
       team_member_name: shift.provider_staff?.name?.full_name || "Staff",
       date: shift.date,
-      start_time: shift.start_time.substring(0, 5), // HH:MM format
+      start_time: shift.start_time.substring(0, 5),
       end_time: shift.end_time.substring(0, 5),
       notes: shift.notes,
       is_recurring: shift.is_recurring,
       recurring_pattern: shift.recurring_pattern,
+      source: "shift" as const,
     }));
 
-    return successResponse(transformedShifts);
+    const shiftDateKeys = new Set(
+      transformedShifts.map((s: any) => `${s.team_member_id}::${s.date}`)
+    );
+
+    const scheduleEntries: any[] = [];
+    if (weekStart && schedules && schedules.length > 0) {
+      const start = new Date(weekStart + "T00:00:00");
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start);
+        d.setDate(d.getDate() + i);
+        const dow = d.getDay();
+        const dateStr = formatDateLocal(d);
+
+        for (const sched of schedules) {
+          if (sched.day_of_week !== dow) continue;
+          const key = `${sched.staff_id}::${dateStr}`;
+          if (shiftDateKeys.has(key)) continue;
+          scheduleEntries.push({
+            id: `schedule-${sched.staff_id}-${dow}`,
+            team_member_id: sched.staff_id,
+            team_member_name: "",
+            date: dateStr,
+            start_time: sched.start_time.substring(0, 5),
+            end_time: sched.end_time.substring(0, 5),
+            notes: null,
+            is_recurring: false,
+            recurring_pattern: null,
+            source: "schedule" as const,
+          });
+        }
+      }
+    }
+
+    return successResponse([...transformedShifts, ...scheduleEntries]);
   } catch (error) {
     return handleApiError(error, "Failed to fetch shifts");
   }

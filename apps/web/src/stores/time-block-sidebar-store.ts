@@ -272,11 +272,10 @@ export function createRecurrenceRuleFromDraft(draft: BlockDraft): RecurrenceRule
   }
   
   return {
-    pattern: "weekly",
-    interval: 1,
-    days_of_week: draft.repeatDays,
+    frequency: "weekly",
+    days: draft.repeatDays,
     end_date: draft.repeatUntil,
-  };
+  } as any;
 }
 
 // ============================================================================

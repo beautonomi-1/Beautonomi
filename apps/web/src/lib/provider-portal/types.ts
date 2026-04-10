@@ -430,6 +430,8 @@ export interface Shift {
   notes?: string;
   is_recurring?: boolean;
   recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
+  /** "shift" = date-specific staff_shifts row; "schedule" = derived from weekly staff_schedules */
+  source?: "shift" | "schedule";
 }
 
 export interface Campaign {

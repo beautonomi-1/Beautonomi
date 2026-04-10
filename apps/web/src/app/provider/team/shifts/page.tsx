@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Shift, TeamMember } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -9,9 +9,16 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronLeft, ChevronRight, Plus, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Pencil, Trash2 } from "lucide-react";
 import { ShiftCreateEditDialog } from "./components/ShiftCreateEditDialog";
 import { toast } from "sonner";
+
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 export default function ProviderShifts() {
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -20,23 +27,20 @@ export default function ProviderShifts() {
   const [weekStart, setWeekStart] = useState(() => {
     const date = new Date();
     const day = date.getDay();
-    const diff = date.getDate() - day;
-    return new Date(date.setDate(diff));
+    date.setDate(date.getDate() - day);
+    date.setHours(0, 0, 0, 0);
+    return date;
   });
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, [weekStart]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setIsLoading(true);
       const [shiftsData, members] = await Promise.all([
-        providerApi.listShifts(weekStart.toISOString().split("T")[0]),
+        providerApi.listShifts(formatLocalDate(weekStart)),
         providerApi.listTeamMembers(),
       ]);
       setShifts(shiftsData);
@@ -47,7 +51,11 @@ export default function ProviderShifts() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [weekStart]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const navigateWeek = (direction: "prev" | "next") => {
     const newDate = new Date(weekStart);
@@ -58,12 +66,13 @@ export default function ProviderShifts() {
   const goToToday = () => {
     const date = new Date();
     const day = date.getDay();
-    const diff = date.getDate() - day;
-    setWeekStart(new Date(date.setDate(diff)));
+    date.setDate(date.getDate() - day);
+    date.setHours(0, 0, 0, 0);
+    setWeekStart(date);
   };
 
   const getWeekDays = () => {
-    const days = [];
+    const days: Date[] = [];
     for (let i = 0; i < 7; i++) {
       const date = new Date(weekStart);
       date.setDate(date.getDate() + i);
@@ -72,8 +81,8 @@ export default function ProviderShifts() {
     return days;
   };
 
-  const getShiftForMemberAndDay = (memberId: string, date: string) => {
-    return shifts.find(
+  const getShiftsForMemberAndDay = (memberId: string, date: string): Shift[] => {
+    return shifts.filter(
       (shift) => shift.team_member_id === memberId && shift.date === date
     );
   };
@@ -92,13 +101,72 @@ export default function ProviderShifts() {
     setIsCreateDialogOpen(true);
   };
 
-  const handleSave = () => {
-    setIsCreateDialogOpen(false);
-    setSelectedShift(null);
-    setSelectedMember(null);
-    setSelectedDate("");
-    loadData();
-    toast.success(selectedShift ? "Shift updated" : "Shift created");
+  const handleDeleteShift = async (shift: Shift) => {
+    if (shift.source === "schedule") {
+      toast.error("Weekly schedule entries can only be edited in Staff Schedules");
+      return;
+    }
+    try {
+      await providerApi.deleteShift(shift.id);
+      toast.success("Shift deleted");
+      loadData();
+    } catch {
+      toast.error("Failed to delete shift");
+    }
+  };
+
+  const handleSaveShift = async (formData: {
+    teamMemberId: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    isRepeating: boolean;
+    repeatPattern: string;
+    repeatEndDate: string;
+    repeatEndsAfter: string;
+    isAlternating: boolean;
+    alternatingWeek: string;
+  }) => {
+    const recurringPattern: Record<string, unknown> = {};
+    if (formData.isRepeating) {
+      recurringPattern.pattern = formData.repeatPattern;
+      if (formData.repeatEndDate) recurringPattern.end_date = formData.repeatEndDate;
+      if (formData.repeatEndsAfter) recurringPattern.ends_after = Number(formData.repeatEndsAfter);
+    }
+    if (formData.isAlternating) {
+      recurringPattern.type = "alternating";
+      recurringPattern.alternating_week = formData.alternatingWeek;
+    }
+
+    try {
+      if (selectedShift && selectedShift.source !== "schedule") {
+        await providerApi.updateShift(selectedShift.id, {
+          date: formData.date,
+          start_time: formData.startTime,
+          end_time: formData.endTime,
+          is_recurring: formData.isRepeating,
+          recurring_pattern: Object.keys(recurringPattern).length > 0 ? recurringPattern : undefined,
+        });
+        toast.success("Shift updated");
+      } else {
+        await providerApi.createShift({
+          team_member_id: formData.teamMemberId,
+          date: formData.date,
+          start_time: formData.startTime,
+          end_time: formData.endTime,
+          is_recurring: formData.isRepeating,
+          recurring_pattern: Object.keys(recurringPattern).length > 0 ? recurringPattern : undefined,
+        });
+        toast.success("Shift created");
+      }
+      setIsCreateDialogOpen(false);
+      setSelectedShift(null);
+      setSelectedMember(null);
+      setSelectedDate("");
+      loadData();
+    } catch {
+      toast.error(selectedShift ? "Failed to update shift" : "Failed to create shift");
+    }
   };
 
   const weekDays = getWeekDays();
@@ -121,6 +189,14 @@ export default function ProviderShifts() {
           You can create split shifts (e.g. 08:00–12:00 and 14:00–18:00) for the same day.
           Staff with <strong>Custom Work Hours</strong> disabled in their settings will use the location&apos;s operating hours instead.
         </p>
+        <div className="flex items-center gap-4 mt-2 text-xs text-indigo-700">
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded bg-[#FF0077]/10 border border-[#FF0077]/20" /> Date-specific shift
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block w-3 h-3 rounded bg-blue-50 border border-blue-200" /> Weekly schedule
+          </span>
+        </div>
       </div>
 
       {/* Week Navigation */}
@@ -182,31 +258,64 @@ export default function ProviderShifts() {
                   <TableRow key={member.id}>
                     <TableCell className="font-medium">{member.name}</TableCell>
                     {weekDays.map((day, dayIndex) => {
-                      const shift = getShiftForMemberAndDay(
-                        member.id,
-                        day.toISOString().split("T")[0]
-                      );
+                      const dateStr = formatLocalDate(day);
+                      const dayShifts = getShiftsForMemberAndDay(member.id, dateStr);
                       return (
-                        <TableCell key={dayIndex} className="text-center">
-                          {shift ? (
-                            <div className="flex items-center justify-center gap-2">
-                              <Badge variant="outline" className="bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20">
-                                {shift.start_time} - {shift.end_time}
-                              </Badge>
+                        <TableCell key={dayIndex} className="text-center p-1">
+                          {dayShifts.length > 0 ? (
+                            <div className="flex flex-col items-center gap-1">
+                              {dayShifts.map((shift) => {
+                                const isSchedule = shift.source === "schedule";
+                                return (
+                                  <div key={shift.id} className="flex items-center justify-center gap-1">
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        isSchedule
+                                          ? "bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                                          : "bg-[#FF0077]/10 text-[#FF0077] border-[#FF0077]/20 text-xs"
+                                      }
+                                    >
+                                      {shift.start_time} - {shift.end_time}
+                                    </Badge>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-5 w-5"
+                                      onClick={() => handleEditShift(shift)}
+                                      title={isSchedule ? "Override with date-specific shift" : "Edit shift"}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                    </Button>
+                                    {!isSchedule && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-5 w-5 text-red-400 hover:text-red-600"
+                                        onClick={() => handleDeleteShift(shift)}
+                                        title="Delete shift"
+                                      >
+                                        <Trash2 className="w-3 h-3" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                );
+                              })}
                               <Button
                                 variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={() => handleEditShift(shift)}
+                                size="sm"
+                                className="h-5 w-5 opacity-40 hover:opacity-100"
+                                onClick={() => handleAddShift(member.id, dateStr)}
+                                title="Add another shift"
                               >
-                                <Pencil className="w-3 h-3" />
+                                <Plus className="w-3 h-3" />
                               </Button>
                             </div>
                           ) : (
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleAddShift(member.id, day.toISOString().split("T")[0])}
+                              onClick={() => handleAddShift(member.id, dateStr)}
                             >
                               <Plus className="w-4 h-4" />
                             </Button>
@@ -229,7 +338,7 @@ export default function ProviderShifts() {
         member={selectedMember}
         date={selectedDate}
         members={teamMembers}
-        onSave={handleSave}
+        onSave={handleSaveShift}
       />
     </div>
   );

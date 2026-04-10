@@ -534,9 +534,20 @@ export default function ProviderOnboarding() {
       case 11: // Service Catalog
         // Optional - no validation
         break;
-      case 12: // Hours
-        // Optional - no validation
+      case 12: { // Hours
+        const hours = formData.operating_hours;
+        if (!hours || Object.keys(hours).length === 0) {
+          errors.push("Please set your operating hours");
+        } else {
+          const hasOpenDay = Object.values(hours).some(
+            (h: any) => h && !h.closed
+          );
+          if (!hasOpenDay) {
+            errors.push("At least one day must be open");
+          }
+        }
         break;
+      }
       case 13: // Review
         // Optional - no validation
         break;

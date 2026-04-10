@@ -2318,6 +2318,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: s.end_time,
         notes: s.notes,
         is_recurring: s.is_recurring,
+        source: s.source || "shift",
       }));
     } catch (error: any) {
       await this.handleApiError(
@@ -4062,7 +4063,7 @@ export class ProviderApiClient implements ProviderApi {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.patch<{ data: any }>(`/api/provider/time-blocks/${id}`, {
-        staff_id: data.team_member_id,
+        staff_id: data.team_member_id === undefined ? undefined : (data.team_member_id || null),
         blocked_time_type_id: data.blocked_time_type_id,
         name: data.name,
         date: data.date,

@@ -61,6 +61,8 @@ export function TimeBlockDialog({
     if (open) {
       loadTeamMembers();
       if (block) {
+        const rule = block.recurrence_rule as any;
+        const pattern = rule?.pattern || rule?.frequency || "weekly";
         setFormData({
           name: block.name,
           description: block.description || "",
@@ -70,9 +72,9 @@ export function TimeBlockDialog({
           end_time: block.end_time,
           is_recurring: block.is_recurring,
           blocked_time_type_id: block.blocked_time_type_id || "",
-          recurrence_pattern: block.recurrence_rule?.pattern || "weekly",
-          recurrence_end_date: block.recurrence_rule?.end_date || "",
-          recurrence_occurrences: block.recurrence_rule?.occurrences,
+          recurrence_pattern: pattern,
+          recurrence_end_date: rule?.end_date || "",
+          recurrence_occurrences: rule?.occurrences,
         });
       }
     }
@@ -92,10 +94,13 @@ export function TimeBlockDialog({
     setIsLoading(true);
 
     try {
+      const anchorDate = formData.date || new Date().toISOString().split("T")[0];
+      const dow = new Date(anchorDate + "T12:00:00").getDay();
+
       const blockData: Partial<TimeBlock> = {
         name: formData.name,
         description: formData.description,
-        team_member_id: formData.team_member_id || undefined,
+        team_member_id: formData.team_member_id || null as any,
         team_member_name: teamMembers.find((m) => m.id === formData.team_member_id)?.name,
         date: formData.date,
         start_time: formData.start_time,
@@ -105,11 +110,12 @@ export function TimeBlockDialog({
         blocked_time_type_name: blockedTimeTypes.find((t) => t.id === formData.blocked_time_type_id)?.name,
         recurrence_rule: formData.is_recurring
           ? {
-              pattern: formData.recurrence_pattern as any,
-              interval: formData.recurrence_pattern === "biweekly" ? 2 : 1,
+              frequency: formData.recurrence_pattern === "biweekly" ? "weekly" : formData.recurrence_pattern,
+              days: formData.recurrence_pattern === "weekly" || formData.recurrence_pattern === "biweekly"
+                ? [dow]
+                : undefined,
               end_date: formData.recurrence_end_date || undefined,
-              occurrences: formData.recurrence_occurrences,
-            }
+            } as any
           : undefined,
       };
 

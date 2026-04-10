@@ -42,6 +42,20 @@ export function validateStep(
         errors.push("Please select at least one service category");
       }
       break;
+    case 12: {
+      const hours = formData.operating_hours;
+      if (!hours || Object.keys(hours).length === 0) {
+        errors.push("Please set your operating hours");
+      } else {
+        const hasOpenDay = Object.values(hours).some(
+          (h: any) => h && !h.closed,
+        );
+        if (!hasOpenDay) {
+          errors.push("At least one day must be open");
+        }
+      }
+      break;
+    }
     case 14:
       if (!formData.selected_plan_id?.trim()) errors.push("Please select a subscription plan");
       break;

@@ -216,7 +216,7 @@ export function TimeBlockSidebar({
       const blockData: Partial<TimeBlock> = {
         name: draft.name || BLOCK_TYPE_CONFIG[draft.blockType].label,
         description: draft.description,
-        team_member_id: draft.staffId,
+        team_member_id: draft.staffId || (null as any),
         team_member_name: draft.staffName || teamMembers.find(m => m.id === draft.staffId)?.name,
         date: draft.date,
         start_time: draft.startTime,

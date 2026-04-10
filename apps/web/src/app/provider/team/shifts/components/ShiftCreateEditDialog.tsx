@@ -17,6 +17,19 @@ import { Separator } from "@/components/ui/separator";
 import { Repeat } from "lucide-react";
 import type { Shift, TeamMember } from "@/lib/provider-portal/types";
 
+export interface ShiftFormData {
+  teamMemberId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  isRepeating: boolean;
+  repeatPattern: string;
+  repeatEndDate: string;
+  repeatEndsAfter: string;
+  isAlternating: boolean;
+  alternatingWeek: string;
+}
+
 interface ShiftCreateEditDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -24,7 +37,14 @@ interface ShiftCreateEditDialogProps {
   member?: TeamMember | null;
   date?: string;
   members: TeamMember[];
-  onSave: () => void;
+  onSave: (formData: ShiftFormData) => Promise<void>;
+}
+
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 export function ShiftCreateEditDialog({
@@ -36,22 +56,25 @@ export function ShiftCreateEditDialog({
   members,
   onSave,
 }: ShiftCreateEditDialogProps) {
-  const [formData, setFormData] = useState({
+  const [isSaving, setIsSaving] = useState(false);
+  const [formData, setFormData] = useState<ShiftFormData>({
     teamMemberId: "",
     date: "",
     startTime: "09:00",
     endTime: "17:00",
     isRepeating: false,
-    repeatPattern: "weekly" as "daily" | "weekly" | "biweekly" | "monthly",
+    repeatPattern: "weekly",
     repeatEndDate: "",
     repeatEndsAfter: "",
     isAlternating: false,
-    alternatingWeek: "week1" as "week1" | "week2",
+    alternatingWeek: "week1",
   });
+
+  const isScheduleOverride = shift?.source === "schedule";
 
   useEffect(() => {
     queueMicrotask(() => {
-      if (shift) {
+      if (shift && !isScheduleOverride) {
         const recurringPattern = shift.recurring_pattern || {};
         const isRepeating = shift.is_recurring || false;
         const isAlternating = recurringPattern.type === "alternating" || false;
@@ -61,18 +84,18 @@ export function ShiftCreateEditDialog({
           startTime: shift.start_time,
           endTime: shift.end_time,
           isRepeating: isRepeating,
-          repeatPattern: (recurringPattern.pattern as "daily" | "weekly" | "monthly" | "biweekly") || "weekly",
+          repeatPattern: (recurringPattern.pattern as string) || "weekly",
           repeatEndDate: String(recurringPattern.end_date ?? ""),
           repeatEndsAfter: String(recurringPattern.ends_after ?? ""),
           isAlternating: isAlternating,
-          alternatingWeek: ((recurringPattern.alternating_week as string) || "week1") as "week1" | "week2",
+          alternatingWeek: ((recurringPattern.alternating_week as string) || "week1"),
         });
       } else {
         setFormData({
-          teamMemberId: member?.id || "",
-          date: date || new Date().toISOString().split("T")[0],
-          startTime: "09:00",
-          endTime: "17:00",
+          teamMemberId: shift?.team_member_id || member?.id || "",
+          date: shift?.date || date || formatLocalDate(new Date()),
+          startTime: shift?.start_time || "09:00",
+          endTime: shift?.end_time || "17:00",
           isRepeating: false,
           repeatPattern: "weekly",
           repeatEndDate: "",
@@ -82,11 +105,17 @@ export function ShiftCreateEditDialog({
         });
       }
     });
-  }, [shift, member, date, open]);
+  }, [shift, member, date, open, isScheduleOverride]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave();
+    if (!formData.teamMemberId || !formData.date) return;
+    setIsSaving(true);
+    try {
+      await onSave(formData);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -94,10 +123,16 @@ export function ShiftCreateEditDialog({
       <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[95vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-base sm:text-lg font-semibold">
-            {shift ? "Edit Shift" : "Add Shift"}
+            {isScheduleOverride
+              ? "Override Weekly Schedule"
+              : shift
+              ? "Edit Shift"
+              : "Add Shift"}
           </DialogTitle>
           <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            {shift 
+            {isScheduleOverride
+              ? "Create a date-specific shift that overrides the weekly schedule for this day"
+              : shift
               ? "Update shift details and schedule"
               : "Create a new shift or repeating schedule"}
           </p>
@@ -189,7 +224,7 @@ export function ShiftCreateEditDialog({
                   </Label>
                   <Select
                     value={formData.alternatingWeek}
-                    onValueChange={(value: any) => setFormData({ ...formData, alternatingWeek: value })}
+                    onValueChange={(value) => setFormData({ ...formData, alternatingWeek: value })}
                   >
                     <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
                       <SelectValue />
@@ -236,7 +271,7 @@ export function ShiftCreateEditDialog({
                   </Label>
                   <Select
                     value={formData.repeatPattern}
-                    onValueChange={(value: any) => setFormData({ ...formData, repeatPattern: value })}
+                    onValueChange={(value) => setFormData({ ...formData, repeatPattern: value })}
                   >
                     <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
                       <SelectValue />
@@ -272,7 +307,7 @@ export function ShiftCreateEditDialog({
                         id="repeatEndDate"
                         name="repeatEnds"
                         checked={!!formData.repeatEndDate}
-                        onChange={() => setFormData({ ...formData, repeatEndDate: new Date().toISOString().split("T")[0], repeatEndsAfter: "" })}
+                        onChange={() => setFormData({ ...formData, repeatEndDate: formatLocalDate(new Date()), repeatEndsAfter: "" })}
                         className="w-4 h-4"
                       />
                       <Label htmlFor="repeatEndDate" className="text-sm cursor-pointer">
@@ -323,15 +358,23 @@ export function ShiftCreateEditDialog({
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              disabled={isSaving}
               className="w-full sm:w-auto min-h-[44px] touch-manipulation"
             >
               Cancel
             </Button>
             <Button
               type="submit"
+              disabled={isSaving}
               className="w-full sm:w-auto bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
             >
-              {shift ? "Update" : "Create"} Shift
+              {isSaving
+                ? "Saving..."
+                : isScheduleOverride
+                ? "Create Override"
+                : shift
+                ? "Update Shift"
+                : "Create Shift"}
             </Button>
           </DialogFooter>
         </form>

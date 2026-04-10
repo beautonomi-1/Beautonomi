@@ -9,6 +9,7 @@ import { mergeUnionAnyStaffSlots } from "@/lib/availability/merge-any-staff-slot
 import type { TimeSlot } from "@/lib/availability/types";
 import { getProviderIdForUser, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /** Cap union queries so one request cannot fan out unbounded. */
 const MAX_STAFF_IDS_FOR_ANY = 35;
@@ -23,19 +24,28 @@ async function computeSlotsForStaff(
   avoidGaps: boolean,
   excludeHoldId?: string,
   locationId?: string,
+  providerIdOverride?: string,
 ): Promise<TimeSlot[]> {
-  let providerIdForSettings: string | undefined;
+  let providerIdForSettings: string | undefined = providerIdOverride;
   const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
-  if (syntheticProviderId) {
-    providerIdForSettings = syntheticProviderId;
-  } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
-    const { data: staffRow } = await supabase
-      .from("provider_staff")
-      .select("provider_id")
-      .eq("id", staffId)
-      .maybeSingle();
-    providerIdForSettings = staffRow?.provider_id ?? undefined;
+  if (!providerIdForSettings) {
+    if (syntheticProviderId) {
+      providerIdForSettings = syntheticProviderId;
+    } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
+      const admin = getSupabaseAdmin();
+      const { data: staffRow } = await admin
+        .from("provider_staff")
+        .select("provider_id")
+        .eq("id", staffId)
+        .maybeSingle();
+      providerIdForSettings = staffRow?.provider_id ?? undefined;
+    }
   }
+
+  const staffIdsForTimeOff: string[] =
+    staffId && !staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)
+      ? [staffId]
+      : [];
 
   const constraints = await loadAvailabilityConstraints(
     supabase,
@@ -44,9 +54,6 @@ async function computeSlotsForStaff(
     providerIdForSettings,
     {
       excludeHoldId,
-      // Mirror the public slug availability route: apply staff_days_off, staff_time_off,
-      // and availability_blocks so the web booking flow honours the same blocks as the
-      // customer mobile app and the portal reschedule flow.
       ...(providerIdForSettings
         ? {
             publicCalendarParity: {
@@ -54,7 +61,7 @@ async function computeSlotsForStaff(
               date,
               locationId: locationId ?? undefined,
               slotStaffId: staffId,
-              staffIdsForTimeOff: staffId ? [staffId] : undefined,
+              staffIdsForTimeOff,
             },
           }
         : {}),
@@ -155,6 +162,7 @@ export async function GET(request: NextRequest) {
             avoidGaps,
             excludeHoldId,
             locationId,
+            providerIdParam,
           )
         )
       );
@@ -170,6 +178,7 @@ export async function GET(request: NextRequest) {
         avoidGaps,
         excludeHoldId,
         locationId,
+        providerIdParam,
       );
     }
 

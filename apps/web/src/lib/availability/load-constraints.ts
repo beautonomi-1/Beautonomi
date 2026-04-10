@@ -39,9 +39,10 @@ const WEEKDAY_KEYS = new Set([
   'wednesday',
   'thursday',
   'friday',
+  'saturday',
 ]);
 
-/** When working_hours is empty or unset, Mon–Fri 09:00–18:00; weekends closed. */
+/** When working_hours is empty or unset, Mon–Sat 09:00–18:00; Sunday closed. */
 const DEFAULT_OPEN = '09:00';
 const DEFAULT_CLOSE = '18:00';
 
@@ -766,13 +767,13 @@ export async function loadAvailabilityConstraints(
   const workHoursEnabled = syntheticProviderId
     ? true
     : staffId
-      ? await checkWorkHoursEnabled(supabase, staffId)
+      ? await checkWorkHoursEnabled(db, staffId)
       : false;
 
   const resolvedProviderId =
     providerId ??
     syntheticProviderId ??
-    (effectiveStaffId ? await resolveProviderIdFromStaff(supabase, effectiveStaffId) : undefined);
+    (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
 
   const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
@@ -805,7 +806,7 @@ export async function loadAvailabilityConstraints(
 
   if (workHoursEnabled && effectiveStaffId && staffShifts.length === 0 && !skipWorkingHoursFallback) {
     staffShifts = await buildStaffShiftsFromWorkingHoursFallback(
-      supabase,
+      db,
       db,
       effectiveStaffId,
       date,
@@ -813,7 +814,7 @@ export async function loadAvailabilityConstraints(
     );
   }
 
-  if (workHoursEnabled && resolvedProviderId && staffShifts.length === 0 && !skipWorkingHoursFallback) {
+  if (workHoursEnabled && resolvedProviderId && staffShifts.length === 0) {
     const fallbackStaffIdForShift =
       effectiveStaffId ?? staffId ?? `${SYNTHETIC_PROVIDER_STAFF_PREFIX}${resolvedProviderId}`;
     staffShifts = await buildStaffShiftsFromPrimaryLocation(

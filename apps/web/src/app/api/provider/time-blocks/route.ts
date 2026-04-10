@@ -18,6 +18,35 @@ const createTimeBlockSchema = z.object({
 });
 
 /**
+ * Normalize recurring_pattern to the format the availability engine expects:
+ *   { frequency: "weekly"|"daily"|"monthly", days?: number[], end_date?: string }
+ *
+ * The web UI historically stored { pattern, interval, end_date, occurrences }
+ * while the mobile UI sends { frequency, days }. This normalizer accepts both.
+ */
+function normalizeRecurringPattern(
+  raw: any,
+  anchorDate: string,
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+
+  let frequency: string = raw.frequency ?? raw.pattern ?? "weekly";
+  if (frequency === "biweekly") frequency = "weekly";
+
+  const anchor = new Date(anchorDate + "T12:00:00");
+  const dow = anchor.getDay();
+
+  let days: number[] | undefined = raw.days ?? raw.days_of_week;
+  if (!days && frequency === "weekly") {
+    days = [dow];
+  }
+
+  const endDate: string | undefined = raw.end_date || undefined;
+
+  return { frequency, days, end_date: endDate };
+}
+
+/**
  * GET /api/provider/time-blocks
  * 
  * Get provider's time blocks
@@ -186,7 +215,11 @@ export async function POST(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // Create time block
+    const isRecurring = data.is_recurring || false;
+    const normalizedPattern = isRecurring
+      ? normalizeRecurringPattern(data.recurring_pattern, data.date)
+      : null;
+
     const { data: newBlock, error: insertError } = await (supabase
       .from("time_blocks") as any)
       .insert({
@@ -197,8 +230,8 @@ export async function POST(request: NextRequest) {
         date: data.date,
         start_time: data.start_time,
         end_time: data.end_time,
-        is_recurring: data.is_recurring || false,
-        recurring_pattern: data.recurring_pattern,
+        is_recurring: isRecurring,
+        recurring_pattern: normalizedPattern,
         is_active: data.is_active ?? true,
         notes: data.notes,
       })

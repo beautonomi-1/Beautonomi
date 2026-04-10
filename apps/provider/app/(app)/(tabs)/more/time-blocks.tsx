@@ -41,6 +41,12 @@ interface TimeBlock {
   notes: string | null;
 }
 
+interface StaffMember {
+  id: string;
+  name: string;
+  is_active?: boolean;
+}
+
 /** Content-only for use in Schedule hub (Time blocks tab). */
 export function TimeBlocksContent() {
   const { screenPadding } = useResponsive();
@@ -52,6 +58,7 @@ export function TimeBlocksContent() {
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("17:00");
   const [isRecurring, setIsRecurring] = useState(false);
+  const [selectedStaffId, setSelectedStaffId] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -62,8 +69,13 @@ export function TimeBlocksContent() {
   const url = `/api/provider/time-blocks?date_from=${dateFrom}&date_to=${dateTo}`;
 
   const { data, loading, error, refresh } = useApi<TimeBlock[]>(url);
+  const { data: staffData } = useApi<StaffMember[]>("/api/provider/staff");
   const { execute: postBlock, loading: creating } = useApiMutation<TimeBlock>("post");
   const { execute: deleteBlock } = useApiMutation("delete");
+
+  const activeStaff = (Array.isArray(staffData) ? staffData : []).filter(
+    (s) => s.is_active !== false,
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -80,6 +92,7 @@ export function TimeBlocksContent() {
     setStartTime("09:00");
     setEndTime("17:00");
     setIsRecurring(false);
+    setSelectedStaffId(null);
     setAddOpen(true);
   };
 
@@ -97,12 +110,11 @@ export function TimeBlocksContent() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error: err } = await postBlock("/api/provider/time-blocks", {
       name: trimmed,
+      staff_id: selectedStaffId || null,
       date: dateStr,
       start_time: startTime,
       end_time: endTime,
       is_recurring: isRecurring,
-      // When recurring, default to weekly on the same weekday as the selected date.
-      // days[] uses JS getDay() convention: 0=Sun, 1=Mon … 6=Sat.
       recurring_pattern: isRecurring
         ? { frequency: "weekly", days: [blockDate.getDay()] }
         : undefined,
@@ -248,6 +260,74 @@ export function TimeBlocksContent() {
           value={name}
           onChangeText={setName}
         />
+
+        {activeStaff.length > 0 && (
+          <>
+            <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Applies to</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={twStyle("mb-4")}
+              contentContainerStyle={{}}
+            >
+              <TouchableOpacity
+                style={[
+                  twStyle(`flex-row items-center rounded-xl px-3 py-2 ${
+                    selectedStaffId === null
+                      ? "bg-indigo-600"
+                      : "border border-gray-200 bg-gray-50"
+                  }`),
+                  { marginRight: 8 },
+                ]}
+                onPress={() => setSelectedStaffId(null)}
+              >
+                <Ionicons
+                  name="people-outline"
+                  size={16}
+                  color={selectedStaffId === null ? "#fff" : "#6b7280"}
+                />
+                <Text
+                  style={twStyle(`ml-2 text-sm font-medium ${
+                    selectedStaffId === null ? "text-white" : "text-gray-700"
+                  }`)}
+                >
+                  All team
+                </Text>
+              </TouchableOpacity>
+              {activeStaff.map((member) => {
+                const isSelected = selectedStaffId === member.id;
+                return (
+                  <TouchableOpacity
+                    key={member.id}
+                    style={[
+                      twStyle(`flex-row items-center rounded-xl px-3 py-2 ${
+                        isSelected
+                          ? "bg-indigo-600"
+                          : "border border-gray-200 bg-gray-50"
+                      }`),
+                      { marginRight: 8 },
+                    ]}
+                    onPress={() => setSelectedStaffId(member.id)}
+                  >
+                    <Ionicons
+                      name="person-outline"
+                      size={16}
+                      color={isSelected ? "#fff" : "#6b7280"}
+                    />
+                    <Text
+                      style={twStyle(`ml-2 text-sm font-medium ${
+                        isSelected ? "text-white" : "text-gray-700"
+                      }`)}
+                    >
+                      {member.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </>
+        )}
+
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>Date</Text>
         <TouchableOpacity
           onPress={() => setShowDatePicker(true)}

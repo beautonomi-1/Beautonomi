@@ -181,8 +181,7 @@ export default function StepCalendar({
       const dateStr = formatLocalDateYYYYMMDD(day);
       const mode = bookingState.mode || "salon";
       const holdParam = excludeHoldId ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}` : "";
-      const providerParam =
-        bookingState.providerId && (!staffId || staffId === "any")
+      const providerParam = bookingState.providerId
           ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
           : "";
       const locationParam =
