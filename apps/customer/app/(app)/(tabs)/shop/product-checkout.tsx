@@ -205,17 +205,20 @@ export default function ProductCheckoutScreen() {
         );
       }
 
-      // Fetch platform fee config
+      // Fetch platform fee config — pass provider_id so provider-specific overrides are respected
+      const feeUrl = provider_id
+        ? `/api/public/platform-fees?provider_id=${encodeURIComponent(provider_id)}`
+        : "/api/public/platform-fees";
       const feeRes = await api.get<{
         platform_service_fee_type: string;
         platform_service_fee_percentage: number;
         platform_service_fee_fixed: number;
         show_service_fee_to_customer: boolean;
-      }>("/api/public/platform-fees");
+      }>(feeUrl);
       if (feeRes.data) {
         setPlatformFeeConfig({
-          type: (feeRes.data as any).platform_service_fee_type ?? "percentage",
-          percentage: (feeRes.data as any).platform_service_fee_percentage ?? 5,
+          type: (feeRes.data as any).platform_service_fee_type ?? "fixed",
+          percentage: (feeRes.data as any).platform_service_fee_percentage ?? 0,
           fixed: (feeRes.data as any).platform_service_fee_fixed ?? 0,
           show: (feeRes.data as any).show_service_fee_to_customer !== false,
         });

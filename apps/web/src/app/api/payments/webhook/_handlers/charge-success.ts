@@ -365,7 +365,45 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     }
   }
 
-  // Create payment transaction record
+  const webhookNow = new Date().toISOString();
+
+  // ── Idempotency guard — MUST run before payment_transactions insert ───────
+  // Two scenarios:
+  //
+  //   A. Same Paystack reference fires twice (webhook retry).
+  //      Detected by: payment_transactions already has a row for this reference.
+  //      Action: return immediately — skip everything.
+  //
+  //   B. A SECOND Paystack charge on the same booking (deposit + pay-remaining
+  //      both routed through this handler instead of the pay-remaining handler).
+  //      Detected by: finance_transactions already has a 'payment' row for this
+  //      booking but the Paystack reference is new.
+  //      Action: write payment + provider_earnings ONLY (per-charge amounts).
+  //      Booking-level rows (service_fee, tax, tip, travel_fee) are recorded once
+  //      from the first charge and must NOT be written again.
+  const { data: existingPaymentTxForRef } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (existingPaymentTxForRef) {
+    // Scenario A: webhook retry for a reference already fully processed.
+    console.log(`[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`);
+    return;
+  }
+
+  // Scenario B detection: has the ledger for this booking been written before?
+  // Use 'payment' row as the indicator — it is always written for any non-zero charge.
+  const { data: existingFinancePaymentRow } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("booking_id", metadata.booking_id)
+    .eq("transaction_type", "payment")
+    .maybeSingle();
+  const isSecondCharge = !!existingFinancePaymentRow;
+
+  // Now insert the payment_transactions row for this charge (after idempotency checks).
   await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
@@ -379,7 +417,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       customer_email: customer?.email,
       customer_code: customer?.customer_code,
     },
-    created_at: new Date().toISOString(),
+    created_at: webhookNow,
   });
 
   await supabase
@@ -388,12 +426,13 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       status: "paid",
       payment_provider: "paystack",
       payment_provider_transaction_id: reference,
-      processed_at: new Date().toISOString(),
+      processed_at: webhookNow,
       payment_provider_response: data,
     })
     .eq("booking_id", metadata.booking_id)
     .eq("payment_provider", "paystack");
 
+  if (!isSecondCharge) {
   await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
@@ -436,7 +475,6 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     });
   }
 
-  const webhookNow = new Date().toISOString();
   await supabase.from("finance_transactions").insert([
     ...(tipAmount > 0
       ? [{
@@ -483,6 +521,38 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
         ]
       : []),
   ]);
+  } else {
+    // Scenario B: second Paystack charge for this booking. Booking-level rows
+    // (service_fee, tax, tip, travel) were already recorded for the first charge.
+    // Only append the per-charge payment + provider_earnings rows.
+    console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings only.`);
+    await supabase.from("finance_transactions").insert([
+      {
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "payment",
+        amount: commissionBase,
+        fees: feesInCurrency,
+        commission: platformCommission,
+        net: platformCommission,
+        description: `Payment (charge 2) for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      },
+      {
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "provider_earnings",
+        amount: subtractMoney(commissionBase, platformCommission),
+        fees: 0,
+        commission: 0,
+        net: subtractMoney(commissionBase, platformCommission),
+        description: `Provider earnings (charge 2) for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      },
+    ]);
+  }
 
   // For split wallet + card payments: record the wallet portion in the ledger.
   // The card portion is recorded above (payment + provider_earnings rows).
@@ -1118,7 +1188,7 @@ async function handleCustomOfferSuccess(
     .maybeSingle();
 
   const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
+    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
   const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
@@ -2337,7 +2407,7 @@ async function handleAdditionalChargeSuccess(
     .maybeSingle();
 
   const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
+    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
   const platformCommission = percentOf(netAmount, commissionRate);
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 

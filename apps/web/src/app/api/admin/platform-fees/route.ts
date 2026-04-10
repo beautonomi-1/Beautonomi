@@ -14,10 +14,10 @@ const platformFeesSchema = z.object({
 });
 
 const DEFAULT_PLATFORM_FEES = {
-  platform_service_fee_type: 'percentage' as const,
-  platform_service_fee_percentage: 5,
+  platform_service_fee_type: 'fixed' as const,
+  platform_service_fee_percentage: 0,
   platform_service_fee_fixed: 0,
-  show_service_fee_to_customer: true,
+  show_service_fee_to_customer: false,
   cash_enabled_on_platform: false,
 };
 
@@ -46,8 +46,8 @@ export async function GET(request: NextRequest) {
     const payouts = settings?.payouts as Record<string, any> | undefined;
     const paymentTypes = settings?.payment_types as Record<string, any> | undefined;
     return successResponse({
-      platform_service_fee_type: (payouts?.platform_service_fee_type as string) || 'percentage',
-      platform_service_fee_percentage: (payouts?.platform_service_fee_percentage as number) ?? 5,
+      platform_service_fee_type: (payouts?.platform_service_fee_type as string) || 'fixed',
+      platform_service_fee_percentage: (payouts?.platform_service_fee_percentage as number) ?? 0,
       platform_service_fee_fixed: (payouts?.platform_service_fee_fixed as number) ?? 0,
       show_service_fee_to_customer: (payouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform: paymentTypes?.cash === true,
@@ -85,7 +85,7 @@ export async function PATCH(request: NextRequest) {
     const currentSettings = (existingRow?.settings as Record<string, any>) || {};
     const payouts = { ...(currentSettings.payouts as Record<string, any> || {}) };
     const paymentTypes = { ...(currentSettings.payment_types as Record<string, any> || {}) };
-    payouts.platform_service_fee_type = validatedData.platform_service_fee_type ?? payouts.platform_service_fee_type ?? 'percentage';
+    payouts.platform_service_fee_type = validatedData.platform_service_fee_type ?? payouts.platform_service_fee_type ?? 'fixed';
     payouts.platform_service_fee_percentage = validatedData.platform_service_fee_percentage ?? (payouts.platform_service_fee_percentage as number) ?? 0;
     payouts.platform_service_fee_fixed = validatedData.platform_service_fee_fixed ?? (payouts.platform_service_fee_fixed as number) ?? 0;
     if (validatedData.show_service_fee_to_customer !== undefined) {
@@ -117,8 +117,8 @@ export async function PATCH(request: NextRequest) {
 
       const outPayouts = (updated?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
       return successResponse({
-        platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
-        platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,
+        platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'fixed',
+        platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 0,
         platform_service_fee_fixed: (outPayouts?.platform_service_fee_fixed as number) ?? 0,
         show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
         cash_enabled_on_platform:
@@ -143,8 +143,8 @@ export async function PATCH(request: NextRequest) {
 
     const outPayouts = (inserted?.settings as Record<string, any>)?.payouts as Record<string, any> | undefined;
     return successResponse({
-      platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'percentage',
-      platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 5,
+      platform_service_fee_type: (outPayouts?.platform_service_fee_type as string) || 'fixed',
+      platform_service_fee_percentage: (outPayouts?.platform_service_fee_percentage as number) ?? 0,
       platform_service_fee_fixed: (outPayouts?.platform_service_fee_fixed as number) ?? 0,
       show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform:

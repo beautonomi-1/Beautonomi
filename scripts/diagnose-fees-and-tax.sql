@@ -76,8 +76,11 @@ FROM latest_settings;
 
 
 -- ============================================================================
--- BLOCK 3: Provider tax rates
---           (feeds bookingState.taxRate in the customer booking flow)
+-- BLOCK 3: Provider tax rates AND fee config overrides
+--           Shows BOTH the tax rate (null vs 0 matters!) and whether the
+--           provider has a customer_fee_config_id that overrides platform fees.
+--           After the validate-booking.ts fix: NULL → platform default,
+--           0 → no tax (explicit). Both are now handled correctly.
 -- ============================================================================
 SELECT
   p.id                                                                           AS provider_id,
@@ -85,17 +88,33 @@ SELECT
   p.slug,
   p.status,
   p.tax_rate_percent,
-  p.tips_enabled,
   CASE
-    WHEN p.tax_rate_percent IS NULL OR p.tax_rate_percent = 0
-      THEN 'No tax — tax line will NOT appear in booking flow'
-    ELSE format(
-      '%.2f%% tax — adds R%.2f on a R500 booking',
-      p.tax_rate_percent,
-      ROUND(500 * p.tax_rate_percent / 100, 2)
-    )
-  END                                                                            AS tax_note
+    WHEN p.tax_rate_percent IS NULL
+      THEN '⚠ NULL — server falls back to platform default tax (check Block 1 taxes.default_tax_rate)'
+    WHEN p.tax_rate_percent = 0
+      THEN '✓ Explicit 0% — no tax charged (fixed by null-check in validate-booking)'
+    ELSE format('%.2f%% — adds R%.2f on R500', p.tax_rate_percent, ROUND(500 * p.tax_rate_percent / 100, 2))
+  END                                                                            AS tax_note,
+  p.customer_fee_config_id,
+  CASE
+    WHEN p.customer_fee_config_id IS NOT NULL
+      THEN '⚠ Provider has fee config override — platform_settings.payouts is IGNORED for this provider'
+    ELSE '✓ Uses platform_settings.payouts (Block 1/2)'
+  END                                                                            AS fee_source,
+  -- Show the actual fee config row if one is assigned
+  -- NOTE: platform_fee_config has no show_fee_to_customer column;
+  --       visibility is determined by applies_to ('customer'|'provider'|'both')
+  pfc.name                                                                       AS fee_config_name,
+  pfc.fee_type                                                                   AS fee_config_type,
+  pfc.fee_percentage                                                             AS fee_config_pct,
+  pfc.fee_fixed_amount                                                           AS fee_config_fixed,
+  pfc.min_booking_amount                                                         AS fee_config_min_booking,
+  pfc.max_fee_amount                                                             AS fee_config_max_fee,
+  pfc.applies_to                                                                 AS fee_config_applies_to,
+  pfc.is_active                                                                  AS fee_config_active,
+  p.tips_enabled
 FROM providers p
+LEFT JOIN platform_fee_config pfc ON pfc.id = p.customer_fee_config_id
 WHERE p.status = 'active'
 ORDER BY p.business_name;
 
@@ -165,48 +184,101 @@ LIMIT 20;
 
 
 -- ============================================================================
--- BLOCK 5: What should a customer see for a R500 booking?
---           Full calculation for each active provider using current DB config
+-- BLOCK 5: What will a customer ACTUALLY be charged for a R500 booking?
+--           Mirrors validate-booking.ts priority exactly:
+--             1. provider.customer_fee_config_id → platform_fee_config row
+--             2. platform_settings.payouts fallback
+--           Tax: 0 if provider explicitly set 0% (NULL falls to platform default)
 -- ============================================================================
-WITH fee_config AS (
+-- NOTE: platform_fee_config has no show_fee_to_customer column.
+--       Visibility is based on applies_to: 'customer'|'both' = shown, 'provider' = hidden.
+--       Migration 123 assigned customer_default (10%) to ALL providers by default.
+--       Run Block 3 to see which providers are affected and clear customer_fee_config_id if needed:
+--         UPDATE providers SET customer_fee_config_id = NULL WHERE slug = 'your-slug';
+WITH platform_fee AS (
   SELECT
     COALESCE(settings->'payouts'->>'platform_service_fee_type', 'percentage')          AS fee_type,
-    COALESCE((settings->'payouts'->>'platform_service_fee_percentage')::NUMERIC, 5)    AS fee_pct,
+    COALESCE((settings->'payouts'->>'platform_service_fee_percentage')::NUMERIC, 0)    AS fee_pct,
     COALESCE((settings->'payouts'->>'platform_service_fee_fixed')::NUMERIC, 0)         AS fee_fixed,
-    COALESCE((settings->'payouts'->>'show_service_fee_to_customer')::BOOLEAN, TRUE)    AS show_fee
+    COALESCE((settings->'payouts'->>'show_service_fee_to_customer')::BOOLEAN, TRUE)    AS show_fee,
+    COALESCE((settings->'taxes'->>'default_tax_rate')::NUMERIC, 0)                     AS platform_tax_rate
   FROM platform_settings
   WHERE is_active = TRUE
   ORDER BY tenant_id NULLS FIRST, updated_at DESC
   LIMIT 1
+),
+effective AS (
+  SELECT
+    p.id,
+    p.business_name,
+    p.slug,
+    -- Tax: NULL → use platform default, 0 → no tax (explicit), N → N%
+    CASE
+      WHEN p.tax_rate_percent IS NULL THEN pf.platform_tax_rate
+      ELSE p.tax_rate_percent
+    END                                                                          AS effective_tax_rate,
+    CASE
+      WHEN p.tax_rate_percent IS NULL THEN 'platform default'
+      ELSE 'provider explicit'
+    END                                                                          AS tax_source,
+    -- Fee: use fee config if assigned AND active, else platform settings
+    CASE
+      WHEN p.customer_fee_config_id IS NOT NULL AND pfc.is_active = TRUE THEN pfc.fee_type
+      ELSE pf.fee_type
+    END                                                                          AS effective_fee_type,
+    CASE
+      WHEN p.customer_fee_config_id IS NOT NULL AND pfc.is_active = TRUE THEN COALESCE(pfc.fee_percentage, 0)
+      ELSE pf.fee_pct
+    END                                                                          AS effective_fee_pct,
+    CASE
+      WHEN p.customer_fee_config_id IS NOT NULL AND pfc.is_active = TRUE THEN COALESCE(pfc.fee_fixed_amount, 0)
+      ELSE pf.fee_fixed
+    END                                                                          AS effective_fee_fixed,
+    -- applies_to 'customer'|'both' → show; 'provider' → hidden (no show_fee_to_customer column)
+    CASE
+      WHEN p.customer_fee_config_id IS NOT NULL AND pfc.is_active = TRUE
+        THEN pfc.applies_to IN ('customer', 'both')
+      ELSE pf.show_fee
+    END                                                                          AS effective_show_fee,
+    CASE
+      WHEN p.customer_fee_config_id IS NOT NULL AND pfc.is_active = TRUE
+        THEN '⚠ fee config: ' || COALESCE(pfc.name, pfc.id::TEXT) || ' (' || pfc.fee_type || ')'
+      ELSE 'platform_settings.payouts'
+    END                                                                          AS fee_source
+  FROM providers p
+  CROSS JOIN platform_fee pf
+  LEFT JOIN platform_fee_config pfc ON pfc.id = p.customer_fee_config_id
+  WHERE p.status = 'active'
 )
 SELECT
-  p.business_name,
-  p.slug,
+  e.business_name,
+  e.slug,
   500.00                                                                         AS "Subtotal",
-  COALESCE(p.tax_rate_percent, 0) || '%'                                        AS "Tax rate",
-  ROUND(500.00 * COALESCE(p.tax_rate_percent, 0) / 100, 2)                      AS "Tax amount",
-  fc.fee_type                                                                    AS "Fee type",
-  CASE fc.fee_type
-    WHEN 'fixed'      THEN 'R' || fc.fee_fixed
-    WHEN 'percentage' THEN fc.fee_pct || '%'
+  COALESCE(e.effective_tax_rate, 0) || '%'                                       AS "Tax rate",
+  e.tax_source                                                                   AS "Tax source",
+  ROUND(500.00 * COALESCE(e.effective_tax_rate, 0) / 100, 2)                    AS "Tax amount",
+  e.effective_fee_type                                                           AS "Fee type",
+  CASE e.effective_fee_type
+    WHEN 'fixed_amount' THEN 'R' || e.effective_fee_fixed
+    WHEN 'fixed'        THEN 'R' || e.effective_fee_fixed
+    ELSE e.effective_fee_pct || '%'
   END                                                                            AS "Fee config",
-  fc.show_fee                                                                    AS "Show fee?",
+  e.fee_source                                                                   AS "Fee source",
+  e.effective_show_fee                                                           AS "Show fee?",
   CASE
-    WHEN NOT fc.show_fee THEN 0
-    WHEN fc.fee_type = 'fixed' THEN fc.fee_fixed
-    ELSE ROUND(500.00 * fc.fee_pct / 100, 2)
+    WHEN NOT COALESCE(e.effective_show_fee, TRUE) THEN 0
+    WHEN e.effective_fee_type IN ('fixed', 'fixed_amount')   THEN e.effective_fee_fixed
+    ELSE ROUND(500.00 * e.effective_fee_pct / 100, 2)
   END                                                                            AS "Service fee (shown)",
   ROUND(
     500.00
-    + ROUND(500.00 * COALESCE(p.tax_rate_percent, 0) / 100, 2)
+    + ROUND(500.00 * COALESCE(e.effective_tax_rate, 0) / 100, 2)
     + CASE
-        WHEN NOT fc.show_fee THEN 0
-        WHEN fc.fee_type = 'fixed' THEN fc.fee_fixed
-        ELSE ROUND(500.00 * fc.fee_pct / 100, 2)
+        WHEN NOT COALESCE(e.effective_show_fee, TRUE) THEN 0
+        WHEN e.effective_fee_type IN ('fixed', 'fixed_amount') THEN e.effective_fee_fixed
+        ELSE ROUND(500.00 * e.effective_fee_pct / 100, 2)
       END,
     2
   )                                                                              AS "Total customer pays"
-FROM providers p
-CROSS JOIN fee_config fc
-WHERE p.status = 'active'
-ORDER BY p.business_name;
+FROM effective e
+ORDER BY e.business_name;

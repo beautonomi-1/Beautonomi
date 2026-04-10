@@ -965,10 +965,15 @@ export async function validateBooking(
   const tipsEnabled = Boolean((provider as any)?.tips_enabled ?? true);
   const tipAmount = tipsEnabled ? (draft.tip_amount || 0) : 0;
 
-  let taxRate = Number((provider as any)?.tax_rate_percent || 0);
-  if (taxRate === 0) {
+  // Use null/undefined check — provider explicitly setting 0% is valid and must NOT fall through
+  // to the platform default (|| 0 would treat 0% as "not set" which causes bogus 15% fallback)
+  const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
+  let taxRate: number;
+  if (rawProviderTaxRate == null) {
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
+  } else {
+    taxRate = Math.max(0, Number(rawProviderTaxRate));
   }
   const taxAmount = taxRate > 0 ? percentOf(subtotalAfterMembership, taxRate) : 0;
 
@@ -1015,9 +1020,10 @@ export async function validateBooking(
     });
     const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
     const payoutSettings = (settings as Record<string, any> | undefined)?.payouts || {};
-    const serviceFeeType = payoutSettings.platform_service_fee_type || "percentage";
-    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage || 0;
-    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed || 0;
+    // Default to "fixed" (R0) when platform not configured — never default to percentage
+    const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
+    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
+    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
 
     if (serviceFeeType === "percentage") {
       serviceFeePercentage = fallbackFeePercentage;

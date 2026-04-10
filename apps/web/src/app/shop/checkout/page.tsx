@@ -76,7 +76,7 @@ export default function ProductCheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "percentage", percentage: 5, fixed: 0, show: true });
+  const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "fixed", percentage: 0, fixed: 0, show: false });
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
@@ -150,11 +150,14 @@ export default function ProductCheckoutPage() {
           if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
         }
 
-        const feeRes = await fetcher.get<{ data: any }>("/api/public/platform-fees");
+        const feeUrl = effectiveProviderId
+          ? `/api/public/platform-fees?provider_id=${encodeURIComponent(effectiveProviderId)}`
+          : "/api/public/platform-fees";
+        const feeRes = await fetcher.get<{ data: any }>(feeUrl);
         if (!cancelled && feeRes?.data) {
           setPlatformFeeConfig({
-            type: feeRes.data.platform_service_fee_type ?? "percentage",
-            percentage: feeRes.data.platform_service_fee_percentage ?? 5,
+            type: feeRes.data.platform_service_fee_type ?? "fixed",
+            percentage: feeRes.data.platform_service_fee_percentage ?? 0,
             fixed: feeRes.data.platform_service_fee_fixed ?? 0,
             show: feeRes.data.show_service_fee_to_customer !== false,
           });

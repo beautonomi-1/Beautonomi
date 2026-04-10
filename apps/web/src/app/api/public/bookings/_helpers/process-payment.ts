@@ -656,6 +656,19 @@ async function insertNoGatewayLedger(
     created_at: new Date().toISOString(),
   });
 
+  // Idempotency: skip ledger writes if a payment row already exists for this booking
+  // (prevents duplicates if this function is ever retried after a partial failure).
+  const { data: existingLedgerPayment } = await (supabase.from("finance_transactions") as any)
+    .select("id")
+    .eq("booking_id", booking.id)
+    .eq("transaction_type", "payment")
+    .maybeSingle();
+
+  if (existingLedgerPayment) {
+    console.log(`[process-payment] finance_transactions already present for booking ${booking.id} (${settlementMethod}) — skipping duplicate write.`);
+    return { paymentUrl: null };
+  }
+
   const now = new Date().toISOString();
   await (supabase.from("finance_transactions") as any).insert([
     {

@@ -136,7 +136,9 @@ export async function computeCustomOfferPricing(
     }
   }
 
-  if (serviceFeeAmount === 0) {
+  // Only fall back to platform settings when the provider has NO fee config assigned.
+  // If they have one but it produces R0 (e.g. 0% rate or below min), respect that.
+  if (serviceFeeAmount === 0 && !(provider as any)?.customer_fee_config_id) {
     const { data: platformRow } = await (supabase.from("platform_settings") as any)
       .select("settings")
       .eq("is_active", true)
@@ -145,7 +147,7 @@ export async function computeCustomOfferPricing(
       .maybeSingle();
 
     const payoutSettings = (platformRow as any)?.settings?.payouts || {};
-    const feeType = payoutSettings.platform_service_fee_type || "percentage";
+    const feeType = payoutSettings.platform_service_fee_type || "fixed";
     const feePct = payoutSettings.platform_service_fee_percentage ?? 0;
     const feeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
 

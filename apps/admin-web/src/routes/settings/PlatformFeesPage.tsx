@@ -44,8 +44,8 @@ export function PlatformFeesPage() {
 
   useEffect(() => {
     if (q.data) {
-      setFeeType(q.data.platform_service_fee_type ?? "percentage");
-      setFeePercentage(String(q.data.platform_service_fee_percentage ?? 5));
+      setFeeType(q.data.platform_service_fee_type ?? "fixed");
+      setFeePercentage(String(q.data.platform_service_fee_percentage ?? 0));
       setFeeFixed(String(q.data.platform_service_fee_fixed ?? 0));
       setShowToCustomer(q.data.show_service_fee_to_customer !== false);
       setCashEnabled(q.data.cash_enabled_on_platform === true);

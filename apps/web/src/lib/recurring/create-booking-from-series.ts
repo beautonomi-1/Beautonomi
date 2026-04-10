@@ -69,7 +69,7 @@ export async function createBookingFromRecurringSeries(
 
   const { data: providerRow } = await admin
     .from("providers")
-    .select("tenant_id, currency")
+    .select("tenant_id, currency, tax_rate_percent, customer_fee_config_id")
     .eq("id", row.provider_id)
     .maybeSingle();
 
@@ -96,9 +96,55 @@ export async function createBookingFromRecurringSeries(
     subtotal += Number(o.price || 0);
   }
 
-  const taxRate = await getEffectiveTaxRate(row.provider_id);
+  // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
+  // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
+  const providerTaxRatePct = (providerRow as any)?.tax_rate_percent ?? null;
+  const taxRate = await getEffectiveTaxRate(row.provider_id, providerTaxRatePct);
   const taxAmount = Math.round(subtotal * (Number(taxRate) / 100) * 100) / 100;
-  const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
+
+  // Service fee — mirrors validate-booking.ts priority:
+  //   1. Provider customer_fee_config_id  2. platform_settings.payouts fallback
+  let serviceFeePercentage = 0;
+  let serviceFeeAmount = 0;
+  const providerFeeConfigId = (providerRow as any)?.customer_fee_config_id ?? null;
+  if (providerFeeConfigId) {
+    const { data: feeConfig } = await admin
+      .from("platform_fee_config")
+      .select("fee_type, fee_percentage, fee_fixed_amount")
+      .eq("id", providerFeeConfigId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (feeConfig) {
+      if ((feeConfig as any).fee_type === "percentage") {
+        serviceFeePercentage = Number((feeConfig as any).fee_percentage || 0);
+        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+      } else {
+        serviceFeeAmount = Number((feeConfig as any).fee_fixed_amount || 0);
+      }
+    }
+  }
+  // Fallback to platform_settings.payouts when no provider override
+  if (serviceFeeAmount === 0 && !providerFeeConfigId) {
+    const { data: psRow } = await admin
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const payoutSettings = ((psRow as any)?.settings as Record<string, any> | null)?.payouts as Record<string, any> | undefined;
+    if (payoutSettings) {
+      const feeType = (payoutSettings.platform_service_fee_type as string) || "fixed";
+      if (feeType === "percentage") {
+        serviceFeePercentage = Number(payoutSettings.platform_service_fee_percentage ?? 0);
+        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+      } else {
+        serviceFeeAmount = Number(payoutSettings.platform_service_fee_fixed ?? 0);
+      }
+    }
+  }
+
+  const totalAmount = Math.round((subtotal + taxAmount + serviceFeeAmount) * 100) / 100;
 
   const portalStatus = await determineAppointmentStatusFromDB(admin, row.provider_id);
   const dbStatus = mapPortalStatusToDb(portalStatus);
@@ -181,8 +227,8 @@ export async function createBookingFromRecurringSeries(
     special_requests: row.notes || null,
     loyalty_points_earned: 0,
     travel_fee: 0,
-    service_fee_percentage: 0,
-    service_fee_amount: 0,
+    service_fee_percentage: serviceFeePercentage,
+    service_fee_amount: serviceFeeAmount,
     service_fee_paid_by: "customer",
   };
 

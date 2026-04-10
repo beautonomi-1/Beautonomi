@@ -286,7 +286,7 @@ export default function NewBookingScreen() {
         : (parseFloat(discountValue) || 0)
       : 0;
     const afterDiscount = Math.max(subtotal - discountAmt, 0);
-    const taxRatePercent = paymentSettings?.taxRatePercent ?? 15;
+    const taxRatePercent = paymentSettings?.taxRatePercent ?? 0;
     const taxRate = taxRatePercent / 100;
     const taxInclusive = paymentSettings?.taxInclusive ?? true;
     const tax = taxInclusive
@@ -1178,7 +1178,7 @@ export default function NewBookingScreen() {
               </View>
             )}
             <View style={twStyle("flex-row justify-between")}>
-              <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 15}%)</Text>
+              <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 0}%)</Text>
               <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, tenantCurrency)}</Text>
             </View>
             {summary.travelFeeNum > 0 && (
@@ -1417,7 +1417,7 @@ function ConfirmationView({
           </View>
         )}
         <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 15}%)</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>VAT ({summary.taxRatePercent ?? 0}%)</Text>
           <Text style={twStyle("text-sm text-gray-700")}>{formatCurrency(summary.tax, currency)}</Text>
         </View>
         {(summary.travelFeeNum ?? 0) > 0 && (

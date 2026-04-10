@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     const defaultTaxRate =
-      platformSettings?.settings?.taxes?.default_tax_rate ?? 15;
+      platformSettings?.settings?.taxes?.default_tax_rate ?? 0;
 
     const result = {
       currency: provider.currency || lastResortCurrency,

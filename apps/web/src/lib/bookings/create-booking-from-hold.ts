@@ -76,15 +76,21 @@ export async function createBookingFromHold(
     throw new Error("Provider not found");
   }
 
-  let taxRate = Number((provider as any)?.tax_rate_percent || 0);
-  if (taxRate === 0) {
+  // Null check — 0% is explicit "no tax", not "unset". Only fall back to platform default when NULL.
+  const rawHoldTaxRate = (provider as any)?.tax_rate_percent;
+  let taxRate: number;
+  if (rawHoldTaxRate == null) {
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
+  } else {
+    taxRate = Math.max(0, Number(rawHoldTaxRate));
   }
   const taxAmount = taxRate > 0 ? percentOf(subtotal, taxRate) : 0;
 
   let serviceFeeAmount = 0;
   let serviceFeePercentage = 0;
+  let usedFeeConfigId: string | null = null;
+
   if ((provider as any)?.customer_fee_config_id) {
     const { data: feeConfig } = await supabase
       .from("platform_fee_config")
@@ -93,11 +99,33 @@ export async function createBookingFromHold(
       .eq("is_active", true)
       .single();
     if (feeConfig) {
+      usedFeeConfigId = feeConfig.id;
       if (feeConfig.fee_type === "percentage") {
         serviceFeePercentage = Number(feeConfig.fee_percentage || 0);
         serviceFeeAmount = percentOf(subtotal, serviceFeePercentage);
       } else {
         serviceFeeAmount = Number(feeConfig.fee_fixed_amount || 0);
+      }
+    }
+  }
+
+  // Fallback to platform_settings.payouts when no provider fee config (mirrors validate-booking.ts)
+  if (serviceFeeAmount === 0 && !usedFeeConfigId) {
+    const { data: platformRow } = await adminSupabase
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const payoutSettings = (platformRow?.settings as Record<string, any> | null)?.payouts as Record<string, any> | undefined;
+    if (payoutSettings) {
+      const feeType = (payoutSettings.platform_service_fee_type as string) || "fixed";
+      if (feeType === "percentage") {
+        serviceFeePercentage = Number(payoutSettings.platform_service_fee_percentage ?? 0);
+        serviceFeeAmount = percentOf(subtotal, serviceFeePercentage);
+      } else {
+        serviceFeeAmount = Number(payoutSettings.platform_service_fee_fixed ?? 0);
       }
     }
   }

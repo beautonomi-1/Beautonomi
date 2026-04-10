@@ -382,28 +382,33 @@ export default function BookingFlow() {
     };
   }, [searchParams]);
 
-  // Load platform fee settings
+  // Load effective platform fee settings for this provider.
+  // Pass provider_id so the API mirrors validate-booking priority:
+  // provider customer_fee_config → platform_settings.payouts fallback.
+  // Re-fetch when providerId is known so fee preview always matches what the server will charge.
   useEffect(() => {
     const loadPlatformFeeSettings = async () => {
       try {
-        const response = await fetch("/api/public/platform-fees");
+        const url = bookingState.providerId
+          ? `/api/public/platform-fees?provider_id=${encodeURIComponent(bookingState.providerId)}`
+          : "/api/public/platform-fees";
+        const response = await fetch(url);
         const data = await response.json();
         if (data.data) {
           setPlatformFeeSettings(data.data);
         }
       } catch (error) {
         console.error("Error loading platform fee settings:", error);
-        // Use defaults
         setPlatformFeeSettings({
-          platform_service_fee_type: "percentage",
-          platform_service_fee_percentage: 5,
+          platform_service_fee_type: "fixed",
+          platform_service_fee_percentage: 0,
           platform_service_fee_fixed: 0,
           show_service_fee_to_customer: true,
         });
       }
     };
-    loadPlatformFeeSettings();
-  }, []);
+    void loadPlatformFeeSettings();
+  }, [bookingState.providerId]);
 
   // Membership discount is applied server-side from provider membership plans (user_memberships) in validate-booking
   const membershipDiscountPercent = 0;
@@ -495,7 +500,7 @@ export default function BookingFlow() {
           if (data.data?.id) {
             updateBookingState({
               providerId: data.data.id,
-              taxRate: Number(data.data.tax_rate_percent) || 0,
+              taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
             });
           }
           // If provider opted out of search engine indexing, inject a noindex meta into this page

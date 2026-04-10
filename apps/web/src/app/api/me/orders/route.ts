@@ -281,15 +281,15 @@ export async function POST(request: NextRequest) {
       const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
       const payouts = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
       if (payouts) {
-        const feeType = (payouts.platform_service_fee_type as string) || "percentage";
-        if (feeType === "fixed") {
-          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
-        } else {
-          const pct = Number(payouts.platform_service_fee_percentage) || 5;
+        const feeType = (payouts.platform_service_fee_type as string) || "fixed";
+        if (feeType === "percentage") {
+          const pct = Number(payouts.platform_service_fee_percentage) ?? 0;
           platformFee = percentOf(subtotal, pct);
+        } else {
+          platformFee = Number(payouts.platform_service_fee_fixed) ?? 0;
         }
       } else {
-        platformFee = percentOf(subtotal, 5);
+        platformFee = 0;
       }
     }
 
