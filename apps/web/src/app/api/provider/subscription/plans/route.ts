@@ -94,12 +94,13 @@ export async function GET(request: NextRequest) {
     const result = (plans || []).map((p: any) => ({
       id: p.id,
       name: p.name,
-      amount: Number(p.amount || 0),
+      amount: Number(p.amount || p.price_monthly || 0),
       currency: p.currency || lastResortCurrency,
       interval: p.interval || "month",
       features: p.features || [],
       limits: p.limits || { max_bookings: null, max_staff: null, max_locations: null },
       is_popular: p.is_popular || false,
+      is_free: p.is_free === true || Number(p.amount || p.price_monthly || 0) === 0,
     }));
 
     return successResponse(result);

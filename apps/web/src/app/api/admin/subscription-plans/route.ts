@@ -89,6 +89,8 @@ const createPlanSchema = z.object({
 
 const updatePlanSchema = createPlanSchema.partial().extend({
   update_existing_subscriptions: z.boolean().optional(),
+  paystack_plan_code_monthly: z.string().nullable().optional(),
+  paystack_plan_code_yearly: z.string().nullable().optional(),
 });
 
 /**
@@ -329,7 +331,15 @@ export async function PUT(request: NextRequest) {
       .select()
       .single();
 
-    if (planError) throw planError;
+    if (planError) {
+      const detail = (planError as any).message || (planError as any).details || String(planError);
+      return handleApiError(
+        new Error(`Database error: ${detail}`),
+        `Failed to update plan: ${detail}`,
+        'DB_ERROR',
+        400
+      );
+    }
 
     return successResponse(plan);
   } catch (error) {
@@ -341,6 +351,7 @@ export async function PUT(request: NextRequest) {
         400
       );
     }
-    return handleApiError(error, 'Failed to update subscription plan');
+    const msg = (error instanceof Error) ? error.message : 'Failed to update subscription plan';
+    return handleApiError(error, msg);
   }
 }

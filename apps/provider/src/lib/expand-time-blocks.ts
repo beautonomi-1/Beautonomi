@@ -9,9 +9,12 @@ export function resolveTimeBlockRecordId(block: { id: string }): string {
 
 type RecurrenceRule = {
   pattern?: string;
+  frequency?: string;
   interval?: number;
   end_date?: string;
   occurrences?: number;
+  days?: number[];
+  days_of_week?: number[];
 };
 
 export type ExpandableTimeBlock = {
@@ -20,10 +23,11 @@ export type ExpandableTimeBlock = {
   is_recurring?: boolean;
   is_active?: boolean;
   recurrence_rule?: unknown;
+  recurring_pattern?: unknown;
 };
 
 function ruleFromBlock(block: ExpandableTimeBlock): RecurrenceRule | null {
-  const raw = block.recurrence_rule;
+  const raw = block.recurring_pattern ?? block.recurrence_rule;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   return raw as RecurrenceRule;
 }
@@ -40,7 +44,7 @@ export function timeBlockAppliesOnDate(block: ExpandableTimeBlock, ymd: string):
   }
 
   const rule = ruleFromBlock(block);
-  const pattern = (rule?.pattern || "weekly").toLowerCase();
+  const pattern = (rule?.frequency || rule?.pattern || "weekly").toLowerCase();
   const anchor = parseISO(`${block.date}T12:00:00`);
   const target = parseISO(`${ymd}T12:00:00`);
   if (Number.isNaN(anchor.getTime()) || Number.isNaN(target.getTime())) return false;
@@ -48,6 +52,7 @@ export function timeBlockAppliesOnDate(block: ExpandableTimeBlock, ymd: string):
   if (rule?.end_date && ymd > rule.end_date) return false;
 
   const interval = Math.max(1, rule?.interval ?? 1);
+  const explicitDays = rule?.days ?? rule?.days_of_week;
 
   if (pattern === "daily") {
     const daysDiff = Math.floor((target.getTime() - anchor.getTime()) / (24 * 60 * 60 * 1000));
@@ -55,7 +60,12 @@ export function timeBlockAppliesOnDate(block: ExpandableTimeBlock, ymd: string):
   }
 
   if (pattern === "weekly" || pattern === "biweekly") {
-    if (getDay(target) !== getDay(anchor)) return false;
+    const targetDay = getDay(target);
+    if (explicitDays && explicitDays.length > 0) {
+      if (!explicitDays.includes(targetDay)) return false;
+    } else {
+      if (targetDay !== getDay(anchor)) return false;
+    }
     const weeks = Math.floor((target.getTime() - anchor.getTime()) / (7 * 24 * 60 * 60 * 1000));
     const every = pattern === "biweekly" ? 2 : interval;
     return weeks % every === 0;

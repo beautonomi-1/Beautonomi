@@ -55,7 +55,23 @@ export default function OperatingHoursSettings() {
           saturday: { open: "09:00", close: "18:00", closed: false },
           sunday: { open: "09:00", close: "18:00", closed: false },
         };
-        setOperatingHours(location.operating_hours || defaultHours);
+        // Convert Format A (is_open/open_time/close_time) from DB to Format B (open/close/closed)
+        const raw = location.operating_hours || {};
+        const converted: OperatingHours = {} as OperatingHours;
+        const dayKeys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+        for (const dk of dayKeys) {
+          const d = (raw as Record<string, any>)[dk];
+          if (d && typeof d === "object") {
+            converted[dk] = {
+              open: d.open || d.open_time || "09:00",
+              close: d.close || d.close_time || "18:00",
+              closed: d.closed === true || d.is_open === false,
+            };
+          } else {
+            converted[dk] = defaultHours[dk];
+          }
+        }
+        setOperatingHours(converted);
         setHasChanges(false);
       }
     }

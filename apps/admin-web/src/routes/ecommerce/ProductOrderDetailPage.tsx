@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -34,9 +35,34 @@ function formatAddress(a: Record<string, unknown> | null | undefined): string {
   return parts.length ? parts.map((p) => str(p)).join(" · ") : "—";
 }
 
+const ORDER_STATUSES = ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"] as const;
+const PAYMENT_STATUSES = ["pending", "paid", "refunded", "partially_refunded", "failed"] as const;
+const STATUS_BADGE: Record<string, string> = {
+  pending: "bg-amber-100 text-amber-800",
+  confirmed: "bg-blue-100 text-blue-800",
+  processing: "bg-indigo-100 text-indigo-800",
+  shipped: "bg-purple-100 text-purple-800",
+  delivered: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-800",
+  refunded: "bg-gray-100 text-gray-600",
+  paid: "bg-green-100 text-green-800",
+  partially_refunded: "bg-orange-100 text-orange-800",
+  failed: "bg-red-100 text-red-800",
+};
+
 export function ProductOrderDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E-commerce access is required.");
+  const [trackingInput, setTrackingInput] = useState("");
+
+  const updateOrder = useMutation({
+    mutationFn: (updates: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/product-orders/${encodeURIComponent(id)}`, updates),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.productOrderDetail(id) });
+    },
+  });
 
   const q = useQuery({
     queryKey: adminQueryKeys.productOrderDetail(id),
@@ -102,7 +128,16 @@ export function ProductOrderDetailPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title={`Order ${str(order.order_number ?? id)}`}
-        description={`${str(order.status)} · payment ${str(order.payment_status)}`}
+        description={
+          <span className="flex items-center gap-2">
+            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.status)] ?? "bg-gray-100 text-gray-600"}`}>
+              {str(order.status)}
+            </span>
+            <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[str(order.payment_status)] ?? "bg-gray-100 text-gray-600"}`}>
+              payment: {str(order.payment_status)}
+            </span>
+          </span>
+        }
         actions={
           <Link
             to={adminSpaTo("/admin/ecommerce/orders")}
@@ -112,6 +147,74 @@ export function ProductOrderDetailPage() {
           </Link>
         }
       />
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Manage Order</h2>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Order Status</label>
+            <select
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+              value={str(order.status)}
+              disabled={updateOrder.isPending}
+              onChange={(e) => {
+                if (confirm(`Change order status to "${e.target.value}"?`))
+                  updateOrder.mutate({ status: e.target.value });
+              }}
+            >
+              {ORDER_STATUSES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Payment Status</label>
+            <select
+              className="rounded border border-gray-300 px-2 py-1.5 text-sm"
+              value={str(order.payment_status)}
+              disabled={updateOrder.isPending}
+              onChange={(e) => {
+                if (confirm(`Change payment status to "${e.target.value}"?`))
+                  updateOrder.mutate({ payment_status: e.target.value });
+              }}
+            >
+              {PAYMENT_STATUSES.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Tracking Number</label>
+            <div className="flex gap-1">
+              <input
+                className="rounded border border-gray-300 px-2 py-1.5 text-sm font-mono w-48"
+                value={trackingInput || str(order.tracking_number)}
+                onChange={(e) => setTrackingInput(e.target.value)}
+                placeholder="Enter tracking #"
+              />
+              <button
+                type="button"
+                className="rounded bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-700 disabled:opacity-50"
+                disabled={updateOrder.isPending}
+                onClick={() => {
+                  if (trackingInput.trim())
+                    updateOrder.mutate({ tracking_number: trackingInput.trim() });
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+        {updateOrder.isError && (
+          <p className="mt-2 text-sm text-red-600">
+            {(updateOrder.error as Error)?.message || "Failed to update order"}
+          </p>
+        )}
+        {updateOrder.isSuccess && (
+          <p className="mt-2 text-sm text-green-600">Order updated successfully</p>
+        )}
+      </AdminPanel>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <AdminPanel>

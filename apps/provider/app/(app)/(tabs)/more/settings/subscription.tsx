@@ -24,6 +24,7 @@ interface Plan {
   interval: string;
   features: string[];
   is_popular?: boolean;
+  is_free?: boolean;
 }
 
 interface Subscription {
@@ -115,6 +116,26 @@ export default function SubscriptionScreen() {
   }
 
   async function handleUpgrade(planId: string) {
+    const selectedPlan = plans?.find((p) => p.id === planId);
+
+    // Free plan: activate via upgrade API directly (no payment needed)
+    if (selectedPlan?.is_free || selectedPlan?.amount === 0) {
+      const { error: err, data } = await postAction(
+        "/api/provider/subscription/upgrade",
+        { plan_id: planId, billing_period: "monthly" }
+      );
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      if ((data as any)?.is_free || (data as any)?.subscription_id) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Free plan activated!");
+        refresh();
+        return;
+      }
+    }
+
     const { error: err, data } = await postAction(
       "/api/provider/subscription/initialize-payment",
       { plan_id: planId, billing_period: "monthly", in_app: true }
@@ -228,12 +249,14 @@ export default function SubscriptionScreen() {
                     )}
                   </View>
                   <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>
-                    {formatCurrency(plan.amount, plan.currency)}/{plan.interval}
+                    {plan.is_free || plan.amount === 0
+                      ? "Free"
+                      : `${formatCurrency(plan.amount, plan.currency)}/${plan.interval}`}
                   </Text>
                 </View>
                 {(subscription?.plan as Subscription["plan"])?.id !== plan.id && (
                   <ActionButton
-                    label="Upgrade"
+                    label={plan.is_free || plan.amount === 0 ? "Activate" : "Upgrade"}
                     variant="secondary"
                     size="sm"
                     onPress={() => handleUpgrade(plan.id)}

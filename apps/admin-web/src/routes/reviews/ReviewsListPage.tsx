@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -29,6 +29,7 @@ type ReviewsPayload = {
 };
 
 export function ReviewsListPage() {
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
@@ -60,6 +61,14 @@ export function ReviewsListPage() {
   const rows = q.data?.reviews ?? [];
   const pag = q.data?.pagination;
   const stats = q.data?.statistics;
+
+  const moderateReview = useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Record<string, unknown> }) =>
+      adminApi.patchJson(`/api/admin/reviews/${id}`, updates),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk });
+    },
+  });
 
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);
@@ -180,6 +189,7 @@ export function ReviewsListPage() {
               <AdminTh>Provider</AdminTh>
               <AdminTh>Customer</AdminTh>
               <AdminTh>Visible</AdminTh>
+              <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
@@ -211,7 +221,66 @@ export function ReviewsListPage() {
                       String(cust?.full_name ?? cust?.email ?? "")
                     )}
                   </AdminTd>
-                  <AdminTd>{String(row.is_visible ?? "")}</AdminTd>
+                  <AdminTd>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      row.is_visible ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+                    }`}>
+                      {row.is_visible ? "visible" : "hidden"}
+                    </span>
+                    {Boolean(row.is_flagged) ? (
+                      <span className="ml-1 inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                        flagged
+                      </span>
+                    ) : null}
+                  </AdminTd>
+                  <AdminTd>
+                    <div className="flex gap-1">
+                      {row.is_visible ? (
+                        <button
+                          type="button"
+                          className="rounded bg-gray-500 px-2 py-1 text-xs text-white hover:bg-gray-600 disabled:opacity-50"
+                          disabled={moderateReview.isPending}
+                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_visible: false } })}
+                        >
+                          Hide
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                          disabled={moderateReview.isPending}
+                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_visible: true } })}
+                        >
+                          Show
+                        </button>
+                      )}
+                      {!row.is_flagged ? (
+                        <button
+                          type="button"
+                          className="rounded bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600 disabled:opacity-50"
+                          disabled={moderateReview.isPending}
+                          onClick={() => {
+                            const reason = prompt("Flag reason (optional):");
+                            moderateReview.mutate({
+                              id: String(row.id),
+                              updates: { is_flagged: true, is_visible: false, flagged_reason: reason || null },
+                            });
+                          }}
+                        >
+                          Flag
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="rounded bg-blue-500 px-2 py-1 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
+                          disabled={moderateReview.isPending}
+                          onClick={() => moderateReview.mutate({ id: String(row.id), updates: { is_flagged: false, flagged_reason: null } })}
+                        >
+                          Unflag
+                        </button>
+                      )}
+                    </div>
+                  </AdminTd>
                 </tr>
               );
             })}

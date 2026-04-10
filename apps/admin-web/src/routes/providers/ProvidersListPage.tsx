@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -26,7 +26,16 @@ type ProviderRow = {
   owner_email?: string;
 };
 
+const STATUS_BADGE: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  pending: "bg-amber-100 text-amber-800",
+  pending_approval: "bg-amber-100 text-amber-800",
+  suspended: "bg-red-100 text-red-800",
+  inactive: "bg-gray-100 text-gray-600",
+};
+
 export function ProvidersListPage() {
+  const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
@@ -47,6 +56,15 @@ export function ProvidersListPage() {
   });
 
   const rows = q.data ?? [];
+
+  const changeStatus = useMutation({
+    mutationFn: ({ id, newStatus }: { id: string; newStatus: string }) =>
+      adminApi.patchJson(`/api/admin/providers/${id}/status`, { status: newStatus }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: qk });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+    },
+  });
 
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);
@@ -69,7 +87,15 @@ export function ProvidersListPage() {
           </Link>
         ),
       },
-      { id: "status", header: "Status", cell: (p: ProviderRow) => p.status ?? "—" },
+      {
+        id: "status",
+        header: "Status",
+        cell: (p: ProviderRow) => {
+          const s = p.status ?? "—";
+          const cls = STATUS_BADGE[s] ?? "bg-gray-100 text-gray-600";
+          return <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>{s}</span>;
+        },
+      },
       { id: "verification", header: "Verification", cell: (p: ProviderRow) => p.verification_status ?? "—" },
       {
         id: "location",
@@ -81,8 +107,58 @@ export function ProvidersListPage() {
         ),
       },
       { id: "owner", header: "Owner email", cell: (p: ProviderRow) => <span className="text-xs text-gray-600">{p.owner_email ?? "—"}</span> },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: (p: ProviderRow) => {
+          const s = p.status;
+          return (
+            <div className="flex gap-1">
+              {(s === "pending" || s === "pending_approval") && (
+                <button
+                  type="button"
+                  className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                  disabled={changeStatus.isPending}
+                  onClick={() => {
+                    if (confirm(`Approve ${p.business_name ?? "this provider"}?`))
+                      changeStatus.mutate({ id: p.id, newStatus: "active" });
+                  }}
+                >
+                  Approve
+                </button>
+              )}
+              {s === "active" && (
+                <button
+                  type="button"
+                  className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
+                  disabled={changeStatus.isPending}
+                  onClick={() => {
+                    if (confirm(`Suspend ${p.business_name ?? "this provider"}?`))
+                      changeStatus.mutate({ id: p.id, newStatus: "suspended" });
+                  }}
+                >
+                  Suspend
+                </button>
+              )}
+              {s === "suspended" && (
+                <button
+                  type="button"
+                  className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                  disabled={changeStatus.isPending}
+                  onClick={() => {
+                    if (confirm(`Reactivate ${p.business_name ?? "this provider"}?`))
+                      changeStatus.mutate({ id: p.id, newStatus: "active" });
+                  }}
+                >
+                  Reactivate
+                </button>
+              )}
+            </div>
+          );
+        },
+      },
     ],
-    []
+    [changeStatus]
   );
 
   if (denied) return denied;
@@ -101,7 +177,7 @@ export function ProvidersListPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const tabs = ["all", "active", "pending", "suspended"] as const;
+  const tabs = ["all", "active", "pending_approval", "pending", "suspended"] as const;
 
   return (
     <div className="space-y-6">

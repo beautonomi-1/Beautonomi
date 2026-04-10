@@ -37,7 +37,16 @@ export function normalizeWorkingHours(
     const day = wh[key];
     if (!day || typeof day !== "object") continue;
 
-    const isClosed = day.is_open === false || day.closed === true;
+    // When both is_open and closed are present (mixed format from web editor spread),
+    // 'closed' takes priority since it's the field the web OperatingHoursEditor toggles.
+    // Without this, toggling a day "open" sets closed=false but the stale is_open=false wins.
+    const hasClosed = day.closed !== undefined;
+    const hasIsOpen = day.is_open !== undefined;
+    const isClosed = hasClosed
+      ? day.closed === true
+      : hasIsOpen
+        ? day.is_open === false
+        : false;
     const openTime = (day.open_time || day.open || "09:00").toString().trim();
     const closeTime = (day.close_time || day.close || "18:00").toString().trim();
 
@@ -56,5 +65,15 @@ export function normalizeWorkingHours(
     result[key] = normalized;
   }
 
-  return Object.keys(result).length > 0 ? result : null;
+  if (Object.keys(result).length === 0) return null;
+
+  // Ensure all 7 days are present so partial saves don't leave gaps
+  // that resolveWorkingHoursDay treats as closed
+  for (const dayKey of DAY_KEYS) {
+    if (!result[dayKey]) {
+      result[dayKey] = { is_open: true, open_time: "09:00", close_time: "18:00" };
+    }
+  }
+
+  return result;
 }

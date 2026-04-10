@@ -1050,7 +1050,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       updated_at: booking.updated_at,
     } as unknown as Booking;
 
-    // Notify customer that provider created a booking for them
+    // Notify customer that provider created a booking for them (in-app + push/email)
     void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
       insertNotification({
         user_id: customerId,
@@ -1064,6 +1064,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
         },
         action_url: `/account-settings/bookings/${booking.id}`,
       })
+    );
+
+    // Send push/email confirmation (same as public booking flow)
+    void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
+      notifyBookingConfirmed(booking.id, ['email', 'push'])
+        .catch((e) => console.warn("Booking confirmation notification:", e))
     );
 
     void import("@/lib/subscriptions/subscription-limit-notifications")

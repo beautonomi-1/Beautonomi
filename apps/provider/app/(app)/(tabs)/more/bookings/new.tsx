@@ -363,8 +363,8 @@ export default function NewBookingScreen() {
     return null;
   }
 
-  async function checkAvailability(): Promise<boolean> {
-    if (!selectedDate || !selectedTime || selectedServices.length === 0) return true;
+  async function checkAvailability(): Promise<{ ok: boolean; warning?: string }> {
+    if (!selectedDate || !selectedTime || selectedServices.length === 0) return { ok: true };
 
     setCheckingAvailability(true);
     setConflictWarning(null);
@@ -388,13 +388,13 @@ export default function NewBookingScreen() {
 
       if (res.data && res.data.available === false) {
         const conflicts = res.data.conflicts ?? ["There is a scheduling conflict at this time."];
-        setConflictWarning(conflicts.join("\n"));
-        return false;
+        const msg = conflicts.join("\n");
+        setConflictWarning(msg);
+        return { ok: false, warning: msg };
       }
-      return true;
+      return { ok: true };
     } catch {
-      // If the endpoint doesn't exist, proceed anyway (server-side will validate)
-      return true;
+      return { ok: true };
     } finally {
       setCheckingAvailability(false);
     }
@@ -407,11 +407,11 @@ export default function NewBookingScreen() {
       return;
     }
 
-    const available = await checkAvailability();
-    if (!available) {
+    const result = await checkAvailability();
+    if (!result.ok) {
       Alert.alert(
         "Scheduling Conflict",
-        conflictWarning ?? "There is a conflict at this time. Do you want to proceed anyway?",
+        result.warning ?? "There is a conflict at this time. Do you want to proceed anyway?",
         [
           { text: "Change Time", style: "cancel" },
           { text: "Proceed Anyway", onPress: () => setShowConfirmation(true) },
@@ -469,6 +469,7 @@ export default function NewBookingScreen() {
       status: params.status || params.defaultStatus || undefined,
       referral_source_id: referralSourceId.trim() || undefined,
       booking_source: isWalkIn ? "walk_in" : "provider",
+      payment_method: paymentMethod,
     };
     if (summary.tipNum > 0) payload.tip_amount = summary.tipNum;
     if (locationType === "at_home") {

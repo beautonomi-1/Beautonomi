@@ -122,6 +122,22 @@ export async function GET(
       available_billing_periods.push("yearly");
     }
 
+    // Detect free plans: no Paystack codes, and price is "0", "Free", or empty
+    const priceStr = String(plan.price ?? "").replace(/[^0-9.]/g, "");
+    const isFreeByPrice = !priceStr || parseFloat(priceStr) === 0 || /free/i.test(String(plan.price ?? ""));
+    const isFree = isFreeByPrice && available_billing_periods.length === 0;
+
+    // For free plans, look up the linked subscription_plan_id
+    let subscriptionPlanId: string | null = null;
+    if (isFree) {
+      const { data: fullPlan } = await supabase
+        .from("pricing_plans")
+        .select("subscription_plan_id")
+        .eq("id", plan.id)
+        .maybeSingle();
+      subscriptionPlanId = (fullPlan as any)?.subscription_plan_id ?? null;
+    }
+
     return NextResponse.json({
       data: {
         id: plan.id,
@@ -134,6 +150,8 @@ export async function GET(
         currency: (plan as { currency?: string | null }).currency ?? null,
         features: features?.map((f) => f.feature_text) ?? [],
         available_billing_periods,
+        is_free: isFree,
+        subscription_plan_id: subscriptionPlanId,
       },
     });
   } catch (error) {

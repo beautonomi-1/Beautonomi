@@ -78,10 +78,27 @@ export async function GET(request: NextRequest) {
     }
 
     // Shape expected by provider subscription UI: flatten into monthly/yearly options.
+    // Free plans (is_free=true with null prices) get a single entry with price=0.
     const out = (plans || []).flatMap((p: any) => {
       const features =
         Array.isArray(p.features) ? p.features : (p.features ? Object.values(p.features) : []);
       const options: any[] = [];
+
+      if (p.is_free) {
+        options.push({
+          id: `${p.id}:free`,
+          plan_id: p.id,
+          name: p.name,
+          price: 0,
+          currency: p.currency || defaultCurrency,
+          billing_period: "monthly",
+          features,
+          is_popular: (p as any).is_popular || false,
+          is_free: true,
+        });
+        return options;
+      }
+
       if (p.price_monthly != null) {
         options.push({
           id: `${p.id}:monthly`,

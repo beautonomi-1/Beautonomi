@@ -13,9 +13,13 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const providerId = await getProviderIdForUser(user.id, supabase);
 
+    if (!providerId) {
+      return successResponse(null);
+    }
+
     const { data: subscription, error: subError } = await supabase
       .from('provider_subscriptions')
-      .select('*, plan:subscription_plans(id, name, price_monthly, price_yearly, currency, features)')
+      .select('*, plan:subscription_plans(id, name, price_monthly, price_yearly, currency, features, is_free)')
       .eq('provider_id', providerId)
       .maybeSingle();
 

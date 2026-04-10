@@ -126,6 +126,16 @@ export function ProviderDetailPage() {
     },
   });
 
+  const changeStatus = useMutation({
+    mutationFn: (newStatus: string) =>
+      adminApi.patchJson(`/api/admin/providers/${encodeURIComponent(id)}/status`, { status: newStatus }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+    },
+  });
+
   if (denied) return denied;
   if (!id) {
     return <AdminRetryBlock message="Missing provider id" onRetry={() => {}} />;
@@ -179,14 +189,68 @@ export function ProviderDetailPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title={business}
-        description={`Provider ID: ${str(row.id) || id}`}
+        description={
+          <span className="flex items-center gap-2">
+            <span className="text-gray-500">ID: {str(row.id) || id}</span>
+            {str(row.status) ? (
+              <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                row.status === "active" ? "bg-green-100 text-green-800" :
+                row.status === "suspended" ? "bg-red-100 text-red-800" :
+                "bg-amber-100 text-amber-800"
+              }`}>
+                {str(row.status)}
+              </span>
+            ) : null}
+          </span>
+        }
         actions={
-          <Link
-            to={adminSpaTo("/admin/providers")}
-            className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
-          >
-            ← Providers
-          </Link>
+          <div className="flex items-center gap-2">
+            {(str(row.status) === "pending" || str(row.status) === "pending_approval") && (
+              <button
+                type="button"
+                className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                disabled={changeStatus.isPending}
+                onClick={() => {
+                  if (confirm(`Approve ${business}?`))
+                    changeStatus.mutate("active");
+                }}
+              >
+                Approve
+              </button>
+            )}
+            {str(row.status) === "active" && (
+              <button
+                type="button"
+                className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                disabled={changeStatus.isPending}
+                onClick={() => {
+                  if (confirm(`Suspend ${business}?`))
+                    changeStatus.mutate("suspended");
+                }}
+              >
+                Suspend
+              </button>
+            )}
+            {str(row.status) === "suspended" && (
+              <button
+                type="button"
+                className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                disabled={changeStatus.isPending}
+                onClick={() => {
+                  if (confirm(`Reactivate ${business}?`))
+                    changeStatus.mutate("active");
+                }}
+              >
+                Reactivate
+              </button>
+            )}
+            <Link
+              to={adminSpaTo("/admin/providers")}
+              className="inline-flex min-h-11 items-center rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-900 shadow-sm ring-1 ring-gray-950/[0.04] hover:bg-gray-50"
+            >
+              ← Providers
+            </Link>
+          </div>
         }
       />
 

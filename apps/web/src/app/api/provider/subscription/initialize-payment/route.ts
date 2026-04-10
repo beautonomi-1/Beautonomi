@@ -73,7 +73,11 @@ export async function POST(request: NextRequest) {
     }
 
     if ((plan as any).is_free) {
-      throw new Error("Payment initialization not needed for free plans");
+      return errorResponse(
+        "This is a free plan. Use the upgrade endpoint instead of payment initialization.",
+        "FREE_PLAN",
+        400,
+      );
     }
 
     const amount =

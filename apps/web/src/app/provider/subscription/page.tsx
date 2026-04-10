@@ -22,6 +22,7 @@ interface SubscriptionPlan {
   billing_period: "monthly" | "yearly";
   features: string[];
   is_popular?: boolean;
+  is_free?: boolean;
 }
 
 interface ProviderSubscription {
@@ -228,6 +229,7 @@ export default function SubscriptionPage() {
 
   // The joined plan from the subscription API uses price_monthly/price_yearly; normalise to SubscriptionPlan shape
   const rawPlan: any = subscription?.plan;
+  const isFree = rawPlan?.is_free || (rawPlan?.price_monthly == null && rawPlan?.price_yearly == null);
   const currentPlanFromSubscription: SubscriptionPlan | null = rawPlan
     ? {
         id: rawPlan.id ?? "",
@@ -237,6 +239,7 @@ export default function SubscriptionPage() {
         currency: rawPlan.currency ?? "ZAR",
         billing_period: subscription?.billing_period ?? "monthly",
         features: Array.isArray(rawPlan.features) ? rawPlan.features : [],
+        is_free: isFree,
       }
     : null;
   const currentPlan =
@@ -289,6 +292,16 @@ export default function SubscriptionPage() {
                         Cancelled
                       </Badge>
                     )}
+                    {subscription.status === "trial" && (
+                      <Badge variant="secondary" className="bg-blue-100 text-blue-800">
+                        Trial
+                      </Badge>
+                    )}
+                    {subscription.status === "past_due" && (
+                      <Badge variant="secondary" className="bg-red-100 text-red-800">
+                        Past Due
+                      </Badge>
+                    )}
                   </CardTitle>
                   <CardDescription>
                     {currentPlan?.name || "No plan selected"}
@@ -309,10 +322,12 @@ export default function SubscriptionPage() {
               {currentPlan && (
                 <div>
                   <p className="text-2xl font-bold mb-2">
-                    {currentPlan.currency} {currentPlan.price}
-                    <span className="text-base font-normal text-gray-600">
-                      /{currentPlan.billing_period === "monthly" ? "month" : "year"}
-                    </span>
+                    {currentPlan.is_free || currentPlan.price === 0 ? "Free" : `${currentPlan.currency} ${currentPlan.price}`}
+                    {!currentPlan.is_free && currentPlan.price > 0 && (
+                      <span className="text-base font-normal text-gray-600">
+                        /{currentPlan.billing_period === "monthly" ? "month" : "year"}
+                      </span>
+                    )}
                   </p>
                   <div className="space-y-2">
                     <p className="font-medium">Features included:</p>
@@ -379,11 +394,13 @@ export default function SubscriptionPage() {
                       <CardTitle>{plan.name}</CardTitle>
                       <CardDescription>
                         <span className="text-2xl font-bold">
-                          {plan.currency} {plan.price}
+                          {(plan as any).is_free || plan.price === 0 ? "Free" : `${plan.currency} ${plan.price}`}
                         </span>
-                        <span className="text-sm text-gray-600">
-                          /{plan.billing_period === "monthly" ? "month" : "year"}
-                        </span>
+                        {!((plan as any).is_free) && plan.price > 0 && (
+                          <span className="text-sm text-gray-600">
+                            /{plan.billing_period === "monthly" ? "month" : "year"}
+                          </span>
+                        )}
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -469,7 +486,9 @@ function UpgradeDialog({
                 <div>
                   <h4 className="font-semibold">{plan.name}</h4>
                   <p className="text-sm text-gray-600">
-                    {plan.currency} {plan.price}/{plan.billing_period === "monthly" ? "month" : "year"}
+                    {(plan as any).is_free || plan.price === 0
+                      ? "Free"
+                      : `${plan.currency} ${plan.price}/${plan.billing_period === "monthly" ? "month" : "year"}`}
                   </p>
                 </div>
                 <input

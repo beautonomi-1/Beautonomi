@@ -537,8 +537,10 @@ export type RecurrencePattern =
 
 export interface RecurrenceRule {
   pattern: RecurrencePattern;
+  frequency?: string;
   interval: number; // For custom patterns
-  days_of_week?: number[]; // 0-6, Sunday-Saturday
+  days?: number[]; // Normalized API field (0-6, Sunday-Saturday)
+  days_of_week?: number[]; // Legacy alias for days
   day_of_month?: number; // For monthly
   end_date?: string; // Optional end date
   occurrences?: number; // Optional number of occurrences

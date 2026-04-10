@@ -18,6 +18,8 @@ interface PricingPlanCheckout {
   is_popular: boolean;
   features: string[];
   available_billing_periods: ("monthly" | "yearly")[];
+  is_free?: boolean;
+  subscription_plan_id?: string | null;
 }
 
 function CartCard({
@@ -44,38 +46,50 @@ function CartCard({
           {plan.description && (
             <p className="text-sm text-gray-600 mt-0.5">{plan.description}</p>
           )}
-          <div className="mt-4">
-            {hasMultiple ? (
-              <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
-                {periods.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => onBillingPeriodChange(p)}
-                    className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
-                      billingPeriod === p
-                        ? "bg-white text-[#FF0077] shadow-sm border border-gray-200"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    {p === "yearly" ? "12 months" : "1 month"}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-600">
-                {billingPeriod === "yearly" ? "12 months" : "1 month"}
+          {plan.is_free ? (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600">Free plan — no billing period</p>
+              <p className="mt-3 text-gray-900 font-semibold">Free</p>
+              <p className="text-xs text-gray-500 mt-1">
+                No payment required. Upgrade anytime.
               </p>
-            )}
-          </div>
-          <p className="mt-3 text-gray-900 font-semibold">
-            {plan.price}
-            {plan.period || (billingPeriod === "monthly" ? "/mo" : "/year")}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">
-            Renews at {plan.price}
-            {billingPeriod === "monthly" ? "/mo" : "/year"}. Cancel anytime.
-          </p>
+            </div>
+          ) : (
+            <>
+              <div className="mt-4">
+                {hasMultiple ? (
+                  <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-50">
+                    {periods.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => onBillingPeriodChange(p)}
+                        className={`flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors ${
+                          billingPeriod === p
+                            ? "bg-white text-[#FF0077] shadow-sm border border-gray-200"
+                            : "text-gray-600 hover:text-gray-900"
+                        }`}
+                      >
+                        {p === "yearly" ? "12 months" : "1 month"}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    {billingPeriod === "yearly" ? "12 months" : "1 month"}
+                  </p>
+                )}
+              </div>
+              <p className="mt-3 text-gray-900 font-semibold">
+                {plan.price}
+                {plan.period || (billingPeriod === "monthly" ? "/mo" : "/year")}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Renews at {plan.price}
+                {billingPeriod === "monthly" ? "/mo" : "/year"}. Cancel anytime.
+              </p>
+            </>
+          )}
         </div>
       </div>
       {plan.is_popular && (
@@ -94,32 +108,36 @@ function OrderSummaryCard({
   onSubmit,
   submitting,
   error,
+  isFree,
 }: {
   planName: string;
   priceDisplay: string;
   onSubmit: () => void;
   submitting: boolean;
   error: string | null;
+  isFree?: boolean;
 }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Order summary</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">{isFree ? "Plan summary" : "Order summary"}</h2>
       <div className="space-y-3 mb-4">
         <div className="flex justify-between text-sm">
           <span className="text-gray-700">{planName}</span>
           <span className="font-medium text-gray-900">{priceDisplay}</span>
         </div>
       </div>
-      <div className="border-t border-gray-200 pt-3 space-y-2">
-        <div className="flex justify-between text-sm">
-          <span className="text-gray-500">Taxes</span>
-          <span className="text-gray-900">—</span>
+      {!isFree && (
+        <div className="border-t border-gray-200 pt-3 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-500">Taxes</span>
+            <span className="text-gray-900">—</span>
+          </div>
+          <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-100">
+            <span className="text-gray-900">Total</span>
+            <span className="text-[#FF0077]">{priceDisplay}</span>
+          </div>
         </div>
-        <div className="flex justify-between text-base font-bold pt-2 border-t border-gray-100">
-          <span className="text-gray-900">Total</span>
-          <span className="text-[#FF0077]">{priceDisplay}</span>
-        </div>
-      </div>
+      )}
       {error && (
         <div className="mt-4 flex items-start gap-2 rounded-lg bg-red-50 border border-red-100 p-3 text-sm text-red-800">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -135,18 +153,27 @@ function OrderSummaryCard({
         {submitting ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
-            Redirecting to payment…
+            {isFree ? "Activating…" : "Redirecting to payment…"}
           </>
         ) : (
-          "Continue"
+          isFree ? "Activate Free Plan" : "Continue"
         )}
       </button>
-      <p className="mt-4 text-xs text-gray-500 text-center">
-        14-day free trial. Cancel anytime.
-      </p>
-      <p className="mt-1 text-xs text-gray-400 text-center">
-        You&apos;ll be redirected to Paystack to complete payment securely.
-      </p>
+      {!isFree && (
+        <>
+          <p className="mt-4 text-xs text-gray-500 text-center">
+            14-day free trial. Cancel anytime.
+          </p>
+          <p className="mt-1 text-xs text-gray-400 text-center">
+            You&apos;ll be redirected to Paystack to complete payment securely.
+          </p>
+        </>
+      )}
+      {isFree && (
+        <p className="mt-4 text-xs text-gray-500 text-center">
+          No payment required. Get started immediately.
+        </p>
+      )}
       <div className="mt-6 pt-4 border-t border-gray-100 flex flex-wrap justify-center gap-x-4 gap-y-1 text-xs text-gray-500">
         <Link href="/terms-and-condition" className="hover:text-gray-700">
           Terms of service
@@ -216,6 +243,24 @@ export default function SubscriptionCheckoutPage() {
     setSubmitting(true);
     setError(null);
     try {
+      // Free plan: activate via the upgrade API using the linked subscription_plan_id
+      if (plan.is_free && plan.subscription_plan_id) {
+        const res = await fetcher.post<{
+          data?: { is_free?: boolean; subscription_id?: string };
+        }>("/api/provider/subscription/upgrade", {
+          plan_id: plan.subscription_plan_id,
+          billing_period: "monthly",
+        });
+        const data = (res as any)?.data;
+        if (data?.is_free || data?.subscription_id) {
+          toast.success("Free plan activated successfully!");
+          router.push("/provider/subscription");
+          return;
+        }
+        setError("Could not activate free plan. Please try again.");
+        return;
+      }
+
       const res = await fetcher.post<{
         data?: { authorization_url?: string };
         error?: { message?: string; code?: string };
@@ -306,7 +351,7 @@ export default function SubscriptionCheckoutPage() {
     );
   }
 
-  if (plan.available_billing_periods.length === 0) {
+  if (plan.available_billing_periods.length === 0 && !plan.is_free) {
     return (
       <div className="min-h-screen bg-gray-50">
         <PartnerNavbar />
@@ -326,7 +371,9 @@ export default function SubscriptionCheckoutPage() {
     );
   }
 
-  const priceDisplay = `${plan.price}${plan.period || (billingPeriod === "monthly" ? "/mo" : "/year")}`;
+  const priceDisplay = plan.is_free
+    ? "Free"
+    : `${plan.price}${plan.period || (billingPeriod === "monthly" ? "/mo" : "/year")}`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -340,7 +387,7 @@ export default function SubscriptionCheckoutPage() {
           Back to pricing
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 mb-8">
-          Complete your subscription
+          {plan.is_free ? "Activate your free plan" : "Complete your subscription"}
         </h1>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="order-2 md:order-1">
@@ -358,6 +405,7 @@ export default function SubscriptionCheckoutPage() {
                 onSubmit={handleContinue}
                 submitting={submitting}
                 error={error}
+                isFree={plan.is_free}
               />
             </div>
           </div>

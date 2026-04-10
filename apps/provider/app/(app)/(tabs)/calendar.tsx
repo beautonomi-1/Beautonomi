@@ -698,7 +698,7 @@ export default function CalendarScreen() {
     mutate: setBookings,
   } = useApi<Booking[]>(
     `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&limit=500${locationParam}`,
-    { enabled: isFocused, staleTimeMs: 10_000 },
+    { enabled: isFocused, staleTimeMs: 0 },
   );
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";

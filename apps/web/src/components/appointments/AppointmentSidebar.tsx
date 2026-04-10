@@ -101,6 +101,7 @@ import type {
 } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";
 import { fetcher } from "@/lib/http/fetcher";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
 import {
   formatApiErrorMessage,
   isLikelyUuid,
@@ -205,6 +206,9 @@ interface CreateFormData {
   addressLine2: string;
   addressCity: string;
   addressPostalCode: string;
+  addressCountry: string;
+  addressLatitude: number | null;
+  addressLongitude: number | null;
   travelFee: number;
   // Travel override fields (Phase 3)
   travelTimeOverride: number | null;
@@ -322,6 +326,9 @@ export function AppointmentSidebar({
     addressLine2: "",
     addressCity: "",
     addressPostalCode: "",
+    addressCountry: "",
+    addressLatitude: null,
+    addressLongitude: null,
     travelFee: 0,
     travelTimeOverride: null,
     travelFeeOverride: null,
@@ -490,6 +497,9 @@ export function AppointmentSidebar({
     phone: "",
   });
   
+  // Service search state
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+
   // Product search state
   const [productSearchQuery, setProductSearchQuery] = useState("");
   const [filteredProducts, setFilteredProducts] = useState<ProductItem[]>([]);
@@ -702,7 +712,7 @@ export function AppointmentSidebar({
     return () => clearTimeout(debounceTimer);
   }, [clientSearchQuery]);
   
-  const handleSelectClient = (client: { id: string; full_name: string; email?: string; phone?: string }) => {
+  const handleSelectClient = async (client: { id: string; full_name: string; email?: string; phone?: string }) => {
     setFormData(prev => ({
       ...prev,
       clientName: client.full_name,
@@ -713,6 +723,32 @@ export function AppointmentSidebar({
     setClientSearchQuery("");
     setClientSearchResults([]);
     setShowClientSearch(false);
+
+    // For at-home bookings, try to load the client's primary/default address
+    if (formData.kind === AppointmentKind.AT_HOME) {
+      try {
+        const res = await fetch(`/api/provider/clients/${client.id}`);
+        if (res.ok) {
+          const body = await res.json();
+          const clientData = body?.data ?? body;
+          const addr = clientData?.customer?.default_address ?? clientData?.default_address;
+          if (addr) {
+            setFormData(prev => ({
+              ...prev,
+              addressLine1: addr.address_line1 || addr.line1 || "",
+              addressLine2: addr.address_line2 || addr.line2 || "",
+              addressCity: addr.city || "",
+              addressPostalCode: addr.postal_code || "",
+              addressCountry: addr.country || "",
+              addressLatitude: addr.latitude ?? null,
+              addressLongitude: addr.longitude ?? null,
+            }));
+          }
+        }
+      } catch {
+        // Client may not have an address on file
+      }
+    }
   };
   
   const handleCreateNewClient = useCallback(async () => {
@@ -1777,6 +1813,9 @@ export function AppointmentSidebar({
         addressLine2: "",
         addressCity: "",
         addressPostalCode: "",
+        addressCountry: "",
+        addressLatitude: null,
+        addressLongitude: null,
         travelFee: 0,
         travelTimeOverride: null,
         travelFeeOverride: null,
@@ -1981,6 +2020,9 @@ export function AppointmentSidebar({
         addressLine2: selectedAppointment.address_line2 || "",
         addressCity: selectedAppointment.address_city || "",
         addressPostalCode: selectedAppointment.address_postal_code || "",
+        addressCountry: (selectedAppointment as any).address_country || "",
+        addressLatitude: (selectedAppointment as any).address_latitude ?? null,
+        addressLongitude: (selectedAppointment as any).address_longitude ?? null,
         travelFee,
         travelTimeOverride: travelOverride?.overrideTravelMinutes ?? null,
         travelFeeOverride: travelOverride?.overrideTravelFee ?? null,
@@ -2131,6 +2173,9 @@ export function AppointmentSidebar({
         appointmentData.address_line2 = formData.addressLine2 || undefined;
         appointmentData.address_city = formData.addressCity;
         appointmentData.address_postal_code = formData.addressPostalCode;
+        (appointmentData as any).address_country = formData.addressCountry || undefined;
+        (appointmentData as any).address_latitude = formData.addressLatitude;
+        (appointmentData as any).address_longitude = formData.addressLongitude;
         appointmentData.travel_fee = formData.travelFee;
       }
 
@@ -2281,6 +2326,9 @@ export function AppointmentSidebar({
         updates.address_line2 = formData.addressLine2 || undefined;
         updates.address_city = formData.addressCity;
         updates.address_postal_code = formData.addressPostalCode;
+        (updates as any).address_country = formData.addressCountry || undefined;
+        (updates as any).address_latitude = formData.addressLatitude;
+        (updates as any).address_longitude = formData.addressLongitude;
         updates.travel_fee = formData.travelFee;
       }
       (updates as any).referral_source_id = formData.referralSourceId || null;
@@ -2986,7 +3034,7 @@ export function AppointmentSidebar({
                                     </span>
                                     {(client.email || client.phone) && (
                                       <span className="text-[11px] text-gray-500 block truncate">
-                                        {client.phone || client.email}
+                                        {[client.phone, client.email].filter(Boolean).join(" · ")}
                                       </span>
                                     )}
                                   </div>
@@ -3324,15 +3372,28 @@ export function AppointmentSidebar({
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      <div className="space-y-1.5">
-                        <label className="text-[11px] text-gray-500 font-medium">Street address *</label>
-                        <Input
-                          placeholder="123 Main Street"
-                          value={formData.addressLine1}
-                          onChange={(e) => setFormData(prev => ({ ...prev, addressLine1: e.target.value }))}
-                          className="w-full max-w-full box-border rounded-lg"
-                        />
-                      </div>
+                      <AddressAutocomplete
+                        value={formData.addressLine1}
+                        onChange={(addr) => {
+                          setFormData(prev => ({
+                            ...prev,
+                            addressLine1: addr.address_line1,
+                            addressCity: addr.city,
+                            addressPostalCode: addr.postal_code || "",
+                            addressCountry: addr.country || "",
+                            addressLatitude: addr.latitude,
+                            addressLongitude: addr.longitude,
+                          }));
+                        }}
+                        onInputChange={(val) => {
+                          if (!val) return;
+                          setFormData(prev => ({ ...prev, addressLine1: val }));
+                        }}
+                        placeholder="Search for address..."
+                        label="Street address *"
+                        country="ZA"
+                        inputClassName="rounded-lg"
+                      />
                       <Input
                         placeholder="Apartment, suite, etc."
                         value={formData.addressLine2}
@@ -3340,23 +3401,32 @@ export function AppointmentSidebar({
                         className="w-full max-w-full box-border rounded-lg"
                       />
                       <div className="grid grid-cols-2 gap-2">
-                        <Input
-                          placeholder="City *"
-                          value={formData.addressCity}
-                          onChange={(e) => setFormData(prev => ({ ...prev, addressCity: e.target.value }))}
-                          className="w-full max-w-full box-border rounded-lg"
-                        />
-                        <Input
-                          placeholder="Postal code"
-                          value={formData.addressPostalCode}
-                          onChange={(e) => setFormData(prev => ({ ...prev, addressPostalCode: e.target.value }))}
-                          className="w-full max-w-full box-border rounded-lg"
-                        />
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-gray-500 font-medium">City</label>
+                          <Input
+                            placeholder="City *"
+                            value={formData.addressCity}
+                            onChange={(e) => setFormData(prev => ({ ...prev, addressCity: e.target.value }))}
+                            className="w-full max-w-full box-border rounded-lg"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[11px] text-gray-500 font-medium">Postal code</label>
+                          <Input
+                            placeholder="Postal code"
+                            value={formData.addressPostalCode}
+                            onChange={(e) => setFormData(prev => ({ ...prev, addressPostalCode: e.target.value }))}
+                            className="w-full max-w-full box-border rounded-lg"
+                          />
+                        </div>
                       </div>
                       <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 flex items-center gap-2">
                         <MapPin className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                         <p className="text-xs text-blue-700">
                           <span className="font-medium">Travel fee:</span> {formatMoney(formData.travelFee)}
+                          {formData.addressLatitude && formData.addressLongitude && (
+                            <span className="ml-2 text-blue-500 text-[10px]">Geocoded</span>
+                          )}
                         </p>
                       </div>
                     </div>
@@ -4074,6 +4144,15 @@ export function AppointmentSidebar({
               {/* Service/Product/Package Selection */}
               {mode !== "view" && (
                 <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search services..."
+                      value={serviceSearchQuery}
+                      onChange={(e) => setServiceSearchQuery(e.target.value)}
+                      className="pl-8 h-9 text-sm rounded-lg"
+                    />
+                  </div>
                   <Select 
                     value="" 
                     onValueChange={(serviceId) => {
@@ -4096,6 +4175,7 @@ export function AppointmentSidebar({
                       } else {
                         addService(service);
                       }
+                      setServiceSearchQuery("");
                     }}
                   >
                     <SelectTrigger data-sidebar-service-select>
@@ -4104,10 +4184,16 @@ export function AppointmentSidebar({
                     <SelectContent>
                       {services
                         .filter(s => {
-                          return !s.service_type || 
+                          const typeOk = !s.service_type || 
                                  s.service_type === "basic" || 
                                  s.service_type === "variant" || 
                                  s.service_type === "package";
+                          if (!typeOk) return false;
+                          if (!serviceSearchQuery.trim()) return true;
+                          const q = serviceSearchQuery.toLowerCase();
+                          return s.name.toLowerCase().includes(q) ||
+                            (s.description || "").toLowerCase().includes(q) ||
+                            ((s as any).variant_name || "").toLowerCase().includes(q);
                         })
                         .map((service) => {
                           const isVariant = service.service_type === "variant";

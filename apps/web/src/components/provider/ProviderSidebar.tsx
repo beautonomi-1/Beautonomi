@@ -163,7 +163,7 @@ const isActiveRoute = (pathname: string, href: string) => {
     return pathname === "/provider/team" || pathname === "/provider/team/"
       || (pathname.startsWith("/provider/team/") && !pathname.startsWith("/provider/team/members")
         && !pathname.startsWith("/provider/team/days-off") && !pathname.startsWith("/provider/team/my-earnings")
-        && !pathname.startsWith("/provider/team/payroll"));
+        && !pathname.startsWith("/provider/team/payroll") && !pathname.startsWith("/provider/team/shifts"));
   }
   if (href === "/provider/team/days-off") {
     return pathname.startsWith("/provider/team/days-off");
@@ -229,14 +229,14 @@ export function ProviderSidebar() {
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
   
-  // Track if user was a provider (to handle temporary role loss during tab switches)
-  const wasProviderRef = React.useRef<boolean>(false);
+  // Track if user was a provider owner (to handle temporary role loss during tab switches)
+  const wasOwnerRef = React.useRef<boolean>(false);
   React.useEffect(() => {
-    if (role === 'provider_owner' || role === 'provider_staff') {
-      wasProviderRef.current = true;
+    if (role === 'provider_owner') {
+      wasOwnerRef.current = true;
     }
   }, [role]);
-  
+
   // Get platform colors with fallbacks
   const primaryColor = branding?.primary_color || "#FF0077";
   const secondaryColor = branding?.secondary_color || "#4fd1c5";
@@ -247,7 +247,7 @@ export function ProviderSidebar() {
   } as const;
   
   // Determine if user is/was a provider (handles temporary role loss)
-  const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasProviderRef.current;
+  const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasOwnerRef.current;
 
   // Filter navigation sections based on permissions
   // CRITICAL FIX: For provider owners, ALWAYS show all menu items
@@ -255,7 +255,7 @@ export function ProviderSidebar() {
   // Provider owners should have access to everything anyway
   const filteredNavigationSections = React.useMemo(() => {
     // If user is/was a provider owner, show ALL items (no filtering)
-    if (isProvider && (role === 'provider_owner' || wasProviderRef.current)) {
+    if (isProvider && (role === 'provider_owner' || wasOwnerRef.current)) {
       return navigationSections;
     }
     

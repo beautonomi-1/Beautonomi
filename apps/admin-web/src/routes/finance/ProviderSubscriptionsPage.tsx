@@ -72,6 +72,16 @@ export function ProviderSubscriptionsPage() {
       adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { plan_id: planId }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+    },
+  });
+
+  const changeStatus = useMutation({
+    mutationFn: ({ subId, newStatus }: { subId: string; newStatus: string }) =>
+      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { status: newStatus }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
     },
   });
 
@@ -116,6 +126,8 @@ export function ProviderSubscriptionsPage() {
           >
             <option value="all">all</option>
             <option value="active">active</option>
+            <option value="trial">trial</option>
+            <option value="expired">expired</option>
             <option value="cancelled">cancelled</option>
             <option value="past_due">past_due</option>
           </select>
@@ -132,6 +144,7 @@ export function ProviderSubscriptionsPage() {
               <AdminTh>Change plan</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Period</AdminTh>
+              <AdminTh>Manage</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
@@ -200,8 +213,51 @@ export function ProviderSubscriptionsPage() {
                       {plansQ.isLoading ? <span className="text-xs text-gray-500">Loading plans…</span> : null}
                     </div>
                   </AdminTd>
-                  <AdminTd>{String(r.status ?? "")}</AdminTd>
+                  <AdminTd>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      r.status === "active" ? "bg-green-100 text-green-800" :
+                      r.status === "past_due" ? "bg-amber-100 text-amber-800" :
+                      r.status === "expired" ? "bg-red-100 text-red-800" :
+                      r.status === "cancelled" ? "bg-gray-100 text-gray-600" :
+                      r.status === "trial" ? "bg-blue-100 text-blue-800" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
+                      {String(r.status ?? "")}
+                    </span>
+                  </AdminTd>
                   <AdminTd>{String(r.billing_period ?? "")}</AdminTd>
+                  <AdminTd>
+                    <div className="flex flex-wrap gap-1">
+                      {(r.status === "expired" || r.status === "past_due" || r.status === "cancelled") && (
+                        <button
+                          type="button"
+                          className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                          disabled={changeStatus.isPending}
+                          onClick={() => {
+                            if (confirm(`Reactivate subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              changeStatus.mutate({ subId: sid, newStatus: "active" });
+                            }
+                          }}
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                      {r.status === "active" && (
+                        <button
+                          type="button"
+                          className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
+                          disabled={changeStatus.isPending}
+                          onClick={() => {
+                            if (confirm(`Cancel subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              changeStatus.mutate({ subId: sid, newStatus: "cancelled" });
+                            }
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </AdminTd>
                 </tr>
               );
             })}

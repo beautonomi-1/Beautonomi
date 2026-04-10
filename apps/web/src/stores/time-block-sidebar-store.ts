@@ -183,8 +183,8 @@ export function switchBlockToEditMode(): void {
     description: block.description,
     blockType: inferBlockType(block),
     isRepeating: block.is_recurring,
-    repeatDays: block.recurrence_rule?.days_of_week,
-    repeatUntil: block.recurrence_rule?.end_date,
+    repeatDays: block.recurrence_rule?.days_of_week ?? block.recurrence_rule?.days ?? (block as any).recurring_pattern?.days,
+    repeatUntil: block.recurrence_rule?.end_date ?? (block as any).recurring_pattern?.end_date,
   };
   
   setState({
@@ -272,10 +272,12 @@ export function createRecurrenceRuleFromDraft(draft: BlockDraft): RecurrenceRule
   }
   
   return {
+    pattern: "weekly" as RecurrenceRule["pattern"],
     frequency: "weekly",
+    interval: 1,
     days: draft.repeatDays,
     end_date: draft.repeatUntil,
-  } as any;
+  };
 }
 
 // ============================================================================
