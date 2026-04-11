@@ -168,8 +168,8 @@ export default function ActivationQueuePage() {
               key={p.id}
               className="bg-white border rounded-xl p-5 hover:border-blue-200 transition-colors"
             >
-              <div className="flex items-start justify-between">
-                <div>
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <h3 className="text-sm font-semibold text-zinc-900">
                       {p.business_name}
@@ -193,7 +193,7 @@ export default function ActivationQueuePage() {
                   </p>
 
                   {/* Activation gates */}
-                  <div className="flex gap-3 mt-3">
+                  <div className="flex flex-wrap gap-x-3 gap-y-2 mt-3">
                     <Gate
                       label="Business Name"
                       ok={p.activation_gates.has_business_name}
@@ -209,7 +209,7 @@ export default function ActivationQueuePage() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
                   <Link href={`/admin/providers/${p.id}`}>
                     <Button variant="outline" size="sm" className="text-xs">
                       <ExternalLink className="h-3 w-3 mr-1" /> View
@@ -230,7 +230,7 @@ export default function ActivationQueuePage() {
 
         {/* Pagination */}
         {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
             <p className="text-xs text-zinc-500">
               Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total}
             </p>

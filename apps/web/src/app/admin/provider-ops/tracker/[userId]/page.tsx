@@ -218,7 +218,7 @@ export default function TrackerDetailPage() {
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Link
               href="/admin/provider-ops/tracker"
@@ -229,13 +229,13 @@ export default function TrackerDetailPage() {
             <h1 className="text-2xl font-bold text-zinc-900">
               {user.full_name || user.email}
             </h1>
-            <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
-              <span className="flex items-center gap-1">
-                <Mail className="h-3 w-3" /> {user.email}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-zinc-500">
+              <span className="flex items-center gap-1 min-w-0">
+                <Mail className="h-3 w-3 shrink-0" /> <span className="truncate">{user.email}</span>
               </span>
               {user.phone && (
                 <span className="flex items-center gap-1">
-                  <Phone className="h-3 w-3" /> {user.phone}
+                  <Phone className="h-3 w-3 shrink-0" /> {user.phone}
                 </span>
               )}
               <span>
@@ -243,7 +243,7 @@ export default function TrackerDetailPage() {
               </span>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             {!provider && draft && (
               <>
                 {editingDraft ? (
@@ -329,7 +329,8 @@ export default function TrackerDetailPage() {
               Onboarding Progress — Step {draft.current_step} of 14:{" "}
               {draft.current_step_name}
             </h2>
-            <div className="grid grid-cols-7 md:grid-cols-14 gap-2">
+            <div className="overflow-x-auto -mx-1 px-1">
+            <div className="grid grid-cols-7 md:grid-cols-14 gap-2 min-w-[420px]">
               {Array.from({ length: 14 }, (_, i) => i + 1).map((step) => {
                 const info = step_completion[step];
                 const isCurrent = step === draft.current_step;
@@ -369,6 +370,7 @@ export default function TrackerDetailPage() {
                 );
               })}
             </div>
+            </div>
             <p className="text-xs text-zinc-400 mt-3 flex items-center gap-1">
               <Clock className="h-3 w-3" />
               Last activity:{" "}
@@ -379,7 +381,7 @@ export default function TrackerDetailPage() {
 
         {/* Main content */}
         <Tabs defaultValue={editingDraft ? "edit" : "overview"}>
-          <TabsList>
+          <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             {draft && !provider && (
               <TabsTrigger value="edit">Edit Draft</TabsTrigger>
@@ -558,19 +560,22 @@ export default function TrackerDetailPage() {
 
           <TabsContent value="notes" className="mt-4">
             <div className="bg-white border rounded-xl p-5 space-y-4">
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Input
                   placeholder="Add an admin note..."
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
+                  className="flex-1"
                 />
                 <Button
                   onClick={handleAddNote}
                   disabled={submittingNote || !noteText.trim()}
                   size="sm"
+                  className="w-full sm:w-auto"
                 >
-                  <Send className="h-3 w-3" />
+                  <Send className="h-3 w-3 mr-1 sm:mr-0" />
+                  <span className="sm:hidden">Add Note</span>
                 </Button>
               </div>
               {tracking?.admin_notes ? (

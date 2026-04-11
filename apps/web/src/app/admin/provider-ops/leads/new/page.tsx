@@ -412,11 +412,11 @@ export default function NewLeadPage() {
         </div>
 
         {/* Submit */}
-        <div className="flex justify-end gap-3">
-          <Link href="/admin/provider-ops/leads">
-            <Button variant="outline">Cancel</Button>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end sm:gap-3">
+          <Link href="/admin/provider-ops/leads" className="w-full sm:w-auto">
+            <Button variant="outline" className="w-full sm:w-auto">Cancel</Button>
           </Link>
-          <Button onClick={handleSubmit} disabled={submitting}>
+          <Button onClick={handleSubmit} disabled={submitting} className="w-full sm:w-auto">
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin mr-1" />
             ) : null}

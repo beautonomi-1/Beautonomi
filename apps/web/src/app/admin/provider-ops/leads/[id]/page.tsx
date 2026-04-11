@@ -202,7 +202,7 @@ export default function LeadDetailPage() {
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Link
               href="/admin/provider-ops/leads"
@@ -210,7 +210,7 @@ export default function LeadDetailPage() {
             >
               <ArrowLeft className="h-3 w-3" /> Back to Leads
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-zinc-900">
                 {displayName}
               </h1>
@@ -220,16 +220,16 @@ export default function LeadDetailPage() {
                 {lead.commercial_stage.replace(/_/g, " ")}
               </Badge>
             </div>
-            <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-zinc-500">
               <span>Source: {lead.source}</span>
-              <span>·</span>
+              <span className="hidden sm:inline">·</span>
               <span>
                 Created {new Date(lead.created_at).toLocaleDateString()}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {/* Stage change dropdown */}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -313,7 +313,7 @@ export default function LeadDetailPage() {
 
         {/* Matched provider banner */}
         {lead.matched_provider_id && (
-          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-medium text-teal-800">
                 Matched to a provider
@@ -476,7 +476,7 @@ export default function LeadDetailPage() {
               <TabsContent value="timeline" className="mt-4 space-y-4">
                 {/* Add note */}
                 <div className="bg-white border rounded-xl p-4">
-                  <div className="flex gap-2">
+                  <div className="flex flex-col gap-2 sm:flex-row">
                     <Input
                       placeholder="Add a note..."
                       value={noteText}
@@ -484,11 +484,13 @@ export default function LeadDetailPage() {
                       onKeyDown={(e) =>
                         e.key === "Enter" && handleAddNote()
                       }
+                      className="flex-1"
                     />
                     <Button
                       size="sm"
                       onClick={handleAddNote}
                       disabled={submittingNote || !noteText.trim()}
+                      className="w-full sm:w-auto"
                     >
                       <Send className="h-3 w-3" />
                     </Button>

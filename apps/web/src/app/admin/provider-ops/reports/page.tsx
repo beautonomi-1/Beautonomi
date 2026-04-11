@@ -106,7 +106,7 @@ export default function ReportsPage() {
             <h2 className="text-lg font-semibold text-zinc-800 mb-4">
               Onboarding Funnel
             </h2>
-            <div className="grid grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 mb-6">
               <FunnelStep
                 label="Signups"
                 value={funnel.onboarding_funnel.total_signups}
@@ -170,9 +170,10 @@ export default function ReportsPage() {
                 );
                 const pct = (step.count / maxCount) * 100;
                 return (
-                  <div key={step.step} className="flex items-center gap-3">
-                    <div className="w-24 text-xs text-zinc-600 text-right shrink-0">
-                      Step {step.step}
+                  <div key={step.step} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="flex items-center gap-2 sm:w-24 text-xs text-zinc-600 sm:text-right sm:block shrink-0">
+                      <span>Step {step.step}</span>
+                      <span className="sm:hidden text-zinc-400">· {step.name}</span>
                     </div>
                     <div className="flex-1 bg-zinc-100 rounded-full h-5 relative overflow-hidden">
                       <div
@@ -187,7 +188,7 @@ export default function ReportsPage() {
                         </span>
                       )}
                     </div>
-                    <span className="w-32 text-xs text-zinc-500 truncate">
+                    <span className="hidden sm:inline w-32 text-xs text-zinc-500 truncate">
                       {step.name}
                     </span>
                   </div>

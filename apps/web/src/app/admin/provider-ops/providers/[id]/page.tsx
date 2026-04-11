@@ -147,7 +147,7 @@ export default function ProviderLifecyclePage() {
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <Link
               href="/admin/provider-ops"
@@ -155,7 +155,7 @@ export default function ProviderLifecyclePage() {
             >
               <ArrowLeft className="h-3 w-3" /> Provider Ops
             </Link>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-2xl font-bold text-zinc-900">
                 {provider.business_name}
               </h1>
@@ -173,19 +173,19 @@ export default function ProviderLifecyclePage() {
               )}
             </div>
             {user && (
-              <div className="flex items-center gap-3 mt-1 text-sm text-zinc-500">
-                <span className="flex items-center gap-1">
-                  <Mail className="h-3 w-3" /> {user.email}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-sm text-zinc-500">
+                <span className="flex items-center gap-1 min-w-0">
+                  <Mail className="h-3 w-3 shrink-0" /> <span className="truncate">{user.email}</span>
                 </span>
                 {user.phone && (
                   <span className="flex items-center gap-1">
-                    <Phone className="h-3 w-3" /> {user.phone}
+                    <Phone className="h-3 w-3 shrink-0" /> {user.phone}
                   </span>
                 )}
               </div>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link href={`/admin/providers/${provider.id}`}>
               <Button variant="outline" size="sm">
                 <ExternalLink className="h-3 w-3 mr-1" /> Admin Provider View

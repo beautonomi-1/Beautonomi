@@ -94,7 +94,7 @@ export default function ProviderOpsDashboard() {
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-zinc-900 flex items-center gap-2">
               <Radio className="h-6 w-6 text-blue-600" />
@@ -104,7 +104,7 @@ export default function ProviderOpsDashboard() {
               Supply operations overview — who needs help right now
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link href="/admin/provider-ops/leads/new">
               <Button size="sm" variant="outline">
                 <UserPlus className="h-4 w-4 mr-1" />

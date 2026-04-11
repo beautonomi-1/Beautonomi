@@ -300,7 +300,7 @@ export default function OnboardingTrackerPage() {
 
         {/* Pagination */}
         {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
             <p className="text-xs text-zinc-500">
               Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
             </p>
@@ -411,20 +411,20 @@ function TrackerRowCard({
                   </Badge>
                 )}
               </div>
-              <div className="flex items-center gap-3 text-xs text-zinc-500 mt-0.5">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 mt-0.5">
                 <span>
                   Step {row.current_step}: {row.current_step_name}
                 </span>
-                <span className="text-zinc-300">·</span>
+                <span className="text-zinc-300 hidden sm:inline">·</span>
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" />
                   {timeSince}
                 </span>
                 {row.email && (
                   <>
-                    <span className="text-zinc-300">·</span>
-                    <span className="flex items-center gap-1">
-                      <Mail className="h-3 w-3" />
+                    <span className="text-zinc-300 hidden sm:inline">·</span>
+                    <span className="flex items-center gap-1 min-w-0 truncate">
+                      <Mail className="h-3 w-3 shrink-0" />
                       {row.email}
                     </span>
                   </>
@@ -456,8 +456,8 @@ function TrackerRowCard({
                 href={`/admin/provider-ops/tracker/${row.user_id}`}
                 onClick={(e) => e.stopPropagation()}
               >
-                <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                  <Eye className="h-3.5 w-3.5" />
+                <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                  <Eye className="h-4 w-4" />
                 </Button>
               </Link>
               {!row.has_provider && (
@@ -465,15 +465,15 @@ function TrackerRowCard({
                   href={`/admin/provider-ops/tracker/${row.user_id}?assist=true`}
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                    <Wrench className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                    <Wrench className="h-4 w-4" />
                   </Button>
                 </Link>
               )}
               {row.phone && (
                 <a href={`tel:${row.phone}`} onClick={(e) => e.stopPropagation()}>
-                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                    <Phone className="h-3.5 w-3.5" />
+                  <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
+                    <Phone className="h-4 w-4" />
                   </Button>
                 </a>
               )}

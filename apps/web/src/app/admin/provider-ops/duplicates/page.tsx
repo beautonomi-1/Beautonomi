@@ -183,9 +183,9 @@ export default function DuplicateReviewPage() {
             >
               {/* Lead info */}
               <div className="p-4 border-b bg-zinc-50/50">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-sm font-semibold text-zinc-800">
                         Lead: {dup.lead.business_name || "Unnamed"}
                       </h3>
@@ -196,15 +196,15 @@ export default function DuplicateReviewPage() {
                         {dup.lead.source}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-zinc-500 mt-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 mt-1">
                       {dup.lead.email && (
-                        <span className="flex items-center gap-1">
-                          <Mail className="h-3 w-3" /> {dup.lead.email}
+                        <span className="flex items-center gap-1 min-w-0 truncate">
+                          <Mail className="h-3 w-3 shrink-0" /> {dup.lead.email}
                         </span>
                       )}
                       {dup.lead.phone_e164 && (
                         <span className="flex items-center gap-1">
-                          <Phone className="h-3 w-3" /> {dup.lead.phone_e164}
+                          <Phone className="h-3 w-3 shrink-0" /> {dup.lead.phone_e164}
                         </span>
                       )}
                     </div>
@@ -222,10 +222,10 @@ export default function DuplicateReviewPage() {
                 {dup.matches.map((match) => (
                   <div
                     key={`${match.type}-${match.id}`}
-                    className="p-4 flex items-center justify-between"
+                    className="p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div>
-                      <div className="flex items-center gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge
                           className={`text-[10px] ${
                             match.type === "provider"
@@ -253,15 +253,15 @@ export default function DuplicateReviewPage() {
                           {Math.round(match.confidence * 100)}% confident
                         </Badge>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-zinc-500 mt-1">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500 mt-1">
                         {match.email && (
-                          <span className="flex items-center gap-1">
-                            <Mail className="h-3 w-3" /> {match.email}
+                          <span className="flex items-center gap-1 min-w-0 truncate">
+                            <Mail className="h-3 w-3 shrink-0" /> {match.email}
                           </span>
                         )}
                         {match.phone && (
                           <span className="flex items-center gap-1">
-                            <Phone className="h-3 w-3" /> {match.phone}
+                            <Phone className="h-3 w-3 shrink-0" /> {match.phone}
                           </span>
                         )}
                         <span className="text-zinc-400">
@@ -270,7 +270,7 @@ export default function DuplicateReviewPage() {
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:justify-end">
                       <Button
                         variant="outline"
                         size="sm"

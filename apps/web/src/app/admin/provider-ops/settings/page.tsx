@@ -83,7 +83,7 @@ export default function ProviderOpsSettingsPage() {
   return (
     <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <Link
               href="/admin/provider-ops"
@@ -99,7 +99,7 @@ export default function ProviderOpsSettingsPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 text-sm font-medium w-full sm:w-auto"
           >
             <Save className="h-4 w-4" />
             {saving ? "Saving..." : "Save Changes"}

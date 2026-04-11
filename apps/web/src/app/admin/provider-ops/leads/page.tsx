@@ -463,7 +463,7 @@ export default function LeadListPage() {
 
         {/* Pagination */}
         {total > PAGE_SIZE && (
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pt-2">
             <p className="text-xs text-zinc-500">
               Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
             </p>
