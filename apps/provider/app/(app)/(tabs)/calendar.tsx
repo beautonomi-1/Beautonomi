@@ -708,10 +708,8 @@ export default function CalendarScreen() {
     `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
-  const availabilityFromIso = `${startDate}T00:00:00.000Z`;
-  const availabilityToIso = `${endDate}T23:59:59.999Z`;
   const { data: availabilityRaw, refresh: refreshAvailabilityBlocks } = useApi<AvailabilityBlockApi[]>(
-    `/api/provider/availability-blocks?from=${encodeURIComponent(availabilityFromIso)}&to=${encodeURIComponent(availabilityToIso)}`,
+    `/api/provider/availability-blocks?from=${encodeURIComponent(startDate)}&to=${encodeURIComponent(endDate)}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
   const { data: staffUnavailSegments, refresh: refreshStaffUnavail } = useApi<AvailabilitySegment[]>(
@@ -878,8 +876,9 @@ export default function CalendarScreen() {
     let maxH = 0;
     let hasOpen = false;
     for (let i = 0; i < count; i++) {
-      const d = new Date(selectedDate);
-      d.setDate(d.getDate() + (viewMode === "week" ? i - selectedDate.getDay() : i));
+      const d = viewMode === "week"
+        ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
+        : addDays(selectedDate, i);
       const dh = getHoursForDay(d);
       if (dh.isOpen) {
         hasOpen = true;
@@ -1253,6 +1252,7 @@ export default function CalendarScreen() {
       const staffIdsParam = newStaffId ? newStaffId : "";
       const checkUrl =
         `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}` +
+        `&exclude_booking_id=${encodeURIComponent(booking.id)}` +
         (staffIdsParam ? `&staff_ids=${encodeURIComponent(staffIdsParam)}` : "");
 
       (async () => {

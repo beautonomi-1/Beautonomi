@@ -15,6 +15,13 @@ import RoleGuard from "@/components/auth/RoleGuard";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 type Pack = { id: string; impressions: number; price_zar: number; display_order: number; is_active: boolean };
+type TimePack = { id: string; duration_days: number; label: string; price_zar: number; display_order: number; is_active: boolean };
+
+const MODEL_LABELS: Record<string, string> = {
+  cpc_budget: "CPC Budget (pay per impression based on bid)",
+  impression_pack: "Impression Packs (fixed impressions at set price)",
+  time_based: "Time-Based (fixed daily rate for N days)",
+};
 
 export default function AdsModulePage() {
   const { currencyCode } = useReportCurrency();
@@ -22,22 +29,27 @@ export default function AdsModulePage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [packs, setPacks] = useState<Pack[]>([]);
+  const [timePacks, setTimePacks] = useState<TimePack[]>([]);
   const [packsSaving, setPacksSaving] = useState(false);
+  const [timePacksSaving, setTimePacksSaving] = useState(false);
   const [form, setForm] = useState({
     enabled: false,
     model: "",
     disclosure_label: "",
     max_sponsored_slots: "",
     cost_per_impression_ratio: "",
+    available_models: ["cpc_budget", "impression_pack", "time_based"] as string[],
+    default_model: "time_based",
   });
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const [configRes, packsRes] = await Promise.all([
+        const [configRes, packsRes, timePacksRes] = await Promise.all([
           fetcher.get<{ data: Record<string, any> | null }>(`/api/admin/control-plane/modules/ads?environment=${env}`),
           fetcher.get<{ data: Pack[] }>("/api/admin/control-plane/modules/ads/packs"),
+          fetcher.get<{ data: TimePack[] }>("/api/admin/control-plane/modules/ads/time-packs"),
         ]);
         const d = configRes.data;
         if (d) {
@@ -47,9 +59,12 @@ export default function AdsModulePage() {
             disclosure_label: String(d.disclosure_label ?? ""),
             max_sponsored_slots: d.max_sponsored_slots != null ? String(d.max_sponsored_slots) : "",
             cost_per_impression_ratio: d.cost_per_impression_ratio != null ? String(d.cost_per_impression_ratio) : "",
+            available_models: Array.isArray(d.available_models) ? d.available_models : ["cpc_budget", "impression_pack", "time_based"],
+            default_model: String(d.default_model ?? "time_based"),
           });
         }
         setPacks(Array.isArray(packsRes.data) ? packsRes.data : []);
+        setTimePacks(Array.isArray(timePacksRes.data) ? timePacksRes.data : []);
       } catch {
         toast.error("Failed to load config");
       } finally {
@@ -68,6 +83,8 @@ export default function AdsModulePage() {
         disclosure_label: form.disclosure_label || null,
         max_sponsored_slots: form.max_sponsored_slots ? parseInt(form.max_sponsored_slots, 10) : null,
         cost_per_impression_ratio: form.cost_per_impression_ratio ? parseFloat(form.cost_per_impression_ratio) : null,
+        available_models: form.available_models,
+        default_model: form.default_model,
       });
       toast.success("Saved");
     } catch {
@@ -130,6 +147,42 @@ export default function AdsModulePage() {
               <Input type="number" min={0} max={1} step={0.01} value={form.cost_per_impression_ratio} onChange={(e) => setForm((p) => ({ ...p, cost_per_impression_ratio: e.target.value }))} placeholder="0.05" />
               <p className="text-xs text-muted-foreground mt-1">e.g. 0.05 = 5% of bid_cpc per impression. Leave empty for default 5%.</p>
             </div>
+
+            <div className="border-t pt-4 mt-4">
+              <Label className="text-base font-semibold mb-3 block">Available billing models for providers</Label>
+              <p className="text-xs text-muted-foreground mb-3">Control which ad billing models providers can use. Disable models you don&apos;t want offered.</p>
+              <div className="space-y-2">
+                {(["cpc_budget", "impression_pack", "time_based"] as const).map((m) => (
+                  <label key={m} className="flex items-center gap-2">
+                    <Switch
+                      checked={form.available_models.includes(m)}
+                      onCheckedChange={(v) => {
+                        setForm((p) => ({
+                          ...p,
+                          available_models: v
+                            ? [...p.available_models, m]
+                            : p.available_models.filter((x) => x !== m),
+                        }));
+                      }}
+                    />
+                    <span className="text-sm">{MODEL_LABELS[m]}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label>Default model (shown first to providers)</Label>
+              <Select value={form.default_model} onValueChange={(v) => setForm((p) => ({ ...p, default_model: v }))}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="time_based">Time-Based (recommended for predictable revenue)</SelectItem>
+                  <SelectItem value="impression_pack">Impression Packs</SelectItem>
+                  <SelectItem value="cpc_budget">CPC Budget</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             <Button onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</Button>
           </CardContent>
         </Card>
@@ -200,6 +253,90 @@ export default function AdsModulePage() {
                   disabled={packsSaving}
                 >
                   {packsSaving ? "Saving…" : "Save packs"}
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {!loading && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Time-based boost packs
+            </CardTitle>
+            <CardDescription>
+              Providers pay a flat rate for N days of guaranteed sponsored placement. Most predictable revenue model. Set price ({currencyCode}), label, and active state.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {timePacks.length === 0 ? (
+              <p className="text-muted-foreground text-sm">No time packs. Run migration 459 to seed defaults (1, 3, 7, 14, 30 days).</p>
+            ) : (
+              <div className="space-y-3">
+                {timePacks.map((tp) => (
+                  <div key={tp.id} className="flex flex-wrap items-center gap-4 rounded-lg border p-3">
+                    <span className="font-medium">{tp.duration_days} days</span>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs">Label</Label>
+                      <Input
+                        className="w-40"
+                        value={tp.label}
+                        onChange={(e) =>
+                          setTimePacks((prev) =>
+                            prev.map((p) => (p.id === tp.id ? { ...p, label: e.target.value } : p))
+                          )
+                        }
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs">Price ({currencyCode})</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="w-24"
+                        value={tp.price_zar}
+                        onChange={(e) =>
+                          setTimePacks((prev) =>
+                            prev.map((p) => (p.id === tp.id ? { ...p, price_zar: parseFloat(e.target.value) || 0 } : p))
+                          )
+                        }
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch
+                        checked={tp.is_active}
+                        onCheckedChange={(v) =>
+                          setTimePacks((prev) =>
+                            prev.map((p) => (p.id === tp.id ? { ...p, is_active: v } : p))
+                          )
+                        }
+                      />
+                      Active
+                    </label>
+                  </div>
+                ))}
+                <Button
+                  onClick={async () => {
+                    setTimePacksSaving(true);
+                    try {
+                      const updated = await fetcher.patch<{ data: TimePack[] }>("/api/admin/control-plane/modules/ads/time-packs", {
+                        packs: timePacks.map((p) => ({ id: p.id, price_zar: p.price_zar, is_active: p.is_active, label: p.label })),
+                      });
+                      setTimePacks(updated.data ?? []);
+                      toast.success("Time packs updated");
+                    } catch {
+                      toast.error("Failed to update time packs");
+                    } finally {
+                      setTimePacksSaving(false);
+                    }
+                  }}
+                  disabled={timePacksSaving}
+                >
+                  {timePacksSaving ? "Saving…" : "Save time packs"}
                 </Button>
               </div>
             )}

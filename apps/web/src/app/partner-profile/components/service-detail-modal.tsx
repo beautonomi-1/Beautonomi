@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Clock, MapPin, Check } from "lucide-react";
 
 interface ServiceDetailModalProps {
@@ -47,12 +48,16 @@ export default function ServiceDetailModal({
   onClose,
   onBook,
 }: ServiceDetailModalProps) {
+  const pageParams = useSearchParams();
+  const campaignId = pageParams.get("campaign_id");
+
   const createBookingUrl = () => {
     if (!providerSlug) return "#";
     const oid =
       offeringIdForBooking?.trim() ||
       (service.variants && service.variants.length > 0 ? service.variants[0]!.id : service.id);
-    return `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(oid)}`;
+    const base = `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(oid)}`;
+    return campaignId ? `${base}&campaign_id=${encodeURIComponent(campaignId)}` : base;
   };
 
   return (

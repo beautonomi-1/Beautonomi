@@ -31,7 +31,7 @@ export default function FloatingProgressOrbit({
   const gradientColor = getGradientColor();
 
   return (
-    <div className="backdrop-blur-md bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8">
+    <div className="bg-white/80 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8">
       <div className="flex flex-col md:flex-row gap-6 md:gap-8">
         {/* Progress Ring */}
         <div className="flex-shrink-0 flex items-center justify-center">

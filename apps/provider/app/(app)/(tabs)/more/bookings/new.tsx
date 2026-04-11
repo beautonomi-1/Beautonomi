@@ -35,6 +35,8 @@ import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
 import { StaticMapImage } from "@/components/ui/StaticMapImage";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useDefaultPhoneDial } from "@/hooks/useDefaultPhoneDial";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { calculateBookingTotals } from "@beautonomi/utils";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -93,8 +95,54 @@ interface SelectedService {
   addOnIds: string[];
 }
 
+interface Product {
+  id: string;
+  name: string;
+  price: number;
+  currency: string;
+  variants?: Array<{ id: string; name: string; price: number }>;
+}
+
+interface SelectedProduct {
+  productId: string;
+  productName: string;
+  productVariantId?: string;
+  productVariantName?: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+interface PackageItem {
+  id: string;
+  offering_id?: string;
+  product_id?: string;
+  quantity: number;
+  offering?: { id: string; title?: string; name?: string; duration_minutes?: number; price?: number };
+  product?: { id: string; name?: string; retail_price?: number };
+}
+
+interface Package {
+  id: string;
+  name: string;
+  description?: string;
+  price: number;
+  currency?: string;
+  is_active: boolean;
+  items: PackageItem[];
+}
+
 type DiscountType = "percentage" | "fixed";
 type PaymentMethod = "cash" | "card" | "online";
+
+function buildScheduledAtWithTz(date: Date, timeStr: string): string {
+  const naive = new Date(`${format(date, "yyyy-MM-dd")}T${timeStr}:00`);
+  const offsetMin = naive.getTimezoneOffset();
+  const sign = offsetMin <= 0 ? "+" : "-";
+  const absMin = Math.abs(offsetMin);
+  const hh = String(Math.floor(absMin / 60)).padStart(2, "0");
+  const mm = String(absMin % 60).padStart(2, "0");
+  return `${format(date, "yyyy-MM-dd")}T${timeStr}:00${sign}${hh}:${mm}`;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -111,7 +159,7 @@ const TIME_SLOTS = (() => {
   return slots;
 })();
 
-const DATE_RANGE_DAYS = 30;
+const DATE_RANGE_DAYS = 90;
 const PAYMENT_METHODS: { label: string; value: PaymentMethod; icon: keyof typeof Ionicons.glyphMap }[] = [
   { label: "Cash", value: "cash", icon: "cash-outline" },
   { label: "Card", value: "card", icon: "card-outline" },
@@ -212,6 +260,24 @@ export default function NewBookingScreen() {
   const [staffPickerService, setStaffPickerService] = useState<string | null>(null);
   const [addOnPickerService, setAddOnPickerService] = useState<string | null>(null);
 
+  // --- Products ---
+  const { data: productsRaw } = useApi<Product[]>("/api/provider/products?limit=100");
+  const productsList = useMemo(() => (Array.isArray(productsRaw) ? productsRaw : []), [productsRaw]);
+  const [selectedProducts, setSelectedProducts] = useState<SelectedProduct[]>([]);
+  const [showProductPicker, setShowProductPicker] = useState(false);
+
+  // --- Packages ---
+  const packagesUrl = selectedLocationId
+    ? `/api/provider/packages?location_id=${encodeURIComponent(selectedLocationId)}`
+    : "/api/provider/packages";
+  const { data: packagesRaw } = useApi<{ packages: Package[] }>(packagesUrl);
+  const packagesList = useMemo(
+    () => (packagesRaw?.packages ?? []).filter((p) => p.is_active && p.items?.length > 0),
+    [packagesRaw],
+  );
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [showPackagePicker, setShowPackagePicker] = useState(false);
+
   // Pre-select client from navigation params — fetch by ID for reliability
   const preselectedClientId = params.clientId || params.client_id;
   const { data: rawPreselectedClients } = useApi<ApiClient[]>(
@@ -238,7 +304,7 @@ export default function NewBookingScreen() {
   }, [preselectedClientId, rawPreselectedClients, selectedClient]);
 
   // --- Appointment type ---
-  const isWalkIn = params.walk_in === "true";
+  const [isWalkIn, setIsWalkIn] = useState(params.walk_in === "true");
   const [locationType, setLocationType] = useState<"at_salon" | "at_home">("at_salon");
   const [addressSearchValue, setAddressSearchValue] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
@@ -254,17 +320,61 @@ export default function NewBookingScreen() {
   const [notes, setNotes] = useState("");
   const [discountValue, setDiscountValue] = useState("");
   const [discountType, setDiscountType] = useState<DiscountType>("percentage");
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState<{ code: string; discount: number; discountType: string; discountValue: number } | null>(null);
+  const [promoValidating, setPromoValidating] = useState(false);
+  const [promoError, setPromoError] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
   const [referralSourceId, setReferralSourceId] = useState<string>("");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
   const [, setCheckingAvailability] = useState(false);
 
+  // Auto-save draft to AsyncStorage
+  const DRAFT_KEY = "beautonomi_mobile_booking_draft";
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const draft = { notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode };
+      AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId]);
+
+  // Restore draft on mount if no prefilled params
+  useEffect(() => {
+    if (preselectedClientId) return;
+    AsyncStorage.getItem(DRAFT_KEY).then((saved) => {
+      if (!saved) return;
+      try {
+        const draft = JSON.parse(saved);
+        if (draft.notes) setNotes(draft.notes);
+        if (Array.isArray(draft.selectedServices) && draft.selectedServices.length > 0) {
+          // Only restore services whose IDs still exist in the catalogue
+          const validServices = services
+            ? draft.selectedServices.filter((s: SelectedService) =>
+                services.some((cat) => cat.id === s.serviceId)
+              )
+            : draft.selectedServices;
+          if (validServices.length > 0) setSelectedServices(validServices);
+        }
+        if (Array.isArray(draft.selectedProducts) && draft.selectedProducts.length > 0) {
+          setSelectedProducts(draft.selectedProducts);
+        }
+        if (draft.discountValue) setDiscountValue(draft.discountValue);
+        if (draft.discountType) setDiscountType(draft.discountType);
+        if (draft.promoCode) setPromoCode(draft.promoCode);
+        if (draft.tipAmount) setTipAmount(draft.tipAmount);
+        if (draft.selectedPackageId) setSelectedPackageId(draft.selectedPackageId);
+      } catch { /* ignore */ }
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; services may load after
+  }, []);
+
   // Summary (must be before slotParams which uses summary.totalMinutes)
   const summary = useMemo(() => {
     let subtotal = 0;
     let totalMinutes = 0;
-    const items: { name: string; price: number; duration: number; staffName?: string }[] = [];
+    const items: { name: string; price: number; duration: number; staffName?: string; quantity?: number }[] = [];
     selectedServices.forEach((sel) => {
       const svc = services?.find((s) => s.id === sel.serviceId);
       if (!svc) return;
@@ -280,23 +390,43 @@ export default function NewBookingScreen() {
         items.push({ name: `  + ${ao.name}`, price: ao.price, duration: ao.duration_minutes });
       });
     });
-    const discountAmt = discountValue
+    selectedProducts.forEach((p) => {
+      const lineTotal = p.unitPrice * p.quantity;
+      subtotal += lineTotal;
+      items.push({ name: p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName, price: lineTotal, duration: 0, quantity: p.quantity });
+    });
+    const manualDiscount = discountValue
       ? discountType === "percentage"
         ? (subtotal * (parseFloat(discountValue) || 0)) / 100
         : (parseFloat(discountValue) || 0)
       : 0;
-    const afterDiscount = Math.max(subtotal - discountAmt, 0);
+    const discountAmt = promoApplied ? promoApplied.discount : manualDiscount;
     const taxRatePercent = paymentSettings?.taxRatePercent ?? 0;
     const taxRate = taxRatePercent / 100;
     const taxInclusive = paymentSettings?.taxInclusive ?? true;
-    const tax = taxInclusive
-      ? afterDiscount - afterDiscount / (1 + taxRate)
-      : afterDiscount * taxRate;
     const travelFeeNum = Number(travelFee) || 0;
     const tipNum = Number(tipAmount) || 0;
-    const total = (taxInclusive ? afterDiscount : afterDiscount + tax) + travelFeeNum + tipNum;
-    return { items, subtotal, discountAmt, afterDiscount, tax, total, totalMinutes, taxRate, taxRatePercent, taxInclusive, travelFeeNum, tipNum };
-  }, [selectedServices, services, staffList, discountValue, discountType, paymentSettings, travelFee, tipAmount]);
+    const pricing = calculateBookingTotals({
+      subtotal,
+      discountAmount: discountAmt,
+      taxRate,
+      taxInclusive,
+      travelFee: travelFeeNum,
+      serviceFeePercentage: 0,
+      tipAmount: tipNum,
+    });
+    return { items, subtotal, discountAmt, afterDiscount: pricing.afterDiscount, tax: pricing.taxAmount, total: pricing.totalAmount, totalMinutes, taxRate, taxRatePercent, taxInclusive, travelFeeNum, tipNum };
+  }, [selectedServices, selectedProducts, services, staffList, discountValue, discountType, paymentSettings, travelFee, tipAmount, promoApplied]);
+
+  // Auto-clear promo code when cart items change so stale discount doesn't apply
+  useEffect(() => {
+    if (promoApplied) {
+      setPromoApplied(null);
+      setPromoCode("");
+      setPromoError("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only react to cart changes
+  }, [selectedServices.length, selectedProducts.length]);
 
   // Available time slots for selected date (considering bookings + time blocks)
   const slotParams = useMemo(() => {
@@ -343,17 +473,86 @@ export default function NewBookingScreen() {
     );
   }
 
+  function handleAddPackage(pkg: Package) {
+    if (!pkg.items || pkg.items.length === 0) {
+      Alert.alert("Error", "This package has no items");
+      return;
+    }
+    pkg.items.forEach((item) => {
+      if (item.offering_id && item.offering) {
+        const offering = item.offering;
+        const catalogueService = services?.find((s) => s.id === item.offering_id);
+        if (catalogueService) {
+          setSelectedServices((prev) => [...prev, { serviceId: catalogueService.id, addOnIds: [] }]);
+        } else if (offering.id) {
+          Alert.alert("Notice", `Service "${offering.title || offering.name || "Unknown"}" from this package is not in your active catalogue. It was skipped.`);
+        }
+      } else if (item.product_id && item.product) {
+        const prod = item.product;
+        const catalogueProduct = productsList.find((p) => p.id === item.product_id);
+        const unitPrice = catalogueProduct?.price ?? prod.retail_price ?? 0;
+        setSelectedProducts((prev) => [...prev, {
+          productId: item.product_id!,
+          productName: catalogueProduct?.name ?? prod.name ?? "Product",
+          quantity: item.quantity || 1,
+          unitPrice,
+        }]);
+      }
+    });
+    setSelectedPackageId(pkg.id);
+    setShowPackagePicker(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }
+
+  async function applyPromoCode() {
+    const code = promoCode.trim();
+    if (!code) return;
+    setPromoValidating(true);
+    setPromoError("");
+    try {
+      const subtotal = summary.subtotal;
+      const res = await api.get<{ valid?: boolean; discount?: number; coupon?: { code?: string; discount_type?: string; discount_value?: number }; message?: string }>(
+        `/api/provider/coupons/validate?code=${encodeURIComponent(code)}&subtotal=${subtotal}`,
+      );
+      if (res.error || !res.data?.valid) {
+        setPromoError((res.error as { message?: string })?.message || "Invalid code");
+        setPromoApplied(null);
+        return;
+      }
+      const coupon = res.data.coupon;
+      setPromoApplied({
+        code: coupon?.code || code,
+        discount: res.data.discount || 0,
+        discountType: coupon?.discount_type || "fixed",
+        discountValue: coupon?.discount_value || 0,
+      });
+      setDiscountValue("");
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch {
+      setPromoError("Failed to validate code");
+      setPromoApplied(null);
+    } finally {
+      setPromoValidating(false);
+    }
+  }
+
+  function clearPromoCode() {
+    setPromoCode("");
+    setPromoApplied(null);
+    setPromoError("");
+  }
+
   // --- Validation ---
   function validate(): string | null {
     if (clientMode === "search" && !selectedClient) return "Please select a client";
     if (clientMode === "new" && !newClientFirst.trim()) return "Please enter client first name";
-    if (clientMode === "new") {
+    if (clientMode === "new" && !isWalkIn) {
       const phoneErr = validateE164Phone(newClientPhoneE164);
       if (phoneErr) return phoneErr;
     }
     if (!selectedDate) return "Please select a date";
     if (!selectedTime) return "Please select a time";
-    if (selectedServices.length === 0) return "Please select at least one service";
+    if (selectedServices.length === 0 && selectedProducts.length === 0) return "Please select at least one service or product";
     if (locationType === "at_home") {
       if (!addressLine1.trim()) return "Search and select the client's address";
       if (addressLatitude == null || addressLongitude == null) {
@@ -370,7 +569,7 @@ export default function NewBookingScreen() {
     setConflictWarning(null);
 
     try {
-      const scheduledAt = `${format(selectedDate, "yyyy-MM-dd")}T${selectedTime}:00`;
+      const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime);
       const staffIds = selectedServices
         .map((s) => s.staffId)
         .filter((id): id is string => !!id);
@@ -433,7 +632,7 @@ export default function NewBookingScreen() {
             customer_email: newClientEmail.trim() || undefined,
           };
 
-    const scheduledAt = `${format(selectedDate, "yyyy-MM-dd")}T${selectedTime}:00`;
+    const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime);
 
     const payload: Record<string, unknown> = {
       ...clientPayload,
@@ -454,14 +653,25 @@ export default function NewBookingScreen() {
           currency: svc?.currency || getTenantDefaultCurrency(),
         };
       }),
+      products: selectedProducts.map((p) => ({
+        productId: p.productId,
+        productName: p.productName,
+        quantity: p.quantity,
+        unitPrice: p.unitPrice,
+        totalPrice: p.unitPrice * p.quantity,
+        productVariantId: p.productVariantId || null,
+      })),
       location_type: locationType,
       location_id: locationType === "at_salon" ? selectedLocationId : undefined,
       special_requests: notes.trim() || undefined,
       subtotal: summary.subtotal,
       discount_amount: summary.discountAmt || 0,
-      discount_reason: discountValue
-        ? `${discountType === "percentage" ? discountValue + "%" : formatCurrency(Number(discountValue) || 0, tenantCurrency)} discount`
-        : undefined,
+      discount_code: promoApplied?.code || undefined,
+      discount_reason: promoApplied
+        ? `Promo: ${promoApplied.code}`
+        : discountValue
+          ? `${discountType === "percentage" ? discountValue + "%" : formatCurrency(Number(discountValue) || 0, tenantCurrency)} discount`
+          : undefined,
       tax_amount: summary.tax,
       tax_rate: summary.taxRatePercent,
       total_amount: summary.total,
@@ -470,6 +680,8 @@ export default function NewBookingScreen() {
       referral_source_id: referralSourceId.trim() || undefined,
       booking_source: isWalkIn ? "walk_in" : "provider",
       payment_method: paymentMethod,
+      send_notification: true,
+      ...(selectedPackageId ? { package_id: selectedPackageId } : {}),
     };
     if (summary.tipNum > 0) payload.tip_amount = summary.tipNum;
     if (locationType === "at_home") {
@@ -486,9 +698,8 @@ export default function NewBookingScreen() {
       }
     }
 
-    const { error } = await createBooking(payload);
+    const { data: responseData, error } = await createBooking(payload);
     if (error) {
-      // Detect subscription limit errors and offer an upgrade path
       const isLimitError =
         typeof error === "string" &&
         (error.toLowerCase().includes("booking limit") ||
@@ -512,7 +723,13 @@ export default function NewBookingScreen() {
       }
       return;
     }
-    Alert.alert("Success", "Booking created successfully");
+    AsyncStorage.removeItem(DRAFT_KEY).catch(() => {});
+    const warnings = (responseData as any)?._warnings as string[] | undefined;
+    if (warnings?.length) {
+      Alert.alert("Booking Created", warnings.join("\n"));
+    } else {
+      Alert.alert("Success", "Booking created successfully");
+    }
     router.back();
   }
 
@@ -549,6 +766,7 @@ export default function NewBookingScreen() {
                 : undefined
             }
             paymentMethod={paymentMethod}
+            packageName={selectedPackageId ? (packagesList.find((p) => p.id === selectedPackageId)?.name ?? null) : null}
             creating={creating}
             onConfirm={handleCreate}
             onBack={() => setShowConfirmation(false)}
@@ -781,40 +999,52 @@ export default function NewBookingScreen() {
               </TouchableOpacity>
 
               {/* -------- LOCATION -------- */}
-              <SectionLabel label="Location" />
+              <SectionLabel label="Booking Type" />
               <View style={twStyle("mb-4 flex-row")}>
                 {(
                   [
-                    { val: "at_salon", label: "At Salon", icon: "business-outline" },
-                    { val: "at_home", label: "At Home", icon: "home-outline" },
+                    { val: "at_salon", label: "In Salon", icon: "business-outline" as const },
+                    { val: "walk_in", label: "Walk-in", icon: "walk-outline" as const },
+                    { val: "at_home", label: "At Home", icon: "home-outline" as const },
                   ] as const
-                ).map((loc) => (
+                ).map((loc, idx) => {
+                  const isActive = loc.val === "walk_in" ? isWalkIn : (!isWalkIn && locationType === loc.val);
+                  return (
                   <TouchableOpacity
                     key={loc.val}
                     style={[twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
-                      locationType === loc.val
+                      isActive
                         ? "border-gray-900 bg-gray-900"
                         : "border-gray-200 bg-white"
-                    }`), loc.val === "at_salon" ? { marginRight: 12 } : undefined]}
-                    onPress={() => setLocationType(loc.val)}
+                    }`), idx < 2 ? { marginRight: 8 } : undefined]}
+                    onPress={() => {
+                      if (loc.val === "walk_in") {
+                        setIsWalkIn(true);
+                        setLocationType("at_salon");
+                      } else {
+                        setIsWalkIn(false);
+                        setLocationType(loc.val as "at_salon" | "at_home");
+                      }
+                    }}
                     accessibilityRole="radio"
-                    accessibilityState={{ checked: locationType === loc.val }}
+                    accessibilityState={{ checked: isActive }}
                     accessibilityLabel={loc.label}
                   >
                     <Ionicons
                       name={loc.icon as any}
                       size={16}
-                      color={locationType === loc.val ? "#fff" : "#6b7280"}
+                      color={isActive ? "#fff" : "#6b7280"}
                     />
                     <Text
                       style={twStyle(`ml-2 font-medium ${
-                        locationType === loc.val ? "text-white" : "text-gray-700"
+                        isActive ? "text-white" : "text-gray-700"
                       }`)}
                     >
                       {loc.label}
                     </Text>
                   </TouchableOpacity>
-                ))}
+                  );
+                })}
               </View>
               {locationType === "at_home" && (
                 <View style={twStyle("mb-4")}>
@@ -1038,9 +1268,90 @@ export default function NewBookingScreen() {
                 </View>
               )}
 
+              {/* -------- PRODUCTS -------- */}
+              {productsList.length > 0 && (
+                <View style={twStyle("mb-4")}>
+                  <SectionLabel label="Products" />
+                  {selectedProducts.map((p, idx) => (
+                    <View key={`${p.productId}-${p.productVariantId || ''}`} style={twStyle("mb-2 flex-row items-center justify-between rounded-xl border border-gray-100 bg-white p-3")}>
+                      <View style={twStyle("flex-1")}>
+                        <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={1}>
+                          {p.productVariantName ? `${p.productName} · ${p.productVariantName}` : p.productName}
+                        </Text>
+                        <Text style={twStyle("text-xs text-gray-500")}>
+                          {formatCurrency(p.unitPrice, tenantCurrency)} × {p.quantity}
+                        </Text>
+                      </View>
+                      <View style={twStyle("flex-row items-center gap-2")}>
+                        <TouchableOpacity
+                          onPress={() => setSelectedProducts((prev) => prev.map((pp, i) => i === idx ? { ...pp, quantity: Math.max(1, pp.quantity - 1) } : pp))}
+                          style={twStyle("h-7 w-7 items-center justify-center rounded-md border border-gray-200")}
+                          accessibilityLabel="Decrease quantity"
+                        >
+                          <Ionicons name="remove" size={14} color="#6b7280" />
+                        </TouchableOpacity>
+                        <Text style={twStyle("text-sm font-medium text-gray-900 w-5 text-center")}>{p.quantity}</Text>
+                        <TouchableOpacity
+                          onPress={() => setSelectedProducts((prev) => prev.map((pp, i) => i === idx ? { ...pp, quantity: pp.quantity + 1 } : pp))}
+                          style={twStyle("h-7 w-7 items-center justify-center rounded-md border border-gray-200")}
+                          accessibilityLabel="Increase quantity"
+                        >
+                          <Ionicons name="add" size={14} color="#6b7280" />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setSelectedProducts((prev) => prev.filter((_, i) => i !== idx))}
+                          style={twStyle("ml-1 h-7 w-7 items-center justify-center rounded-md")}
+                          accessibilityLabel="Remove product"
+                        >
+                          <Ionicons name="close-circle" size={18} color="#ef4444" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
+                  <TouchableOpacity
+                    style={twStyle("flex-row items-center rounded-xl border border-dashed border-gray-300 px-4 py-3")}
+                    onPress={() => setShowProductPicker(true)}
+                    accessibilityLabel="Add a product"
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#6366f1" />
+                    <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Add Product</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {/* -------- PACKAGES -------- */}
+              {packagesList.length > 0 && (
+                <View style={twStyle("mb-4")}>
+                  <SectionLabel label="Package" />
+                  {selectedPackageId ? (
+                    <View style={twStyle("flex-row items-center rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3")}>
+                      <Ionicons name="gift-outline" size={16} color="#6366f1" />
+                      <Text style={twStyle("flex-1 ml-2 text-sm font-medium text-indigo-700")} numberOfLines={1}>
+                        {packagesList.find((p) => p.id === selectedPackageId)?.name ?? "Package"}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => setSelectedPackageId(null)}
+                        accessibilityLabel="Remove package"
+                      >
+                        <Ionicons name="close-circle" size={18} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={twStyle("flex-row items-center rounded-xl border border-dashed border-gray-300 px-4 py-3")}
+                      onPress={() => setShowPackagePicker(true)}
+                      accessibilityLabel="Add a package"
+                    >
+                      <Ionicons name="gift-outline" size={18} color="#6366f1" />
+                      <Text style={twStyle("ml-2 text-sm font-medium text-indigo-600")}>Add Package</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+
               {/* -------- DISCOUNT -------- */}
               <SectionLabel label="Discount" />
-              <View style={twStyle("mb-4 flex-row items-center")}>
+              <View style={[twStyle("mb-4 flex-row items-center"), promoApplied ? { opacity: 0.4 } : undefined]} pointerEvents={promoApplied ? "none" : "auto"}>
                 <View style={[twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3"), { marginRight: 8 }]}>
                   <TextInput
                     style={twStyle("flex-1 py-3 text-base text-gray-900")}
@@ -1049,6 +1360,7 @@ export default function NewBookingScreen() {
                     value={discountValue}
                     onChangeText={setDiscountValue}
                     keyboardType="numeric"
+                    editable={!promoApplied}
                     accessibilityLabel="Discount value"
                   />
                 </View>
@@ -1083,6 +1395,57 @@ export default function NewBookingScreen() {
                   </Text>
                 </TouchableOpacity>
               </View>
+
+              {/* -------- PROMO CODE -------- */}
+              <SectionLabel label="Promo Code" />
+              {promoApplied ? (
+                <View style={twStyle("mb-4 flex-row items-center rounded-xl border border-green-300 bg-green-50 px-4 py-3")}>
+                  <Ionicons name="pricetag" size={16} color="#16a34a" />
+                  <View style={twStyle("ml-2 flex-1")}>
+                    <Text style={twStyle("text-sm font-semibold text-green-700")}>{promoApplied.code}</Text>
+                    <Text style={twStyle("text-xs text-green-600")}>
+                      {promoApplied.discountType === "percentage"
+                        ? `${promoApplied.discountValue}% off`
+                        : `${formatCurrency(promoApplied.discountValue, tenantCurrency)} off`}
+                      {" "}({formatCurrency(promoApplied.discount, tenantCurrency)} saved)
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={clearPromoCode} accessibilityLabel="Remove promo code">
+                    <Ionicons name="close-circle" size={20} color="#6b7280" />
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={twStyle("mb-4")}>
+                  <View style={twStyle("flex-row items-center")}>
+                    <View style={[twStyle("flex-1 flex-row items-center rounded-xl border border-gray-200 bg-gray-50 px-3"), { marginRight: 8 }]}>
+                      <TextInput
+                        style={twStyle("flex-1 py-3 text-base text-gray-900")}
+                        placeholder="Enter promo code"
+                        placeholderTextColor="#9ca3af"
+                        value={promoCode}
+                        onChangeText={(t) => { setPromoCode(t.toUpperCase()); setPromoError(""); }}
+                        autoCapitalize="characters"
+                        accessibilityLabel="Promo code"
+                      />
+                    </View>
+                    <TouchableOpacity
+                      style={twStyle(`rounded-xl px-4 py-3 ${promoCode.trim() ? "bg-indigo-600" : "bg-gray-300"}`)}
+                      onPress={applyPromoCode}
+                      disabled={!promoCode.trim() || promoValidating}
+                      accessibilityLabel="Apply promo code"
+                    >
+                      {promoValidating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={twStyle("text-sm font-semibold text-white")}>Apply</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {promoError ? (
+                    <Text style={twStyle("mt-1 text-xs text-red-500")}>{promoError}</Text>
+                  ) : null}
+                </View>
+              )}
 
               {/* -------- PAYMENT METHOD -------- */}
               <SectionLabel label="Payment Method" />
@@ -1154,9 +1517,17 @@ export default function NewBookingScreen() {
         )}
 
         {/* -------- SUMMARY -------- */}
-        {!showConfirmation && selectedServices.length > 0 && (
+        {!showConfirmation && (selectedServices.length > 0 || selectedProducts.length > 0) && (
           <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-gray-50 p-4")}>
             <Text style={twStyle("mb-2 text-sm font-semibold text-gray-700")}>Summary</Text>
+            {selectedPackageId && (
+              <View style={twStyle("mb-2 flex-row items-center")}>
+                <Ionicons name="gift-outline" size={14} color="#6366f1" />
+                <Text style={twStyle("ml-1 text-xs font-medium text-indigo-600")}>
+                  Package: {packagesList.find((p) => p.id === selectedPackageId)?.name ?? "Package"}
+                </Text>
+              </View>
+            )}
             {summary.items.map((item, i) => (
               <View key={i} style={twStyle("flex-row justify-between py-0.5")}>
                 <Text style={twStyle("flex-1 text-sm text-gray-600")} numberOfLines={1}>
@@ -1203,11 +1574,21 @@ export default function NewBookingScreen() {
           </View>
         )}
 
+        {!showConfirmation && conflictWarning && (
+          <View style={twStyle("mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3")}>
+            <View style={twStyle("flex-row items-center gap-2 mb-1")}>
+              <Ionicons name="warning-outline" size={18} color="#d97706" />
+              <Text style={twStyle("text-sm font-semibold text-amber-800")}>Scheduling Conflict</Text>
+            </View>
+            <Text style={twStyle("text-sm text-amber-700")}>{conflictWarning}</Text>
+          </View>
+        )}
+
         {!showConfirmation && (
           <ActionButton
             label="Review Booking"
             onPress={handleReview}
-            disabled={selectedServices.length === 0}
+            disabled={selectedServices.length === 0 && selectedProducts.length === 0}
             fullWidth
           />
         )}
@@ -1278,6 +1659,102 @@ export default function NewBookingScreen() {
           </View>
         </BottomSheet>
 
+        {/* -------- PRODUCT PICKER SHEET -------- */}
+        <BottomSheet
+          visible={showProductPicker}
+          onClose={() => setShowProductPicker(false)}
+          title="Add Product"
+        >
+          <ScrollView style={{ maxHeight: 400 }}>
+            {productsList.map((product) => {
+              if (product.variants && product.variants.length > 0) {
+                return (
+                  <View key={product.id}>
+                    <Text style={twStyle("px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide")}>{product.name}</Text>
+                    {product.variants.map((v) => {
+                      const alreadyAdded = selectedProducts.some((sp) => sp.productId === product.id && sp.productVariantId === v.id);
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                          onPress={() => {
+                            if (!alreadyAdded) {
+                              setSelectedProducts((prev) => [...prev, {
+                                productId: product.id,
+                                productName: product.name,
+                                productVariantId: v.id,
+                                productVariantName: v.name,
+                                quantity: 1,
+                                unitPrice: v.price,
+                              }]);
+                            }
+                            setShowProductPicker(false);
+                          }}
+                        >
+                          <Text style={twStyle("text-sm text-gray-900")}>{v.name}</Text>
+                          <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(v.price, tenantCurrency)}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                );
+              }
+              const alreadyAdded = selectedProducts.some((sp) => sp.productId === product.id && !sp.productVariantId);
+              return (
+                <TouchableOpacity
+                  key={product.id}
+                  style={twStyle(`flex-row items-center justify-between px-4 py-3 border-b border-gray-100 ${alreadyAdded ? "bg-indigo-50" : ""}`)}
+                  onPress={() => {
+                    if (!alreadyAdded) {
+                      setSelectedProducts((prev) => [...prev, {
+                        productId: product.id,
+                        productName: product.name,
+                        quantity: 1,
+                        unitPrice: product.price,
+                      }]);
+                    }
+                    setShowProductPicker(false);
+                  }}
+                >
+                  <Text style={twStyle("text-sm text-gray-900")}>{product.name}</Text>
+                  <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(product.price, tenantCurrency)}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </BottomSheet>
+
+        {/* -------- PACKAGE PICKER SHEET -------- */}
+        <BottomSheet
+          visible={showPackagePicker}
+          onClose={() => setShowPackagePicker(false)}
+          title="Add Package"
+        >
+          <ScrollView style={{ maxHeight: 400 }}>
+            {packagesList.map((pkg) => (
+              <TouchableOpacity
+                key={pkg.id}
+                style={twStyle("flex-row items-center justify-between px-4 py-3 border-b border-gray-100")}
+                onPress={() => handleAddPackage(pkg)}
+              >
+                <View style={twStyle("flex-1 mr-3")}>
+                  <Text style={twStyle("text-sm font-medium text-gray-900")}>{pkg.name}</Text>
+                  {pkg.description ? (
+                    <Text style={twStyle("text-xs text-gray-500 mt-0.5")} numberOfLines={1}>{pkg.description}</Text>
+                  ) : null}
+                  <Text style={twStyle("text-xs text-gray-400 mt-0.5")}>
+                    {pkg.items.length} item{pkg.items.length !== 1 ? "s" : ""}
+                  </Text>
+                </View>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>{formatCurrency(pkg.price, pkg.currency || tenantCurrency)}</Text>
+              </TouchableOpacity>
+            ))}
+            {packagesList.length === 0 && (
+              <Text style={twStyle("py-4 text-center text-sm text-gray-400")}>No packages available</Text>
+            )}
+          </ScrollView>
+        </BottomSheet>
+
         {/* -------- ADD-ON PICKER SHEET -------- */}
         <BottomSheet
           visible={!!addOnPickerService}
@@ -1344,12 +1821,13 @@ function ConfirmationView({
   isWalkIn,
   serviceAddressSummary,
   paymentMethod,
+  packageName,
   creating,
   onConfirm,
   onBack,
 }: {
   summary: {
-    items: { name: string; price: number; duration: number; staffName?: string }[];
+    items: { name: string; price: number; duration: number; staffName?: string; quantity?: number }[];
     subtotal: number;
     discountAmt: number;
     tax: number;
@@ -1367,6 +1845,7 @@ function ConfirmationView({
   isWalkIn?: boolean;
   serviceAddressSummary?: string;
   paymentMethod: string;
+  packageName?: string | null;
   creating: boolean;
   onConfirm: () => void;
   onBack: () => void;
@@ -1393,6 +1872,7 @@ function ConfirmationView({
           </View>
         ) : null}
         <ConfirmRow label="Payment" value={paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)} />
+        {packageName ? <ConfirmRow label="Package" value={packageName} /> : null}
         <ConfirmRow label="Duration" value={formatDuration(summary.totalMinutes)} />
       </View>
 
@@ -1400,7 +1880,7 @@ function ConfirmationView({
         {summary.items.map((item, i) => (
           <View key={i} style={twStyle("flex-row justify-between py-0.5")}>
             <Text style={twStyle("flex-1 text-sm text-gray-600")} numberOfLines={1}>
-              {item.name}{item.staffName ? ` (${item.staffName})` : ""}
+              {item.name}{item.quantity && item.quantity > 1 ? ` ×${item.quantity}` : ""}{item.staffName ? ` (${item.staffName})` : ""}
             </Text>
             <Text style={twStyle("text-sm text-gray-600")}>{formatCurrency(item.price, currency)}</Text>
           </View>

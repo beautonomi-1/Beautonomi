@@ -187,14 +187,25 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold tracking-tight ${
                     booking.status === "confirmed"
                       ? "bg-green-50 text-green-700 border border-green-200"
+                      : booking.status === "completed"
+                      ? "bg-blue-50 text-blue-700 border border-blue-200"
                       : booking.status === "pending"
                       ? "bg-yellow-50 text-yellow-700 border border-yellow-200"
+                      : (booking.status as string) === "pending_payment"
+                      ? "bg-amber-50 text-amber-700 border border-amber-200"
                       : booking.status === "cancelled"
                       ? "bg-red-50 text-red-700 border border-red-200"
+                      : (booking.status as string) === "started" || booking.status === "in_progress"
+                      ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
+                      : booking.status === "no_show"
+                      ? "bg-gray-100 text-gray-600 border border-gray-200"
                       : "bg-gray-50 text-gray-700 border border-gray-200"
                   }`}
                 >
-                  {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                  {(booking.status as string) === "pending_payment" ? "Pending Payment"
+                    : booking.status === "in_progress" ? "In Progress"
+                    : booking.status === "no_show" ? "No Show"
+                    : booking.status.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase())}
                 </span>
               </div>
 

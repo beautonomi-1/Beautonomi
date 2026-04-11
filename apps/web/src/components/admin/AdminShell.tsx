@@ -61,6 +61,14 @@ import {
   MapPinned,
   Boxes,
   ShieldAlert,
+  Megaphone,
+  MapPin,
+  ClipboardList,
+  UserPlus,
+  Kanban,
+  Radio,
+  CheckCircle2,
+  Settings2,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -93,6 +101,7 @@ import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
+  ADMIN_SECTION_PROVIDER_OPS,
 } from "@/lib/admin-sections";
 import type { AdminSection } from "@/lib/admin-sections";
 import type { UserRole } from "@/types/beautonomi";
@@ -120,6 +129,7 @@ const navGroups: NavGroup[] = [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { title: "Geo & Devices", href: "/admin/analytics/geo", icon: MapPin },
       { title: "Reports", href: "/admin/reports", icon: FileText },
     ],
   },
@@ -140,6 +150,19 @@ const navGroups: NavGroup[] = [
       { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag },
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
+    ],
+  },
+  {
+    label: "Provider Ops",
+    section: ADMIN_SECTION_PROVIDER_OPS,
+    items: [
+      { title: "Ops Dashboard", href: "/admin/provider-ops", icon: Radio },
+      { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList },
+      { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserPlus },
+      { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Kanban },
+      { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2 },
+      { title: "Reports", href: "/admin/provider-ops/reports", icon: BarChart3 },
+      { title: "Settings", href: "/admin/provider-ops/settings", icon: Settings2 },
     ],
   },
   {
@@ -192,6 +215,7 @@ const navGroups: NavGroup[] = [
     label: "Marketing & comms",
     section: ADMIN_SECTION_MARKETING_COMMS,
     items: [
+      { title: "Ads & Campaigns", href: "/admin/ads", icon: Megaphone },
       { title: "Promotions", href: "/admin/promotions", icon: Gift },
       { title: "Loyalty", href: "/admin/loyalty", icon: Award },
       { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },
@@ -304,6 +328,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const [navCounts, setNavCounts] = useState<Record<string, number>>({});
   const [effectiveSectionRoles, setEffectiveSectionRoles] = useState<Record<string, string[]> | null>(null);
@@ -337,6 +362,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
     const timeoutId = setTimeout(async () => {
       setIsSearching(true);
+      setSearchError(null);
       try {
         const response = await fetcher.get<{ data: SearchResult }>(
           `/api/admin/search?q=${encodeURIComponent(searchQuery.trim())}`
@@ -346,6 +372,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       } catch (error) {
         console.error("Search error:", error);
         setSearchResults(null);
+        setSearchError("Search failed. Please try again.");
       } finally {
         setIsSearching(false);
       }
@@ -374,7 +401,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       .then((res) => {
         if (!cancelled && res?.data) setNavCounts(res.data);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load nav counts:", err);
+      });
     return () => {
       cancelled = true;
     };
@@ -433,7 +462,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           setAdminScopeTenantId(rows[0].id);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load tenants:", err);
+      });
     return () => {
       cancelled = true;
     };
@@ -536,6 +567,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
                   {isSearching ? (
                     <div className="p-4 text-center text-gray-500">Searching...</div>
+                  ) : searchError ? (
+                    <div className="p-4 text-center text-red-500">{searchError}</div>
                   ) : totalResults === 0 ? (
                     <div className="p-4 text-center text-gray-500">No results found</div>
                   ) : searchResults ? (
@@ -681,6 +714,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
                       {isSearching ? (
                         <div className="p-4 text-center text-gray-500">Searching...</div>
+                      ) : searchError ? (
+                        <div className="p-4 text-center text-red-500">{searchError}</div>
                       ) : totalResults === 0 ? (
                         <div className="p-4 text-center text-gray-500">No results found</div>
                       ) : (

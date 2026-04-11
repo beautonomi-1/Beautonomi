@@ -20,6 +20,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface FinanceSummary {
   service_collected_gross: number;
@@ -52,6 +53,42 @@ interface FinanceSummary {
   referral_payouts: number;
   total_platform_take_after_referrals: number;
 
+  service_fee_revenue?: number;
+  ecommerce_platform_fees?: number;
+  additional_charge_gross?: number;
+  travel_fees?: number;
+  cancellation_fees_retained?: number;
+
+  revenue_streams?: {
+    booking_commission: number;
+    subscriptions: number;
+    ads: number;
+    service_fees: number;
+    ecommerce_fees: number;
+    wallet_topups: number;
+    cancellation_fees: number;
+    total: number;
+  };
+
+  platform_revenue?: {
+    booking_commission: number;
+    subscriptions: number;
+    ads: number;
+    service_fees: number;
+    ecommerce_fees: number;
+    wallet_topups: number;
+    cancellation_fees: number;
+    total: number;
+  };
+
+  provider_revenue?: {
+    provider_earnings: number;
+    tips: number;
+    taxes_collected: number;
+    refunds: number;
+    net_after_refunds: number;
+  };
+
   period: {
     start_date: string | null;
     end_date: string | null;
@@ -78,6 +115,7 @@ export default function AdminFinance() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState("");
+  const { format: fmtMoney } = useReportCurrency();
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -348,11 +386,11 @@ export default function AdminFinance() {
                   infoTooltip="Total amount refunded to customers in the period (gross refund value)."
                 />
                 <SummaryCard
-                  title="Gift Card Sales"
+                  title="Gift Card Sales (Liability)"
                   value={summary.gift_card_sales}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
-                  infoTooltip="Revenue from gift card purchases (recorded in finance ledger when customer buys a card). Redemptions are part of booking GMV."
+                  infoTooltip="Cash received from gift card purchases — NOT revenue. This is a liability until cards are redeemed via bookings. Revenue is recognized as platform commission when bookings are made."
                 />
                 <SummaryCard
                   title="Membership Sales"
@@ -433,6 +471,70 @@ export default function AdminFinance() {
               </div>
             )}
 
+            {/* Revenue Streams Breakdown */}
+            {summary?.revenue_streams && (
+              <div className="bg-white border rounded-lg overflow-hidden shadow-sm mb-6 sm:mb-8">
+                <div className="px-3 sm:px-6 py-3 sm:py-4 border-b">
+                  <h2 className="text-base sm:text-lg font-semibold">Platform Revenue Streams</h2>
+                  <p className="text-xs text-gray-500 mt-1">How the platform makes money — all revenue sources in one view.</p>
+                </div>
+                <div className="p-3 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {[
+                      { label: "Booking Commission", value: summary.revenue_streams.booking_commission, desc: "Net commission after gateway fees" },
+                      { label: "Subscriptions", value: summary.revenue_streams.subscriptions, desc: "Provider subscription payments" },
+                      { label: "Ads Revenue", value: summary.revenue_streams.ads, desc: "Ad campaign prepayments" },
+                      { label: "Service Fees", value: summary.revenue_streams.service_fees, desc: "Customer-facing checkout fees" },
+                      { label: "Ecommerce Fees", value: summary.revenue_streams.ecommerce_fees, desc: "Product order platform fees" },
+                      { label: "Wallet Top-ups", value: summary.revenue_streams.wallet_topups, desc: "Wallet funding by customers" },
+                      { label: "Cancellation Fees", value: summary.revenue_streams.cancellation_fees, desc: "Fees retained from cancellations" },
+                    ].map((item) => (
+                      <div key={item.label} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">{item.label}</p>
+                        <p className="text-lg font-semibold text-gray-900">{fmtMoney(item.value)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-indigo-50 rounded-lg flex items-center justify-between">
+                    <span className="text-sm font-medium text-indigo-800">Total Platform Revenue</span>
+                    <span className="text-lg font-bold text-indigo-900">{fmtMoney(summary.revenue_streams.total)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Provider Revenue Section */}
+            {summary && (
+              <div className="bg-white border rounded-lg overflow-hidden shadow-sm mb-6 sm:mb-8">
+                <div className="px-3 sm:px-6 py-3 sm:py-4 border-b">
+                  <h2 className="text-base sm:text-lg font-semibold">Provider Revenue via Platform</h2>
+                  <p className="text-xs text-gray-500 mt-1">How much providers are earning through bookings, e-commerce, tips, and other services.</p>
+                </div>
+                <div className="p-3 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+                    {[
+                      { label: "Provider Earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings, desc: "Net provider share from bookings & orders" },
+                      { label: "Tips", value: summary.provider_revenue?.tips ?? summary.tips_gross, desc: "Customer tips (100% to provider)" },
+                      { label: "Taxes Collected", value: summary.provider_revenue?.taxes_collected ?? summary.taxes_gross, desc: "Tax pass-through (provider remits)" },
+                      { label: "Refunds", value: summary.provider_revenue?.refunds ?? summary.refunds_gross, desc: "Refunds deducted from provider balance" },
+                      { label: "Net After Refunds", value: summary.provider_revenue?.net_after_refunds ?? (summary.provider_earnings - Math.abs(summary.refunds_gross)), desc: "Earnings minus refunds" },
+                    ].map((item) => (
+                      <div key={item.label} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">{item.label}</p>
+                        <p className="text-lg font-semibold text-gray-900">{fmtMoney(item.value)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-emerald-50 rounded-lg flex items-center justify-between">
+                    <span className="text-sm font-medium text-emerald-800">Platform is helping providers earn</span>
+                    <span className="text-lg font-bold text-emerald-900">{fmtMoney(summary.provider_revenue?.provider_earnings ?? summary.provider_earnings)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Transactions Table */}
             <div className="bg-white border rounded-lg overflow-hidden shadow-sm">
               <div className="px-3 sm:px-6 py-3 sm:py-4 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-0">
@@ -484,13 +586,13 @@ export default function AdminFinance() {
                             {tx.transaction_type}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            R {tx.amount.toLocaleString()}
+                            {fmtMoney(tx.amount)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            R {tx.fees.toLocaleString()}
+                            {fmtMoney(tx.fees)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            R {tx.net.toLocaleString()}
+                            {fmtMoney(tx.net)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {tx.booking?.booking_number || "N/A"}
@@ -530,18 +632,18 @@ export default function AdminFinance() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-gray-900">
-                              R {tx.net.toLocaleString()}
+                              {fmtMoney(tx.net)}
                             </div>
                             {tx.fees > 0 && (
                               <div className="text-xs text-gray-500">
-                                Fees: R {tx.fees.toLocaleString()}
+                                Fees: {fmtMoney(tx.fees)}
                               </div>
                             )}
                           </div>
                         </div>
                         {tx.amount !== tx.net && (
                           <div className="text-xs text-gray-500 pt-1 border-t">
-                            Gross: R {tx.amount.toLocaleString()}
+                            Gross: {fmtMoney(tx.amount)}
                           </div>
                         )}
                       </div>
@@ -601,8 +703,9 @@ function SummaryCard({
   format?: "number" | "currency";
   infoTooltip?: string;
 }) {
+  const { format: fmtCurrency } = useReportCurrency();
   const formattedValue =
-    format === "currency" ? `R ${value.toLocaleString()}` : value.toLocaleString();
+    format === "currency" ? fmtCurrency(value) : value.toLocaleString();
 
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">

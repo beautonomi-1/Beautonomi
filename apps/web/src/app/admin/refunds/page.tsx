@@ -10,6 +10,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -52,10 +53,12 @@ export default function AdminRefunds() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { format: fmtMoney } = useReportCurrency();
   const [selectedRefund, setSelectedRefund] = useState<Refund | null>(null);
   const [showProcessDialog, setShowProcessDialog] = useState(false);
   const [refundAmount, setRefundAmount] = useState("");
   const [refundReason, setRefundReason] = useState("");
+  const [refundNotes, setRefundNotes] = useState("");
 
   useEffect(() => {
     loadRefunds();
@@ -97,6 +100,7 @@ export default function AdminRefunds() {
       await fetcher.post(`/api/admin/refunds/${selectedRefund.id}`, {
         refund_amount: parseFloat(refundAmount),
         refund_reason: refundReason,
+        notes: refundNotes.trim() || undefined,
       });
 
       toast.success("Refund processed successfully");
@@ -104,6 +108,7 @@ export default function AdminRefunds() {
       setSelectedRefund(null);
       setRefundAmount("");
       setRefundReason("");
+      setRefundNotes("");
       loadRefunds();
     } catch (err) {
       toast.error(err instanceof FetchError ? err.message : "Failed to process refund");
@@ -246,7 +251,7 @@ export default function AdminRefunds() {
                   max={selectedRefund?.amount}
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                  Transaction amount: ${selectedRefund?.amount.toFixed(2)}
+                  Transaction amount: {fmtMoney(selectedRefund?.amount ?? 0)}
                 </p>
               </div>
               <div>
@@ -255,7 +260,16 @@ export default function AdminRefunds() {
                   value={refundReason}
                   onChange={(e) => setRefundReason(e.target.value)}
                   placeholder="Enter reason for refund..."
-                  rows={4}
+                  rows={3}
+                />
+              </div>
+              <div>
+                <Label>Internal Notes (optional)</Label>
+                <Textarea
+                  value={refundNotes}
+                  onChange={(e) => setRefundNotes(e.target.value)}
+                  placeholder="Internal admin notes..."
+                  rows={2}
                 />
               </div>
               <div className="flex justify-end gap-2">
@@ -279,6 +293,7 @@ function RefundList({
   refunds: Refund[];
   onProcess: (refund: Refund) => void;
 }) {
+  const { format: fmtMoney } = useReportCurrency();
   if (refunds.length === 0) {
     return (
       <div className="bg-white p-8 rounded-lg border border-gray-200 text-center">
@@ -310,7 +325,7 @@ function RefundList({
                 </Badge>
                 {refund.refund_amount && (
                   <Badge variant="outline">
-                    ${refund.refund_amount.toFixed(2)} refunded
+                    {fmtMoney(refund.refund_amount)} refunded
                   </Badge>
                 )}
               </div>
@@ -319,7 +334,7 @@ function RefundList({
                   <strong>Booking:</strong> {refund.booking?.booking_number}
                 </span>
                 <span>
-                  <strong>Amount:</strong> ${refund.amount.toFixed(2)}
+                  <strong>Amount:</strong> {fmtMoney(refund.amount)}
                 </span>
                 <span>
                   <strong>Customer:</strong>{" "}

@@ -1532,6 +1532,13 @@ export default function BookScreen() {
       const endAt = toIsoUtcTimestamp(selectedSlot.end);
       const holdStaffId = holdStaffIdFromSlotAndSelection(selectedStaff, selectedSlot);
 
+      // Release any existing hold before creating a new one
+      if (excludeHoldIdForSlots) {
+        api.post(`/api/public/booking-holds/${excludeHoldIdForSlots}/release`, {}).catch((err) => {
+          console.warn("Failed to release booking hold:", err);
+        });
+      }
+
       const res = await api.post<{ hold_id?: string; id?: string }>(
         "/api/public/booking-holds",
         {

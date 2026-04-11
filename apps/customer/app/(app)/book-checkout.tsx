@@ -1152,6 +1152,12 @@ export default function BookCheckoutScreen() {
       const res = await api.get<{ valid?: boolean; balance?: number; currency?: string; message?: string }>(
         `/api/public/gift-cards/validate?code=${encodeURIComponent(code)}`
       );
+      if (res.error) {
+        setGiftCardValid(null);
+        setGiftCardError(res.error.message || "Could not validate gift card");
+        setGiftCardValidating(false);
+        return;
+      }
       const data = res.data as any;
       if (data?.valid && data?.balance != null) {
         setGiftCardValid({ balance: Number(data.balance), currency: data.currency || getTenantDefaultCurrency() });
@@ -1434,6 +1440,7 @@ export default function BookCheckoutScreen() {
       if (res.error) {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
+        const errCode = (res.error as { code?: string }).code;
         // If the server rejects with 401 or 403, the session has expired mid-checkout.
         // Redirect to login so the user can re-authenticate and return to complete the booking.
         if (errStatus === 401 || errStatus === 403) {
@@ -1441,6 +1448,14 @@ export default function BookCheckoutScreen() {
             pathname: "/(auth)/login",
             params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
           });
+          return;
+        }
+        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED") {
+          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
+          return;
+        }
+        if (errStatus === 409 || errCode === "CONFLICT") {
+          setError(t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."));
           return;
         }
         setError(getApiErrorMessage(res.error, "Failed to complete booking"));
@@ -2953,13 +2968,15 @@ export default function BookCheckoutScreen() {
             shadowRadius: 40,
             elevation: 20,
           }}>
-            {/* Animated icon — green for confirmed, amber for pending provider approval */}
+            {/* Animated icon — green for confirmed, amber for pending provider approval / payment */}
             {(() => {
               const isPending = bookingConfirmedData.bookingStatus === "pending";
-              const iconName = isPending ? "time-outline" : "checkmark-circle";
-              const iconColor = isPending ? "#F59E0B" : Colors.primary;
-              const bgColor = isPending ? "#FEF3C7" : `${Colors.primary}12`;
-              const borderColor = isPending ? "#FCD34D" : `${Colors.primary}30`;
+              const isPendingPayment = bookingConfirmedData.bookingStatus === "pending_payment";
+              const isWaiting = isPending || isPendingPayment;
+              const iconName = isWaiting ? "time-outline" : "checkmark-circle";
+              const iconColor = isWaiting ? "#F59E0B" : Colors.primary;
+              const bgColor = isWaiting ? "#FEF3C7" : `${Colors.primary}12`;
+              const borderColor = isWaiting ? "#FCD34D" : `${Colors.primary}30`;
               return (
                 <View style={{
                   width: 88, height: 88, borderRadius: 44,
@@ -2974,8 +2991,18 @@ export default function BookCheckoutScreen() {
             })()}
 
             <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827", textAlign: "center", marginBottom: 6 }}>
-              {bookingConfirmedData.bookingStatus === "pending" ? "Booking received!" : "Booking confirmed!"}
+              {bookingConfirmedData.bookingStatus === "pending_payment"
+                ? "Payment processing..."
+                : bookingConfirmedData.bookingStatus === "pending"
+                ? "Booking received!"
+                : "Booking confirmed!"}
             </Text>
+
+            {bookingConfirmedData.bookingStatus === "pending_payment" && (
+              <Text style={{ fontSize: 13, color: "#92400E", textAlign: "center", backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>
+                Your payment is being confirmed. You&apos;ll receive a notification shortly.
+              </Text>
+            )}
 
             {bookingConfirmedData.bookingStatus === "pending" && (
               <Text style={{ fontSize: 13, color: "#92400E", textAlign: "center", backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>

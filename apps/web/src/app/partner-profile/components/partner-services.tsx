@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Info, Clock, ChevronDown, Layers } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -122,6 +122,8 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
   );
 
   const providerSlug = slug || partnerId || id;
+  const pageParams = useSearchParams();
+  const campaignId = pageParams.get("campaign_id");
 
   useEffect(() => {
     if (skipClientServicesFetch) return;
@@ -182,9 +184,10 @@ const PartnerServices: React.FC<PartnerServicesProps> = ({
       } else {
         q.set("service", service.id);
       }
+      if (campaignId) q.set("campaign_id", campaignId);
       return `/booking?${q.toString()}`;
     },
-    [providerSlug, selectedVariantId]
+    [providerSlug, selectedVariantId, campaignId]
   );
 
   const offeringIdForModalBooking = useCallback(

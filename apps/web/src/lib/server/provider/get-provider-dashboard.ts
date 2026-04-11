@@ -291,6 +291,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       }
     }
 
+    const tipsTotal = sumAmount(["tip"]);
+    const tipsThisMonth = sumAmount(["tip"], startOfMonth);
+
+    const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"];
+    const expensesTotal = sumAmount(EXPENSE_TYPES);
+    const expensesThisMonth = sumAmount(EXPENSE_TYPES, startOfMonth);
+
+    let platformFeesPaid = 0;
+    for (const r of parsedRows) {
+      if (r.transaction_type === "payment") {
+        platformFeesPaid += Math.abs(r.netValue);
+      }
+    }
+
     const revenueToday = sumNet(["provider_earnings"], startOfToday);
     const revenueThisWeek = sumNet(["provider_earnings"], startOfWeek);
     const revenueThisMonth = sumNet(["provider_earnings"], startOfMonth);
@@ -800,9 +814,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       
       // Revenue streams
       service_earnings_total: providerEarningsTotal,
+      tips_total: tipsTotal,
+      tips_this_month: tipsThisMonth,
       gift_card_sales_total: giftCardSalesTotal,
       membership_sales_total: membershipSalesTotal,
-      refunds_total: Math.abs(refundsTotal), // Show as positive number
+      refunds_total: Math.abs(refundsTotal),
+
+      // Expenses (subscriptions, ads, platform fees)
+      platform_fees_paid: platformFeesPaid,
+      expenses_total: expensesTotal,
+      expenses_this_month: expensesThisMonth,
       
       // Travel fees breakdown
       travel_fees_total: travelFeesTotal,

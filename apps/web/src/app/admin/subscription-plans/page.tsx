@@ -941,7 +941,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                             onChange={(e) =>
                               setFormData({ ...formData, price_display: e.target.value })
                             }
-                            placeholder="e.g. R199 or Free"
+                            placeholder="e.g. 199 or Free"
                           />
                         </div>
                         <div>

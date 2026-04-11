@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator } from "react-native";
+import { View, Text, Switch, ScrollView, RefreshControl, ActivityIndicator, Alert } from "react-native";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -128,11 +128,12 @@ export default function NotificationsScreen() {
     try {
       const res = await api.patch<NotificationPrefs>("/api/me/notification-preferences", { [key]: value });
       if (res.error) {
-        // Roll back to the captured previous state (not the stale closure)
         setPrefs(previous);
+        Alert.alert("Error", res.error.message || "Could not update preference. Please try again.");
       }
     } catch {
       setPrefs(previous);
+      Alert.alert("Error", "Could not update preference. Please try again.");
     } finally {
       setSavingKey(null);
     }
@@ -149,9 +150,11 @@ export default function NotificationsScreen() {
       const res = await api.patch<NotificationPrefs>("/api/me/notification-preferences", { [category]: updated });
       if (res.error) {
         setPrefs(previous);
+        Alert.alert("Error", res.error.message || "Could not update preference. Please try again.");
       }
     } catch {
       setPrefs(previous);
+      Alert.alert("Error", "Could not update preference. Please try again.");
     } finally {
       setSavingKey(null);
     }

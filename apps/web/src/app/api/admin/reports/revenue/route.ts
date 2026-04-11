@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
 
 export async function GET(request: NextRequest) {
   try {
@@ -245,6 +246,17 @@ export async function GET(request: NextRequest) {
       iterDate.setDate(iterDate.getDate() + 1);
     }
 
+    // Unified platform revenue breakdown from finance ledger
+    const allLedgerRows = await fetchFinanceLedgerRowsForTenant(
+      supabase,
+      tenantId,
+      { start: startDate.toISOString(), end: endDate.toISOString() },
+    );
+    const ledgerAgg = aggregateFinanceLedgerRows(allLedgerRows);
+
+    const platformRevenueNet =
+      ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net;
+
     return successResponse({
       period,
       // GMV: total booking value at time of booking (what was charged)
@@ -259,7 +271,7 @@ export async function GET(request: NextRequest) {
       },
       revenueByDay: revenueByDayArray,
       revenueByProvider: Object.values(revenueByProvider).sort((a, b) => b.revenue - a.revenue),
-      revenueByService: [], // Can be enhanced later
+      revenueByService: [],
       revenueByStatus: Object.entries(revenueByStatus).map(([status, data]) => ({
         status,
         ...data,
@@ -272,11 +284,21 @@ export async function GET(request: NextRequest) {
         salesByDay: salesByDayArray,
         redemptionsByDay: redemptionsByDayArray,
       },
-      // Cancellation and promotion analytics (from finance_transactions ledger)
       cancellationFeesRetained: totalCancellationFeesRetained,
       promotionDiscountsGiven: totalPromotionDiscounts,
-      // Net revenue = GMV minus refunds minus promotion discounts
       netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
+
+      platformRevenue: {
+        booking_commission_net: ledgerAgg.platform_take_net,
+        subscription_net: ledgerAgg.subscription_net,
+        ads_net: ledgerAgg.ads_net,
+        total_platform_revenue_net: platformRevenueNet,
+        gateway_fees_total: ledgerAgg.gateway_fees_services + ledgerAgg.subscription_gateway_fees + ledgerAgg.ads_gateway_fees,
+        provider_earnings_net: ledgerAgg.provider_earnings_net,
+        refunds_gross: ledgerAgg.refunds_gross,
+        tips_gross: ledgerAgg.tips_gross,
+        taxes_gross: ledgerAgg.taxes_gross,
+      },
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load revenue report');

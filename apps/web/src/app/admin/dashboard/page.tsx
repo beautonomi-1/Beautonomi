@@ -17,6 +17,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { useAuth } from "@/providers/AuthProvider";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   Popover,
   PopoverContent,
@@ -50,6 +51,22 @@ interface DashboardStats {
   gift_card_sales_total: number;
   membership_sales_total: number;
   refunds_total: number;
+  provider_earnings_total?: number;
+  provider_earnings_this_month?: number;
+  platform_revenue?: {
+    booking_commission: number;
+    subscriptions: number;
+    ads: number;
+    service_fees: number;
+    ecommerce_fees: number;
+    cancellation_fees: number;
+    total: number;
+  };
+  provider_revenue?: {
+    provider_earnings: number;
+    tips: number;
+    this_month: number;
+  };
   gift_card_metrics?: {
     total_sales: number;
   };
@@ -60,6 +77,7 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user, role } = useAuth();
+  const { format: fmtMoney } = useReportCurrency();
 
   useEffect(() => {
     if (user?.id && role === "superadmin") {
@@ -210,7 +228,7 @@ export default function AdminDashboard() {
               />
               <StatCard
                 title="Platform net (take + subs + ads)"
-                value={`R ${stats.platform_net_total.toLocaleString()}`}
+                value={fmtMoney(stats.platform_net_total)}
                 icon={<DollarSign className="w-6 h-6" />}
                 color="orange"
                 trend={stats.revenue_growth !== 0 ? `${stats.revenue_growth >= 0 ? '+' : ''}${stats.revenue_growth}%` : undefined}
@@ -219,161 +237,117 @@ export default function AdminDashboard() {
             </div>
           </motion.div>
 
-          {/* Revenue Streams */}
+          {/* Platform vs Provider Revenue */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+            className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8"
+          >
+            {/* Platform Revenue */}
+            <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-pink-50 rounded-lg border border-pink-100">
+                  <DollarSign className="w-5 h-5 text-[#FF0077]" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Platform Revenue</h2>
+                  <p className="text-xs text-gray-500">How Beautonomi makes money</p>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-gray-900 mb-4">
+                {fmtMoney(stats.platform_net_total)}
+              </div>
+              <div className="space-y-2">
+                <RevenueRow label="Booking Commission" value={fmtMoney(stats.platform_revenue?.booking_commission ?? stats.platform_net_total - stats.subscription_net_total - (stats.ads_net_total ?? 0))} />
+                <RevenueRow label="Provider Subscriptions" value={fmtMoney(stats.subscription_net_total)} />
+                <RevenueRow label="Ads Revenue" value={fmtMoney(stats.ads_net_total ?? 0)} />
+                <RevenueRow label="Service Fees" value={fmtMoney(stats.platform_revenue?.service_fees ?? 0)} />
+                <RevenueRow label="E-commerce Fees" value={fmtMoney(stats.platform_revenue?.ecommerce_fees ?? 0)} />
+                <RevenueRow label="Cancellation Fees" value={fmtMoney(stats.platform_revenue?.cancellation_fees ?? 0)} />
+                <div className="border-t pt-2 mt-2">
+                  <RevenueRow label="Gateway Fees (deducted)" value={`-${fmtMoney(stats.gateway_fees_total)}`} muted />
+                  <RevenueRow label="Refund Impact" value={fmtMoney(stats.platform_refund_impact_total)} muted />
+                </div>
+              </div>
+            </div>
+
+            {/* Provider Revenue */}
+            <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="p-2 bg-green-50 rounded-lg border border-green-100">
+                  <Building2 className="w-5 h-5 text-green-600" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Provider Revenue</h2>
+                  <p className="text-xs text-gray-500">How much providers are earning via the platform</p>
+                </div>
+              </div>
+              <div className="text-3xl font-bold text-gray-900 mb-4">
+                {fmtMoney(stats.provider_earnings_total ?? 0)}
+              </div>
+              <div className="space-y-2">
+                <RevenueRow label="Service Earnings (net)" value={fmtMoney(stats.provider_earnings_total ?? 0)} />
+                <RevenueRow label="Tips Collected" value={fmtMoney(stats.tips_total)} />
+                <RevenueRow label="Taxes Collected (pass-through)" value={fmtMoney(stats.taxes_total)} muted />
+                <div className="border-t pt-2 mt-2">
+                  <RevenueRow label="Refunds Given" value={`-${fmtMoney(stats.refunds_total)}`} muted />
+                </div>
+              </div>
+              <div className="mt-4 pt-3 border-t">
+                <p className="text-xs text-gray-500">This month: <span className="font-semibold text-gray-700">{fmtMoney(stats.provider_earnings_this_month ?? 0)}</span></p>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* GMV & Transaction Flow */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
-            title="GMV (services gross)"
-            value={`R ${stats.gmv_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="purple"
-            infoTooltip="Service GMV from ledger (payments, provider lines, tips, tax, fees, additional charges) — same as finance summary service_collected_gross."
-          />
-          <StatCard
-            title="Commission (Gross)"
-            value={`R ${stats.platform_commission_gross_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="orange"
-          />
-          <StatCard
-            title="Gateway Fees"
-            value={`R ${stats.gateway_fees_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="blue"
-            infoTooltip="Total payment processing fees charged by payment gateways. These fees reduce your platform revenue (Platform Take = Commission - Gateway Fees). Gateway fees do not affect provider earnings."
-          />
-          <StatCard
-            title="Refund Impact (Commission)"
-            value={`R ${stats.platform_refund_impact_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="orange"
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard
-            title="Subscription Revenue (Net)"
-            value={`R ${stats.subscription_net_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="green"
-          />
-          {typeof stats.ads_net_total === "number" ? (
-            <StatCard
-              title="Ads (Net)"
-              value={`R ${stats.ads_net_total.toLocaleString()}`}
+              title="GMV (Gross Merchandise Value)"
+              value={fmtMoney(stats.gmv_total)}
               icon={<DollarSign className="w-6 h-6" />}
-              color="green"
+              color="purple"
+              infoTooltip="Total value of all transactions before deductions. GMV = Platform Revenue + Provider Revenue + Gateway Fees."
             />
-          ) : null}
-          <StatCard
-            title="Tips (Gross)"
-            value={`R ${stats.tips_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="purple"
-          />
-          <StatCard
-            title="Taxes (Gross)"
-            value={`R ${stats.taxes_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="blue"
-          />
-          <StatCard
-            title="Gift Card Sales"
-            value={`R ${stats.gift_card_sales_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="green"
-          />
-          <StatCard
-            title="Membership Sales"
-            value={`R ${stats.membership_sales_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="blue"
-          />
-          <StatCard
-            title="Refunds"
-            value={`R ${stats.refunds_total.toLocaleString()}`}
-            icon={<DollarSign className="w-6 h-6" />}
-            color="orange"
-          />
-        </div>
-
-        {/* Gift Card Breakdown */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4, duration: 0.5, ease: "easeOut" }}
-          className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-8"
-        >
-          <div className="mb-6">
-            <div className="flex items-center gap-2 mb-2">
-              <Gift className="w-6 h-6 text-[#FF0077]" />
-              <h2 className="text-2xl font-semibold tracking-tighter text-gray-900">
-                Gift Card Metrics
-              </h2>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="text-gray-400 hover:text-[#FF0077] transition-colors"
-                  >
-                    <Info className="w-4 h-4" />
-                  </motion.button>
-                </PopoverTrigger>
-                <PopoverContent className="w-96 max-h-[80vh] overflow-y-auto backdrop-blur-xl bg-white/95 border border-white/40 shadow-xl">
-                  <div className="space-y-3">
-                    <h3 className="font-semibold text-sm text-gray-900">Gift Card Accounting</h3>
-                    <div className="text-xs text-gray-600 space-y-2">
-                      <p><strong>Sales:</strong> Cash received when customers purchase gift cards. This is a liability (platform owes services).</p>
-                      <p><strong>Redemptions:</strong> Value of gift cards used in bookings. Revenue is recognized via platform commission on those bookings.</p>
-                      <p><strong>Outstanding Liability:</strong> Unredeemed gift card balance (cash received but services not yet delivered).</p>
-                      <p className="text-[#FF0077] font-medium">Note: Gift card sales are NOT revenue until redeemed via bookings.</p>
-                    </div>
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </div>
-            <p className="text-sm font-light text-gray-600">Sales, redemptions, and liability tracking</p>
+            <StatCard
+              title="Commission (Gross)"
+              value={fmtMoney(stats.platform_commission_gross_total)}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="orange"
+            />
+            <StatCard
+              title="Membership Sales"
+              value={fmtMoney(stats.membership_sales_total)}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="blue"
+            />
+            <StatCard
+              title="Refunds (Gross)"
+              value={fmtMoney(stats.refunds_total)}
+              icon={<DollarSign className="w-6 h-6" />}
+              color="red"
+            />
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-white border rounded-lg p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">Total Sales</p>
-                <DollarSign className="w-5 h-5 text-gray-400" />
-              </div>
-              <p className="text-2xl font-semibold">
-                R {stats.gift_card_sales_total.toLocaleString()}
-              </p>
-              <p className="text-xs text-gray-500 mt-1">Cash received (liability)</p>
+          {/* Gift Cards — NOT revenue */}
+          <div className="backdrop-blur-xl bg-amber-50/50 border border-amber-200/60 rounded-2xl p-5 mb-8">
+            <div className="flex items-center gap-3 mb-3">
+              <Gift className="w-5 h-5 text-amber-600" />
+              <h3 className="font-semibold text-gray-900">Gift Cards</h3>
+              <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">LIABILITY — NOT REVENUE</span>
             </div>
-            <div className="bg-white border rounded-lg p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">View Full Report</p>
-                <Gift className="w-5 h-5 text-gray-400" />
+            <div className="flex flex-wrap gap-6">
+              <div>
+                <p className="text-sm text-gray-500">Total Sold</p>
+                <p className="text-xl font-semibold">{fmtMoney(stats.gift_card_sales_total)}</p>
+                <p className="text-[10px] text-gray-400">Cash received (owed until redeemed)</p>
               </div>
-              <a
-                href="/admin/reports/gift-cards"
-                className="text-[#FF0077] font-medium hover:underline text-sm"
-              >
-                Gift Card Report →
-              </a>
-              <p className="text-xs text-gray-500 mt-1">Detailed metrics & trends</p>
-            </div>
-            <div className="bg-white border rounded-lg p-6">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-gray-600">Manage Gift Cards</p>
-                <Gift className="w-5 h-5 text-gray-400" />
+              <div className="flex items-center gap-4">
+                <Link href="/admin/reports/gift-cards" className="text-sm text-[#FF0077] hover:underline font-medium">View Report →</Link>
+                <Link href="/admin/gift-cards" className="text-sm text-[#FF0077] hover:underline font-medium">Manage →</Link>
               </div>
-              <a
-                href="/admin/gift-cards"
-                className="text-[#FF0077] font-medium hover:underline text-sm"
-              >
-                Gift Card Management →
-              </a>
-              <p className="text-xs text-gray-500 mt-1">Create, edit, view cards</p>
             </div>
           </div>
-        </motion.div>
 
         {/* Today's Activity */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -390,7 +364,7 @@ export default function AdminDashboard() {
               <DollarSign className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-2xl font-semibold">
-              R {stats.revenue_today.toLocaleString()}
+              {fmtMoney(stats.revenue_today)}
             </p>
           </div>
           <div className="bg-white border rounded-lg p-6">
@@ -399,7 +373,7 @@ export default function AdminDashboard() {
               <TrendingUp className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-2xl font-semibold">
-              R {stats.revenue_this_month.toLocaleString()}
+              {fmtMoney(stats.revenue_this_month)}
             </p>
           </div>
         </div>
@@ -519,6 +493,15 @@ function StatCard({
       <h3 className="text-2xl md:text-3xl font-semibold tracking-tight mb-1 text-gray-900">{value}</h3>
       <p className="text-sm font-light text-gray-600">{title}</p>
     </motion.div>
+  );
+}
+
+function RevenueRow({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+  return (
+    <div className="flex items-center justify-between text-sm">
+      <span className={muted ? "text-gray-400" : "text-gray-600"}>{label}</span>
+      <span className={muted ? "text-gray-400 font-medium" : "font-semibold text-gray-900"}>{value}</span>
+    </div>
   );
 }
 

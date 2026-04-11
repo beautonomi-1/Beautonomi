@@ -160,11 +160,11 @@ export async function POST(request: Request) {
           .eq("id", eventRowId);
       }
 
-      // Still return 200 to acknowledge receipt
-      return NextResponse.json({
-        received: true,
-        error: error instanceof Error ? error.message : "Processing error",
-      });
+      // Return 500 so Yoco retries delivery for financial events
+      return NextResponse.json(
+        { received: false, error: error instanceof Error ? error.message : "Processing error" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ received: true });
@@ -282,14 +282,7 @@ async function handlePaymentNotification(
       
       if (paymentError) {
         console.error("Error creating booking_payment:", paymentError);
-        // Fallback: Update booking directly if booking_payment creation fails
-        await supabase
-          .from("bookings")
-          .update({
-            payment_status: "paid",
-            payment_date: new Date().toISOString(),
-          })
-          .eq("id", bookingId);
+        throw new Error(`Failed to create booking_payment for Yoco payment ${id}: ${paymentError.message}`);
       } else {
         console.log(`✅ Booking payment created for ${booking.booking_number} via Yoco terminal. Finance transactions will be auto-created by trigger.`);
         // The trigger (migration 169) will automatically:
@@ -371,6 +364,19 @@ async function handleRefundSuccess(
   }
 
   const currency = (data.currency as string) ?? lastResortCurrency;
+
+  // Idempotency: skip if refund already recorded
+  if (id) {
+    const { data: existingYocoRefund } = await supabase
+      .from("provider_yoco_refunds")
+      .select("id")
+      .eq("yoco_refund_id", id)
+      .maybeSingle();
+    if (existingYocoRefund) {
+      console.log(`Yoco refund ${id} already recorded, skipping (idempotent)`);
+      return;
+    }
+  }
 
   await supabase
     .from("provider_yoco_refunds")

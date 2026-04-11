@@ -52,10 +52,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Keep status 'active' until expires_at so provider retains access until period end.
+    // Set cancelled_at + auto_renew=false to indicate pending cancellation.
+    // A cron or webhook should set status='cancelled' once expires_at passes.
     const { data: subscription, error } = await supabase
       .from('provider_subscriptions')
       .update({
-        status: 'cancelled',
         cancelled_at: new Date().toISOString(),
         auto_renew: false,
         updated_at: new Date().toISOString(),

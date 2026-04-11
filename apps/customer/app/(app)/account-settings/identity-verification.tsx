@@ -77,6 +77,11 @@ export default function IdentityVerificationScreen() {
       const res = await api.get<VerificationStatus>(
         `/api/me/verification?environment=${encodeURIComponent(env)}`
       );
+      if (res.error) {
+        setError(res.error.message || "Failed to load verification status");
+        setStatusData(null);
+        return;
+      }
       const d = res.data as any;
       setStatusData({
         verified: d?.verified ?? false,

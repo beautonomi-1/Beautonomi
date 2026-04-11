@@ -1,6 +1,7 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
@@ -15,30 +16,32 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
  * GET /api/provider/bookings/[id]/receipt
  *
  * Get booking receipt data for print/display.
- * Returns data in the format expected by generateInvoiceHTMLFromData on the clients page.
+ * Uses admin client to bypass RLS (especially users table) so provider can
+ * see customer name/email on receipts. Ownership is verified in app code.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(["provider_owner", "provider_staff"], request);
-    const supabase = await getSupabaseServer(request);
+    const { user } = await requireRoleInApi(["provider_owner", "provider_staff", "superadmin"], request);
+    const supabaseAdmin = getSupabaseAdmin();
+    const scopedSupabase = await getSupabaseServer(request);
     const { id } = await params;
 
-    const providerId = await getProviderIdForUser(user.id, supabase);
-    if (!providerId) {
+    const providerId = await getProviderIdForUser(user.id, scopedSupabase);
+    if (!providerId && user.role !== "superadmin") {
       return notFoundResponse("Provider not found");
     }
 
-    const { data: booking, error } = await supabase
+    let query = supabaseAdmin
       .from("bookings")
       .select(
         `
         *,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone),
         locations:provider_locations(id, name, address_line1, address_line2, city, state, postal_code),
-        providers:providers!bookings_provider_id_fkey(id, business_name, owner_email, phone, address),
+        providers:providers!bookings_provider_id_fkey(id, business_name, owner_email, phone, address, receipt_prefix, receipt_next_number, receipt_header, receipt_footer),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         booking_services(
           id,
@@ -59,12 +62,40 @@ export async function GET(
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
+        ),
+        booking_addons(
+          id,
+          addon_id,
+          addon_name,
+          quantity,
+          price
+        ),
+        booking_payments(
+          id,
+          amount,
+          payment_method,
+          payment_provider,
+          status,
+          created_at
+        ),
+        additional_charges(
+          id,
+          description,
+          amount,
+          currency,
+          status,
+          requested_at,
+          paid_at
         )
       `
       )
-      .eq("id", id)
-      .eq("provider_id", providerId)
-      .single();
+      .eq("id", id);
+
+    if (providerId) {
+      query = query.eq("provider_id", providerId);
+    }
+
+    const { data: booking, error } = await (query as any).single();
 
     if (error || !booking) {
       return notFoundResponse("Booking not found");
@@ -107,7 +138,16 @@ export async function GET(
       };
     });
 
-    const items = [...serviceItems, ...productItems];
+    const addonItems = (b.booking_addons || []).map((ba: any) => ({
+      description: ba.addon_name || "Add-on",
+      staff: null,
+      duration: null,
+      quantity: ba.quantity || 1,
+      unit_price: Number(ba.price || 0),
+      total: Number(ba.price || 0) * (ba.quantity || 1),
+    }));
+
+    const items = [...serviceItems, ...addonItems, ...productItems];
 
     const linesSubtotal = items.reduce((s: number, i: any) => s + (i.total || 0), 0);
     const subtotal = b.subtotal != null ? Number(b.subtotal) : linesSubtotal;
@@ -122,10 +162,32 @@ export async function GET(
     const totalAmount =
       b.total_amount != null && !Number.isNaN(Number(b.total_amount))
         ? Number(b.total_amount)
-        : subtotal + taxAmount + serviceFeeAmount + tipAmount - discountAmount - cancellationFee;
+        : subtotal + taxAmount + serviceFeeAmount + travelFee + tipAmount - discountAmount - cancellationFee;
+
+    const completedPayments = (b.booking_payments || []).filter((p: any) => p.status === "completed");
+    const amountPaid = completedPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+    const balanceDue = Math.max(0, totalAmount - amountPaid);
+
+    const additionalCharges = (b.additional_charges || []).map((ac: any) => ({
+      id: ac.id,
+      description: ac.description || "Additional charge",
+      amount: Number(ac.amount || 0),
+      currency: ac.currency || b.currency || currencyFallback,
+      status: ac.status || "pending",
+    }));
+
+    const depositRequired = Boolean(b.deposit_required);
+    const depositAmount = Number(b.deposit_amount || 0);
+    const depositPercentage = Number(b.deposit_percentage || 0);
+    const paymentOption = b.payment_option || "full";
+
+    const receiptPrefix = provider.receipt_prefix || "REC";
+    const receiptNextNumber = Number(provider.receipt_next_number || 1);
+    const receiptHeader = provider.receipt_header || null;
+    const receiptFooter = provider.receipt_footer || null;
 
     const receiptData = {
-      invoice_number: b.booking_number || `BKG-${b.id?.slice(0, 8)}`,
+      invoice_number: b.booking_number || `${receiptPrefix}-${String(receiptNextNumber).padStart(4, "0")}`,
       group_booking_ref: (b as any).group_bookings?.ref_number || null,
       invoice_date: new Date(b.created_at || Date.now()).toLocaleDateString(),
       booking_date: b.scheduled_at
@@ -162,6 +224,10 @@ export async function GET(
       total_amount: totalAmount,
       currency: b.currency || currencyFallback,
       payment_status: b.payment_status || "pending",
+      deposit_required: depositRequired,
+      deposit_amount: depositAmount,
+      deposit_percentage: depositPercentage,
+      payment_option: paymentOption,
       location_type: b.location_type || "at_salon",
       service_address: b.address_line1
         ? {
@@ -172,7 +238,13 @@ export async function GET(
             postal_code: b.address_postal_code || "",
           }
         : null,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      additional_charges: additionalCharges,
+      transactions: b.booking_payments || [],
       notes: b.special_requests || null,
+      receipt_header: receiptHeader,
+      receipt_footer: receiptFooter,
     };
 
     return successResponse(receiptData);

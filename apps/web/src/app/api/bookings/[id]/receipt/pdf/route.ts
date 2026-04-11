@@ -13,14 +13,25 @@ type ReceiptPayload = {
     products?: Array<{ name?: string; quantity?: number; total?: number }>;
     subtotal?: number;
     tax?: number;
+    tax_rate?: number;
     fees?: number;
     travel_fee?: number;
     tip_amount?: number;
     cancellation_fee?: number;
     discount?: number;
+    discount_reason?: string | null;
     total?: number;
     currency?: string;
     payment_status?: string;
+    amount_paid?: number;
+    balance_due?: number;
+    deposit_required?: boolean;
+    deposit_amount?: number;
+    deposit_percentage?: number;
+    payment_option?: string;
+    additional_charges?: Array<{ description?: string; amount?: number; status?: string }>;
+    receipt_header?: string | null;
+    receipt_footer?: string | null;
   };
 };
 
@@ -87,7 +98,12 @@ export async function GET(
     const chunks: Buffer[] = [];
     doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-    doc.fontSize(22).text("Receipt", { align: "left" });
+    if (receipt.receipt_header) {
+      doc.fontSize(10).fillColor("#555").text(receipt.receipt_header, { align: "center" });
+      doc.moveDown(0.5);
+    }
+
+    doc.fontSize(22).fillColor("#333").text("Receipt", { align: "left" });
     doc.moveDown(0.3);
     doc.fontSize(11).text(`Booking #: ${receipt.booking_number || "-"}`);
     doc.text(`Booking date: ${receipt.booking_date ? new Date(receipt.booking_date).toLocaleDateString("en-ZA") : "-"}`);
@@ -106,15 +122,49 @@ export async function GET(
 
     doc.moveDown();
     doc.fontSize(11).text(`Subtotal: ${money(receipt.subtotal, currency)}`);
-    if (Number(receipt.tax || 0) > 0) doc.text(`Tax: ${money(receipt.tax, currency)}`);
+    if (Number(receipt.tax || 0) > 0) {
+      const taxLabel = receipt.tax_rate ? `Tax (${receipt.tax_rate}%)` : "Tax";
+      doc.text(`${taxLabel}: ${money(receipt.tax, currency)}`);
+    }
     if (Number(receipt.fees || 0) > 0) doc.text(`Service / platform fee: ${money(receipt.fees, currency)}`);
     if (Number(receipt.travel_fee || 0) > 0) doc.text(`Travel fee: ${money(receipt.travel_fee, currency)}`);
     if (Number(receipt.tip_amount || 0) > 0) doc.text(`Tip: ${money(receipt.tip_amount, currency)}`);
     if (Number(receipt.cancellation_fee || 0) > 0) doc.text(`Cancellation fee: ${money(receipt.cancellation_fee, currency)}`);
-    if (Number(receipt.discount || 0) > 0) doc.text(`Discount: -${money(receipt.discount, currency)}`);
+    if (Number(receipt.discount || 0) > 0) {
+      const discountLabel = receipt.discount_reason ? `Discount (${receipt.discount_reason})` : "Discount";
+      doc.text(`${discountLabel}: -${money(receipt.discount, currency)}`);
+    }
     doc.moveDown(0.4);
     doc.fontSize(13).text(`Total: ${money(receipt.total, currency)}`);
-    doc.fontSize(10).text(`Payment status: ${receipt.payment_status || "-"}`);
+
+    if (receipt.deposit_required && receipt.payment_option === "deposit") {
+      doc.fontSize(10).text(`Deposit${receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}: ${money(receipt.deposit_amount, currency)}`);
+    }
+    if (Number(receipt.amount_paid || 0) > 0) {
+      doc.fontSize(10).text(`Amount paid: ${money(receipt.amount_paid, currency)}`);
+    }
+    if (Number(receipt.balance_due || 0) > 0) {
+      doc.fontSize(11).fillColor("red").text(`Balance due: ${money(receipt.balance_due, currency)}`);
+      doc.fillColor("black");
+    }
+
+    if (receipt.additional_charges && receipt.additional_charges.length > 0) {
+      doc.moveDown(0.4);
+      doc.fontSize(11).text("Additional charges:", { underline: true });
+      for (const charge of receipt.additional_charges) {
+        doc.fontSize(10).text(`${charge.description || "Charge"}: ${money(charge.amount, currency)} (${charge.status || "pending"})`);
+      }
+    }
+
+    doc.moveDown(0.3);
+    doc.fontSize(10).fillColor("#333").text(`Payment status: ${receipt.payment_status || "-"}`);
+
+    if (receipt.receipt_footer) {
+      doc.moveDown(1);
+      doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
+      doc.moveDown(0.3);
+      doc.fontSize(9).fillColor("#666").text(receipt.receipt_footer, { align: "center" });
+    }
 
     doc.end();
     const buffer = await new Promise<Buffer>((resolve) => {

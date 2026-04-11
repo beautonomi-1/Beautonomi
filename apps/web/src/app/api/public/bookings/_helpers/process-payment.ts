@@ -94,10 +94,24 @@ export async function processPayment(
 
   // ── Determine amount to collect ──────────────────────────────────────────
   let amountToCollect = v.totalAmount;
-  if (v.provider.requires_deposit) {
-    const pct = Number(v.provider.deposit_percentage || 30);
-    const deposit = percentOf(v.totalAmount, pct);
-    amountToCollect = paymentOption === "full" ? v.totalAmount : deposit;
+  const providerRequiresDeposit = Boolean(v.provider.requires_deposit);
+  const depositPct = Number(v.provider.deposit_percentage || 30);
+  const computedDeposit = providerRequiresDeposit ? percentOf(v.totalAmount, depositPct) : 0;
+  const isDepositPayment = providerRequiresDeposit && paymentOption !== "full";
+
+  if (providerRequiresDeposit) {
+    amountToCollect = isDepositPayment ? computedDeposit : v.totalAmount;
+  }
+
+  // Persist deposit context on the booking row so receipts, invoices, and
+  // reports can display deposit vs balance information.
+  if (providerRequiresDeposit) {
+    await supabaseAdmin.from("bookings").update({
+      deposit_required: true,
+      deposit_percentage: depositPct,
+      deposit_amount: computedDeposit,
+      payment_option: isDepositPayment ? "deposit" : "full",
+    }).eq("id", booking.id);
   }
 
   // ── Gift card reservation ────────────────────────────────────────────────
@@ -262,9 +276,11 @@ export async function processPayment(
       }
     }
 
+    const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
+
     await (supabase.from("bookings") as any)
       .update({
-        payment_status: "paid",
+        payment_status: effectivePaymentStatus,
         payment_provider: walletAmountApplied > 0 ? "wallet" : "gift_card",
         payment_date: new Date().toISOString(),
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
@@ -541,6 +557,12 @@ export async function processPayment(
   }
 
   // ── Cash payment — explicitly mark as pending (pay at appointment) ──────────
+  // DESIGN DECISION: No booking_payments row is created here for customer cash bookings.
+  // Cash means "pay at the salon" — money hasn't been collected yet.
+  // When the provider later marks the booking as paid (via mark-paid endpoint),
+  // a booking_payments row is created, which fires the DB trigger
+  // (create_finance_ledger_from_payment) to generate finance_transactions entries.
+  // This ensures cash revenue only appears in reports when actually collected.
   if (paymentMethod === "cash") {
     const appointmentSettings = await getAppointmentSettingsFromDB(
       supabaseAdmin,

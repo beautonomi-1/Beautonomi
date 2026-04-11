@@ -87,7 +87,9 @@ export async function GET(
           business_name,
           owner_email,
           phone,
-          address
+          address,
+          receipt_header,
+          receipt_footer
         ),
         booking_services:booking_services(
           id,
@@ -100,6 +102,7 @@ export async function GET(
         booking_addons:booking_addons(
           id,
           addon_id,
+          addon_name,
           quantity,
           price
         ),
@@ -208,7 +211,7 @@ export async function GET(
     const totalFromRow =
       booking.total_amount != null && !Number.isNaN(Number(booking.total_amount))
         ? Number(booking.total_amount)
-        : subtotal + tax + serviceFee + tipAmount - discount - cancellationFee;
+        : subtotal + tax + serviceFee + travelFee + tipAmount - discount - cancellationFee;
 
     const additionalCharges = (booking.additional_charges || []).map((ac: AdditionalChargeRow) => ({
       id: ac.id,
@@ -219,6 +222,18 @@ export async function GET(
       requested_at: ac.requested_at || null,
       paid_at: ac.paid_at || null,
     }));
+
+    const completedPayments = (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>;
+    const amountPaid = completedPayments
+      .filter((p) => p.status === "completed")
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const balanceDue = Math.max(0, totalFromRow - amountPaid);
+
+    const bRaw = bookingRaw as Record<string, unknown>;
+    const depositRequired = Boolean(bRaw.deposit_required);
+    const depositAmount = Number(bRaw.deposit_amount || 0);
+    const depositPercentage = Number(bRaw.deposit_percentage || 0);
+    const paymentOption = (bRaw.payment_option as string) || "full";
 
     const receipt = {
       booking_number: booking.booking_number,
@@ -234,7 +249,7 @@ export async function GET(
       })) || [],
       addons:
         booking.booking_addons?.map((ba: BookingAddonRow) => ({
-          name: "Add-on",
+          name: (ba as Record<string, unknown>).addon_name as string || "Add-on",
           quantity: ba.quantity || 1,
           price: Number(ba.price || 0),
           total: Number(ba.price || 0) * Number(ba.quantity || 1),
@@ -256,7 +271,7 @@ export async function GET(
       }) || [],
       subtotal,
       tax,
-      /** Platform / service fee (Beautonomi fee), not tips */
+      tax_rate: Number(bRaw.tax_rate || 0),
       fees: serviceFee,
       travel_fee: travelFee,
       tip_amount: tipAmount,
@@ -266,8 +281,16 @@ export async function GET(
       total: totalFromRow,
       currency: booking.currency || currencyFallback,
       payment_status: booking.payment_status,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      deposit_required: depositRequired,
+      deposit_amount: depositAmount,
+      deposit_percentage: depositPercentage,
+      payment_option: paymentOption,
       transactions: booking.booking_payments || [],
       additional_charges: additionalCharges,
+      receipt_header: ((booking.provider as Record<string, unknown>)?.receipt_header as string) || null,
+      receipt_footer: ((booking.provider as Record<string, unknown>)?.receipt_footer as string) || null,
     };
 
     return NextResponse.json({ receipt });

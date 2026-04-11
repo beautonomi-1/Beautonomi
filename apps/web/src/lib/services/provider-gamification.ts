@@ -11,7 +11,10 @@ async function getPointRules(): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from("provider_point_rules")
     .select("source, points");
-  if (error) return {};
+  if (error) {
+    console.error("Failed to load provider point rules, using defaults:", error);
+    return {};
+  }
   const map: Record<string, number> = {};
   for (const row of data ?? []) {
     map[row.source] = row.points ?? 0;
@@ -86,6 +89,18 @@ export async function recalculateProviderGamification(providerId: string): Promi
  */
 export async function awardPointsForBooking(providerId: string, bookingId: string): Promise<void> {
   try {
+    const supabase = getSupabaseAdmin();
+
+    // Deduplicate: skip if points already awarded for this booking
+    const { data: existing } = await supabase
+      .from("provider_point_transactions")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("source", "booking_completed")
+      .eq("source_id", bookingId)
+      .maybeSingle();
+    if (existing) return;
+
     const rules = await getPointRules();
     const points = rules["booking_completed"] ?? 10;
     if (points <= 0) return;
@@ -106,6 +121,18 @@ export async function awardPointsForBooking(providerId: string, bookingId: strin
  */
 export async function awardPointsForReview(providerId: string, reviewId: string, rating: number): Promise<void> {
   try {
+    const supabase = getSupabaseAdmin();
+
+    // Deduplicate: skip if points already awarded for this review
+    const { data: existing } = await supabase
+      .from("provider_point_transactions")
+      .select("id")
+      .eq("provider_id", providerId)
+      .eq("source", "review_received")
+      .eq("source_id", reviewId)
+      .maybeSingle();
+    if (existing) return;
+
     const rules = await getPointRules();
     let points = rules["review_received"] ?? 5;
     if (rating >= 5) {

@@ -8,6 +8,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { PublicProviderCard } from "@/types/beautonomi";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { runAdsAuction, recordAdImpressions } from "@/lib/ads/auction";
 
 export const dynamic = "force-dynamic";
 // Increase timeout for this route (Next.js default is 10s, we need more for parallel queries)
@@ -1750,91 +1751,101 @@ export async function GET(request: Request) {
 
     if (adsRow?.data?.enabled && adsRow.data.max_sponsored_slots) {
       const maxSlots = Math.min(Number(adsRow.data.max_sponsored_slots) || 5, 10);
-      const { data: campaigns } = await supabaseAdmin.from("ads_campaigns").select("provider_id").eq("status", "active").limit(maxSlots * 2);
-      const providerIds = [...new Set((campaigns ?? []).map((c: { provider_id: string }) => c.provider_id))].slice(0, maxSlots);
-      if (providerIds.length > 0) {
-        const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", providerIds).eq("status", "active").eq("tenant_id", tenantId);
-        if (providersRaw?.length) {
-          const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
-          for (const p of providersRaw as any[]) {
-            const card = allMap.get(p.id) ?? {
-              id: p.id,
-              slug: p.slug,
-              business_name: p.business_name,
-              business_type: p.business_type || "salon",
-              rating: p.rating_average ?? 0,
-              review_count: p.review_count ?? 0,
-              thumbnail_url: p.thumbnail_url,
-              avatar_url: p.avatar_url ?? null,
-              city: "",
-              country: "",
-              is_featured: p.is_featured ?? false,
-              is_verified: p.is_verified ?? false,
-              starting_price: null,
-              currency: p.currency ?? defaultCurrency,
-              description: p.description ?? null,
-              distance_km: null,
-              supports_house_calls: false,
-              supports_salon: false,
-              current_badge: null,
-            };
-            sponsored.push(card);
+      try {
+        const auctionWinners = await runAdsAuction({ tenantId, maxSlots });
+        const winnerProviderIds = auctionWinners.map((w) => w.provider_id);
+        const winnerCampaignMap = new Map(auctionWinners.map((w) => [w.provider_id, w.campaign_id]));
+        if (winnerProviderIds.length > 0) {
+          const { data: providersRaw } = await supabaseAdmin.from("providers").select("id, slug, business_name, business_type, rating_average, review_count, thumbnail_url, avatar_url, is_featured, is_verified, description, currency").in("id", winnerProviderIds).eq("status", "active").eq("tenant_id", tenantId);
+          if (providersRaw?.length) {
+            const allMap = new Map((data.all ?? []).map((p: PublicProviderCard) => [p.id, p]));
+            for (const w of auctionWinners) {
+              const p = (providersRaw as any[]).find((pr) => pr.id === w.provider_id);
+              if (!p) continue;
+              const existing = allMap.get(p.id);
+              const card = existing ? { ...existing, is_sponsored: true, campaign_id: winnerCampaignMap.get(p.id) ?? null } : {
+                id: p.id,
+                slug: p.slug,
+                business_name: p.business_name,
+                business_type: p.business_type || "salon",
+                rating: p.rating_average ?? 0,
+                review_count: p.review_count ?? 0,
+                thumbnail_url: p.thumbnail_url,
+                avatar_url: p.avatar_url ?? null,
+                city: "",
+                country: "",
+                is_featured: p.is_featured ?? false,
+                is_verified: p.is_verified ?? false,
+                starting_price: null,
+                currency: p.currency ?? defaultCurrency,
+                description: p.description ?? null,
+                distance_km: null,
+                supports_house_calls: false,
+                supports_salon: false,
+                current_badge: null,
+                is_sponsored: true,
+                campaign_id: winnerCampaignMap.get(p.id) ?? null,
+              };
+              sponsored.push(card as PublicProviderCard);
+            }
+            const idempotencyPrefix = `home:${Date.now()}`;
+            await recordAdImpressions(auctionWinners, idempotencyPrefix).catch((err) =>
+              console.warn("Home: ad impression recording failed:", err)
+            );
           }
-          // Compute distance for sponsored when user location is available (cards from allMap may already have distance_km)
-          const lat = new URL(request.url).searchParams.get("lat");
-          const lng = new URL(request.url).searchParams.get("lng");
-          if (lat && lng && sponsored.length > 0) {
-            try {
-              const mapbox = await getMapboxService();
-              const userCoords = { latitude: parseFloat(lat), longitude: parseFloat(lng) };
-              const idsNeedingDistance = sponsored.filter((c) => c.distance_km == null).map((c) => c.id);
-              if (idsNeedingDistance.length > 0) {
-                const { data: sponsoredLocs } = await supabaseAdmin
-                  .from("provider_locations")
-                  .select("provider_id, latitude, longitude")
-                  .in("provider_id", idsNeedingDistance)
-                  .eq("is_active", true)
-                  .not("latitude", "is", null)
-                  .not("longitude", "is", null);
-                const distMap = new Map<string, number>();
-                if (sponsoredLocs) {
-                  for (const loc of sponsoredLocs as { provider_id: string; latitude: number; longitude: number }[]) {
-                    try {
-                      const d = mapbox.calculateDistance(userCoords, { latitude: loc.latitude, longitude: loc.longitude });
-                      if (!distMap.has(loc.provider_id) || d < distMap.get(loc.provider_id)!) distMap.set(loc.provider_id, d);
-                    } catch {
-                      // skip
-                    }
+        }
+      } catch (auctionErr) {
+        console.warn("Home: ads auction failed, falling back to no sponsored:", auctionErr);
+      }
+      if (sponsored.length > 0) {
+        const lat = new URL(request.url).searchParams.get("lat");
+        const lng = new URL(request.url).searchParams.get("lng");
+        if (lat && lng) {
+          try {
+            const mapbox = await getMapboxService();
+            const userCoords = { latitude: parseFloat(lat), longitude: parseFloat(lng) };
+            const idsNeedingDistance = sponsored.filter((c) => c.distance_km == null).map((c) => c.id);
+            if (idsNeedingDistance.length > 0) {
+              const { data: sponsoredLocs } = await supabaseAdmin
+                .from("provider_locations")
+                .select("provider_id, latitude, longitude")
+                .in("provider_id", idsNeedingDistance)
+                .eq("is_active", true)
+                .not("latitude", "is", null)
+                .not("longitude", "is", null);
+              const distMap = new Map<string, number>();
+              if (sponsoredLocs) {
+                for (const loc of sponsoredLocs as { provider_id: string; latitude: number; longitude: number }[]) {
+                  try {
+                    const d = mapbox.calculateDistance(userCoords, { latitude: loc.latitude, longitude: loc.longitude });
+                    if (!distMap.has(loc.provider_id) || d < distMap.get(loc.provider_id)!) distMap.set(loc.provider_id, d);
+                  } catch {
+                    // skip
                   }
                 }
-                sponsored.forEach((c) => {
-                  if (c.distance_km == null && distMap.has(c.id)) c.distance_km = distMap.get(c.id)!;
-                });
               }
-              sponsored.sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
-            } catch (err) {
-              console.warn("Home: sponsored distance calculation failed:", err);
+              sponsored.forEach((c) => {
+                if (c.distance_km == null && distMap.has(c.id)) c.distance_km = distMap.get(c.id)!;
+              });
             }
+            sponsored.sort((a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity));
+          } catch (err) {
+            console.warn("Home: sponsored distance calculation failed:", err);
           }
         }
       }
       data = { ...data, sponsored } as typeof data & { sponsored: PublicProviderCard[] };
     }
 
-    // Default order: closest to furthest for every section when user location is available
+    // Distance-sort only sections where proximity is the intent; topRated/hottest preserve quality ordering
     const latParam = new URL(request.url).searchParams.get("lat");
     const lngParam = new URL(request.url).searchParams.get("lng");
     if (latParam && lngParam) {
       const sortByDistance = (a: PublicProviderCard, b: PublicProviderCard) =>
         (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity);
-      const dataWithSponsored = data as typeof data & { sponsored?: PublicProviderCard[] };
       data = {
         ...data,
-        topRated: [...(data.topRated ?? [])].sort(sortByDistance),
-        hottest: [...(data.hottest ?? [])].sort(sortByDistance),
-        upcoming: [...(data.upcoming ?? [])].sort(sortByDistance),
         nearest: [...(data.nearest ?? [])].sort(sortByDistance),
-        sponsored: [...(dataWithSponsored.sponsored ?? [])].sort(sortByDistance),
       };
     }
 

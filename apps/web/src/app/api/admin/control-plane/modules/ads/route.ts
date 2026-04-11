@@ -51,7 +51,7 @@ export async function PUT(request: NextRequest) {
       .eq("environment", environment)
       .maybeSingle();
 
-    const payload = {
+    const payload: Record<string, any> = {
       environment,
       enabled: body.enabled ?? false,
       model: body.model ?? null,
@@ -60,6 +60,15 @@ export async function PUT(request: NextRequest) {
       cost_per_impression_ratio: body.cost_per_impression_ratio != null ? Number(body.cost_per_impression_ratio) : null,
       updated_at: new Date().toISOString(),
     };
+    if (body.available_models !== undefined) {
+      const validModels = ["cpc_budget", "impression_pack", "time_based"];
+      payload.available_models = Array.isArray(body.available_models)
+        ? body.available_models.filter((m: string) => validModels.includes(m))
+        : validModels;
+    }
+    if (body.default_model !== undefined) {
+      payload.default_model = body.default_model ?? "time_based";
+    }
 
     const { data: after, error } = await supabase
       .from("ads_module_config")

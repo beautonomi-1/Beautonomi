@@ -933,7 +933,7 @@ function CustomerOnboardingWizard() {
         case 6: {
           if (hairTypes.length > 0 || skinType) {
             await fetcher.patch("/api/me/beauty-preferences", {
-              hair_type: hairTypes[0] || null,
+              hair_type: hairTypes.length > 0 ? hairTypes : null,
               skin_type: skinType || null,
             });
           }
@@ -981,9 +981,13 @@ function CustomerOnboardingWizard() {
       clearDraft();
       await refreshUser();
       try { await fetcher.post("/api/me/analytics/identify"); } catch {}
-    } catch {}
-    setIsLoading(false);
-    router.push("/");
+      setIsLoading(false);
+      router.push("/");
+    } catch (err) {
+      setIsLoading(false);
+      toast.error("Could not complete setup. Please try again.");
+      console.error("Onboarding complete failed:", err);
+    }
   };
 
   /* ── Render ── */

@@ -271,8 +271,36 @@ export async function GET(request: NextRequest) {
       membership_sales_total: total.membership_sales,
       refunds_total: total.refunds_gross,
 
+      provider_earnings_total: total.provider_earnings_net,
+      provider_earnings_this_month: thisMonth.provider_earnings_net,
+
       gift_card_metrics: {
         total_sales: total.gift_card_sales,
+      },
+
+      platform_revenue: {
+        booking_commission: total.platform_take_net,
+        subscriptions: total.subscription_net,
+        ads: total.ads_net,
+        service_fees: total.service_fee_revenue,
+        ecommerce_fees: total.ecommerce_platform_fees,
+        cancellation_fees: total.cancellation_fees_retained,
+        total: platformNetTotal,
+      },
+
+      provider_revenue: {
+        provider_earnings: total.provider_earnings_net,
+        tips: total.tips_gross,
+        this_month: thisMonth.provider_earnings_net + thisMonth.tips_gross,
+      },
+
+      revenue_streams: {
+        booking_commission: total.platform_take_net,
+        subscriptions: total.subscription_net,
+        ads: total.ads_net,
+        service_fees: total.service_fee_revenue,
+        ecommerce_fees: total.ecommerce_platform_fees,
+        cancellation_fees: total.cancellation_fees_retained,
       },
 
       metrics_notes: {

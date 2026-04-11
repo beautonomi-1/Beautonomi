@@ -39,7 +39,7 @@ export default function PaymentsScreen() {
     try {
       const [methodsRes, giftRes] = await Promise.all([
         api.get<any>("/api/me/payment-methods"),
-        api.get<any>("/api/me/gift-cards").catch(() => ({ data: null })),
+        api.get<any>("/api/me/gift-cards").catch((err) => { console.warn("Failed to load gift cards:", err); return { data: null }; }),
       ]);
       if (methodsRes.error) {
         setError(methodsRes.error.message || "Failed to load");

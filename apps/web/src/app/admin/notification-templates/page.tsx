@@ -51,6 +51,8 @@ export default function NotificationTemplatesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<NotificationTemplate | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [channelFilter, setChannelFilter] = useState("all");
   const [formData, setFormData] = useState({
     key: "",
     name: "",
@@ -61,6 +63,11 @@ export default function NotificationTemplatesPage() {
     channels: [] as string[],
     enabled: true,
     variables: [] as string[],
+    email_subject: "",
+    email_body: "",
+    sms_body: "",
+    url: "",
+    description: "",
   });
 
   useEffect(() => {
@@ -92,6 +99,11 @@ export default function NotificationTemplatesPage() {
       channels: [],
       enabled: true,
       variables: [],
+      email_subject: "",
+      email_body: "",
+      sms_body: "",
+      url: "",
+      description: "",
     });
     setIsDialogOpen(true);
   };
@@ -108,6 +120,11 @@ export default function NotificationTemplatesPage() {
       channels: template.channels ?? [],
       enabled: template.enabled,
       variables: template.variables || [],
+      email_subject: template.email_subject ?? "",
+      email_body: template.email_body ?? "",
+      sms_body: template.sms_body ?? "",
+      url: template.url ?? "",
+      description: template.description ?? "",
     });
     setIsDialogOpen(true);
   };
@@ -126,6 +143,14 @@ export default function NotificationTemplatesPage() {
 
   const handleSave = async () => {
     try {
+      const extraFields = {
+        email_subject: formData.email_subject || null,
+        email_body: formData.email_body || null,
+        sms_body: formData.sms_body || null,
+        url: formData.url || null,
+        description: formData.description || null,
+      };
+
       if (editingTemplate) {
         await fetcher.patch(`/api/admin/notification-templates/${editingTemplate.id}`, {
           title: formData.title_template,
@@ -133,6 +158,7 @@ export default function NotificationTemplatesPage() {
           channels: formData.channels,
           enabled: formData.enabled,
           variables: formData.variables,
+          ...extraFields,
         });
         toast.success("Template updated successfully");
       } else {
@@ -148,6 +174,7 @@ export default function NotificationTemplatesPage() {
           channels: formData.channels.length ? formData.channels : ["push"],
           enabled: formData.enabled,
           variables: formData.variables,
+          ...extraFields,
         });
         toast.success("Template created successfully");
       }
@@ -205,7 +232,29 @@ export default function NotificationTemplatesPage() {
         <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
           <strong>Note:</strong> Email Templates and SMS Templates (legacy) are no longer in the menu. Edit email and SMS copy here per template (email_subject, email_body, sms_body). Sending uses only this table.
         </p>
-        <div className="flex justify-end">
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
+          <div className="flex gap-3 flex-1">
+            <div className="relative flex-1 max-w-sm">
+              <Input
+                placeholder="Search templates..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-3 min-h-[44px]"
+              />
+            </div>
+            <Select value={channelFilter} onValueChange={setChannelFilter}>
+              <SelectTrigger className="w-[140px] min-h-[44px]">
+                <SelectValue placeholder="Channel" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Channels</SelectItem>
+                <SelectItem value="push">Push</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="sms">SMS</SelectItem>
+                <SelectItem value="in_app">In-App</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           <Button
             onClick={handleCreate}
             className="bg-[#FF0077] hover:bg-[#D60565] min-h-[44px] touch-manipulation"
@@ -243,7 +292,12 @@ export default function NotificationTemplatesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {templates.map((template) => (
+                  {templates.filter((t) => {
+                    const q = searchQuery.toLowerCase();
+                    const matchesSearch = !q || t.name?.toLowerCase().includes(q) || t.key?.toLowerCase().includes(q) || t.type?.toLowerCase().includes(q);
+                    const matchesChannel = channelFilter === "all" || (t.channels ?? []).includes(channelFilter);
+                    return matchesSearch && matchesChannel;
+                  }).map((template) => (
                     <TableRow key={template.id}>
                       <TableCell className="font-medium">{template.name}</TableCell>
                       <TableCell>
@@ -394,6 +448,72 @@ export default function NotificationTemplatesPage() {
               <p className="text-xs text-gray-500 mt-1.5">
                 Use {`{{variable_name}}`} for dynamic content
               </p>
+            </div>
+
+            {formData.channels.includes("email") && (
+              <>
+                <div className="border-t pt-4">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><Mail className="w-4 h-4" />Email Channel</h3>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm">Email Subject</Label>
+                      <Input
+                        value={formData.email_subject}
+                        onChange={(e) => setFormData({ ...formData, email_subject: e.target.value })}
+                        className="mt-1.5 min-h-[44px]"
+                        placeholder="e.g., Your appointment is confirmed"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Email Body (HTML supported)</Label>
+                      <Textarea
+                        value={formData.email_body}
+                        onChange={(e) => setFormData({ ...formData, email_body: e.target.value })}
+                        className="mt-1.5 min-h-[120px] font-mono text-xs"
+                        placeholder="<p>Dear {{customer_name}},</p><p>Your booking for {{service_name}} has been confirmed...</p>"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Supports HTML. Use {"{{variable}}"} for dynamic content.</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {formData.channels.includes("sms") && (
+              <div className="border-t pt-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2"><MessageSquare className="w-4 h-4" />SMS Channel</h3>
+                <div>
+                  <Label className="text-sm">SMS Body</Label>
+                  <Textarea
+                    value={formData.sms_body}
+                    onChange={(e) => setFormData({ ...formData, sms_body: e.target.value })}
+                    className="mt-1.5 min-h-[80px]"
+                    placeholder="Your booking #{{booking_number}} is confirmed for {{date}}."
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Keep under 160 chars for single SMS. Use {"{{variable}}"} for dynamic content.</p>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t pt-4 space-y-4">
+              <div>
+                <Label className="text-sm">Deep Link URL (optional)</Label>
+                <Input
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  className="mt-1.5 min-h-[44px]"
+                  placeholder="e.g., /bookings/{{booking_id}} or beautonomi://booking/{{booking_id}}"
+                />
+              </div>
+              <div>
+                <Label className="text-sm">Description (internal note)</Label>
+                <Input
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  className="mt-1.5 min-h-[44px]"
+                  placeholder="When this template is triggered and who receives it"
+                />
+              </div>
             </div>
 
             <div>

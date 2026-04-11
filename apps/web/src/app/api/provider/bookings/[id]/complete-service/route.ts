@@ -79,8 +79,11 @@ export async function POST(
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Check if service is in progress
-    if (bookingData.status !== "in_progress" && bookingData.current_stage !== "service_started") {
+    // Check if service is in progress — require consistent status + stage
+    const validForCompletion =
+      bookingData.status === "in_progress" ||
+      bookingData.current_stage === "service_started";
+    if (!validForCompletion) {
       return errorResponse("Service must be started before completing", "INVALID_STATUS", 400);
     }
 

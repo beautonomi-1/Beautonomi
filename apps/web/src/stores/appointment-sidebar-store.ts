@@ -24,6 +24,12 @@ export interface DraftSlot {
   locationName?: string;
   /** Pre-select appointment type (In Salon, Walk-in, At Home) when opening create mode */
   appointmentKind?: "in_salon" | "walk_in" | "at_home";
+  /** Prefill client fields (from waitlist, client profile, etc.) */
+  prefillClientName?: string;
+  prefillClientEmail?: string;
+  prefillClientPhone?: string;
+  prefillCustomerId?: string;
+  prefillServiceId?: string;
 }
 
 export interface AppointmentSidebarState {

@@ -501,40 +501,60 @@ export function DashboardClient({
         </div>
       </div>
 
-      {/* Revenue Streams (This Month) */}
-      <div className="bg-white border rounded-lg p-4 sm:p-6 mb-4 sm:mb-6">
-        <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Revenue Breakdown (This Month)</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-          <div className="cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/finance"); } }}>
-            <p className="text-xs text-gray-600 mb-1">Service Earnings</p>
-            <p className="text-lg sm:text-xl font-semibold text-green-600">
-              {formatCurrency(stats.service_earnings_total || 0, tenantCurrency)}
-            </p>
+      {/* Earnings & Expenses */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-4 sm:mb-6">
+        {/* Earnings Breakdown */}
+        <div className="bg-white border rounded-lg p-4 sm:p-6">
+          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-green-700">Your Earnings</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
+              <span className="text-sm text-gray-600">Service Earnings</span>
+              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.service_earnings_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
+              <span className="text-sm text-gray-600">Tips</span>
+              <span className="text-lg font-semibold text-green-600">{formatCurrency(stats.tips_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/finance"); }}>
+              <span className="text-sm text-gray-600">Travel Fees</span>
+              <span className="text-lg font-semibold text-purple-600">{formatCurrency(stats.travel_fees_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/gift-cards")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/gift-cards"); }}>
+              <span className="text-sm text-gray-600">Gift Card Sales</span>
+              <span className="text-lg font-semibold text-blue-600">{formatCurrency(stats.gift_card_sales_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/packages")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/reports/packages"); }}>
+              <span className="text-sm text-gray-600">Membership Sales</span>
+              <span className="text-lg font-semibold text-indigo-600">{formatCurrency(stats.membership_sales_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="border-t pt-2">
+              <div className="flex items-center justify-between p-2">
+                <span className="text-sm text-red-600">Refunds</span>
+                <span className="text-lg font-semibold text-red-600">-{formatCurrency(stats.refunds_total || 0, tenantCurrency)}</span>
+              </div>
+            </div>
           </div>
-          <div className="cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/finance"); } }}>
-            <p className="text-xs text-gray-600 mb-1">Travel Fees</p>
-            <p className="text-lg sm:text-xl font-semibold text-purple-600">
-              {formatCurrency(stats?.travel_fees_this_month || 0, tenantCurrency)}
-            </p>
-            <p className="text-xs text-gray-500 mt-1">At-home bookings</p>
-          </div>
-          <div className="cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/gift-cards")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/gift-cards"); } }}>
-            <p className="text-xs text-gray-600 mb-1">Gift Card Sales</p>
-            <p className="text-lg sm:text-xl font-semibold text-blue-600">
-              {formatCurrency(stats.gift_card_sales_total || 0, tenantCurrency)}
-            </p>
-          </div>
-          <div className="cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/reports/packages")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/reports/packages"); } }}>
-            <p className="text-xs text-gray-600 mb-1">Membership Sales</p>
-            <p className="text-lg sm:text-xl font-semibold text-indigo-600">
-              {formatCurrency(stats.membership_sales_total || 0, tenantCurrency)}
-            </p>
-          </div>
-          <div className="cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/finance")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); navigateTo("/provider/finance"); } }}>
-            <p className="text-xs text-gray-600 mb-1">Refunds</p>
-            <p className="text-lg sm:text-xl font-semibold text-red-600">
-              {formatCurrency(stats.refunds_total || 0, tenantCurrency)}
-            </p>
+        </div>
+
+        {/* Expenses */}
+        <div className="bg-white border rounded-lg p-4 sm:p-6">
+          <h3 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4 text-orange-700">Your Expenses</h3>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between p-2">
+              <span className="text-sm text-gray-600">Platform Commission</span>
+              <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.platform_fees_paid || 0, tenantCurrency)}</span>
+            </div>
+            <div className="flex items-center justify-between cursor-pointer hover:bg-gray-50 rounded p-2 transition-colors" role="button" tabIndex={0} onClick={() => navigateTo("/provider/settings/subscription")} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") navigateTo("/provider/settings/subscription"); }}>
+              <span className="text-sm text-gray-600">Subscriptions & Ads</span>
+              <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.expenses_total || 0, tenantCurrency)}</span>
+            </div>
+            <div className="border-t pt-2">
+              <div className="flex items-center justify-between p-2">
+                <span className="text-sm text-gray-600">This Month</span>
+                <span className="text-lg font-semibold text-orange-600">{formatCurrency(stats.expenses_this_month || 0, tenantCurrency)}</span>
+              </div>
+            </div>
+            <p className="text-xs text-gray-400 px-2">Includes subscription fees, ad campaign costs, and other platform charges. Staff pay and other external expenses are managed outside the platform.</p>
           </div>
         </div>
       </div>

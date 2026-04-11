@@ -80,13 +80,15 @@ function handleNotificationRoute(data: Record<string, unknown>) {
         break;
 
       case "new_message":
-      case "chat_message":
-        if (id) {
-          router.push({ pathname: "/(app)/chat", params: { id } });
+      case "chat_message": {
+        const conversationId = String(data.conversation_id ?? data.chat_id ?? "");
+        if (conversationId) {
+          router.push({ pathname: "/(app)/chat", params: { id: conversationId } });
         } else {
           router.push("/(app)/(tabs)/chats");
         }
         break;
+      }
 
       case "review_response":
       case "review_request":

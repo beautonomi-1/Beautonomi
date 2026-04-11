@@ -60,10 +60,21 @@ export default function WalletScreen() {
         return;
       }
       setTopupAmount("");
+      const balanceBefore = balance;
       await WebBrowser.openBrowserAsync(paymentUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
       });
-      await load();
+      const refreshRes = await api.get<any>("/api/me/wallet");
+      if (!refreshRes.error) {
+        const d = refreshRes.data;
+        const newWallet = d?.wallet ?? d;
+        setWallet(newWallet);
+        setTxs(d?.transactions ?? []);
+        const newBalance = newWallet?.balance ?? 0;
+        if (newBalance > balanceBefore) {
+          Alert.alert("Top-up successful", "Your wallet has been topped up.");
+        }
+      }
     } catch (e) {
       Alert.alert("Error", e instanceof Error ? e.message : "Top-up failed");
     } finally {

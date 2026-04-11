@@ -92,7 +92,7 @@ interface GodsEyeData {
 }
 
 export default function GodsEyePage() {
-  const { currencyCode } = useReportCurrency();
+  const { currencyCode, format: fmtMoney } = useReportCurrency();
   const [data, setData] = useState<GodsEyeData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -355,7 +355,7 @@ export default function GodsEyePage() {
           />
           <OverviewCard
             title="Total Revenue"
-            value={`R ${(data?.overview.total_revenue || 0).toLocaleString()}`}
+            value={fmtMoney(data?.overview.total_revenue || 0)}
             icon={<DollarSign className="w-6 h-6" />}
             color="orange"
           />
@@ -511,7 +511,7 @@ export default function GodsEyePage() {
                       </p>
                     </div>
                     <p className="font-semibold text-green-600">
-                      R {(provider.revenue ?? 0).toLocaleString()}
+                      {fmtMoney(provider.revenue ?? 0)}
                     </p>
                   </div>
                 ))
@@ -537,7 +537,7 @@ export default function GodsEyePage() {
                       </p>
                     </div>
                     <p className="font-semibold text-blue-600">
-                      R {(customer.total_spent ?? 0).toLocaleString()}
+                      {fmtMoney(customer.total_spent ?? 0)}
                     </p>
                   </div>
                 ))
@@ -698,10 +698,11 @@ function StatusBar({
 }
 
 function RevenueCard({ period, amount }: { period: string; amount: number }) {
+  const { format: fmt } = useReportCurrency();
   return (
     <div className="p-4 bg-gray-50 rounded-lg">
       <p className="text-sm text-gray-600 mb-2">{period}</p>
-      <p className="text-xl font-semibold">R {amount.toLocaleString()}</p>
+      <p className="text-xl font-semibold">{fmt(amount)}</p>
     </div>
   );
 }

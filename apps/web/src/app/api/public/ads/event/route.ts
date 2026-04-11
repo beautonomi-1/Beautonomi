@@ -24,6 +24,21 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = getSupabaseAdmin();
+
+    const { data: campaign } = await supabase
+      .from("ads_campaigns")
+      .select("id")
+      .eq("id", campaignId)
+      .eq("provider_id", providerId)
+      .eq("status", "active")
+      .maybeSingle();
+    if (!campaign) {
+      return NextResponse.json(
+        { data: null, error: { message: "Campaign not found or inactive", code: "NOT_FOUND" } },
+        { status: 404 }
+      );
+    }
+
     const key = idempotencyKey ?? `public:${eventType}:${campaignId}:${providerId}:${Date.now()}`;
     const { error } = await supabase.from("ads_events").upsert(
       {

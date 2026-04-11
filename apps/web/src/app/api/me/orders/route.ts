@@ -283,10 +283,10 @@ export async function POST(request: NextRequest) {
       if (payouts) {
         const feeType = (payouts.platform_service_fee_type as string) || "fixed";
         if (feeType === "percentage") {
-          const pct = Number(payouts.platform_service_fee_percentage) ?? 0;
+          const pct = Number(payouts.platform_service_fee_percentage) || 0;
           platformFee = percentOf(subtotal, pct);
         } else {
-          platformFee = Number(payouts.platform_service_fee_fixed) ?? 0;
+          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         }
       } else {
         platformFee = 0;

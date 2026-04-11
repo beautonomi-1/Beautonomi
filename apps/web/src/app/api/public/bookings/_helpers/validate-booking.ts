@@ -1153,10 +1153,21 @@ export async function validateBooking(
   if (validatedDraft.hold_id) {
     const { data: holdRow } = await supabaseAdmin
       .from("booking_holds")
-      .select("end_at, hold_status, provider_id")
+      .select("end_at, hold_status, provider_id, expires_at")
       .eq("id", validatedDraft.hold_id)
       .maybeSingle();
-    if (!holdRow || holdRow.hold_status !== "active") {
+    const holdExpired =
+      holdRow &&
+      holdRow.expires_at &&
+      new Date(holdRow.expires_at as string).getTime() < Date.now();
+    if (!holdRow || holdRow.hold_status !== "active" || holdExpired) {
+      console.warn("[validate-booking] hold rejected", {
+        holdId: validatedDraft.hold_id,
+        found: !!holdRow,
+        status: holdRow?.hold_status ?? "missing",
+        expired: holdExpired,
+        expiresAt: holdRow?.expires_at ?? null,
+      });
       return handleApiError(
         new Error("Booking hold is no longer valid"),
         "Your hold has expired or was already used. Please select a new time.",
@@ -1401,6 +1412,13 @@ export async function validateBooking(
           excludeHoldId: ownHoldId,
         });
         if (holdOverlap) {
+          console.warn("[validate-booking] hold overlap blocked booking", {
+            providerId: draft.provider_id,
+            ownHoldId,
+            staffId: dbStaffId,
+            segStart: segStart.toISOString(),
+            segEnd: segEnd.toISOString(),
+          });
           return handleApiError(
             new Error("This time slot is no longer available. Please select another time."),
             "This time slot is no longer available. Please select another time.",

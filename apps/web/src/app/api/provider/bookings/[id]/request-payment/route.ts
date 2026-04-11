@@ -118,7 +118,7 @@ export async function POST(
     const newCharge = chargeRow as AdditionalCharge;
 
     // Create booking event
-    await supabase
+    const { error: eventError } = await supabase
       .from("booking_events")
       .insert({
         booking_id: id,
@@ -130,6 +130,9 @@ export async function POST(
         },
         created_by: user.id,
       });
+    if (eventError) {
+      console.error("Failed to create booking event for additional charge:", eventError);
+    }
 
     // Notify customer using template
     try {

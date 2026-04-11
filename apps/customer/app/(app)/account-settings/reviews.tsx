@@ -86,6 +86,15 @@ export default function ReviewsScreen() {
                           ))}
                         </View>
                       )}
+                      {r.provider_response ? (
+                        <View style={{ marginTop: 12, backgroundColor: Colors.primaryLight, borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>Provider reply</Text>
+                          <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>{r.provider_response}</Text>
+                          {r.provider_response_at && (
+                            <Text style={{ fontSize: 11, color: Colors.gray[400], marginTop: 4 }}>{formatDateSafe(r.provider_response_at)}</Text>
+                          )}
+                        </View>
+                      ) : null}
                     </View>
                     <TouchableOpacity
                       onPress={() =>

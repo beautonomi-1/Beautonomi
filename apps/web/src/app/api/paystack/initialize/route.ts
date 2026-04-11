@@ -161,6 +161,45 @@ export async function POST(request: NextRequest) {
     const saveCard = rawMeta.saveCard === "true" || rawMeta.saveCard === true;
     const setAsDefault = rawMeta.setAsDefault === "true" || rawMeta.setAsDefault === true;
 
+    // Resolve split_code and subaccount for booking/order payments (matches payments/initialize)
+    let splitCode: string | undefined;
+    let subaccount: string | undefined;
+    const admin = getSupabaseAdmin();
+
+    if (bookingIdFromMeta || productOrderIdRaw) {
+      const { data: payoutSettings } = await admin
+        .from("platform_settings")
+        .select("settings")
+        .eq("key", "payouts")
+        .maybeSingle();
+      const settings = (payoutSettings as any)?.settings;
+      if (settings?.use_transaction_splits) {
+        const { data: activeSplit } = await admin
+          .from("paystack_splits")
+          .select("split_code")
+          .eq("active", true)
+          .maybeSingle();
+        if (activeSplit) splitCode = (activeSplit as any).split_code;
+      }
+    }
+
+    if (bookingIdFromMeta) {
+      const { data: bRow } = await admin
+        .from("bookings")
+        .select("provider_id")
+        .eq("id", bookingIdFromMeta)
+        .maybeSingle();
+      if ((bRow as any)?.provider_id) {
+        const { data: provSub } = await admin
+          .from("provider_paystack_subaccounts")
+          .select("subaccount_code")
+          .eq("provider_id", (bRow as any).provider_id)
+          .eq("active", true)
+          .maybeSingle();
+        if (provSub) subaccount = (provSub as any).subaccount_code;
+      }
+    }
+
     const paystackResponse = await fetch("https://api.paystack.co/transaction/initialize", {
       method: "POST",
       headers: {
@@ -190,6 +229,8 @@ export async function POST(request: NextRequest) {
               : []),
           ],
         },
+        ...(splitCode ? { split_code: splitCode } : {}),
+        ...(subaccount ? { subaccount } : {}),
         callback_url: rawMeta.type === "product_order"
           ? `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/shop/payment-callback`
           : `${process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com"}/booking/callback`,

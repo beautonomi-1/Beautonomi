@@ -174,6 +174,9 @@ export async function GET(
  * Update user (suspend/reactivate)
  */
 const updateUserSchema = z.object({
+  full_name: z.string().min(1).max(200).optional(),
+  phone: z.string().max(30).nullable().optional(),
+  avatar_url: z.string().url().nullable().optional(),
   deactivated_at: z.string().nullable().optional(),
   deactivation_reason: z.string().nullable().optional(),
   role: z.enum(["customer", "provider", "admin", "superadmin"]).optional(),
@@ -238,7 +241,17 @@ export async function PATCH(
     }
 
     const updateData: Record<string, unknown> = {};
-    
+
+    if (validationResult.data.full_name !== undefined) {
+      updateData.full_name = validationResult.data.full_name;
+    }
+    if (validationResult.data.phone !== undefined) {
+      updateData.phone = validationResult.data.phone;
+    }
+    if (validationResult.data.avatar_url !== undefined) {
+      updateData.avatar_url = validationResult.data.avatar_url;
+    }
+
     if (validationResult.data.deactivated_at !== undefined) {
       const at = validationResult.data.deactivated_at
         ? new Date(validationResult.data.deactivated_at).toISOString()

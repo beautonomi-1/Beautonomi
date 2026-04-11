@@ -35,7 +35,11 @@ export default function ForgotPasswordScreen() {
       return;
     }
 
-    const base = (APP_URL ?? "").replace(/\/$/, "") || "https://beautonomi.com";
+    const base = (APP_URL ?? "").replace(/\/$/, "");
+    if (!base) {
+      Alert.alert("Configuration Error", "App URL is not configured. Please contact support.");
+      return;
+    }
     const redirectTo = `${base}/auth/callback`;
     setLoading(true);
     try {

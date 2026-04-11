@@ -45,7 +45,7 @@ interface ProviderReportData {
 }
 
 export default function ProviderReportPage() {
-  const { currencyCode } = useReportCurrency();
+  const { currencyCode, format: fmtMoney } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ProviderReportData | null>(null);
@@ -242,7 +242,7 @@ export default function ProviderReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.providers.reduce((sum, p) => sum + (p.revenue || 0), 0).toLocaleString()}
+                {fmtMoney(data.providers.reduce((sum, p) => sum + (p.revenue || 0), 0))}
               </div>
             </CardContent>
           </Card>
@@ -263,10 +263,10 @@ export default function ProviderReportPage() {
                     textAnchor="end"
                     height={100}
                   />
-                  <YAxis tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => [`R ${value.toLocaleString()}`, "Revenue"]} />
+                  <YAxis tickFormatter={(v) => fmtMoney(v)} />
+                  <Tooltip formatter={(value: number) => [fmtMoney(value), "Revenue"]} />
                   <Legend />
-                  <Bar dataKey="revenue" fill="#8b5cf6" name="Revenue (R)" />
+                  <Bar dataKey="revenue" fill="#8b5cf6" name={`Revenue (${currencyCode})`} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -292,7 +292,7 @@ export default function ProviderReportPage() {
                       </p>
                     </div>
                     <p className="font-semibold text-green-600">
-                      R {(p.revenue ?? 0).toLocaleString()}
+                      {fmtMoney(p.revenue ?? 0)}
                     </p>
                   </div>
                 ))

@@ -2444,7 +2444,7 @@ function TravelFeesSettings({
         {safeSettings.pricing_model === "tiered" && (
           <div className="space-y-3">
             <Label>Default tiers</Label>
-            <p className="text-xs text-gray-500">Fixed fee per distance band (e.g. 0–10 km = R100, 11–50 km = R150). Add tiers in ascending order by max km.</p>
+            <p className="text-xs text-gray-500">Fixed fee per distance band (e.g. 0–10 km = 100, 11–50 km = 150). Add tiers in ascending order by max km.</p>
             <div className="space-y-2">
               {defaultTiers.map((tier, i) => (
                 <div key={i} className="flex items-center gap-2 flex-wrap">

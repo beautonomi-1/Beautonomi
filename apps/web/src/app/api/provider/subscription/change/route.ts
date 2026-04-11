@@ -45,13 +45,24 @@ export async function POST(request: NextRequest) {
 
     const { data: plan } = await supabaseAdmin
       .from("subscription_plans")
-      .select("id, name")
+      .select("id, name, amount, is_free")
       .eq("id", plan_id)
       .eq("is_active", true)
       .maybeSingle();
 
     if (!plan) {
       return handleApiError(new Error("Plan not found"), "NOT_FOUND", 404);
+    }
+
+    // Only allow switching to free plans via this route.
+    // Paid plan upgrades must go through the upgrade/initialize-payment flow.
+    const isFreeTarget = (plan as any).is_free === true || Number((plan as any).amount || 0) === 0;
+    if (!isFreeTarget) {
+      return handleApiError(
+        new Error("Paid plan changes require the upgrade flow with payment"),
+        "PAYMENT_REQUIRED",
+        400
+      );
     }
 
     const { error: updateError } = await supabaseAdmin

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,9 +17,9 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const sp = request.nextUrl.searchParams;
     const locationId = sp.get("location_id") || null;
-    const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
-    const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
-    const endIso = new Date(toDate.getTime() + 86400000).toISOString();
+    const fromDate = sp.get("from") ? startOfDay(new Date(sp.get("from")!)) : startOfDay(subDays(new Date(), 30));
+    const toDate = sp.get("to") ? endOfDay(new Date(sp.get("to")!)) : endOfDay(new Date());
+    const endIso = toDate.toISOString();
 
     const { data: txns } = await supabaseAdmin
       .from("finance_transactions")

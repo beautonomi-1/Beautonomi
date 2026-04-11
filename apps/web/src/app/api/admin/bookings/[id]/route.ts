@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
+import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
@@ -115,6 +115,23 @@ export async function PATCH(
     if (body.country !== undefined) updateData.country = body.country;
     if (body.total_amount !== undefined) updateData.total_amount = body.total_amount;
     if (body.notes !== undefined) updateData.notes = body.notes;
+    if (body.admin_notes !== undefined) updateData.admin_notes = body.admin_notes;
+    if (body.payment_status !== undefined) updateData.payment_status = body.payment_status;
+
+    // Provider reassignment (admin-only — verify target provider exists in same tenant)
+    if (body.provider_id !== undefined) {
+      const { data: targetProvider } = await supabase
+        .from("providers")
+        .select("id, tenant_id, status")
+        .eq("id", body.provider_id)
+        .eq("tenant_id", tenantId)
+        .eq("status", "active")
+        .maybeSingle();
+      if (!targetProvider) {
+        return errorResponse("Target provider not found or not active in this tenant", "INVALID_PROVIDER", 400);
+      }
+      updateData.provider_id = body.provider_id;
+    }
 
     // Update booking
     const { data: updatedBooking, error: updateError } = await supabase

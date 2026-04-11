@@ -189,9 +189,11 @@ export default function CustomRequestsPage() {
     }
   }, [isProvider]); // eslint-disable-line react-hooks/exhaustive-deps -- load when isProvider changes
 
-  const acceptAndPay = async (offerId: string) => {
+  const [depositChoiceOfferId, setDepositChoiceOfferId] = useState<string | null>(null);
+
+  const acceptAndPay = async (offerId: string, paymentOption: "full" | "deposit" = "full") => {
     try {
-      const res = await fetcher.post<{ data: { paymentUrl: string } }>(`/api/me/custom-offers/${offerId}/accept`, {});
+      const res = await fetcher.post<{ data: { paymentUrl: string } }>(`/api/me/custom-offers/${offerId}/accept`, { payment_option: paymentOption });
       const url = res.data.paymentUrl;
       if (url) {
         window.location.href = url;
@@ -430,7 +432,7 @@ export default function CustomRequestsPage() {
                                 {o.status === "withdrawn" ? "Withdrawn" : o.status}
                               </Button>
                             ) : (
-                              <Button onClick={() => acceptAndPay(o.id)}>Accept & Pay</Button>
+                              <Button onClick={() => setDepositChoiceOfferId(o.id)}>Accept & Pay</Button>
                             )}
                           </div>
                         )}
@@ -804,6 +806,36 @@ export default function CustomRequestsPage() {
             </div>
           </DialogContent>
         </Dialog>
+      {/* Payment option dialog for custom offers */}
+      <Dialog open={!!depositChoiceOfferId} onOpenChange={(open) => !open && setDepositChoiceOfferId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Choose payment option</DialogTitle>
+            <DialogDescription>
+              How would you like to pay for this custom offer?
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 mt-2">
+            <Button
+              onClick={() => {
+                if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "full");
+                setDepositChoiceOfferId(null);
+              }}
+            >
+              Pay in Full
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (depositChoiceOfferId) acceptAndPay(depositChoiceOfferId, "deposit");
+                setDepositChoiceOfferId(null);
+              }}
+            >
+              Pay Deposit Only
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       </div>
     </AuthGuard>
   );

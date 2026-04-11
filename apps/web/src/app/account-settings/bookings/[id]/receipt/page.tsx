@@ -48,6 +48,7 @@ interface Receipt {
   }>;
   subtotal: number;
   tax: number;
+  tax_rate?: number;
   /** Platform / service fee */
   fees: number;
   travel_fee?: number;
@@ -58,6 +59,20 @@ interface Receipt {
   total: number;
   currency?: string;
   payment_status: string;
+  amount_paid?: number;
+  balance_due?: number;
+  deposit_required?: boolean;
+  deposit_amount?: number;
+  deposit_percentage?: number;
+  payment_option?: string;
+  additional_charges?: Array<{
+    id: string;
+    description: string;
+    amount: number;
+    status: string;
+  }>;
+  receipt_header?: string | null;
+  receipt_footer?: string | null;
 }
 
 export default function ReceiptPage() {
@@ -163,6 +178,9 @@ export default function ReceiptPage() {
 
         <Card className="print:shadow-none print:border-0">
           <CardHeader className="text-center border-b pb-4">
+            {receipt.receipt_header && (
+              <p className="text-sm text-gray-500 whitespace-pre-line mb-2">{receipt.receipt_header}</p>
+            )}
             <CardTitle className="text-3xl">Receipt</CardTitle>
             <p className="text-gray-600 mt-2">Booking #{receipt.booking_number}</p>
           </CardHeader>
@@ -170,13 +188,13 @@ export default function ReceiptPage() {
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <h3 className="font-semibold mb-2">Customer</h3>
-                <p className="text-sm">{receipt.customer.full_name || "N/A"}</p>
-                <p className="text-sm text-gray-600">{receipt.customer.email}</p>
+                <p className="text-sm">{receipt.customer?.full_name || "N/A"}</p>
+                <p className="text-sm text-gray-600">{receipt.customer?.email || ""}</p>
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Provider</h3>
-                <p className="text-sm">{receipt.provider.business_name}</p>
-                {receipt.provider.owner_email && (
+                <p className="text-sm">{receipt.provider?.business_name || "Provider"}</p>
+                {receipt.provider?.owner_email && (
                   <p className="text-sm text-gray-600">{receipt.provider.owner_email}</p>
                 )}
               </div>
@@ -243,7 +261,7 @@ export default function ReceiptPage() {
               </div>
               {receipt.tax > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Tax</span>
+                  <span>Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
                   <span>{formatCurrency(receipt.tax)}</span>
                 </div>
               )}
@@ -273,7 +291,7 @@ export default function ReceiptPage() {
               )}
               {receipt.discount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Discount</span>
+                  <span>Discount{receipt.discount_reason ? ` (${receipt.discount_reason})` : ""}</span>
                   <span>-{formatCurrency(receipt.discount)}</span>
                 </div>
               )}
@@ -281,7 +299,46 @@ export default function ReceiptPage() {
                 <span>Total</span>
                 <span>{formatCurrency(receipt.total)}</span>
               </div>
+              {receipt.deposit_required && receipt.payment_option === "deposit" && (
+                <div className="pt-2 border-t border-dashed space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>Deposit{receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}</span>
+                    <span>{formatCurrency(receipt.deposit_amount || 0)}</span>
+                  </div>
+                </div>
+              )}
+              {(receipt.amount_paid ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Amount Paid</span>
+                  <span>{formatCurrency(receipt.amount_paid!)}</span>
+                </div>
+              )}
+              {(receipt.balance_due ?? 0) > 0 && (
+                <div className="flex justify-between text-sm font-semibold text-red-700">
+                  <span>Balance Due</span>
+                  <span>{formatCurrency(receipt.balance_due!)}</span>
+                </div>
+              )}
             </div>
+
+            {(receipt.additional_charges?.length ?? 0) > 0 && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-2 text-sm">Additional Charges</h3>
+                <div className="space-y-2">
+                  {receipt.additional_charges!.map((charge) => (
+                    <div key={charge.id} className="flex justify-between text-sm">
+                      <span>{charge.description}</span>
+                      <div className="flex items-center gap-2">
+                        <span>{formatCurrency(charge.amount)}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {charge.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <div className="flex items-center gap-2">
@@ -298,12 +355,17 @@ export default function ReceiptPage() {
                   {receipt.payment_status === "paid" && (
                     <CheckCircle2 className="w-3 h-3 mr-1" />
                   )}
-                  {receipt.payment_status.charAt(0).toUpperCase() +
-                    receipt.payment_status.slice(1)}
+                  {(receipt.payment_status || "pending").charAt(0).toUpperCase() +
+                    (receipt.payment_status || "pending").slice(1)}
                 </Badge>
               </div>
             </div>
           </CardContent>
+          {receipt.receipt_footer && (
+            <div className="border-t px-6 py-4 text-center text-xs text-gray-500 whitespace-pre-line">
+              {receipt.receipt_footer}
+            </div>
+          )}
         </Card>
       </div>
     </AuthGuard>

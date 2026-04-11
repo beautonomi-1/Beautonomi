@@ -30,6 +30,7 @@ function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
     supports_salon: Boolean(o.supports_salon ?? o.supportsSalon ?? true),
     current_badge: (o.current_badge as PublicProviderCard["current_badge"]) ?? null,
     is_sponsored: Boolean(o.is_sponsored ?? o.isSponsored ?? false),
+    campaign_id: (o.campaign_id ?? o.campaignId ?? null) as string | null | undefined,
   };
 }
 

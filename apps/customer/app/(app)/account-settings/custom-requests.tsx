@@ -41,7 +41,9 @@ interface CustomRequestOffer {
   payment_url?: string | null;
   paid_at?: string | null;
   staff_id?: string | null;
+  staff?: { id: string; name: string } | null;
   location_id?: string | null;
+  location?: { id: string; name: string } | null;
   scheduled_at?: string | null;
   travel_fee?: number | null;
 }
@@ -58,6 +60,10 @@ interface CustomRequest {
   status: string;
   preferred_start_at?: string | null;
   created_at: string;
+  service_name?: string | null;
+  address_line1?: string | null;
+  address_city?: string | null;
+  address_country?: string | null;
   offers?: CustomRequestOffer[];
 }
 
@@ -230,6 +236,14 @@ function RequestCard({
           <Text style={{ fontSize: 12, color: Colors.gray[400] }}>{formatDate(item.created_at)}</Text>
         </View>
       </View>
+      {item.preferred_start_at && (
+        <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Preferred: {formatDateTime(item.preferred_start_at)}</Text>
+      )}
+      {item.location_type === "at_home" && item.address_line1 && (
+        <Text style={{ fontSize: 12, color: Colors.gray[400], marginBottom: 4 }}>
+          Address: {[item.address_line1, item.address_city, item.address_country].filter(Boolean).join(", ")}
+        </Text>
+      )}
       {showCancel && (
         <TouchableOpacity
           onPress={() => onCancel(item.id)}
@@ -262,9 +276,17 @@ function RequestCard({
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-                  <View style={{ marginRight: 8 }}>
+                  <View style={{ marginRight: 8, flex: 1 }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>{o.currency} {o.price?.toFixed(2)} · {o.duration_minutes} min</Text>
                     <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Expires {formatDateTime(o.expiration_at)}{o.travel_fee != null && o.travel_fee > 0 ? ` · Travel ${o.currency} ${o.travel_fee}` : ""}</Text>
+                    {(o.location?.name || o.staff?.name) && (
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>
+                        {o.location?.name ? `Venue: ${o.location.name}` : ""}{o.location?.name && o.staff?.name ? " · " : ""}{o.staff?.name ? `Staff: ${o.staff.name}` : ""}
+                      </Text>
+                    )}
+                    {(o.scheduled_at || item.preferred_start_at) && (
+                      <Text style={{ fontSize: 12, color: Colors.gray[500], marginTop: 2 }}>Scheduled: {formatDateTime(o.scheduled_at || item.preferred_start_at!)}</Text>
+                    )}
                   </View>
                   {o.status === "paid" ? (
                     <Text style={{ fontSize: 14, fontWeight: "500", color: "#15803d" }}>Paid</Text>
@@ -357,13 +379,13 @@ export default function CustomRequestsScreen() {
     }, [load])
   );
 
-  const handleAcceptPay = useCallback(
-    async (offerId: string) => {
+  const doAcceptPay = useCallback(
+    async (offerId: string, paymentOption: "full" | "deposit") => {
       setRefreshingOfferId(offerId);
       try {
         const res = await api.post<{ paymentUrl?: string }>(
           `/api/me/custom-offers/${offerId}/accept`,
-          {}
+          { payment_option: paymentOption }
         );
         const paymentUrl =
           (res.data as { paymentUrl?: string } | undefined)?.paymentUrl ??
@@ -391,6 +413,22 @@ export default function CustomRequestsScreen() {
       }
     },
     []
+  );
+
+  const handleAcceptPay = useCallback(
+    (offerId: string) => {
+      Alert.alert(
+        "Payment Option",
+        "How would you like to pay?",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Pay Deposit", onPress: () => doAcceptPay(offerId, "deposit") },
+          { text: "Pay in Full", onPress: () => doAcceptPay(offerId, "full"), style: "default" },
+        ],
+        { cancelable: true }
+      );
+    },
+    [doAcceptPay]
   );
 
   const handleContinuePayment = useCallback((paymentUrl: string) => {

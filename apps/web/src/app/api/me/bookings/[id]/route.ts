@@ -61,6 +61,7 @@ export async function GET(
         booking_addons:booking_addons(
           id,
           addon_id,
+          addon_name,
           quantity,
           price
         ),
@@ -217,8 +218,8 @@ export async function GET(
         guest_name: b.guest_name ?? undefined,
       }); }),
       addons: (bookingData.booking_addons ?? []).map((ba: unknown) => {
-        const a = ba as { id: string; addon_id?: string; price?: number };
-        return { id: a.id, offering_id: a.addon_id, offering_name: "Add-on", price: a.price ?? 0 };
+        const a = ba as { id: string; addon_id?: string; addon_name?: string; quantity?: number; price?: number };
+        return { id: a.id, offering_id: a.addon_id, offering_name: a.addon_name || "Add-on", quantity: a.quantity ?? 1, price: a.price ?? 0 };
       }),
       products: (bookingData.booking_products ?? []).map((bp: unknown) => {
         const p = bp as { id: string; product_id?: string; quantity?: number; unit_price?: number; total_price?: number; products?: { name?: string; retail_price?: number } };

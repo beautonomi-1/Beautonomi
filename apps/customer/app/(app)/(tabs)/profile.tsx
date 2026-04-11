@@ -59,9 +59,12 @@ export default function ProfileScreen() {
     avatarUrl: string | null;
   } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [profileLoadError, setProfileLoadError] = useState(false);
+  const hasLoadedOnce = useRef(false);
 
   const fetchProfileData = useCallback(async () => {
     if (!user) return;
+    setProfileLoadError(false);
     try {
       const res = await api.get<{
         completion?: number;
@@ -76,9 +79,11 @@ export default function ProfileScreen() {
 
       if (res.error || !res.data) {
         console.warn("[Profile] profile-summary error:", res.error?.message);
+        if (!hasLoadedOnce.current) setProfileLoadError(true);
         return;
       }
 
+      hasLoadedOnce.current = true;
       lastProfileSummarySuccessAt.current = Date.now();
       const d = res.data;
       const checklist = Array.isArray(d.checklistItems) ? d.checklistItems : [];
@@ -94,6 +99,7 @@ export default function ProfileScreen() {
       });
     } catch (err) {
       console.warn("[Profile] fetchProfileData error:", err);
+      if (!hasLoadedOnce.current) setProfileLoadError(true);
     }
   }, [user]);
 
@@ -101,6 +107,7 @@ export default function ProfileScreen() {
     if (!user) {
       setProfileData(null);
       lastProfileSummarySuccessAt.current = 0;
+      hasLoadedOnce.current = false;
       return;
     }
     void fetchProfileData();
@@ -143,7 +150,7 @@ export default function ProfileScreen() {
     null;
   const hasAvatar = !!avatarUrl;
   const emailVerified = !!user.email_confirmed_at;
-  const phoneVerified = !!user.phone_confirmed_at || !!user.phone;
+  const phoneVerified = !!user.phone_confirmed_at;
   const isVerified = profileData?.verified ?? false;
   const completionPct = profileData?.completion ?? 0;
   const checklistItems = profileData?.checklistItems ?? [];
@@ -196,6 +203,18 @@ export default function ProfileScreen() {
           <View style={{ paddingHorizontal: contentPadding, paddingTop: 16, marginBottom: 20 }}>
             <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>Profile</Text>
           </View>
+
+        {profileLoadError && (
+          <TouchableOpacity
+            onPress={handleRefresh}
+            style={{ marginHorizontal: contentPadding, marginBottom: 12, backgroundColor: "#FEF2F2", borderRadius: 8, padding: 12, flexDirection: "row", alignItems: "center" }}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="alert-circle-outline" size={18} color="#DC2626" style={{ marginRight: 8 }} />
+            <Text style={{ flex: 1, fontSize: 13, color: "#991B1B" }}>Couldn&apos;t load profile details.</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.primary }}>Retry</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity
           onPress={() =>

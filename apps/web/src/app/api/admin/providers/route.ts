@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get("status");
+    const searchTerm = searchParams.get("search")?.trim();
+    const limitParam = searchParams.get("limit");
 
     let query = supabase
       .from("providers")
@@ -45,6 +47,15 @@ export async function GET(request: NextRequest) {
       } else {
         query = query.eq("status", statusFilter);
       }
+    }
+
+    if (searchTerm) {
+      const safe = searchTerm.replace(/[%_]/g, "");
+      query = query.or(`business_name.ilike.%${safe}%,slug.ilike.%${safe}%`);
+    }
+    if (limitParam) {
+      const lim = Math.min(200, Math.max(1, parseInt(limitParam, 10) || 200));
+      query = query.limit(lim);
     }
 
     const { data: providers, error } = await query;

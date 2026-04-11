@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -40,7 +41,7 @@ interface BusinessReport {
     new_this_period: number;
     returning: number;
     retention_rate: number;
-    avg_lifetime_value: number;
+    avg_booking_value: number;
   };
   staff: {
     total: number;
@@ -107,7 +108,7 @@ function mapOverviewToBusinessReport(overview: OverviewResponse | null): Busines
       new_this_period: 0,
       returning: overview.uniqueClients ?? 0,
       retention_rate: 0,
-      avg_lifetime_value: overview.averageBookingValue ?? 0,
+      avg_booking_value: overview.averageBookingValue ?? 0,
     },
     staff: {
       total: overview.totalStaff ?? 0,
@@ -145,14 +146,17 @@ export default function BusinessReportScreen() {
       `Bookings: ${report.bookings.total} (${report.bookings.completion_rate.toFixed(0)}% completion)`,
       `Clients: ${report.clients.total} (${report.clients.new_this_period} new)`,
       `Retention: ${report.clients.retention_rate.toFixed(0)}%`,
-      `Avg LTV: ${formatCurrency(report.clients.avg_lifetime_value)}`,
+      `Avg Booking Value: ${formatCurrency(report.clients.avg_booking_value)}`,
       `Staff Hours: ${report.staff.total_hours.toFixed(0)}h`,
       `Products Sold: ${report.products.total_sold}`,
       `Product Revenue: ${formatCurrency(report.products.product_revenue)}`,
     ];
     try {
       await Share.share({ message: lines.join("\n"), title: "Business Report" });
-    } catch {}
+    } catch (err) {
+      console.error("Failed to share business report:", err);
+      Alert.alert("Export Failed", "Could not share the report. Please try again.");
+    }
   }
 
   if (timedOut && !report) {
@@ -326,8 +330,8 @@ export default function BusinessReportScreen() {
           <Text style={twStyle("text-sm font-medium text-gray-700")}>{r?.clients.returning ?? 0}</Text>
         </View>
         <View style={twStyle("flex-row justify-between")}>
-          <Text style={twStyle("text-sm text-gray-500")}>Avg Lifetime Value</Text>
-          <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(r?.clients.avg_lifetime_value ?? 0)}</Text>
+          <Text style={twStyle("text-sm text-gray-500")}>Avg Booking Value</Text>
+          <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(r?.clients.avg_booking_value ?? 0)}</Text>
         </View>
       </View>
 

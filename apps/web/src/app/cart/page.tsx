@@ -155,8 +155,8 @@ export default function CartPage() {
 
                 <div className="divide-y divide-gray-50">
                   {group.items.map((item) => (
-                    <div key={item.id} className={`flex items-center gap-4 px-5 py-4 ${!item.in_stock ? "opacity-50" : ""}`}>
-                      <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+                    <div key={item.id} className={`flex flex-wrap items-center gap-3 px-5 py-4 sm:flex-nowrap sm:gap-4 ${!item.in_stock ? "opacity-50" : ""}`}>
+                      <div className="h-14 w-14 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:h-16 sm:w-16">
                         {item.product?.image_urls?.[0] ? (
                           <Image src={item.product.image_urls[0]} alt="" width={64} height={64} className="h-full w-full object-cover" />
                         ) : (
@@ -167,35 +167,38 @@ export default function CartPage() {
                           </div>
                         )}
                       </div>
-                      <div className="flex-1">
-                        <p className="font-semibold text-gray-900">{item.product?.name}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-gray-900">{item.product?.name}</p>
                         {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="truncate text-xs text-gray-500 mt-0.5">
                             {Object.entries(item.product_variant.option_values).map(([k, v]) => `${k}: ${v}`).join(" · ")}
                           </p>
                         )}
-                        {item.product?.brand && <p className="text-xs text-gray-400">{item.product.brand}</p>}
+                        {item.product?.brand && <p className="truncate text-xs text-gray-400">{item.product.brand}</p>}
                         {!item.in_stock && <p className="text-xs font-semibold text-red-500">Out of stock</p>}
+                        {item.in_stock && item.stock_available > 0 && item.stock_available <= 5 && (
+                          <p className="text-xs font-medium text-amber-600">Only {item.stock_available} left</p>
+                        )}
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-2">
                         <button
                           onClick={() => updateQty(item.id, Math.max(1, item.quantity - 1))}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 sm:h-8 sm:w-8"
                         >
                           -
                         </button>
-                        <span className="w-8 text-center font-bold">{item.quantity}</span>
+                        <span className="w-6 text-center text-sm font-bold sm:w-8">{item.quantity}</span>
                         <button
                           onClick={() => updateQty(item.id, Math.min(item.stock_available, item.quantity + 1))}
-                          className="flex h-8 w-8 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50"
+                          className="flex h-7 w-7 items-center justify-center rounded-full border border-gray-200 text-gray-600 hover:bg-gray-50 sm:h-8 sm:w-8"
                         >
                           +
                         </button>
                       </div>
-                      <p className="w-24 text-right font-bold text-gray-900">
+                      <p className="w-20 flex-shrink-0 text-right font-bold text-gray-900 sm:w-24">
                         R{linePrice(item).toFixed(2)}
                       </p>
-                      <button onClick={() => removeItem(item.id)} className="text-red-400 hover:text-red-600">
+                      <button onClick={() => removeItem(item.id)} className="flex-shrink-0 text-red-400 hover:text-red-600">
                         <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>

@@ -83,13 +83,6 @@ export async function GET(request: NextRequest) {
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
 
-    // Build location-scoped booking query helper
-    const bookingBaseQuery = () => {
-      let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: false }).eq("provider_id", providerId);
-      if (locationId) q = q.eq("location_id", locationId);
-      return q;
-    };
-
     // Parallel queries for better performance
     const [
       revenueResult,
@@ -107,8 +100,8 @@ export async function GET(request: NextRequest) {
       // Booking counts (parallel queries)
       Promise.all([
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-        bookingBaseQuery().gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
-        bookingBaseQuery().gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
       ]),
       // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
@@ -116,6 +109,7 @@ export async function GET(request: NextRequest) {
       supabaseAdmin
         .from("booking_services")
         .select(`
+          booking_id,
           offering_id,
           price,
           offerings:offering_id (
@@ -124,7 +118,7 @@ export async function GET(request: NextRequest) {
           )
         `)
         .eq("offerings.provider_id", providerId)
-        .limit(1000), // Limit to prevent huge queries
+        .limit(1000),
       // Customer analytics
       (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
     ]);
@@ -136,10 +130,10 @@ export async function GET(request: NextRequest) {
     const lastMonthRevenue = lastMonthRevenueData.totalRevenue;
 
     // Extract booking counts
-    const [totalBookingsCount, thisMonthBookingsData, lastMonthBookingsData] = bookingsResult;
+    const [totalBookingsCount, thisMonthBookingsCount, lastMonthBookingsCount] = bookingsResult;
     const totalBookings = totalBookingsCount.count || 0;
-    const thisMonthBookings = thisMonthBookingsData.data?.length || 0;
-    const lastMonthBookings = lastMonthBookingsData.data?.length || 0;
+    const thisMonthBookings = thisMonthBookingsCount.count || 0;
+    const lastMonthBookings = lastMonthBookingsCount.count || 0;
     const upcomingBookings = upcomingBookingsResult.count || 0;
 
     // Process service stats (distinct bookings per offering, not raw line rows)
@@ -217,12 +211,57 @@ export async function GET(request: NextRequest) {
       bookingsGrowth = growth.toFixed(1);
     }
 
+    // Fetch tips, expenses (subscriptions & ads), and platform commission for this provider
+    const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"];
+    const TIP_TYPE = "tip";
+    const REFUND_TYPE = "refund";
+
+    let tipsTotal = 0;
+    let tipsThisMonth = 0;
+    let expensesTotal = 0;
+    let expensesThisMonth = 0;
+    let refundsTotal = 0;
+    let platformFeesTotal = 0;
+
+    try {
+      const [tipsAllQ, tipsMonthQ, expAllQ, expMonthQ, refAllQ, platFeeQ] = await Promise.all([
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", REFUND_TYPE),
+        supabaseAdmin.from("finance_transactions").select("net").eq("provider_id", providerId).eq("transaction_type", "payment"),
+      ]);
+
+      tipsTotal = (tipsAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      tipsThisMonth = (tipsMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      expensesTotal = (expAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      expensesThisMonth = (expMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      refundsTotal = (refAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      platformFeesTotal = (platFeeQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.net || 0)), 0);
+    } catch (e) {
+      console.warn("Provider finance breakdown query failed:", e);
+    }
+
     return successResponse({
       revenue: {
         total: totalRevenue,
         thisMonth: thisMonthRevenue,
         lastMonth: lastMonthRevenue,
         growth: revenueGrowth,
+      },
+      earnings_breakdown: {
+        service_earnings: totalRevenue,
+        tips: tipsTotal,
+        tips_this_month: tipsThisMonth,
+        refunds: refundsTotal,
+        platform_fees_paid: platformFeesTotal,
+        net_after_refunds: totalRevenue - refundsTotal,
+      },
+      expenses: {
+        total: expensesTotal,
+        this_month: expensesThisMonth,
+        note: "Includes subscription fees, ad campaign payments, and other platform charges",
       },
       bookings: {
         total: totalBookings,
@@ -239,7 +278,7 @@ export async function GET(request: NextRequest) {
       services: Array.from(serviceStats.values())
         .map((s) => ({ name: s.name, count: s.bookingIds.size, revenue: s.revenue }))
         .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10), // Top 10 services
+        .slice(0, 10),
       trends: trendsData,
     });
   } catch (error) {

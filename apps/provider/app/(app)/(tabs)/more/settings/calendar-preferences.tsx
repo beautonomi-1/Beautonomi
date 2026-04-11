@@ -3,7 +3,7 @@
  * GET/PATCH /api/provider/settings/calendar-preferences
  */
 import { useState, useCallback, useEffect } from "react";
-import { View, Text, TouchableOpacity, Switch } from "react-native";
+import { View, Text, TouchableOpacity, Switch, Alert } from "react-native";
 import * as Haptics from "expo-haptics";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -11,6 +11,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 
 interface CalendarPreferences {
@@ -37,7 +38,7 @@ const COLOR_BY_OPTIONS: { value: CalendarPreferences["colorBy"]; label: string }
 
 export default function CalendarPreferencesScreen() {
   const [refreshing, setRefreshing] = useState(false);
-  const { data: prefs, loading, refresh } = useApi<CalendarPreferences>(
+  const { data: prefs, loading, error: loadError, refresh } = useApi<CalendarPreferences>(
     "/api/provider/settings/calendar-preferences"
   );
   const { execute: updatePrefs, loading: saving } = useApiMutation("patch");
@@ -58,8 +59,12 @@ export default function CalendarPreferencesScreen() {
       "/api/provider/settings/calendar-preferences",
       local
     );
-    if (error) return;
+    if (error) {
+      Alert.alert("Error", typeof error === "string" ? error : "Failed to save preferences. Please try again.");
+      return;
+    }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    Alert.alert("Saved", "Calendar preferences updated.");
     refresh();
   }
 
@@ -71,6 +76,15 @@ export default function CalendarPreferencesScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <LoadingState message="Loading preferences..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (loadError && !prefs) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Calendar preferences" showBack subtitle="Display options" />
+        <ErrorState message={typeof loadError === "string" ? loadError : "Failed to load preferences"} onRetry={refresh} />
       </ScreenContainer>
     );
   }

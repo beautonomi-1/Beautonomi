@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("ads_campaigns")
-      .select("id, status, budget, spent, daily_budget, bid_cpc, start_at, end_at, targeting, bid_settings, pack_impressions, created_at, updated_at")
+      .select("id, status, budget, spent, daily_budget, bid_cpc, start_at, end_at, targeting, bid_settings, pack_impressions, billing_model, duration_days, created_at, updated_at")
       .eq("provider_id", providerId)
       .order("created_at", { ascending: false });
 
@@ -69,9 +69,40 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const impressionPackId = body.impression_pack_id ?? null;
+    const timePackId = body.time_pack_id ?? null;
     let budget = Number(body.budget) || 0;
     let packImpressions: number | null = null;
-    if (impressionPackId) {
+    let billingModel: "cpc_budget" | "impression_pack" | "time_based" = "cpc_budget";
+    let durationDays: number | null = null;
+
+    const env = process.env.NODE_ENV === "production" ? "production" : "development";
+    const { data: config } = await supabase
+      .from("ads_module_config")
+      .select("enabled, available_models")
+      .eq("environment", env)
+      .maybeSingle();
+    if (!config?.enabled) return errorResponse("Ads module is disabled", "DISABLED", 403);
+
+    const availableModels: string[] = (config as any).available_models ?? ["cpc_budget", "impression_pack", "time_based"];
+
+    if (timePackId) {
+      if (!availableModels.includes("time_based")) {
+        return errorResponse("Time-based ads are not available on this platform", "MODEL_DISABLED", 400);
+      }
+      const { data: pack } = await supabase
+        .from("ads_time_packs")
+        .select("id, duration_days, price_zar, label")
+        .eq("id", timePackId)
+        .eq("is_active", true)
+        .single();
+      if (!pack) return errorResponse("Invalid or inactive time pack", "VALIDATION", 400);
+      budget = Number((pack as any).price_zar);
+      durationDays = Number((pack as any).duration_days);
+      billingModel = "time_based";
+    } else if (impressionPackId) {
+      if (!availableModels.includes("impression_pack")) {
+        return errorResponse("Impression packs are not available on this platform", "MODEL_DISABLED", 400);
+      }
       const { data: pack } = await supabase
         .from("ads_impression_packs")
         .select("id, impressions, price_zar")
@@ -81,18 +112,23 @@ export async function POST(request: NextRequest) {
       if (!pack) return errorResponse("Invalid or inactive impression pack", "VALIDATION", 400);
       budget = Number((pack as any).price_zar);
       packImpressions = Number((pack as any).impressions);
+      billingModel = "impression_pack";
     } else {
+      if (!availableModels.includes("cpc_budget")) {
+        return errorResponse("CPC budget ads are not available on this platform", "MODEL_DISABLED", 400);
+      }
       budget = Number(body.budget) || 0;
+      billingModel = "cpc_budget";
     }
+
     const dailyBudget = body.daily_budget != null ? Number(body.daily_budget) : null;
     const bidCpc = Number(body.bid_cpc) || 0;
-    const startAt = body.start_at ?? null;
-    const endAt = body.end_at ?? null;
+    const startAt = billingModel === "time_based" ? new Date().toISOString() : (body.start_at ?? null);
+    const endAt = billingModel === "time_based" && durationDays
+      ? new Date(Date.now() + durationDays * 86400000).toISOString()
+      : (body.end_at ?? null);
     const targeting = body.targeting ?? {};
     const bidSettings = body.bid_settings ?? {};
-
-    const { data: config } = await supabase.from("ads_module_config").select("enabled").eq("environment", process.env.NODE_ENV === "production" ? "production" : "development").maybeSingle();
-    if (!config?.enabled) return errorResponse("Ads module is disabled", "DISABLED", 403);
 
     const tenantRegion = await getTenantRegionConfig(tenantId);
     const currency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
@@ -105,13 +141,15 @@ export async function POST(request: NextRequest) {
         status: "draft",
         budget: insertBudget,
         spent: 0,
-        daily_budget: packImpressions != null ? null : dailyBudget,
-        bid_cpc: packImpressions != null ? 0 : bidCpc,
+        daily_budget: billingModel === "cpc_budget" ? dailyBudget : null,
+        bid_cpc: billingModel === "cpc_budget" ? bidCpc : 0,
         start_at: startAt,
         end_at: endAt,
         targeting,
         bid_settings: bidSettings,
         pack_impressions: packImpressions,
+        billing_model: billingModel,
+        duration_days: durationDays,
       })
       .select()
       .single();

@@ -144,10 +144,26 @@ const ProviderCard: React.FC<ProviderCardProps> = ({
     }
   };
 
+  const handleClick = () => {
+    if (provider.is_sponsored && provider.campaign_id) {
+      fetcher.post("/api/public/ads/event", {
+        event_type: "click",
+        campaign_id: provider.campaign_id,
+        provider_id: provider.id,
+        idempotency_key: `web-click:${provider.campaign_id}:${provider.id}:${Date.now()}`,
+      }).catch(() => {});
+    }
+  };
+
+  const profileHref = provider.is_sponsored && provider.campaign_id
+    ? `/partner-profile?slug=${encodeURIComponent(provider.slug)}&campaign_id=${provider.campaign_id}`
+    : `/partner-profile?slug=${encodeURIComponent(provider.slug)}`;
+
   return (
     <Link
-      href={`/partner-profile?slug=${encodeURIComponent(provider.slug)}`}
+      href={profileHref}
       className="block"
+      onClick={handleClick}
       aria-label={`View ${businessName}, ${ratingText}, ${reviewCountText}`}
     >
       <article className="w-full cursor-pointer group" aria-labelledby={`provider-name-${provider.id}`}>

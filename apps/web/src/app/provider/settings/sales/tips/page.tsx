@@ -20,7 +20,7 @@ export default function TipsSettings() {
         );
         setTipsEnabled(Boolean(res.data.tips_enabled));
       } catch {
-        // keep default
+        toast.error("Failed to load tip settings");
       }
     };
     load();

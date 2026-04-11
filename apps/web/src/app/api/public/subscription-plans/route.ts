@@ -27,54 +27,11 @@ export async function GET(request: NextRequest) {
       .order('display_order', { ascending: true });
 
     if (error) {
-      console.error('Error fetching plans:', error);
-      // Return default plans if table doesn't exist
-      return NextResponse.json({
-        data: [
-          {
-            id: 'basic',
-            name: 'Basic',
-            price: 99,
-            currency: defaultCurrency,
-            billing_period: 'monthly',
-            features: [
-              'Up to 50 bookings per month',
-              'Basic analytics',
-              'Email support',
-              'Mobile app access',
-            ],
-          },
-          {
-            id: 'professional',
-            name: 'Professional',
-            price: 199,
-            currency: defaultCurrency,
-            billing_period: 'monthly',
-            features: [
-              'Unlimited bookings',
-              'Advanced analytics',
-              'Priority support',
-              'Custom branding',
-              'API access',
-            ],
-            is_popular: true,
-          },
-          {
-            id: 'enterprise',
-            name: 'Enterprise',
-            price: 399,
-            currency: defaultCurrency,
-            billing_period: 'monthly',
-            features: [
-              'Unlimited everything',
-              'Dedicated account manager',
-              '24/7 phone support',
-              'White-label solution',
-              'Custom integrations',
-            ],
-          },
-        ],
-      });
+      console.error('Error fetching subscription plans:', error);
+      return NextResponse.json(
+        { error: 'Failed to load subscription plans' },
+        { status: 500 }
+      );
     }
 
     // Shape expected by provider subscription UI: flatten into monthly/yearly options.

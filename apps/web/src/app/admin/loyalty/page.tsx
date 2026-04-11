@@ -44,6 +44,7 @@ export default function AdminLoyaltyPage() {
 
   const activeRule = useMemo(() => rules.find((r) => r.is_active) || rules[0] || null, [rules]);
 
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [newRule, setNewRule] = useState({
     points_per_currency_unit: 1,
     currency: tenantCurrency,
@@ -90,12 +91,18 @@ export default function AdminLoyaltyPage() {
   const createRule = async () => {
     try {
       setIsSaving(true);
-      await fetcher.post("/api/admin/loyalty/rules", newRule);
-      toast.success("Loyalty rule created successfully");
+      if (editingRuleId) {
+        await fetcher.patch(`/api/admin/loyalty/rules/${editingRuleId}`, newRule);
+        toast.success("Loyalty rule updated");
+        setEditingRuleId(null);
+      } else {
+        await fetcher.post("/api/admin/loyalty/rules", newRule);
+        toast.success("Loyalty rule created successfully");
+      }
       await load();
       setNewRule({ points_per_currency_unit: 1, currency: tenantCurrency, redemption_rate: 100 });
     } catch (err: any) {
-      toast.error(err.message || "Failed to create loyalty rule");
+      toast.error(err.message || "Failed to save loyalty rule");
     } finally {
       setIsSaving(false);
     }
@@ -231,9 +238,24 @@ export default function AdminLoyaltyPage() {
 
                   {activeRule && (
                     <div className="mb-6 p-4 backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl">
-                      <p className="text-xs font-medium text-gray-500 mb-1">Current Active Rule</p>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-medium text-gray-500">Current Active Rule</p>
+                        <button
+                          onClick={() => {
+                            setNewRule({
+                              points_per_currency_unit: activeRule.points_per_currency_unit,
+                              currency: activeRule.currency,
+                              redemption_rate: activeRule.redemption_rate,
+                            });
+                            setEditingRuleId(activeRule.id);
+                          }}
+                          className="text-xs text-[#FF0077] hover:underline flex items-center gap-1"
+                        >
+                          <Edit className="w-3 h-3" /> Edit
+                        </button>
+                      </div>
                       <p className="text-sm font-semibold text-gray-900">
-                        {activeRule.points_per_currency_unit} point{activeRule.points_per_currency_unit !== 1 ? "s" : ""} per {activeRule.currency} • 
+                        {activeRule.points_per_currency_unit} point{activeRule.points_per_currency_unit !== 1 ? "s" : ""} per {activeRule.currency} •
                         {" "}Redemption: {activeRule.redemption_rate} points = 1 {activeRule.currency}
                       </p>
                       <p className="text-xs text-gray-500 mt-1">
@@ -302,15 +324,26 @@ export default function AdminLoyaltyPage() {
                     {isSaving ? (
                       <>
                         <Loader2 className="w-5 h-5 animate-spin" />
-                        <span>Creating...</span>
+                        <span>{editingRuleId ? "Updating..." : "Creating..."}</span>
                       </>
                     ) : (
                       <>
                         <Save className="w-5 h-5" />
-                        <span>Create New Rule</span>
+                        <span>{editingRuleId ? "Update Rule" : "Create New Rule"}</span>
                       </>
                     )}
                   </motion.button>
+                  {editingRuleId && (
+                    <button
+                      onClick={() => {
+                        setEditingRuleId(null);
+                        setNewRule({ points_per_currency_unit: 1, currency: tenantCurrency, redemption_rate: 100 });
+                      }}
+                      className="text-sm text-gray-500 hover:text-gray-700 mt-2"
+                    >
+                      Cancel editing
+                    </button>
+                  )}
                 </motion.div>
 
                 {/* Milestone Rewards Card */}

@@ -1,4 +1,5 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import PDFDocument from "pdfkit";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import {
   requireRoleInApi,
@@ -12,7 +13,7 @@ import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 
 /**
  * GET /api/provider/invoices/[id]/download
- * Generate and download invoice as a PDF file (HTML-based payload).
+ * Generate and download invoice as a real PDF file using PDFKit.
  */
 export async function GET(
   request: NextRequest,
@@ -36,7 +37,6 @@ export async function GET(
       }
     }
 
-    // Get invoice with all details (providers use business_name, not name)
     let query = supabase
       .from("provider_invoices")
       .select(
@@ -74,13 +74,14 @@ export async function GET(
       tenantForConfig ?? (await resolveTenantIdWithZaFallback(request))
     );
 
-    const invoiceHTML = generateInvoiceHTML(invoice, tenantRegionConfig);
+    const buffer = await generateInvoicePDF(invoice, tenantRegionConfig);
 
-    // Return HTML payload as a downloadable .pdf file for printing/sharing
-    return new Response(invoiceHTML, {
+    return new NextResponse(new Uint8Array(buffer), {
+      status: 200,
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="invoice-${invoice.invoice_number}.pdf"`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (error) {
@@ -88,7 +89,7 @@ export async function GET(
   }
 }
 
-function generateInvoiceHTML(invoice: any, tenantRegionConfig: import("@/lib/regions/config").TenantRegionConfig | null) {
+async function generateInvoicePDF(invoice: any, tenantRegionConfig: import("@/lib/regions/config").TenantRegionConfig | null): Promise<Buffer> {
   const fallbackCurrency =
     tenantRegionConfig?.defaultCurrency ||
     (invoice?.providers as { currency?: string } | undefined)?.currency?.trim() ||
@@ -96,14 +97,14 @@ function generateInvoiceHTML(invoice: any, tenantRegionConfig: import("@/lib/reg
   const fallbackLocale = getTenantLocaleTagFromRegionConfig(tenantRegionConfig);
   const currency = fallbackCurrency;
 
-  const formatCurrency = (amount: number) => {
+  const money = (amount: number) => {
     return new Intl.NumberFormat(fallbackLocale, {
       style: "currency",
       currency: currency.length === 3 ? currency : fallbackCurrency,
     }).format(amount);
   };
 
-  const formatDate = (date: string) => {
+  const fmtDate = (date: string) => {
     return new Date(date).toLocaleDateString(fallbackLocale, {
       year: "numeric",
       month: "long",
@@ -114,223 +115,118 @@ function generateInvoiceHTML(invoice: any, tenantRegionConfig: import("@/lib/reg
   const provider = invoice.providers;
   const billingAddress = (typeof provider?.billing_address === "object" && provider?.billing_address) || {};
   const providerDisplayName = provider?.business_name ?? (provider as { name?: string })?.name ?? "Provider";
+  const statusLabel = (invoice.status || "draft").replace(/_/g, " ").toUpperCase();
 
-  return `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Invoice ${invoice.invoice_number}</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      max-width: 800px;
-      margin: 0 auto;
-      padding: 40px;
-      color: #333;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 40px;
-      padding-bottom: 20px;
-      border-bottom: 2px solid #FF0077;
-    }
-    .invoice-info {
-      text-align: right;
-    }
-    .invoice-number {
-      font-size: 24px;
-      font-weight: bold;
-      color: #FF0077;
-      margin-bottom: 10px;
-    }
-    .section {
-      margin-bottom: 30px;
-    }
-    .section-title {
-      font-size: 14px;
-      font-weight: bold;
-      color: #666;
-      margin-bottom: 10px;
-      text-transform: uppercase;
-    }
-    .billing-details {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 40px;
-      margin-bottom: 40px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 20px;
-    }
-    th {
-      background-color: #f5f5f5;
-      padding: 12px;
-      text-align: left;
-      font-weight: bold;
-      border-bottom: 2px solid #ddd;
-    }
-    td {
-      padding: 12px;
-      border-bottom: 1px solid #eee;
-    }
-    .text-right {
-      text-align: right;
-    }
-    .totals {
-      margin-top: 20px;
-      display: flex;
-      justify-content: flex-end;
-    }
-    .totals-table {
-      width: 300px;
-    }
-    .totals-table td {
-      padding: 8px 12px;
-    }
-    .total-row {
-      font-weight: bold;
-      font-size: 18px;
-      border-top: 2px solid #333;
-      border-bottom: 2px solid #333;
-    }
-    .status-badge {
-      display: inline-block;
-      padding: 4px 12px;
-      border-radius: 4px;
-      font-size: 12px;
-      font-weight: bold;
-      text-transform: uppercase;
-    }
-    .status-paid {
-      background-color: #10b981;
-      color: white;
-    }
-    .status-sent {
-      background-color: #3b82f6;
-      color: white;
-    }
-    .status-overdue {
-      background-color: #ef4444;
-      color: white;
-    }
-    .status-draft {
-      background-color: #6b7280;
-      color: white;
-    }
-    .footer {
-      margin-top: 60px;
-      padding-top: 20px;
-      border-top: 1px solid #ddd;
-      font-size: 12px;
-      color: #666;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <h1 style="margin: 0; color: #FF0077;">Beautonomi</h1>
-      <p style="margin: 5px 0; color: #666;">Platform Invoice</p>
-    </div>
-    <div class="invoice-info">
-      <div class="invoice-number">${invoice.invoice_number}</div>
-      <div>Issue Date: ${formatDate(invoice.issue_date)}</div>
-      <div>Due Date: ${formatDate(invoice.due_date)}</div>
-      <div style="margin-top: 10px;">
-        <span class="status-badge status-${invoice.status}">${invoice.status.replace("_", " ")}</span>
-      </div>
-    </div>
-  </div>
+  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const chunks: Buffer[] = [];
+  doc.on("data", (chunk: Buffer) => chunks.push(chunk));
 
-  <div class="billing-details">
-    <div>
-      <div class="section-title">Bill To</div>
-      <div>
-        <strong>${providerDisplayName}</strong><br>
-        ${billingAddress.address_line1 || ""}<br>
-        ${billingAddress.city ? billingAddress.city + ", " : ""}
-        ${billingAddress.country || ""}<br>
-        ${provider?.billing_email || ""}<br>
-        ${provider?.billing_phone || ""}
-      </div>
-    </div>
-    <div>
-      <div class="section-title">Billing Period</div>
-      <div>
-        ${formatDate(invoice.period_start)}<br>
-        to<br>
-        ${formatDate(invoice.period_end)}
-      </div>
-    </div>
-  </div>
+  // Header
+  doc.fontSize(22).fillColor("#FF0077").text("Beautonomi", { continued: true });
+  doc.fontSize(10).fillColor("#666").text("  Platform Invoice", { align: "left" });
+  doc.moveDown(0.5);
+  doc.fillColor("#FF0077").fontSize(16).text(invoice.invoice_number);
+  doc.fillColor("#333").fontSize(10);
+  doc.text(`Issue Date: ${fmtDate(invoice.issue_date)}`);
+  doc.text(`Due Date: ${fmtDate(invoice.due_date)}`);
+  doc.text(`Status: ${statusLabel}`);
+  doc.moveDown(0.5);
 
-  <div class="section">
-    <table>
-      <thead>
-        <tr>
-          <th>Description</th>
-          <th class="text-right">Quantity</th>
-          <th class="text-right">Unit Price</th>
-          <th class="text-right">Total</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${(invoice.line_items || []).map((item: any) => `
-          <tr>
-            <td>${item.description}</td>
-            <td class="text-right">${item.quantity}</td>
-            <td class="text-right">${formatCurrency(item.unit_price)}</td>
-            <td class="text-right">${formatCurrency(item.total_price)}</td>
-          </tr>
-        `).join("")}
-      </tbody>
-    </table>
-  </div>
+  // Divider
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#FF0077").lineWidth(2).stroke();
+  doc.moveDown(0.8);
 
-  <div class="totals">
-    <table class="totals-table">
-      <tr>
-        <td>Subtotal:</td>
-        <td class="text-right">${formatCurrency(invoice.subtotal)}</td>
-      </tr>
-      <tr>
-        <td>Tax (${invoice.tax_rate}%):</td>
-        <td class="text-right">${formatCurrency(invoice.tax_amount)}</td>
-      </tr>
-      <tr class="total-row">
-        <td>Total:</td>
-        <td class="text-right">${formatCurrency(invoice.total_amount)}</td>
-      </tr>
-      ${Number(invoice.amount_paid ?? 0) > 0 ? `
-        <tr>
-          <td>Amount Paid:</td>
-          <td class="text-right">${formatCurrency(Number(invoice.amount_paid ?? 0))}</td>
-        </tr>
-        <tr>
-          <td><strong>Amount Due:</strong></td>
-          <td class="text-right"><strong>${formatCurrency(Number(invoice.amount_due ?? invoice.total_amount ?? 0))}</strong></td>
-        </tr>
-      ` : ""}
-    </table>
-  </div>
+  // Bill To
+  doc.fontSize(9).fillColor("#666").text("BILL TO", { underline: false });
+  doc.fontSize(11).fillColor("#333").text(providerDisplayName);
+  if (billingAddress.address_line1) doc.fontSize(10).text(billingAddress.address_line1);
+  const cityCountry = [billingAddress.city, billingAddress.country].filter(Boolean).join(", ");
+  if (cityCountry) doc.text(cityCountry);
+  if (provider?.billing_email) doc.text(provider.billing_email);
+  if (provider?.billing_phone) doc.text(provider.billing_phone);
+  doc.moveDown(0.5);
 
-  ${invoice.notes ? `
-    <div class="section">
-      <div class="section-title">Notes</div>
-      <p>${invoice.notes}</p>
-    </div>
-  ` : ""}
+  // Billing Period
+  doc.fontSize(9).fillColor("#666").text("BILLING PERIOD");
+  doc.fontSize(10).fillColor("#333").text(`${fmtDate(invoice.period_start)} to ${fmtDate(invoice.period_end)}`);
+  doc.moveDown(0.8);
 
-  <div class="footer">
-    <p>Thank you for using Beautonomi. For questions about this invoice, please contact support.</p>
-    <p>This is an automatically generated invoice.</p>
-  </div>
-</body>
-</html>
-  `;
+  // Line items table header
+  const colX = { desc: 50, qty: 340, unit: 400, total: 480 };
+  doc.fontSize(9).fillColor("#666");
+  doc.text("Description", colX.desc, doc.y, { width: 280 });
+  const headerY = doc.y - 12;
+  doc.text("Qty", colX.qty, headerY, { width: 50, align: "right" });
+  doc.text("Unit Price", colX.unit, headerY, { width: 70, align: "right" });
+  doc.text("Total", colX.total, headerY, { width: 65, align: "right" });
+  doc.moveDown(0.3);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(1).stroke();
+  doc.moveDown(0.3);
+
+  // Line items
+  doc.fillColor("#333").fontSize(10);
+  for (const item of (invoice.line_items || []) as any[]) {
+    const rowY = doc.y;
+    doc.text(item.description || "", colX.desc, rowY, { width: 280 });
+    const textY = Math.max(doc.y - 12, rowY);
+    doc.text(String(item.quantity ?? 1), colX.qty, textY, { width: 50, align: "right" });
+    doc.text(money(Number(item.unit_price || 0)), colX.unit, textY, { width: 70, align: "right" });
+    doc.text(money(Number(item.total_price || 0)), colX.total, textY, { width: 65, align: "right" });
+    doc.moveDown(0.2);
+    doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#eee").lineWidth(0.5).stroke();
+    doc.moveDown(0.2);
+  }
+
+  doc.moveDown(0.5);
+
+  // Totals — right-aligned summary
+  const summaryX = 380;
+  const valX = 480;
+  const summaryLine = (label: string, value: string, bold = false) => {
+    const y = doc.y;
+    doc.fontSize(bold ? 12 : 10).text(label, summaryX, y, { width: 90, align: "left" });
+    doc.fontSize(bold ? 12 : 10).text(value, valX, y, { width: 65, align: "right" });
+    doc.moveDown(0.3);
+  };
+
+  summaryLine("Subtotal:", money(Number(invoice.subtotal || 0)));
+  summaryLine(`Tax (${invoice.tax_rate ?? 0}%):`, money(Number(invoice.tax_amount || 0)));
+
+  doc.moveTo(summaryX, doc.y).lineTo(545, doc.y).strokeColor("#333").lineWidth(1.5).stroke();
+  doc.moveDown(0.3);
+  summaryLine("Total:", money(Number(invoice.total_amount || 0)), true);
+  doc.moveTo(summaryX, doc.y).lineTo(545, doc.y).strokeColor("#333").lineWidth(1.5).stroke();
+  doc.moveDown(0.3);
+
+  if (Number(invoice.amount_paid ?? 0) > 0) {
+    summaryLine("Amount Paid:", money(Number(invoice.amount_paid)));
+    const amountDue = Number(invoice.amount_due ?? invoice.total_amount ?? 0);
+    if (amountDue > 0) {
+      doc.fillColor("red");
+      summaryLine("Amount Due:", money(amountDue), true);
+      doc.fillColor("#333");
+    }
+  }
+
+  // Notes
+  if (invoice.notes) {
+    doc.moveDown(0.5);
+    doc.fontSize(9).fillColor("#666").text("NOTES");
+    doc.fontSize(10).fillColor("#333").text(invoice.notes);
+  }
+
+  // Footer
+  doc.moveDown(2);
+  doc.moveTo(50, doc.y).lineTo(545, doc.y).strokeColor("#ddd").lineWidth(0.5).stroke();
+  doc.moveDown(0.5);
+  doc.fontSize(9).fillColor("#666").text(
+    "Thank you for using Beautonomi. For questions about this invoice, please contact support.",
+    { align: "center" }
+  );
+  doc.text("This is an automatically generated invoice.", { align: "center" });
+
+  doc.end();
+  return new Promise<Buffer>((resolve) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
 }

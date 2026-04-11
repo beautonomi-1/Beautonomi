@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Calendar, DollarSign, Clock, TrendingUp, ChevronLeft, ChevronRight } from "lucide-react";
 import { format, startOfWeek, endOfWeek } from "date-fns";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { handleError, withRetry } from "@/lib/provider-portal/error-handler";
 
 interface StaffTotals {
@@ -27,6 +28,7 @@ interface StaffTotals {
 }
 
 export default function StaffTotalsPage() {
+  const { format: fmt } = useProviderMoneyFormat();
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
   const [totals, setTotals] = useState<StaffTotals[]>([]);
@@ -245,7 +247,7 @@ export default function StaffTotalsPage() {
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Revenue</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                R{stats.revenue.toLocaleString()}
+                {fmt(stats.revenue)}
               </div>
             </div>
           </div>
@@ -258,7 +260,7 @@ export default function StaffTotalsPage() {
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Tips</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                R{stats.tips.toLocaleString()}
+                {fmt(stats.tips)}
               </div>
             </div>
           </div>
@@ -284,7 +286,7 @@ export default function StaffTotalsPage() {
             <div className="min-w-0 flex-1">
               <div className="text-xs sm:text-sm text-gray-600">Commission</div>
               <div className="text-base sm:text-lg font-semibold truncate">
-                R{stats.commission.toLocaleString()}
+                {fmt(stats.commission)}
               </div>
             </div>
           </div>
@@ -338,10 +340,10 @@ export default function StaffTotalsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-medium">{total.appointments_count}</TableCell>
-                        <TableCell className="text-right">R{total.revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">R{total.tips.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{fmt(total.revenue)}</TableCell>
+                        <TableCell className="text-right">{fmt(total.tips)}</TableCell>
                         <TableCell className="text-right">{total.hours_worked.toFixed(1)}h</TableCell>
-                        <TableCell className="text-right font-medium">R{total.commission.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-medium">{fmt(total.commission)}</TableCell>
                         <TableCell className="text-right">
                           {total.rating ? (
                             <span className="flex items-center justify-end gap-1">
@@ -402,10 +404,10 @@ export default function StaffTotalsPage() {
                           </div>
                         </TableCell>
                         <TableCell className="text-right font-medium">{total.appointments_count}</TableCell>
-                        <TableCell className="text-right">R{total.revenue.toLocaleString()}</TableCell>
-                        <TableCell className="text-right">R{total.tips.toLocaleString()}</TableCell>
+                        <TableCell className="text-right">{fmt(total.revenue)}</TableCell>
+                        <TableCell className="text-right">{fmt(total.tips)}</TableCell>
                         <TableCell className="text-right">{total.hours_worked.toFixed(1)}h</TableCell>
-                        <TableCell className="text-right font-medium">R{total.commission.toLocaleString()}</TableCell>
+                        <TableCell className="text-right font-medium">{fmt(total.commission)}</TableCell>
                         <TableCell className="text-right">
                           {total.rating ? (
                             <span className="flex items-center justify-end gap-1">

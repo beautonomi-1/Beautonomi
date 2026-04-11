@@ -255,21 +255,22 @@ export async function GET(request: NextRequest) {
       });
 
       // Failsafe: if the DB trigger set payment_status to "partially_paid" because it
-      // only sums booking_payments rows and doesn't account for wallet_amount, we fix it here.
+      // only sums booking_payments rows and doesn't account for wallet/gift card amounts, we fix it here.
       {
         const { data: fsRow } = await admin
           .from("bookings")
-          .select("total_amount, total_paid, wallet_amount, payment_status, status, provider_id, confirmed_at")
+          .select("total_amount, total_paid, wallet_amount, gift_card_amount, payment_status, status, provider_id, confirmed_at")
           .eq("id", bookingId)
           .maybeSingle();
         if (fsRow) {
           const fsTotalAmount = Number((fsRow as Record<string, unknown>).total_amount ?? 0);
           const fsTotalPaid = Number((fsRow as Record<string, unknown>).total_paid ?? 0);
           const fsWalletAmount = Number((fsRow as Record<string, unknown>).wallet_amount ?? 0);
+          const fsGiftCardAmount = Number((fsRow as Record<string, unknown>).gift_card_amount ?? 0);
           const fsPs = (fsRow as Record<string, unknown>).payment_status as string || "pending";
           if (
             fsTotalAmount > 0 &&
-            fsTotalPaid + fsWalletAmount >= fsTotalAmount - 0.01 &&
+            fsTotalPaid + fsWalletAmount + fsGiftCardAmount >= fsTotalAmount - 0.01 &&
             fsPs !== "paid"
           ) {
             const fsUpdates: Record<string, unknown> = { payment_status: "paid" };

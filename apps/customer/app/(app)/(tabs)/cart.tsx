@@ -78,6 +78,7 @@ export default function CartScreen() {
     fetchCart,
     updateQuantity: patchCartQuantity,
     removeItem: removeCartLine,
+    clearCart,
     isGuestCart,
   } = useCart();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
@@ -90,12 +91,47 @@ export default function CartScreen() {
     [items],
   );
 
+  const [clearingCart, setClearingCart] = useState(false);
+
+  const handleClearCart = useCallback(() => {
+    if (items.length === 0) return;
+    Alert.alert("Clear Cart", "Remove all items from your cart?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear All",
+        style: "destructive",
+        onPress: async () => {
+          setClearingCart(true);
+          try {
+            await clearCart();
+            haptic.success();
+          } catch {
+            Alert.alert("Error", "Failed to clear cart");
+          } finally {
+            setClearingCart(false);
+          }
+        },
+      },
+    ]);
+  }, [items.length, clearCart]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       title: totalQty > 0 ? `Cart (${totalQty})` : "Cart",
       headerShown: true,
+      headerRight: totalQty > 0
+        ? () => (
+            <TouchableOpacity onPress={handleClearCart} disabled={clearingCart} style={{ paddingHorizontal: 8 }}>
+              {clearingCart ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>Clear all</Text>
+              )}
+            </TouchableOpacity>
+          )
+        : undefined,
     });
-  }, [navigation, totalQty]);
+  }, [navigation, totalQty, handleClearCart, clearingCart]);
 
   // Derive provider IDs from items to pre-fetch shipping configs
   const providerIds = useMemo(

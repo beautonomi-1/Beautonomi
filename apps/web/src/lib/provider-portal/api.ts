@@ -963,7 +963,7 @@ export class ProviderApiClient implements ProviderApi {
         // Service fee fields (should be 0 for provider-created appointments)
         service_fee_percentage: (data as any).service_fee_percentage || 0,
         service_fee_amount: (data as any).service_fee_amount || 0,
-        booking_source: (data as any).booking_source || 'walk_in', // Mark as provider-created
+        booking_source: (data as any).booking_source || 'provider',
         // For walk-in clients, pass customer info to create customer
         customer_name: data.client_name,
         customer_email: data.client_email || null,
@@ -975,7 +975,16 @@ export class ProviderApiClient implements ProviderApi {
         address_city: data.address_city || null,
         address_state: data.address_state || null,
         address_postal_code: data.address_postal_code || null,
+        address_country: (data as any).address_country || null,
+        address_latitude: (data as any).address_latitude || null,
+        address_longitude: (data as any).address_longitude || null,
         referral_source_id: (data as any).referral_source_id ?? null,
+        payment_method: (data as any).payment_method || null,
+        send_notification: (data as any).send_notification ?? true,
+        deposit_required: (data as any).deposit_required || false,
+        deposit_percentage: (data as any).deposit_percentage || null,
+        deposit_amount: (data as any).deposit_amount || null,
+        payment_option: (data as any).payment_option || "full",
       };
 
       const response = await fetcher.post<{ data: any }>("/api/provider/bookings", bookingData);
@@ -3416,15 +3425,10 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async listExpressBookingLinks(): Promise<ExpressBookingLink[]> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
-      const rows = res.data ?? [];
-      return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
-    } catch (error) {
-      console.warn("Failed to load express booking links:", error);
-      return [];
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
+    const rows = res.data ?? [];
+    return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
   }
 
   async createExpressBookingLink(

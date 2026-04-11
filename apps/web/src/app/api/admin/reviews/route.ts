@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const rating = searchParams.get("rating"); // 1-5
     const providerId = searchParams.get("provider_id");
     const customerId = searchParams.get("customer_id");
+    const startDate = searchParams.get("start_date");
+    const endDate = searchParams.get("end_date");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "50");
     const offset = (page - 1) * limit;
@@ -73,6 +75,13 @@ export async function GET(request: NextRequest) {
       query = query.eq("customer_id", customerId);
     }
 
+    if (startDate) {
+      query = query.gte("created_at", startDate);
+    }
+    if (endDate) {
+      query = query.lte("created_at", endDate);
+    }
+
     const { data: reviews, error } = await query;
 
     if (error) {
@@ -100,6 +109,13 @@ export async function GET(request: NextRequest) {
 
     if (customerId) {
       countQuery = countQuery.eq("customer_id", customerId);
+    }
+
+    if (startDate) {
+      countQuery = countQuery.gte("created_at", startDate);
+    }
+    if (endDate) {
+      countQuery = countQuery.lte("created_at", endDate);
     }
 
     const { count } = await countQuery;

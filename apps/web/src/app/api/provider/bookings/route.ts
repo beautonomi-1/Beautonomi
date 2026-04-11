@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse, normalizePhoneToE164 } from "@/lib/supabase/api-helpers";
@@ -522,6 +522,16 @@ async function handleCreateProviderBooking(request: NextRequest) {
       throw new Error("Customer ID is required but could not be determined");
     }
 
+    if (body.location_type === "at_home") {
+      const addrLine = body.address?.line1 || body.address_line1;
+      if (!addrLine || !String(addrLine).trim()) {
+        return NextResponse.json(
+          { error: "A service address is required for at-home bookings" },
+          { status: 400 },
+        );
+      }
+    }
+
     // Generate booking number (use admin client to bypass RLS)
     const { data: lastBooking } = await supabaseAdmin
       .from("bookings")
@@ -537,11 +547,28 @@ async function handleCreateProviderBooking(request: NextRequest) {
       bookingNumber = `BK${String(lastNum + 1).padStart(4, "0")}`;
     }
 
-    // Get effective tax rate if not provided: provider tax_rate_percent → platform default → 15% fallback
+    // Get effective tax rate if not provided: provider tax_rate_percent → platform default → 0% fallback
+    // Also fetch tax_inclusive flag from the provider record to correctly branch the pricing formula
     let effectiveTaxRate = body.tax_rate;
-    if (!effectiveTaxRate || effectiveTaxRate === 0) {
-      const { getEffectiveTaxRate } = await import("@/lib/platform-tax-settings");
-      effectiveTaxRate = await getEffectiveTaxRate(providerId);
+    let taxInclusive = true; // SA default — most providers use VAT-inclusive pricing
+    {
+      const { data: providerTaxRow } = await supabaseAdmin
+        .from("providers")
+        .select("tax_rate_percent, tax_inclusive")
+        .eq("id", providerId)
+        .maybeSingle();
+      if (providerTaxRow) {
+        taxInclusive = providerTaxRow.tax_inclusive ?? true;
+        if (!effectiveTaxRate || effectiveTaxRate === 0) {
+          if (providerTaxRow.tax_rate_percent !== null && providerTaxRow.tax_rate_percent !== undefined) {
+            effectiveTaxRate = providerTaxRow.tax_rate_percent;
+          }
+        }
+      }
+      if (!effectiveTaxRate || effectiveTaxRate === 0) {
+        const { getEffectiveTaxRate } = await import("@/lib/platform-tax-settings");
+        effectiveTaxRate = await getEffectiveTaxRate(providerId);
+      }
     }
 
     // Determine location_id: use provided value, or default to provider's first salon location for at_salon bookings
@@ -568,9 +595,10 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
-    // Determine booking source: if created by provider (this API), it's walk_in
-    // Online bookings are created via /api/public/bookings or /api/me/bookings
-    const bookingSource = body.booking_source || 'walk_in'; // Provider-created = walk_in
+    // Determine booking source. Only actual walk-ins should be 'walk_in';
+    // other provider-created bookings should be 'provider' so payout/reporting
+    // logic can distinguish platform-mediated from in-person revenue correctly.
+    const bookingSource = body.booking_source || 'provider';
     
     // Referral source (where did this client come from?) — must belong to this provider
     let referralSourceId: string | null = body.referral_source_id ?? null;
@@ -606,6 +634,48 @@ async function handleCreateProviderBooking(request: NextRequest) {
         (body as { address?: { lng?: unknown } }).address?.lng,
     );
 
+    // Server-side pricing recomputation to prevent client-trusted totals from causing incorrect records.
+    // Handles both tax-inclusive (SA VAT model: prices already include tax) and tax-exclusive modes.
+    const serverSubtotal = Number(body.subtotal) || 0;
+    let serverDiscountAmount = Number(body.discount_amount) || 0;
+
+    // When a package is linked, compute the package discount from SERVICES-ONLY subtotal
+    // (excludes products/addons). This matches the customer flow in validate-booking.ts
+    // which uses servicesSubtotal for package discount computation.
+    if (body.package_id) {
+      const { data: pkgRow } = await supabaseAdmin
+        .from("service_packages")
+        .select("price")
+        .eq("id", body.package_id)
+        .eq("provider_id", providerId)
+        .maybeSingle();
+      if (pkgRow?.price != null) {
+        const servicesOnlySubtotal = Array.isArray(body.services)
+          ? body.services.reduce((sum: number, svc: any) => sum + (Number(svc.price) || 0), 0)
+          : serverSubtotal;
+        if (pkgRow.price < servicesOnlySubtotal) {
+          const packageDiscount = servicesOnlySubtotal - pkgRow.price;
+          serverDiscountAmount = Math.max(serverDiscountAmount, packageDiscount);
+        }
+      }
+    }
+    const serverTipAmount = Number(body.tip_amount) || 0;
+    const serverTravelFee = Number(body.travel_fee) || 0;
+    const serverServiceFeeAmount = Number(serviceFeeAmount) || 0;
+    const taxableAmount = Math.max(0, serverSubtotal - serverDiscountAmount);
+    const taxRateDecimal = effectiveTaxRate / 100;
+
+    const recomputedTaxAmount = taxInclusive
+      ? Math.round((taxableAmount - taxableAmount / (1 + taxRateDecimal)) * 100) / 100
+      : Math.round(taxableAmount * taxRateDecimal * 100) / 100;
+
+    const recomputedTotalAmount = taxInclusive
+      ? Math.round((taxableAmount + serverTipAmount + serverTravelFee + serverServiceFeeAmount) * 100) / 100
+      : Math.round((taxableAmount + recomputedTaxAmount + serverTipAmount + serverTravelFee + serverServiceFeeAmount) * 100) / 100;
+
+    const finalTaxAmount = recomputedTaxAmount;
+    const finalTotalAmount = recomputedTotalAmount;
+
     // Prepare booking data - only include columns that exist in the bookings table
     // Note: services and addons are stored in separate tables (booking_services, booking_addons)
     const bookingData: any = {
@@ -615,8 +685,7 @@ async function handleCreateProviderBooking(request: NextRequest) {
       scheduled_at: body.scheduled_at,
       location_type: body.location_type || "at_salon",
       location_id: locationId,
-      booking_source: bookingSource, // 'walk_in' for provider-created, 'online' for client portal
-      // Address fields (only for at_home bookings)
+      booking_source: bookingSource,
       address_line1: body.address?.line1 || body.address_line1 || null,
       address_line2: body.address?.line2 || body.address_line2 || null,
       address_city: body.address?.city || body.address_city || null,
@@ -626,20 +695,30 @@ async function handleCreateProviderBooking(request: NextRequest) {
       address_latitude: bodyLat,
       address_longitude: bodyLng,
       package_id: body.package_id || null,
-      subtotal: body.subtotal || 0,
-      discount_amount: body.discount_amount || 0,
+      subtotal: serverSubtotal,
+      discount_amount: serverDiscountAmount,
       discount_code: body.discount_code || null,
       discount_reason: body.discount_reason || null,
-      tax_amount: body.tax_amount || 0,
-      tax_rate: effectiveTaxRate, // Store the effective tax rate
-      tip_amount: body.tip_amount || 0,
-      total_amount: body.total_amount || body.subtotal || 0,
+      tax_amount: finalTaxAmount,
+      tax_rate: effectiveTaxRate,
+      tip_amount: serverTipAmount,
+      total_amount: finalTotalAmount,
       currency: body.currency || lastResortCurrency,
       status: mapStatusToDatabase(finalStatus),
-      // For cash payments initiated by the provider, mark as paid immediately.
-      // All other methods (pay_later, payment_link, yoco_pos, gift_card) start as pending.
-      payment_status: body.payment_method === "cash" ? "paid" : "pending",
+      payment_status: (() => {
+        if (body.payment_option === "deposit") {
+          // Deposit booking: if cash deposit was collected now, partially_paid; otherwise pending
+          return body.payment_method === "cash" ? "partially_paid" : "pending";
+        }
+        // Full payment: cash = paid, everything else = pending
+        return body.payment_method === "cash" ? "paid" : "pending";
+      })(),
       special_requests: body.special_requests || null,
+      // Deposit metadata
+      deposit_required: body.deposit_required || false,
+      deposit_percentage: body.deposit_percentage || null,
+      deposit_amount: body.deposit_amount || null,
+      payment_option: body.payment_option || "full",
       loyalty_points_earned: 0,
       travel_fee: body.travel_fee || 0,
       service_fee_percentage: serviceFeePercentage,
@@ -703,6 +782,24 @@ async function handleCreateProviderBooking(request: NextRequest) {
         "CONFLICT",
         409
       );
+    }
+
+    // Pre-compute required resource IDs for atomic allocation inside the RPC
+    let requiredResourceIds: string[] = [];
+    if (body.services && Array.isArray(body.services) && body.services.length > 0) {
+      try {
+        const { getRequiredResourcesForOffering } = await import("@/lib/resources/assignment");
+        const allResourceIds = new Set<string>();
+        for (const svc of body.services) {
+          const offeringId = svc.serviceId || svc.service_id || svc.offering_id;
+          if (!offeringId) continue;
+          const required = await getRequiredResourcesForOffering(supabaseAdmin as any, offeringId);
+          required.forEach((rid: string) => allResourceIds.add(rid));
+        }
+        requiredResourceIds = Array.from(allResourceIds);
+      } catch (resErr) {
+        console.warn("Could not pre-compute required resources:", resErr);
+      }
     }
 
     let booking: any;
@@ -798,6 +895,9 @@ async function handleCreateProviderBooking(request: NextRequest) {
         p_end_at: pEndAt,
         p_entitlement_id: null,
         p_entitlement_customer_id: null,
+        p_resource_ids: requiredResourceIds.length > 0 ? requiredResourceIds : null,
+        p_resource_start_at: requiredResourceIds.length > 0 ? startAt.toISOString() : null,
+        p_resource_end_at: requiredResourceIds.length > 0 ? endAt.toISOString() : null,
       });
 
       if (rpcError) {
@@ -806,6 +906,13 @@ async function handleCreateProviderBooking(request: NextRequest) {
           return errorResponse(
             "This time slot is no longer available. Please select another time.",
             "CONFLICT",
+            409
+          );
+        }
+        if (msg.includes("RESOURCE_CONFLICT")) {
+          return errorResponse(
+            "A required resource (room/equipment) is not available at this time. Please select another time or remove the resource requirement.",
+            "RESOURCE_CONFLICT",
             409
           );
         }
@@ -1014,6 +1121,80 @@ async function handleCreateProviderBooking(request: NextRequest) {
       }
     }
 
+    // Record a booking_payments row for cash payments so that:
+    // 1. The update_booking_payment_status trigger sets total_paid correctly
+    // 2. The create_finance_ledger_from_payment trigger creates finance_transactions
+    // 3. End-of-day reports (which query booking_payments) include this revenue
+    // 4. Payout balance calculations (which use finance_transactions) are accurate
+    if (body.payment_method === "cash" && finalTotalAmount > 0) {
+      const cashAmount = body.payment_option === "deposit" && body.deposit_amount
+        ? Number(body.deposit_amount)
+        : finalTotalAmount;
+      const { error: paymentRowError } = await supabaseAdmin
+        .from("booking_payments")
+        .insert({
+          booking_id: booking.id,
+          amount: cashAmount,
+          payment_method: "cash",
+          payment_provider: "cash",
+          status: "completed",
+          notes: body.payment_option === "deposit"
+            ? `Cash deposit collected at booking creation (${body.deposit_percentage ?? 0}%)`
+            : "Cash payment recorded at booking creation",
+          created_by: user.id,
+          ...(tenantId ? { tenant_id: tenantId } : {}),
+        });
+      if (paymentRowError) {
+        console.warn("Failed to insert booking_payments row for cash:", paymentRowError);
+      }
+    }
+
+    // Resource allocation: if the RPC path was used and resources were passed, they are already
+    // allocated atomically inside the transaction. For the non-RPC path (or if pre-computation
+    // failed), fall back to post-commit assignment with warnings.
+    const resourceWarnings: string[] = [];
+    const resourcesAllocatedViaRpc = useRpcPath && requiredResourceIds.length > 0;
+    if (!resourcesAllocatedViaRpc && requiredResourceIds.length > 0) {
+      try {
+        const { checkResourceAvailability, assignResourcesToBooking } =
+          await import("@/lib/resources/assignment");
+        const resourceCheck = await checkResourceAvailability(
+          supabaseAdmin as any,
+          requiredResourceIds,
+          startAt,
+          endAt,
+          booking.id,
+        );
+        if (resourceCheck.available) {
+          const assignments = requiredResourceIds.map((rid) => ({
+            booking_id: booking.id,
+            resource_id: rid,
+            scheduled_start_at: startAt.toISOString(),
+            scheduled_end_at: endAt.toISOString(),
+          }));
+          await assignResourcesToBooking(supabaseAdmin as any, assignments);
+        } else {
+          const conflictIds = resourceCheck.conflicts.map((c) => c.resource_id);
+          let conflictNames = "";
+          if (conflictIds.length > 0) {
+            const { data: names } = await supabaseAdmin
+              .from("resources")
+              .select("id, name")
+              .in("id", conflictIds);
+            conflictNames = (names || []).map((n) => n.name).filter(Boolean).join(", ");
+          }
+          resourceWarnings.push(
+            conflictNames
+              ? `Required resources unavailable: ${conflictNames}. Assign manually from the booking details.`
+              : "One or more required resources (room/equipment) are unavailable at this time. Assign manually from the booking details."
+          );
+        }
+      } catch (resourceErr) {
+        console.warn("Resource auto-assignment skipped:", resourceErr);
+        resourceWarnings.push("Resource assignment could not be completed automatically. Check resource availability manually.");
+      }
+    }
+
     // Transform to match Booking type (partial row → full Booking shape at runtime)
     const transformedBooking = {
       id: booking.id,
@@ -1052,33 +1233,39 @@ async function handleCreateProviderBooking(request: NextRequest) {
       updated_at: booking.updated_at,
     } as unknown as Booking;
 
-    // Notify customer that provider created a booking for them (in-app + push/email)
-    void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
-      insertNotification({
-        user_id: customerId,
-        type: "new_appointment",
-        title: "New Appointment Created",
-        message: `An appointment has been created for you. Booking ${booking.booking_number || booking.id.slice(0, 8)}.`,
-        data: {
-          booking_id: booking.id,
-          booking_number: booking.booking_number,
-          provider_id: providerId,
-        },
-        action_url: `/account-settings/bookings/${booking.id}`,
-      })
-    );
+    // Notify customer unless provider explicitly opted out via send_notification: false
+    const shouldNotify = body.send_notification !== false;
+    if (shouldNotify) {
+      void import("@/lib/notifications/insert-notification").then(({ insertNotification }) =>
+        insertNotification({
+          user_id: customerId,
+          type: "new_appointment",
+          title: "New Appointment Created",
+          message: `An appointment has been created for you. Booking ${booking.booking_number || booking.id.slice(0, 8)}.`,
+          data: {
+            booking_id: booking.id,
+            booking_number: booking.booking_number,
+            provider_id: providerId,
+          },
+          action_url: `/account-settings/bookings/${booking.id}`,
+        })
+      );
 
-    // Send push/email confirmation (same as public booking flow)
-    void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
-      notifyBookingConfirmed(booking.id, ['email', 'push'])
-        .catch((e) => console.warn("Booking confirmation notification:", e))
-    );
+      void import("@/lib/notifications/notification-service").then(({ notifyBookingConfirmed }) =>
+        notifyBookingConfirmed(booking.id, ['email', 'push'])
+          .catch((e) => console.warn("Booking confirmation notification:", e))
+      );
+    }
 
     void import("@/lib/subscriptions/subscription-limit-notifications")
       .then((m) => m.maybeNotifyProviderSubscriptionLimits(providerId))
       .catch((e) => console.warn("Subscription usage notification:", e));
 
-    return successResponse(transformedBooking);
+    const responsePayload: any = transformedBooking;
+    if (resourceWarnings.length > 0) {
+      responsePayload._warnings = resourceWarnings;
+    }
+    return successResponse(responsePayload);
   } catch (error) {
     return handleApiError(error, "Failed to create booking");
   }

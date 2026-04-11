@@ -101,38 +101,39 @@ export async function GET(request: NextRequest) {
     }
 
     let bookingPaymentsTotal = 0;
-    let bookingCount = 0;
-    const bpBookingIds = new Set<string>(); // bookings already counted via booking_payments
+    const bpBookingIds = new Set<string>();
     for (const row of bpRowList) {
       if (!providerBookingIds.has(row.booking_id)) continue;
       const amount = Number(row.amount ?? 0);
       const method = normalizePaymentMethod(row.payment_method);
       byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
       bookingPaymentsTotal += amount;
-      bookingCount += 1;
       bpBookingIds.add(row.booking_id);
     }
 
-    // Wallet-only bookings have no booking_payments row — read wallet_amount directly from bookings.
-    // Only include bookings that were scheduled on this day and not already counted above.
+    // Wallet-only bookings — query independently so days with zero booking_payments
+    // still capture wallet-settled bookings.
     let walletTotal = 0;
-    if (providerBookingIds.size > 0) {
+    const walletOnlyBookingIds = new Set<string>();
+    {
       const { data: walletBookings } = await supabaseAdmin
         .from("bookings")
-        .select("id, wallet_amount, scheduled_at, location_id")
+        .select("id, wallet_amount, location_id")
         .eq("provider_id", providerId)
         .gte("scheduled_at", dayStart)
         .lt("scheduled_at", dayEndISO)
         .gt("wallet_amount", 0);
       for (const wb of (walletBookings ?? []) as { id: string; wallet_amount?: number; location_id?: string }[]) {
-        if (bpBookingIds.has(wb.id)) continue; // already counted the card leg
+        if (bpBookingIds.has(wb.id)) continue;
         if (locationId && wb.location_id !== locationId) continue;
         const walletAmt = Number(wb.wallet_amount ?? 0);
         byPaymentMethod["wallet"] = (byPaymentMethod["wallet"] || 0) + walletAmt;
         walletTotal += walletAmt;
-        bookingCount += 1;
+        walletOnlyBookingIds.add(wb.id);
       }
     }
+
+    const bookingCount = bpBookingIds.size + walletOnlyBookingIds.size;
 
     // Sales: provider_id, optional location_id, sale_date in day
     let salesQuery = supabaseAdmin

@@ -14,6 +14,8 @@ type Review = {
   rating: number;
   text: string;
   avatar_url?: string;
+  provider_response?: string | null;
+  provider_response_at?: string | null;
 };
 
 interface PartnerReviewsProps {
@@ -186,6 +188,17 @@ const PartnerReviews: React.FC<PartnerReviewsProps> = ({
                 ))}
               </div>
               <p className="mt-3 text-sm leading-6 text-gray-700 md:text-[15px]">{review.text}</p>
+              {review.provider_response && (
+                <div className="mt-3 rounded-xl border-l-4 border-pink-400 bg-pink-50/50 p-3 md:p-4">
+                  <p className="text-xs font-semibold text-pink-600 mb-1">Provider reply</p>
+                  <p className="text-sm text-gray-700 leading-relaxed">{review.provider_response}</p>
+                  {review.provider_response_at && (
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(review.provider_response_at).toLocaleDateString()}
+                    </p>
+                  )}
+                </div>
+              )}
             </article>
           );
         })}

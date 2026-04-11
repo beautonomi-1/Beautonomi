@@ -133,7 +133,9 @@ export default function ProviderDetailPage() {
         `/api/admin/providers/${id}/payout-accounts`
       );
       setPayoutAccounts(res.data || []);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load payout accounts:", err);
+      toast.error("Could not load payout accounts");
       setPayoutAccounts([]);
     }
   };
@@ -220,7 +222,13 @@ export default function ProviderDetailPage() {
         reason: statusReason || undefined,
       });
 
-      toast.success(`Provider ${statusAction}d successfully`);
+      const actionLabels: Record<string, string> = {
+        approve: "approved",
+        suspend: "suspended",
+        reject: "rejected",
+        reactivate: "reactivated",
+      };
+      toast.success(`Provider ${actionLabels[statusAction || ""] || "updated"} successfully`);
       setShowStatusDialog(false);
       setStatusReason("");
       loadProvider();
@@ -697,9 +705,39 @@ export default function ProviderDetailPage() {
             </TabsContent>
 
             <TabsContent value="settings">
-              <div className="bg-white border rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">Provider Settings</h2>
-                <p className="text-gray-600">Settings management coming soon...</p>
+              <div className="bg-white border rounded-lg p-6 space-y-6">
+                <h2 className="text-xl font-semibold">Provider Settings</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Provider ID</p>
+                    <p className="font-mono text-sm break-all">{provider.id}</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Slug</p>
+                    <p className="font-mono text-sm">{provider.slug}</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Business Type</p>
+                    <p className="text-sm font-medium">{provider.business_type}</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Created</p>
+                    <p className="text-sm">{new Date(provider.created_at).toLocaleDateString("en-ZA", { dateStyle: "long" })}</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Last Updated</p>
+                    <p className="text-sm">{new Date(provider.updated_at).toLocaleDateString("en-ZA", { dateStyle: "long" })}</p>
+                  </div>
+                  <div className="p-4 border rounded-lg">
+                    <p className="text-xs text-gray-400 mb-1">Verification</p>
+                    <Badge className={provider.is_verified ? "bg-blue-100 text-blue-800" : "bg-gray-100 text-gray-800"}>
+                      {provider.is_verified ? "Verified" : "Not Verified"}
+                    </Badge>
+                  </div>
+                </div>
+                <div className="mt-4 p-4 bg-gray-50 rounded-lg">
+                  <p className="text-xs text-gray-500">Provider-managed settings (service config, calendar, integrations) are controlled by the provider from their own dashboard. Admin can override status and verification above.</p>
+                </div>
               </div>
             </TabsContent>
 
@@ -763,9 +801,56 @@ export default function ProviderDetailPage() {
             </TabsContent>
 
             <TabsContent value="analytics">
-              <div className="bg-white border rounded-lg p-6">
-                <h2 className="text-xl font-semibold mb-4">Analytics</h2>
-                <p className="text-gray-600">Analytics coming soon...</p>
+              <div className="bg-white border rounded-lg p-6 space-y-6">
+                <h2 className="text-xl font-semibold">Provider Analytics</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="p-4 border rounded-lg text-center">
+                    <p className="text-3xl font-bold text-gray-900">{provider.stats?.booking_count ?? 0}</p>
+                    <p className="text-xs text-gray-500 mt-1">Total Bookings</p>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <p className="text-3xl font-bold text-yellow-600">{provider.stats?.average_rating?.toFixed(1) ?? "0.0"}</p>
+                    <p className="text-xs text-gray-500 mt-1">Avg Rating</p>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <p className="text-3xl font-bold text-gray-900">{provider.stats?.review_count ?? 0}</p>
+                    <p className="text-xs text-gray-500 mt-1">Reviews</p>
+                  </div>
+                  <div className="p-4 border rounded-lg text-center">
+                    <p className="text-3xl font-bold text-gray-900">{provider.staff?.length ?? 0}</p>
+                    <p className="text-xs text-gray-500 mt-1">Staff Members</p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Link href={`/admin/bookings?provider_id=${provider.id}`} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors block">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Calendar className="w-4 h-4 text-gray-500" />
+                      <p className="font-medium text-sm">Booking History</p>
+                    </div>
+                    <p className="text-xs text-gray-500">View all bookings for this provider with full search and filters</p>
+                  </Link>
+                  <Link href={`/admin/finance?provider_id=${provider.id}`} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors block">
+                    <div className="flex items-center gap-2 mb-1">
+                      <DollarSign className="w-4 h-4 text-gray-500" />
+                      <p className="font-medium text-sm">Financial Reports</p>
+                    </div>
+                    <p className="text-xs text-gray-500">Revenue, commissions, payouts, and transaction history</p>
+                  </Link>
+                  <Link href={`/admin/reviews?provider_id=${provider.id}`} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors block">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Star className="w-4 h-4 text-gray-500" />
+                      <p className="font-medium text-sm">Reviews & Ratings</p>
+                    </div>
+                    <p className="text-xs text-gray-500">All reviews from customers with moderation tools</p>
+                  </Link>
+                  <Link href={`/admin/payouts?provider_id=${provider.id}`} className="p-4 border rounded-lg hover:bg-gray-50 transition-colors block">
+                    <div className="flex items-center gap-2 mb-1">
+                      <CreditCard className="w-4 h-4 text-gray-500" />
+                      <p className="font-medium text-sm">Payout History</p>
+                    </div>
+                    <p className="text-xs text-gray-500">All payout requests and their statuses</p>
+                  </Link>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

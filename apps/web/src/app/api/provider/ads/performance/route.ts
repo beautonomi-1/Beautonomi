@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       .from("ads_campaigns")
       .select("id, status, budget, spent, bid_cpc, created_at")
       .eq("provider_id", providerId);
-    const totalSpent = (campaigns ?? []).reduce((s: number, c: any) => s + Number(c.spent ?? 0), 0);
+    const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => s + Number(c.spent ?? 0), 0);
 
     const byCampaign: Record<string, { impressions: number; clicks: number; books: number; spent: number }> = {};
     for (const e of events ?? []) {
@@ -60,11 +60,14 @@ export async function GET(request: NextRequest) {
       byCampaign[c.id].spent = Number(c.spent ?? 0);
     }
 
+    const hasDateFilter = !!(startDate || endDate);
+
     return successResponse({
       summary: {
         impressions,
         clicks,
-        spend: totalSpent,
+        spend: lifetimeSpent,
+        spend_label: hasDateFilter ? "lifetime (all-time total)" : "lifetime",
         sales: books,
       },
       by_campaign: byCampaign,

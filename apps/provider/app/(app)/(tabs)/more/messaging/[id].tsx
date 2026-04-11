@@ -226,6 +226,8 @@ export default function ChatScreen() {
       refresh().then(() => setOptimisticMessage(null));
     } else {
       setOptimisticMessage(null);
+      setMessage(text);
+      Alert.alert("Send failed", typeof error === "string" ? error : "Message could not be sent. Please try again.");
     }
   }, [message, conversationId, sending, sendMessage, refresh]);
 

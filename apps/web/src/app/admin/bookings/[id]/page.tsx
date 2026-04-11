@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Mail,
   Phone,
+  Repeat,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -47,7 +48,11 @@ interface BookingService {
   service_id: string;
   duration_minutes: number;
   price: number;
-  services: {
+  offerings?: {
+    id: string;
+    title: string;
+  };
+  services?: {
     id: string;
     title: string;
     name: string;
@@ -126,6 +131,11 @@ export default function BookingDetailPage() {
   const [showRefundDialog, setShowRefundDialog] = useState(false);
   const [refundAmount, setRefundAmount] = useState(0);
   const [refundReason, setRefundReason] = useState("");
+  const [showReassignDialog, setShowReassignDialog] = useState(false);
+  const [reassignSearch, setReassignSearch] = useState("");
+  const [reassignProviders, setReassignProviders] = useState<{ id: string; business_name: string }[]>([]);
+  const [reassignLoading, setReassignLoading] = useState(false);
+  const [reassignTarget, setReassignTarget] = useState<string>("");
 
   useEffect(() => {
     if (bookingId) {
@@ -210,6 +220,39 @@ export default function BookingDetailPage() {
       loadBooking();
     } catch (error: any) {
       toast.error(error.message || "Failed to process refund");
+    }
+  };
+
+  const searchProviders = async (query: string) => {
+    if (!query.trim()) { setReassignProviders([]); return; }
+    setReassignLoading(true);
+    try {
+      const res = await fetcher.get<{ data: { id: string; business_name: string }[] }>(
+        `/api/admin/providers?search=${encodeURIComponent(query)}&limit=10`
+      );
+      setReassignProviders(
+        (res.data ?? []).filter((p) => p.id !== booking?.provider_id)
+      );
+    } catch {
+      toast.error("Failed to search providers");
+    } finally {
+      setReassignLoading(false);
+    }
+  };
+
+  const handleReassign = async () => {
+    if (!booking || !reassignTarget) return;
+    try {
+      await fetcher.patch(`/api/admin/bookings/${bookingId}`, {
+        provider_id: reassignTarget,
+      });
+      toast.success("Booking reassigned to new provider");
+      setShowReassignDialog(false);
+      setReassignTarget("");
+      setReassignSearch("");
+      loadBooking();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to reassign booking");
     }
   };
 
@@ -321,6 +364,13 @@ export default function BookingDetailPage() {
                             Refund
                           </Button>
                         )}
+                        <Button
+                          variant="outline"
+                          onClick={() => setShowReassignDialog(true)}
+                        >
+                          <Repeat className="w-4 h-4 mr-2" />
+                          Reassign
+                        </Button>
                       </>
                     )}
                   </>
@@ -526,7 +576,7 @@ export default function BookingDetailPage() {
                         >
                           <div>
                             <p className="font-medium">
-                              {service.services?.title || service.services?.name || "Service"}
+                              {service.offerings?.title || (service as any).services?.title || "Service"}
                             </p>
                             <p className="text-sm text-gray-500">
                               {service.duration_minutes} minutes
@@ -784,6 +834,71 @@ export default function BookingDetailPage() {
                 </Button>
                 <Button onClick={handleRefund}>
                   Process Refund
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Reassign Provider Dialog */}
+        <Dialog open={showReassignDialog} onOpenChange={setShowReassignDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Reassign Booking to Another Provider</DialogTitle>
+              <DialogDescription>
+                Search for a provider and assign this booking to them. The customer will be notified.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">
+                  Current provider: <strong>{booking.provider?.business_name}</strong>
+                </p>
+              </div>
+              <div>
+                <Label>Search provider</Label>
+                <Input
+                  placeholder="Type provider name..."
+                  value={reassignSearch}
+                  onChange={(e) => {
+                    setReassignSearch(e.target.value);
+                    searchProviders(e.target.value);
+                  }}
+                />
+              </div>
+              {reassignLoading && (
+                <p className="text-sm text-muted-foreground">Searching...</p>
+              )}
+              {reassignProviders.length > 0 && (
+                <div className="border rounded-md max-h-48 overflow-y-auto">
+                  {reassignProviders.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors ${
+                        reassignTarget === p.id ? "bg-primary/10 font-medium" : ""
+                      }`}
+                      onClick={() => setReassignTarget(p.id)}
+                    >
+                      {p.business_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowReassignDialog(false);
+                    setReassignSearch("");
+                    setReassignProviders([]);
+                    setReassignTarget("");
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={handleReassign} disabled={!reassignTarget}>
+                  Reassign Booking
                 </Button>
               </div>
             </div>

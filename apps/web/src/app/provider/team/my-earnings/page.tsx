@@ -9,6 +9,7 @@ import { DollarSign, ChevronDown, ChevronUp } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface PayStub {
   pay_run_id: string;
@@ -29,6 +30,7 @@ interface PayStub {
 }
 
 export default function MyEarningsPage() {
+  const { format: fmtMoney } = useProviderMoneyFormat();
   const [payStubs, setPayStubs] = useState<PayStub[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -101,7 +103,7 @@ export default function MyEarningsPage() {
                       <p className="font-medium">
                         {format(new Date(stub.pay_period_start), "MMM d")} – {format(new Date(stub.pay_period_end), "MMM d, yyyy")}
                       </p>
-                      <p className="text-xs text-gray-500">Net: R{Number(stub.net_pay).toFixed(2)}</p>
+                      <p className="text-xs text-gray-500">Net: {fmtMoney(Number(stub.net_pay))}</p>
                     </div>
                     <Badge className={statusColor(stub.status)}>{stub.status}</Badge>
                   </div>
@@ -115,38 +117,37 @@ export default function MyEarningsPage() {
                   <div className="pt-4 mt-2 border-t space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-600">Gross Pay</span>
-                      <span>R{Number(stub.gross_pay).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.gross_pay))}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Commission</span>
-                      <span>R{Number(stub.commission_amount).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.commission_amount))}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Hourly</span>
-                      <span>R{Number(stub.hourly_amount).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.hourly_amount))}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Salary</span>
-                      <span>R{Number(stub.salary_amount).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.salary_amount))}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Tips</span>
-                      <span>R{Number(stub.tips_amount).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.tips_amount))}</span>
                     </div>
                     <div className="flex justify-between text-red-600">
                       <span>Deductions (Tax, UIF, Other)</span>
                       <span>
-                        -R
-                        {(
+                        -{fmtMoney(
                           Number(stub.manual_deductions) +
                           Number(stub.tax_deduction) +
                           Number(stub.uif_contribution)
-                        ).toFixed(2)}
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between font-semibold pt-2 border-t">
                       <span>Net Pay</span>
-                      <span>R{Number(stub.net_pay).toFixed(2)}</span>
+                      <span>{fmtMoney(Number(stub.net_pay))}</span>
                     </div>
                   </div>
                 )}

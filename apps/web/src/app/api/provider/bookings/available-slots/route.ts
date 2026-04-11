@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
     const durationMinutes = Math.max(15, Math.min(480, parseInt(sp.get("duration_minutes") || "60", 10)));
     const staffIdsParam = sp.get("staff_ids");
     const locationId = sp.get("location_id");
+    const excludeBookingId = sp.get("exclude_booking_id");
 
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return handleApiError(new Error("date is required (YYYY-MM-DD)"), "VALIDATION_ERROR", 400);
@@ -192,6 +193,7 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", `${dateStr}T00:00:00`)
       .lte("scheduled_at", `${dateStr}T23:59:59`);
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    if (excludeBookingId) bookingsQuery = bookingsQuery.neq("id", excludeBookingId);
     const { data: dayBookings } = await bookingsQuery;
 
     // Fetch time blocks for that day (date-matched)

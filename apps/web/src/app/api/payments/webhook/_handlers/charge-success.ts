@@ -221,7 +221,8 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Tip/Tax/Travel fees/Service fee are excluded from commission
+  // Tip/Tax/Travel fees/Service fee are excluded from commission.
+  // These are the FULL booking-level amounts (used for booking-level ledger entries).
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
@@ -231,10 +232,19 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       bookingData.platform_service_fee ??
       0,
   );
-  const commissionBase = Number(
-    metadata?.commission_base ??
-      Number(bookingData.total_amount || 0) - tipAmount - taxAmount - travelFee - serviceFeeAmount,
-  );
+
+  // Commission base must be proportional to the ACTUAL charged amount, not the
+  // full booking total. For deposit payments, metadata.commission_base contains the
+  // full booking's commission base, which would overstate revenue. Instead, compute
+  // the net-revenue ratio from booking totals and apply it to the charged amount.
+  const bookingTotal = Number(bookingData.total_amount || 0);
+  const fullCommissionBase = bookingTotal > 0
+    ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
+    : 0;
+  const netRevenueRatio = bookingTotal > 0
+    ? Math.max(0, fullCommissionBase / bookingTotal)
+    : 1;
+  const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
 
   // Get platform commission settings
   const { data: settingsRow } = await supabase
@@ -254,13 +264,20 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const platformCommission =
     commissionEnabled && commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
 
-  const providerEarnings = subtractMoney(commissionBase, platformCommission) + travelFee + tipAmount;
+  // Provider earnings for this charge: commission base minus platform take.
+  // Travel and tip are booking-level items recorded separately (not per-charge).
+  const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  // Update booking payment status
+  // Deposit-aware payment status: if this is a deposit-only charge, the booking
+  // is partially_paid (balance still owed), not fully paid.
+  const stdPaymentOption = String(metadata?.payment_option || "full");
+  const stdRequiresDeposit = Boolean(metadata?.requires_deposit);
+  const stdIsDeposit = stdRequiresDeposit && stdPaymentOption === "deposit";
+
   const { error: updateError } = await supabase
     .from("bookings")
     .update({
-      payment_status: "paid",
+      payment_status: stdIsDeposit ? "partially_paid" : "paid",
       payment_reference: reference,
       payment_date: new Date().toISOString(),
       payment_provider: "paystack",
@@ -1029,6 +1046,12 @@ async function handleCustomOfferSuccess(
   const _serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
   const promotionId = meta.promotion_id && String(meta.promotion_id).trim() ? meta.promotion_id : null;
+  const coPaymentOption = String(meta.payment_option || "full");
+  const coTotalAmount = Number(meta.total_amount || 0);
+  const coDepositAmount = Number(meta.deposit_amount || 0);
+  const coDepositPct = Number(meta.deposit_percentage || 0);
+  const coRequiresDeposit = Boolean(meta.requires_deposit);
+  const isDepositPayment = coPaymentOption === "deposit" && coDepositAmount > 0;
 
   const offeringTitle = (req.service_name && String(req.service_name).trim()) ? String(req.service_name).trim() : "Custom Service";
   const { data: createdOffering, error: offeringError } = await adminSupabase
@@ -1087,12 +1110,19 @@ async function handleCustomOfferSuccess(
     tax_amount: taxAmount,
     service_fee_percentage: 0,
     service_fee_amount: serviceFeeAmount,
-    total_amount: amountInCurrency,
+    total_amount: isDepositPayment ? coTotalAmount : amountInCurrency,
     currency: offer.currency || offerCurrencyFallback,
-    payment_status: "paid",
+    payment_status: isDepositPayment ? "partially_paid" : "paid",
+    ...(coRequiresDeposit ? {
+      deposit_required: true,
+      deposit_percentage: coDepositPct,
+      deposit_amount: coDepositAmount,
+      payment_option: coPaymentOption,
+    } : {}),
     payment_reference: payload.reference,
     payment_date: new Date().toISOString(),
     payment_provider: "paystack",
+    booking_source: "online",
     special_requests: `Custom order: ${req.description}`,
     loyalty_points_earned: 0,
     loyalty_points_used: 0,
@@ -1172,11 +1202,36 @@ async function handleCustomOfferSuccess(
     payment_provider_transaction_id: payload.reference,
     payment_provider_response: {},
     processed_at: new Date().toISOString(),
-    description: `Custom offer payment`,
-    metadata: { custom_offer_id: offerId },
+    description: isDepositPayment ? `Custom offer deposit payment` : `Custom offer payment`,
+    metadata: { custom_offer_id: offerId, payment_option: coPaymentOption },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
+
+  // Create booking_payments row so custom offer payments are visible in
+  // EOD reports, receipt amount_paid calculations, and provider dashboards.
+  const paystackTxId = payload.reference || null;
+  try {
+    await adminSupabase.from("booking_payments").insert({
+      booking_id: booking.id,
+      ...(booking.tenant_id ? { tenant_id: booking.tenant_id } : {}),
+      amount: amountInCurrency,
+      payment_method: "card",
+      payment_provider: "paystack",
+      payment_provider_id: paystackTxId,
+      status: "completed",
+      notes: isDepositPayment
+        ? `Custom offer deposit payment. Ref: ${paystackTxId ?? ""}`
+        : `Custom offer payment. Ref: ${paystackTxId ?? ""}`,
+      payment_provider_data: {
+        source: "custom_offer_webhook",
+        custom_offer_id: offerId,
+        payment_option: coPaymentOption,
+      },
+    });
+  } catch (bpErr: unknown) {
+    console.error("[custom-offer] booking_payments insert failed:", bpErr);
+  }
 
   // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
   const { data: settingsRow } = await adminSupabase
@@ -1237,7 +1292,8 @@ async function handleCustomOfferSuccess(
     },
   ]);
 
-  // Service fee, tip, tax, travel fee ledger entries
+  // Booking-level ledger entries: only create when amount > 0 (aligned with standard booking flow).
+  // Use correct `net` values: tip and travel_fee flow to provider, tax and service_fee do not.
   const extraRows: any[] = [];
   if (serviceFeeAmount > 0) {
     extraRows.push({
@@ -1253,8 +1309,8 @@ async function handleCustomOfferSuccess(
       created_at: new Date().toISOString(),
     });
   }
-  extraRows.push(
-    {
+  if (tipAmount > 0) {
+    extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
@@ -1262,11 +1318,13 @@ async function handleCustomOfferSuccess(
       amount: tipAmount,
       fees: 0,
       commission: 0,
-      net: 0,
+      net: tipAmount,
       description: `Tip (custom order)`,
       created_at: new Date().toISOString(),
-    },
-    {
+    });
+  }
+  if (taxAmount > 0) {
+    extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
@@ -1277,8 +1335,8 @@ async function handleCustomOfferSuccess(
       net: 0,
       description: `Tax (custom order)`,
       created_at: new Date().toISOString(),
-    }
-  );
+    });
+  }
   if (travelFee > 0) {
     extraRows.push({
       booking_id: booking.id,
@@ -1288,8 +1346,22 @@ async function handleCustomOfferSuccess(
       amount: travelFee,
       fees: 0,
       commission: 0,
-      net: 0,
+      net: travelFee,
       description: `Travel fee (custom order)`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  if (promotionDiscountAmount > 0) {
+    extraRows.push({
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
+      transaction_type: "promotion_discount",
+      amount: promotionDiscountAmount,
+      fees: 0,
+      commission: 0,
+      net: -promotionDiscountAmount,
+      description: `Promotion discount (custom order)`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1996,11 +2068,28 @@ async function handleAdsBudgetOrderSuccess(
     })
     .eq("id", orderId);
 
+  // Check if time-based campaign — auto-activate with correct dates
+  const { data: campaignRow } = await supabase
+    .from("ads_campaigns")
+    .select("billing_model, duration_days")
+    .eq("id", campaignId)
+    .single();
+
+  const campaignUpdate: Record<string, any> = {
+    budget: amountInCurrency,
+    updated_at: new Date().toISOString(),
+  };
+
+  if ((campaignRow as any)?.billing_model === "time_based") {
+    const now = new Date();
+    const days = Number((campaignRow as any).duration_days) || 7;
+    campaignUpdate.status = "active";
+    campaignUpdate.start_at = now.toISOString();
+    campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
+  }
+
   await supabase.from("ads_campaigns")
-    .update({
-      budget: amountInCurrency,
-      updated_at: new Date().toISOString(),
-    })
+    .update(campaignUpdate)
     .eq("id", campaignId)
     .eq("provider_id", providerId);
 
@@ -2022,6 +2111,10 @@ async function handleAdsBudgetOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
+  const billingLabel = (campaignRow as any)?.billing_model === "time_based"
+    ? `Ads time-based boost (${(campaignRow as any)?.duration_days ?? "N"} days)`
+    : "Ads campaign budget (pre-pay)";
+
   await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
@@ -2031,7 +2124,7 @@ async function handleAdsBudgetOrderSuccess(
     fees: feesInCurrency,
     commission: 0,
     net: netAmount,
-    description: "Ads campaign budget (pre-pay)",
+    description: billingLabel,
     created_at: new Date().toISOString(),
   });
 }

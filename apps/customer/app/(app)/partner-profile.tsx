@@ -52,6 +52,8 @@ interface Review {
   rating: number;
   comment: string | null;
   created_at: string;
+  provider_response?: string | null;
+  provider_response_at?: string | null;
   // Compatibility with web-formatted response payload.
   text?: string;
   date?: string;
@@ -846,6 +848,15 @@ function ReviewCard({ review }: { review: Review }) {
       {review.comment ? (
         <Text style={{ fontSize: 14, color: "#374151", lineHeight: 22 }}>{review.comment}</Text>
       ) : null}
+      {review.provider_response ? (
+        <View style={{ marginTop: 10, backgroundColor: "#F0F9FF", borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
+          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>Provider reply</Text>
+          <Text style={{ fontSize: 13, color: "#374151", lineHeight: 19 }}>{review.provider_response}</Text>
+          {review.provider_response_at ? (
+            <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>{getRelativeTime(new Date(review.provider_response_at))}</Text>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -1195,9 +1206,15 @@ export default function PartnerProfileScreen() {
     haptic.light();
     try {
       const r = await api.post<{ action: "added" | "removed" }>("/api/me/wishlists/toggle", { item_type: "provider", item_id: provider.id });
+      if (r.error) {
+        Alert.alert("Error", r.error.message || "Could not update wishlist");
+        return;
+      }
       const d = (r.data ?? {}) as Record<string, unknown>;
       setIsSaved((d.action ?? (d.data as Record<string, unknown>)?.action) === "added");
-    } catch {} finally { setToggling(false); }
+    } catch {
+      Alert.alert("Error", "Could not update wishlist. Please try again.");
+    } finally { setToggling(false); }
   }, [provider, user, toggling]);
 
   /* ── Share ── */

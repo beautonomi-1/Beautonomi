@@ -180,7 +180,8 @@ export default function StepCalendar({
       const staffId = bookingState.selectedServices[0]?.staffId;
       const dateStr = formatLocalDateYYYYMMDD(day);
       const mode = bookingState.mode || "salon";
-      const holdParam = excludeHoldId ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}` : "";
+      const effectiveHoldId = bookingState.holdId || excludeHoldId;
+      const holdParam = effectiveHoldId ? `&excludeHoldId=${encodeURIComponent(effectiveHoldId)}` : "";
       const providerParam = bookingState.providerId
           ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
           : "";
@@ -198,7 +199,7 @@ export default function StepCalendar({
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.providerId, bookingState.selectedLocationId]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();
@@ -241,11 +242,15 @@ export default function StepCalendar({
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
-    updateBookingState({ selectedDate: date, selectedTimeSlot: null });
+    updateBookingState({ selectedDate: date, selectedTimeSlot: null, holdId: null });
   };
 
   const handleTimeSelect = (time: string) => {
-    updateBookingState({ selectedTimeSlot: time });
+    if (time !== bookingState.selectedTimeSlot) {
+      updateBookingState({ selectedTimeSlot: time, holdId: null });
+    } else {
+      updateBookingState({ selectedTimeSlot: time });
+    }
   };
 
   // Auto-scroll date strip so selected date is centred

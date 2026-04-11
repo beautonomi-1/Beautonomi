@@ -100,7 +100,11 @@ export default function OnDemandIncomingScreen() {
               `/api/provider/on-demand/requests/${id}/decline`,
               {}
             );
-            if (!res.error) router.back();
+            if (res.error) {
+              Alert.alert("Could not decline", typeof res.error === "string" ? res.error : "Please try again.");
+            } else {
+              router.back();
+            }
           },
         },
       ]

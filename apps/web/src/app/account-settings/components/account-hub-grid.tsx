@@ -58,6 +58,8 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: FaHeart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
   { icon: FaComments, title: "Messages", description: "View and manage your messages with beauty partners and clients", link: "/account-settings/messages" },
   { icon: FaSuitcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
+  { icon: FaStar, title: "Membership", description: "Manage your subscription plan and membership benefits", link: "/account-settings/membership" },
+  { icon: FaShieldAlt, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/verification/embed" },
   { icon: FaInfoCircle, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },
   { icon: FaShareAlt, title: "Share App", description: "Share Beautonomi with your friends and family", link: "#share-app", isAction: true },
 ];
@@ -99,7 +101,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
           {ACCOUNT_HUB_CARDS.map((card, index) => (
             <div key={index} onClick={(e) => handleCardClick(card, e)}>
               {card.isAction ? (
-                <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full cursor-pointer">
+                <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full cursor-pointer">
                   <card.icon className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                   <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
                   <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
@@ -107,7 +109,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
               ) : (
                 <Link href={card.link} prefetch={embeddedInProfile ? false : undefined} className="block">
                   <div
-                    className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-all duration-200 active:scale-[0.98] h-full ${
+                    className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-shadow duration-200 h-full ${
                       card.link === "/account-settings/loyalty"
                         ? "bg-gradient-to-br from-white to-primary/5 border-primary/30 hover:border-primary/50"
                         : "bg-white border-gray-100 hover:border-[#FF0077]/20"
@@ -123,7 +125,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
           ))}
           {user && user.role === "customer" && (
             <Link href="/provider/onboarding" prefetch={embeddedInProfile ? false : undefined} className="block">
-              <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-all duration-200 active:scale-[0.98] h-full">
+              <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">
                 <FaStore className="text-2xl md:text-3xl mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>
                 <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">

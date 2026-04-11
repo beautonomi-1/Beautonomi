@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { toast } from "sonner";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -130,10 +131,6 @@ const Page = () => {
         // Load saved providers from all wishlists
         try {
           const providers = await fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" });
-          console.log("Wishlist page - Received providers:", {
-            count: providers.data?.length || 0,
-            sample: providers.data?.slice(0, 1),
-          });
           setSavedProviders(providers.data || []);
         } catch (providersErr) {
           console.error("Error loading saved providers:", providersErr);
@@ -306,7 +303,7 @@ const Page = () => {
                       const created = res?.data ?? res;
                       setCollections((prev) => [...prev, { id: created.id, name: created.name, slug: created.slug, post_count: 0 }]);
                     })
-                    .catch(() => {})
+                    .catch(() => { toast.error("Failed to create board. Please try again."); })
                     .finally(() => setIsCreatingBoard(false));
                 }}
                 disabled={isCreatingBoard}

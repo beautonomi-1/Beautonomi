@@ -34,6 +34,14 @@ export type FinanceLedgerAggregate = {
   promotion_discounts: number;
   /** Gift card liability reduced when gift cards are redeemed (offsets gift_card_sales on balance sheet). */
   gift_card_liability_reductions: number;
+  /** Ecommerce product order platform fees (separate from booking commission). */
+  ecommerce_platform_fees: number;
+  /** Customer-facing service fee revenue (booking add-on). */
+  service_fee_revenue: number;
+  /** Travel fee pass-through amount. */
+  travel_fees: number;
+  /** Additional charge revenue (gateway-settled). */
+  additional_charge_gross: number;
 };
 
 type Row = Pick<FinanceLedgerRow, "transaction_type" | "amount" | "fees" | "net">;
@@ -116,5 +124,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
     cancellation_fees_retained: cancellationFeesRetained,
     promotion_discounts: promotionDiscounts,
     gift_card_liability_reductions: giftCardLiabilityReductions,
+    ecommerce_platform_fees: sum(tx, ["platform_fee"], "amount"),
+    service_fee_revenue: sum(tx, ["service_fee"], "amount"),
+    travel_fees: sum(tx, ["travel_fee"], "amount"),
+    additional_charge_gross: additionalChargeGross,
   };
 }

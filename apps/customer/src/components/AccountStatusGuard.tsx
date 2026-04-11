@@ -33,7 +33,7 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
   const { session, signOut } = useAuth();
   const userId = session?.user?.id ?? null;
   const [checked, setChecked] = useState(false);
-  const didCheck = useRef(false);
+  const didCheckForUser = useRef<string | null>(null);
   const hangReportedRef = useRef(false);
   const userPresenceLoggedRef = useRef(false);
   const renderPhaseRef = useRef<string | null>(null);
@@ -67,17 +67,17 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!userId) {
-      didCheck.current = false;
+      didCheckForUser.current = null;
       setChecked(true);
       return;
     }
-    if (didCheck.current) {
+    if (didCheckForUser.current === userId) {
       setChecked(true);
       return;
     }
 
     let cancelled = false;
-    didCheck.current = true;
+    didCheckForUser.current = userId;
 
     (async () => {
       if (isSentryEnabled()) {

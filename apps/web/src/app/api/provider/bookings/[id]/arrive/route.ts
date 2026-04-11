@@ -76,9 +76,9 @@ export async function POST(
       return errorResponse("This endpoint is only for at-home bookings", "INVALID_REQUEST", 400);
     }
 
-    // Check if booking is in correct state
+    // Check if booking is in correct state (confirmed or journey started)
     if (bookingData.status !== "confirmed" && bookingData.current_stage !== "provider_on_way") {
-      return errorResponse("Provider must start journey before arriving", "INVALID_STATUS", 400);
+      return errorResponse("Booking must be confirmed before marking arrival", "INVALID_STATUS", 400);
     }
 
     // Get platform verification settings
@@ -217,8 +217,8 @@ export async function POST(
         booking_id: id,
         event_type: "provider_arrived",
         event_data: {
-          otp: otp,
-          qr_code: qrCodeData,
+          otp_sent: !!otp,
+          qr_code_generated: !!qrCodeData,
           location: latitude && longitude ? { lat: latitude, lng: longitude } : null,
           arrived_at: new Date().toISOString(),
         },
@@ -237,7 +237,7 @@ export async function POST(
           booking_id: id,
           event_type: "otp_sent",
           event_data: {
-            otp: otp,
+            otp_sent: true,
             expires_at: otpExpiresAt.toISOString(),
           },
           created_by: user.id,

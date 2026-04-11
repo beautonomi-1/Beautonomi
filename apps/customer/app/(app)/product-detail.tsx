@@ -262,6 +262,11 @@ export default function ProductDetailScreen() {
         "/api/me/wishlists/toggle",
         { item_type: "product", item_id: id },
       );
+      if (res.error) {
+        haptic.error();
+        Alert.alert("Error", res.error.message || "Could not update wishlist");
+        return;
+      }
       const action = (res.data as any)?.action ?? (res.data as any)?.data?.action;
       if (action === "added" || action === "removed") {
         const next = action === "added";
@@ -272,6 +277,7 @@ export default function ProductDetailScreen() {
       }
     } catch {
       haptic.error();
+      Alert.alert("Error", "Could not update wishlist. Please try again.");
     } finally {
       setWishlistLoading(false);
     }

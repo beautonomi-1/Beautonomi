@@ -21,13 +21,11 @@ export async function GET(request: NextRequest) {
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { searchParams } = new URL(request.url);
 
-    // Get bookings without joins to avoid join issues
     let query = supabase
       .from("bookings")
       .select("*")
       .eq("tenant_id", tenantId);
 
-    // Apply filters
     const status = searchParams.get("status");
     if (status && status !== "all") {
       query = query.eq("status", status);
@@ -44,8 +42,63 @@ export async function GET(request: NextRequest) {
         .lt("scheduled_at", endDate.toISOString());
     }
 
+    const providerId = searchParams.get("provider_id");
+    if (providerId) {
+      query = query.eq("provider_id", providerId);
+    }
+
+    const customerId = searchParams.get("customer_id");
+    if (customerId) {
+      query = query.eq("customer_id", customerId);
+    }
+
+    const search = searchParams.get("search")?.trim();
+    let searchCustomerIds: string[] | null = null;
+    let searchProviderIds: string[] | null = null;
+
+    if (search) {
+      const safe = search.replace(/[%_]/g, "");
+      const { data: matchingBookings } = await supabase
+        .from("bookings")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("booking_number", `%${safe}%`)
+        .limit(200);
+
+      const { data: matchingCustomers } = await supabase
+        .from("users")
+        .select("id")
+        .or(`full_name.ilike.%${safe}%,email.ilike.%${safe}%,phone.ilike.%${safe}%`)
+        .limit(200);
+      searchCustomerIds = (matchingCustomers ?? []).map((u: { id: string }) => u.id);
+
+      const { data: matchingProviders } = await supabase
+        .from("providers")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .ilike("business_name", `%${safe}%`)
+        .limit(200);
+      searchProviderIds = (matchingProviders ?? []).map((p: { id: string }) => p.id);
+
+      const bookingIds = (matchingBookings ?? []).map((b: { id: string }) => b.id);
+      const allIds = [...bookingIds];
+      if (searchCustomerIds.length > 0 || searchProviderIds.length > 0 || allIds.length > 0) {
+        const orClauses: string[] = [];
+        if (allIds.length > 0) orClauses.push(`id.in.(${allIds.join(",")})`);
+        if (searchCustomerIds.length > 0) orClauses.push(`customer_id.in.(${searchCustomerIds.join(",")})`);
+        if (searchProviderIds.length > 0) orClauses.push(`provider_id.in.(${searchProviderIds.join(",")})`);
+        query = query.or(orClauses.join(","));
+      } else {
+        return successResponse([]);
+      }
+    }
+
+    const limitParam = searchParams.get("limit");
+    const limit = limitParam ? Math.min(500, Math.max(1, parseInt(limitParam, 10) || 200)) : 200;
+
     const { data: bookings, error } = await query
-      .order("scheduled_at", { ascending: false });
+      .order("scheduled_at", { ascending: false })
+      .limit(limit);
 
     if (error) {
       console.error("Error fetching bookings:", error);
@@ -87,8 +140,7 @@ export async function GET(request: NextRequest) {
         console.error("Error fetching customers:", err);
       }
     }
-    const _customersMap = new Map(customersData.map((u) => [u.id, u]));
-    void _customersMap;
+    const customersMap = new Map(customersData.map((u) => [u.id, u]));
 
     let providersData: ProviderRow[] = [];
     if (providerIds.length > 0) {
@@ -105,8 +157,7 @@ export async function GET(request: NextRequest) {
         console.error("Error fetching providers:", err);
       }
     }
-    const _providersMap = new Map(providersData.map((p) => [p.id, p]));
-    void _providersMap;
+    const providersMap = new Map(providersData.map((p) => [p.id, p]));
 
     type LocationRow = { id: string; name?: string; address_line1?: string; city?: string; country?: string };
     let locationsData: LocationRow[] = [];
@@ -123,8 +174,7 @@ export async function GET(request: NextRequest) {
         console.error("Error fetching locations:", err);
       }
     }
-    const _locationsMap = new Map(locationsData.map((l) => [l.id, l]));
-    void _locationsMap;
+    const locationsMap = new Map(locationsData.map((l) => [l.id, l]));
 
     type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
     const transformedBookings = (bookings as BookingFull[]).map((booking) => {
@@ -133,14 +183,23 @@ export async function GET(request: NextRequest) {
       const walletAmount = Number(booking.wallet_amount ?? 0);
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
       const outstandingBalance = Math.max(0, totalAmount - totalPaid - walletAmount - giftCardAmount);
+      const customer = customersMap.get(booking.customer_id ?? "");
+      const provider = providersMap.get(booking.provider_id ?? "");
+      const location = locationsMap.get(booking.location_id ?? "");
       return {
         id: booking.id,
         booking_number: booking.booking_number,
         customer_id: booking.customer_id,
+        customer_name: customer?.full_name || null,
+        customer_email: customer?.email || null,
+        customer_phone: customer?.phone || null,
         provider_id: booking.provider_id,
+        provider_name: provider?.business_name || null,
         status: booking.status,
         location_type: booking.location_type,
         location_id: booking.location_id,
+        location_name: location?.name || null,
+        location_city: location?.city || null,
         address: booking.address || null,
         scheduled_at: booking.scheduled_at,
         completed_at: booking.completed_at || null,

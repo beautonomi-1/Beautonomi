@@ -19,6 +19,7 @@ interface Promotion {
   code: string;
   type: "percentage" | "fixed_amount";
   value: number;
+  currency?: string;
   min_purchase?: number;
   max_discount?: number;
   start_date: string;
@@ -218,7 +219,7 @@ function PromotionCard({
           <span>
             {promotion.type === "percentage"
               ? `${promotion.value}% off`
-              : `${promotion.value} ${promotion.type === "fixed_amount" ? LAST_RESORT_CURRENCY : ""} off`}
+              : `${promotion.value} ${promotion.type === "fixed_amount" ? (promotion.currency || LAST_RESORT_CURRENCY) : ""} off`}
           </span>
         </div>
         <div className="flex items-center gap-2">

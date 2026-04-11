@@ -92,6 +92,7 @@ export default function StepPayment({
   // Prefer hold created by the new booking flow (bookingState.holdId); fall back
   // to URL param for bookings started from the old /book/[slug] flow.
   const holdId = bookingState.holdId || searchParams.get("hold_id")?.trim() || null;
+  const adCampaignId = searchParams.get("campaign_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -336,7 +337,9 @@ export default function StepPayment({
           setWalletCurrency(tenantCurrency);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        setWalletBalance(0);
+      })
       .finally(() => setWalletLoading(false));
   }, [user]);
 
@@ -488,6 +491,7 @@ export default function StepPayment({
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
       loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
       hold_id: holdId || null,
+      ...(adCampaignId ? { campaign_id: adCampaignId } : {}),
       ...(bookingState.mode === "mobile"
         ? {
             availability_travel_buffer_minutes: getTravelBuffer(
@@ -590,13 +594,27 @@ export default function StepPayment({
       try {
         bookingResult = await createBookingDraft();
       } catch (error: any) {
-        // Handle conflict / availability overlap errors (409) — time slot taken since selection
+        const isHoldExpired =
+          error.status === 410 ||
+          error.code === "HOLD_INVALID" ||
+          error.code === "HOLD_EXPIRED";
+        if (isHoldExpired) {
+          updateBookingState({ holdId: null });
+          toast.error(
+            "Your hold expired. Please select your time slot again.",
+            { duration: 6000 }
+          );
+          onNavigateToStep("calendar");
+          return;
+        }
+
         const isAvailabilityConflict =
           error.status === 409 ||
           error.code === "CONFLICT" ||
           error.code === "AVAILABILITY_OVERLAP" ||
           /overlap|unavailable|already booked|conflict/i.test(error.message ?? "");
         if (isAvailabilityConflict) {
+          updateBookingState({ holdId: null });
           toast.error(
             "That time slot was just taken. Please choose another time.",
             { duration: 6000 }
@@ -607,6 +625,15 @@ export default function StepPayment({
         
         toast.error(error.message || "Failed to create booking. Please try again.");
         return;
+      }
+
+      if (adCampaignId && bookingResult.booking_id && bookingState.providerId) {
+        fetcher.post("/api/public/ads/event", {
+          event_type: "book",
+          campaign_id: adCampaignId,
+          provider_id: bookingState.providerId,
+          idempotency_key: `web-book:${adCampaignId}:${bookingResult.booking_id}`,
+        }).catch(() => {});
       }
 
       // Step 2: Process payment based on method
@@ -751,12 +778,12 @@ export default function StepPayment({
                 <div key={participant.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
                   <p className="font-medium text-gray-900 mb-2">{participant.name}</p>
                   {participantServices.map((service) => (
-                    <div key={service.id} className="flex justify-between text-sm ml-4 mb-1">
-                      <span className="text-gray-600">
+                    <div key={service.id} className="flex justify-between gap-2 text-sm ml-4 mb-1">
+                      <span className="min-w-0 truncate text-gray-600">
                         {service.title}
                         {service.staffName && ` - ${service.staffName}`}
                       </span>
-                      <span className="font-medium">{formatCurrency(service.price, totals.currency)}</span>
+                      <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-sm font-medium mt-2 ml-4">
@@ -769,27 +796,27 @@ export default function StepPayment({
           ) : (
             // Show services for regular bookings
             bookingState.selectedServices.map((service) => (
-              <div key={service.id} className="flex justify-between text-sm">
-                <span className="text-gray-600">
+              <div key={service.id} className="flex justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-gray-600">
                   {service.title}
                   {service.staffName && ` - ${service.staffName}`}
                 </span>
-                <span className="font-medium">{formatCurrency(service.price, totals.currency)}</span>
+                <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
               </div>
             ))
           )}
           {bookingState.selectedAddons.map((addon) => (
-            <div key={addon.id} className="flex justify-between text-sm">
-              <span className="text-gray-600">+ {addon.title}</span>
-              <span className="font-medium">{formatCurrency(addon.price, totals.currency)}</span>
+            <div key={addon.id} className="flex justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-gray-600">+ {addon.title}</span>
+              <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(addon.price, totals.currency)}</span>
             </div>
           ))}
           {bookingState.selectedProducts.map((product) => (
-            <div key={product.id} className="flex justify-between text-sm">
-              <span className="text-gray-600">
+            <div key={product.id} className="flex justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-gray-600">
                 {product.name} {product.quantity > 1 && `× ${product.quantity}`}
               </span>
-              <span className="font-medium">
+              <span className="flex-shrink-0 font-medium whitespace-nowrap">
                 {formatCurrency(product.price * product.quantity, product.currency || totals.currency)}
               </span>
             </div>

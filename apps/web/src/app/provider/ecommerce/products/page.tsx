@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Store, Plus, Search, Package, ExternalLink } from "lucide-react";
 import Image from "next/image";
 import { displayRetailPriceMin } from "@/lib/provider-portal/product-inventory-metrics";
+import { toast } from "sonner";
 
 interface ProductVariantRow {
   quantity?: number;
@@ -73,7 +74,7 @@ export default function ProviderProductsPage() {
         setProducts(res.data.products ?? []);
       }
     } catch {
-      /* handled by loading state */
+      toast.error("Failed to load products");
     }
     setLoading(false);
   }, []);

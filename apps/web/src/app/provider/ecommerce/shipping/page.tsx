@@ -6,6 +6,8 @@ import { Save } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { toast } from "sonner";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface ShippingConfig {
   offers_delivery: boolean;
@@ -28,6 +30,7 @@ const DEFAULTS: ShippingConfig = {
 };
 
 export default function ProviderShippingConfigPage() {
+  const { currency } = useProviderMoneyFormat();
   const [config, setConfig] = useState<ShippingConfig>(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -52,7 +55,7 @@ export default function ProviderShippingConfigPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch {
-      /* save failed silently */
+      toast.error("Failed to save shipping configuration. Please try again.");
     }
     setSaving(false);
   };
@@ -89,7 +92,7 @@ export default function ProviderShippingConfigPage() {
         {config.offers_delivery && (
           <div className="pl-4 border-l-2 border-pink-200 space-y-4">
             <div>
-              <Label>Delivery Fee (R)</Label>
+              <Label>Delivery Fee ({currency})</Label>
               <Input
                 type="number"
                 min={0}
@@ -100,7 +103,7 @@ export default function ProviderShippingConfigPage() {
               />
             </div>
             <div>
-              <Label>Free Delivery Threshold (R)</Label>
+              <Label>Free Delivery Threshold ({currency})</Label>
               <p className="text-xs text-gray-400 mb-1">Leave empty for no free delivery</p>
               <Input
                 type="number"

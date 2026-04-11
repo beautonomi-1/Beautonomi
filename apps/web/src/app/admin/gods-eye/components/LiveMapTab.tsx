@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { GeoJSONSource, Map, MapMouseEvent, Popup } from "mapbox-gl";
 import { fetcher } from "@/lib/http/fetcher";
+import { toast } from "sonner";
 import { Activity, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -428,6 +429,7 @@ export default function LiveMapTab() {
       }
     } catch (e) {
       console.error(e);
+      toast.error("Failed to open booking track");
     }
   };
 
@@ -462,6 +464,7 @@ export default function LiveMapTab() {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
+      toast.error("Failed to export evidence");
     }
   };
 

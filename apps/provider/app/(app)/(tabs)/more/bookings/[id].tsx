@@ -141,6 +141,10 @@ type BookingDetail = {
   service_fee_amount?: number;
   tip_amount?: number;
   travel_fee_amount?: number;
+  deposit_required?: boolean;
+  deposit_percentage?: number | null;
+  deposit_amount?: number | null;
+  payment_option?: string | null;
   package_id?: string | null;
   package_name?: string | null;
   is_group_booking?: boolean;
@@ -292,7 +296,7 @@ export default function BookingDetailScreen() {
   const [rescheduling, setRescheduling] = useState(false);
   const rescheduleDateStr = format(rescheduleDate, "yyyy-MM-dd");
   const { data: rescheduleSlotsData } = useApi<{ slots: string[] }>(
-    `/api/provider/bookings/available-slots?date=${rescheduleDateStr}&duration_minutes=${durationMinutes}`,
+    `/api/provider/bookings/available-slots?date=${rescheduleDateStr}&duration_minutes=${durationMinutes}&exclude_booking_id=${id ?? ""}`,
     { enabled: showReschedule && !!rescheduleDateStr }
   );
   const rescheduleSlots = rescheduleSlotsData?.slots ?? [];
@@ -660,7 +664,9 @@ export default function BookingDetailScreen() {
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
-  const outstanding = totalAmount - totalPaid + totalRefunded;
+  const walletAmountApplied = Number((b as any).wallet_amount ?? 0);
+  const giftCardAmountApplied = Number((b as any).gift_card_amount ?? 0);
+  const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
@@ -891,8 +897,13 @@ export default function BookingDetailScreen() {
     const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00`;
     try {
       const checkRes = await api.get<{ available?: boolean }>(
-        `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}`
+        `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}&exclude_booking_id=${encodeURIComponent(id)}`
       );
+      if (checkRes.error) {
+        Alert.alert("Error", checkRes.error.message ?? "Could not verify availability. Please try again.");
+        setRescheduling(false);
+        return;
+      }
       if (checkRes.data?.available === false) {
         Alert.alert("Slot unavailable", "This time is no longer available. Choose another.");
         setRescheduling(false);
@@ -1164,7 +1175,9 @@ export default function BookingDetailScreen() {
       Platform.OS === "ios"
         ? `https://maps.apple.com/?q=${encoded}`
         : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
-    Linking.openURL(url).catch(() => {});
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Error", "Could not open maps. Please check your map application.");
+    });
   };
 
   const handleRequestPayment = async () => {
@@ -1210,6 +1223,7 @@ export default function BookingDetailScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowSendPaymentLink(false);
     Alert.alert("Done", `Payment link sent via ${sendPaymentLinkMethod}.`);
+    refresh();
   };
 
   const handleChargeMarkPaid = async () => {
@@ -1806,6 +1820,12 @@ export default function BookingDetailScreen() {
                 Total: {b.currency ?? getTenantDefaultCurrency()} {totalAmount.toLocaleString()}
               </Text>
             )}
+            {b.deposit_required && b.payment_option === "deposit" && typeof b.deposit_amount === "number" && b.deposit_amount > 0 && (
+              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                Deposit{b.deposit_percentage ? ` (${b.deposit_percentage}%)` : ""}:{" "}
+                {b.currency ?? getTenantDefaultCurrency()} {b.deposit_amount.toLocaleString()}
+              </Text>
+            )}
             {totalPaid > 0 && (
               <Text style={twStyle("text-sm text-green-600 mt-0.5")}>
                 Paid: {b.currency ?? getTenantDefaultCurrency()} {totalPaid.toLocaleString()}
@@ -1915,6 +1935,18 @@ export default function BookingDetailScreen() {
                   <Text style={twStyle("font-medium text-red-700")}>Refund</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                onPress={() => {
+                  const { APP_URL } = require("@/config/public-env");
+                  const receiptUrl = `${APP_URL}/api/provider/bookings/${id}/receipt/pdf`;
+                  Linking.openURL(receiptUrl).catch(() => {});
+                }}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="View receipt"
+              >
+                <Text style={twStyle("font-medium text-gray-700")}>View receipt</Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -2104,9 +2136,10 @@ export default function BookingDetailScreen() {
             })}
           </ScrollView>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Time</Text>
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
           <View style={twStyle("flex-row flex-wrap")}>
             {rescheduleSlots.length > 0 ? (
-              rescheduleSlots.slice(0, 24).map((slot) => {
+              rescheduleSlots.map((slot) => {
                 const isSelected = rescheduleTime === slot;
                 return (
                   <TouchableOpacity
@@ -2122,6 +2155,7 @@ export default function BookingDetailScreen() {
               <Text style={twStyle("text-sm text-gray-500")}>Loading slots…</Text>
             )}
           </View>
+          </ScrollView>
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
             onPress={handleReschedule}

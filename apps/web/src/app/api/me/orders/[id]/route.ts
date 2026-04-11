@@ -1,5 +1,6 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -9,7 +10,9 @@ import {
 
 /**
  * GET /api/me/orders/[id]
- * Get order detail with items, provider info, and delivery/collection details
+ * Get order detail with items, provider info, and delivery/collection details.
+ * Uses admin client for the product_variants embed so deactivated products
+ * don't break the entire query due to RLS restrictions.
  */
 export async function GET(
   request: NextRequest,
@@ -21,9 +24,10 @@ export async function GET(
       ["customer", "provider_owner", "provider_staff", "superadmin"],
       request,
     );
-    const supabase = await getSupabaseServer(request);
 
-    const { data: order, error } = await (supabase.from("product_orders") as any)
+    const supabaseAdmin = getSupabaseAdmin();
+
+    const { data: order, error } = await (supabaseAdmin.from("product_orders") as any)
       .select(
         `
         *,
@@ -46,7 +50,18 @@ export async function GET(
       .eq("customer_id", user.id)
       .single();
 
-    if (error || !order) {
+    if (error) {
+      if (error.code === "PGRST116") {
+        return notFoundResponse("Order not found");
+      }
+      console.error("[me/orders/[id]] Supabase error:", error.message, error.code);
+      return NextResponse.json(
+        { error: "Failed to load order details. Please try again." },
+        { status: 500 },
+      );
+    }
+
+    if (!order) {
       return notFoundResponse("Order not found");
     }
 

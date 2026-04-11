@@ -1,10 +1,12 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireAuthInApi,
   successResponse,
   handleApiError,
 } from "@/lib/supabase/api-helpers";
+import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 
 /**
  * GET /api/provider/onboarding/draft
@@ -72,6 +74,27 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       throw error;
+    }
+
+    // Update provider_onboarding_tracking (non-blocking, uses admin client to bypass RLS)
+    try {
+      const adminSupabase = getSupabaseAdmin();
+      const tenantId = await resolveTenantIdWithZaFallback(request);
+      await adminSupabase
+        .from("provider_onboarding_tracking")
+        .upsert(
+          {
+            user_id: user.id,
+            tenant_id: tenantId,
+            wizard_status: "in_progress",
+            current_step: current_step || 1,
+            last_progress_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+    } catch (trackingErr) {
+      console.warn("Onboarding tracking update (non-fatal):", trackingErr);
     }
 
     return successResponse(draft);

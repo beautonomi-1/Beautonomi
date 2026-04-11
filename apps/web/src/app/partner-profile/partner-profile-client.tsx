@@ -237,7 +237,7 @@ export default function PartnerProfileClient({
             <PartnerAbout
               description={provider.description}
               locations={provider.locations}
-              operating_hours={provider.operating_hours ?? provider.locations?.[0]?.working_hours}
+              operating_hours={provider.operating_hours ?? (provider.locations?.find((l: any) => l.is_primary) ?? provider.locations?.[0])?.working_hours}
             />
           </TabsContent>
         </Tabs>

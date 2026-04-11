@@ -33,7 +33,7 @@ export default function ReviewWriteScreen() {
       /** Deep-link recovery when opening review without a booking context */
       provider_slug?: string;
     }>();
-  const [rating, setRating] = useState(initRating ? parseInt(initRating, 10) : 5);
+  const [rating, setRating] = useState(initRating ? parseInt(initRating, 10) : 0);
   const [comment, setComment] = useState(initComment || "");
   const [photos, setPhotos] = useState<string[]>([]);
   const [services, setServices] = useState<
@@ -334,7 +334,7 @@ export default function ReviewWriteScreen() {
             })}
           </View>
         )}
-        <TouchableOpacity onPress={submit} disabled={loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading ? 0.5 : 1 }}>
+        <TouchableOpacity onPress={submit} disabled={loading || rating < 1} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: (loading || rating < 1) ? 0.5 : 1 }}>
           {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit</Text>}
         </TouchableOpacity>
       </ScrollView>

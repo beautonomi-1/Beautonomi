@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         total_amount,
         scheduled_at,
         status,
+        booking_source,
         customer_id,
         location_id,
         booking_services (
@@ -97,12 +98,17 @@ export async function GET(request: NextRequest) {
     // Group by status
     const statusCounts: Record<string, number> = {};
     const statusRevenue: Record<string, number> = {};
+    const sourceCounts: Record<string, number> = {};
+    const sourceRevenue: Record<string, number> = {};
     bookings?.forEach((booking) => {
       const status = booking.status || "unknown";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
-      // Use revenue from finance_transactions for this booking
       const bookingRevenue = revenueByBooking.get(booking.id) || 0;
       statusRevenue[status] = (statusRevenue[status] || 0) + bookingRevenue;
+
+      const source = (booking as any).booking_source || "unknown";
+      sourceCounts[source] = (sourceCounts[source] || 0) + 1;
+      sourceRevenue[source] = (sourceRevenue[source] || 0) + bookingRevenue;
     });
 
     // Group by day (use finance_transactions revenue)
@@ -169,6 +175,12 @@ export async function GET(request: NextRequest) {
         status,
         count,
         revenue: statusRevenue[status] || 0,
+        percentage: totalBookings > 0 ? (count / totalBookings) * 100 : 0,
+      })),
+      sourceBreakdown: Object.entries(sourceCounts).map(([source, count]) => ({
+        source,
+        count,
+        revenue: sourceRevenue[source] || 0,
         percentage: totalBookings > 0 ? (count / totalBookings) * 100 : 0,
       })),
       dailyBookings,

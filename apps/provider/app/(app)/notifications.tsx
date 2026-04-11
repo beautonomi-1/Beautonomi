@@ -126,7 +126,29 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
     }
     // Generic fallback — open the dashboard so tapping always does something
     router.push("/(app)/(tabs)/dashboard" as never);
+    return;
   }
+
+  // Type-based fallback when no data fields or link are present
+  const nType = (n.type ?? "").toLowerCase();
+  if (nType.includes("booking") || nType.includes("appointment")) {
+    router.push("/(app)/(tabs)/calendar" as never);
+    return;
+  }
+  if (nType.includes("message") || nType.includes("chat")) {
+    router.push("/(app)/(tabs)/more/messaging" as never);
+    return;
+  }
+  if (nType.includes("review")) {
+    router.push("/(app)/(tabs)/more/reviews" as never);
+    return;
+  }
+  if (nType.includes("payment") || nType.includes("payout")) {
+    router.push("/(app)/(tabs)/more/settings/payments" as never);
+    return;
+  }
+
+  router.push("/(app)/(tabs)/dashboard" as never);
 }
 
 export default function NotificationsScreen() {

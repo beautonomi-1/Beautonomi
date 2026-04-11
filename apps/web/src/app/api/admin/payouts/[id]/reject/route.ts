@@ -96,6 +96,14 @@ export async function POST(
           ["push"],
           { appType: "provider" }
         );
+        await supabase.from("notifications").insert({
+          user_id: providerData.user_id,
+          type: "system",
+          title: "Payout Rejected",
+          message: `Your payout request of ${amountFormatted} has been rejected. Reason: ${reason}`,
+          data: { payout_id: id, amount: payoutRow.amount, reason },
+          action_url: "/provider/payouts",
+        });
       }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

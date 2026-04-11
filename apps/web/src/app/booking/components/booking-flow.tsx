@@ -594,6 +594,15 @@ export default function BookingFlow() {
 
   const [isCreatingHold, setIsCreatingHold] = useState(false);
 
+  /** Release an existing hold (best-effort, fire-and-forget). */
+  const releaseHold = async (holdId: string) => {
+    try {
+      await fetcher.post(`/api/public/booking-holds/${holdId}/release`, {});
+    } catch {
+      // Non-fatal — server-side expiry will clean it up
+    }
+  };
+
   /** Create a booking hold when leaving the calendar step so the server can exclude
    *  it from the conflict check — prevents the customer's own slot reservation from
    *  blocking their own booking attempt. Non-fatal: booking proceeds even if hold fails. */
@@ -605,19 +614,23 @@ export default function BookingFlow() {
       bookingState.selectedServices.length === 0
     ) return null;
 
+    // Release any stale hold before creating a new one
+    if (bookingState.holdId) {
+      await releaseHold(bookingState.holdId);
+    }
+
     try {
       const bookingDateTime = new Date(bookingState.selectedDate);
       const [h, m] = bookingState.selectedTimeSlot.split(":").map(Number);
       bookingDateTime.setHours(h, m, 0, 0);
 
-      // Compute end time from service durations + buffers
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {
         totalMs += (svc.duration + (svc.bufferMinutes ?? 0)) * 60000;
       }
       const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
 
-      const res = await fetcher.post<{ data?: { id?: string } }>(
+      const res = await fetcher.post<{ data?: { hold_id?: string; id?: string } }>(
         "/api/public/booking-holds",
         {
           provider_id: bookingState.providerId,
@@ -631,9 +644,8 @@ export default function BookingFlow() {
           location_id: bookingState.selectedLocationId ?? null,
         }
       );
-      return res?.data?.id ?? null;
+      return res?.data?.hold_id ?? res?.data?.id ?? null;
     } catch {
-      // Hold creation is best-effort — don't block the user
       return null;
     }
   };
@@ -644,11 +656,11 @@ export default function BookingFlow() {
       const nextStep = effectiveStepOrder[effectiveStepIndex + 1];
       const nextIndex = activeStepOrder.indexOf(nextStep);
 
-      // When leaving the calendar step, create a hold to reserve the slot.
-      if (currentStep === "calendar" && !bookingState.holdId) {
+      // When leaving the calendar step, always create a fresh hold for the selected slot.
+      if (currentStep === "calendar") {
         setIsCreatingHold(true);
-        createHoldForCalendarExit().then((holdId) => {
-          if (holdId) updateBookingState({ holdId });
+        createHoldForCalendarExit().then((newHoldId) => {
+          if (newHoldId) updateBookingState({ holdId: newHoldId });
           setIsCreatingHold(false);
           setCurrentStepIndex(nextIndex);
         });
@@ -675,6 +687,7 @@ export default function BookingFlow() {
       // Clear hold when returning to the calendar step so a fresh hold is created
       // for the newly selected slot (prevents stale hold_id mismatch).
       if (prevStep === "calendar") {
+        if (bookingState.holdId) releaseHold(bookingState.holdId);
         updateBookingState({ holdId: null });
       }
       setCurrentStepIndex(prevIndex);
@@ -1078,6 +1091,10 @@ export default function BookingFlow() {
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNavigateToStep={(step) => {
+                    if (step === "calendar") {
+                      if (bookingState.holdId) releaseHold(bookingState.holdId);
+                      updateBookingState({ holdId: null });
+                    }
                     const idx = activeStepOrder.indexOf(step);
                     if (idx >= 0) setCurrentStepIndex(idx);
                   }}

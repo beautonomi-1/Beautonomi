@@ -1,8 +1,9 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,18 +38,22 @@ export async function GET(request: NextRequest) {
     }
     const searchParams = request.nextUrl.searchParams;
     const fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 90);
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 90));
     const toDate = searchParams.get("to")
-      ? new Date(searchParams.get("to")!)
-      : new Date();
+      ? endOfDay(new Date(searchParams.get("to")!))
+      : endOfDay(new Date());
 
-    // Get provider revenue from finance_transactions (actual earnings available for payout)
+    // Use provider_earnings only (consistent with dashboard revenue)
+    const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
+
     const { totalRevenue: _totalRevenue, revenueByBooking, revenueByDate: _revenueByDate } = await getProviderRevenue(
       supabaseAdmin,
       providerId,
       fromDate,
-      toDate
+      toDate,
+      null,
+      dashOpts
     );
 
     // Get bookings to match with finance transactions
@@ -60,46 +65,45 @@ export async function GET(request: NextRequest) {
       .lte('scheduled_at', toDate.toISOString())
       .in('status', ['confirmed', 'completed']);
 
-    // Get payments for refund information
+    // Get service_fee and refund data from finance_transactions (ledger-consistent)
     const bookingIds = bookings?.map((b) => b.id) || [];
-    let paymentsQuery = supabaseAdmin
-      .from('payments')
-      .select('id, booking_id, amount, refunded_amount, status, created_at')
-      .gte('created_at', fromDate.toISOString())
-      .lte('created_at', toDate.toISOString())
-      .eq('status', 'completed');
+    let feeQuery = supabaseAdmin
+      .from("finance_transactions")
+      .select("booking_id, transaction_type, amount, net")
+      .eq("provider_id", providerId)
+      .in("transaction_type", ["service_fee", "refund", "payment"])
+      .gte("created_at", fromDate.toISOString())
+      .lte("created_at", toDate.toISOString());
 
-    if (bookingIds.length > 0) {
-      paymentsQuery = paymentsQuery.in('booking_id', bookingIds);
-    } else {
-      paymentsQuery = paymentsQuery.eq('booking_id', '00000000-0000-0000-0000-000000000000');
-    }
+    const { data: feeRows } = await feeQuery;
 
-    const { data: payments } = await paymentsQuery;
-
-    // Create a map of booking_id to payment info
-    const paymentMap = new Map<string, { grossAmount: number; refundedAmount: number }>();
-    payments?.forEach((payment) => {
-      if (payment.booking_id) {
-        paymentMap.set(payment.booking_id, {
-          grossAmount: Number(payment.amount || 0),
-          refundedAmount: Number(payment.refunded_amount || 0),
-        });
+    // Build per-booking fee/refund/gross maps from ledger
+    // platformFee = platform commission (stored as `net` on `payment` rows) + customer service fee
+    const feeMap = new Map<string, { grossAmount: number; platformFee: number; refundedAmount: number }>();
+    (feeRows ?? []).forEach((row: any) => {
+      if (!row.booking_id) return;
+      const existing = feeMap.get(row.booking_id) || { grossAmount: 0, platformFee: 0, refundedAmount: 0 };
+      if (row.transaction_type === "payment") {
+        existing.grossAmount += Math.abs(Number(row.amount || 0));
+        existing.platformFee += Math.abs(Number(row.net || 0));
+      } else if (row.transaction_type === "service_fee") {
+        existing.platformFee += Math.abs(Number(row.amount || 0));
+      } else if (row.transaction_type === "refund") {
+        existing.refundedAmount += Math.abs(Number(row.amount || 0));
       }
+      feeMap.set(row.booking_id, existing);
     });
 
     // Calculate payouts from finance_transactions (actual provider earnings)
     // Group by booking to show per-booking payouts
     const payouts = Array.from(revenueByBooking.entries())
       .map(([bookingId, payoutAmount]) => {
-        const payment = paymentMap.get(bookingId);
-        const grossAmount = payment?.grossAmount || 0;
-        const refundedAmount = payment?.refundedAmount || 0;
+        const fees = feeMap.get(bookingId);
+        const grossAmount = fees?.grossAmount || 0;
+        const refundedAmount = fees?.refundedAmount || 0;
+        const platformFee = fees?.platformFee || 0;
         const netAmount = grossAmount - refundedAmount;
-        // Platform fee is the difference between gross and provider earnings
-        const platformFee = netAmount > 0 ? netAmount - payoutAmount : 0;
 
-        // Get booking date for sorting
         const booking = bookings?.find((b) => b.id === bookingId);
         const createdAt = booking?.scheduled_at || new Date().toISOString();
 
@@ -109,7 +113,7 @@ export async function GET(request: NextRequest) {
           refundedAmount,
           netAmount,
           platformFee,
-          payoutAmount, // This is the actual provider earnings from finance_transactions
+          payoutAmount,
           createdAt,
         };
       })

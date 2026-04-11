@@ -171,7 +171,7 @@ export default function ProfileHeaderNew({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
-      className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
+      className="bg-white/80 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8"
     >
       <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
         {/* Avatar — id used for /account-settings#photo deep links */}

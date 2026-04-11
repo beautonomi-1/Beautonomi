@@ -64,7 +64,8 @@ function formatTime(s: string) {
 }
 
 function formatDateForCalendar(d: Date): string {
-  return d.toISOString().replace(/[-:]/g, "").split(".")[0];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function parseValidDate(value: unknown): Date | null {
@@ -74,12 +75,12 @@ function parseValidDate(value: unknown): Date | null {
 }
 
 function getGoogleCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
-  const startStr = formatDateForCalendar(params.start) + "Z";
-  const endStr = formatDateForCalendar(params.end) + "Z";
+  const startStr = formatDateForCalendar(params.start);
+  const endStr = formatDateForCalendar(params.end);
   const q = new URLSearchParams({
     action: "TEMPLATE",
     text: params.title,
-    dates: `${startStr.replace("Z", "")}/${endStr.replace("Z", "")}`,
+    dates: `${startStr}/${endStr}`,
     location: params.location,
     details: params.description,
   });
@@ -339,7 +340,7 @@ export default function BookingDetailScreen() {
           ? "You are inside the late-cancellation window."
           : "You are within the normal cancellation window.");
     } catch {
-      // Keep default message if preview fails (matches web fallback)
+      message += "\n\n(Could not load refund estimate. You can still cancel.)";
     }
 
     Alert.alert("Cancel Booking", message, [
@@ -387,11 +388,15 @@ export default function BookingDetailScreen() {
     haptic.light();
     const provider = booking.provider;
     if (provider?.slug) {
+      const serviceIds = (booking.services ?? [])
+        .map((s: any) => s.offering_id)
+        .filter(Boolean)
+        .join(",");
       router.push({
         pathname: "/(app)/book",
         params: {
           slug: provider.slug,
-          service_id: booking.services?.[0]?.offering_id ?? "",
+          service_id: serviceIds || booking.services?.[0]?.offering_id || "",
           reschedule_booking_id: booking.id,
         },
       });
@@ -944,6 +949,17 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
               </View>
+              {/* Deposit context */}
+              {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && Number((booking as any).deposit_amount || 0) > 0 && (
+                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+                    Deposit{(booking as any).deposit_percentage ? ` (${(booking as any).deposit_percentage}%)` : ""}
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                    {booking.currency} {Number((booking as any).deposit_amount).toFixed(2)}
+                  </Text>
+                </View>
+              )}
               {/* Wallet credit applied — only shown when wallet was used */}
               {Number((booking as any).wallet_amount || 0) > 0 && (
                 <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
@@ -1133,6 +1149,47 @@ export default function BookingDetailScreen() {
                   </View>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                     {booking.currency} {price.toFixed(2)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Add-ons */}
+        {Array.isArray((booking as any).addons) && (booking as any).addons.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add-ons</Text>
+            {((booking as any).addons as Array<Record<string, unknown>>).map((addon, i) => {
+              const addonName = String(addon.offering_name ?? addon.addon_name ?? "Add-on");
+              const qty = Number(addon.quantity ?? 1);
+              const price = Number(addon.price ?? 0);
+              return (
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{addonName}{qty > 1 ? ` x${qty}` : ""}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                    {booking.currency} {(price * qty).toFixed(2)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Products */}
+        {Array.isArray((booking as any).products) && (booking as any).products.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Products</Text>
+            {((booking as any).products as Array<Record<string, unknown>>).map((prod, i) => {
+              const prodName = String(prod.product_name ?? "Product");
+              const qty = Number(prod.quantity ?? 1);
+              const unitPrice = Number(prod.unit_price ?? 0);
+              const totalPrice = Number(prod.total_price ?? unitPrice * qty);
+              return (
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{prodName}{qty > 1 ? ` x${qty}` : ""}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                    {booking.currency} {totalPrice.toFixed(2)}
                   </Text>
                 </View>
               );

@@ -74,28 +74,32 @@ export default function BottomNav() {
   };
 
   useEffect(() => {
+    let rafId = 0;
     const handleScroll = () => {
-      const currentScrollY = window.scrollY;
+      if (rafId) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        const currentScrollY = window.scrollY;
 
-      // If scrolling up and last Y was greater than current Y, show navbar
-      if (lastScrollY.current > currentScrollY && !isScrollingUp.current) {
-        setIsVisible(true);
-        isScrollingUp.current = true;
-      }
+        if (lastScrollY.current > currentScrollY && !isScrollingUp.current) {
+          setIsVisible(true);
+          isScrollingUp.current = true;
+        }
 
-      // If scrolling down and last Y was less than current Y, hide navbar
-      if (lastScrollY.current < currentScrollY && isScrollingUp.current) {
-        setIsVisible(false);
-        isScrollingUp.current = false;
-      }
+        if (lastScrollY.current < currentScrollY && isScrollingUp.current) {
+          setIsVisible(false);
+          isScrollingUp.current = false;
+        }
 
-      lastScrollY.current = currentScrollY;
+        lastScrollY.current = currentScrollY;
+      });
     };
 
     window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => {
       window.removeEventListener("scroll", handleScroll);
+      if (rafId) cancelAnimationFrame(rafId);
     };
   }, []);
 

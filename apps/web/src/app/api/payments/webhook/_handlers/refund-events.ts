@@ -51,10 +51,23 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     .eq("status", "success")
     .maybeSingle();
 
-  // Record refund transaction
+  // Idempotency: skip if this refund reference was already recorded
+  const refundRef = String(refundReference || reference);
+  const { data: existingRefund } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", refundRef)
+    .eq("transaction_type", "refund")
+    .maybeSingle();
+
+  if (existingRefund) {
+    console.log(`Paystack refund ${refundRef} already recorded, skipping (idempotent)`);
+    return;
+  }
+
   await supabase.from("payment_transactions").insert({
     booking_id: txn?.booking_id || null,
-    reference: String(refundReference || reference),
+    reference: refundRef,
     amount: refundAmount,
     fees: 0,
     net_amount: refundAmount,

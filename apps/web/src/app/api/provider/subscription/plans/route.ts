@@ -46,49 +46,8 @@ export async function GET(request: NextRequest) {
       .order("amount", { ascending: true });
 
     if (error) {
-      console.warn("Error fetching plans, returning defaults:", error);
-      return successResponse([
-        {
-          id: "free",
-          name: "Free",
-          amount: 0,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["50 bookings/month", "4 staff members", "3 locations"],
-          limits: { max_bookings: 50, max_staff: 4, max_locations: 3 },
-          is_popular: false,
-        },
-        {
-          id: "starter",
-          name: "Starter",
-          amount: 199,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["50 bookings/month", "3 staff members", "Online booking"],
-          limits: { max_bookings: 50, max_staff: 3, max_locations: 1 },
-          is_popular: false,
-        },
-        {
-          id: "professional",
-          name: "Professional",
-          amount: 499,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["Unlimited bookings", "10 staff members", "Reports & analytics"],
-          limits: { max_bookings: null, max_staff: 10, max_locations: 3 },
-          is_popular: true,
-        },
-        {
-          id: "business",
-          name: "Business",
-          amount: 999,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["Unlimited everything", "Priority support", "Custom branding"],
-          limits: { max_bookings: null, max_staff: null, max_locations: null },
-          is_popular: false,
-        },
-      ]);
+      console.error("Error fetching subscription plans:", error);
+      return handleApiError(error, "Failed to load subscription plans");
     }
 
     const result = (plans || []).map((p: any) => ({

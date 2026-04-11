@@ -37,7 +37,6 @@ export async function GET(request: Request) {
     const supabaseAdmin = getSupabaseAdmin();
     let walletTopupRevenue = 0;
     let referralPayouts = 0;
-    let cancellationFeesRetained = 0;
     try {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
@@ -67,26 +66,12 @@ export async function GET(request: Request) {
       } else {
         referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       }
-
-      let cancelFeeQuery = supabaseAdmin
-        .from("bookings")
-        .select("cancellation_fee")
-        .eq("tenant_id", tenantId)
-        .eq("status", "cancelled");
-      if (startDate) cancelFeeQuery = cancelFeeQuery.gte("cancelled_at", startDate);
-      if (endDate) cancelFeeQuery = cancelFeeQuery.lte("cancelled_at", endDate);
-      const { data: cancellationRows, error: cancellationErr } = await cancelFeeQuery;
-      if (cancellationErr) {
-        console.warn("Cancellation fee query failed:", cancellationErr.message);
-      } else {
-        cancellationFeesRetained = (cancellationRows || []).reduce(
-          (s, r) => s + Number(r.cancellation_fee || 0),
-          0
-        );
-      }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
     }
+
+    // Cancellation fees from ledger (single source of truth, not from bookings table)
+    const cancellationFeesRetained = agg.cancellation_fees_retained;
 
     const totalPlatformTakeAfterReferrals =
       agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue - referralPayouts;
@@ -158,9 +143,44 @@ export async function GET(request: Request) {
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,
 
+        service_fee_revenue: agg.service_fee_revenue,
+        ecommerce_platform_fees: agg.ecommerce_platform_fees,
+        additional_charge_gross: agg.additional_charge_gross,
+        travel_fees: agg.travel_fees,
+
         wallet_topup_revenue: walletTopupRevenue,
         referral_payouts: referralPayouts,
         total_platform_take_after_referrals: totalPlatformTakeAfterReferrals,
+
+        platform_revenue: {
+          booking_commission: agg.platform_take_net,
+          subscriptions: agg.subscription_net,
+          ads: agg.ads_net,
+          service_fees: agg.service_fee_revenue,
+          ecommerce_fees: agg.ecommerce_platform_fees,
+          wallet_topups: walletTopupRevenue,
+          cancellation_fees: cancellationFeesRetained,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + cancellationFeesRetained + agg.service_fee_revenue + agg.ecommerce_platform_fees,
+        },
+
+        provider_revenue: {
+          provider_earnings: agg.provider_earnings_net,
+          tips: agg.tips_gross,
+          taxes_collected: agg.taxes_gross,
+          refunds: agg.refunds_gross,
+          net_after_refunds: agg.provider_earnings_net - Math.abs(agg.refunds_gross),
+        },
+
+        revenue_streams: {
+          booking_commission: agg.platform_take_net,
+          subscriptions: agg.subscription_net,
+          ads: agg.ads_net,
+          service_fees: agg.service_fee_revenue,
+          ecommerce_fees: agg.ecommerce_platform_fees,
+          wallet_topups: walletTopupRevenue,
+          cancellation_fees: cancellationFeesRetained,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + cancellationFeesRetained + agg.service_fee_revenue + agg.ecommerce_platform_fees,
+        },
 
         gmv_growth: gmvGrowth,
         period: {

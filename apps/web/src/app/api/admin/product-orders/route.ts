@@ -42,6 +42,14 @@ export async function GET(request: NextRequest) {
     if (paymentStatus) query = query.eq("payment_status", paymentStatus);
     if (providerId) query = query.eq("provider_id", providerId);
 
+    const search = searchParams.get("search")?.trim();
+    if (search) {
+      const safe = search.replace(/[%_]/g, "");
+      query = query.or(
+        `order_number.ilike.%${safe}%`
+      );
+    }
+
     const { data: orders, error, count } = await query;
     if (error) throw error;
 

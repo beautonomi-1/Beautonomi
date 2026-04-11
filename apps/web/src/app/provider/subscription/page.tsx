@@ -31,6 +31,7 @@ interface ProviderSubscription {
   status: "active" | "expired" | "cancelled" | "past_due" | "trial";
   started_at?: string;
   expires_at?: string;
+  cancelled_at?: string | null;
   billing_period?: "monthly" | "yearly";
   auto_renew?: boolean;
   plan?: any;
@@ -290,6 +291,11 @@ export default function SubscriptionPage() {
                     {subscription.status === "cancelled" && (
                       <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
                         Cancelled
+                      </Badge>
+                    )}
+                    {subscription.status === "active" && subscription.cancelled_at && (
+                      <Badge variant="secondary" className="bg-orange-100 text-orange-800">
+                        Cancelling at period end
                       </Badge>
                     )}
                     {subscription.status === "trial" && (

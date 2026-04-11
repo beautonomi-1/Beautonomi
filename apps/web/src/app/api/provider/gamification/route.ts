@@ -229,6 +229,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Sync denormalized providers stats before recalculation so badge checks use fresh data
+    const [bookingCountRes, reviewsRes] = await Promise.all([
+      supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId),
+      supabaseAdmin.from("reviews").select("rating", { count: "exact" }).eq("provider_id", providerId),
+    ]);
+    const freshBookings = bookingCountRes.count || 0;
+    const freshReviewCount = reviewsRes.count || 0;
+    let freshRating = 0;
+    if (reviewsRes.data && reviewsRes.data.length > 0) {
+      freshRating = reviewsRes.data.reduce((s, r) => s + Number(r.rating || 0), 0) / reviewsRes.data.length;
+    }
+    await supabaseAdmin
+      .from("providers")
+      .update({
+        total_bookings: freshBookings,
+        review_count: freshReviewCount,
+        rating_average: Math.round(freshRating * 100) / 100,
+      })
+      .eq("id", providerId);
+
     // Recalculate gamification
     const result = await recalculateProviderGamification(providerId);
 

@@ -34,9 +34,15 @@ export interface ProviderDashboardStats {
   pending_payments_count: number;
 
   service_earnings_total: number;
+  tips_total?: number;
+  tips_this_month?: number;
   gift_card_sales_total: number;
   membership_sales_total: number;
   refunds_total: number;
+
+  platform_fees_paid?: number;
+  expenses_total?: number;
+  expenses_this_month?: number;
 
   travel_fees_total: number;
   travel_fees_today: number;

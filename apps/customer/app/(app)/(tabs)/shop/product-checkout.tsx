@@ -191,9 +191,10 @@ export default function ProductCheckoutScreen() {
       if (shipRes.data) {
         const raw = shipRes.data as any;
         const sc = raw?.shipping ?? raw?.data?.shipping ?? raw?.config ?? raw;
-        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc))
+        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc)) {
           setShippingConfig(sc as ShippingConfig);
-        if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
+          if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
+        }
       }
 
       // Track checkout started
@@ -577,6 +578,14 @@ export default function ProductCheckoutScreen() {
                     <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>{sc.delivery_notes}</Text>
                   </View>
                 ) : null}
+                {sc && sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0 && (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
+                    <Ionicons name="time-outline" size={14} color="#6B7280" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                      Estimated delivery: {sc.estimated_delivery_days} {sc.estimated_delivery_days === 1 ? "day" : "days"}
+                    </Text>
+                  </View>
+                )}
               </View>
             );
           }
@@ -937,9 +946,16 @@ export default function ProductCheckoutScreen() {
                 borderBottomColor: "#F9FAFB",
               }}
             >
-              <Text style={{ fontSize: 14, color: "#374151", flex: 1 }} numberOfLines={1}>
-                {item.product?.name} x{item.quantity}
-              </Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontSize: 14, color: "#374151" }} numberOfLines={1}>
+                  {item.product?.name} x{item.quantity}
+                </Text>
+                {(item as any).product_variant?.option_values && Object.keys((item as any).product_variant.option_values).length > 0 && (
+                  <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                    {Object.values((item as any).product_variant.option_values).join(", ")}
+                  </Text>
+                )}
+              </View>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                 {fmt(
                   (typeof item.effective_price === "number" ? item.effective_price : item.product?.retail_price ?? 0) *

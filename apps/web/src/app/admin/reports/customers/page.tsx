@@ -43,7 +43,7 @@ interface CustomerReportData {
 }
 
 export default function CustomerReportPage() {
-  const { currencyCode } = useReportCurrency();
+  const { currencyCode, format: fmtMoney } = useReportCurrency();
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<CustomerReportData | null>(null);
@@ -240,7 +240,7 @@ export default function CustomerReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.customers.reduce((sum, c) => sum + (c.total_spent || 0), 0).toLocaleString()}
+                {fmtMoney(data.customers.reduce((sum, c) => sum + (c.total_spent || 0), 0))}
               </div>
             </CardContent>
           </Card>
@@ -261,10 +261,10 @@ export default function CustomerReportPage() {
                     textAnchor="end"
                     height={100}
                   />
-                  <YAxis tickFormatter={(v) => `R ${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(value: number) => [`R ${value.toLocaleString()}`, "Total Spent"]} />
+                  <YAxis tickFormatter={(v) => fmtMoney(v)} />
+                  <Tooltip formatter={(value: number) => [fmtMoney(value), "Total Spent"]} />
                   <Legend />
-                  <Bar dataKey="total_spent" fill="#ec4899" name="Total Spent (R)" />
+                  <Bar dataKey="total_spent" fill="#ec4899" name={`Total Spent (${currencyCode})`} />
                 </BarChart>
               </ResponsiveContainer>
             </CardContent>
@@ -288,7 +288,7 @@ export default function CustomerReportPage() {
                       <p className="text-sm text-gray-600">{c.bookings_count} bookings</p>
                     </div>
                     <p className="font-semibold text-blue-600">
-                      R {(c.total_spent ?? 0).toLocaleString()}
+                      {fmtMoney(c.total_spent ?? 0)}
                     </p>
                   </div>
                 ))

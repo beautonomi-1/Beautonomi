@@ -69,23 +69,36 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
   todayStart.setUTCHours(0, 0, 0, 0);
   const todayStartIso = todayStart.toISOString();
 
+  const now = new Date().toISOString();
+
   // Active campaigns with budget remaining (and optional daily cap; pack campaigns cap by impression count)
   const { data: campaigns } = await supabase
     .from("ads_campaigns")
     .select(
-      "id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions, providers!inner(tenant_id)"
+      "id, provider_id, budget, spent, daily_budget, bid_cpc, targeting, pack_impressions, billing_model, duration_days, start_at, end_at, providers!inner(tenant_id)"
     )
     .eq("status", "active")
-    .gt("budget", 0)
     .eq("providers.tenant_id", tenantId);
 
   if (!campaigns?.length) return [];
 
-  const campaignIds = campaigns.map((c: any) => c.id);
+  // Filter: budget > 0 for non-time-based; time-based must be within date range
+  const activeCampaigns = (campaigns as any[]).filter((c) => {
+    if (c.billing_model === "time_based") {
+      if (!c.start_at || !c.end_at) return false;
+      return now >= c.start_at && now <= c.end_at;
+    }
+    return Number(c.budget) > 0;
+  });
+
+  if (!activeCampaigns.length) return [];
+
+  const campaignIds = activeCampaigns.map((c: any) => c.id);
   const { data: eventsToday } = await supabase
     .from("ads_events")
     .select("campaign_id")
     .in("campaign_id", campaignIds)
+    .eq("event_type", "impression")
     .gte("created_at", todayStartIso);
 
   const todayCountByCampaign: Record<string, number> = {};
@@ -93,7 +106,7 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
     if (e.campaign_id) todayCountByCampaign[e.campaign_id] = (todayCountByCampaign[e.campaign_id] ?? 0) + 1;
   });
 
-  const packCampaignIds = (campaigns as any[]).filter((c) => c.pack_impressions != null).map((c) => c.id);
+  const packCampaignIds = activeCampaigns.filter((c) => c.pack_impressions != null).map((c) => c.id);
   const impressionCountByCampaign: Record<string, number> = {};
   if (packCampaignIds.length > 0) {
     const { data: impressionCounts } = await supabase
@@ -114,7 +127,22 @@ export async function runAdsAuction(params: AuctionParams): Promise<AuctionWinne
     spent: number;
     daily_budget: number | null;
   }> = [];
-  for (const c of campaigns as any[]) {
+  for (const c of activeCampaigns) {
+    if (c.billing_model === "time_based") {
+      // Time-based: always eligible while within date range (already filtered above)
+      if (excludeProviderIds.includes(c.provider_id)) continue;
+      const targeting = (c.targeting && typeof c.targeting === "object") ? c.targeting : {};
+      const dailyRate = Number(c.budget) / Math.max(Number(c.duration_days ?? 1), 1);
+      eligible.push({
+        id: c.id,
+        provider_id: c.provider_id,
+        bid_cpc: dailyRate,
+        targeting,
+        spent: Number(c.spent ?? 0),
+        daily_budget: null,
+      });
+      continue;
+    }
     if (c.pack_impressions != null) {
       const count = impressionCountByCampaign[c.id] ?? 0;
       if (count >= Number(c.pack_impressions)) continue;

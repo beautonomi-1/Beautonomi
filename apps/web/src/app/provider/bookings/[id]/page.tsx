@@ -925,20 +925,36 @@ export default function ProviderBookingDetail() {
             <h1 className="text-3xl font-semibold mb-2">
               Booking #{booking.booking_number}
             </h1>
-            <span
-              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                booking.status === "confirmed"
-                  ? "bg-green-100 text-green-800"
-                  : booking.status === "pending"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : booking.status === "cancelled"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-blue-100 text-blue-800"
-              }`}
-            >
-              {booking.status}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                  booking.status === "confirmed"
+                    ? "bg-green-100 text-green-800"
+                    : booking.status === "pending"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : booking.status === "cancelled"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+              >
+                {booking.status}
+              </span>
+              {(booking as any).booking_source === "walk_in" && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Walk-in</span>
+              )}
+              {(booking as any).group_booking_ref && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">Group</span>
+              )}
+            </div>
           </div>
+          <a
+            href={`/api/provider/bookings/${bookingId}/receipt/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
+          >
+            View Receipt PDF
+          </a>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
@@ -983,7 +999,7 @@ export default function ProviderBookingDetail() {
                   </a>
                 </div>
               )}
-              {booking.status === "completed" && bookingId && (
+              {(booking.status === "completed" || booking.status === "no_show") && bookingId && (
                 <div className="pt-2 border-t">
                   <CustomerRatingButton
                     bookingId={String(bookingId)}
@@ -1659,6 +1675,26 @@ export default function ProviderBookingDetail() {
               <span className="text-gray-600">Total</span>
               <span className="font-medium">{formatMoney(totalAmount)}</span>
             </div>
+            {Number((booking as any).discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  Discount{(booking as any).discount_code ? ` (${(booking as any).discount_code})` : ""}
+                </span>
+                <span className="font-medium text-green-600">−{formatMoney(Number((booking as any).discount_amount))}</span>
+              </div>
+            )}
+            {Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Travel fee</span>
+                <span className="font-medium">{formatMoney(Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0))}</span>
+              </div>
+            )}
+            {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Deposit required</span>
+                <span className="font-medium">{formatMoney(Number((booking as any).deposit_amount ?? 0))}</span>
+              </div>
+            )}
             {walletAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Wallet credit</span>

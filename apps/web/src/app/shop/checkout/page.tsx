@@ -378,7 +378,7 @@ export default function ProductCheckoutPage() {
                     Delivery
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {deliveryFee === 0 ? "Free" : `R${deliveryFee.toFixed(2)}`}
+                    {deliveryFee === 0 ? "Free" : `${tenantCurrency} ${deliveryFee.toFixed(2)}`}
                   </p>
                 </button>
               )}
@@ -536,7 +536,7 @@ export default function ProductCheckoutPage() {
             </div>
             {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
-                A platform service fee of R{platformFee.toFixed(2)} applies to online payments
+                A platform service fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online payments
               </div>
             )}
           </div>
@@ -546,15 +546,15 @@ export default function ProductCheckoutPage() {
             <h3 className="font-semibold text-gray-900 mb-4">Order Summary</h3>
             <div className="space-y-3 mb-4">
               {items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span className="text-gray-700">
+                <div key={item.id} className="flex justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-gray-700">
                     {item.product?.name}
                     {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
                       <span className="text-gray-500 font-normal"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
                     )}{" "}
                     x{item.quantity}
                   </span>
-                  <span className="font-medium text-gray-900">
+                  <span className="flex-shrink-0 font-medium text-gray-900 whitespace-nowrap">
                     {tenantCurrency}
                     {linePrice(item).toFixed(2)}
                   </span>

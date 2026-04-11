@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import {
   Download,
   CheckCircle2,
   XCircle,
+  Loader2,
 } from "lucide-react";
 import BulkActionsBar from "@/components/admin/BulkActionsBar";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,34 +23,66 @@ import { toast } from "sonner";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { Booking } from "@/types/beautonomi";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { VirtualList } from "@/components/ui/virtual-list";
 
-export default function AdminBookings() {
+export default function AdminBookingsWrapper() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-zinc-50/50 flex items-center justify-center"><LoadingTimeout loadingMessage="Loading bookings..." /></div>}>
+      <AdminBookings />
+    </Suspense>
+  );
+}
+
+function AdminBookings() {
+  const urlParams = useSearchParams();
+  const initialProviderId = urlParams.get("provider_id") ?? "";
+  const initialCustomerId = urlParams.get("customer_id") ?? "";
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [serverSearch, setServerSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { format: fmtMoney } = useReportCurrency();
   const [dateFilter, setDateFilter] = useState<string>("");
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(!!initialProviderId || !!initialCustomerId);
   const [selectedBookingIds, setSelectedBookingIds] = useState<Set<string>>(new Set());
   const [isSelectAll, setIsSelectAll] = useState(false);
+  const [providerIdFilter, setProviderIdFilter] = useState(initialProviderId);
+  const [customerIdFilter, setCustomerIdFilter] = useState(initialCustomerId);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     loadBookings();
-  }, [statusFilter, dateFilter]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters change
+  }, [statusFilter, dateFilter, serverSearch, providerIdFilter, customerIdFilter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setServerSearch(searchQuery.trim());
+    }, 400);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchQuery]);
 
   const loadBookings = async () => {
     try {
-      setIsLoading(true);
+      if (bookings.length > 0) setIsSearching(true);
+      else setIsLoading(true);
       setError(null);
 
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (dateFilter) params.set("date", dateFilter);
+      if (serverSearch) params.set("search", serverSearch);
+      if (providerIdFilter) params.set("provider_id", providerIdFilter);
+      if (customerIdFilter) params.set("customer_id", customerIdFilter);
       const response = await fetcher.get<{ data?: Booking[] }>(
         `/api/admin/bookings?${params.toString()}`
       );
@@ -65,6 +98,7 @@ export default function AdminBookings() {
       console.error("Error loading bookings:", err);
     } finally {
       setIsLoading(false);
+      setIsSearching(false);
     }
   };
 
@@ -115,11 +149,7 @@ export default function AdminBookings() {
     }
   };
 
-  const filteredBookings = bookings.filter((booking) => {
-    const matchesSearch =
-      (booking.booking_number ?? "").toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesSearch;
-  });
+  const filteredBookings = bookings;
 
   const groupedBookings = {
     all: filteredBookings,
@@ -199,7 +229,7 @@ export default function AdminBookings() {
               </div>
               <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 shadow-lg hover:scale-[1.02] transition-transform">
                 <p className="text-sm font-light text-gray-600 mb-1">Revenue</p>
-                <p className="text-2xl font-semibold tracking-tight text-gray-900">R {stats.total_revenue.toLocaleString()}</p>
+                <p className="text-2xl font-semibold tracking-tight text-gray-900">{fmtMoney(stats.total_revenue)}</p>
               </div>
             </div>
 
@@ -207,9 +237,11 @@ export default function AdminBookings() {
             <div className="mb-6 space-y-4">
               <div className="flex gap-4">
                 <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                  {isSearching
+                    ? <Loader2 className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[#FF0077] w-4 h-4 animate-spin" />
+                    : <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />}
                   <Input
-                    placeholder="Search by customer, provider, or booking number..."
+                    placeholder="Search by customer name, provider name, email, phone, or booking #..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="pl-10 backdrop-blur-xl bg-white/80 border border-white/40 focus:border-[#FF0077] focus:ring-[#FF0077] rounded-xl"
@@ -258,7 +290,7 @@ export default function AdminBookings() {
                   <div
                     className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-4 space-y-4"
                   >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="text-sm font-medium mb-2 block">Status</label>
                   <select
@@ -283,7 +315,30 @@ export default function AdminBookings() {
                     onChange={(e) => setDateFilter(e.target.value)}
                   />
                 </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Provider ID</label>
+                  <Input
+                    placeholder="Filter by provider UUID"
+                    value={providerIdFilter}
+                    onChange={(e) => setProviderIdFilter(e.target.value.trim())}
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Customer ID</label>
+                  <Input
+                    placeholder="Filter by customer UUID"
+                    value={customerIdFilter}
+                    onChange={(e) => setCustomerIdFilter(e.target.value.trim())}
+                  />
+                </div>
               </div>
+              {(providerIdFilter || customerIdFilter || dateFilter || statusFilter !== "all") && (
+                <Button variant="ghost" size="sm" className="text-xs text-gray-500 mt-2" onClick={() => {
+                  setProviderIdFilter(""); setCustomerIdFilter(""); setDateFilter(""); setStatusFilter("all");
+                }}>
+                  Clear all filters
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -509,13 +564,18 @@ function BookingCard({
                 <div className="flex items-center gap-2">
                   <User className="w-4 h-4" />
                   <span>
-                    <span className="font-medium">Customer ID:</span> {booking.customer_id}
+                    <span className="font-medium">Customer:</span>{" "}
+                    {(booking as any).customer_name || booking.customer_id?.slice(0, 8)}
+                    {(booking as any).customer_email && (
+                      <span className="text-gray-400 ml-1">({(booking as any).customer_email})</span>
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4" />
                   <span>
-                    <span className="font-medium">Provider ID:</span> {booking.provider_id}
+                    <span className="font-medium">Provider:</span>{" "}
+                    {(booking as any).provider_name || booking.provider_id?.slice(0, 8)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">

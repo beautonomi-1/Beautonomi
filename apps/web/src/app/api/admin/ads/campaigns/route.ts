@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
     }
 
     const selectCols =
-      "id, provider_id, status, budget, spent, bid_cpc, daily_budget, pack_impressions, start_at, end_at, created_at, updated_at";
+      "id, provider_id, status, budget, spent, bid_cpc, daily_budget, pack_impressions, billing_model, duration_days, start_at, end_at, created_at, updated_at";
 
     let listQuery = admin.from("ads_campaigns").select(selectCols).order("updated_at", { ascending: false });
 
@@ -68,6 +68,8 @@ export async function GET(request: NextRequest) {
       bid_cpc: number;
       daily_budget: number | null;
       pack_impressions: number | null;
+      billing_model: string | null;
+      duration_days: number | null;
       start_at: string | null;
       end_at: string | null;
       created_at: string;
@@ -110,11 +112,13 @@ export async function GET(request: NextRequest) {
         provider_id: r.provider_id,
         provider_name: providerNameById.get(r.provider_id) ?? "Provider",
         status: r.status,
+        billing_model: r.billing_model ?? "cpc_budget",
         budget: Number(r.budget),
         spent: Number(r.spent),
         bid_cpc: Number(r.bid_cpc),
         daily_budget: r.daily_budget != null ? Number(r.daily_budget) : null,
         pack_impressions: r.pack_impressions != null ? Number(r.pack_impressions) : null,
+        duration_days: r.duration_days != null ? Number(r.duration_days) : null,
         start_at: r.start_at,
         end_at: r.end_at,
         created_at: r.created_at,

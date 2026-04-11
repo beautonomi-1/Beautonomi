@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 
 interface ChannelPrefs {
@@ -83,7 +84,7 @@ const DIGEST_OPTIONS = [
 ];
 
 export default function NotificationPreferencesScreen() {
-  const { data: prefs, loading, refresh } =
+  const { data: prefs, loading, error: loadError, refresh } =
     useApi<NotifPreferences>("/api/provider/notification-preferences");
   const { execute: savePrefs, loading: saving } = useApiMutation("patch");
   const { execute: testNotif, loading: testing } = useApiMutation("post");
@@ -166,6 +167,15 @@ export default function NotificationPreferencesScreen() {
   }
 
   if (loading && !prefs) return <LoadingState />;
+
+  if (loadError && !prefs) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader title="Notification Preferences" showBack subtitle="Control how you receive alerts" />
+        <ErrorState message={typeof loadError === "string" ? loadError : "Failed to load preferences"} onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer>

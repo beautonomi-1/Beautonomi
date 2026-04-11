@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, TeamMember } from "@/lib/provider-portal/types";
 import { fetcher, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
@@ -1205,6 +1205,76 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const handler = () => handleCreateAppointmentRef.current();
     window.addEventListener("openAppointmentDialog", handler);
     return () => window.removeEventListener("openAppointmentDialog", handler);
+  }, []);
+
+  // Read URL search params for prefill from waitlist / client profile / external navigation
+  const searchParams = useSearchParams();
+  const prefillHandledRef = useRef(false);
+  useEffect(() => {
+    if (prefillHandledRef.current) return;
+    const shouldOpenNew = searchParams.get("new") === "1";
+    const customerId = searchParams.get("customerId");
+    if (!shouldOpenNew && !customerId) return;
+    if (salons.length === 0 || teamMembers.length === 0) return;
+    prefillHandledRef.current = true;
+
+    const currentLocation = selectedLocationId
+      ? salons.find(s => s.id === selectedLocationId)
+      : salons[0];
+    const prefillStaffId = searchParams.get("staff_id") || "";
+    const staffId = prefillStaffId || (filteredTeamMembers[0]?.id ?? "");
+    const staffMember = teamMembers.find(m => m.id === staffId);
+    const prefillDate = searchParams.get("date") || format(nowInTz(businessTz), "yyyy-MM-dd");
+    const prefillTime = searchParams.get("time") || "";
+
+    const appointmentKind = searchParams.get("walk_in") === "true"
+      ? "walk_in" as const
+      : undefined;
+
+    openCreateMode({
+      staffId,
+      staffName: staffMember?.name,
+      date: prefillDate,
+      startTime: prefillTime,
+      locationId: currentLocation?.id,
+      locationName: currentLocation?.name,
+      appointmentKind,
+      prefillClientName: searchParams.get("client_name") || undefined,
+      prefillClientEmail: searchParams.get("client_email") || undefined,
+      prefillClientPhone: searchParams.get("client_phone") || undefined,
+      prefillCustomerId: customerId || undefined,
+      prefillServiceId: searchParams.get("service_id") || undefined,
+    });
+
+    // Clean up the URL params so a page refresh doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete("new");
+    url.searchParams.delete("customerId");
+    url.searchParams.delete("client_name");
+    url.searchParams.delete("client_email");
+    url.searchParams.delete("client_phone");
+    url.searchParams.delete("service_id");
+    url.searchParams.delete("staff_id");
+    url.searchParams.delete("time");
+    url.searchParams.delete("walk_in");
+    url.searchParams.delete("waitlist_entry_id");
+    window.history.replaceState({}, "", url.pathname + (url.search || ""));
+  }, [searchParams, salons, teamMembers, selectedLocationId, businessTz]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard shortcuts for front-desk rapid booking
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (isInputFocused) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        e.preventDefault();
+        handleCreateAppointmentRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, []);
 
   const _handleEditAppointment = () => {

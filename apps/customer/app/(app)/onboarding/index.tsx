@@ -50,6 +50,9 @@ import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
 
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
+export function onboardingDoneKey(uid?: string | null): string {
+  return uid ? `${ONBOARDING_DONE_KEY}:${uid}` : ONBOARDING_DONE_KEY;
+}
 const TOTAL_STEPS = 6;
 const PRIMARY = Colors.primary;
 
@@ -126,7 +129,7 @@ function SectionLabel({ children, required }: { children: ReactNode; required?: 
 ──────────────────────────────────────────────────────────── */
 export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
-  const { refreshSession } = useAuth();
+  const { refreshSession, user } = useAuth();
   const { pickWithOptions, pickFromCamera, loading: pickLoading } = useImagePicker();
 
   const [step, setStep] = useState(1);
@@ -186,7 +189,7 @@ export default function CustomerOnboarding() {
         const oc = await api.get<{ completed?: boolean }>("/api/me/onboarding/complete");
         if (cancelled) return;
         if (!oc.error && oc.data?.completed === true) {
-          await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+          await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
           const pending = await consumePostOnboardingHref();
           router.replace(pending ? resolvePostLoginHref(pending) : "/(app)/(tabs)/home");
           return;
@@ -408,7 +411,7 @@ export default function CustomerOnboarding() {
         Alert.alert("Couldn't complete setup", res.error.message || "Please try again.");
         return;
       }
-      await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+      await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {

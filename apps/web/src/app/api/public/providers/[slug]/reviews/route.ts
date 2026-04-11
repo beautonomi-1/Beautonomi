@@ -53,6 +53,8 @@ export async function GET(
       rating?: number;
       comment?: string;
       created_at: string;
+      provider_response?: string | null;
+      provider_response_at?: string | null;
       users?:
         | { id?: string; full_name?: string; avatar_url?: string; email?: string }
         | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }>
@@ -68,6 +70,8 @@ export async function GET(
         rating,
         comment,
         created_at,
+        provider_response,
+        provider_response_at,
         users:customer_id (
           id,
           full_name,
@@ -91,6 +95,8 @@ export async function GET(
           rating,
           comment,
           created_at,
+          provider_response,
+          provider_response_at,
           users:customer_id (
             id,
             full_name,
@@ -138,7 +144,7 @@ export async function GET(
       return /anon/i.test(value.trim());
     };
 
-    const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; users?: { id?: string; full_name?: string; avatar_url?: string; email?: string } | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }> | null }) => {
+    const formattedReviews = (reviews || []).map((review: { id: string; rating?: number; comment?: string; created_at: string; provider_response?: string | null; provider_response_at?: string | null; users?: { id?: string; full_name?: string; avatar_url?: string; email?: string } | Array<{ id?: string; full_name?: string; avatar_url?: string; email?: string }> | null }) => {
       const userRaw = review.users;
       const user = userRaw == null ? {} : (Array.isArray(userRaw) ? userRaw[0] : userRaw) as { id?: string; full_name?: string; avatar_url?: string; email?: string };
       const fallbackFromEmail = displayNameFromEmail(user.email);
@@ -168,9 +174,11 @@ export async function GET(
           hour: "numeric",
           minute: "2-digit",
         }),
-        rating: review.rating ?? 5,
+        rating: review.rating ?? 0,
         text: review.comment ?? "",
         avatar_url: user.avatar_url ?? "",
+        provider_response: review.provider_response ?? null,
+        provider_response_at: review.provider_response_at ?? null,
       };
     });
 

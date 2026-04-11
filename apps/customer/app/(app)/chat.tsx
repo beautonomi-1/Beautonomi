@@ -74,7 +74,7 @@ export default function ChatScreen() {
 
         const res = await api.get<any>(`/api/me/messages?${queryParams}`);
         if (res.error) {
-          setMessages([]);
+          if (!cursor) setResolveError(res.error.message || "Could not load messages");
           return;
         }
 
@@ -361,7 +361,7 @@ export default function ChatScreen() {
 
   const chatTitle = providerName && !id ? providerName : "Chat";
 
-  if (resolveError && !id) {
+  if (resolveError && messages.length === 0) {
     return (
       <>
         <Stack.Screen options={{ title: chatTitle, headerBackTitle: "Back" }} />

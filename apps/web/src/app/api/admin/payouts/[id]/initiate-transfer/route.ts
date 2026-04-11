@@ -186,6 +186,47 @@ export async function POST(
       },
     });
 
+    try {
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      const tenantRegionForFormat = await getTenantRegionConfig(tenantId);
+      const fmtCurrency = tenantRegionForFormat?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+      const { formatCurrency } = await import("@/lib/utils");
+      const amountFormatted = formatCurrency(Number(p.amount || 0), p.currency || fmtCurrency);
+
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", p.provider_id)
+        .single();
+
+      if (provider) {
+        const provUserId = (provider as { user_id?: string }).user_id;
+        if (provUserId) {
+          await sendToUser(
+            provUserId,
+            {
+              title: "Payout Transfer Initiated",
+              message: `Your payout of ${amountFormatted} is being transferred to your bank account.`,
+              data: { type: "payout_transfer_initiated", payout_id: id },
+              url: "/provider/finance",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+          await supabase.from("notifications").insert({
+            user_id: provUserId,
+            type: "system",
+            title: "Payout Transfer Initiated",
+            message: `Your payout of ${amountFormatted} is being transferred to your bank account.`,
+            data: { payout_id: id, amount: p.amount, transfer_code: paystack.data.transfer_code },
+            action_url: "/provider/payouts",
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Error sending transfer notification:", notifErr);
+    }
+
     return NextResponse.json({ data: { payout: updatedPayout, transfer: paystack.data }, error: null });
   } catch (error: unknown) {
     console.error("Error initiating payout transfer:", error);

@@ -1,23 +1,10 @@
 "use client";
 import React from "react";
-import dynamic from "next/dynamic";
 import EmailVerificationBanner from "@/components/global/email-verification-banner";
 import { UpcomingBookingPreview } from "./upcoming-booking-preview";
 import { useAuth } from "@/providers/AuthProvider";
 import AccountHubGrid from "./account-hub-grid";
-
-const AccountProfileSections = dynamic(
-  () => import("./account-profile-sections"),
-  {
-    loading: () => (
-      <div className="space-y-4" aria-busy="true">
-        <div className="rounded-2xl border border-gray-100 bg-gray-50/90 p-6 md:p-8 animate-pulse min-h-[10rem]" />
-        <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-5 h-20 animate-pulse" />
-      </div>
-    ),
-    ssr: false,
-  }
-);
+import AccountProfileSections from "./account-profile-sections";
 
 const AccountSettingsPage: React.FC = () => {
   const { user } = useAuth();

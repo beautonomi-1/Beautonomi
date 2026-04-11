@@ -265,6 +265,20 @@ export async function POST(request: NextRequest) {
 
         const { booking } = createResult;
 
+        // 4b. Consume the hold so it no longer blocks availability
+        if (validatedDraft.hold_id) {
+          const { count } = await supabaseAdmin
+            .from("booking_holds")
+            .update({ hold_status: "consumed" })
+            .eq("id", validatedDraft.hold_id)
+            .eq("hold_status", "active");
+          console.log("[bookings] hold consumed", {
+            holdId: validatedDraft.hold_id,
+            bookingId: booking.id,
+            rowsUpdated: count ?? "unknown",
+          });
+        }
+
         // 5. Process payment (gift card, wallet, Paystack card, cash)
         // If payment setup fails after the row exists, release the slot (cancel) so retry is not a false 409.
         let bookingIdPendingRelease = booking.id;

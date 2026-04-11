@@ -8,10 +8,18 @@
  * - VIEW: View existing appointment details
  * - EDIT: Edit existing appointment
  * 
+ * Types, pricing, and invoice generation are extracted to:
+ * - ./types.ts
+ * - ./pricing.ts
+ * - ./invoice-generator.ts
+ * 
  * @module components/appointments/AppointmentSidebar
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason, PricingResult } from "./types";
+import { calculateBookingPricing } from "./pricing";
+import { generateInvoiceHTMLFromData as generateInvoiceHTMLFromDataUtil } from "./invoice-generator";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -130,103 +138,7 @@ import { isCompleteE164 } from "@/lib/phone";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { AvailabilitySlotPicker } from "./AvailabilitySlotPicker";
 
-// ============================================================================
-// TYPES
-// ============================================================================
-
-interface AppointmentSidebarProps {
-  teamMembers: TeamMember[];
-  services: ServiceItem[];
-  products?: ProductItem[]; // Optional products list
-  locations: Salon[];
-  onAppointmentCreated?: (appointment: Appointment) => void;
-  onAppointmentUpdated?: (appointment: Appointment) => void;
-  onAppointmentDeleted?: (appointmentId: string) => void;
-  onRefresh?: () => void;
-}
-
-interface AppointmentService {
-  id: string;
-  serviceId: string;
-  serviceName: string;
-  duration: number;
-  price: number;
-  customization?: string;
-  addons?: Array<{
-    id: string;
-    addonId: string;
-    addonName: string;
-    price: number;
-    duration: number;
-  }>;
-  variantId?: string;
-  variantName?: string;
-}
-
-interface AppointmentProduct {
-  id: string;
-  productId: string;
-  productName: string;
-  productVariantId?: string | null;
-  productVariantName?: string; // e.g. "250ml" for display
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-}
-
-interface CreateFormData {
-  clientName: string;
-  clientEmail: string;
-  clientPhone: string;
-  kind: AppointmentKind;
-  locationId: string;
-  staffId: string;
-  date: string;
-  startTime: string;
-  duration: number;
-  serviceId: string; // Keep for backward compatibility
-  serviceName: string; // Keep for backward compatibility
-  price: number; // Keep for backward compatibility
-  services: AppointmentService[]; // Multiple services
-  products: AppointmentProduct[]; // Products
-  notes: string;
-  status: string; // For editing existing appointments
-  // Pricing breakdown
-  subtotal: number;
-  discountAmount: number;
-  discountCode?: string;
-  discountReason?: string;
-  taxAmount: number;
-  taxRate: number;
-  serviceFeePercentage: number;
-  serviceFeeAmount: number;
-  tipAmount: number;
-  totalAmount: number;
-  // At-home fields
-  addressLine1: string;
-  addressLine2: string;
-  addressCity: string;
-  addressPostalCode: string;
-  addressCountry: string;
-  addressLatitude: number | null;
-  addressLongitude: number | null;
-  travelFee: number;
-  // Travel override fields (Phase 3)
-  travelTimeOverride: number | null;
-  travelFeeOverride: number | null;
-  travelOverrideReason: string;
-  hasTravelOverride: boolean;
-  referralSourceId: string;
-  /** Set when client is chosen from search or after creating a client (required for recurring series). */
-  clientId: string;
-  isRecurring: boolean;
-  recurrencePattern: "daily" | "weekly" | "biweekly" | "monthly";
-  recurrenceEndDate: string;
-  paymentMethod: "pay_later" | "cash" | "yoco_pos" | "payment_link" | "gift_card";
-  giftCardCode: string;
-}
-
-type CancelReason = "normal" | "late_cancel" | "no_show";
+// Types are now in ./types.ts
 
 // ============================================================================
 // COMPONENT
@@ -299,6 +211,13 @@ export function AppointmentSidebar({
   // Buffer time settings state - loaded from API
   const [_bufferSettings, setBufferSettings] = useState({ bufferBeforeMinutes: 0, bufferAfterMinutes: 0, cleanupTimeMinutes: 0 });
 
+  // Tax-inclusive flag — SA VAT default is true (prices include tax); loaded from provider settings
+  const [taxInclusiveMode, setTaxInclusiveMode] = useState(true);
+
+  // Deposit settings - loaded from provider online booking settings
+  const [depositSettings, setDepositSettings] = useState<{ required: boolean; percentage: number }>({ required: false, percentage: 0 });
+  const [collectDeposit, setCollectDeposit] = useState(false);
+
   // Form state for CREATE/EDIT
   const [formData, setFormData] = useState<CreateFormData>({
     clientName: "",
@@ -343,7 +262,6 @@ export function AppointmentSidebar({
     recurrencePattern: "weekly",
     recurrenceEndDate: "",
     paymentMethod: "pay_later",
-    giftCardCode: "",
   });
 
   /** Live hints from GET /api/provider/bookings/check-availability */
@@ -1053,6 +971,23 @@ export function AppointmentSidebar({
               cleanupTimeMinutes: bufferData.data?.cleanupTimeMinutes || 0,
             });
           }
+
+          // Load deposit + tax-inclusive settings from provider payment settings
+          const depositResponse = await fetch("/api/provider/settings/payments");
+          if (depositResponse.ok) {
+            const depositData = await depositResponse.json();
+            const d = depositData?.data;
+            if (d?.deposit_required || d?.depositRequired || d?.requiresDeposit) {
+              setDepositSettings({
+                required: true,
+                percentage: Number(d.deposit_percent ?? d.depositPercent ?? d.deposit_percentage ?? d.depositPercentage ?? 30),
+              });
+            }
+            // Tax-inclusive mode — provider.tax_inclusive (defaults to true for SA VAT)
+            if (d?.taxInclusive !== undefined) {
+              setTaxInclusiveMode(d.taxInclusive);
+            }
+          }
         } catch (error) {
           console.warn("Failed to load settings, using defaults:", error);
         }
@@ -1060,19 +995,42 @@ export function AppointmentSidebar({
     loadSettings();
   }, []); // Run once on mount so tax/travel/settings are ready when sidebar opens
 
-  // Handle Escape key to close sidebar
+  // Keyboard shortcuts: Escape to close, Ctrl+Enter to submit
+  const handleCreateRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (!isOpen) return;
     
-    const handleEscape = (e: KeyboardEvent) => {
+    const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         closeSidebar();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter" && mode === "create" && handleCreateRef.current) {
+        e.preventDefault();
+        handleCreateRef.current();
       }
     };
     
-    window.addEventListener("keydown", handleEscape);
-    return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, closeSidebar]);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isOpen, closeSidebar, mode]);
+
+  // Draft auto-save: persist create-mode form data to localStorage
+  const DRAFT_KEY = "beautonomi_booking_draft";
+  useEffect(() => {
+    if (mode !== "create" || !isOpen) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify(formData));
+      } catch { /* quota exceeded or private mode */ }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [formData, mode, isOpen]);
+
+  // Clear draft on successful create or sidebar close
+  const clearDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+  }, []);
 
   // Fetch full booking data when opening in view mode (calendar passes expanded/incomplete data)
   useEffect(() => {
@@ -1112,30 +1070,12 @@ export function AppointmentSidebar({
     return () => window.removeEventListener('open-appointment-sidebar', handleOpenSidebar);
   }, []);
 
-  // Helper function to calculate pricing
-  const calculatePricing = useCallback((servicesList: AppointmentService[], productsList: AppointmentProduct[], travelFee: number, discountAmount: number, taxRate: number, serviceFeePercentage: number, tipAmount: number) => {
-    const servicesSubtotal = servicesList.reduce((sum, s) => {
-      const servicePrice = s.price;
-      const addonsPrice = s.addons?.reduce((a, ad) => a + ad.price, 0) || 0;
-      return sum + servicePrice + addonsPrice;
-    }, 0);
-    const productsSubtotal = productsList.reduce((sum, p) => sum + p.totalPrice, 0);
-    const subtotal = servicesSubtotal + productsSubtotal;
-    const afterDiscount = subtotal - discountAmount;
-    // Tax is calculated on the subtotal after discount
-    const taxAmount = afterDiscount * taxRate;
-    // Service fee is calculated on the subtotal after discount (NOT including tax)
-    const serviceFeeAmount = afterDiscount * serviceFeePercentage;
-    const totalAmount = afterDiscount + taxAmount + travelFee + serviceFeeAmount + tipAmount;
-    
-    return {
-      subtotal,
-      afterDiscount,
-      taxAmount,
-      serviceFeeAmount,
-      totalAmount,
-    };
-  }, []);
+  // Helper function to calculate pricing — passes tax-inclusive mode from provider settings
+  const calculatePricing = useCallback(
+    (servicesList: AppointmentService[], productsList: AppointmentProduct[], travelFee: number, discountAmount: number, taxRate: number, serviceFeePercentage: number, tipAmount: number) =>
+      calculateBookingPricing(servicesList, productsList, travelFee, discountAmount, taxRate, serviceFeePercentage, tipAmount, { taxInclusive: taxInclusiveMode }),
+    [taxInclusiveMode],
+  );
 
   // Load service variants
   const loadServiceVariants = useCallback(async (serviceId: string) => {
@@ -1207,15 +1147,7 @@ export function AppointmentSidebar({
       // Provider-created appointments always have 0 service fee
       const serviceFeeToUse = mode === "create" ? 0 : prev.serviceFeePercentage;
       
-      // Auto-apply 5% tip for the first service in CREATE mode
-      const isFirstService = prev.services.length === 0 && mode === "create";
-      let tipToUse = prev.tipAmount;
-      
-      if (isFirstService) {
-        // Calculate 5% of the new subtotal
-        const tempPricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, 0);
-        tipToUse = tempPricing.subtotal * 0.05; // 5% default tip
-      }
+      const tipToUse = prev.tipAmount;
       
       const pricing = calculatePricing(newServices, prev.products, prev.travelFee, prev.discountAmount, prev.taxRate, serviceFeeToUse, tipToUse);
       return {
@@ -1525,158 +1457,8 @@ export function AppointmentSidebar({
 
 
   // Generate invoice HTML from API data
-  const generateInvoiceHTMLFromData = (invoiceData: any) => {
-    const displayCurrency =
-      (invoiceData.currency as string | undefined)?.trim() ||
-      portalProvider?.currency?.trim() ||
-      LAST_RESORT_CURRENCY;
-    const formatCurrency = (amount: number) => {
-      return `${displayCurrency} ${amount.toFixed(2)}`;
-    };
-
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Invoice - ${invoiceData.invoice_number}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .invoice-details { display: flex; justify-content: space-between; margin-bottom: 30px; }
-            .section { margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background-color: #f5f5f5; }
-            .total { font-size: 18px; font-weight: bold; }
-            .text-right { text-align: right; }
-            .summary { margin-top: 20px; }
-            .summary-row { display: flex; justify-content: space-between; padding: 5px 0; }
-            .summary-total { border-top: 2px solid #000; margin-top: 10px; padding-top: 10px; font-weight: bold; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>INVOICE</h1>
-            <p>Invoice #: ${invoiceData.invoice_number}</p>
-            <p>Date: ${invoiceData.invoice_date}</p>
-            ${invoiceData.booking_date ? `<p>Booking Date: ${invoiceData.booking_date}</p>` : ''}
-          </div>
-          
-          <div class="invoice-details">
-            <div>
-              <h3>From:</h3>
-              <p><strong>${invoiceData.provider.name}</strong></p>
-              ${invoiceData.provider.email ? `<p>Email: ${invoiceData.provider.email}</p>` : ''}
-              ${invoiceData.provider.phone ? `<p>Phone: ${invoiceData.provider.phone}</p>` : ''}
-              ${invoiceData.provider.address.line1 ? `<p>${invoiceData.provider.address.line1}</p>` : ''}
-              ${invoiceData.provider.address.line2 ? `<p>${invoiceData.provider.address.line2}</p>` : ''}
-              ${invoiceData.provider.address.city ? `<p>${invoiceData.provider.address.city}${invoiceData.provider.address.state ? ', ' + invoiceData.provider.address.state : ''} ${invoiceData.provider.address.postal_code || ''}</p>` : ''}
-            </div>
-            <div>
-              <h3>Bill To:</h3>
-              <p><strong>${invoiceData.customer.name}</strong></p>
-              ${invoiceData.customer.email ? `<p>Email: ${invoiceData.customer.email}</p>` : ''}
-              ${invoiceData.customer.phone ? `<p>Phone: ${invoiceData.customer.phone}</p>` : ''}
-            </div>
-          </div>
-          
-          ${invoiceData.location_type === 'at_home' && invoiceData.service_address ? `
-            <div class="section" style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
-              <h3 style="margin-top: 0;">Service Location:</h3>
-              ${invoiceData.service_address.line1 ? `<p style="margin: 5px 0;">${invoiceData.service_address.line1}</p>` : ''}
-              ${invoiceData.service_address.line2 ? `<p style="margin: 5px 0;">${invoiceData.service_address.line2}</p>` : ''}
-              ${invoiceData.service_address.city ? `<p style="margin: 5px 0;">${invoiceData.service_address.city}${invoiceData.service_address.state ? ', ' + invoiceData.service_address.state : ''} ${invoiceData.service_address.postal_code || ''}</p>` : ''}
-            </div>
-          ` : ''}
-          
-          <div class="section">
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th class="text-right">Quantity</th>
-                  <th class="text-right">Unit Price</th>
-                  <th class="text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${invoiceData.items.map((item: any) => `
-                  <tr>
-                    <td>${item.description}${item.staff ? ` (${item.staff})` : ''}${item.duration ? ` (${item.duration} min)` : ''}</td>
-                    <td class="text-right">${item.quantity}</td>
-                    <td class="text-right">${formatCurrency(item.unit_price)}</td>
-                    <td class="text-right">${formatCurrency(item.total)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-          
-          <div class="summary">
-            <div class="summary-row">
-              <span>Subtotal:</span>
-              <span>${formatCurrency(invoiceData.subtotal)}</span>
-            </div>
-            ${invoiceData.discount_amount > 0 ? `
-              <div class="summary-row">
-                <span>Discount${invoiceData.discount_reason ? ` (${invoiceData.discount_reason})` : ''}:</span>
-                <span>-${formatCurrency(invoiceData.discount_amount)}</span>
-              </div>
-            ` : ''}
-            ${invoiceData.travel_fee > 0 ? `
-              <div class="summary-row">
-                <span>Travel Fee:</span>
-                <span>${formatCurrency(invoiceData.travel_fee)}</span>
-              </div>
-            ` : ''}
-            ${invoiceData.tax_amount > 0 ? `
-              <div class="summary-row">
-                <span>Tax${invoiceData.tax_rate > 0 ? ` (${invoiceData.tax_rate.toFixed(1)}%)` : ''}:</span>
-                <span>${formatCurrency(invoiceData.tax_amount)}</span>
-              </div>
-            ` : ''}
-            ${(invoiceData as any).service_fee_amount > 0 ? `
-              <div class="summary-row">
-                <span>Service Fee${(invoiceData as any).service_fee_percentage > 0 ? ` (${((invoiceData as any).service_fee_percentage * 100).toFixed(1)}%)` : ''}:</span>
-                <span>${formatCurrency((invoiceData as any).service_fee_amount)}</span>
-              </div>
-            ` : ''}
-            ${invoiceData.tip_amount > 0 ? `
-              <div class="summary-row">
-                <span>Tip:</span>
-                <span>${formatCurrency(invoiceData.tip_amount)}</span>
-              </div>
-            ` : ''}
-            <div class="summary-row summary-total">
-              <span>Total Amount:</span>
-              <span>${formatCurrency(invoiceData.total_amount)}</span>
-            </div>
-          </div>
-          
-          ${invoiceData.payment_status ? `
-            <div class="section" style="margin-top: 20px; padding: 10px; background-color: ${
-              invoiceData.payment_status === 'paid' ? '#d4edda' : 
-              invoiceData.payment_status === 'pending' ? '#fff3cd' : '#f8d7da'
-            }; border-radius: 5px;">
-              <p style="margin: 0;"><strong>Payment Status:</strong> ${
-                invoiceData.payment_status === 'paid' ? 'PAID' :
-                invoiceData.payment_status === 'pending' ? 'PENDING' :
-                invoiceData.payment_status === 'failed' ? 'FAILED' :
-                invoiceData.payment_status.toUpperCase()
-              }</p>
-            </div>
-          ` : ''}
-          
-          ${invoiceData.notes ? `
-            <div class="section">
-              <h3>Notes:</h3>
-              <p>${invoiceData.notes}</p>
-            </div>
-          ` : ''}
-        </body>
-      </html>
-    `;
-  };
+  const generateInvoiceHTMLFromData = (invoiceData: any) =>
+    generateInvoiceHTMLFromDataUtil(invoiceData, portalProvider?.currency);
 
   // Generate invoice HTML (legacy function for backward compatibility)
   const _generateInvoiceHTML = (data: CreateFormData, appointment: Appointment) => {
@@ -1806,12 +1588,12 @@ export function AppointmentSidebar({
           : AppointmentKind.IN_SALON;
 
       setFormData(_prev => ({
-        clientName: "",
-        clientEmail: "",
-        clientPhone: "",
+        clientName: draftSlot.prefillClientName || "",
+        clientEmail: draftSlot.prefillClientEmail || "",
+        clientPhone: draftSlot.prefillClientPhone || "",
         kind: initialKind,
         locationId: draftSlot.locationId || (locations[0]?.id ?? ""),
-        staffId: staffIdToUse, // Always use draftSlot.staffId if available, otherwise preserve existing
+        staffId: staffIdToUse,
         date: draftSlot.date,
         startTime: draftSlot.startTime,
         duration: 60,
@@ -1824,10 +1606,10 @@ export function AppointmentSidebar({
         status: DEFAULT_APPOINTMENT_STATUS,
         subtotal: pricing.subtotal,
         discountAmount: 0,
-        serviceFeePercentage: 0, // Provider-created appointments have no service fee
-        serviceFeeAmount: 0, // Provider-created appointments have no service fee
+        serviceFeePercentage: 0,
+        serviceFeeAmount: 0,
         taxAmount: pricing.taxAmount,
-        taxRate: defaultTaxRate, // This will be updated when provider settings load
+        taxRate: defaultTaxRate,
         tipAmount: 0,
         totalAmount: pricing.totalAmount,
         addressLine1: "",
@@ -1843,13 +1625,52 @@ export function AppointmentSidebar({
         travelOverrideReason: "",
         hasTravelOverride: false,
         referralSourceId: "",
-        clientId: "",
+        clientId: draftSlot.prefillCustomerId || "",
         isRecurring: false,
         recurrencePattern: "weekly",
         recurrenceEndDate: "",
         paymentMethod: "pay_later",
-        giftCardCode: "",
       }));
+
+      // Restore draft from localStorage if no explicit prefills
+      if (!draftSlot.prefillCustomerId && !draftSlot.prefillClientName && !draftSlot.prefillServiceId) {
+        try {
+          const saved = localStorage.getItem(DRAFT_KEY);
+          if (saved) {
+            const draft = JSON.parse(saved) as Partial<CreateFormData>;
+            if (draft.clientName || draft.services?.length || draft.notes) {
+              setFormData(prev => ({
+                ...prev,
+                clientName: draft.clientName || prev.clientName,
+                clientEmail: draft.clientEmail || prev.clientEmail,
+                clientPhone: draft.clientPhone || prev.clientPhone,
+                clientId: draft.clientId || prev.clientId,
+                notes: draft.notes || prev.notes,
+                services: draft.services?.length ? draft.services : prev.services,
+                products: draft.products?.length ? draft.products : prev.products,
+              }));
+            }
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      // If a customerId was prefilled, trigger client search to resolve the name
+      if (draftSlot.prefillCustomerId) {
+        fetcher.get<{ data: Array<{ id: string; full_name: string; email?: string; phone?: string }> }>(
+          `/api/provider/clients?customer_id=${encodeURIComponent(draftSlot.prefillCustomerId)}`
+        ).then((res) => {
+          const client = res?.data?.[0];
+          if (client) {
+            setFormData(prev => ({
+              ...prev,
+              clientName: client.full_name || prev.clientName,
+              clientEmail: client.email || prev.clientEmail,
+              clientPhone: client.phone || prev.clientPhone,
+              clientId: draftSlot.prefillCustomerId || prev.clientId,
+            }));
+          }
+        }).catch(() => {});
+      }
     } else if ((mode === "view" || mode === "edit") && selectedAppointment) {
       const bookingSource = (selectedAppointment as any).booking_source;
       const kind = selectedAppointment.location_type === "at_home"
@@ -2057,8 +1878,12 @@ export function AppointmentSidebar({
         recurrencePattern: "weekly",
         recurrenceEndDate: "",
         paymentMethod: (selectedAppointment as any).payment_method || "pay_later",
-        giftCardCode: "",
       });
+
+      // Hydrate package_id from existing booking when editing
+      if ((selectedAppointment as any).package_id) {
+        setSelectedPackageId((selectedAppointment as any).package_id);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- services deliberately excluded to prevent form reset when catalog loads
   }, [mode, draftSlot, selectedAppointment, locations, calculatePricing, defaultTaxRate]);
@@ -2198,11 +2023,18 @@ export function AppointmentSidebar({
       (appointmentData as any).booking_source = formData.kind === AppointmentKind.WALK_IN ? 'walk_in' : 'provider';
       (appointmentData as any).referral_source_id = formData.referralSourceId || null;
       (appointmentData as any).payment_method = formData.paymentMethod || 'pay_later';
-      if (formData.giftCardCode?.trim()) {
-        (appointmentData as any).gift_card_code = formData.giftCardCode.trim();
-      }
+      (appointmentData as any).send_notification = sendNotification;
       // Package id — set when appointment was built from a package
       (appointmentData as any).package_id = selectedPackageId || null;
+
+      // Deposit fields — when provider chooses to collect deposit only
+      if (collectDeposit && depositSettings.required && formData.totalAmount > 0) {
+        const depositAmount = Math.ceil((formData.totalAmount * depositSettings.percentage) / 100);
+        (appointmentData as any).deposit_required = true;
+        (appointmentData as any).deposit_percentage = depositSettings.percentage;
+        (appointmentData as any).deposit_amount = depositAmount;
+        (appointmentData as any).payment_option = "deposit";
+      }
 
       // Add at-home fields if applicable
       if (formData.kind === AppointmentKind.AT_HOME) {
@@ -2274,9 +2106,16 @@ export function AppointmentSidebar({
       } else {
         const created = await providerApi.createAppointment(appointmentData as any);
         onAppointmentCreated?.(created);
-        toast.success("Appointment created successfully");
+        // Surface resource allocation warnings if present
+        const warnings = (created as any)?._warnings as string[] | undefined;
+        if (warnings?.length) {
+          toast.warning(warnings.join(" "), { duration: 8000 });
+        } else {
+          toast.success("Appointment created successfully");
+        }
       }
 
+      clearDraft();
       onRefresh?.();
       closeSidebar();
     } catch (error) {
@@ -2289,6 +2128,7 @@ export function AppointmentSidebar({
       setSaving(false);
     }
   };
+  handleCreateRef.current = handleCreate;
 
   // Handle update appointment
   const handleUpdate = async () => {
@@ -3321,7 +3161,7 @@ export function AppointmentSidebar({
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {([
                     { kind: AppointmentKind.IN_SALON, label: "In Salon", desc: "At your venue", icon: Building2, color: "gray" },
                     { kind: AppointmentKind.WALK_IN, label: "Walk-in", desc: "No booking", icon: PersonStanding, color: "amber" },
@@ -3333,7 +3173,7 @@ export function AppointmentSidebar({
                         key={kind}
                         type="button"
                         className={cn(
-                          "flex flex-col items-center gap-1 rounded-xl p-3 transition-all duration-200 border-2 text-center",
+                          "flex sm:flex-col items-center gap-2 sm:gap-1 rounded-xl p-3 transition-all duration-200 border-2 sm:text-center",
                           isActive && color === "gray" && "border-gray-900 bg-gray-900 text-white shadow-lg shadow-gray-900/20",
                           isActive && color === "amber" && "border-amber-500 bg-amber-50 text-amber-900 shadow-lg shadow-amber-500/20",
                           isActive && color === "blue" && "border-blue-500 bg-blue-50 text-blue-900 shadow-lg shadow-blue-500/20",
@@ -3350,7 +3190,7 @@ export function AppointmentSidebar({
                         }
                       >
                         <div className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center transition-colors",
+                          "w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center transition-colors",
                           isActive && color === "gray" && "bg-white/20",
                           isActive && color === "amber" && "bg-amber-200/60",
                           isActive && color === "blue" && "bg-blue-200/60",
@@ -3358,11 +3198,13 @@ export function AppointmentSidebar({
                         )}>
                           <Icon className="w-4 h-4" />
                         </div>
-                        <span className="text-xs font-semibold leading-tight">{label}</span>
-                        <span className={cn(
-                          "text-[10px] leading-tight",
-                          isActive ? "opacity-80" : "text-gray-400",
-                        )}>{desc}</span>
+                        <div className="flex flex-col sm:items-center">
+                          <span className="text-sm sm:text-xs font-semibold leading-tight">{label}</span>
+                          <span className={cn(
+                            "text-xs sm:text-[10px] leading-tight",
+                            isActive ? "opacity-80" : "text-gray-400",
+                          )}>{desc}</span>
+                        </div>
                       </button>
                     );
                   })}
@@ -4319,7 +4161,6 @@ export function AppointmentSidebar({
                         const pkg = packages.find(p => p.id === packageId);
                         if (pkg) {
                           handleAddPackage(pkg);
-                          setSelectedPackageId(null); // Reset selection
                         }
                       }}
                     >
@@ -5307,56 +5148,42 @@ export function AppointmentSidebar({
                     </button>
                   ))}
                 </div>
-                {/* Gift card input */}
-                <div className="rounded-xl border border-gray-200 p-3 space-y-2">
-                  <label className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
-                    <Tag className="w-3 h-3" />
-                    Gift Card
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="text"
-                      placeholder="Enter gift card code"
-                      value={formData.giftCardCode}
-                      onChange={(e) => setFormData(prev => ({ ...prev, giftCardCode: e.target.value }))}
-                      className="flex-1 rounded-lg text-sm"
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      disabled={!formData.giftCardCode.trim()}
-                      onClick={async () => {
-                        try {
-                          const res = await fetch(`/api/provider/gift-cards/validate?code=${encodeURIComponent(formData.giftCardCode.trim())}`);
-                          if (!res.ok) {
-                            toast.error("Invalid gift card code");
-                            return;
-                          }
-                          const body = await res.json();
-                          const gc = body?.data ?? body;
-                          const balance = gc?.balance ?? gc?.remaining_amount ?? 0;
-                          if (balance <= 0) {
-                            toast.error("Gift card has no remaining balance");
-                            return;
-                          }
-                          const applyAmount = Math.min(balance, formData.totalAmount);
-                          setFormData(prev => ({
-                            ...prev,
-                            discountAmount: prev.discountAmount + applyAmount,
-                            discountReason: `Gift card ${formData.giftCardCode}`,
-                          }));
-                          toast.success(`Gift card applied: ${formatMoney(applyAmount)} credit`);
-                        } catch {
-                          toast.error("Failed to validate gift card");
-                        }
-                      }}
-                      className="rounded-lg"
-                    >
-                      Apply
-                    </Button>
+                {/* Gift card redemption requires reserve/capture/void RPC integration — deferred */}
+              </div>
+            )}
+
+            {/* Deposit toggle — when enabled, only the deposit amount is collected now; balance is due later */}
+            {(mode === "create" || mode === "edit") && depositSettings.required && formData.totalAmount > 0 && (
+              <div className="rounded-xl border border-gray-200 p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-gray-500" />
+                    <span className="text-[11px] text-gray-600 font-medium">
+                      Collect deposit only
+                    </span>
                   </div>
+                  <Switch
+                    checked={collectDeposit}
+                    onCheckedChange={setCollectDeposit}
+                    className="scale-75"
+                  />
                 </div>
+                {collectDeposit && (
+                  <div className="text-[11px] text-gray-500 space-y-1">
+                    <div className="flex justify-between">
+                      <span>Deposit ({depositSettings.percentage}%)</span>
+                      <span className="font-medium text-gray-700">
+                        {formatMoney(Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Balance due later</span>
+                      <span className="font-medium text-gray-700">
+                        {formatMoney(formData.totalAmount - Math.ceil((formData.totalAmount * depositSettings.percentage) / 100))}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -5364,7 +5191,7 @@ export function AppointmentSidebar({
             <div className="space-y-2">
               <label className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5">
                 <StickyNote className="w-3 h-3" />
-                Internal notes
+                Special requests / notes
               </label>
               {mode === "view" ? (
                 formData.notes ? (
@@ -5376,7 +5203,7 @@ export function AppointmentSidebar({
                 )
               ) : (
                 <Textarea
-                  placeholder="Add notes visible only to your team…"
+                  placeholder="Add special requests or notes…"
                   value={formData.notes}
                   onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
                   rows={2}

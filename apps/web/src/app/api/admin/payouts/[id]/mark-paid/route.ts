@@ -147,11 +147,21 @@ export async function POST(
       console.error("Failed to record payout ledger entry:", ledgerErr);
     }
 
-    // Send OneSignal notification to provider
+    try {
+      const { notifyProviderPayoutProcessed } = await import("@/lib/notifications/notification-service");
+      await notifyProviderPayoutProcessed(
+        payoutData.provider_id,
+        Number(payoutData.amount),
+        new Date(),
+        payoutData.payout_number || id,
+      );
+    } catch (templateErr) {
+      console.warn("Template notification failed, falling back to inline:", templateErr);
+    }
+
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      
-      // Get provider owner
+
       const { data: provider } = await supabase
         .from("providers")
         .select("user_id, business_name")

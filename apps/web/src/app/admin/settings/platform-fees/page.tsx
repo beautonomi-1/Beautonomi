@@ -209,7 +209,7 @@ export default function PlatformFeesPage() {
                 <span className="text-sm text-gray-600">%</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Percentage of booking total charged to customers (e.g., 5% for a R100 booking = R5 fee)
+                Percentage of booking total charged to customers (e.g., 5% of a {currencyCode} 100 booking = {currencyCode} 5 fee)
               </p>
             </div>
           ) : (
@@ -234,7 +234,7 @@ export default function PlatformFeesPage() {
                 <span className="text-xs sm:text-sm text-gray-600">{currencyCode}</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Fixed amount charged to customers per booking (e.g., R10 per booking)
+                Fixed amount charged to customers per booking (e.g., {currencyCode} 10 per booking)
               </p>
             </div>
           )}

@@ -32,6 +32,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { format } from "date-fns";
+import Link from "next/link";
+import { MapPin, Smartphone } from "lucide-react";
 
 const CURRENCY_CODE = "R";
 const formatCurrency = (value: number) =>
@@ -210,6 +212,22 @@ export default function AdminAnalytics() {
             </div>
           </div>
         </div>
+
+        {/* Quick Access */}
+        <Link
+          href="/admin/analytics/geo"
+          className="flex items-center gap-3 p-4 bg-gradient-to-r from-indigo-50 to-emerald-50 border border-indigo-100 rounded-lg hover:shadow-md transition-all group"
+        >
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-indigo-600" />
+            <Smartphone className="h-4 w-4 text-emerald-600" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">Geographic & Device Analytics</p>
+            <p className="text-xs text-gray-500">Providers and customers by city, postal code, device platform (iOS/Android/Web), booking value by area</p>
+          </div>
+          <span className="text-indigo-600 text-sm font-medium">View →</span>
+        </Link>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

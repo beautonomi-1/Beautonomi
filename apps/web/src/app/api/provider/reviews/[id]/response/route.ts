@@ -106,6 +106,7 @@ export async function POST(
       .from("reviews") as any)
       .update({
         provider_response: response,
+        provider_response_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

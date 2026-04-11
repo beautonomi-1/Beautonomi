@@ -64,14 +64,24 @@ export default function ProductOrderDetailScreen() {
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   useEffect(() => {
     if (!id) return;
     (async () => {
       setLoading(true);
-      const result = await fetchOrderDetail(id);
-      if (result.data) setOrder(result.data);
+      setErrorMsg(null);
+      try {
+        const result = await fetchOrderDetail(id);
+        if (result.data) {
+          setOrder(result.data);
+        } else {
+          setErrorMsg(result.error || "Order not found");
+        }
+      } catch {
+        setErrorMsg("Unable to load order. Please check your connection.");
+      }
       setLoading(false);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when id changes
@@ -88,7 +98,7 @@ export default function ProductOrderDetailScreen() {
   if (!order) {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
-        <Text style={{ fontSize: 16, color: "#6B7280" }}>Order not found</Text>
+        <Text style={{ fontSize: 16, color: "#6B7280" }}>{errorMsg || "Order not found"}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
           <Text style={{ color: PRIMARY, fontWeight: "600" }}>Go back</Text>
         </TouchableOpacity>
@@ -267,6 +277,9 @@ export default function ProductOrderDetailScreen() {
               <View style={{ flex: 1, marginLeft: 12, justifyContent: "center" }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {item.product_name}
+                  {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                    <Text style={{ fontWeight: "400", color: "#9CA3AF" }}> · {Object.values(item.product_variant.option_values).join(", ")}</Text>
+                  )}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
                   {item.quantity} x {fmt(Number(item.unit_price))}
@@ -354,6 +367,24 @@ export default function ProductOrderDetailScreen() {
             </Text>
           </View>
         </View>
+
+        {/* Provider */}
+        {order.provider && (
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: order.provider.slug } } as never)}
+            style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12, flexDirection: "row", alignItems: "center" }}
+            activeOpacity={0.7}
+          >
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>{(order.provider.business_name ?? "P").charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>Sold by</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{order.provider.business_name}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
 
         {/* Return request action: only when delivered/ready_for_collection and within return window */}
         {["delivered", "ready_for_collection"].includes(order.status) && isWithinReturnWindow(order) && (
