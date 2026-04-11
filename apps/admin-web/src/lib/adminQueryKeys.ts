@@ -21,14 +21,14 @@ export const adminQueryKeys = {
 
   bookings: {
     all: () => [...adminQueryKeys.root, "bookings"] as const,
-    list: (filters: { statusFilter: string; dateFilter: string }) =>
+    list: (filters: { statusFilter: string; dateFilter: string; page?: number }) =>
       [...adminQueryKeys.bookings.all(), "list", filters] as const,
     detail: (id: string) => [...adminQueryKeys.bookings.all(), "detail", id] as const,
   },
 
   disputes: {
     all: () => [...adminQueryKeys.root, "disputes"] as const,
-    list: (filters: { statusFilter: string }) => [...adminQueryKeys.disputes.all(), "list", filters] as const,
+    list: (filters: { statusFilter: string; page?: number }) => [...adminQueryKeys.disputes.all(), "list", filters] as const,
   },
 
   supportTickets: {
@@ -62,6 +62,10 @@ export const adminQueryKeys = {
   userBookings: (id: string) => [...adminQueryKeys.root, "users", id, "bookings"] as const,
 
   userWalletTransactions: (id: string) => [...adminQueryKeys.root, "users", id, "wallet-transactions"] as const,
+
+  userLoyalty: (id: string) => [...adminQueryKeys.root, "users", id, "loyalty"] as const,
+
+  providerGamification: (id: string) => [...adminQueryKeys.root, "providers", id, "gamification"] as const,
 
   loyaltyRules: () => [...adminQueryKeys.root, "loyalty", "rules"] as const,
 
@@ -198,4 +202,32 @@ export const adminQueryKeys = {
   verificationDetail: (id: string) => [...adminQueryKeys.root, "verifications", "detail", id] as const,
 
   tenantDomains: () => [...adminQueryKeys.root, "tenant-domains"] as const,
+
+  ads: {
+    all: () => [...adminQueryKeys.root, "ads"] as const,
+    overview: () => [...adminQueryKeys.ads.all(), "overview"] as const,
+    campaigns: (q: string) => [...adminQueryKeys.ads.all(), "campaigns", q] as const,
+    campaignDetail: (id: string) => [...adminQueryKeys.ads.all(), "campaigns", "detail", id] as const,
+  },
+
+  analyticsGeo: () => [...adminQueryKeys.root, "analytics", "geo"] as const,
+
+  providerOps: {
+    all: () => [...adminQueryKeys.root, "provider-ops"] as const,
+    dashboard: () => [...adminQueryKeys.providerOps.all(), "dashboard"] as const,
+    leads: (q: string) => [...adminQueryKeys.providerOps.all(), "leads", q] as const,
+    leadDetail: (id: string) => [...adminQueryKeys.providerOps.all(), "leads", "detail", id] as const,
+    leadActivities: (id: string) => [...adminQueryKeys.providerOps.all(), "leads", id, "activities"] as const,
+    pipelineStats: () => [...adminQueryKeys.providerOps.all(), "pipeline", "stats"] as const,
+    tracker: (q: string) => [...adminQueryKeys.providerOps.all(), "tracker", q] as const,
+    trackerStats: () => [...adminQueryKeys.providerOps.all(), "tracker", "stats"] as const,
+    trackerDetail: (userId: string) => [...adminQueryKeys.providerOps.all(), "tracker", "detail", userId] as const,
+    activationQueue: (q: string) => [...adminQueryKeys.providerOps.all(), "activation", q] as const,
+    duplicates: () => [...adminQueryKeys.providerOps.all(), "duplicates"] as const,
+    reportsFunnel: () => [...adminQueryKeys.providerOps.all(), "reports", "funnel"] as const,
+    reportsDropoff: () => [...adminQueryKeys.providerOps.all(), "reports", "dropoff"] as const,
+    settings: () => [...adminQueryKeys.providerOps.all(), "settings"] as const,
+    categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,
+    providerLifecycle: (id: string) => [...adminQueryKeys.providerOps.all(), "provider", id, "lifecycle"] as const,
+  },
 } as const;

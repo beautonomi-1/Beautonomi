@@ -300,3 +300,49 @@ export const AddonsListPage = lazy(() =>
 export const AdminTeamPage = lazy(() =>
   import("@/routes/settings/AdminTeamPage").then((m) => ({ default: m.AdminTeamPage }))
 );
+
+export const AdsListPage = lazy(() =>
+  import("@/routes/marketing/AdsListPage").then((m) => ({ default: m.AdsListPage }))
+);
+export const AdsCampaignDetailPage = lazy(() =>
+  import("@/routes/marketing/AdsCampaignDetailPage").then((m) => ({ default: m.AdsCampaignDetailPage }))
+);
+export const AnalyticsGeoPage = lazy(() =>
+  import("@/routes/AnalyticsGeoPage").then((m) => ({ default: m.AnalyticsGeoPage }))
+);
+export const ProviderOpsDashboardPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsDashboardPage").then((m) => ({ default: m.ProviderOpsDashboardPage }))
+);
+export const ProviderOpsLeadsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadsPage").then((m) => ({ default: m.ProviderOpsLeadsPage }))
+);
+export const ProviderOpsLeadDetailPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadDetailPage").then((m) => ({ default: m.ProviderOpsLeadDetailPage }))
+);
+export const ProviderOpsLeadNewPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadNewPage").then((m) => ({ default: m.ProviderOpsLeadNewPage }))
+);
+export const ProviderOpsTrackerPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsTrackerPage").then((m) => ({ default: m.ProviderOpsTrackerPage }))
+);
+export const ProviderOpsTrackerDetailPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsTrackerDetailPage").then((m) => ({ default: m.ProviderOpsTrackerDetailPage }))
+);
+export const ProviderOpsPipelinePage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsPipelinePage").then((m) => ({ default: m.ProviderOpsPipelinePage }))
+);
+export const ProviderOpsDuplicatesPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsDuplicatesPage").then((m) => ({ default: m.ProviderOpsDuplicatesPage }))
+);
+export const ProviderOpsActivationPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsActivationPage").then((m) => ({ default: m.ProviderOpsActivationPage }))
+);
+export const ProviderOpsReportsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsReportsPage").then((m) => ({ default: m.ProviderOpsReportsPage }))
+);
+export const ProviderOpsSettingsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsSettingsPage").then((m) => ({ default: m.ProviderOpsSettingsPage }))
+);
+export const ProviderOpsLifecyclePage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLifecyclePage").then((m) => ({ default: m.ProviderOpsLifecyclePage }))
+);

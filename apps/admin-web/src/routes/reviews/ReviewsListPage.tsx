@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -39,9 +39,11 @@ export function ReviewsListPage() {
   const status = sp.get("status") || "all";
   const providerId = sp.get("provider_id")?.trim() || "";
   const customerId = sp.get("customer_id")?.trim() || "";
+  const search = sp.get("search")?.trim() || "";
+  const [searchInput, setSearchInput] = useState(search);
   const qk = useMemo(
-    () => adminQueryKeys.reviews(`p=${page}|s=${status}|pv=${providerId}|cu=${customerId}`),
-    [page, status, providerId, customerId]
+    () => adminQueryKeys.reviews(`p=${page}|s=${status}|pv=${providerId}|cu=${customerId}|q=${search}`),
+    [page, status, providerId, customerId, search]
   );
 
   const q = useQuery({
@@ -53,6 +55,7 @@ export function ReviewsListPage() {
       if (status !== "all") p.set("status", status);
       if (providerId) p.set("provider_id", providerId);
       if (customerId) p.set("customer_id", customerId);
+      if (search) p.set("search", search);
       return adminApi.getJson<ReviewsPayload>(`/api/admin/reviews?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -88,6 +91,14 @@ export function ReviewsListPage() {
     const n = new URLSearchParams(sp);
     n.delete("provider_id");
     n.delete("customer_id");
+    n.set("page", "1");
+    setSp(n, { replace: true });
+  }
+
+  function applySearch() {
+    const n = new URLSearchParams(sp);
+    if (searchInput.trim()) n.set("search", searchInput.trim());
+    else n.delete("search");
     n.set("page", "1");
     setSp(n, { replace: true });
   }
@@ -138,6 +149,23 @@ export function ReviewsListPage() {
         </AdminPanel>
       ) : null}
       <AdminPanel>
+        <div className="mb-4 flex gap-2">
+          <input
+            type="search"
+            placeholder="Search reviewer name, provider, comment…"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && applySearch()}
+            className="w-full flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <button
+            type="button"
+            onClick={applySearch}
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Search
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (
             <button
@@ -150,6 +178,18 @@ export function ReviewsListPage() {
             </button>
           ))}
         </div>
+        {search && (
+          <p className="mt-2 text-sm text-gray-500">
+            Search: <strong>"{search}"</strong>{" "}
+            <button
+              type="button"
+              className="text-primary underline"
+              onClick={() => { setSearchInput(""); const n = new URLSearchParams(sp); n.delete("search"); setSp(n, { replace: true }); }}
+            >
+              Clear
+            </button>
+          </p>
+        )}
         {(providerId || customerId) && (
           <p className="mt-3 text-sm text-gray-600">
             Filtered

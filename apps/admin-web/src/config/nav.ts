@@ -46,6 +46,11 @@ import {
   MapPinned,
   Boxes,
   ShieldAlert,
+  Radio,
+  ClipboardList,
+  GitMerge,
+  CheckCircle2,
+  Columns3,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -60,6 +65,7 @@ import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
+  ADMIN_SECTION_PROVIDER_OPS,
 } from "@beautonomi/admin-access";
 
 export interface NavItemConfig {
@@ -84,6 +90,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye, superadminOnly: true },
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3, superadminOnly: true },
+      { title: "Geo & Devices", href: "/admin/analytics/geo", icon: Globe2, superadminOnly: true },
       { title: "Reports", href: "/admin/reports", icon: FileText },
     ],
   },
@@ -91,6 +98,20 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Support",
     section: ADMIN_SECTION_SUPPORT,
     items: [{ title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle }],
+  },
+  {
+    label: "Provider Ops Hub",
+    section: ADMIN_SECTION_PROVIDER_OPS,
+    items: [
+      { title: "Dashboard", href: "/admin/provider-ops", icon: Radio },
+      { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserCheck },
+      { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Columns3 },
+      { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList },
+      { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2 },
+      { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: GitMerge },
+      { title: "Reports", href: "/admin/provider-ops/reports", icon: BarChart3 },
+      { title: "Settings", href: "/admin/provider-ops/settings", icon: Settings },
+    ],
   },
   {
     label: "Providers & operations",
@@ -157,6 +178,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Marketing & comms",
     section: ADMIN_SECTION_MARKETING_COMMS,
     items: [
+      { title: "Ads & Campaigns", href: "/admin/ads", icon: MessageSquare, superadminOnly: true },
       { title: "Promotions", href: "/admin/promotions", icon: Gift },
       { title: "Loyalty", href: "/admin/loyalty", icon: Award },
       { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },

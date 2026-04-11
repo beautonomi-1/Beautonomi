@@ -86,6 +86,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<P.DashboardPage />} />
           <Route path="analytics" element={<P.AnalyticsPage />} />
+          <Route path="analytics/geo" element={<P.AnalyticsGeoPage />} />
           <Route path="gods-eye" element={<P.GodsEyePage />} />
           <Route path="reports" element={<P.ReportsHubPage />} />
           <Route path="reports/:reportKey" element={<P.ReportDetailPage />} />
@@ -97,6 +98,18 @@ export default function App() {
           <Route path="providers/distance-settings" element={<P.ProviderDistanceSettingsPage />} />
           <Route path="providers/:id" element={<P.ProviderDetailPage />} />
           <Route path="providers" element={<P.ProvidersListPage />} />
+          <Route path="provider-ops" element={<P.ProviderOpsDashboardPage />} />
+          <Route path="provider-ops/leads/new" element={<P.ProviderOpsLeadNewPage />} />
+          <Route path="provider-ops/leads/:id" element={<P.ProviderOpsLeadDetailPage />} />
+          <Route path="provider-ops/leads" element={<P.ProviderOpsLeadsPage />} />
+          <Route path="provider-ops/pipeline" element={<P.ProviderOpsPipelinePage />} />
+          <Route path="provider-ops/tracker/:userId" element={<P.ProviderOpsTrackerDetailPage />} />
+          <Route path="provider-ops/tracker" element={<P.ProviderOpsTrackerPage />} />
+          <Route path="provider-ops/providers/:providerId" element={<P.ProviderOpsLifecyclePage />} />
+          <Route path="provider-ops/activation" element={<P.ProviderOpsActivationPage />} />
+          <Route path="provider-ops/duplicates" element={<P.ProviderOpsDuplicatesPage />} />
+          <Route path="provider-ops/reports" element={<P.ProviderOpsReportsPage />} />
+          <Route path="provider-ops/settings" element={<P.ProviderOpsSettingsPage />} />
           <Route path="staff" element={<P.StaffListPage />} />
           <Route path="reviews" element={<P.ReviewsListPage />} />
           <Route path="user-reports" element={<P.UserReportsListPage />} />
@@ -129,6 +142,8 @@ export default function App() {
           <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />
+          <Route path="ads/:id" element={<P.AdsCampaignDetailPage />} />
+          <Route path="ads" element={<P.AdsListPage />} />
           <Route path="promotions" element={<P.PromotionsListPage />} />
           <Route path="gift-cards/:id" element={<P.GiftCardDetailPage />} />
           <Route path="gift-cards" element={<P.GiftCardsListPage />} />

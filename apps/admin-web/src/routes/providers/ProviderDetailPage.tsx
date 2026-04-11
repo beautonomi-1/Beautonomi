@@ -79,6 +79,9 @@ export function ProviderDetailPage() {
     description: "",
     business_type: "",
   });
+  const [deductPoints, setDeductPoints] = useState("");
+  const [deductReason, setDeductReason] = useState("");
+  const [showDeduct, setShowDeduct] = useState(false);
 
   const q = useQuery({
     queryKey: adminQueryKeys.providers.detail(id),
@@ -97,6 +100,27 @@ export function ProviderDetailPage() {
         { timeoutMs: 60_000 }
       ),
     enabled: allowed && !!providerCanonicalId,
+  });
+
+  const gamificationQ = useQuery({
+    queryKey: adminQueryKeys.providerGamification(providerCanonicalId),
+    queryFn: () =>
+      adminApi.getJson<Record<string, unknown>>(
+        `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/gamification`,
+        { timeoutMs: 30_000 }
+      ),
+    enabled: allowed && !!providerCanonicalId,
+  });
+
+  const deductPointsMutation = useMutation({
+    mutationFn: (payload: { points: number; reason: string }) =>
+      adminApi.postJson(
+        `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/gamification/deduct`,
+        payload
+      ),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerGamification(providerCanonicalId) });
+    },
   });
 
   useEffect(() => {
@@ -547,6 +571,84 @@ export function ProviderDetailPage() {
               );
             })}
           </ul>
+        )}
+      </AdminPanel>
+
+      {/* Gamification Panel */}
+      <AdminPanel>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Gamification & badges</h2>
+          {providerCanonicalId && (
+            <button
+              type="button"
+              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+              onClick={() => setShowDeduct((v) => !v)}
+            >
+              {showDeduct ? "Cancel" : "Deduct Points"}
+            </button>
+          )}
+        </div>
+        {gamificationQ.isLoading ? (
+          <p className="mt-2 text-sm text-gray-400">Loading…</p>
+        ) : gamificationQ.data ? (
+          <div className="mt-4 space-y-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { label: "Current Badge", value: String(gamificationQ.data.badge ?? gamificationQ.data.current_badge ?? gamificationQ.data.tier ?? "—") },
+                { label: "Total Points", value: String(gamificationQ.data.total_points ?? gamificationQ.data.points ?? "—") },
+                { label: "Lifetime Points", value: String(gamificationQ.data.lifetime_points ?? gamificationQ.data.lifetime_earned ?? "—") },
+                { label: "Next Milestone", value: String(gamificationQ.data.next_milestone ?? gamificationQ.data.points_to_next ?? "—") },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">{label}</div>
+                  <div className="mt-1 text-xl font-bold text-gray-900">{value}</div>
+                </div>
+              ))}
+            </div>
+            {showDeduct && (
+              <div className="rounded-lg border border-red-100 bg-red-50 p-4 space-y-3">
+                <p className="text-sm font-medium text-red-800">Deduct points from provider</p>
+                <div className="flex gap-3">
+                  <input
+                    type="number"
+                    min="1"
+                    value={deductPoints}
+                    onChange={(e) => setDeductPoints(e.target.value)}
+                    placeholder="Points to deduct"
+                    className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <input
+                    type="text"
+                    value={deductReason}
+                    onChange={(e) => setDeductReason(e.target.value)}
+                    placeholder="Reason for deduction"
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+                  disabled={deductPointsMutation.isPending || !deductPoints || parseInt(deductPoints, 10) <= 0}
+                  onClick={() => {
+                    const pts = parseInt(deductPoints, 10);
+                    if (!isNaN(pts) && pts > 0) {
+                      deductPointsMutation.mutate({ points: pts, reason: deductReason.trim() || "Admin deduction" });
+                      setDeductPoints("");
+                      setDeductReason("");
+                      setShowDeduct(false);
+                    }
+                  }}
+                >
+                  {deductPointsMutation.isPending ? "Processing…" : "Deduct Points"}
+                </button>
+                {deductPointsMutation.error && (
+                  <p className="text-sm text-red-700">{deductPointsMutation.error.message}</p>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-gray-500">No gamification data available.</p>
         )}
       </AdminPanel>
     </div>

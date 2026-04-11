@@ -1,4 +1,5 @@
 import { useDeferredValue, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -38,12 +39,16 @@ interface Dispute {
   booking: DisputeBooking;
 }
 
+const LIMIT = 50;
+
 export function DisputesPage() {
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required for disputes."
   );
   const qc = useQueryClient();
+  const [sp, setSp] = useSearchParams();
+  const page = Math.max(0, parseInt(sp.get("page") || "0", 10) || 0);
 
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -55,17 +60,28 @@ export function DisputesPage() {
   const deferredSearch = useDeferredValue(searchQuery);
 
   const q = useQuery({
-    queryKey: adminQueryKeys.disputes.list({ statusFilter }),
+    queryKey: adminQueryKeys.disputes.list({ statusFilter, page }),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
+      params.set("limit", String(LIMIT));
+      params.set("offset", String(page * LIMIT));
       const qs = params.toString();
-      return adminApi.getJson<{ disputes: Dispute[] }>(`/api/admin/disputes${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<{ disputes: Dispute[]; total?: number }>(`/api/admin/disputes${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
   });
 
   const disputes = q.data?.disputes ?? [];
+  const total = q.data?.total ?? disputes.length;
+  const totalPages = Math.ceil(total / LIMIT);
+
+  function setPage(next: number) {
+    const n = new URLSearchParams(sp);
+    if (next === 0) n.delete("page");
+    else n.set("page", String(next));
+    setSp(n, { replace: true });
+  }
 
   const filtered = useMemo(() => {
     const sq = deferredSearch.toLowerCase();
@@ -225,6 +241,29 @@ export function DisputesPage() {
               </li>
             ))}
           </ul>
+        )}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+            <span className="text-sm text-gray-500">Page {page + 1} of {totalPages} · {total} total</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                disabled={page <= 0}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </AdminPanel>
 
