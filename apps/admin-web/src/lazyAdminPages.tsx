@@ -100,6 +100,9 @@ export const ApiKeysListPage = lazy(() =>
 export const AmplitudeConfigPage = lazy(() =>
   import("@/routes/integrations/AmplitudeConfigPage").then((m) => ({ default: m.AmplitudeConfigPage }))
 );
+export const PaystackConfigPage = lazy(() =>
+  import("@/routes/integrations/PaystackConfigPage").then((m) => ({ default: m.PaystackConfigPage }))
+);
 export const PromotionsListPage = lazy(() =>
   import("@/routes/marketing/PromotionsListPage").then((m) => ({ default: m.PromotionsListPage }))
 );

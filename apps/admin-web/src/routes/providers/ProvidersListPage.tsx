@@ -113,7 +113,13 @@ export function ProvidersListPage() {
         cell: (p: ProviderRow) => {
           const s = p.status;
           return (
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
+              <Link
+                to={adminSpaTo(`/admin/providers/${encodeURIComponent(p.id)}`)}
+                className="rounded border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Details
+              </Link>
               {(s === "pending" || s === "pending_approval") && (
                 <button
                   type="button"
@@ -181,7 +187,10 @@ export function ProvidersListPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Providers" description="GET /api/admin/providers" />
+      <AdminPageHeader
+        title="Providers"
+        description="Manage platform providers — approve, suspend, or view full details for each provider."
+      />
       <AdminPanel>
         <div className="flex flex-wrap gap-2">
           {tabs.map((t) => (

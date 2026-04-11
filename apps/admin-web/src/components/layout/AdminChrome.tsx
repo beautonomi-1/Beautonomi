@@ -491,8 +491,9 @@ export function AdminChrome() {
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-gray-600 hover:bg-gray-100 touch-manipulation"
               onClick={() => {
                 qc.removeQueries({ queryKey: adminQueryKeys.root });
-                navigate(adminSpaTo("/admin/login"), { replace: true });
-                void signOut();
+                void signOut().finally(() => {
+                  navigate(adminSpaTo("/admin/login"), { replace: true });
+                });
               }}
               aria-label="Sign out"
             >

@@ -151,6 +151,8 @@ export interface BookingState {
   /** Repeating schedule after checkout (POST /api/public/bookings subscribe_recurring). */
   subscribeRecurring?: boolean;
   recurringFrequency?: "weekly" | "biweekly" | "monthly";
+  /** Slot hold ID reserved when leaving the calendar step — passed to booking creation to exclude from conflict check. */
+  holdId?: string | null;
 }
 
 const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "payment"];
@@ -590,11 +592,69 @@ export default function BookingFlow() {
     if (fallback) setCurrentStepIndex(activeStepOrder.indexOf(fallback));
   }, [currentStep, currentStepIndex, effectiveStepOrder, activeStepOrder]);
 
+  const [isCreatingHold, setIsCreatingHold] = useState(false);
+
+  /** Create a booking hold when leaving the calendar step so the server can exclude
+   *  it from the conflict check — prevents the customer's own slot reservation from
+   *  blocking their own booking attempt. Non-fatal: booking proceeds even if hold fails. */
+  const createHoldForCalendarExit = async (): Promise<string | null> => {
+    if (
+      !bookingState.providerId ||
+      !bookingState.selectedDate ||
+      !bookingState.selectedTimeSlot ||
+      bookingState.selectedServices.length === 0
+    ) return null;
+
+    try {
+      const bookingDateTime = new Date(bookingState.selectedDate);
+      const [h, m] = bookingState.selectedTimeSlot.split(":").map(Number);
+      bookingDateTime.setHours(h, m, 0, 0);
+
+      // Compute end time from service durations + buffers
+      let totalMs = 0;
+      for (const svc of bookingState.selectedServices) {
+        totalMs += (svc.duration + (svc.bufferMinutes ?? 0)) * 60000;
+      }
+      const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
+
+      const res = await fetcher.post<{ data?: { id?: string } }>(
+        "/api/public/booking-holds",
+        {
+          provider_id: bookingState.providerId,
+          services: bookingState.selectedServices.map((s) => ({
+            offering_id: s.id,
+            staff_id: s.staffId ?? null,
+          })),
+          start_at: bookingDateTime.toISOString(),
+          end_at: endDateTime.toISOString(),
+          location_type: bookingState.mode === "mobile" ? "at_home" : "at_salon",
+          location_id: bookingState.selectedLocationId ?? null,
+        }
+      );
+      return res?.data?.id ?? null;
+    } catch {
+      // Hold creation is best-effort — don't block the user
+      return null;
+    }
+  };
+
   const handleNext = () => {
     if (effectiveStepIndex < effectiveStepOrder.length - 1) {
       setDirection(1);
       const nextStep = effectiveStepOrder[effectiveStepIndex + 1];
       const nextIndex = activeStepOrder.indexOf(nextStep);
+
+      // When leaving the calendar step, create a hold to reserve the slot.
+      if (currentStep === "calendar" && !bookingState.holdId) {
+        setIsCreatingHold(true);
+        createHoldForCalendarExit().then((holdId) => {
+          if (holdId) updateBookingState({ holdId });
+          setIsCreatingHold(false);
+          setCurrentStepIndex(nextIndex);
+        });
+        return;
+      }
+
       setCurrentStepIndex(nextIndex);
     }
   };
@@ -612,6 +672,11 @@ export default function BookingFlow() {
       setDirection(-1);
       const prevStep = effectiveStepOrder[effectiveStepIndex - 1];
       const prevIndex = activeStepOrder.indexOf(prevStep);
+      // Clear hold when returning to the calendar step so a fresh hold is created
+      // for the newly selected slot (prevents stale hold_id mismatch).
+      if (prevStep === "calendar") {
+        updateBookingState({ holdId: null });
+      }
       setCurrentStepIndex(prevIndex);
     } else {
       router.back();
@@ -1031,7 +1096,7 @@ export default function BookingFlow() {
       <BookingActionBar
         bookingState={bookingState}
         currentStep={currentStep}
-        canProceed={canProceed() ?? false}
+        canProceed={(canProceed() ?? false) && !isCreatingHold}
         onNext={handleNext}
         onBack={handleBack}
       />

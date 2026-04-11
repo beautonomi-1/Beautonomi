@@ -208,6 +208,30 @@ export async function POST(request: NextRequest) {
           }
         }
 
+        // 2.7. Cancel any stale pending/pending_payment bookings by this user for the
+        //      same provider and overlapping time window before conflict check runs.
+        //      This prevents "slot taken" false positives when the customer retries
+        //      after a failed/abandoned payment attempt.
+        {
+          const selectedDt = new Date(draft.selected_datetime);
+          const windowStart = new Date(selectedDt.getTime() - 4 * 60 * 60 * 1000); // -4 h
+          const windowEnd   = new Date(selectedDt.getTime() + 4 * 60 * 60 * 1000); // +4 h
+          await supabaseAdmin
+            .from("bookings")
+            .update({
+              status: "cancelled",
+              cancelled_at: new Date().toISOString(),
+              cancelled_by: user.id,
+              cancellation_reason: "Payment not completed — auto-cancelled on retry",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("customer_id", user.id)
+            .eq("provider_id", draft.provider_id)
+            .in("status", ["pending", "pending_payment"])
+            .gte("scheduled_at", windowStart.toISOString())
+            .lte("scheduled_at", windowEnd.toISOString());
+        }
+
         // 3. Validate booking (provider, services, pricing, conflicts, resources)
         const validationResult = await validateBooking(
           supabase,

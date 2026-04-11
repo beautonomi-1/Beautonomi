@@ -26,7 +26,7 @@ type FlagRow = {
   id: string;
   feature_name: string;
   category?: string;
-  is_enabled: boolean;
+  enabled: boolean;
   description?: string;
   tenant_id?: string | null;
 };
@@ -48,8 +48,8 @@ export function FeatureFlagsListPage() {
   const rows = Array.isArray(q.data) ? q.data : [];
 
   const toggleMut = useMutation({
-    mutationFn: ({ id, is_enabled }: { id: string; is_enabled: boolean }) =>
-      adminApi.patchJson(`/api/admin/feature-flags/${id}`, { is_enabled }),
+    mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
+      adminApi.patchJson(`/api/admin/feature-flags/${id}`, { enabled }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.featureFlags() }),
   });
 
@@ -123,16 +123,16 @@ export function FeatureFlagsListPage() {
                       <button
                         type="button"
                         role="switch"
-                        aria-checked={r.is_enabled}
+                        aria-checked={r.enabled}
                         disabled={toggleMut.isPending}
-                        onClick={() => toggleMut.mutate({ id: r.id, is_enabled: !r.is_enabled })}
+                        onClick={() => toggleMut.mutate({ id: r.id, enabled: !r.enabled })}
                         className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
-                          r.is_enabled ? "bg-indigo-600" : "bg-gray-200"
+                          r.enabled ? "bg-indigo-600" : "bg-gray-200"
                         }`}
                       >
                         <span
                           className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition ${
-                            r.is_enabled ? "translate-x-4" : "translate-x-0"
+                            r.enabled ? "translate-x-4" : "translate-x-0"
                           }`}
                         />
                       </button>

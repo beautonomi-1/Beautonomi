@@ -89,7 +89,9 @@ export default function StepPayment({
 }: StepPaymentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const holdId = searchParams.get("hold_id")?.trim() || null;
+  // Prefer hold created by the new booking flow (bookingState.holdId); fall back
+  // to URL param for bookings started from the old /book/[slug] flow.
+  const holdId = bookingState.holdId || searchParams.get("hold_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);

@@ -176,6 +176,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
+      { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
     ],

@@ -126,6 +126,7 @@ export default function App() {
           <Route path="webhooks" element={<P.WebhooksEndpointsPage />} />
           <Route path="api-keys" element={<P.ApiKeysListPage />} />
           <Route path="integrations/amplitude" element={<P.AmplitudeConfigPage />} />
+          <Route path="integrations/paystack" element={<P.PaystackConfigPage />} />
           <Route path="mapbox" element={<P.MapboxConfigPage />} />
           <Route path="iso-codes" element={<P.IsoCodesPage />} />
           <Route path="promotions" element={<P.PromotionsListPage />} />

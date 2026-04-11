@@ -123,6 +123,7 @@ path,class,note
 /api/admin/impersonation/check,T,"review: likely tenant-scoped ops"
 /api/admin/impersonation/end,T,"review: likely tenant-scoped ops"
 /api/admin/integrations/amplitude,T,"review: likely tenant-scoped ops"
+/api/admin/integrations/paystack,G,"superadmin-only; reads/writes platform_secrets (global)"
 /api/admin/invoices/[id],T,"needs explicit tenant filter"
 /api/admin/invoices,T,"uses resolveAdminApiTenantId"
 /api/admin/iso-codes/countries/[code],T,"review: likely tenant-scoped ops"

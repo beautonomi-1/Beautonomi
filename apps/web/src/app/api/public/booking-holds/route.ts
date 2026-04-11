@@ -66,7 +66,7 @@ const createHoldSchema = z.object({
   primary_package_id: z.string().uuid().optional().nullable(),
 });
 
-const HOLD_EXPIRY_MINUTES = 7;
+const HOLD_EXPIRY_MINUTES = 20;
 
 export async function POST(request: NextRequest) {
   return withRouteMetrics(

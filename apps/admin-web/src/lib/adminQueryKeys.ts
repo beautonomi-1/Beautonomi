@@ -165,6 +165,8 @@ export const adminQueryKeys = {
 
   amplitude: (env: string) => [...adminQueryKeys.root, "amplitude", env] as const,
 
+  paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
+
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,
 
   giftCards: (q: string) => [...adminQueryKeys.root, "gift-cards", q] as const,

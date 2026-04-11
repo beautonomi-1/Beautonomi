@@ -134,7 +134,7 @@ export function PlatformFeesPage() {
           {feeType === "percentage" ? (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Service Fee Percentage
+                Platform Service Fee Percentage
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -153,7 +153,7 @@ export function PlatformFeesPage() {
           ) : (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Fixed Service Fee Amount
+                Fixed Platform Service Fee Amount
               </label>
               <input
                 type="number"

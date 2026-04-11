@@ -106,6 +106,7 @@ function SummaryMetricCard({
 }
 
 export function FinanceOverviewPage() {
+  useAdminDocumentTitle("Finance");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_FINANCE,
     "Finance access is required."

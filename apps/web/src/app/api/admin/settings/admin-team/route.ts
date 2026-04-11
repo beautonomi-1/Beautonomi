@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     const { data: adminUsers, error } = await supabase
       .from("users")
-      .select("id, full_name, email, phone, role, avatar_url, created_at, deactivated_at, last_sign_in_at")
+      .select("id, full_name, email, phone, role, avatar_url, created_at, deactivated_at")
       .in("role", ADMIN_ROLES)
       .order("role", { ascending: true })
       .order("created_at", { ascending: false });

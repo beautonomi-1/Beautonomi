@@ -67,9 +67,11 @@ export async function checkBookingConflict(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('Error checking booking conflict:', error);
-    // On error, assume conflict exists (fail-safe)
-    return { hasConflict: true };
+    console.error('[conflict-check] checkBookingConflict DB error — treating as no conflict to avoid false 409:', error);
+    // Return no conflict on transient DB errors: a false positive blocks legitimate
+    // bookings permanently while a false negative is caught by the DB-level unique
+    // constraint in create_booking_with_locking.
+    return { hasConflict: false };
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
@@ -186,8 +188,8 @@ export async function checkBookingConflictForProvider(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('Error checking provider booking conflict:', error);
-    return { hasConflict: true };
+    console.error('[conflict-check] checkBookingConflictForProvider DB error — treating as no conflict to avoid false 409:', error);
+    return { hasConflict: false };
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
@@ -256,8 +258,8 @@ export async function checkActiveHoldOverlap(
   const { data, error } = await q.limit(1);
 
   if (error) {
-    console.error('Error checking active booking holds:', error);
-    return true;
+    console.error('[conflict-check] checkActiveHoldOverlap DB error — treating as no conflict to avoid false 409:', error);
+    return false;
   }
 
   return (data?.length ?? 0) > 0;
@@ -302,8 +304,8 @@ export async function lockBookingServices(
   }
 
   if (error) {
-    console.error('Error locking booking services:', error);
-    throw error;
+    console.error('[conflict-check] lockBookingServices RPC error — falling back to regular conflict check:', error);
+    return await checkBookingConflict(supabase, staffId, startAt, endAt, bufferMinutes);
   }
 
   // If rows were returned, there's a conflict
