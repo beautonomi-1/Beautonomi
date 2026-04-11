@@ -10,7 +10,7 @@
  * code paths to ensure parity across the /booking, /book, and mobile surfaces.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { mergeUnionAnyStaffSlots } from "@/lib/availability/merge-any-staff-slots";
 import type { AvailabilityConstraints, StaffShift, TimeBlock, BookingService } from "@/lib/availability/types";

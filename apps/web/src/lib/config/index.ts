@@ -244,7 +244,7 @@ export async function getPublicConfigBundle(params: GetPublicConfigBundleParams)
     : { ...DEFAULT_AMPLITUDE, environment };
 
   const settings = (platformSettingsRes.data as { settings?: Record<string, any> } | null)?.settings;
-  let third_party: SafeThirdPartyConfig = {};
+  const third_party: SafeThirdPartyConfig = {};
   if (settings?.onesignal && (settings.onesignal as { enabled?: boolean }).enabled) {
     const o = settings.onesignal as { app_id?: string; safari_web_id?: string };
     third_party.onesignal = { enabled: true, app_id: o.app_id, safari_web_id: o.safari_web_id };

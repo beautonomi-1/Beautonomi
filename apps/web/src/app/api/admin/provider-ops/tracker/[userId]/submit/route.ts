@@ -52,11 +52,13 @@ export async function POST(
     }
 
     // Check if provider already exists
-    const { data: existingProvider } = await supabase
+    const { data: existingProvider, error: existProvErr } = await supabase
       .from("providers")
       .select("id")
       .eq("user_id", userId)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
+    if (existProvErr) throw existProvErr;
 
     if (existingProvider) {
       return errorResponse("Provider already exists for this user", "CONFLICT", 409);

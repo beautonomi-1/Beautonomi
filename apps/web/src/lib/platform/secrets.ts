@@ -169,8 +169,8 @@ export async function resolveOneSignalCredentials(
   const legacyId = process.env.ONESIGNAL_APP_ID?.trim() || null;
   const legacyKey = process.env.ONESIGNAL_REST_API_KEY?.trim() || null;
   const customer = getOneSignalConfig("customer");
-  let appId = legacyId || customer.appId?.trim() || db.appIdCustomer || null;
-  let restKey =
+  const appId = legacyId || customer.appId?.trim() || db.appIdCustomer || null;
+  const restKey =
     legacyKey || customer.restApiKey?.trim() || db.restKeyCustomer || db.restKeyProvider || null;
   return { appId, restKey };
 }

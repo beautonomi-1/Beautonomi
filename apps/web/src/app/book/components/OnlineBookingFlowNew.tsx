@@ -713,7 +713,7 @@ export default function OnlineBookingFlowNew({
         // Also fire the dedicated variants API for any parent whose variant list was empty in the
         // flat response (e.g. pagination gaps), but skip ones we already have.
         const needsVariantFetch = baseServices.filter((svc: any) => !embeddedVariantMap[svc.id]);
-        let fetchedMap: Record<string, ServiceVariant[]> = {};
+        const fetchedMap: Record<string, ServiceVariant[]> = {};
         if (needsVariantFetch.length > 0) {
           const variantResults = await Promise.all(
             needsVariantFetch.map((svc: any) =>

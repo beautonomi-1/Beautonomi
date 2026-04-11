@@ -28,6 +28,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
+import { APP_URL } from "@/config/public-env";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
@@ -1937,7 +1938,6 @@ export default function BookingDetailScreen() {
               )}
               <TouchableOpacity
                 onPress={() => {
-                  const { APP_URL } = require("@/config/public-env");
                   const receiptUrl = `${APP_URL}/api/provider/bookings/${id}/receipt/pdf`;
                   Linking.openURL(receiptUrl).catch(() => {});
                 }}

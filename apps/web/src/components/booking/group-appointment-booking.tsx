@@ -8,8 +8,6 @@ import { Label } from "@/components/ui/label";
 import { Plus, User, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { PhoneInput } from "@/components/ui/phone-input";
-import { isCompleteE164 } from "@/lib/phone";
-import { toast } from "sonner";
 import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface GroupGuest {

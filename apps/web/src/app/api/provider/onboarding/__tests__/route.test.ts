@@ -75,7 +75,7 @@ describe("POST /api/provider/onboarding", () => {
       },
       from: vi.fn((table: string) => {
         if (table === "providers") {
-          let filters: Record<string, unknown> = {};
+          const filters: Record<string, unknown> = {};
           let insertPayload: Record<string, unknown> | null = null;
           return {
             select: vi.fn(() => ({

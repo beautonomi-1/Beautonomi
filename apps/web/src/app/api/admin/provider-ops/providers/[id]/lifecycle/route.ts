@@ -44,36 +44,38 @@ export async function GET(
       return notFoundResponse("Provider not found");
     }
 
-    // Fetch user
-    const { data: user } = await supabase
+    const { data: user, error: userErr } = await supabase
       .from("users")
       .select("id, email, full_name, phone, role, created_at")
       .eq("id", provider.user_id)
       .single();
+    if (userErr) throw userErr;
 
-    // Fetch tracking record
-    const { data: tracking } = await supabase
+    const { data: tracking, error: trackErr } = await supabase
       .from("provider_onboarding_tracking")
       .select("*")
       .eq("user_id", provider.user_id)
       .maybeSingle();
+    if (trackErr) throw trackErr;
 
-    // Fetch draft (may still exist even after completion)
-    const { data: draft } = await supabase
+    const { data: draft, error: draftErr } = await supabase
       .from("provider_onboarding_drafts")
       .select("current_step, created_at, updated_at")
       .eq("user_id", provider.user_id)
       .maybeSingle();
+    if (draftErr) throw draftErr;
 
     // Fetch linked lead and activities
     let lead = null;
     let leadActivities: TimelineEvent[] = [];
     if (provider.lead_id) {
-      const { data: leadData } = await supabase
+      const { data: leadData, error: leadErr } = await supabase
         .from("provider_leads")
         .select("*")
         .eq("id", provider.lead_id)
-        .single();
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (leadErr) throw leadErr;
       lead = leadData;
 
       const { data: activities } = await supabase

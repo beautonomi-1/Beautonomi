@@ -2,7 +2,6 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { handleApiError } from "@/lib/supabase/api-helpers";
 import { ensureProviderFreeSubscriptionRow } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
@@ -16,7 +15,6 @@ import {
   exceedsEntitlement,
   percentOf,
   sumMoney,
-  roundCurrency,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 

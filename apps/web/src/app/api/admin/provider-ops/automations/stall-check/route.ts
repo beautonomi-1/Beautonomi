@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { resolveTwilioCredentials, sendTwilioSMS } from "@/lib/integrations/twilio";
 
 /**
  * On-demand stall detection. Scans all in-progress onboarding drafts,
@@ -131,6 +132,46 @@ export async function POST(request: NextRequest) {
         (a.hours_since_activity as number)
     );
 
+    // Auto-SMS stalled signups if enabled
+    let smsSentCount = 0;
+    const autoSmsEnabled = (opsSettings.auto_sms_on_stall as boolean) === true;
+
+    if (autoSmsEnabled && stalled.length > 0) {
+      const creds = await resolveTwilioCredentials(supabase, tenantId);
+      if (creds && creds.smsFrom) {
+        for (const entry of stalled) {
+          const phone = entry.phone as string | null;
+          const name = entry.full_name as string;
+          if (!phone) continue;
+
+          try {
+            await sendTwilioSMS(
+              creds,
+              phone,
+              `Hi ${name}, we noticed you started signing up on Beautonomi but haven't finished. Need help? Reply to this message or contact us. We'd love to have you on board!`
+            );
+            smsSentCount++;
+
+            // Log the communication
+            await supabase.from("provider_lead_communications").insert({
+              tenant_id: tenantId,
+              user_id: entry.user_id as string,
+              channel: "sms",
+              direction: "outbound",
+              from_number: creds.smsFrom,
+              to_number: phone,
+              body: `Auto-stall SMS to ${name}`,
+              status: "sent",
+              metadata: { auto_trigger: "stall_check" },
+              sent_by: null,
+            });
+          } catch {
+            // Non-fatal — continue with other stalled signups
+          }
+        }
+      }
+    }
+
     return successResponse({
       stalled,
       dropped_off: droppedOff,
@@ -139,6 +180,8 @@ export async function POST(request: NextRequest) {
         dropped_off: droppedOff.length,
         stall_threshold_hours: stallThresholdHours,
         dropoff_threshold_hours: dropoffThresholdHours,
+        auto_sms_enabled: autoSmsEnabled,
+        sms_sent: smsSentCount,
       },
     });
   } catch (error) {

@@ -24,6 +24,7 @@ import {
   CreditCard,
   Building,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -417,6 +418,8 @@ export default function ProviderDetailPage() {
                 Services ({provider.offerings?.length || 0})
               </TabsTrigger>
               <TabsTrigger value="analytics">Analytics</TabsTrigger>
+              <TabsTrigger value="gamification">Badges & Points</TabsTrigger>
+              <TabsTrigger value="reports">Reports</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview">
@@ -853,6 +856,16 @@ export default function ProviderDetailPage() {
                 </div>
               </div>
             </TabsContent>
+
+            {/* Gamification / Badges & Points Tab */}
+            <TabsContent value="gamification">
+              <GamificationSection providerId={provider.id} />
+            </TabsContent>
+
+            {/* Reports & Trust Tab */}
+            <TabsContent value="reports">
+              <ProviderReportsSection providerId={provider.id} ownerUserId={provider.owner?.id} />
+            </TabsContent>
           </Tabs>
 
           <div className="mt-10 rounded-xl border-2 border-red-200 bg-red-50/50 p-6">
@@ -939,5 +952,406 @@ export default function ProviderDetailPage() {
         </Dialog>
       </div>
     </RoleGuard>
+  );
+}
+
+interface GamificationData {
+  total_points: number;
+  current_badge: { id: string; name: string; slug: string; tier: number; icon: string | null; min_points: number; description: string | null } | null;
+  badge_earned_at: string | null;
+  all_badges: Array<{ id: string; name: string; slug: string; tier: number; icon: string | null; min_points: number; description: string | null; color: string | null }>;
+  milestones: Array<{ id: string; milestone_type: string; achieved_at: string; metadata: Record<string, unknown> }>;
+  recent_transactions: Array<{ id: string; points: number; source: string; description: string | null; created_at: string }>;
+  progress_to_next_badge: { next_badge: { name: string; min_points: number }; points_needed: number; progress_percent: number } | null;
+}
+
+function GamificationSection({ providerId }: { providerId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<GamificationData | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetcher.get<{ data: GamificationData }>(
+          `/api/admin/providers/${providerId}/gamification`
+        );
+        setData(res.data);
+      } catch {
+        // Gamification may not be configured
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [providerId]);
+
+  if (loading) return <LoadingTimeout loadingMessage="Loading gamification data..." />;
+
+  if (!data || (data.total_points === 0 && data.recent_transactions.length === 0)) {
+    return (
+      <EmptyState
+        title="No gamification data"
+        description="This provider has not earned any points or badges yet."
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Points & Badge Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white border rounded-lg p-5 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Total Points</p>
+          <p className="text-3xl font-bold text-amber-600 mt-1">{data.total_points.toLocaleString()}</p>
+        </div>
+        <div className="bg-white border rounded-lg p-5 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Current Badge</p>
+          {data.current_badge ? (
+            <div className="mt-1">
+              <p className="text-lg font-bold text-gray-900">{data.current_badge.icon || "🏅"} {data.current_badge.name}</p>
+              <p className="text-xs text-gray-400">Tier {data.current_badge.tier}</p>
+            </div>
+          ) : (
+            <p className="text-lg font-bold text-gray-300 mt-1">None yet</p>
+          )}
+        </div>
+        <div className="bg-white border rounded-lg p-5 text-center">
+          <p className="text-xs text-gray-500 uppercase tracking-wider">Next Badge</p>
+          {data.progress_to_next_badge ? (
+            <div className="mt-1">
+              <p className="text-sm font-semibold text-gray-700">{data.progress_to_next_badge.next_badge.name}</p>
+              <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div className="bg-amber-500 h-2 rounded-full" style={{ width: `${data.progress_to_next_badge.progress_percent}%` }} />
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{data.progress_to_next_badge.points_needed} pts to go ({data.progress_to_next_badge.progress_percent}%)</p>
+            </div>
+          ) : (
+            <p className="text-sm text-gray-400 mt-2">Highest tier reached</p>
+          )}
+        </div>
+      </div>
+
+      {/* All Badges */}
+      {data.all_badges.length > 0 && (
+        <div className="bg-white border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Badge Tiers</h3>
+          <div className="flex flex-wrap gap-3">
+            {data.all_badges.map((badge) => {
+              const earned = data.current_badge && badge.tier <= data.current_badge.tier;
+              return (
+                <div
+                  key={badge.id}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg border ${earned ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-gray-200 opacity-50"}`}
+                >
+                  <span className="text-lg">{badge.icon || "🏅"}</span>
+                  <div>
+                    <p className="text-xs font-semibold">{badge.name}</p>
+                    <p className="text-[10px] text-gray-400">{badge.min_points.toLocaleString()} pts</p>
+                  </div>
+                  {earned && <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 ml-1" />}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Milestones */}
+      {data.milestones.length > 0 && (
+        <div className="bg-white border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Milestones</h3>
+          <div className="flex flex-wrap gap-2">
+            {data.milestones.map((m) => (
+              <Badge key={m.id} variant="secondary" className="text-xs">
+                {m.milestone_type.replace(/_/g, " ")} · {new Date(m.achieved_at).toLocaleDateString()}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recent Point Transactions */}
+      {data.recent_transactions.length > 0 && (
+        <div className="bg-white border rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Recent Point Activity</h3>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {data.recent_transactions.map((tx) => (
+              <div key={tx.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div>
+                  <p className="text-sm">{tx.description || tx.source?.replace(/_/g, " ") || "Points"}</p>
+                  <p className="text-xs text-gray-400">{new Date(tx.created_at).toLocaleDateString()}</p>
+                </div>
+                <p className={`text-sm font-semibold ${tx.points >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {tx.points >= 0 ? "+" : ""}{tx.points}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ProviderReportSummary {
+  total_reports: number;
+  adverse_finding_count: number;
+  unique_adverse_reporters: number;
+  is_flagged: boolean;
+  flag_threshold: number;
+  pending_count: number;
+}
+
+interface ProviderReportRow {
+  id: string;
+  reporter_id: string;
+  report_type: string;
+  description: string;
+  status: string;
+  is_adverse_finding: boolean;
+  admin_action_taken: string | null;
+  created_at: string;
+  reporter: { full_name: string | null; email: string } | null;
+}
+
+function ProviderReportsSection({ providerId, ownerUserId }: { providerId: string; ownerUserId?: string }) {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<ProviderReportSummary | null>(null);
+  const [reports, setReports] = useState<ProviderReportRow[]>([]);
+  const [deductOpen, setDeductOpen] = useState(false);
+  const [deductPoints, setDeductPoints] = useState("");
+  const [deductReason, setDeductReason] = useState("");
+  const [deductSubmitting, setDeductSubmitting] = useState(false);
+  const [warnOpen, setWarnOpen] = useState(false);
+  const [warnReason, setWarnReason] = useState("");
+  const [warnSubmitting, setWarnSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!ownerUserId) { setLoading(false); return; }
+    (async () => {
+      try {
+        setLoading(true);
+        const [summaryRes, reportsRes] = await Promise.all([
+          fetcher.get<{ data: ProviderReportSummary }>(
+            `/api/admin/user-reports/summary?user_id=${ownerUserId}`
+          ),
+          fetcher.get<{ data: { data: ProviderReportRow[] } }>(
+            `/api/admin/user-reports?reported_user_id=${ownerUserId}&limit=30`
+          ),
+        ]);
+        setSummary(summaryRes.data);
+        const inner = (reportsRes as { data?: { data?: ProviderReportRow[] } })?.data;
+        setReports(Array.isArray(inner?.data) ? inner.data : []);
+      } catch {
+        // may not have reports
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [ownerUserId]);
+
+  const handleDeduct = async () => {
+    const pts = parseInt(deductPoints, 10);
+    if (!pts || pts <= 0 || !deductReason.trim()) return;
+    setDeductSubmitting(true);
+    try {
+      await fetcher.post(`/api/admin/providers/${providerId}/gamification/deduct`, {
+        points: pts,
+        reason: deductReason.trim(),
+      });
+      toast.success(`${pts} points deducted`);
+      setDeductOpen(false);
+      setDeductPoints("");
+      setDeductReason("");
+    } catch (err) {
+      toast.error(err instanceof FetchError ? err.message : "Failed to deduct points");
+    } finally {
+      setDeductSubmitting(false);
+    }
+  };
+
+  const handleWarn = async () => {
+    if (!ownerUserId || !warnReason.trim()) return;
+    setWarnSubmitting(true);
+    try {
+      await fetcher.post(`/api/admin/users/${ownerUserId}/warn`, {
+        reason: warnReason.trim(),
+        send_notification: true,
+      });
+      toast.success("Warning issued");
+      setWarnOpen(false);
+      setWarnReason("");
+    } catch {
+      toast.error("Failed to issue warning");
+    } finally {
+      setWarnSubmitting(false);
+    }
+  };
+
+  if (loading) return <LoadingTimeout loadingMessage="Loading reports..." />;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Card */}
+      {summary && (
+        <div className={`rounded-lg border p-5 ${summary.is_flagged ? "border-red-300 bg-red-50" : "bg-white"}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              Reports & Trust
+              {summary.is_flagged && (
+                <Badge className="bg-red-600 text-white animate-pulse">FLAGGED</Badge>
+              )}
+            </h3>
+            <div className="flex items-center gap-2">
+              {summary.adverse_finding_count > 0 && (
+                <>
+                  <Button size="sm" variant="outline" className="text-amber-700 border-amber-300"
+                    onClick={() => { setWarnOpen(true); setWarnReason(""); }}>
+                    Warn Provider
+                  </Button>
+                  <Button size="sm" variant="outline" className="text-red-700 border-red-300"
+                    onClick={() => { setDeductOpen(true); setDeductPoints(""); setDeductReason(""); }}>
+                    Deduct Points
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-gray-500">Total Reports</p>
+              <p className="text-2xl font-bold">{summary.total_reports}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Adverse Findings</p>
+              <p className={`text-2xl font-bold ${summary.adverse_finding_count > 0 ? "text-red-600" : ""}`}>
+                {summary.adverse_finding_count}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Unique Reporters</p>
+              <p className={`text-2xl font-bold ${summary.unique_adverse_reporters >= 3 ? "text-red-600" : ""}`}>
+                {summary.unique_adverse_reporters}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Pending</p>
+              <p className="text-2xl font-bold text-amber-600">{summary.pending_count}</p>
+            </div>
+          </div>
+
+          {summary.is_flagged && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-200 rounded-lg text-sm text-red-800">
+              <strong>Action needed:</strong> {summary.unique_adverse_reporters} unique adverse reporters
+              (threshold: {summary.flag_threshold}). Consider deducting points, downgrading badge, or suspending.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Report History */}
+      {reports.length === 0 ? (
+        <EmptyState title="No reports" description="No reports have been filed against this provider." />
+      ) : (
+        <div className="space-y-3">
+          <h3 className="text-md font-semibold text-gray-700">Report History</h3>
+          {reports.map((r) => (
+            <div key={r.id} className={`border rounded-lg p-3 text-sm ${
+              r.is_adverse_finding ? "border-red-200 bg-red-50/50" : "bg-white border-gray-200"
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {r.report_type === "customer_reported_provider" ? "By Customer" : "By Provider"}
+                  </Badge>
+                  <Badge className={
+                    r.status === "pending" ? "bg-amber-100 text-amber-800" :
+                    r.status === "resolved" ? "bg-green-100 text-green-800" :
+                    "bg-gray-100 text-gray-800"
+                  }>{r.status}</Badge>
+                  {r.is_adverse_finding && (
+                    <Badge className="bg-red-100 text-red-800 text-xs">Adverse</Badge>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</span>
+              </div>
+              <p className="text-gray-700 whitespace-pre-wrap">{r.description}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Reporter:{" "}
+                <Link href={`/admin/users/${r.reporter_id}`} className="text-[#FF0077] hover:underline">
+                  {r.reporter?.full_name || r.reporter?.email || r.reporter_id}
+                </Link>
+              </p>
+              {r.admin_action_taken && (
+                <p className="text-xs text-orange-600 mt-1">Action: {r.admin_action_taken.replace(/_/g, " ")}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Deduct Points Dialog */}
+      <Dialog open={deductOpen} onOpenChange={setDeductOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Deduct Points</DialogTitle>
+            <DialogDescription>
+              Points will be deducted and the badge will be automatically recalculated.
+              This may result in a badge downgrade.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Points to deduct</Label>
+              <Input type="number" min="1" value={deductPoints}
+                onChange={(e) => setDeductPoints(e.target.value)}
+                placeholder="e.g. 500" />
+            </div>
+            <div>
+              <Label>Reason</Label>
+              <Textarea value={deductReason}
+                onChange={(e) => setDeductReason(e.target.value)}
+                placeholder="e.g. Substantiated complaints about service quality"
+                rows={2} className="resize-none" />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeductOpen(false)} disabled={deductSubmitting}>Cancel</Button>
+            <Button onClick={handleDeduct}
+              disabled={deductSubmitting || !deductPoints || !deductReason.trim()}
+              className="bg-red-600 hover:bg-red-700">
+              {deductSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Deduct Points
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Warn Dialog */}
+      <Dialog open={warnOpen} onOpenChange={setWarnOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Issue Warning</DialogTitle>
+            <DialogDescription>
+              The provider will receive a notification. This is logged for audit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Warning reason</Label>
+            <Textarea value={warnReason} onChange={(e) => setWarnReason(e.target.value)}
+              placeholder="e.g. Multiple substantiated complaints..." rows={3} className="resize-none" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWarnOpen(false)} disabled={warnSubmitting}>Cancel</Button>
+            <Button onClick={handleWarn} disabled={warnSubmitting || !warnReason.trim()}
+              className="bg-amber-600 hover:bg-amber-700">
+              {warnSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Issue Warning
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }

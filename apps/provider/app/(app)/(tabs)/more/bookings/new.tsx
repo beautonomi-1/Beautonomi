@@ -100,7 +100,7 @@ interface Product {
   name: string;
   price: number;
   currency: string;
-  variants?: Array<{ id: string; name: string; price: number }>;
+  variants?: { id: string; name: string; price: number }[];
 }
 
 interface SelectedProduct {
@@ -338,7 +338,7 @@ export default function NewBookingScreen() {
       AsyncStorage.setItem(DRAFT_KEY, JSON.stringify(draft)).catch(() => {});
     }, 1500);
     return () => clearTimeout(timer);
-  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId]);
+  }, [notes, selectedServices, selectedProducts, discountValue, discountType, tipAmount, selectedPackageId, promoCode]);
 
   // Restore draft on mount if no prefilled params
   useEffect(() => {

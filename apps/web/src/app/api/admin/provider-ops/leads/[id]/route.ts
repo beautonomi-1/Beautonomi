@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireAdminSection,
@@ -146,5 +146,50 @@ export async function PATCH(
     return successResponse(updated);
   } catch (error) {
     return handleApiError(error, "Failed to update lead");
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { id } = await params;
+    const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+
+    const { data: lead } = await supabase
+      .from("provider_leads")
+      .select("id, matched_provider_id")
+      .eq("id", id)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+
+    if (!lead) return notFoundResponse("Lead not found");
+
+    if (lead.matched_provider_id) {
+      return errorResponse(
+        "Cannot delete a lead that is matched to a provider. Unlink it first.",
+        "LEAD_MATCHED",
+        400
+      );
+    }
+
+    await supabase.from("provider_lead_activities").delete().eq("lead_id", id);
+    await supabase.from("provider_lead_categories").delete().eq("lead_id", id);
+    await supabase.from("provider_lead_communications").delete().eq("lead_id", id);
+    await supabase.from("provider_lead_tasks").delete().eq("lead_id", id);
+
+    const { error } = await supabase
+      .from("provider_leads")
+      .delete()
+      .eq("id", id)
+      .eq("tenant_id", tenantId);
+    if (error) throw error;
+
+    return new NextResponse(null, { status: 204 });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete lead");
   }
 }

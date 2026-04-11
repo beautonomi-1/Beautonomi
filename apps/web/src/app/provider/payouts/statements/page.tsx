@@ -7,7 +7,7 @@ import { SectionCard } from "@/components/provider/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FileText, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import { fetcher } from "@/lib/http/fetcher";
 import { subDays, format } from "date-fns";

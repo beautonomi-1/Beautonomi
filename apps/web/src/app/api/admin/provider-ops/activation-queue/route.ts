@@ -4,6 +4,7 @@ import {
   requireAdminSection,
   successResponse,
   handleApiError,
+  getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -13,6 +14,9 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
+    const { searchParams } = new URL(request.url);
+    const search = searchParams.get("search")?.trim()?.toLowerCase();
+    const { page, limit } = getPaginationParams(request);
 
     const { data: providers, error } = await supabase
       .from("providers")
@@ -55,7 +59,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const enriched = (providers || []).map((p: Record<string, unknown>) => {
+    let enriched = (providers || []).map((p: Record<string, unknown>) => {
       const locations = (p.provider_locations as Array<Record<string, unknown>>) || [];
       const owner = usersMap.get(p.user_id as string);
 
@@ -79,7 +83,24 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return successResponse(enriched);
+    if (search) {
+      enriched = enriched.filter((p) => {
+        const raw = p as Record<string, unknown>;
+        const bn = (typeof raw.business_name === "string" ? raw.business_name : "").toLowerCase();
+        const on = (p.owner_name || "").toLowerCase();
+        const oe = (p.owner_email || "").toLowerCase();
+        return bn.includes(search) || on.includes(search) || oe.includes(search);
+      });
+    }
+
+    const total = enriched.length;
+    const offset = (page - 1) * limit;
+    const paginated = enriched.slice(offset, offset + limit);
+
+    return successResponse({
+      data: paginated,
+      meta: { page, limit, total, has_more: total > page * limit },
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch activation queue");
   }

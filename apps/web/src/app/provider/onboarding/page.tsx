@@ -202,7 +202,7 @@ function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
   const trimmed = raw.trim();
   const compact = normalizeSupabaseAuthPhone(trimmed);
 
-  let e164 =
+  const e164 =
     normalizeFullPhoneToE164(trimmed) ?? normalizeFullPhoneToE164(compact);
   if (e164) return normalizeSupabaseAuthPhone(e164);
 

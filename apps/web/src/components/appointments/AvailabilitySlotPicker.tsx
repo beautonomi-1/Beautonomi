@@ -10,8 +10,6 @@ import {
   Sun,
   Cloud,
   Moon,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
 } from "lucide-react";
 

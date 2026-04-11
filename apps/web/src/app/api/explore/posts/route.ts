@@ -458,8 +458,8 @@ export async function GET(request: NextRequest) {
         ...(savedRes.data || []).map((r: any) => r.post_id),
         ...(likedRes.data || []).map((r: any) => r.post_id),
       ].filter(Boolean);
-      let preferredProviderIds = new Set<string>();
-      let preferredCategoryIds = new Set<string>();
+      const preferredProviderIds = new Set<string>();
+      const preferredCategoryIds = new Set<string>();
       if (preferredPostIds.length > 0) {
         const { data: prefPosts } = await supabaseAdmin
           .from("explore_posts")

@@ -88,7 +88,7 @@ export default function TabsLayout() {
         );
       },
     }),
-    [TAB_BAR_HEIGHT, insets.bottom, isTablet, safeBottom],
+    [TAB_BAR_HEIGHT, isTablet, safeBottom],
   );
 
   return (

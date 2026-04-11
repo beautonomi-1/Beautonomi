@@ -38,7 +38,16 @@ import {
   Copy,
   KeyRound,
   ExternalLink,
+  Plus,
+  ArrowUpRight,
+  ArrowDownRight,
+  Gift,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -353,6 +362,9 @@ export default function UserDetailPage() {
                 <TabsTrigger value="bookings">Bookings</TabsTrigger>
                 <TabsTrigger value="orders">Orders ({user.recent_product_orders?.length ?? 0})</TabsTrigger>
                 <TabsTrigger value="tickets">Tickets ({user.support_tickets?.length ?? 0})</TabsTrigger>
+                <TabsTrigger value="wallet">Wallet</TabsTrigger>
+                <TabsTrigger value="loyalty">Loyalty</TabsTrigger>
+                <TabsTrigger value="reports">Reports</TabsTrigger>
               </TabsList>
 
               {/* Profile Tab */}
@@ -557,6 +569,21 @@ export default function UserDetailPage() {
                   </div>
                 )}
               </TabsContent>
+
+              {/* Wallet Tab */}
+              <TabsContent value="wallet">
+                <WalletSection userId={userId} fmtMoney={fmtMoney} />
+              </TabsContent>
+
+              {/* Loyalty Tab */}
+              <TabsContent value="loyalty">
+                <LoyaltySection userId={userId} />
+              </TabsContent>
+
+              {/* Reports Tab */}
+              <TabsContent value="reports">
+                <UserReportsSection userId={userId} />
+              </TabsContent>
             </Tabs>
           </motion.div>
         </div>
@@ -621,6 +648,451 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
         <p className="text-sm text-gray-500">{label}</p>
         <p className="font-medium">{value}</p>
       </div>
+    </div>
+  );
+}
+
+interface WalletTx {
+  id: string;
+  type: string;
+  amount: number;
+  description: string | null;
+  reference_type: string | null;
+  created_at: string;
+}
+
+function WalletSection({ userId, fmtMoney }: { userId: string; fmtMoney: (n: number) => string }) {
+  const [loading, setLoading] = useState(true);
+  const [transactions, setTransactions] = useState<WalletTx[]>([]);
+  const [walletInfo, setWalletInfo] = useState<{ balance: number; currency: string } | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [topUpDescription, setTopUpDescription] = useState("");
+  const [topUpLoading, setTopUpLoading] = useState(false);
+  const [showTopUp, setShowTopUp] = useState(false);
+
+  const loadTransactions = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetcher.get<{
+        data: {
+          wallet: { balance: number; currency: string } | null;
+          data: WalletTx[];
+          meta: { page: number; limit: number; total: number; has_more: boolean };
+        };
+      }>(`/api/admin/users/${userId}/wallet-transactions?page=${page}&limit=20`);
+      const inner = res.data;
+      setWalletInfo(inner.wallet);
+      setTransactions(inner.data || []);
+      setTotal(inner.meta.total);
+      setHasMore(inner.meta.has_more);
+    } catch {
+      toast.error("Failed to load wallet data");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, page]);
+
+  useEffect(() => { loadTransactions(); }, [loadTransactions]);
+
+  const handleTopUp = async () => {
+    const amount = parseFloat(topUpAmount);
+    if (!amount || amount <= 0) { toast.error("Enter a valid amount"); return; }
+    setTopUpLoading(true);
+    try {
+      await fetcher.post(`/api/admin/users/${userId}/wallet-transactions`, {
+        amount,
+        description: topUpDescription.trim() || undefined,
+        currency: walletInfo?.currency || "ZAR",
+      });
+      toast.success(`Wallet topped up with ${fmtMoney(amount)}`);
+      setTopUpAmount("");
+      setTopUpDescription("");
+      setShowTopUp(false);
+      setPage(1);
+      loadTransactions();
+    } catch {
+      toast.error("Failed to top up wallet");
+    } finally {
+      setTopUpLoading(false);
+    }
+  };
+
+  if (loading && page === 1) {
+    return <LoadingTimeout loadingMessage="Loading wallet..." />;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm text-gray-500">Balance</p>
+          <p className="text-3xl font-bold">{walletInfo ? fmtMoney(walletInfo.balance) : "No wallet"}</p>
+          {walletInfo && <p className="text-xs text-gray-400">Currency: {walletInfo.currency}</p>}
+        </div>
+        <Button size="sm" onClick={() => setShowTopUp(!showTopUp)}>
+          <Plus className="w-4 h-4 mr-1" />Top Up
+        </Button>
+      </div>
+
+      {showTopUp && (
+        <Card>
+          <CardContent className="pt-4 space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label>Amount</Label>
+                <Input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  placeholder="100.00"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Reason (optional)</Label>
+                <Input
+                  placeholder="Goodwill credit, compensation..."
+                  value={topUpDescription}
+                  onChange={(e) => setTopUpDescription(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleTopUp} disabled={topUpLoading}>
+                {topUpLoading ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Plus className="w-4 h-4 mr-1" />}
+                Confirm Top Up
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setShowTopUp(false)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <p className="text-xs text-gray-500">{total} transaction(s)</p>
+
+      {transactions.length === 0 ? (
+        <EmptyState title="No transactions" description="This wallet has no transaction history." />
+      ) : (
+        <div className="space-y-2">
+          {transactions.map((tx) => (
+            <div key={tx.id} className="flex items-center justify-between bg-white border rounded-lg p-3">
+              <div className="flex items-center gap-3">
+                {tx.type === "credit" ? (
+                  <div className="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center">
+                    <ArrowDownRight className="w-4 h-4 text-green-600" />
+                  </div>
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-red-50 flex items-center justify-center">
+                    <ArrowUpRight className="w-4 h-4 text-red-600" />
+                  </div>
+                )}
+                <div>
+                  <p className="text-sm font-medium">{tx.description || tx.type}</p>
+                  <p className="text-xs text-gray-400">
+                    {tx.reference_type && <span className="mr-2">{tx.reference_type}</span>}
+                    {format(new Date(tx.created_at), "PP · p")}
+                  </p>
+                </div>
+              </div>
+              <p className={`text-sm font-semibold ${tx.type === "credit" ? "text-green-600" : "text-red-600"}`}>
+                {tx.type === "credit" ? "+" : "-"}{fmtMoney(tx.amount)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {total > 20 && (
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs text-gray-500">Page {page}</p>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>
+              <ChevronLeft className="h-4 w-4 mr-1" />Previous
+            </Button>
+            <Button variant="outline" size="sm" disabled={!hasMore} onClick={() => setPage((p) => p + 1)}>
+              Next<ChevronRight className="h-4 w-4 ml-1" />
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface LoyaltyTx {
+  id: string;
+  points: number;
+  transaction_type: string;
+  source: string | null;
+  description: string | null;
+  created_at: string;
+}
+
+function LoyaltySection({ userId }: { userId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [balance, setBalance] = useState(0);
+  const [transactions, setTransactions] = useState<LoyaltyTx[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetcher.get<{
+          data: { balance: number; transactions: LoyaltyTx[] };
+        }>(`/api/admin/users/${userId}/loyalty`);
+        setBalance(res.data.balance);
+        setTransactions(res.data.transactions || []);
+      } catch {
+        // Loyalty may not be set up for this tenant
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [userId]);
+
+  if (loading) return <LoadingTimeout loadingMessage="Loading loyalty data..." />;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <div className="w-12 h-12 rounded-full bg-amber-50 flex items-center justify-center">
+          <Gift className="w-6 h-6 text-amber-600" />
+        </div>
+        <div>
+          <p className="text-sm text-gray-500">Loyalty Points Balance</p>
+          <p className="text-3xl font-bold text-amber-700">{balance.toLocaleString()}</p>
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500">{transactions.length} recent transaction(s)</p>
+
+      {transactions.length === 0 ? (
+        <EmptyState title="No loyalty activity" description="This user has no loyalty point transactions." />
+      ) : (
+        <div className="space-y-2">
+          {transactions.map((tx) => (
+            <div key={tx.id} className="flex items-center justify-between bg-white border rounded-lg p-3">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  tx.transaction_type === "earned" || tx.transaction_type === "adjusted"
+                    ? "bg-green-50" : "bg-red-50"
+                }`}>
+                  {tx.transaction_type === "earned" || tx.transaction_type === "adjusted" ? (
+                    <ArrowDownRight className="w-4 h-4 text-green-600" />
+                  ) : (
+                    <ArrowUpRight className="w-4 h-4 text-red-600" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">{tx.description || tx.transaction_type}</p>
+                  <p className="text-xs text-gray-400">
+                    {tx.source && <span className="mr-2">{tx.source}</span>}
+                    {format(new Date(tx.created_at), "PP · p")}
+                  </p>
+                </div>
+              </div>
+              <p className={`text-sm font-semibold ${
+                tx.transaction_type === "earned" || tx.transaction_type === "adjusted"
+                  ? "text-green-600" : "text-red-600"
+              }`}>
+                {tx.transaction_type === "earned" || tx.transaction_type === "adjusted" ? "+" : "-"}{tx.points}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface ReportSummary {
+  user_id: string;
+  total_reports: number;
+  adverse_finding_count: number;
+  unique_adverse_reporters: number;
+  is_flagged: boolean;
+  flag_threshold: number;
+  last_adverse_finding_at: string | null;
+  actions_taken: string[];
+  pending_count: number;
+  dismissed_count: number;
+}
+
+interface ReportRowItem {
+  id: string;
+  reporter_id: string;
+  report_type: string;
+  description: string;
+  status: string;
+  is_adverse_finding: boolean;
+  admin_action_taken: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  reporter: { full_name: string | null; email: string } | null;
+}
+
+function UserReportsSection({ userId }: { userId: string }) {
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState<ReportSummary | null>(null);
+  const [reports, setReports] = useState<ReportRowItem[]>([]);
+  const [warnOpen, setWarnOpen] = useState(false);
+  const [warnReason, setWarnReason] = useState("");
+  const [warnSubmitting, setWarnSubmitting] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        setLoading(true);
+        const [summaryRes, reportsRes] = await Promise.all([
+          fetcher.get<{ data: ReportSummary }>(`/api/admin/user-reports/summary?user_id=${userId}`),
+          fetcher.get<{ data: { data: ReportRowItem[] } }>(`/api/admin/user-reports?reported_user_id=${userId}&limit=50`),
+        ]);
+        setSummary(summaryRes.data);
+        const inner = (reportsRes as { data?: { data?: ReportRowItem[] } })?.data;
+        setReports(Array.isArray(inner?.data) ? inner.data : []);
+      } catch {
+        // may not have reports
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [userId]);
+
+  const handleWarn = async () => {
+    if (!warnReason.trim()) return;
+    setWarnSubmitting(true);
+    try {
+      await fetcher.post(`/api/admin/users/${userId}/warn`, {
+        reason: warnReason.trim(),
+        send_notification: true,
+      });
+      toast.success("Warning issued");
+      setWarnOpen(false);
+      setWarnReason("");
+    } catch {
+      toast.error("Failed to issue warning");
+    } finally {
+      setWarnSubmitting(false);
+    }
+  };
+
+  if (loading) return <LoadingTimeout loadingMessage="Loading reports..." />;
+
+  return (
+    <div className="space-y-6">
+      {summary && (
+        <div className={`rounded-lg border p-5 ${summary.is_flagged ? "border-red-300 bg-red-50" : "bg-white"}`}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold flex items-center gap-2">
+              Reports Against This User
+              {summary.is_flagged && (
+                <Badge className="bg-red-600 text-white animate-pulse">FLAGGED</Badge>
+              )}
+            </h3>
+            {summary.adverse_finding_count > 0 && (
+              <Button size="sm" variant="outline" className="text-amber-700 border-amber-300"
+                onClick={() => { setWarnOpen(true); setWarnReason(""); }}>
+                <AlertTriangle className="w-4 h-4 mr-1" /> Warn User
+              </Button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div>
+              <p className="text-xs text-gray-500">Total Reports</p>
+              <p className="text-2xl font-bold">{summary.total_reports}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Adverse Findings</p>
+              <p className={`text-2xl font-bold ${summary.adverse_finding_count > 0 ? "text-red-600" : ""}`}>
+                {summary.adverse_finding_count}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Unique Reporters (Adverse)</p>
+              <p className={`text-2xl font-bold ${summary.unique_adverse_reporters >= 3 ? "text-red-600" : ""}`}>
+                {summary.unique_adverse_reporters}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Pending</p>
+              <p className="text-2xl font-bold text-amber-600">{summary.pending_count}</p>
+            </div>
+          </div>
+          {summary.is_flagged && (
+            <div className="mt-4 p-3 bg-red-100 border border-red-200 rounded-lg text-sm text-red-800">
+              <strong>Threshold reached:</strong> {summary.unique_adverse_reporters} unique reporters with adverse findings
+              (threshold: {summary.flag_threshold}). Consider warning, badge downgrade, or suspension.
+            </div>
+          )}
+        </div>
+      )}
+
+      {reports.length === 0 ? (
+        <EmptyState title="No reports" description="No reports have been filed against this user." />
+      ) : (
+        <div className="space-y-3">
+          <h3 className="text-md font-semibold text-gray-700">Report History</h3>
+          {reports.map((r) => (
+            <div key={r.id} className={`border rounded-lg p-3 text-sm ${
+              r.is_adverse_finding ? "border-red-200 bg-red-50/50" : "bg-white border-gray-200"
+            }`}>
+              <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-xs">
+                    {r.report_type === "customer_reported_provider" ? "By Customer" : "By Provider"}
+                  </Badge>
+                  <Badge className={
+                    r.status === "pending" ? "bg-amber-100 text-amber-800" :
+                    r.status === "resolved" ? "bg-green-100 text-green-800" :
+                    "bg-gray-100 text-gray-800"
+                  }>{r.status}</Badge>
+                  {r.is_adverse_finding && (
+                    <Badge className="bg-red-100 text-red-800 text-xs">Adverse</Badge>
+                  )}
+                </div>
+                <span className="text-xs text-gray-400">{new Date(r.created_at).toLocaleDateString()}</span>
+              </div>
+              <p className="text-gray-700 whitespace-pre-wrap">{r.description}</p>
+              <p className="text-xs text-gray-400 mt-1">
+                Reporter:{" "}
+                <Link href={`/admin/users/${r.reporter_id}`} className="text-[#FF0077] hover:underline">
+                  {r.reporter?.full_name || r.reporter?.email || r.reporter_id}
+                </Link>
+              </p>
+              {r.admin_action_taken && (
+                <p className="text-xs text-orange-600 mt-1">Action: {r.admin_action_taken.replace(/_/g, " ")}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={warnOpen} onOpenChange={setWarnOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Issue Warning</DialogTitle>
+            <DialogDescription>
+              A notification will be sent to this user. The warning is logged for audit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Warning reason</Label>
+            <Textarea value={warnReason} onChange={(e) => setWarnReason(e.target.value)}
+              placeholder="e.g. Repeated complaints about service quality..." rows={3} className="resize-none" />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setWarnOpen(false)} disabled={warnSubmitting}>Cancel</Button>
+            <Button onClick={handleWarn} disabled={warnSubmitting || !warnReason.trim()} className="bg-amber-600 hover:bg-amber-700">
+              {warnSubmitting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              Issue Warning
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

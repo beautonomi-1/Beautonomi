@@ -63,8 +63,14 @@ export async function GET(request: NextRequest) {
           "id, lead_id, activity_type, description, created_at, performed_by"
         )
         .order("created_at", { ascending: false })
-        .limit(20),
+        .limit(50),
     ]);
+
+    // Filter activities to only those belonging to tenant leads
+    const tenantLeadIds = (leadsRes.data || []).map((l: { id: string }) => l.id);
+    const recentActivities = (recentActivitiesRes.data || []).filter(
+      (a: { lead_id: string }) => tenantLeadIds.includes(a.lead_id)
+    ).slice(0, 20);
 
     const drafts = draftsRes.data || [];
     const completedUserIds = new Set<string>();
@@ -126,7 +132,7 @@ export async function GET(request: NextRequest) {
         total_leads: leads.length,
       },
       pipeline: leadsByStage,
-      recent_activities: recentActivitiesRes.data || [],
+      recent_activities: recentActivities,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch dashboard");

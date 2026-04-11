@@ -805,7 +805,7 @@ export default function BookingFlow() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run when URL/flow changes or cart is empty
+     
   }, [packageFlowKey, searchParams, bookingState.selectedServices.length, serviceDirect, productDirect]);
 
   /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */

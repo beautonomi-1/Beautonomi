@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
 
     // Get service_fee and refund data from finance_transactions (ledger-consistent)
     const bookingIds = bookings?.map((b) => b.id) || [];
-    let feeQuery = supabaseAdmin
+    const feeQuery = supabaseAdmin
       .from("finance_transactions")
       .select("booking_id, transaction_type, amount, net")
       .eq("provider_id", providerId)

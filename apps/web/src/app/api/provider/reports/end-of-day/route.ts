@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     type BookingRow = { id: string; location_id?: string };
     const bpRowList = (bpRows ?? []) as BpRow[];
     const bookingIds = [...new Set(bpRowList.map((r) => r.booking_id))];
-    let providerBookingIds = new Set<string>();
+    const providerBookingIds = new Set<string>();
     if (bookingIds.length > 0) {
       const { data: bookings, error: bookError } = await supabaseAdmin
         .from("bookings")

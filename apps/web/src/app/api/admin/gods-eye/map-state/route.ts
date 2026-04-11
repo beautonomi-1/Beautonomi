@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
     const locationIds = bookingList
       .filter((b: BookingRow) => b.location_type === "at_salon" && b.location_id)
       .map((b: BookingRow) => b.location_id);
-    let salonLocations: Record<string, { lat: number; lng: number; name?: string }> = {};
+    const salonLocations: Record<string, { lat: number; lng: number; name?: string }> = {};
     if (locationIds.length > 0) {
       const { data: locs } = await admin
         .from("provider_locations")

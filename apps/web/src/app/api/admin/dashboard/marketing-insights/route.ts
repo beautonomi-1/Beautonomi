@@ -119,7 +119,7 @@ export async function GET(request: NextRequest) {
       return Array.isArray(rpc.data) ? (rpc.data as BracketRow[]) : [];
     };
 
-    let customerAgeRows = parseBracketRows(rpcCustAge, "admin_dashboard_customer_age_brackets_by_tenant");
+    const customerAgeRows = parseBracketRows(rpcCustAge, "admin_dashboard_customer_age_brackets_by_tenant");
     let customerDecadeRows: DecadeRow[] = [];
     if (rpcDecade.error) {
       console.warn("admin_dashboard_customer_decade_born_by_tenant:", rpcDecade.error.message);
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
     } else if (Array.isArray(rpcProvYib.data)) {
       providerYibRows = rpcProvYib.data as YibRow[];
     }
-    let providerPersonAgeRows = parseBracketRows(
+    const providerPersonAgeRows = parseBracketRows(
       rpcProvPersonAge,
       "admin_dashboard_provider_person_age_brackets_by_tenant"
     );

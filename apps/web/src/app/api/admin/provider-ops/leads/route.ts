@@ -4,6 +4,8 @@ import {
   requireAdminSection,
   successResponse,
   handleApiError,
+  errorResponse,
+  getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -36,12 +38,12 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
+    const { page, limit, offset } = getPaginationParams(request);
 
     const stage = searchParams.get("stage");
     const source = searchParams.get("source");
     const search = searchParams.get("search")?.trim();
     const assignedTo = searchParams.get("assigned_to");
-    const limitParam = searchParams.get("limit");
     const country = searchParams.get("country");
 
     let query = supabase
@@ -53,7 +55,8 @@ export async function GET(request: NextRequest) {
           global_category_id,
           global_service_categories:global_category_id (id, name, slug, icon)
         )
-      `
+      `,
+        { count: "exact" }
       )
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false });
@@ -77,15 +80,47 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const limit = limitParam
-      ? Math.min(500, Math.max(1, parseInt(limitParam, 10) || 200))
-      : 200;
-    query = query.limit(limit);
-
-    const { data, error } = await query;
+    const { data, error, count } = await query.range(offset, offset + limit - 1);
     if (error) throw error;
 
-    return successResponse(data || []);
+    const total = count || 0;
+
+    // Also fetch stage counts for the current filters (excluding stage filter)
+    let countsQuery = supabase
+      .from("provider_leads")
+      .select("commercial_stage")
+      .eq("tenant_id", tenantId);
+
+    if (source && source !== "all") {
+      countsQuery = countsQuery.eq("source", source);
+    }
+    if (assignedTo) {
+      countsQuery = countsQuery.eq("assigned_to", assignedTo);
+    }
+    if (country) {
+      countsQuery = countsQuery.eq("country", country);
+    }
+    if (search) {
+      const safe = search.replace(/[%_]/g, "");
+      countsQuery = countsQuery.or(
+        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
+      );
+    }
+
+    const { data: allStages } = await countsQuery;
+    const stageCounts: Record<string, number> = {};
+    let allCount = 0;
+    for (const row of allStages || []) {
+      stageCounts[row.commercial_stage] = (stageCounts[row.commercial_stage] || 0) + 1;
+      allCount++;
+    }
+    stageCounts.all = allCount;
+
+    return successResponse({
+      data: data || [],
+      meta: { page, limit, total, has_more: total > page * limit },
+      stage_counts: stageCounts,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch leads");
   }
@@ -102,26 +137,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     if (!body.business_name && !body.contact_person_name) {
-      return handleApiError(
-        new Error("business_name or contact_person_name is required"),
-        "Validation failed"
-      );
+      return errorResponse("business_name or contact_person_name is required", "VALIDATION_ERROR", 400);
     }
 
     const source = body.source || "manual";
     if (!VALID_SOURCES.includes(source)) {
-      return handleApiError(
-        new Error(`Invalid source: ${source}`),
-        "Validation failed"
-      );
+      return errorResponse(`Invalid source: ${source}`, "VALIDATION_ERROR", 400);
     }
 
     const stage = body.commercial_stage || "new";
     if (!VALID_STAGES.includes(stage)) {
-      return handleApiError(
-        new Error(`Invalid stage: ${stage}`),
-        "Validation failed"
-      );
+      return errorResponse(`Invalid stage: ${stage}`, "VALIDATION_ERROR", 400);
     }
 
     const leadData = {

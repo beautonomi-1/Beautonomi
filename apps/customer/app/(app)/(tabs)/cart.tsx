@@ -15,7 +15,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
 import { tabBarOuterHeight, TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";

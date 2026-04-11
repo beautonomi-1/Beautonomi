@@ -19,7 +19,6 @@ import {
 import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
-import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { generateInvoiceHTMLFromData as sharedGenerateInvoiceHTML } from "@/components/appointments/invoice-generator";
 
 interface ClientHistory {

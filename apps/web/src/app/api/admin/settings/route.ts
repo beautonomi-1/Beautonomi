@@ -76,6 +76,17 @@ interface PlatformSettings {
     safari_web_id?: string;
     enabled: boolean;
   };
+  twilio: {
+    /** Stored in platform_secrets.twilio_account_sid */
+    account_sid: string;
+    /** Stored in platform_secrets.twilio_auth_token */
+    auth_token: string;
+    /** Stored in platform_secrets.twilio_sms_from */
+    sms_from: string;
+    /** Stored in platform_secrets.twilio_whatsapp_from */
+    whatsapp_from: string;
+    enabled: boolean;
+  };
   mapbox: {
     access_token: string;
     public_token: string;
@@ -251,6 +262,13 @@ function getDefaultPlatformSettings(): PlatformSettings {
           enabled: true, // iCal doesn't need OAuth, so enabled by default
         },
       },
+      twilio: {
+        account_sid: "",
+        auth_token: "",
+        sms_from: process.env.TWILIO_SMS_FROM || "",
+        whatsapp_from: process.env.TWILIO_WHATSAPP_FROM || "",
+        enabled: false,
+      },
       apps: (() => {
         const d = getDefaultPublicAppsResponse();
         return {
@@ -349,7 +367,7 @@ export async function GET(request: NextRequest) {
             table: "platform_secrets",
             tenantId: currentTenantId,
             select:
-              "paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret",
+              "paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret, twilio_account_sid, twilio_auth_token, twilio_sms_from, twilio_whatsapp_from",
             apply: (q) => q,
             orderBy: { column: "updated_at", ascending: false },
           });
@@ -367,6 +385,11 @@ export async function GET(request: NextRequest) {
           if (secretRow?.google_calendar_client_secret) merged.calendar_integrations.google.client_secret = "***";
           if (secretRow?.outlook_client_id) merged.calendar_integrations.outlook.client_id = "***";
           if (secretRow?.outlook_client_secret) merged.calendar_integrations.outlook.client_secret = "***";
+          if (!merged.twilio) merged.twilio = { account_sid: "", auth_token: "", sms_from: "", whatsapp_from: "", enabled: false };
+          if (secretRow?.twilio_account_sid) merged.twilio.account_sid = "***";
+          if (secretRow?.twilio_auth_token) merged.twilio.auth_token = "***";
+          if (secretRow?.twilio_sms_from) merged.twilio.sms_from = secretRow.twilio_sms_from as string;
+          if (secretRow?.twilio_whatsapp_from) merged.twilio.whatsapp_from = secretRow.twilio_whatsapp_from as string;
         } catch {
           // ignore (table may not exist yet in dev)
         }
@@ -450,14 +473,18 @@ export async function PATCH(request: NextRequest) {
       !!settings.calendar_integrations.google.client_id ||
       !!settings.calendar_integrations.google.client_secret ||
       !!settings.calendar_integrations.outlook.client_id ||
-      !!settings.calendar_integrations.outlook.client_secret;
+      !!settings.calendar_integrations.outlook.client_secret ||
+      !!settings.twilio?.account_sid ||
+      !!settings.twilio?.auth_token ||
+      !!settings.twilio?.sms_from ||
+      !!settings.twilio?.whatsapp_from;
 
     if (hasAnySecrets) {
       // Upsert singleton row
       let secretQuery = supabase
         .from("platform_secrets")
         .select(
-          "id, paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret"
+          "id, paystack_secret_key, paystack_public_key, paystack_webhook_secret, onesignal_rest_api_key, onesignal_rest_api_key_provider, mapbox_access_token, amplitude_secret_key, google_calendar_client_id, google_calendar_client_secret, outlook_client_id, outlook_client_secret, twilio_account_sid, twilio_auth_token, twilio_sms_from, twilio_whatsapp_from"
         )
         .order("updated_at", { ascending: false })
         .limit(1);
@@ -497,6 +524,10 @@ export async function PATCH(request: NextRequest) {
           settings.calendar_integrations.outlook.client_secret,
           prev?.outlook_client_secret
         ),
+        twilio_account_sid: mergeSecretField(settings.twilio?.account_sid, prev?.twilio_account_sid),
+        twilio_auth_token: mergeSecretField(settings.twilio?.auth_token, prev?.twilio_auth_token),
+        twilio_sms_from: mergeSecretField(settings.twilio?.sms_from, prev?.twilio_sms_from),
+        twilio_whatsapp_from: mergeSecretField(settings.twilio?.whatsapp_from, prev?.twilio_whatsapp_from),
         updated_at: new Date().toISOString(),
       };
 
@@ -521,6 +552,10 @@ export async function PATCH(request: NextRequest) {
     settings.calendar_integrations.google.client_secret = "";
     settings.calendar_integrations.outlook.client_id = "";
     settings.calendar_integrations.outlook.client_secret = "";
+    if (settings.twilio) {
+      settings.twilio.account_sid = "";
+      settings.twilio.auth_token = "";
+    }
 
     const existingSettings = existingRow;
 

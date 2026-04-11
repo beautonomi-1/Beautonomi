@@ -14,7 +14,6 @@ import {
   User,
   Phone,
   Mail,
-  MoreVertical,
   Repeat,
   Users,
   Printer,
@@ -55,13 +54,10 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   FileWarning, Camera, MessageCircle, Users, Wrench, Clock, Bell, MapPin,
   Phone, Mail, CreditCard, Edit, Trash2, Check, X, Printer,
 };
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import {
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,9 +65,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { DirectionsLink } from "@/components/ui/directions-link";
 import { useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot } from "@/components/provider-portal/DragDropCalendar";
 import { MangomintStatusLegend } from "@/components/calendar/MangomintStatusLegend";
 import {

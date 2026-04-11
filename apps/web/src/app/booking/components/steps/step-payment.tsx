@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BookingState, type BookingStep } from "../booking-flow";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
-import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
+import { initializePayment } from "../../actions/payment-actions";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";

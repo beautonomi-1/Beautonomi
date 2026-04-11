@@ -182,7 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [updateSession, AUTH_SESSION_TIMEOUT_MS]);
+   
+  }, [updateSession]);
 
   useEffect(() => {
     if (!isSentryEnabled()) return;

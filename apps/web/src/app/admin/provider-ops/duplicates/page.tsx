@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { ArrowLeft, AlertTriangle, Check, X, Mail, Phone } from "lucide-react";
+import { ArrowLeft, AlertTriangle, Check, X, Mail, Phone, Search } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 interface DuplicateMatch {
@@ -35,6 +36,7 @@ export default function DuplicateReviewPage() {
   const [duplicates, setDuplicates] = useState<PossibleDuplicate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadDuplicates = useCallback(async () => {
     try {
@@ -107,6 +109,23 @@ export default function DuplicateReviewPage() {
     }
   };
 
+  const filteredDuplicates = useMemo(() => {
+    if (!searchQuery.trim()) return duplicates;
+    const q = searchQuery.toLowerCase();
+    return duplicates.filter((dup) => {
+      const leadName = dup.lead.business_name?.toLowerCase() || "";
+      const leadEmail = dup.lead.email?.toLowerCase() || "";
+      const leadPhone = dup.lead.phone_e164 || "";
+      const matchNames = dup.matches.map((m) => m.name?.toLowerCase() || "").join(" ");
+      return (
+        leadName.includes(q) ||
+        leadEmail.includes(q) ||
+        leadPhone.includes(q) ||
+        matchNames.includes(q)
+      );
+    });
+  }, [duplicates, searchQuery]);
+
   if (loading) {
     return (
       <div className="p-8">
@@ -130,15 +149,26 @@ export default function DuplicateReviewPage() {
             Duplicate Review
           </h1>
           <p className="text-sm text-zinc-500">
-            {duplicates.length} possible duplicate(s) found
+            {filteredDuplicates.length} possible duplicate(s) found
           </p>
+        </div>
+
+        {/* Search */}
+        <div className="relative max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400" />
+          <Input
+            placeholder="Search by name, email, or phone..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
         </div>
 
         {error && (
           <div className="text-center py-12 text-red-500">{error}</div>
         )}
 
-        {!error && duplicates.length === 0 && (
+        {!error && filteredDuplicates.length === 0 && (
           <div className="text-center py-16 text-zinc-400">
             <Check className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p>No duplicates detected</p>
@@ -146,7 +176,7 @@ export default function DuplicateReviewPage() {
         )}
 
         <div className="space-y-4">
-          {duplicates.map((dup) => (
+          {filteredDuplicates.map((dup) => (
             <div
               key={dup.lead.id}
               className="bg-white border rounded-xl overflow-hidden"

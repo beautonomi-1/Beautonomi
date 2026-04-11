@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Calendar, ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { coerceSelectedDate } from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
@@ -22,7 +22,6 @@ import {
   BOOKING_SHADOW_CARD,
   BOOKING_RADIUS_CARD,
   BOOKING_RADIUS_BUTTON,
-  BOOKING_RADIUS_PILL,
   BOOKING_TEXT_PRIMARY,
   BOOKING_TEXT_SECONDARY,
   MIN_TAP,

@@ -17,7 +17,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason, PricingResult } from "./types";
+import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason } from "./types";
 import { calculateBookingPricing } from "./pricing";
 import { generateInvoiceHTMLFromData as generateInvoiceHTMLFromDataUtil } from "./invoice-generator";
 import { format } from "date-fns";
@@ -101,10 +101,8 @@ import {
 
 import type {
   Appointment,
-  TeamMember,
   ServiceItem,
   ProductItem,
-  Salon,
   Provider as PortalProviderProfile,
 } from "@/lib/provider-portal/types";
 import { providerApi } from "@/lib/provider-portal/api";

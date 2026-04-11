@@ -135,7 +135,7 @@ export default function AdsSettingsScreen() {
         setPacks(Array.isArray(pd) ? (pd as any) : []);
       }
       setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
-    } catch (err) {
+    } catch {
       setCampaigns([]);
       setPerformance(null);
       setPacks([]);

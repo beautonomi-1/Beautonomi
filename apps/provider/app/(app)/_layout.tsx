@@ -60,6 +60,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!__DEV__) return;
     console.log("(app)/_layout auth gate", { authLoading: loading, hasSession: !!session });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id]);
 
   useEffect(() => {

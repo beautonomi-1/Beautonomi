@@ -5,7 +5,6 @@
  */
 
 import { NextRequest } from "next/server";
-import { createHmac } from "crypto";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createEmbedRefreshToken } from "@/lib/verification/sumsub-embed-refresh";

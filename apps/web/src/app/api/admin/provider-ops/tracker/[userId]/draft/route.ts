@@ -16,6 +16,20 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
     const { userId } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
+
+    // Verify user belongs to this tenant
+    const { data: targetUser, error: userErr } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .eq("tenant_id", tenantId)
+      .maybeSingle();
+    if (userErr) throw userErr;
+    if (!targetUser) {
+      const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
+      return notFoundResponse("User not found in this tenant");
+    }
 
     const { data, error } = await supabase
       .from("provider_onboarding_drafts")
@@ -42,6 +56,20 @@ export async function PATCH(
     const { userId } = await params;
     const supabase = getSupabaseAdmin();
     const body = await request.json();
+
+    // Verify user belongs to this tenant before modifying draft
+    const tenantIdForPatch = await resolveAdminApiTenantId(request);
+    const { data: tenantUser, error: tuErr } = await supabase
+      .from("users")
+      .select("id")
+      .eq("id", userId)
+      .eq("tenant_id", tenantIdForPatch)
+      .maybeSingle();
+    if (tuErr) throw tuErr;
+    if (!tenantUser) {
+      const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
+      return notFoundResponse("User not found in this tenant");
+    }
 
     // Fetch existing draft
     const { data: existing, error: fetchErr } = await supabase
@@ -79,13 +107,12 @@ export async function PATCH(
       if (insertErr) throw insertErr;
     }
 
-    const tenantId = await resolveAdminApiTenantId(request);
     const { error: trackErr } = await supabase
       .from("provider_onboarding_tracking")
       .upsert(
         {
           user_id: userId,
-          tenant_id: tenantId,
+          tenant_id: tenantIdForPatch,
           wizard_status: "in_progress",
           current_step: body.current_step || existing?.current_step || 1,
           last_progress_at: new Date().toISOString(),

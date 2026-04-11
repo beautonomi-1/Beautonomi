@@ -6,6 +6,7 @@ import {
   handleApiError,
   notFoundResponse,
   errorResponse,
+  getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -19,6 +20,7 @@ export async function GET(
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
+    const { page, limit, offset } = getPaginationParams(request);
 
     const { data: lead } = await supabase
       .from("provider_leads")
@@ -28,15 +30,19 @@ export async function GET(
       .maybeSingle();
     if (!lead) return notFoundResponse("Lead not found");
 
-    const { data, error } = await supabase
+    const { data, error, count } = await supabase
       .from("provider_lead_activities")
-      .select("*")
+      .select("*", { count: "exact" })
       .eq("lead_id", id)
       .order("created_at", { ascending: false })
-      .limit(100);
+      .range(offset, offset + limit - 1);
     if (error) throw error;
 
-    return successResponse(data || []);
+    const total = count || 0;
+    return successResponse({
+      data: data || [],
+      meta: { page, limit, total, has_more: total > page * limit },
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch activities");
   }

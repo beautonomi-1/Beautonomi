@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
-import { Button } from "@/components/ui/button";
 import { Loader2, MapPin, Check } from "lucide-react";
 import { toast } from "sonner";
 

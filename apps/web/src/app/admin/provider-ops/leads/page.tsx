@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -11,6 +11,12 @@ import {
   MapPin,
   ArrowRight,
   Tag,
+  Upload,
+  Download,
+  FileDown,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -18,6 +24,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { toast } from "sonner";
+
+const PAGE_SIZE = 50;
 
 const STAGES = [
   "all",
@@ -81,30 +90,68 @@ interface Lead {
   }>;
 }
 
+interface PaginatedLeadResponse {
+  data: {
+    data: Lead[];
+    meta: { page: number; limit: number; total: number; has_more: boolean };
+    stage_counts: Record<string, number>;
+  };
+}
+
 export default function LeadListPage() {
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activeTab, setActiveTab] = useState(
     searchParams.get("stage") || "all"
   );
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [stageCounts, setStageCounts] = useState<Record<string, number>>({});
 
-  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    total_rows_in_file: number;
+    skipped_empty: number;
+    columns_detected: string[];
+    warnings: Array<{ row: number; field: string; message: string }>;
+  } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const loadLeads = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
       const params = new URLSearchParams();
-      if (searchQuery.trim()) params.set("search", searchQuery.trim());
-      params.set("limit", "500");
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      if (activeTab !== "all") params.set("stage", activeTab);
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
 
-      const res = await fetcher.get<{ data: Lead[] }>(
+      const res = await fetcher.get<PaginatedLeadResponse>(
         `/api/admin/provider-ops/leads?${params.toString()}`,
         { staleTimeMs: 0 }
       );
-      setAllLeads(res.data || []);
+      const inner = res.data;
+      setLeads(inner.data || []);
+      setTotal(inner.meta.total);
+      setHasMore(inner.meta.has_more);
+      setStageCounts(inner.stage_counts || {});
     } catch (err) {
       if (err instanceof FetchTimeoutError) setError("Request timed out");
       else if (err instanceof FetchError) setError(err.message);
@@ -112,45 +159,255 @@ export default function LeadListPage() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery]);
+  }, [debouncedSearch, activeTab, page]);
+
+  const handleDownloadTemplate = useCallback(async () => {
+    try {
+      const res = await fetch(
+        "/api/admin/provider-ops/leads/template?format=with-categories",
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Failed to download template");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "provider-leads-import-template.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error("Failed to download template");
+    }
+  }, []);
+
+  const handleImportFile = useCallback(
+    async (file: File) => {
+      const ext = file.name.split(".").pop()?.toLowerCase();
+      if (ext !== "csv" && ext !== "tsv" && ext !== "txt") {
+        toast.error("Please upload a CSV file (.csv, .tsv, or .txt)");
+        return;
+      }
+      try {
+        setImporting(true);
+        setImportResult(null);
+        const formData = new FormData();
+        formData.append("file", file);
+
+        const res = await fetch("/api/admin/provider-ops/leads/import", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        const json = await res.json();
+
+        if (!res.ok) {
+          toast.error(json.error?.message || "Import failed");
+          return;
+        }
+
+        const result = json.data;
+        setImportResult({
+          imported: result.imported,
+          total_rows_in_file: result.total_rows_in_file,
+          skipped_empty: result.skipped_empty,
+          columns_detected: result.columns_detected || [],
+          warnings: result.warnings || [],
+        });
+        toast.success(`Imported ${result.imported} leads`);
+        loadLeads();
+      } catch {
+        toast.error("Import failed unexpectedly");
+      } finally {
+        setImporting(false);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+    },
+    [loadLeads]
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOver(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleImportFile(file);
+    },
+    [handleImportFile]
+  );
+
+  const handleExport = useCallback(async () => {
+    try {
+      setExporting(true);
+      const params = new URLSearchParams();
+      if (activeTab !== "all") params.set("stage", activeTab);
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+
+      const res = await fetch(
+        `/api/admin/provider-ops/leads/export?${params.toString()}`,
+        { credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `provider-leads-export-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast.success("Export downloaded");
+    } catch {
+      toast.error("Failed to export leads");
+    } finally {
+      setExporting(false);
+    }
+  }, [activeTab, debouncedSearch]);
 
   useEffect(() => {
-    const debounce = setTimeout(() => loadLeads(), 300);
-    return () => clearTimeout(debounce);
+    loadLeads();
   }, [loadLeads]);
 
-  const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: allLeads.length };
-    for (const lead of allLeads) {
-      counts[lead.commercial_stage] =
-        (counts[lead.commercial_stage] || 0) + 1;
-    }
-    return counts;
-  }, [allLeads]);
-
-  const leads = useMemo(() => {
-    if (activeTab === "all") return allLeads;
-    return allLeads.filter((l) => l.commercial_stage === activeTab);
-  }, [allLeads, activeTab]);
-
   return (
-    <div className="min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8">
+    <div
+      className={`min-h-screen bg-zinc-50/50 py-6 px-4 md:px-6 lg:px-8 transition-colors ${dragOver ? "bg-blue-50/80 ring-2 ring-inset ring-blue-300" : ""}`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {dragOver && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-blue-50/90 pointer-events-none">
+          <div className="text-center">
+            <Upload className="h-16 w-16 mx-auto text-blue-500 mb-3" />
+            <p className="text-lg font-semibold text-blue-700">Drop CSV file to import leads</p>
+            <p className="text-sm text-blue-500 mt-1">All columns are optional — import whatever data you have</p>
+          </div>
+        </div>
+      )}
       <div className="max-w-7xl mx-auto space-y-4">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-zinc-900">Lead Inbox</h1>
             <p className="text-sm text-zinc-500">
-              {leads.length} leads · Manage your provider pipeline
+              {total.toLocaleString()} leads · Manage your provider pipeline
             </p>
           </div>
-          <Link href="/admin/provider-ops/leads/new">
-            <Button size="sm">
-              <UserPlus className="h-4 w-4 mr-1" />
-              New Lead
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDownloadTemplate}
+            >
+              <FileDown className="h-4 w-4 mr-1" />
+              Template
             </Button>
-          </Link>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.tsv,.txt"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) handleImportFile(f);
+              }}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={importing}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {importing ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4 mr-1" />
+              )}
+              {importing ? "Importing..." : "Import CSV"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={exporting || total === 0}
+              onClick={handleExport}
+            >
+              {exporting ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-1" />
+              )}
+              Export
+            </Button>
+            <Link href="/admin/provider-ops/leads/new">
+              <Button size="sm">
+                <UserPlus className="h-4 w-4 mr-1" />
+                New Lead
+              </Button>
+            </Link>
+          </div>
         </div>
+
+        {/* Import Result Banner */}
+        {importResult && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2 flex-1">
+                <p className="text-sm font-semibold text-emerald-800">
+                  Import complete — {importResult.imported.toLocaleString()} leads imported
+                </p>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-emerald-700">
+                  <span>{importResult.total_rows_in_file.toLocaleString()} rows in file</span>
+                  <span>{importResult.imported.toLocaleString()} imported</span>
+                  {importResult.skipped_empty > 0 && (
+                    <span>{importResult.skipped_empty} empty rows skipped</span>
+                  )}
+                </div>
+                {importResult.columns_detected.length > 0 && (
+                  <p className="text-xs text-emerald-600">
+                    Columns detected: {importResult.columns_detected.join(", ")}
+                  </p>
+                )}
+                {importResult.warnings.length > 0 && (
+                  <details className="mt-1">
+                    <summary className="text-xs text-amber-600 cursor-pointer font-medium">
+                      {importResult.warnings.length} warning(s) — click to review
+                    </summary>
+                    <ul className="mt-1.5 space-y-0.5 text-xs text-amber-700 max-h-48 overflow-y-auto">
+                      {importResult.warnings.slice(0, 50).map((w, i) => (
+                        <li key={i} className="flex gap-1">
+                          <span className="text-amber-500 shrink-0">Row {w.row}:</span>
+                          <span>{w.field} — {w.message}</span>
+                        </li>
+                      ))}
+                      {importResult.warnings.length > 50 && (
+                        <li className="text-amber-500 font-medium">
+                          ...and {importResult.warnings.length - 50} more warnings
+                        </li>
+                      )}
+                    </ul>
+                  </details>
+                )}
+              </div>
+              <button
+                onClick={() => setImportResult(null)}
+                className="text-xs text-emerald-600 hover:text-emerald-800 shrink-0 ml-3"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative max-w-md">
@@ -164,7 +421,7 @@ export default function LeadListPage() {
         </div>
 
         {/* Stage Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setPage(1); }}>
           <TabsList className="flex flex-wrap h-auto gap-1">
             {STAGES.map((stage) => (
               <TabsTrigger
@@ -195,19 +452,43 @@ export default function LeadListPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {leads
-                    .filter(
-                      (l) =>
-                        stage === "all" || l.commercial_stage === stage
-                    )
-                    .map((lead) => (
-                      <LeadRow key={lead.id} lead={lead} />
-                    ))}
+                  {leads.map((lead) => (
+                    <LeadRow key={lead.id} lead={lead} />
+                  ))}
                 </div>
               )}
             </TabsContent>
           ))}
         </Tabs>
+
+        {/* Pagination */}
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-zinc-500">
+              Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasMore}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

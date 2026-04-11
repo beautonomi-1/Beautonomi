@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useCallback, useRef } from "react";
+import React, { memo, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {

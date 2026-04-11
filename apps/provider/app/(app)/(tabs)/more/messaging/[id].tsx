@@ -56,7 +56,7 @@ interface Message {
   sender_type: "provider" | "customer";
   created_at: string;
   read_at: string | null;
-  attachments?: Array<CustomOfferAttachment | FileLikeAttachment | { type?: string }>;
+  attachments?: (CustomOfferAttachment | FileLikeAttachment | { type?: string })[];
 }
 
 function isImageMime(t?: string) {

@@ -105,6 +105,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id]);
 
   // Phase 2: profile check (only when portal is ok)
@@ -194,6 +195,7 @@ export default function Index() {
       hasProfile,
       profileLoadError,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
   useEffect(() => {
@@ -207,6 +209,7 @@ export default function Index() {
       hasProfile,
       profileLoadError,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
   // 1. Auth resolving — always wait here first so a post-login router.replace("/") that

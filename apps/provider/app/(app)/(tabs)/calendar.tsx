@@ -612,7 +612,7 @@ export default function CalendarScreen() {
   const router = useRouter();
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
-  const { user } = useAuth();
+  useAuth();
   const { provider, selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();

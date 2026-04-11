@@ -68,6 +68,7 @@ import {
   Kanban,
   Radio,
   CheckCircle2,
+  Copy,
   Settings2,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
@@ -161,6 +162,7 @@ const navGroups: NavGroup[] = [
       { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserPlus },
       { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Kanban },
       { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2 },
+      { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: Copy },
       { title: "Reports", href: "/admin/provider-ops/reports", icon: BarChart3 },
       { title: "Settings", href: "/admin/provider-ops/settings", icon: Settings2 },
     ],
@@ -273,8 +275,8 @@ const navGroups: NavGroup[] = [
 
 interface SearchResult {
   users: Array<{ id: string; email: string; phone: string | null; full_name: string | null; role: string }>;
-  bookings: Array<{ id: string; booking_number: string; customer_id: string; provider_id: string | null; status: string; created_at: string }>;
-  providers: Array<{ id: string; business_name: string; owner_name: string | null; owner_email: string | null; status: string }>;
+  bookings: Array<{ id: string; booking_number: string; customer_id: string; provider_id: string | null; status: string; created_at: string; customer_name?: string | null; customer_email?: string | null; provider_name?: string | null }>;
+  providers: Array<{ id: string; business_name: string; owner_name: string | null; owner_email: string | null; phone?: string | null; status: string }>;
 }
 
 /** Read the last-known role from local/session storage for use during auth hydration. */
@@ -581,7 +583,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.users.map((user) => (
                             <Link
                               key={user.id}
-                              href={`/admin/users?highlight=${user.id}`}
+                              href={`/admin/users/${user.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -592,9 +594,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
                                   {user.full_name || "No name"}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{user.role}</span>
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">
-                                  {user.email} {user.phone ? `• ${user.phone}` : ""}
+                                  {user.email}{user.phone ? ` · ${user.phone}` : ""}
                                 </div>
                               </div>
                             </Link>
@@ -609,7 +612,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.bookings.map((booking) => (
                             <Link
                               key={booking.id}
-                              href={`/admin/bookings?highlight=${booking.id}`}
+                              href={`/admin/bookings/${booking.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -619,10 +622,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <Calendar className="w-4 h-4 text-gray-400" />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
-                                  {booking.booking_number}
+                                  #{booking.booking_number}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{booking.status}</span>
                                 </div>
-                                <div className="text-xs text-gray-500">
-                                  {new Date(booking.created_at).toLocaleDateString()}
+                                <div className="text-xs text-gray-500 truncate">
+                                  {booking.customer_name || booking.customer_email || "Customer"}{booking.provider_name ? ` → ${booking.provider_name}` : ""} · {new Date(booking.created_at).toLocaleDateString()}
                                 </div>
                               </div>
                             </Link>
@@ -637,7 +641,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.providers.map((provider) => (
                             <Link
                               key={provider.id}
-                              href={`/admin/providers?highlight=${provider.id}`}
+                              href={`/admin/providers/${provider.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -648,9 +652,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
                                   {provider.business_name}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{provider.status}</span>
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">
-                                  {provider.owner_name || provider.owner_email || ""}
+                                  {provider.owner_email || provider.owner_name || ""}{provider.phone ? ` · ${provider.phone}` : ""}
                                 </div>
                               </div>
                             </Link>

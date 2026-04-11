@@ -14,6 +14,7 @@ import {
   Edit,
   UserPlus,
   ExternalLink,
+  Trash2,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -135,6 +136,20 @@ export default function LeadDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!confirm("Are you sure you want to permanently delete this lead? This cannot be undone.")) return;
+    try {
+      await fetch(`/api/admin/provider-ops/leads/${leadId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      toast.success("Lead deleted");
+      router.push("/admin/provider-ops/leads");
+    } catch {
+      toast.error("Failed to delete lead");
+    }
+  };
+
   const handleAddNote = async () => {
     if (!noteText.trim()) return;
     try {
@@ -241,25 +256,52 @@ export default function LeadDetailPage() {
               </Button>
             </Link>
 
+            {!lead.matched_provider_id && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                onClick={handleDelete}
+              >
+                <Trash2 className="h-3 w-3 mr-1" /> Delete
+              </Button>
+            )}
+
             {lead.commercial_stage === "won" && !lead.matched_user_id && (
               <Button
                 size="sm"
                 className="bg-green-600 hover:bg-green-700"
+                disabled={!lead.email}
+                title={!lead.email ? "Lead must have an email before creating an account" : "Create a Supabase Auth account for this lead"}
                 onClick={async () => {
+                  if (!lead.email) {
+                    alert("This lead has no email address. Please add an email before creating an account.");
+                    return;
+                  }
                   if (!confirm("Create an account for this lead? They will receive a password reset email.")) return;
                   try {
-                    const res = await fetcher.post<{ data: { user_id: string } }>(
+                    const res = await fetcher.post<{ data: { user_id: string; password_reset_sent: boolean } }>(
                       "/api/admin/provider-ops/assist/create-account",
                       {
                         email: lead.email,
-                        full_name: lead.contact_person_name || lead.business_name,
+                        full_name: lead.contact_person_name || lead.business_name || lead.lead_name,
                         phone: lead.phone_e164 || null,
                         lead_id: lead.id,
+                        business_name: lead.business_name || lead.lead_name,
                       }
                     );
+                    toast.success(
+                      res.data.password_reset_sent
+                        ? "Account created! Password reset email sent."
+                        : "Account created! Password reset email could not be sent — user can use forgot-password."
+                    );
                     router.push(`/admin/provider-ops/tracker/${res.data.user_id}`);
-                  } catch {
-                    alert("Failed to create account. Check if email already exists.");
+                  } catch (err) {
+                    toast.error(
+                      err instanceof FetchError
+                        ? err.message
+                        : "Failed to create account. Check if email already exists."
+                    );
                   }
                 }}
               >

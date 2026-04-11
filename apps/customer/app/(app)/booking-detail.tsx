@@ -1160,7 +1160,7 @@ export default function BookingDetailScreen() {
         {Array.isArray((booking as any).addons) && (booking as any).addons.length > 0 && (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add-ons</Text>
-            {((booking as any).addons as Array<Record<string, unknown>>).map((addon, i) => {
+            {((booking as any).addons as Record<string, unknown>[]).map((addon, i) => {
               const addonName = String(addon.offering_name ?? addon.addon_name ?? "Add-on");
               const qty = Number(addon.quantity ?? 1);
               const price = Number(addon.price ?? 0);
@@ -1180,7 +1180,7 @@ export default function BookingDetailScreen() {
         {Array.isArray((booking as any).products) && (booking as any).products.length > 0 && (
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Products</Text>
-            {((booking as any).products as Array<Record<string, unknown>>).map((prod, i) => {
+            {((booking as any).products as Record<string, unknown>[]).map((prod, i) => {
               const prodName = String(prod.product_name ?? "Product");
               const qty = Number(prod.quantity ?? 1);
               const unitPrice = Number(prod.unit_price ?? 0);

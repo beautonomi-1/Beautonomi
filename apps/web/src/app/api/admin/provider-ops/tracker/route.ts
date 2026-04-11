@@ -4,6 +4,7 @@ import {
   requireAdminSection,
   successResponse,
   handleApiError,
+  getPaginationParams,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -72,6 +73,8 @@ export async function GET(request: NextRequest) {
 
     const statusFilter = searchParams.get("status");
     const stepFilter = searchParams.get("step");
+    const search = searchParams.get("search")?.trim()?.toLowerCase();
+    const { page, limit } = getPaginationParams(request);
     const stallThresholdHours = 24;
     const dropOffThresholdHours = 168;
 
@@ -221,8 +224,26 @@ export async function GET(request: NextRequest) {
           r?.current_step === step && !r?.has_provider
       );
     }
+    if (search) {
+      filtered = filtered.filter((r: (typeof results)[number]) => {
+        if (!r) return false;
+        return (
+          r.full_name?.toLowerCase().includes(search) ||
+          r.email?.toLowerCase().includes(search) ||
+          r.phone?.includes(search) ||
+          r.draft_summary?.business_name?.toString().toLowerCase().includes(search)
+        );
+      });
+    }
 
-    return successResponse(filtered);
+    const total = filtered.length;
+    const offset = (page - 1) * limit;
+    const paginated = filtered.slice(offset, offset + limit);
+
+    return successResponse({
+      data: paginated,
+      meta: { page, limit, total, has_more: total > page * limit },
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch tracker data");
   }

@@ -16,7 +16,7 @@ import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-paymen
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { cancelStalePendingPaystackProductOrders } from "@/lib/orders/product-order-lifecycle";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),

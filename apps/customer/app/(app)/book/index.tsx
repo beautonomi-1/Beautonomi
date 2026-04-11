@@ -552,7 +552,7 @@ export default function BookScreen() {
   const [packageIdForCheckout, setPackageIdForCheckout] = useState<string | null>(null);
   /** Retail lines from mixed packages — merged into checkout product cart (parity with customer web). */
   const [selectedPackageProducts, setSelectedPackageProducts] = useState<
-    Array<{ id: string; name: string; price: number; quantity: number; currency: string }>
+    { id: string; name: string; price: number; quantity: number; currency: string }[]
   >([]);
   /** Full package object for UI display — seeded from nav params immediately, enriched after API loads. */
   const [activePackage, setActivePackage] = useState<{
@@ -604,8 +604,8 @@ export default function BookScreen() {
   const appliedPrefillAddonsRef = useRef(false);
   /** Public package shape from API — used with {@link cartMatchesPublicCatalogPackage} when `packageIdForCheckout` is set. */
   const resolvedPackageShapeRef = useRef<{
-    items?: Array<{ type?: string; id?: string; quantity?: number }>;
-    services?: Array<{ id: string }>;
+    items?: { type?: string; id?: string; quantity?: number }[];
+    services?: { id: string }[];
   } | null>(null);
   const prevStepRef = useRef<Step | null>(null);
   /** Which time-of-day section is expanded (matches web collapsible groups). */
@@ -902,7 +902,7 @@ export default function BookScreen() {
               const rawProd = !prodRes.error && prodRes.data != null ? prodRes.data : [];
               const prodList = Array.isArray(rawProd) ? rawProd : [];
               const retail = buildRetailCartRowsFromPublicPackage(
-                pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+                pkg as { items?: { type?: string; id?: string; quantity?: number }[] },
                 prodList as PublicProductCatalogRow[],
                 applied[0]?.currency ?? getTenantDefaultCurrency()
               );
@@ -1398,6 +1398,7 @@ export default function BookScreen() {
       }
       setAddonsList(merged);
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, slug, allOfferingIds.join(","), addonsParam]);
 
   useEffect(() => {
@@ -1620,6 +1621,7 @@ export default function BookScreen() {
 } finally {
     setCreatingHold(false);
   }
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, promoParam, giftCardParam, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t]);
 
   const goBack = useCallback(() => {

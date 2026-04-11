@@ -14,7 +14,7 @@
  */
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { percentOf, subtractMoney, sumMoney, roundCurrency } from "@beautonomi/utils";
+import { percentOf, subtractMoney, sumMoney } from "@beautonomi/utils";
 
 export interface ServiceItem {
   id: string;

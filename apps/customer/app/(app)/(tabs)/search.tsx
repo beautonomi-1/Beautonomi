@@ -44,7 +44,9 @@ export default function SearchScreen() {
   const [searched, setSearched] = useState(false);
   const searchRef = useRef<((isRefresh?: boolean, queryOverride?: string, categoryOverride?: string) => Promise<void>) | null>(null);
   const { selectedAddress } = useSelectedAddress();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -107,7 +109,7 @@ export default function SearchScreen() {
         setRefreshing(false);
       }
     },
-    [query, category, selectedAddress?.latitude, selectedAddress?.longitude]
+    [query, category, selectedAddress]
   );
   searchRef.current = search;
 
@@ -145,6 +147,7 @@ export default function SearchScreen() {
     }
   }, []);
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: will replace inline onChangeText
   const onQueryChange = useCallback(
     (text: string) => {
       setQuery(text);
@@ -154,6 +157,7 @@ export default function SearchScreen() {
     [fetchSuggestions]
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const onSuggestionPress = useCallback((s: Suggestion) => {
     setSuggestions([]);
     if (s.type === "category" && s.slug) {

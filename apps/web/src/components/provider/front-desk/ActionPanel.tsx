@@ -13,7 +13,6 @@ import { copyTextToClipboard } from "@/lib/browser/clipboard";
 import { WorkflowStepper } from "./WorkflowStepper";
 import { PaymentActions } from "./PaymentActions";
 import {
-  confirmBooking,
   checkInBooking,
   arriveAtHome,
   startService,

@@ -1,5 +1,3 @@
-import type { CreateFormData } from "./types";
-import type { Appointment } from "@/lib/provider-portal/types";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 export function generateInvoiceHTMLFromData(

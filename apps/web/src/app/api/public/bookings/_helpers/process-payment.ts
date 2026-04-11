@@ -13,7 +13,7 @@ import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-dr
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { percentOf, subtractMoney, toCents } from "@beautonomi/utils";
+import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";

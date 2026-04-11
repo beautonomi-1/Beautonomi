@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Users, Calendar, BarChart3 } from "lucide-react";
+import { Users, Calendar } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { format, subDays } from "date-fns";
 import { ReportSkeleton } from "../components/ReportSkeleton";

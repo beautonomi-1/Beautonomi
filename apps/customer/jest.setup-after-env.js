@@ -1,3 +1,4 @@
+/* global jest */
 /**
  * react-native's package entry is Flow/ESM-heavy; Jest in "node" env cannot parse it.
  * App modules (e.g. lib/analytics) import Platform from "react-native" — mock before any test file loads them.

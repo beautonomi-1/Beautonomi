@@ -213,6 +213,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id]);
 
   // Customer onboarding (web + native): server is source of truth before sending users home.
@@ -333,6 +334,7 @@ export default function Index() {
       customerOnboardingDone,
       profileState,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, customerOnboardingDone, profileState]);
 
   useEffect(() => {

@@ -11,7 +11,7 @@ import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboa
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { ONBOARDING_DONE_KEY, onboardingDoneKey } from "./onboarding/index";
+import { onboardingDoneKey } from "./onboarding/index";
 import { isScreenshotMode } from "@/config/public-env";
 import {
   authFlowBreadcrumb,

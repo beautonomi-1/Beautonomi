@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
@@ -13,6 +12,7 @@ import {
  * Get order detail with items, provider info, and delivery/collection details.
  * Uses admin client for the product_variants embed so deactivated products
  * don't break the entire query due to RLS restrictions.
+ * @tenant-hint scoped by customer_id = user.id (authenticated user owns the order)
  */
 export async function GET(
   request: NextRequest,

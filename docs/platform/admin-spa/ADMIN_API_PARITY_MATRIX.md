@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **261** API rows, 2026-04-08 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **297** API rows, 2026-04-11 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **259** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **297** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -51,6 +51,7 @@
 | `integrations_dev` | Integrations & dev | `admin_integrations` | `ADMIN_SECTION_INTEGRATIONS_DEV` |
 | `operations` | Operations | `admin_operations` | `ADMIN_SECTION_OPERATIONS` |
 | `platform_config` | Platform config | `admin_platform_config` | `ADMIN_SECTION_PLATFORM_CONFIG` |
+| `provider_ops` | Provider Ops | `admin_operations`, `admin_support` | `ADMIN_SECTION_PROVIDER_OPS` |
 
 Superadmin may access all sections. Sidebar also uses `superadminOnly` on: **Tenant domains**, **Team permissions**. **Market Coverage** (`/admin/service-zones`) uses the **Operations** section (same as `requireAdminSection(ADMIN_SECTION_OPERATIONS)` on `/api/admin/service-zones/*`).
 
@@ -176,6 +177,18 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 94 | `/admin/control-plane/maintenance` | W5 | platform_config | Y | `GET/PATCH /api/admin/maintenance` | Per-scope config + enable/disable + countdown |
 | 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | Y | `GET /api/admin/maintenance-notify` | Read-only list + CSV export, filtered by scope |
 | 96 | `/admin/control-plane/audit-log` | W5 | platform_config | Y | `GET /api/admin/control-plane/config-change-log` | Paginated, filtered by area + record key |
+| 97 | `/admin/provider-ops` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/dashboard` | Ops dashboard: stalled/dropped signups, KPIs, lead pipeline, recent activity |
+| 98 | `/admin/provider-ops/tracker` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/tracker`, `GET .../tracker/stats` | Onboarding tracker: real-time signup progress, stall detection, filters by status/step |
+| 99 | `/admin/provider-ops/tracker/[userId]` | W5 | provider_ops | N | `GET .../tracker/:userId`, `PATCH .../draft`, `POST .../note`, `PATCH .../assign`, `POST .../submit` | Detail + admin-assisted onboarding: view/edit draft, add notes, submit on behalf |
+| 100 | `/admin/provider-ops/leads` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads` | Lead inbox: list, search, filter by stage/source/country |
+| 101 | `/admin/provider-ops/leads/new` | W5 | provider_ops | N | `POST /api/admin/provider-ops/leads`, `POST /api/mapbox/geocode`, `GET .../categories` | Lead creation form: geocoding, category multi-select, phone E.164, duplicate check |
+| 102 | `/admin/provider-ops/leads/[id]` | W5 | provider_ops | N | `GET/PATCH .../leads/:id`, `PATCH .../stage`, `PATCH .../assign`, `GET/POST .../activities` | Lead detail: timeline, stage change, assignment, notes, create-account action |
+| 103 | `/admin/provider-ops/pipeline` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads`, `GET .../pipeline/stats`, `PATCH .../leads/:id/stage` | Kanban pipeline board with drag-and-drop stage transitions |
+| 104 | `/admin/provider-ops/activation` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/activation-queue`, `PATCH /api/admin/providers/:id/status` | Activation queue: providers pending approval, activation gates, approve action |
+| 105 | `/admin/provider-ops/reports` | W5 | provider_ops | Y | `GET .../reports/funnel`, `GET .../reports/step-dropoff` | Funnel metrics, step drop-off analysis, lead pipeline, admin productivity |
+| 106 | `/admin/provider-ops/settings` | W5 | provider_ops | Y | `GET/PATCH /api/admin/provider-ops/settings` | Stall/drop-off thresholds, auto-assignment, SLA rules |
+| 107 | `/admin/provider-ops/providers/[id]` | W5 | provider_ops | N | `GET /api/admin/provider-ops/providers/:id/lifecycle` | Unified lifecycle view: lead → signup → onboarding → activation timeline |
+| 108 | `/admin/provider-ops/duplicates` | W5 | provider_ops | N | `GET /api/admin/provider-ops/dedup-check`, `GET .../duplicates` | Duplicate review queue: match/dismiss potential duplicates |
 
 ---
 
@@ -266,3 +279,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-05 | §8 Waves 2–5 SPA batch delta; link to `ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`; test strategy §2.7 envelope note |
 | 2026-04-06 | **SPA sweep:** W1 list/detail read routes, W3 content surfaces, W4 marketing/integrations/ops lists, W5 control-plane `*` legacy bridge, **payout** mutation parity in SPA; `/admin/broadcast` SPA = **history** only (compose stays legacy). |
 | 2026-04-11 | **Platform fixes batch:** Feature flags `enabled` field fix (was `is_enabled`); logout server sign-out route + await sequencing; admin-team `last_sign_in_at` removed (not in `users` table); referral-sources tenant bypass with `supabaseAdmin`; team-permissions draft-reset-on-refetch fix + unsaved-changes indicator; platform-fees label clarified; slot-conflict hold cleared on back-navigate; service-zones full CRUD (`POST`, `PATCH`, archive); Mapbox config edit form; Amplitude edit form; **Paystack** API key management (`GET`/`PATCH /api/admin/integrations/paystack`) + `PaystackConfigPage` + nav entry; `FinanceOverviewPage` dead import fixed; `ProvidersListPage` Details link + improved description. Taxonomy: `+1` route (`integrations/paystack`). |
+| 2026-04-11 | **Provider Ops Hub:** New `ADMIN_SECTION_PROVIDER_OPS` section (`admin_operations`, `admin_support`). **27 new API routes** under `/api/admin/provider-ops/*` (leads CRUD, pipeline, tracker, assisted onboarding, activation queue, reports, comms, dedup, settings, automations). **12 new UI pages** under `/admin/provider-ops/*`. Migration `460_provider_ops_hub.sql` adds `provider_leads`, `provider_lead_categories`, `provider_lead_activities`, `provider_lead_communications`, `provider_lead_tasks`, `provider_onboarding_tracking` tables + admin RLS on `provider_onboarding_drafts`. `providers` table gains `onboarding_state` + `lead_id`. Self-serve onboarding hooks (`POST /api/provider/onboarding`, `PUT /api/provider/onboarding/draft`) updated with tracking + lead matching. All routes use `resolveAdminApiTenantId` for tenant scoping. Taxonomy regen: **294** rows. §4 rows 97–108. |

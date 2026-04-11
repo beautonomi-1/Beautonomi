@@ -3,7 +3,6 @@ import "server-only";
 import { headers } from "next/headers";
 import {
   getConfiguredGlobalEntryHost,
-  getHreflangAlternateUrls,
   normalizeHostLabel,
   openGraphLocaleTagForHost,
 } from "@/lib/seo/host-config";

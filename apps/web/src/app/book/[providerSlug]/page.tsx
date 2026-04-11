@@ -72,7 +72,7 @@ function BookProviderPageContent() {
       }
     };
     load();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+   
   }, [providerSlug, useLegacyFlow]);
 
   useEffect(() => {

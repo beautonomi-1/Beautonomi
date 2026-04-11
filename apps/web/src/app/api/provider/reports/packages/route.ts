@@ -7,7 +7,7 @@ import {
   handleApiError,
 } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays, subMonths } from "date-fns";
+import { subMonths } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {

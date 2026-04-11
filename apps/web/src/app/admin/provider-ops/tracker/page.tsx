@@ -12,6 +12,8 @@ import {
   Eye,
   Wrench,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -89,6 +91,8 @@ const STATUS_TABS = [
   { key: "completed", label: "Completed" },
 ] as const;
 
+const PAGE_SIZE = 50;
+
 export default function OnboardingTrackerPage() {
   const searchParams = useSearchParams();
   const initialStatus = searchParams.get("status") || "all";
@@ -98,15 +102,34 @@ export default function OnboardingTrackerPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(initialStatus);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      setPage(1);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
+
+      const params = new URLSearchParams();
+      if (activeTab !== "all") params.set("status", activeTab);
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+      params.set("page", String(page));
+      params.set("limit", String(PAGE_SIZE));
+
       const [trackerRes, statsRes] = await Promise.all([
-        fetcher.get<{ data: TrackerRow[] }>(
-          "/api/admin/provider-ops/tracker",
+        fetcher.get<{ data: { data: TrackerRow[]; meta: { page: number; limit: number; total: number; has_more: boolean } } }>(
+          `/api/admin/provider-ops/tracker?${params.toString()}`,
           { staleTimeMs: 0 }
         ),
         fetcher.get<{ data: TrackerStats }>(
@@ -114,7 +137,10 @@ export default function OnboardingTrackerPage() {
           { staleTimeMs: 0 }
         ),
       ]);
-      setRows(trackerRes.data || []);
+      const inner = trackerRes.data;
+      setRows(inner.data || []);
+      setTotal(inner.meta.total);
+      setHasMore(inner.meta.has_more);
       setStats(statsRes.data || null);
     } catch (err) {
       if (err instanceof FetchTimeoutError) setError("Request timed out");
@@ -123,25 +149,11 @@ export default function OnboardingTrackerPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTab, debouncedSearch, page]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  const filteredRows = rows.filter((r) => {
-    if (activeTab !== "all" && r.stall_status !== activeTab) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        r.full_name?.toLowerCase().includes(q) ||
-        r.email?.toLowerCase().includes(q) ||
-        r.phone?.includes(q) ||
-        r.draft_summary?.business_name?.toLowerCase().includes(q)
-      );
-    }
-    return true;
-  });
 
   if (loading) {
     return (
@@ -244,7 +256,7 @@ export default function OnboardingTrackerPage() {
         </div>
 
         {/* Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v); setPage(1); }}>
           <TabsList className="flex flex-wrap h-auto gap-1">
             {STATUS_TABS.map((tab) => (
               <TabsTrigger
@@ -261,14 +273,14 @@ export default function OnboardingTrackerPage() {
             <TabsContent key={tab.key} value={tab.key} className="mt-4">
               {error ? (
                 <div className="text-center py-12 text-red-500">{error}</div>
-              ) : filteredRows.length === 0 ? (
+              ) : rows.length === 0 ? (
                 <div className="text-center py-12 text-zinc-400">
                   <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
                   <p>No signups found</p>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {filteredRows.map((row) => (
+                  {rows.map((row) => (
                     <TrackerRowCard
                       key={row.user_id}
                       row={row}
@@ -285,6 +297,35 @@ export default function OnboardingTrackerPage() {
             </TabsContent>
           ))}
         </Tabs>
+
+        {/* Pagination */}
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-zinc-500">
+              Showing {((page - 1) * PAGE_SIZE) + 1}–{Math.min(page * PAGE_SIZE, total)} of {total.toLocaleString()}
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page === 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!hasMore}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+                <ChevronRight className="h-4 w-4 ml-1" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

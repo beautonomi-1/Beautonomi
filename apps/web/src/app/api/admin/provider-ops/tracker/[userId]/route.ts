@@ -52,6 +52,7 @@ export async function GET(
         .from("providers")
         .select("id, business_name, status, is_verified, created_at")
         .eq("user_id", userId)
+        .eq("tenant_id", tenantId)
         .maybeSingle(),
       supabase
         .from("provider_onboarding_tracking")
@@ -121,11 +122,13 @@ export async function GET(
     // Check for linked lead
     let linkedLead = null;
     if (tracking?.lead_id) {
-      const { data: lead } = await supabase
+      const { data: lead, error: leadErr } = await supabase
         .from("provider_leads")
         .select("id, business_name, commercial_stage, source, created_at")
         .eq("id", tracking.lead_id as string)
-        .single();
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      if (leadErr) throw leadErr;
       linkedLead = lead;
     }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, X, CheckCircle2, Sun, Cloud, Moon, Sparkles } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, CheckCircle2, Sun, Cloud, Moon, Sparkles } from "lucide-react";
 import { BookingState } from "../booking-flow";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
