@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(
   request: NextRequest,
@@ -143,6 +144,19 @@ export async function PATCH(
       .single();
     if (fetchErr) throw fetchErr;
 
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.lead.update",
+      entity_type: "provider_lead",
+      entity_id: id,
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "operational",
+      changed_fields: Object.keys(updates),
+      ...extractRequestMeta(request),
+    });
+
     return successResponse(updated);
   } catch (error) {
     return handleApiError(error, "Failed to update lead");
@@ -154,7 +168,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -187,6 +201,18 @@ export async function DELETE(
       .eq("id", id)
       .eq("tenant_id", tenantId);
     if (error) throw error;
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.lead.delete",
+      entity_type: "provider_lead",
+      entity_id: id,
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "operational",
+      ...extractRequestMeta(request),
+    });
 
     return new NextResponse(null, { status: 204 });
   } catch (error) {

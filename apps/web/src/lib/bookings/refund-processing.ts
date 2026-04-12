@@ -162,21 +162,7 @@ export async function processBookingRefund(
     const lateLabel = options.isLateCancellation ? "late cancellation" : "cancellation";
     const description = `Refund for booking ${bookingRef}: ${lateLabel} — ${policy.late_cancellation_type}`;
 
-    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
-      p_user_id: (booking as { customer_id: string }).customer_id,
-      p_amount: refundAmount,
-      p_currency: currency || lastResortCurrency,
-      p_description: description,
-      p_reference_id: bookingId,
-      p_reference_type: "booking_refund",
-      p_tenant_id: walletTenantId,
-    });
-
-    if (walletError) {
-      console.error("Wallet credit failed for cancellation refund:", walletError);
-      return { success: false, error: "Failed to credit customer wallet" };
-    }
-
+    // Insert refund record FIRST (audit trail before money moves)
     const { data: refundRecord, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -193,6 +179,27 @@ export async function processBookingRefund(
     if (refundError) {
       console.error("Error creating refund record:", refundError);
       return { success: false, error: "Failed to create refund record" };
+    }
+
+    // Credit wallet AFTER refund row exists (ensures audit trail on retry)
+    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+      p_user_id: (booking as { customer_id: string }).customer_id,
+      p_amount: refundAmount,
+      p_currency: currency || lastResortCurrency,
+      p_description: description,
+      p_reference_id: bookingId,
+      p_reference_type: "booking_refund",
+      p_tenant_id: walletTenantId,
+    });
+
+    if (walletError) {
+      console.error("Wallet credit failed after refund record created:", walletError);
+      // Mark the refund as failed so it can be retried
+      await supabaseAdmin
+        .from("booking_refunds")
+        .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
+        .eq("id", (refundRecord as { id: string }).id);
+      return { success: false, error: "Failed to credit customer wallet. Refund recorded for retry." };
     }
 
     // Convention: amount = absolute refund value (positive, matching refund-events.ts).

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -120,7 +121,9 @@ export function ProviderDetailPage() {
       ),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerGamification(providerCanonicalId) });
+      adminToast.success("Points deducted successfully");
     },
+    onError: (e: Error) => adminToast.error(`Failed to deduct points: ${e.message}`),
   });
 
   useEffect(() => {
@@ -147,17 +150,21 @@ export function ProviderDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
+      adminToast.success("Provider details saved");
     },
+    onError: (e: Error) => adminToast.error(`Failed to save provider: ${e.message}`),
   });
 
   const changeStatus = useMutation({
     mutationFn: (newStatus: string) =>
       adminApi.patchJson(`/api/admin/providers/${encodeURIComponent(id)}/status`, { status: newStatus }),
-    onSuccess: () => {
+    onSuccess: (_data, newStatus) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.detail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.all() });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      adminToast.success(`Provider status updated to ${newStatus}`);
     },
+    onError: (e: Error) => adminToast.error(`Failed to update status: ${e.message}`),
   });
 
   if (denied) return denied;

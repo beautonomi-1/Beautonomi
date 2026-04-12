@@ -165,7 +165,10 @@ export async function GET(
         : subtotal + taxAmount + serviceFeeAmount + travelFee + tipAmount - discountAmount - cancellationFee;
 
     const completedPayments = (b.booking_payments || []).filter((p: any) => p.status === "completed");
-    const amountPaid = completedPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+    const paymentsPaid = completedPayments.reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+    const walletCredit = Number((b as any).wallet_amount || 0);
+    const giftCardCredit = Number((b as any).gift_card_amount || 0);
+    const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
     const balanceDue = Math.max(0, totalAmount - amountPaid);
 
     const additionalCharges = (b.additional_charges || []).map((ac: any) => ({

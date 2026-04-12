@@ -42,12 +42,12 @@ export async function GET(request: NextRequest) {
     let totalRefunded = 0;
     const methodMap = new Map<string, { amount: number; count: number }>();
 
+    let cancellationFeesTotal = 0;
+
     all.forEach((t: any) => {
       const val = Number(t.net ?? t.amount ?? 0);
       if (t.transaction_type === "provider_earnings") {
         if (val >= 0) totalCollected += val;
-        else totalRefunded += Math.abs(val);
-        // Only attribute provider_earnings to payment methods so breakdown matches totals.
         const method = (t.metadata as any)?.payment_method || "other";
         const existing = methodMap.get(method) || { amount: 0, count: 0 };
         if (val > 0) {
@@ -55,6 +55,10 @@ export async function GET(request: NextRequest) {
           existing.count += 1;
         }
         methodMap.set(method, existing);
+      } else if (t.transaction_type === "refund") {
+        totalRefunded += Math.abs(Number(t.amount ?? 0));
+      } else if (t.transaction_type === "cancellation_fee") {
+        cancellationFeesTotal += Math.abs(val);
       }
     });
 
@@ -75,7 +79,8 @@ export async function GET(request: NextRequest) {
     return successResponse({
       total_collected: totalCollected,
       total_refunded: totalRefunded,
-      net_revenue: totalCollected - totalRefunded,
+      cancellation_fees: cancellationFeesTotal,
+      net_revenue: totalCollected + cancellationFeesTotal - totalRefunded,
       by_method: Array.from(methodMap.entries())
         .map(([method, data]) => ({ method, ...data }))
         .sort((a, b) => b.amount - a.amount),

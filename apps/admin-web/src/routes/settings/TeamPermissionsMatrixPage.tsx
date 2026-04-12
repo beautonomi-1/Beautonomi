@@ -115,6 +115,18 @@ export function TeamPermissionsMatrixPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
+  // Guard against brief flash before useEffect seeds draft from query data
+  if (!draft) {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Team permissions" />
+        <AdminPanel>
+          <AdminPageSkeleton rows={4} />
+        </AdminPanel>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <AdminPageHeader

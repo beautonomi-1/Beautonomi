@@ -9,6 +9,7 @@ import {
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { awardProviderPoints, recalculateProviderGamification } from "@/lib/services/provider-gamification";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/providers/[id]/gamification/deduct
@@ -59,6 +60,21 @@ export async function POST(
     );
 
     const result = await recalculateProviderGamification(providerId);
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.provider.gamification.deduct",
+      entity_type: "provider",
+      entity_id: providerId,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { points_deducted: points, reason, new_total_points: newTotal },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       provider_id: providerId,

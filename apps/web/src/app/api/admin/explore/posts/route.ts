@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse } f
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const _SORT_OPTIONS = [
   "published_at_desc",
@@ -174,6 +175,21 @@ export async function POST(request: NextRequest) {
       .select("id");
 
     if (error) return handleApiError(error, "Failed to update posts");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.explore.posts.moderate",
+      entity_type: "explore_post",
+      module: "content_catalog",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { action, post_ids: allowedIds, count: data?.length ?? 0 },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse({ updated: data?.length ?? 0, post_ids: allowedIds });
   } catch (error) {
     return handleApiError(error, "Failed to update posts");

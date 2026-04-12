@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { adminToast } from "@/lib/adminToast";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
@@ -6,6 +7,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -32,6 +34,7 @@ type SubRow = Record<string, unknown> & {
 type PlanOption = { id: string; name: string };
 
 export function ProviderSubscriptionsPage() {
+  useAdminDocumentTitle("Provider Subscriptions");
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   const [sp, setSp] = useSearchParams();
@@ -71,18 +74,22 @@ export function ProviderSubscriptionsPage() {
     mutationFn: ({ subId, planId }: { subId: string; planId: string }) =>
       adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { plan_id: planId }),
     onSuccess: async () => {
+      adminToast.success("Plan updated");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
     },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update plan"),
   });
 
   const changeStatus = useMutation({
     mutationFn: ({ subId, newStatus }: { subId: string; newStatus: string }) =>
       adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { status: newStatus }),
     onSuccess: async () => {
+      adminToast.success("Subscription status updated");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
       await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
     },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
   });
 
   /** Draft plan_id per subscription row until user clicks Apply */

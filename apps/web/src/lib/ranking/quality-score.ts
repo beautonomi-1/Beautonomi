@@ -111,14 +111,20 @@ export function computeQualityScoreFromInputs(
 }
 
 /**
- * Compute quality score for one provider from DB. Uses providers.rating_average, review_count, response_time_hours and bookings status counts.
+ * Compute quality score for one provider from DB. Uses providers.rating_average,
+ * review_count, response_time_hours and bookings status counts.
+ *
+ * Only considers bookings from the last 12 months to keep the query bounded and
+ * ensure scores reflect recent performance rather than all-time history.
  */
 export async function computeQualityScoreForProvider(
   supabase: SupabaseClient,
   providerId: string,
   weights: Record<string, number> = DEFAULT_WEIGHTS
 ): Promise<QualityScoreResult> {
-  const [{ data: provider }, { data: bookings }] = await Promise.all([
+  const twelveMonthsAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [{ data: provider }, completedResult, cancelledResult, noShowResult] = await Promise.all([
     supabase
       .from("providers")
       .select("rating_average, review_count, response_time_hours")
@@ -126,23 +132,31 @@ export async function computeQualityScoreForProvider(
       .single(),
     supabase
       .from("bookings")
-      .select("status")
+      .select("id", { count: "exact", head: true })
       .eq("provider_id", providerId)
-      .in("status", ["completed", "cancelled", "no_show"]),
+      .eq("status", "completed")
+      .gte("scheduled_at", twelveMonthsAgo),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "cancelled")
+      .gte("scheduled_at", twelveMonthsAgo),
+    supabase
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("provider_id", providerId)
+      .eq("status", "no_show")
+      .gte("scheduled_at", twelveMonthsAgo),
   ]);
 
   const ratingAverage = (provider as any)?.rating_average ?? null;
   const reviewCount = (provider as any)?.review_count ?? null;
   const responseTimeHours = (provider as any)?.response_time_hours ?? null;
 
-  let completed = 0,
-    cancelled = 0,
-    noShow = 0;
-  (bookings ?? []).forEach((b: any) => {
-    if (b.status === "completed") completed++;
-    else if (b.status === "cancelled") cancelled++;
-    else if (b.status === "no_show") noShow++;
-  });
+  const completed = completedResult.count ?? 0;
+  const cancelled = cancelledResult.count ?? 0;
+  const noShow = noShowResult.count ?? 0;
 
   return computeQualityScoreFromInputs(
     {

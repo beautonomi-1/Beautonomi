@@ -632,6 +632,41 @@ export async function sendTemplateNotification(
     channelsToSend = [...nonPref, ...allowed];
   }
 
+  // Quiet hours enforcement: suppress push notifications during quiet hours
+  if (channelsToSend.includes("push") && userIds.length > 0) {
+    try {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: profiles } = await supabaseAdmin
+        .from("user_profiles")
+        .select("user_id, notification_preferences")
+        .in("user_id", userIds);
+
+      if (profiles && profiles.length > 0) {
+        const now = new Date();
+        const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        const allInQuietHours = profiles.every((p) => {
+          const prefs = p.notification_preferences as Record<string, unknown> | null;
+          if (!prefs?.quiet_hours_enabled) return false;
+          const start = String(prefs.quiet_hours_start ?? "22:00");
+          const end = String(prefs.quiet_hours_end ?? "07:00");
+          if (start <= end) {
+            return nowHHMM >= start && nowHHMM < end;
+          }
+          return nowHHMM >= start || nowHHMM < end;
+        });
+        if (allInQuietHours) {
+          channelsToSend = channelsToSend.filter((c) => c !== "push");
+        }
+      }
+    } catch {
+      // Non-blocking: if quiet hours check fails, send push anyway
+    }
+  }
+
+  if (channelsToSend.length === 0) {
+    return { success: true, notification_id: "suppressed-quiet-hours" };
+  }
+
   const notificationPayload: any = {
     include_external_user_ids: userIds,
     channels: channelsToSend,

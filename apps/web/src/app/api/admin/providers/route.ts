@@ -17,7 +17,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get("status");
     const searchTerm = searchParams.get("search")?.trim();
-    const limitParam = searchParams.get("limit");
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10));
+    const limit = Math.min(200, Math.max(1, parseInt(searchParams.get("limit") || "50", 10)));
+    const offset = (page - 1) * limit;
 
     let query = supabase
       .from("providers")
@@ -39,7 +41,8 @@ export async function GET(request: NextRequest) {
         provider_locations (city, country)
       `)
       .eq("tenant_id", tenantId)
-      .order("business_name", { ascending: true });
+      .order("business_name", { ascending: true })
+      .range(offset, offset + limit - 1);
 
     if (statusFilter && statusFilter !== "all") {
       if (statusFilter === "pending") {
@@ -53,10 +56,7 @@ export async function GET(request: NextRequest) {
       const safe = searchTerm.replace(/[%_]/g, "");
       query = query.or(`business_name.ilike.%${safe}%,slug.ilike.%${safe}%`);
     }
-    if (limitParam) {
-      const lim = Math.min(200, Math.max(1, parseInt(limitParam, 10) || 200));
-      query = query.limit(lim);
-    }
+    // limit is already applied via .range() above; no additional .limit() needed.
 
     const { data: providers, error } = await query;
 
@@ -121,7 +121,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return successResponse(transformed);
+    return successResponse({
+      data: transformed,
+      meta: { page, limit, total: transformed.length, has_more: transformed.length === limit },
+    });
   } catch (error) {
     return handleApiError(error, "Failed to fetch providers");
   }

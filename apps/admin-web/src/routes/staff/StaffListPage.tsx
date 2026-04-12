@@ -23,6 +23,7 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type StaffStatistics = {
   total: number;
@@ -118,16 +119,26 @@ export function StaffListPage() {
   const patchStaff = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       adminApi.patchJson(`/api/admin/staff/${encodeURIComponent(id)}`, body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       setEditing(null);
       invalidate();
+      if ("is_active" in vars.body) {
+        adminToast.success(vars.body.is_active ? "Staff member activated" : "Staff member deactivated");
+      } else {
+        adminToast.success("Staff member updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update staff: ${e.message}`),
   });
 
   const resetPwd = useMutation({
     mutationFn: (id: string) =>
       adminApi.postJson(`/api/admin/staff/${encodeURIComponent(id)}/reset-password`, {}),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Password reset email sent");
+    },
+    onError: (e: Error) => adminToast.error(`Password reset failed: ${e.message}`),
   });
 
   const openEdit = (m: StaffMember) => {

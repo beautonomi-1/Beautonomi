@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const DEFAULT_SETTINGS = {
   stall_threshold_hours: 24,
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDER_OPS, request);
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const body = await request.json();
@@ -84,6 +85,18 @@ export async function PATCH(request: NextRequest) {
         });
       if (insertErr) throw insertErr;
     }
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.provider_ops.settings.update",
+      entity_type: "platform_settings",
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "operational",
+      changed_fields: Object.keys(body),
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ ...DEFAULT_SETTINGS, ...updatedOps });
   } catch (error) {

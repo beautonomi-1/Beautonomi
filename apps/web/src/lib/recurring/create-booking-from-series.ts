@@ -3,6 +3,7 @@ import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
+import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
 
 type SeriesRow = {
   id: string;
@@ -65,16 +66,23 @@ export async function createBookingFromRecurringSeries(
   }
 
   const timeStr = toHhMmSs(row.start_time || row.preferred_time);
-  const scheduledAtLocal = new Date(`${occurrenceDateYmd}T${timeStr}`);
 
   const { data: providerRow } = await admin
     .from("providers")
-    .select("tenant_id, currency, tax_rate_percent, customer_fee_config_id")
+    .select("tenant_id, currency, tax_rate_percent, customer_fee_config_id, timezone")
     .eq("id", row.provider_id)
     .maybeSingle();
 
   const currency =
     (providerRow as { currency?: string | null } | null)?.currency?.trim() || LAST_RESORT_CURRENCY;
+
+  // Build the scheduled datetime in the provider's business timezone, then convert to UTC.
+  // `occurrenceDateYmd` + `timeStr` represent wall-clock values in the salon's local time.
+  const providerTz = resolveTz((providerRow as { timezone?: string | null } | null)?.timezone);
+  const [hh, mm, ss] = timeStr.split(":").map(Number);
+  const [year, month, day] = occurrenceDateYmd.split("-").map(Number);
+  const wallClockDate = new Date(year, month - 1, day, hh, mm, ss || 0);
+  const scheduledAtLocal = fromBusinessTime(wallClockDate, providerTz);
 
   const offeringIds = [...new Set(lines.map((l) => l.offering_id))];
   const { data: offerings, error: offErr } = await admin

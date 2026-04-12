@@ -18,6 +18,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 import { useEffect, useState } from "react";
 
@@ -65,10 +66,18 @@ export function GiftCardDetailPage() {
   const patch = useMutation({
     mutationFn: (body: { balance?: number; is_active?: boolean; expires_at?: string | null }) =>
       adminApi.patchJson<unknown>(`/api/admin/gift-cards/${id}`, body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.giftCardDetail(id) });
       void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gift-cards"] });
+      if ("is_active" in vars) {
+        adminToast.success(vars.is_active ? "Gift card activated" : "Gift card deactivated");
+      } else if ("balance" in vars) {
+        adminToast.success("Balance updated");
+      } else {
+        adminToast.success("Gift card updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update gift card: ${e.message}`),
   });
 
   if (denied) return denied;

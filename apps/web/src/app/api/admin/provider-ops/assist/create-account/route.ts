@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import crypto from "crypto";
 
 /**
@@ -192,6 +193,19 @@ export async function POST(request: NextRequest) {
     } catch {
       console.warn("Password reset email failed, non-fatal");
     }
+
+    void writeAuditLog({
+      actor_user_id: adminUser.id,
+      actor_role: adminUser.role,
+      action: "admin.provider_ops.create_account",
+      entity_type: "user",
+      entity_id: newUserId,
+      module: "provider_ops",
+      risk_level: "high",
+      retention_tier: "access",
+      metadata: { email, lead_id: body.lead_id || null, password_reset_sent: passwordResetSent },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       user_id: newUserId,

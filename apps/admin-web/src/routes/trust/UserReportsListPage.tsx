@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -20,6 +21,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 
 type UserReportsPayload = {
   data: Record<string, unknown>[];
@@ -33,6 +35,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export function UserReportsListPage() {
+  useAdminDocumentTitle("User Reports");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required."
@@ -46,6 +49,7 @@ export function UserReportsListPage() {
   const [actionId, setActionId] = useState<string | null>(null);
   const [actionType, setActionType] = useState<"resolve" | "dismiss" | null>(null);
   const [resolutionNotes, setResolutionNotes] = useState("");
+  const [isAdverseFinding, setIsAdverseFinding] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const q = useQuery({
@@ -61,19 +65,33 @@ export function UserReportsListPage() {
   });
 
   const updateReport = useMutation({
-    mutationFn: async ({ id, newStatus, notes }: { id: string; newStatus: string; notes: string }) => {
+    mutationFn: async ({
+      id,
+      newStatus,
+      notes,
+      adverseFinding,
+    }: {
+      id: string;
+      newStatus: string;
+      notes: string;
+      adverseFinding?: boolean;
+    }) => {
       return adminApi.patchJson(`/api/admin/user-reports/${id}`, {
         status: newStatus,
         resolution_notes: notes.trim() || undefined,
+        is_adverse_finding: adverseFinding ?? false,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
       setActionId(null);
       setActionType(null);
       setResolutionNotes("");
+      setIsAdverseFinding(false);
+      adminToast.success(vars.newStatus === "resolved" ? "Report resolved" : "Report dismissed");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update report: ${e.message}`),
   });
 
   const rows = q.data?.data ?? [];
@@ -130,6 +148,7 @@ export function UserReportsListPage() {
             <tr>
               <AdminTh>Type</AdminTh>
               <AdminTh>Status</AdminTh>
+              <AdminTh>Adverse</AdminTh>
               <AdminTh>Reporter</AdminTh>
               <AdminTh>Reported</AdminTh>
               <AdminTh>Description</AdminTh>
@@ -149,9 +168,8 @@ export function UserReportsListPage() {
               const badgeClass = STATUS_BADGE[statusStr] ?? "bg-gray-100 text-gray-600";
 
               return (
-                <>
+                <Fragment key={id}>
                   <tr
-                    key={id}
                     className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                   >
@@ -160,6 +178,15 @@ export function UserReportsListPage() {
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${badgeClass}`}>
                         {statusStr}
                       </span>
+                    </AdminTd>
+                    <AdminTd>
+                      {row.is_adverse_finding ? (
+                        <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                          Adverse
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
                     </AdminTd>
                     <AdminTd className="text-xs">{String(rep?.full_name ?? rep?.email ?? "")}</AdminTd>
                     <AdminTd className="text-xs">{String(reported?.full_name ?? reported?.email ?? "")}</AdminTd>
@@ -173,14 +200,14 @@ export function UserReportsListPage() {
                           <button
                             type="button"
                             className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700"
-                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("resolve"); setResolutionNotes(""); }}
+                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("resolve"); setResolutionNotes(""); setIsAdverseFinding(false); }}
                           >
                             Resolve
                           </button>
                           <button
                             type="button"
                             className="rounded bg-gray-500 px-2 py-1 text-xs text-white hover:bg-gray-600"
-                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("dismiss"); setResolutionNotes(""); }}
+                            onClick={(e) => { e.stopPropagation(); setActionId(id); setActionType("dismiss"); setResolutionNotes(""); setIsAdverseFinding(false); }}
                           >
                             Dismiss
                           </button>
@@ -190,7 +217,7 @@ export function UserReportsListPage() {
                   </tr>
                   {isExpanded && (
                     <tr key={`${id}-detail`}>
-                      <td colSpan={7} className="bg-gray-50 px-4 py-3 border-t border-gray-100">
+                      <td colSpan={8} className="bg-gray-50 px-4 py-3 border-t border-gray-100">
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
                             <p className="font-medium text-gray-700 mb-1">Full description</p>
@@ -218,7 +245,7 @@ export function UserReportsListPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </AdminTableBody>
@@ -246,6 +273,20 @@ export function UserReportsListPage() {
               value={resolutionNotes}
               onChange={(e) => setResolutionNotes(e.target.value)}
             />
+            {actionType === "resolve" && (
+              <label className="mt-3 flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-gray-300 text-red-600"
+                  checked={isAdverseFinding}
+                  onChange={(e) => setIsAdverseFinding(e.target.checked)}
+                />
+                <span>
+                  Mark as <strong className="text-red-600">adverse finding</strong>
+                  <span className="ml-1 text-gray-400 text-xs">(3+ from different reporters flags the user)</span>
+                </span>
+              </label>
+            )}
             {updateReport.error && (
               <p className="mt-2 text-sm text-red-600">
                 {(updateReport.error as Error).message || "Failed to update report"}
@@ -255,7 +296,7 @@ export function UserReportsListPage() {
               <button
                 type="button"
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
-                onClick={() => { setActionId(null); setActionType(null); }}
+                onClick={() => { setActionId(null); setActionType(null); setIsAdverseFinding(false); }}
               >
                 Cancel
               </button>
@@ -270,6 +311,7 @@ export function UserReportsListPage() {
                     id: actionId,
                     newStatus: actionType === "resolve" ? "resolved" : "dismissed",
                     notes: resolutionNotes,
+                    adverseFinding: actionType === "resolve" ? isAdverseFinding : false,
                   });
                 }}
               >

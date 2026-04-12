@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 const PAGE_SIZE = 50;
 const STAGES = ["all", "new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
@@ -45,7 +46,9 @@ interface Lead {
 }
 
 interface LeadsPayload {
-  data: { data: Lead[]; meta: { page: number; limit: number; total: number; has_more: boolean }; stage_counts: Record<string, number> };
+  data: Lead[];
+  meta: { page: number; limit: number; total: number; has_more: boolean };
+  stage_counts: Record<string, number>;
 }
 
 export function ProviderOpsLeadsPage() {
@@ -77,11 +80,10 @@ export function ProviderOpsLeadsPage() {
     enabled: allowed,
   });
 
-  const data = q.data?.data;
-  const rows = data?.data ?? [];
-  const total = data?.meta?.total ?? 0;
-  const hasMore = data?.meta?.has_more ?? false;
-  const stageCounts = data?.stage_counts ?? {};
+  const rows = q.data?.data ?? [];
+  const total = q.data?.meta?.total ?? 0;
+  const hasMore = q.data?.meta?.has_more ?? false;
+  const stageCounts = q.data?.stage_counts ?? {};
 
   function setStage(next: string) {
     const n = new URLSearchParams(sp);
@@ -107,8 +109,12 @@ export function ProviderOpsLeadsPage() {
       formData.append("file", file);
       const res = await fetch("/api/admin/provider-ops/leads/import", { method: "POST", body: formData, credentials: "include" });
       const json = await res.json();
-      if (!res.ok) return;
+      if (!res.ok) {
+        adminToast.error(json?.error?.message ?? json?.message ?? "Import failed — please check your file and try again");
+        return;
+      }
       setImportResult({ imported: json.data.imported, total_rows_in_file: json.data.total_rows_in_file, skipped_empty: json.data.skipped_empty, warnings: json.data.warnings || [] });
+      adminToast.success(`Imported ${json.data.imported as number} leads`);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
     } finally {
       setImporting(false);
@@ -123,7 +129,10 @@ export function ProviderOpsLeadsPage() {
       if (stage !== "all") p.set("stage", stage);
       if (search) p.set("search", search);
       const res = await fetch(`/api/admin/provider-ops/leads/export?${p}`, { credentials: "include" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        adminToast.error("Export failed — please try again");
+        return;
+      }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

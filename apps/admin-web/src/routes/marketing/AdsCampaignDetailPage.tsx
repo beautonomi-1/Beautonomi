@@ -5,6 +5,7 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -88,11 +89,14 @@ export function AdsCampaignDetailPage() {
   const actionMutation = useMutation({
     mutationFn: (payload: { status: string; reason?: string }) =>
       adminApi.patchJson(`/api/admin/ads/campaigns/${encodeURIComponent(id)}`, payload),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.ads.all() });
       setActionDialog(null);
       setActionReason("");
+      const label = vars.status === "approved" ? "approved" : vars.status === "rejected" ? "rejected" : vars.status === "paused" ? "paused" : "updated";
+      adminToast.success(`Campaign ${label}`);
     },
+    onError: (e: Error) => adminToast.error(`Campaign action failed: ${e.message}`),
   });
 
   if (denied) return denied;

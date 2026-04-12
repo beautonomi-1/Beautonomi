@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const VALID_SOURCES = new Set([
   "manual", "import", "referral", "campaign", "outbound", "api", "form",
@@ -418,6 +419,23 @@ export async function POST(request: NextRequest) {
     }
 
     const columnsDetected = Object.keys(headerMap);
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.leads.import",
+      entity_type: "provider_lead",
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "operational",
+      metadata: {
+        imported_count: allInsertedIds.length,
+        total_rows: dataLines.length - 1,
+        skipped_empty: skippedEmpty,
+        columns_detected: columnsDetected,
+      },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       imported: allInsertedIds.length,

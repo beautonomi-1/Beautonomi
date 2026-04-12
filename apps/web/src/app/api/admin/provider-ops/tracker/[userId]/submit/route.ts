@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function POST(
   request: NextRequest,
@@ -177,6 +178,19 @@ export async function POST(
 
     // Run lead matching
     await matchLeadToProvider(supabase, provider, targetUser, tenantId);
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.tracker.submit_onboarding",
+      entity_type: "provider",
+      entity_id: provider.id,
+      module: "provider_ops",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { user_id: userId, business_name: businessName },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       provider_id: provider.id,

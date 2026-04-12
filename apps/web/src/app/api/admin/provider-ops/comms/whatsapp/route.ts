@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { resolveTwilioCredentials, sendTwilioWhatsApp } from "@/lib/integrations/twilio";
 
 /**
@@ -69,6 +70,18 @@ export async function POST(request: NextRequest) {
         performed_by: user.id,
       });
     }
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.provider_ops.whatsapp_sent",
+      entity_type: "provider_lead_communication",
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { to, lead_id: lead_id || null, message_sid: twilioData.sid },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       message_sid: twilioData.sid,

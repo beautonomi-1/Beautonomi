@@ -21,6 +21,7 @@ export interface EndOfDayResponse {
   total: number;
   bookingCount: number;
   salesCount: number;
+  note: string;
 }
 
 /**
@@ -171,6 +172,7 @@ export async function GET(request: NextRequest) {
       total,
       bookingCount,
       salesCount,
+      note: "Cash-register style: sums booking_payments and sales by payment date. For ledger-based revenue, use the payments report.",
     };
 
     return successResponse(response);

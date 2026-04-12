@@ -8,6 +8,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 /**
  * POST /api/admin/payouts/[id]/mark-paid
@@ -97,6 +98,26 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Financial control: only allow mark-paid for approved or processing payouts.
+    // pending payouts must be approved first; rejected/failed payouts cannot be reversed this way.
+    const allowedStatuses = ["approved", "processing"];
+    if (!allowedStatuses.includes(payoutData.status)) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: `Cannot mark payout as paid when status is "${payoutData.status}". Only approved or processing payouts can be marked paid.`,
+            code: "INVALID_STATUS_TRANSITION",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    // Period lock guard — prevent marking payouts paid in locked accounting periods
+    const lockGuard = await enforcePeriodLock(supabase, tenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     // Update payout status
     const { data: updatedPayout, error } = await supabase

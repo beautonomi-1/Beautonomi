@@ -78,8 +78,19 @@ export async function GET(request: NextRequest) {
     const stallThresholdHours = 24;
     const dropOffThresholdHours = 168;
 
-    // Get all provider_owner users who haven't completed onboarding
-    // by joining users -> provider_onboarding_drafts and excluding those with active providers
+    // Load tenant users first so drafts are DB-scoped to this tenant
+    const { data: tenantUsers, error: tenantUsersErr } = await supabase
+      .from("users")
+      .select("id, email, full_name, phone, role, created_at")
+      .eq("tenant_id", tenantId)
+      .in("role", ["provider_owner", "provider_staff", "provider"]);
+    if (tenantUsersErr) throw tenantUsersErr;
+
+    const tenantUserIds = (tenantUsers ?? []).map((u: { id: string }) => u.id);
+    if (tenantUserIds.length === 0) {
+      return successResponse({ data: [], meta: { total: 0, page, limit, has_more: false } });
+    }
+
     const { data: drafts, error: draftsErr } = await supabase
       .from("provider_onboarding_drafts")
       .select(
@@ -92,6 +103,7 @@ export async function GET(request: NextRequest) {
         updated_at
       `
       )
+      .in("user_id", tenantUserIds)
       .order("updated_at", { ascending: false });
     if (draftsErr) throw draftsErr;
 
@@ -99,15 +111,11 @@ export async function GET(request: NextRequest) {
       (d: { user_id: string }) => d.user_id
     );
     if (userIds.length === 0) {
-      return successResponse([]);
+      return successResponse({ data: [], meta: { total: 0, page, limit, has_more: false } });
     }
 
-    const { data: users, error: usersErr } = await supabase
-      .from("users")
-      .select("id, email, full_name, phone, role, created_at")
-      .eq("tenant_id", tenantId)
-      .in("id", userIds);
-    if (usersErr) throw usersErr;
+    // Build a map from the already-loaded tenant users
+    const users = (tenantUsers ?? []).filter((u: { id: string }) => userIds.includes(u.id));
 
     const usersMap = new Map<
       string,

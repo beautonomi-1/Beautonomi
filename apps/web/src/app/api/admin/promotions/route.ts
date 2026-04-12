@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 interface Promotion {
   id: string;
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
@@ -143,23 +144,41 @@ export async function POST(request: NextRequest) {
       throw error || new Error("Failed to create promotion");
     }
 
+    const row = promotion as Record<string, any>;
+
     // Transform response to match frontend format
     const transformedPromotion = {
-      ...promotion,
-      type: promotion.type === 'fixed' ? 'fixed_amount' : promotion.type, // Map 'fixed' to 'fixed_amount' for frontend
-      start_date: promotion.valid_from,
-      end_date: promotion.valid_until,
-      min_purchase: promotion.min_purchase_amount,
-      max_discount: promotion.max_discount_amount,
-      used_count: promotion.usage_count,
-      applicable_to: promotion.applicable_categories?.length > 0 
+      ...row,
+      type: row.type === 'fixed' ? 'fixed_amount' : row.type, // Map 'fixed' to 'fixed_amount' for frontend
+      start_date: row.valid_from,
+      end_date: row.valid_until,
+      min_purchase: row.min_purchase_amount,
+      max_discount: row.max_discount_amount,
+      used_count: row.usage_count,
+      applicable_to: row.applicable_categories?.length > 0 
         ? "category" 
-        : promotion.applicable_providers?.length > 0 
+        : row.applicable_providers?.length > 0 
         ? "provider" 
         : "all",
     };
 
-    return successResponse(transformedPromotion as Promotion);
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.promotion.create",
+      entity_type: "promotion",
+      entity_id: row.id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      after_json: { name, code: code.toUpperCase(), type, value },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
+    return successResponse(transformedPromotion as unknown as Promotion);
   } catch (error) {
     return handleApiError(error, "Failed to create promotion");
   }

@@ -139,7 +139,21 @@ export async function GET(request: NextRequest) {
     const totalPayments = payments?.length || 0;
     const successfulPayments = payments?.filter((p: any) => p.status === "completed" || p.status === "succeeded").length || 0;
     const totalRefunded = Math.abs(refundRows?.reduce((sum, r) => sum + Number(r.amount || 0), 0) || 0);
-    const netRevenue = totalRevenue - totalRefunded;
+
+    // Cancellation fees: provider-retained income from late cancellations
+    let cancellationFeesTotal = 0;
+    try {
+      const { data: cancelFeeRows } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("net")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "cancellation_fee")
+        .gte("created_at", periodStart.toISOString())
+        .lte("created_at", periodEnd.toISOString());
+      cancellationFeesTotal = (cancelFeeRows ?? []).reduce((s, r) => s + Number((r as any).net ?? 0), 0);
+    } catch { /* non-critical */ }
+
+    const netRevenue = totalRevenue + cancellationFeesTotal - totalRefunded;
 
     const totalEarningsFromBookings = Array.from(revenueByBooking.values()).reduce((sum, val) => sum + val, 0);
     const bookingsWithEarnings = revenueByBooking.size;
@@ -161,6 +175,7 @@ export async function GET(request: NextRequest) {
     return successResponse({
       period,
       totalRevenue,
+      cancellationFees: cancellationFeesTotal,
       netRevenue,
       totalBookings,
       completedBookings,

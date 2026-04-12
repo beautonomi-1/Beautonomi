@@ -89,12 +89,14 @@ export async function POST(
       );
     }
 
-    if (p.status !== "pending" && p.status !== "processing") {
+    // Financial control: only allow initiating a transfer for approved or processing payouts.
+    // pending payouts must be approved by an admin before a transfer can be initiated.
+    if (p.status !== "approved" && p.status !== "processing") {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: `Cannot initiate transfer for payout in status "${p.status}"`,
+            message: `Cannot initiate transfer for payout in status "${p.status}". Payout must be approved before transfer can be initiated.`,
             code: "INVALID_STATE",
           },
         },

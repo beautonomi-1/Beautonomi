@@ -58,12 +58,13 @@ interface DashboardStats {
     subscriptions: number;
     ads: number;
     service_fees: number;
-    ecommerce_fees: number;
-    cancellation_fees: number;
+    ecommerce_fees_detail?: number;
+    wallet_topups?: number;
     total: number;
   };
   provider_revenue?: {
     provider_earnings: number;
+    cancellation_fees: number;
     tips: number;
     this_month: number;
   };
@@ -227,12 +228,12 @@ export default function AdminDashboard() {
                 trend={stats.bookings_growth !== 0 ? `${stats.bookings_growth >= 0 ? '+' : ''}${stats.bookings_growth}%` : undefined}
               />
               <StatCard
-                title="Platform net (take + subs + ads)"
+                title="Platform net (ledger + topups)"
                 value={fmtMoney(stats.platform_net_total)}
                 icon={<DollarSign className="w-6 h-6" />}
                 color="orange"
                 trend={stats.revenue_growth !== 0 ? `${stats.revenue_growth >= 0 ? '+' : ''}${stats.revenue_growth}%` : undefined}
-                infoTooltip="Matches finance summary: booking platform take (net of gateway fees, after refunds) plus subscription net and ads net. Rolling ledger window (see API metrics_notes)."
+                infoTooltip="Matches finance summary platform revenue: booking take + subscriptions + ads + service fees + paid wallet topups. Rolling ledger window for ledger-backed lines (see API metrics_notes)."
               />
             </div>
           </motion.div>
@@ -263,8 +264,9 @@ export default function AdminDashboard() {
                 <RevenueRow label="Provider Subscriptions" value={fmtMoney(stats.subscription_net_total)} />
                 <RevenueRow label="Ads Revenue" value={fmtMoney(stats.ads_net_total ?? 0)} />
                 <RevenueRow label="Service Fees" value={fmtMoney(stats.platform_revenue?.service_fees ?? 0)} />
-                <RevenueRow label="E-commerce Fees" value={fmtMoney(stats.platform_revenue?.ecommerce_fees ?? 0)} />
-                <RevenueRow label="Cancellation Fees" value={fmtMoney(stats.platform_revenue?.cancellation_fees ?? 0)} />
+                <RevenueRow label="Wallet topups (paid)" value={fmtMoney(stats.platform_revenue?.wallet_topups ?? 0)} />
+                <RevenueRow label="E-commerce Fees (in commission)" value={fmtMoney(stats.platform_revenue?.ecommerce_fees_detail ?? 0)} muted />
+                
                 <div className="border-t pt-2 mt-2">
                   <RevenueRow label="Gateway Fees (deducted)" value={`-${fmtMoney(stats.gateway_fees_total)}`} muted />
                   <RevenueRow label="Refund Impact" value={fmtMoney(stats.platform_refund_impact_total)} muted />
@@ -288,6 +290,7 @@ export default function AdminDashboard() {
               </div>
               <div className="space-y-2">
                 <RevenueRow label="Service Earnings (net)" value={fmtMoney(stats.provider_earnings_total ?? 0)} />
+                <RevenueRow label="Cancellation Fees" value={fmtMoney(stats.provider_revenue?.cancellation_fees ?? 0)} />
                 <RevenueRow label="Tips Collected" value={fmtMoney(stats.tips_total)} />
                 <RevenueRow label="Taxes Collected (pass-through)" value={fmtMoney(stats.taxes_total)} muted />
                 <div className="border-t pt-2 mt-2">

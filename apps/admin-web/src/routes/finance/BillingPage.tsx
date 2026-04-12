@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
@@ -143,7 +144,7 @@ export function BillingPage() {
                 <AdminTd className="font-medium">{String(inv.invoice_number ?? inv.id)}</AdminTd>
                 <AdminTd>{String(inv.provider?.name ?? inv.provider?.business_name ?? "—")}</AdminTd>
                 <AdminTd>{String(inv.status ?? "")}</AdminTd>
-                <AdminTd className="tabular-nums">{Number(inv.total_amount ?? 0).toFixed(2)}</AdminTd>
+                <AdminTd className="tabular-nums">{formatAdminCurrency(Number(inv.total_amount ?? 0), String((inv as Record<string, unknown>).currency ?? "") || undefined)}</AdminTd>
               </tr>
             ))}
           </AdminTableBody>

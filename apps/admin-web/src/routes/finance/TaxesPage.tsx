@@ -27,13 +27,16 @@ interface TaxRate {
   name: string;
   description?: string;
   display_order?: number;
-  metadata?: { rate?: number; included?: boolean };
+  metadata?: { rate?: number; included?: boolean; provider_tax_rate?: number };
 }
 
 type TaxesPayload = {
   tax_rates: TaxRate[];
   statistics?: Record<string, number>;
-  provider_tax_rate?: unknown;
+  /** Platform-wide default provider tax rate (fallback when provider has no explicit rate). */
+  provider_tax_rate?: number | null;
+  /** Platform default tax rate from platform_settings.settings.taxes.default_tax_rate */
+  default_tax_rate?: number | null;
 };
 
 function RateForm({
@@ -212,6 +215,8 @@ export function TaxesPage() {
 
   const rates = q.data?.tax_rates ?? [];
   const stats = q.data?.statistics;
+  const defaultTaxRate = q.data?.default_tax_rate;
+  const providerTaxRate = q.data?.provider_tax_rate;
 
   return (
     <div className="space-y-6">
@@ -247,6 +252,36 @@ export function TaxesPage() {
             />
           </div>
         )}
+      </AdminPanel>
+
+      {/* Platform tax defaults */}
+      <AdminPanel>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Platform Tax Defaults</h2>
+        <p className="text-xs text-gray-500 mb-4">
+          These are the fallback tax rates used in booking calculations when a provider has not set an explicit tax rate.
+          Configure the platform default in General Settings → Taxes.
+        </p>
+        <dl className="grid gap-4 text-sm sm:grid-cols-2">
+          <div className="rounded-lg border border-gray-200 p-3">
+            <dt className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Platform Default Tax Rate</dt>
+            <dd className="text-lg font-semibold text-gray-900">
+              {defaultTaxRate != null ? `${defaultTaxRate}%` : <span className="text-gray-400 text-sm">Not set (0% applied)</span>}
+            </dd>
+            <p className="text-xs text-gray-400 mt-1">Applied to bookings when provider tax rate is not set.</p>
+          </div>
+          <div className="rounded-lg border border-gray-200 p-3">
+            <dt className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">Provider-Level Tax Rate Override</dt>
+            <dd className="text-lg font-semibold text-gray-900">
+              {providerTaxRate != null ? `${providerTaxRate}%` : <span className="text-gray-400 text-sm">Varies by provider</span>}
+            </dd>
+            <p className="text-xs text-gray-400 mt-1">Individual providers can override this in their profile. Set to 0% for non-VAT providers.</p>
+          </div>
+        </dl>
+        <p className="mt-4 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
+          <strong>Inclusive tax:</strong> When a tax rate is marked &ldquo;Tax included in price&rdquo;, the tax amount is
+          extracted from the service price rather than added on top. Prices shown to customers are already tax-inclusive.
+          Exclusive tax (default) adds the tax amount on top of the service subtotal.
+        </p>
       </AdminPanel>
 
       {stats ? (

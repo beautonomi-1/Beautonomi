@@ -328,6 +328,40 @@ async function handleSubscriptionInvoice(
       },
       created_at: new Date().toISOString(),
     });
+
+    // Notify provider about payment failure
+    try {
+      const { data: subRow } = await supabase
+        .from("provider_subscriptions")
+        .select("provider_id, plan_id, subscription_plans:plan_id(name)")
+        .eq("paystack_subscription_code", subscriptionCode)
+        .maybeSingle();
+      if (subRow) {
+        const subData = subRow as { provider_id?: string; subscription_plans?: { name?: string } | null };
+        const { data: provider } = await supabase
+          .from("providers")
+          .select("user_id, business_name")
+          .eq("id", subData.provider_id)
+          .maybeSingle();
+        if (provider) {
+          const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+          await sendTemplateNotification(
+            "subscription_payment_failed",
+            [(provider as { user_id: string }).user_id],
+            {
+              business_name: (provider as { business_name?: string }).business_name || "Provider",
+              plan_name: subData.subscription_plans?.name || "subscription",
+              amount: `${convertFromSmallestUnit(amount)}`,
+              app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+        }
+      }
+    } catch (notifErr) {
+      console.warn("Failed to send subscription payment failed notification:", notifErr);
+    }
   } else if (status === "success" && paidAt) {
     // Successful renewal
     const amountInCurrency = convertFromSmallestUnit(amount);
@@ -347,7 +381,18 @@ async function handleSubscriptionInvoice(
 
     const now = new Date();
     const expiresAt = new Date(now);
-    expiresAt.setMonth(expiresAt.getMonth() + 1);
+    type SubDetailsRow = {
+      billing_period?: string | null;
+      plan_id?: string;
+      provider_id?: string;
+      tenant_id?: string | null;
+    };
+    const billingPeriodForExpiry = (subscriptionDetails as SubDetailsRow | null)?.billing_period ?? "monthly";
+    if (billingPeriodForExpiry === "yearly") {
+      expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    } else {
+      expiresAt.setMonth(expiresAt.getMonth() + 1);
+    }
 
     const nextPaymentDate = payload.next_payment_date || expiresAt;
 
@@ -397,12 +442,6 @@ async function handleSubscriptionInvoice(
     if (subscriptionDetails) {
       try {
         const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
-        type SubDetailsRow = {
-          billing_period?: string | null;
-          plan_id?: string;
-          provider_id?: string;
-          tenant_id?: string | null;
-        };
         const subDetails = subscriptionDetails as SubDetailsRow;
         const billingPeriod = subDetails.billing_period ?? "monthly";
 

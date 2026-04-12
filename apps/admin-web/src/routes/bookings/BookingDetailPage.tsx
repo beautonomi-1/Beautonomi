@@ -6,6 +6,7 @@ import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -109,7 +110,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setIsEditing(false);
+      adminToast.success("Booking updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to save booking: ${e.message}`),
   });
 
   const cancelMutation = useMutation({
@@ -120,7 +123,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setShowCancel(false);
       setCancelReason("");
+      adminToast.success("Booking cancelled");
     },
+    onError: (e: Error) => adminToast.error(`Failed to cancel booking: ${e.message}`),
   });
 
   const refundMutation = useMutation({
@@ -131,7 +136,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setShowRefund(false);
       setRefundReason("");
+      adminToast.success("Refund initiated successfully");
     },
+    onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
 
   if (denied) return denied;

@@ -61,9 +61,29 @@ export async function GET(request: NextRequest) {
     const totalTaxCollected = bookings?.reduce((sum, b) => sum + (Number(b.tax_amount) || 0), 0) || 0;
     const totalRevenue = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
 
+    // Fetch platform default tax rate from platform_settings for display
+    let defaultTaxRate: number | null = null;
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const adminClient = getSupabaseAdmin();
+      const { data: platformRow } = await adminClient
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .eq("tenant_id", tenantId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const taxSettings = (platformRow?.settings as Record<string, any> | undefined)?.taxes;
+      defaultTaxRate = taxSettings?.default_tax_rate != null ? Number(taxSettings.default_tax_rate) : null;
+    } catch {
+      // Non-critical; proceed without default rate
+    }
+
     return successResponse({
       tax_rates: taxRates || [],
       provider_tax_rate: providerTaxRate,
+      default_tax_rate: defaultTaxRate,
       statistics: {
         total_tax_collected: totalTaxCollected,
         total_revenue: totalRevenue,

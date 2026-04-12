@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   ArrowLeft,
@@ -17,6 +17,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
@@ -118,6 +119,7 @@ export function ProviderOpsLifecyclePage() {
     ADMIN_SECTION_PROVIDER_OPS,
     "Provider Ops access is required to view lifecycle."
   );
+  const qc = useQueryClient();
 
   const q = useQuery({
     queryKey: ["admin", "provider-ops", "lifecycle", providerId],
@@ -126,6 +128,16 @@ export function ProviderOpsLifecyclePage() {
         timeoutMs: 30_000,
       }),
     enabled: allowed && !!providerId,
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ action, reason }: { action: "activate" | "suspend" | "verify"; reason?: string }) =>
+      adminApi.postJson(`/api/admin/providers/${providerId}/${action}`, { reason }),
+    onSuccess: () => {
+      adminToast.success("Provider status updated");
+      void qc.invalidateQueries({ queryKey: ["admin", "provider-ops", "lifecycle", providerId] });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
   });
 
   if (denied) return denied;
@@ -191,6 +203,39 @@ export function ProviderOpsLifecyclePage() {
           )}
         </div>
         <div className="flex flex-wrap gap-2">
+          {provider.status !== "active" && (
+            <button
+              type="button"
+              disabled={statusMut.isPending}
+              onClick={() => statusMut.mutate({ action: "activate" })}
+              className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" /> Activate
+            </button>
+          )}
+          {provider.status === "active" && (
+            <button
+              type="button"
+              disabled={statusMut.isPending}
+              onClick={() => {
+                const reason = window.prompt("Reason for suspension (shown to provider):");
+                if (reason !== null) statusMut.mutate({ action: "suspend", reason });
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50"
+            >
+              <XCircle className="h-3.5 w-3.5" /> Suspend
+            </button>
+          )}
+          {!provider.is_verified && (
+            <button
+              type="button"
+              disabled={statusMut.isPending}
+              onClick={() => statusMut.mutate({ action: "verify" })}
+              className="flex items-center gap-1.5 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm font-medium text-blue-600 shadow-sm hover:bg-blue-50 disabled:opacity-50"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" /> Verify
+            </button>
+          )}
           <Link
             to={adminSpaTo(`/admin/providers/${provider.id}`)}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50"

@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function POST(
   request: NextRequest,
@@ -64,6 +65,18 @@ export async function POST(
         { onConflict: "user_id" }
       );
     if (upsertErr) throw upsertErr;
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.tracker.note_add",
+      entity_type: "provider_onboarding_tracking",
+      entity_id: userId,
+      module: "provider_ops",
+      risk_level: "low",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ success: true, note: newNote });
   } catch (error) {

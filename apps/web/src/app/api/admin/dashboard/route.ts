@@ -10,6 +10,32 @@ import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger
 /** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
 const LEDGER_TOTAL_MONTHS = 24;
 
+/** Paid wallet topups (same source as GET /api/admin/finance/summary). */
+async function sumWalletTopupsForTenant(
+  tenantId: string,
+  range: { start: string; end?: string | null }
+): Promise<number> {
+  try {
+    const supabaseAdmin = getSupabaseAdmin();
+    let q = supabaseAdmin
+      .from("wallet_topups")
+      .select("amount")
+      .eq("status", "paid")
+      .eq("tenant_id", tenantId)
+      .gte("paid_at", range.start);
+    if (range.end) q = q.lte("paid_at", range.end);
+    const { data, error } = await q;
+    if (error) {
+      console.warn("wallet_topups tenant sum failed:", error.message);
+      return 0;
+    }
+    return (data || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+  } catch (e) {
+    console.warn("wallet_topups sum failed:", e);
+    return 0;
+  }
+}
+
 async function tenantCustomerCountFallback(
   supabase: Awaited<ReturnType<typeof getSupabaseServer>>,
   tenantId: string
@@ -180,14 +206,33 @@ export async function GET(request: NextRequest) {
     let thisMonth: ReturnType<typeof aggregateFinanceLedgerRows>;
     let lastMonth: ReturnType<typeof aggregateFinanceLedgerRows>;
     let total: ReturnType<typeof aggregateFinanceLedgerRows>;
+    let wToday = 0;
+    let wThisMonth = 0;
+    let wLastMonth = 0;
+    let wTotal = 0;
 
     try {
-      [today, thisMonth, lastMonth, total] = await Promise.all([
+      const results = await Promise.all([
         sumLedger(startOfToday.toISOString()),
         sumLedger(startOfMonth.toISOString()),
         sumLedger(startOfLastMonth.toISOString(), endOfLastMonth.toISOString()),
         sumLedger(ledgerStart.toISOString()),
+        sumWalletTopupsForTenant(tenantId, { start: startOfToday.toISOString() }),
+        sumWalletTopupsForTenant(tenantId, { start: startOfMonth.toISOString() }),
+        sumWalletTopupsForTenant(tenantId, {
+          start: startOfLastMonth.toISOString(),
+          end: endOfLastMonth.toISOString(),
+        }),
+        sumWalletTopupsForTenant(tenantId, { start: ledgerStart.toISOString() }),
       ]);
+      today = results[0];
+      thisMonth = results[1];
+      lastMonth = results[2];
+      total = results[3];
+      wToday = results[4];
+      wThisMonth = results[5];
+      wLastMonth = results[6];
+      wTotal = results[7];
     } catch (err) {
       console.error("Error calculating revenue:", err);
       const zero = aggregateFinanceLedgerRows([]);
@@ -195,20 +240,24 @@ export async function GET(request: NextRequest) {
       thisMonth = zero;
       lastMonth = zero;
       total = zero;
+      wToday = 0;
+      wThisMonth = 0;
+      wLastMonth = 0;
+      wTotal = 0;
     }
 
-    const platformNetTotal =
-      total.platform_take_net + total.subscription_net + total.ads_net;
+    // ecommerce_platform_fees is NOT double-counted: product order fees are in platform_take_net
+    // (see aggregate). Match GET /api/admin/finance/summary `platform_revenue.total`.
+    const sumPlatformRevenue = (p: typeof total, wallet: number) =>
+      p.platform_take_net + p.subscription_net + p.ads_net + p.service_fee_revenue + wallet;
+    const platformNetTotal = sumPlatformRevenue(total, wTotal);
+    const thisMonthPlatformNet = sumPlatformRevenue(thisMonth, wThisMonth);
+    const lastMonthPlatformNet = sumPlatformRevenue(lastMonth, wLastMonth);
     const revenueGrowth =
-      lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net !== 0
+      lastMonthPlatformNet !== 0
         ? Math.round(
-            ((thisMonth.platform_take_net +
-              thisMonth.subscription_net +
-              thisMonth.ads_net -
-              (lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net)) /
-              Math.abs(
-                lastMonth.platform_take_net + lastMonth.subscription_net + lastMonth.ads_net
-              )) *
+            ((thisMonthPlatformNet - lastMonthPlatformNet) /
+              Math.abs(lastMonthPlatformNet)) *
               100
           )
         : 0;
@@ -245,8 +294,8 @@ export async function GET(request: NextRequest) {
       total_revenue: platformNetTotal,
       pending_approvals: pendingApprovals || 0,
       active_bookings_today: bookingsToday || 0,
-      revenue_today: today.platform_take_net + today.subscription_net + today.ads_net,
-      revenue_this_month: thisMonth.platform_take_net + thisMonth.subscription_net + thisMonth.ads_net,
+      revenue_today: sumPlatformRevenue(today, wToday),
+      revenue_this_month: thisMonthPlatformNet,
       revenue_growth: revenueGrowth,
       users_growth: usersGrowth,
       providers_growth: providersGrowth,
@@ -283,15 +332,16 @@ export async function GET(request: NextRequest) {
         subscriptions: total.subscription_net,
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
-        ecommerce_fees: total.ecommerce_platform_fees,
-        cancellation_fees: total.cancellation_fees_retained,
+        ecommerce_fees_detail: total.ecommerce_platform_fees,
+        wallet_topups: wTotal,
         total: platformNetTotal,
       },
 
       provider_revenue: {
         provider_earnings: total.provider_earnings_net,
+        cancellation_fees: total.cancellation_fees_retained,
         tips: total.tips_gross,
-        this_month: thisMonth.provider_earnings_net + thisMonth.tips_gross,
+        this_month: thisMonth.provider_earnings_net + thisMonth.tips_gross + thisMonth.cancellation_fees_retained,
       },
 
       revenue_streams: {
@@ -299,8 +349,8 @@ export async function GET(request: NextRequest) {
         subscriptions: total.subscription_net,
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
-        ecommerce_fees: total.ecommerce_platform_fees,
-        cancellation_fees: total.cancellation_fees_retained,
+        wallet_topups: wTotal,
+        total: platformNetTotal,
       },
 
       metrics_notes: {
@@ -311,7 +361,8 @@ export async function GET(request: NextRequest) {
           "When the RPC is unavailable, count is customers with preferred_home_tenant only (understates market reach).",
         customer_growth_basis:
           "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
-        platform_net_includes: "Booking platform take + subscription net + ads net (matches finance summary).",
+        platform_net_includes:
+          "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer service fees + paid wallet topups. Matches finance summary platform revenue total. Cancellation fees are provider revenue.",
         bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",
         providers_growth_basis: "Active providers created this calendar month vs last month (tenant scope).",
       },

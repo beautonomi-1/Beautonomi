@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const updateGlobalCategorySchema = z.object({
   name: z.string().min(1).optional(),
@@ -67,7 +68,7 @@ export async function PUT(
   try {
     const { id } = await params;
     
-    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
@@ -106,6 +107,19 @@ export async function PUT(
       return notFoundResponse("Global category not found");
     }
 
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.global_category.update",
+      entity_type: "global_service_category",
+      entity_id: id,
+      module: "content_catalog",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: updateData,
+      ...extractRequestMeta(request),
+    });
+
     return successResponse(category);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -127,7 +141,7 @@ export async function DELETE(
   try {
     const { id } = await params;
     
-    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
 
@@ -145,6 +159,18 @@ export async function DELETE(
     if (!category) {
       return notFoundResponse("Global category not found");
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.global_category.deactivate",
+      entity_type: "global_service_category",
+      entity_id: id,
+      module: "content_catalog",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ message: "Global category deleted successfully" });
   } catch (error) {

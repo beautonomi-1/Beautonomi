@@ -222,15 +222,20 @@ export async function GET(request: NextRequest) {
     let expensesThisMonth = 0;
     let refundsTotal = 0;
     let platformFeesTotal = 0;
+    let cancellationFeesTotal = 0;
+    let cancellationFeesThisMonth = 0;
+    const CANCELLATION_FEE_TYPE = "cancellation_fee";
 
     try {
-      const [tipsAllQ, tipsMonthQ, expAllQ, expMonthQ, refAllQ, platFeeQ] = await Promise.all([
+      const [tipsAllQ, tipsMonthQ, expAllQ, expMonthQ, refAllQ, platFeeQ, cancelAllQ, cancelMonthQ] = await Promise.all([
         supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE),
         supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
         supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES),
         supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
         supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", REFUND_TYPE),
         supabaseAdmin.from("finance_transactions").select("net").eq("provider_id", providerId).eq("transaction_type", "payment"),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
       ]);
 
       tipsTotal = (tipsAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
@@ -239,6 +244,8 @@ export async function GET(request: NextRequest) {
       expensesThisMonth = (expMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
       refundsTotal = (refAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
       platformFeesTotal = (platFeeQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.net || 0)), 0);
+      cancellationFeesTotal = (cancelAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      cancellationFeesThisMonth = (cancelMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
     } catch (e) {
       console.warn("Provider finance breakdown query failed:", e);
     }
@@ -252,11 +259,13 @@ export async function GET(request: NextRequest) {
       },
       earnings_breakdown: {
         service_earnings: totalRevenue,
+        cancellation_fees: cancellationFeesTotal,
+        cancellation_fees_this_month: cancellationFeesThisMonth,
         tips: tipsTotal,
         tips_this_month: tipsThisMonth,
         refunds: refundsTotal,
         platform_fees_paid: platformFeesTotal,
-        net_after_refunds: totalRevenue - refundsTotal,
+        net_after_refunds: totalRevenue + cancellationFeesTotal + tipsTotal - refundsTotal,
       },
       expenses: {
         total: expensesTotal,

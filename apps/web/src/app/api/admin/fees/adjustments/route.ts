@@ -8,6 +8,7 @@ import {
   fetchBookingInAdminTenant,
   fetchProviderInAdminTenant,
 } from "@/lib/tenant/admin-booking-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 function isTableMissingError(e: unknown): boolean {
   const msg =
@@ -393,6 +394,29 @@ export async function POST(request: NextRequest) {
         console.error("Error updating finance_transaction fee:", updateError);
       }
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.fee.adjustment.create",
+      entity_type: "payment_fee_adjustment",
+      entity_id: adjustment.id,
+      module: "finance",
+      risk_level: "critical",
+      retention_tier: "financial",
+      status: "succeeded",
+      reason: adjustment_reason,
+      after_json: {
+        payment_transaction_id,
+        finance_transaction_id,
+        original_fee_amount: originalFee,
+        adjusted_fee_amount,
+        adjustment_type,
+      },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return NextResponse.json({ data: adjustment, error: null });
   } catch (error: unknown) {

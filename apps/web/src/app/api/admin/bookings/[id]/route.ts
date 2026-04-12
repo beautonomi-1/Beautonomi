@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError, errorResponse  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/bookings/[id]
@@ -83,7 +84,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -203,6 +204,24 @@ export async function PATCH(
         console.error("Error sending notification:", notifError);
       }
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.booking.update",
+      entity_type: "booking",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "operational",
+      status: "succeeded",
+      before_json: { status: (booking as { status?: string }).status },
+      after_json: updateData,
+      changed_fields: Object.keys(updateData).filter((k) => k !== "updated_at"),
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(updatedBooking);
   } catch (error) {

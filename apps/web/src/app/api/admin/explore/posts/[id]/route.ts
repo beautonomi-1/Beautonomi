@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 type ProviderJoin = { tenant_id: string; business_name: string; slug: string; id: string };
 
@@ -68,7 +69,7 @@ export async function GET(
     if ("error" in result && result.error) return handleApiError(result.error, "Failed to load post");
     if (!("post" in result) || result.post === null) return notFoundResponse("Post not found");
 
-    const post = result.post;
+    const post = result.post as Record<string, any>;
     const prov = post.providers as unknown as ProviderJoin;
     const postOut = {
       ...post,
@@ -151,6 +152,22 @@ export async function PATCH(
       .single();
 
     if (error) return handleApiError(error, "Failed to update post");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.explore.post.moderate",
+      entity_type: "explore_post",
+      entity_id: id,
+      module: "content_catalog",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { is_hidden },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse(data);
   } catch (error) {
     return handleApiError(error, "Failed to update post");

@@ -93,6 +93,7 @@ interface SelectedService {
   serviceId: string;
   staffId?: string;
   addOnIds: string[];
+  customization?: string;
 }
 
 interface Product {
@@ -325,6 +326,8 @@ export default function NewBookingScreen() {
   const [promoValidating, setPromoValidating] = useState(false);
   const [promoError, setPromoError] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("card");
+  const [paymentOption, setPaymentOption] = useState<"full" | "deposit">("full");
+  const [depositPercentage, setDepositPercentage] = useState<number>(30);
   const [referralSourceId, setReferralSourceId] = useState<string>("");
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [conflictWarning, setConflictWarning] = useState<string | null>(null);
@@ -651,6 +654,7 @@ export default function NewBookingScreen() {
           price: svc?.price || 0,
           duration_minutes: (svc?.duration_minutes || 60) + addonDuration,
           currency: svc?.currency || getTenantDefaultCurrency(),
+          ...(s.customization ? { customization: s.customization } : {}),
         };
       }),
       products: selectedProducts.map((p) => ({
@@ -680,6 +684,12 @@ export default function NewBookingScreen() {
       referral_source_id: referralSourceId.trim() || undefined,
       booking_source: isWalkIn ? "walk_in" : "provider",
       payment_method: paymentMethod,
+      payment_option: paymentOption,
+      ...(paymentOption === "deposit" ? {
+        deposit_required: true,
+        deposit_percentage: depositPercentage,
+        deposit_amount: Math.ceil((summary.total * depositPercentage) / 100),
+      } : {}),
       send_notification: true,
       ...(selectedPackageId ? { package_id: selectedPackageId } : {}),
     };
@@ -766,6 +776,8 @@ export default function NewBookingScreen() {
                 : undefined
             }
             paymentMethod={paymentMethod}
+            paymentOption={paymentOption}
+            depositPercentage={depositPercentage}
             packageName={selectedPackageId ? (packagesList.find((p) => p.id === selectedPackageId)?.name ?? null) : null}
             creating={creating}
             onConfirm={handleCreate}
@@ -1240,6 +1252,23 @@ export default function NewBookingScreen() {
                               )}
                             </View>
                           )}
+                          {isSelected && (
+                            <View style={[twStyle("mt-1 mb-1"), indent ? { marginLeft: 24 } : { marginLeft: 12 }]}>
+                              <TextInput
+                                style={twStyle("rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700")}
+                                placeholder="Add customization notes (optional)"
+                                placeholderTextColor="#9ca3af"
+                                value={sel?.customization ?? ""}
+                                onChangeText={(text) => {
+                                  setSelectedServices((prev) =>
+                                    prev.map((s) => s.serviceId === service.id ? { ...s, customization: text } : s)
+                                  );
+                                }}
+                                multiline
+                                maxLength={500}
+                              />
+                            </View>
+                          )}
                         </View>
                       );
                     };
@@ -1477,6 +1506,76 @@ export default function NewBookingScreen() {
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+
+              {/* -------- DEPOSIT OPTION -------- */}
+              <View style={twStyle("mb-4")}>
+                <SectionLabel label="Payment Option" />
+                <View style={twStyle("flex-row")}>
+                  <TouchableOpacity
+                    style={twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 mr-2 ${
+                      paymentOption === "full"
+                        ? "border-gray-900 bg-gray-900"
+                        : "border-gray-200 bg-white"
+                    }`)}
+                    onPress={() => setPaymentOption("full")}
+                  >
+                    <Ionicons
+                      name="checkmark-circle-outline"
+                      size={16}
+                      color={paymentOption === "full" ? "#fff" : "#6b7280"}
+                    />
+                    <Text style={twStyle(`ml-1.5 text-sm font-medium ${
+                      paymentOption === "full" ? "text-white" : "text-gray-700"
+                    }`)}>Full Payment</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={twStyle(`flex-1 flex-row items-center justify-center rounded-xl border py-3 ${
+                      paymentOption === "deposit"
+                        ? "border-gray-900 bg-gray-900"
+                        : "border-gray-200 bg-white"
+                    }`)}
+                    onPress={() => setPaymentOption("deposit")}
+                  >
+                    <Ionicons
+                      name="layers-outline"
+                      size={16}
+                      color={paymentOption === "deposit" ? "#fff" : "#6b7280"}
+                    />
+                    <Text style={twStyle(`ml-1.5 text-sm font-medium ${
+                      paymentOption === "deposit" ? "text-white" : "text-gray-700"
+                    }`)}>Deposit</Text>
+                  </TouchableOpacity>
+                </View>
+                {paymentOption === "deposit" && (
+                  <View style={twStyle("mt-3 rounded-xl border border-gray-100 bg-gray-50 p-3")}>
+                    <Text style={twStyle("text-xs font-medium text-gray-600 mb-2")}>Deposit Percentage</Text>
+                    <View style={twStyle("flex-row items-center")}>
+                      {[20, 30, 50, 100].map((pct) => (
+                        <TouchableOpacity
+                          key={pct}
+                          style={twStyle(`flex-1 items-center py-2 rounded-lg mr-1 ${
+                            depositPercentage === pct
+                              ? "bg-gray-900"
+                              : "bg-white border border-gray-200"
+                          }`)}
+                          onPress={() => setDepositPercentage(pct)}
+                        >
+                          <Text style={twStyle(`text-xs font-semibold ${
+                            depositPercentage === pct ? "text-white" : "text-gray-700"
+                          }`)}>{pct}%</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    {summary.total > 0 && (
+                      <Text style={twStyle("mt-2 text-xs text-gray-500")}>
+                        Deposit: {formatCurrency(Math.ceil((summary.total * depositPercentage) / 100), tenantCurrency)}
+                        {" "}of{" "}
+                        {formatCurrency(summary.total, tenantCurrency)}
+                      </Text>
+                    )}
+                  </View>
+                )}
               </View>
 
               {/* -------- REFERRAL SOURCE -------- */}
@@ -1821,6 +1920,8 @@ function ConfirmationView({
   isWalkIn,
   serviceAddressSummary,
   paymentMethod,
+  paymentOption,
+  depositPercentage,
   packageName,
   creating,
   onConfirm,
@@ -1845,6 +1946,8 @@ function ConfirmationView({
   isWalkIn?: boolean;
   serviceAddressSummary?: string;
   paymentMethod: string;
+  paymentOption?: "full" | "deposit";
+  depositPercentage?: number;
   packageName?: string | null;
   creating: boolean;
   onConfirm: () => void;
@@ -1872,6 +1975,12 @@ function ConfirmationView({
           </View>
         ) : null}
         <ConfirmRow label="Payment" value={paymentMethod.charAt(0).toUpperCase() + paymentMethod.slice(1)} />
+        {paymentOption === "deposit" && depositPercentage ? (
+          <ConfirmRow
+            label="Deposit"
+            value={`${depositPercentage}% (${formatCurrency(Math.ceil((summary.total * depositPercentage) / 100), currency)})`}
+          />
+        ) : null}
         {packageName ? <ConfirmRow label="Package" value={packageName} /> : null}
         <ConfirmRow label="Duration" value={formatDuration(summary.totalMinutes)} />
       </View>

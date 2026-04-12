@@ -13,7 +13,13 @@ export const MAX_FINANCE_TRANSACTIONS = 50000;
 export const DASHBOARD_REVENUE_TRANSACTION_TYPES = ["provider_earnings"] as const;
 
 /**
- * Full net booking-linked ledger total for commission / allocation (service earnings + travel + tips).
- * Differs from dashboard headline revenue when travel/tips post as separate rows.
+ * Revenue base for staff service commission (percent of service earnings).
+ * Excludes travel_fee (pass-through) and tip (tracked separately on pay runs).
+ */
+export const STAFF_COMMISSION_REVENUE_TYPES = ["provider_earnings"] as const;
+
+/**
+ * Full net booking-linked ledger total for per-booking allocation when tips/travel post as separate rows.
+ * Differs from dashboard headline revenue and from staff commission base (see STAFF_COMMISSION_REVENUE_TYPES).
  */
 export const LEDGER_FULL_PROVIDER_NET_TYPES = ["provider_earnings", "travel_fee", "tip"] as const;

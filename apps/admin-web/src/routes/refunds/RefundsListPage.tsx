@@ -1,12 +1,14 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -36,9 +38,10 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 export function RefundsListPage() {
+  useAdminDocumentTitle("Refunds");
   const { allowed, denied } = useAdminSectionPage(
-    ADMIN_SECTION_PROVIDERS_OPERATIONS,
-    "Providers & operations access is required."
+    ADMIN_SECTION_FINANCE,
+    "Finance access is required to manage refunds."
   );
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -81,7 +84,9 @@ export function RefundsListPage() {
       setRefundAmount("");
       setRefundReason("");
       setRefundNotes("");
+      adminToast.success("Refund processed successfully");
     },
+    onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
 
   const rows = q.data?.refunds ?? [];
@@ -193,9 +198,8 @@ export function RefundsListPage() {
               const isExpanded = expandedId === id;
 
               return (
-                <>
+                <Fragment key={id}>
                   <tr
-                    key={id}
                     className={`cursor-pointer hover:bg-gray-50 ${isExpanded ? "bg-gray-50" : ""}`}
                     onClick={() => setExpandedId(isExpanded ? null : id)}
                   >
@@ -259,7 +263,7 @@ export function RefundsListPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
           </AdminTableBody>

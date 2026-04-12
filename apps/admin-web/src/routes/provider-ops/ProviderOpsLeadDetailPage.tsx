@@ -12,6 +12,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 const STAGES = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
 
@@ -24,7 +25,7 @@ export function ProviderOpsLeadDetailPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.leadDetail(id!),
-    queryFn: () => adminApi.getJson<{ data: Record<string, unknown> }>(`/api/admin/provider-ops/leads/${id}`, { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<Record<string, unknown>>(`/api/admin/provider-ops/leads/${id}`, { timeoutMs: 60_000 }),
     enabled: allowed && !!id,
   });
 
@@ -36,17 +37,30 @@ export function ProviderOpsLeadDetailPage() {
 
   const stageChange = useMutation({
     mutationFn: (stage: string) => adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) }),
+    onSuccess: (_data, stage) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+      adminToast.success(`Stage updated to "${stage.replace(/_/g, " ")}"`);
+    },
+    onError: (e: Error) => adminToast.error(`Stage update failed: ${e.message}`),
   });
 
   const addNote = useMutation({
     mutationFn: () => adminApi.postJson(`/api/admin/provider-ops/leads/${id}/activities`, { activity_type: "note", description: noteText.trim() }),
-    onSuccess: () => { setNoteText(""); void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) }); },
+    onSuccess: () => {
+      setNoteText("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      adminToast.success("Note added");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to add note: ${e.message}`),
   });
 
   const deleteLead = useMutation({
     mutationFn: () => adminApi.deleteJson(`/api/admin/provider-ops/leads/${id}`),
-    onSuccess: () => navigate(adminSpaTo("/admin/provider-ops/leads")),
+    onSuccess: () => {
+      adminToast.success("Lead deleted");
+      navigate(adminSpaTo("/admin/provider-ops/leads"));
+    },
+    onError: (e: Error) => adminToast.error(`Failed to delete lead: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -56,7 +70,7 @@ export function ProviderOpsLeadDetailPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const lead = q.data?.data as Record<string, unknown> | undefined;
+  const lead = q.data as Record<string, unknown> | undefined;
   if (!lead) return <AdminRetryBlock message="Lead not found" onRetry={() => void q.refetch()} />;
 
   const name = String(lead.business_name || lead.contact_person_name || lead.lead_name || "Unnamed Lead");

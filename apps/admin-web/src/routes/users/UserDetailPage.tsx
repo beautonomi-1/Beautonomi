@@ -17,6 +17,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminToast } from "@/lib/adminToast";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -137,10 +138,16 @@ export function UserDetailPage() {
   const patch = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       adminApi.patchJson(`/api/admin/users/${encodeURIComponent(id)}`, body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+      if ("is_active" in vars) {
+        adminToast.success((vars as Record<string, unknown>).is_active ? "User activated" : "User deactivated");
+      } else {
+        adminToast.success("User updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update user: ${e.message}`),
   });
 
   const passwordPut = useMutation({
@@ -151,7 +158,9 @@ export function UserDetailPage() {
     onSuccess: () => {
       setNewPassword("");
       setConfirmPassword("");
+      adminToast.success("Password updated successfully");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update password: ${e.message}`),
   });
 
   const rolePut = useMutation({
@@ -160,7 +169,9 @@ export function UserDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+      adminToast.success("User role updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update role: ${e.message}`),
   });
 
   const impersonatePost = useMutation({
@@ -169,6 +180,8 @@ export function UserDetailPage() {
         `/api/admin/users/${encodeURIComponent(id)}/impersonate`,
         { reason }
       ),
+    onSuccess: () => adminToast.info("Impersonation session started"),
+    onError: (e: Error) => adminToast.error(`Impersonation failed: ${e.message}`),
   });
 
   const walletTopUp = useMutation({
@@ -184,7 +197,9 @@ export function UserDetailPage() {
       setTopUpAmount("");
       setTopUpReason("");
       setShowTopUp(false);
+      adminToast.success("Wallet topped up successfully");
     },
+    onError: (e: Error) => adminToast.error(`Wallet top-up failed: ${e.message}`),
   });
 
   const loyaltyQ = useQuery({

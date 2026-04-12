@@ -21,12 +21,14 @@ interface NotifPreferences {
   booking_cancellations: ChannelPrefs;
   booking_reminders: ChannelPrefs;
   new_reviews: ChannelPrefs;
+  review_responses: ChannelPrefs;
   client_messages: ChannelPrefs;
   payment_received: ChannelPrefs;
   payout_updates: ChannelPrefs;
   waitlist_notifications: ChannelPrefs;
   system_updates: ChannelPrefs;
   marketing: ChannelPrefs;
+  unsubscribe_marketing?: boolean;
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: string;
   quiet_hours_end?: string;
@@ -39,6 +41,7 @@ const PREF_LABELS: Record<string, { label: string; icon: string }> = {
   booking_cancellations: { label: "Cancellations", icon: "close-circle-outline" },
   booking_reminders: { label: "Booking Reminders", icon: "alarm-outline" },
   new_reviews: { label: "New Reviews", icon: "star-outline" },
+  review_responses: { label: "Review Responses", icon: "chatbubbles-outline" },
   client_messages: { label: "Client Messages", icon: "chatbubble-outline" },
   payment_received: { label: "Payment Received", icon: "card-outline" },
   payout_updates: { label: "Payout Updates", icon: "wallet-outline" },
@@ -54,7 +57,7 @@ const SECTIONS = [
   },
   {
     title: "Communication",
-    keys: ["client_messages", "new_reviews", "waitlist_notifications"],
+    keys: ["client_messages", "new_reviews", "review_responses", "waitlist_notifications"],
   },
   { title: "Payments", keys: ["payment_received", "payout_updates"] },
   { title: "Other", keys: ["system_updates", "marketing"] },
@@ -65,12 +68,14 @@ const DEFAULT_PREFS: NotifPreferences = {
   booking_cancellations: { email: true, sms: true, push: true },
   booking_reminders: { email: true, sms: true, push: true },
   new_reviews: { email: true, sms: false, push: true },
+  review_responses: { email: true, sms: false, push: true },
   client_messages: { email: true, sms: true, push: true },
   payment_received: { email: true, sms: false, push: true },
   payout_updates: { email: true, sms: true, push: true },
   waitlist_notifications: { email: true, sms: false, push: true },
   system_updates: { email: true, sms: false, push: false },
   marketing: { email: true, sms: false, push: false },
+  unsubscribe_marketing: false,
   quiet_hours_enabled: false,
   quiet_hours_start: "22:00",
   quiet_hours_end: "07:00",
@@ -258,6 +263,34 @@ export default function NotificationPreferencesScreen() {
             )}
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Unsubscribe from marketing */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-red-50")}>
+              <Ionicons name="mail-unread-outline" size={18} color="#ef4444" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                Unsubscribe from Marketing
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Stop all promotional emails and messages
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.unsubscribe_marketing ?? false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, unsubscribe_marketing: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#fca5a5" }}
+            thumbColor={local.unsubscribe_marketing ? "#ef4444" : "#f4f4f5"}
+          />
+        </View>
       </View>
 
       {/* Channel preferences */}

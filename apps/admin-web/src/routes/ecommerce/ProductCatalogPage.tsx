@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_ECOMMERCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { adminToast } from "@/lib/adminToast";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -40,6 +41,7 @@ type CatalogPayload = {
 
 export function ProductCatalogPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_ECOMMERCE, "E-commerce access is required.");
+  const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const search = sp.get("search") || "";
@@ -73,6 +75,22 @@ export function ProductCatalogPage() {
   const rows = q.data?.products ?? [];
   const categories = q.data?.categories ?? [];
   const totalPages = q.data?.pagination?.totalPages ?? 1;
+
+  const toggleMut = useMutation({
+    mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
+      adminApi.patchJson(`/api/admin/ecommerce/catalog/${id}`, body),
+    onSuccess: (_data, vars) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.productCatalog(qk) });
+      if ("is_active" in vars.body) {
+        adminToast.success(vars.body.is_active ? "Product activated" : "Product deactivated");
+      } else if ("retail_sales_enabled" in vars.body) {
+        adminToast.success(vars.body.retail_sales_enabled ? "Retail sales enabled" : "Retail sales disabled");
+      } else {
+        adminToast.success("Product updated");
+      }
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update product"),
+  });
 
   function patch(u: Record<string, string | null>) {
     const n = new URLSearchParams(sp);
@@ -182,11 +200,12 @@ export function ProductCatalogPage() {
               <AdminTh>Retail</AdminTh>
               <AdminTh>Price</AdminTh>
               <AdminTh>Qty</AdminTh>
+              <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
             {rows.map((p) => (
-              <tr key={String(p.id)}>
+              <tr key={String(p.id)} className={p.is_active === false ? "opacity-50" : ""}>
                 <AdminTd className="font-medium">{String(p.name ?? "")}</AdminTd>
                 <AdminTd className="font-mono text-xs">{String(p.sku ?? "—")}</AdminTd>
                 <AdminTd>
@@ -199,15 +218,28 @@ export function ProductCatalogPage() {
                   )}
                 </AdminTd>
                 <AdminTd>
-                  {p.is_active ? (
-                    <span className="text-green-800">active</span>
-                  ) : (
-                    <span className="text-gray-500">inactive</span>
-                  )}
+                  <button
+                    type="button"
+                    disabled={toggleMut.isPending}
+                    onClick={() => p.id && toggleMut.mutate({ id: String(p.id), body: { is_active: !p.is_active } })}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? "bg-green-100 text-green-800 hover:bg-green-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    {p.is_active ? "active" : "inactive"}
+                  </button>
                 </AdminTd>
-                <AdminTd>{p.retail_sales_enabled ? "yes" : "no"}</AdminTd>
+                <AdminTd>
+                  <button
+                    type="button"
+                    disabled={toggleMut.isPending}
+                    onClick={() => p.id && toggleMut.mutate({ id: String(p.id), body: { retail_sales_enabled: !p.retail_sales_enabled } })}
+                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${p.retail_sales_enabled ? "bg-blue-100 text-blue-800 hover:bg-blue-200" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}
+                  >
+                    {p.retail_sales_enabled ? "yes" : "no"}
+                  </button>
+                </AdminTd>
                 <AdminTd className="tabular-nums">{Number(p.retail_price ?? 0).toFixed(2)}</AdminTd>
                 <AdminTd className="tabular-nums">{String(p.quantity ?? "")}</AdminTd>
+                <AdminTd className="text-xs text-gray-400">—</AdminTd>
               </tr>
             ))}
           </AdminTableBody>

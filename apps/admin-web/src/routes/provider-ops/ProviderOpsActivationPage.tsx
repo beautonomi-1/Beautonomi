@@ -14,6 +14,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 const PAGE_SIZE = 50;
 
@@ -40,19 +41,24 @@ export function ProviderOpsActivationPage() {
       const p = new URLSearchParams();
       if (search) p.set("search", search);
       p.set("page", String(page)); p.set("limit", String(PAGE_SIZE));
-      return adminApi.getJson<{ data: { data: ActivationProvider[]; meta: { total: number; has_more: boolean } } }>(`/api/admin/provider-ops/activation-queue?${p}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<{ data: ActivationProvider[]; meta: { total: number; has_more: boolean } }>(`/api/admin/provider-ops/activation-queue?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
   });
 
   const approve = useMutation({
     mutationFn: (providerId: string) => adminApi.patchJson(`/api/admin/providers/${providerId}/status`, { status: "active" }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() }); void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() }); },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      adminToast.success("Provider activated successfully");
+    },
+    onError: (e: Error) => adminToast.error(`Activation failed: ${e.message}`),
   });
 
-  const rows = q.data?.data?.data ?? [];
-  const total = q.data?.data?.meta?.total ?? 0;
-  const hasMore = q.data?.data?.meta?.has_more ?? false;
+  const rows = q.data?.data ?? [];
+  const total = q.data?.meta?.total ?? 0;
+  const hasMore = q.data?.meta?.has_more ?? false;
 
   function commitSearch() {
     const n = new URLSearchParams(sp);

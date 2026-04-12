@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 /**
  * GET /api/admin/reviews
@@ -13,7 +14,15 @@ export async function GET(request: NextRequest) {
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
+
+    // Pre-load provider IDs scoped to this tenant so reviews are tenant-scoped
+    const { data: tenantProviders } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId);
+    const tenantProviderIds = (tenantProviders ?? []).map((p: { id: string }) => p.id);
 
     const status = searchParams.get("status"); // all, visible, hidden, flagged
     const rating = searchParams.get("rating"); // 1-5
@@ -51,6 +60,7 @@ export async function GET(request: NextRequest) {
         provider:providers!reviews_provider_id_fkey(id, business_name, thumbnail_url, avatar_url),
         booking:bookings(id, booking_number, status)
       `)
+      .in("provider_id", tenantProviderIds.length > 0 ? tenantProviderIds : ["__none__"])
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -89,7 +99,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Get total count for pagination
-    let countQuery = supabase.from("reviews").select("*", { count: "exact", head: true });
+    let countQuery = supabase
+      .from("reviews")
+      .select("*", { count: "exact", head: true })
+      .in("provider_id", tenantProviderIds.length > 0 ? tenantProviderIds : ["__none__"]);
 
     if (status === "visible") {
       countQuery = countQuery.eq("is_visible", true);
@@ -120,10 +133,11 @@ export async function GET(request: NextRequest) {
 
     const { count } = await countQuery;
 
-    // Get statistics
+    // Get statistics (tenant-scoped)
     const { data: stats } = await supabase
       .from("reviews")
-      .select("rating, is_visible, is_flagged");
+      .select("rating, is_visible, is_flagged")
+      .in("provider_id", tenantProviderIds.length > 0 ? tenantProviderIds : ["__none__"]);
 
     const statistics = {
       total: stats?.length || 0,

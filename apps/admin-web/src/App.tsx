@@ -119,6 +119,7 @@ export default function App() {
           <Route path="fees" element={<P.FeesConfigsPage />} />
           <Route path="billing" element={<P.BillingPage />} />
           <Route path="taxes" element={<P.TaxesPage />} />
+          <Route path="period-locks" element={<P.PeriodLocksPage />} />
           <Route path="provider-subscriptions" element={<P.ProviderSubscriptionsPage />} />
           <Route path="subscription-revenue" element={<P.SubscriptionMetricsPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
@@ -168,6 +169,7 @@ export default function App() {
           <Route path="custom-fields" element={<Navigate to="../settings/custom-fields" replace />} />
           <Route path="settings/referrals" element={<P.ReferralsSettingsPage />} />
           <Route path="referral-sources" element={<P.ReferralSourcesPage />} />
+          <Route path="settings/tenants" element={<P.TenantsListPage />} />
           <Route path="settings/tenant-domains" element={<P.TenantDomainsListPage />} />
           <Route path="settings/team-permissions" element={<P.TeamPermissionsMatrixPage />} />
           <Route path="settings/admin-team" element={<P.AdminTeamPage />} />
@@ -203,8 +205,8 @@ export default function App() {
             <Route path="compliance" element={<P.CompliancePurgePage />} />
             <Route path="*" element={<P.AdminNotFoundPage />} />
           </Route>
-          <Route path="sms-templates" element={<Navigate to="../notification-templates" replace />} />
-          <Route path="email-templates" element={<Navigate to="../notification-templates" replace />} />
+          <Route path="sms-templates" element={<P.SmsTemplatesListPage />} />
+          <Route path="email-templates" element={<P.EmailTemplatesListPage />} />
           <Route
             path="settings/integrations/analytics"
             element={<Navigate to="../../../integrations/amplitude" replace />}

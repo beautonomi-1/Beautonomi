@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(
   request: NextRequest,
@@ -143,6 +144,19 @@ export async function PATCH(
         performed_by: user.id,
       });
     }
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.tracker.draft_update",
+      entity_type: "provider_onboarding_draft",
+      entity_id: userId,
+      module: "provider_ops",
+      risk_level: "low",
+      retention_tier: "routine",
+      changed_fields: Object.keys(body.draft_data || {}),
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ success: true });
   } catch (error) {

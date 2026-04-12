@@ -82,7 +82,12 @@ export async function POST(request: NextRequest) {
       billingPeriod === "yearly"
         ? Number(planData.price_yearly ?? 0)
         : Number(planData.price_monthly ?? 0);
-    if (!amount || amount <= 0) throw new Error("Invalid plan amount");
+    if (!amount || amount <= 0) {
+      return successResponse({
+        message: "Free plans do not require renewal payment.",
+        is_free: true,
+      });
+    }
 
     const { data: order, error: orderError } = await supabase
       .from("provider_subscription_orders")

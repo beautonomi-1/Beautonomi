@@ -354,9 +354,8 @@ export async function POST(
       }
     }
 
-    // Record retained cancellation fee as a dedicated finance_transaction so it appears
-    // in revenue reports and the admin ledger as platform-retained income.
-    // Convention: amount = absolute fee (positive), net = positive (platform keeps it).
+    // Record cancellation fee as a dedicated finance_transaction (provider-retained income).
+    // Convention: amount = absolute fee (positive), net = positive (provider keeps it).
     if (cancellationFeeApplied > 0) {
       try {
         const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
@@ -374,7 +373,7 @@ export async function POST(
           fees: 0,
           commission: 0,
           net: cancellationFeeApplied,
-          description: `Cancellation fee retained for booking ${bookingRef} (${isLate ? "late cancellation" : "early cancellation"})`,
+          description: `Cancellation fee for booking ${bookingRef} — provider-retained (${isLate ? "late cancellation" : "early cancellation"})`,
           created_at: new Date().toISOString(),
         });
       } catch (feeErr) {

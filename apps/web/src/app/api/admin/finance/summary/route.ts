@@ -7,6 +7,10 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  getNegativeBalanceProvidersForTenant,
+  type NegativeBalanceProvidersPayload,
+} from "@/lib/admin/negative-provider-payout-balances";
 
 /**
  * GET /api/admin/finance/summary
@@ -26,15 +30,22 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
-
-    const tx = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
-      start: startDate,
-      end: endDate,
-    });
-
-    const agg = aggregateFinanceLedgerRows(tx);
+    const providerIdFilter = searchParams.get("provider_id");
 
     const supabaseAdmin = getSupabaseAdmin();
+
+    const [tx, negativeBalanceProviders] = await Promise.all([
+      fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+        start: startDate,
+        end: endDate,
+      }, providerIdFilter ? { restrictProviderIds: [providerIdFilter] } : undefined),
+      getNegativeBalanceProvidersForTenant(supabaseAdmin, tenantId).catch((e) => {
+        console.warn("Negative payout balance scan failed:", e);
+        return { count: 0, providers: [] } satisfies NegativeBalanceProvidersPayload;
+      }),
+    ]);
+
+    const agg = aggregateFinanceLedgerRows(tx);
     let walletTopupRevenue = 0;
     let referralPayouts = 0;
     try {
@@ -74,7 +85,7 @@ export async function GET(request: Request) {
     const cancellationFeesRetained = agg.cancellation_fees_retained;
 
     const totalPlatformTakeAfterReferrals =
-      agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue - referralPayouts;
+      agg.platform_take_net + agg.subscription_net + agg.ads_net + agg.service_fee_revenue + walletTopupRevenue - referralPayouts;
 
     const period = startDate && endDate ? "custom" : "month";
     let previousStart: string;
@@ -157,18 +168,18 @@ export async function GET(request: Request) {
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
           service_fees: agg.service_fee_revenue,
-          ecommerce_fees: agg.ecommerce_platform_fees,
+          ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupRevenue,
-          cancellation_fees: cancellationFeesRetained,
-          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + cancellationFeesRetained + agg.service_fee_revenue + agg.ecommerce_platform_fees,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + agg.service_fee_revenue,
         },
 
         provider_revenue: {
           provider_earnings: agg.provider_earnings_net,
+          cancellation_fees: cancellationFeesRetained,
           tips: agg.tips_gross,
           taxes_collected: agg.taxes_gross,
           refunds: agg.refunds_gross,
-          net_after_refunds: agg.provider_earnings_net - Math.abs(agg.refunds_gross),
+          net_after_refunds: agg.provider_earnings_net + cancellationFeesRetained - Math.abs(agg.refunds_gross),
         },
 
         revenue_streams: {
@@ -176,10 +187,9 @@ export async function GET(request: Request) {
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
           service_fees: agg.service_fee_revenue,
-          ecommerce_fees: agg.ecommerce_platform_fees,
+          ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupRevenue,
-          cancellation_fees: cancellationFeesRetained,
-          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + cancellationFeesRetained + agg.service_fee_revenue + agg.ecommerce_platform_fees,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + agg.service_fee_revenue,
         },
 
         gmv_growth: gmvGrowth,
@@ -187,6 +197,8 @@ export async function GET(request: Request) {
           start_date: startDate || null,
           end_date: endDate || null,
         },
+
+        negative_balance_providers: negativeBalanceProviders,
       },
       error: null,
     });

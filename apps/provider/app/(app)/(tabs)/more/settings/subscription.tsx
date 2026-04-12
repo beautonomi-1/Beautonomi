@@ -18,10 +18,12 @@ import { twStyle } from "@/lib/twStyle";
 
 interface Plan {
   id: string;
+  plan_id: string;
   name: string;
   amount: number;
   currency: string;
   interval: string;
+  billing_period: string;
   features: string[];
   is_popular?: boolean;
   is_free?: boolean;
@@ -31,6 +33,8 @@ interface Subscription {
   id: string;
   status: string;
   expires_at: string | null;
+  cancelled_at: string | null;
+  auto_renew: boolean;
   plan_id: string;
   plan?: {
     id: string;
@@ -117,12 +121,14 @@ export default function SubscriptionScreen() {
 
   async function handleUpgrade(planId: string) {
     const selectedPlan = plans?.find((p) => p.id === planId);
+    const billingPeriod = selectedPlan?.billing_period || "monthly";
+    const barePlanId = selectedPlan?.plan_id || planId;
 
     // Free plan: activate via upgrade API directly (no payment needed)
     if (selectedPlan?.is_free || selectedPlan?.amount === 0) {
       const { error: err, data } = await postAction(
         "/api/provider/subscription/upgrade",
-        { plan_id: planId, billing_period: "monthly" }
+        { plan_id: barePlanId, billing_period: billingPeriod }
       );
       if (err) {
         Alert.alert("Error", err);
@@ -138,10 +144,20 @@ export default function SubscriptionScreen() {
 
     const { error: err, data } = await postAction(
       "/api/provider/subscription/initialize-payment",
-      { plan_id: planId, billing_period: "monthly", in_app: true }
+      { plan_id: barePlanId, billing_period: billingPeriod, in_app: true }
     );
     if (err) {
       Alert.alert("Error", err);
+      return;
+    }
+    if ((data as any)?.requires_payment) {
+      const url = (data as { authorization_url?: string; payment_url?: string })?.authorization_url ?? (data as { payment_url?: string })?.payment_url;
+      if (url) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("No payment link", "Unable to start upgrade. Please try again or contact support.");
+      }
+      refresh();
       return;
     }
     const url = (data as { authorization_url?: string; payment_url?: string })?.authorization_url ?? (data as { payment_url?: string })?.payment_url;
@@ -188,11 +204,15 @@ export default function SubscriptionScreen() {
               <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
                 Status: {subscription.status}
               </Text>
-              {subscription.expires_at && (
+              {subscription.cancelled_at ? (
+                <Text style={twStyle("mt-0.5 text-xs text-red-500")}>
+                  Cancels: {subscription.expires_at ? formatDate(subscription.expires_at) : "End of billing period"}
+                </Text>
+              ) : subscription.expires_at ? (
                 <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
                   Renews: {formatDate(subscription.expires_at)}
                 </Text>
-              )}
+              ) : null}
             </View>
             <View style={twStyle("rounded-full bg-indigo-100 px-3 py-1")}>
               <Text style={twStyle("text-sm font-medium text-indigo-700")}>
@@ -200,7 +220,7 @@ export default function SubscriptionScreen() {
               </Text>
             </View>
           </View>
-          {subscription.status === "active" && (
+          {subscription.status === "active" && !subscription.cancelled_at && (
             <TouchableOpacity
               style={twStyle("mt-3 rounded-xl border border-red-200 bg-white py-2")}
               onPress={handleCancel}
@@ -209,6 +229,13 @@ export default function SubscriptionScreen() {
                 Cancel subscription
               </Text>
             </TouchableOpacity>
+          )}
+          {subscription.cancelled_at && (
+            <View style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+              <Text style={twStyle("text-xs text-amber-700 text-center")}>
+                Your subscription has been cancelled and will end at the end of the current billing period.
+              </Text>
+            </View>
           )}
           {subscription.status === "active" && subscription.expires_at && (
             <TouchableOpacity
@@ -251,7 +278,7 @@ export default function SubscriptionScreen() {
                   <Text style={twStyle("mt-0.5 text-sm text-gray-500")}>
                     {plan.is_free || plan.amount === 0
                       ? "Free"
-                      : `${formatCurrency(plan.amount, plan.currency)}/${plan.interval}`}
+                      : `${formatCurrency(plan.amount, plan.currency)}/${plan.billing_period === "yearly" ? "year" : "month"}`}
                   </Text>
                 </View>
                 {(subscription?.plan as Subscription["plan"])?.id !== plan.id && (

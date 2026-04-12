@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 
 type ReturnRow = Record<string, unknown> & {
   id?: string;
@@ -82,11 +83,19 @@ export function ProductReturnsPage() {
   const resolveReturn = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       adminApi.patchJson(`/api/admin/product-returns/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_result, vars) => {
       setResolveId(null);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productReturns(qk) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      const status = String(vars.data.status ?? "");
+      adminToast.success(
+        status === "approved" ? "Return approved" :
+        status === "rejected" ? "Return rejected" :
+        status === "refunded" ? "Return refunded" :
+        "Return resolved"
+      );
     },
+    onError: (e: Error) => adminToast.error(`Failed to resolve return: ${e.message}`),
   });
 
   const rows = q.data?.returns ?? [];

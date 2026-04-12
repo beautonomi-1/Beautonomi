@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -201,10 +201,27 @@ function TemplateForm({
 export function NotificationTemplatesListPage() {
   useAdminDocumentTitle("Notification Templates");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
-  const [sp] = useSearchParams();
+  const [sp, setSp] = useSearchParams();
   const channel = sp.get("channel") || "";
   const enabledFilter = sp.get("enabled") || "";
   const qc = useQueryClient();
+
+  const setFilter = useCallback(
+    (key: "channel" | "enabled", value: string) => {
+      setSp(
+        (prev) => {
+          const n = new URLSearchParams(prev);
+          if (!value) n.delete(key);
+          else n.set(key, value);
+          return n;
+        },
+        { replace: true }
+      );
+    },
+    [setSp]
+  );
+
+  const hasFilters = Boolean(channel) || enabledFilter === "true" || enabledFilter === "false";
 
   const qk = useMemo(() => adminQueryKeys.notificationTemplates(`c=${channel}|e=${enabledFilter}`), [channel, enabledFilter]);
 
@@ -286,6 +303,48 @@ export function NotificationTemplatesListPage() {
           >
             Refresh
           </button>
+        </div>
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <select
+            value={channel}
+            onChange={(e) => setFilter("channel", e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm lg:w-44"
+            aria-label="Channel"
+          >
+            <option value="">All channels</option>
+            <option value="push">push</option>
+            <option value="email">email</option>
+            <option value="sms">sms</option>
+          </select>
+          <select
+            value={enabledFilter === "true" || enabledFilter === "false" ? enabledFilter : ""}
+            onChange={(e) => setFilter("enabled", e.target.value)}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm lg:w-44"
+            aria-label="Enabled"
+          >
+            <option value="">All</option>
+            <option value="true">Enabled only</option>
+            <option value="false">Disabled only</option>
+          </select>
+          {hasFilters ? (
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800"
+              onClick={() => {
+                setSp(
+                  (prev) => {
+                    const n = new URLSearchParams(prev);
+                    n.delete("channel");
+                    n.delete("enabled");
+                    return n;
+                  },
+                  { replace: true }
+                );
+              }}
+            >
+              Clear filters
+            </button>
+          ) : null}
         </div>
         {creating && (
           <div className="mb-4">

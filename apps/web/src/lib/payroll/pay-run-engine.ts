@@ -71,7 +71,7 @@ export async function calculatePayRun(
     const hourlyRate = Number(staff.hourly_rate || 0);
     const salary = Number(staff.salary || 0);
     const commissionAmount =
-      (staff as { commission_enabled?: boolean | null }).commission_enabled === true
+      (staff as { commission_enabled?: boolean | null }).commission_enabled !== false
         ? commission.totalCommission
         : 0;
     const hourlyAmount = hours * hourlyRate;

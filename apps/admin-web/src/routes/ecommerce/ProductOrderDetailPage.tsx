@@ -19,6 +19,7 @@ import {
   AdminTh,
 } from "@/components/admin/AdminDataTable";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
@@ -59,9 +60,17 @@ export function ProductOrderDetailPage() {
   const updateOrder = useMutation({
     mutationFn: (updates: Record<string, unknown>) =>
       adminApi.patchJson(`/api/admin/product-orders/${encodeURIComponent(id)}`, updates),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.productOrderDetail(id) });
+      if ("status" in vars) {
+        adminToast.success(`Order status updated to "${String(vars.status)}"`);
+      } else if ("tracking_number" in vars) {
+        adminToast.success("Tracking number saved");
+      } else {
+        adminToast.success("Order updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update order: ${e.message}`),
   });
 
   const q = useQuery({

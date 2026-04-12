@@ -58,9 +58,10 @@ export async function GET(request: NextRequest) {
           const { error: rmErr } = await admin.storage.from(MESSAGE_ATTACHMENTS_BUCKET).remove(paths);
           if (rmErr) {
             console.error("expire-message-attachments: remove failed", rmErr.message);
-          } else {
-            storageObjectsRemoved += paths.length;
+            // Skip JSON update — preserve references so we can retry storage deletion
+            continue;
           }
+          storageObjectsRemoved += paths.length;
         }
 
         const next = stripStorageBackedAttachmentsForPersistence(raw);

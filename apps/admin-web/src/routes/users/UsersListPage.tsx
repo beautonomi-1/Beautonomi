@@ -6,8 +6,10 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useDebouncedUrlParam } from "@/hooks/useDebouncedUrlParam";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -79,6 +81,7 @@ function str(v: unknown): string {
 }
 
 export function UsersListPage() {
+  useAdminDocumentTitle("Users");
   const qc = useQueryClient();
   const { bootstrap } = useAdminSession();
   const isSuperadmin = bootstrap?.isSuperadmin === true;
@@ -126,22 +129,37 @@ export function UsersListPage() {
   const bulkPost = useMutation({
     mutationFn: (body: { user_ids: string[]; action: string; reason?: string | null }) =>
       adminApi.postJson("/api/admin/users/bulk", body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
+      const count = vars.user_ids.length;
       setSelectedIds(new Set());
       invalidateUsers();
+      adminToast.success(`${count} user${count !== 1 ? "s" : ""} ${vars.action === "suspend" ? "suspended" : vars.action}d`);
     },
+    onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
   });
 
   const patchUser = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Record<string, unknown> }) =>
       adminApi.patchJson(`/api/admin/users/${encodeURIComponent(id)}`, body),
-    onSuccess: invalidateUsers,
+    onSuccess: (_data, vars) => {
+      invalidateUsers();
+      if ("is_active" in vars.body) {
+        adminToast.success(vars.body.is_active ? "User activated" : "User deactivated");
+      } else {
+        adminToast.success("User updated");
+      }
+    },
+    onError: (e: Error) => adminToast.error(`Failed to update user: ${e.message}`),
   });
 
   const rolePut = useMutation({
     mutationFn: ({ id, role: next }: { id: string; role: string }) =>
       adminApi.putJson(`/api/admin/users/${encodeURIComponent(id)}/role`, { role: next }),
-    onSuccess: invalidateUsers,
+    onSuccess: () => {
+      invalidateUsers();
+      adminToast.success("User role updated");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to update role: ${e.message}`),
   });
 
   const createUser = useMutation({
@@ -157,7 +175,9 @@ export function UsersListPage() {
       setShowCreate(false);
       setCreateForm({ email: "", password: "", full_name: "", phone: "", role: "customer" });
       invalidateUsers();
+      adminToast.success("User created successfully");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create user: ${e.message}`),
   });
 
   function updateParams(patch: Record<string, string | null>) {

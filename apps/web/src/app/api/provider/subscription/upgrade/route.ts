@@ -17,8 +17,17 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+/**
+ * Accept both bare UUIDs and composite plan IDs (e.g. "uuid:monthly", "uuid:free").
+ * The plans endpoint returns composite IDs; extract the bare UUID for DB lookups.
+ */
+function extractPlanId(rawId: string): string {
+  if (rawId.includes(":")) return rawId.split(":")[0];
+  return rawId;
+}
+
 const upgradeSubscriptionSchema = z.object({
-  plan_id: z.string().uuid('Plan ID is required'),
+  plan_id: z.string().min(1, 'Plan ID is required'),
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
 });
 
@@ -71,7 +80,9 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { plan_id, billing_period } = upgradeSubscriptionSchema.parse(body);
+    const parsed = upgradeSubscriptionSchema.parse(body);
+    const plan_id = extractPlanId(parsed.plan_id);
+    const billing_period = parsed.billing_period;
 
     // Get subscription plan
     const { data: plan, error: planError } = await supabase

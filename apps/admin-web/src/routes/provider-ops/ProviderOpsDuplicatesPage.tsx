@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -13,6 +13,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 interface DuplicateMatch { type: "provider" | "user" | "lead"; id: string; name: string | null; email: string | null; phone: string | null; matched_on: string[]; confidence: number }
 interface PossibleDuplicate { lead: { id: string; business_name: string | null; email: string | null; phone_e164: string | null; commercial_stage: string; source: string }; matches: DuplicateMatch[] }
@@ -41,22 +42,35 @@ export function ProviderOpsDuplicatesPage() {
     });
   }, [duplicates, searchQuery]);
 
-  async function handleConfirmMatch(leadId: string, matchType: string, matchId: string) {
-    try {
-      if (matchType === "provider") {
-        await adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, { activity_type: "match_confirmed", description: `Confirmed match to provider ${matchId}`, metadata: { matched_provider_id: matchId, match_type: "manual" } });
-        await adminApi.patchJson(`/api/admin/provider-ops/leads/${leadId}/stage`, { stage: "matched" });
-      }
+  const confirmMut = useMutation({
+    mutationFn: async ({ leadId, matchId }: { leadId: string; matchId: string }) => {
+      await adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
+        activity_type: "match_confirmed",
+        description: `Confirmed match to provider ${matchId}`,
+        metadata: { matched_provider_id: matchId, match_type: "manual" },
+      });
+      await adminApi.patchJson(`/api/admin/provider-ops/leads/${leadId}/stage`, { stage: "matched" });
+    },
+    onSuccess: () => {
+      adminToast.success("Match confirmed — lead moved to Matched stage");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.duplicates() });
-    } catch { /* silent */ }
-  }
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to confirm match"),
+  });
 
-  async function handleDismiss(leadId: string, matchId: string) {
-    try {
-      await adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, { activity_type: "match_rejected", description: `Dismissed possible match ${matchId}`, metadata: { dismissed_match_id: matchId } });
+  const dismissMut = useMutation({
+    mutationFn: ({ leadId, matchId }: { leadId: string; matchId: string }) =>
+      adminApi.postJson(`/api/admin/provider-ops/leads/${leadId}/activities`, {
+        activity_type: "match_rejected",
+        description: `Dismissed possible match ${matchId}`,
+        metadata: { dismissed_match_id: matchId },
+      }),
+    onSuccess: () => {
+      adminToast.success("Match dismissed");
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.duplicates() });
-    } catch { /* silent */ }
-  }
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to dismiss match"),
+  });
 
   if (denied) return denied;
   if (q.isLoading) return <div className="space-y-6"><AdminPageHeader title="Duplicate Review" /><AdminPanel><AdminPageSkeleton rows={5} /></AdminPanel></div>;
@@ -106,8 +120,24 @@ export function ProviderOpsDuplicatesPage() {
                       </div>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      <button type="button" onClick={() => handleDismiss(dup.lead.id, m.id)} className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50">Dismiss</button>
-                      {m.type === "provider" && <button type="button" onClick={() => handleConfirmMatch(dup.lead.id, m.type, m.id)} className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700">Confirm</button>}
+                      <button
+                        type="button"
+                        disabled={dismissMut.isPending || confirmMut.isPending}
+                        onClick={() => dismissMut.mutate({ leadId: dup.lead.id, matchId: m.id })}
+                        className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {dismissMut.isPending ? "Dismissing…" : "Dismiss"}
+                      </button>
+                      {m.type === "provider" && (
+                        <button
+                          type="button"
+                          disabled={confirmMut.isPending || dismissMut.isPending}
+                          onClick={() => confirmMut.mutate({ leadId: dup.lead.id, matchId: m.id })}
+                          className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                        >
+                          {confirmMut.isPending ? "Confirming…" : "Confirm match"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

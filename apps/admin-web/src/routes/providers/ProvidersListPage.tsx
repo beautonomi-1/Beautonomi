@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -15,6 +16,7 @@ import { AdminDataList } from "@/components/admin/AdminDataList";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type ProviderRow = {
   id: string;
@@ -26,7 +28,10 @@ type ProviderRow = {
   owner_email?: string;
 };
 
-type ProvidersPayload = ProviderRow[] | { providers: ProviderRow[]; total?: number; page?: number };
+type ProvidersPayload =
+  | ProviderRow[]
+  | { providers: ProviderRow[]; total?: number; page?: number }
+  | { data: ProviderRow[]; meta?: { page: number; limit: number; total: number; has_more: boolean } };
 
 const STATUS_BADGE: Record<string, string> = {
   active: "bg-green-100 text-green-800",
@@ -39,6 +44,7 @@ const STATUS_BADGE: Record<string, string> = {
 const LIMIT = 50;
 
 export function ProvidersListPage() {
+  useAdminDocumentTitle("Providers");
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
@@ -73,13 +79,21 @@ export function ProvidersListPage() {
     const d = q.data;
     if (!d) return [];
     if (Array.isArray(d)) return d;
-    return d.providers ?? [];
+    if ("data" in d && Array.isArray((d as { data: ProviderRow[] }).data)) {
+      return (d as { data: ProviderRow[] }).data;
+    }
+    return (d as { providers?: ProviderRow[] }).providers ?? [];
   }, [q.data]);
 
   const total = useMemo(() => {
     const d = q.data;
     if (!d || Array.isArray(d)) return rows.length;
-    return d.total ?? rows.length;
+    if ("data" in d) {
+      const withMeta = d as { data: ProviderRow[]; meta?: { total: number } };
+      if (withMeta.meta) return withMeta.meta.total;
+      return rows.length;
+    }
+    return (d as { total?: number }).total ?? rows.length;
   }, [q.data, rows.length]);
 
   const totalPages = Math.ceil(total / LIMIT);
@@ -87,10 +101,12 @@ export function ProvidersListPage() {
   const changeStatus = useMutation({
     mutationFn: ({ id, newStatus }: { id: string; newStatus: string }) =>
       adminApi.patchJson(`/api/admin/providers/${id}/status`, { status: newStatus }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+      adminToast.success(`Provider status updated to ${vars.newStatus}`);
     },
+    onError: (e: Error) => adminToast.error(`Status change failed: ${e.message}`),
   });
 
   function setStatus(next: string) {

@@ -20,7 +20,9 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminModal } from "@/components/admin/AdminModal";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type ReviewsPayload = {
   reviews: Record<string, unknown>[];
@@ -41,6 +43,7 @@ export function ReviewsListPage() {
   const customerId = sp.get("customer_id")?.trim() || "";
   const search = sp.get("search")?.trim() || "";
   const [searchInput, setSearchInput] = useState(search);
+  const [flagModal, setFlagModal] = useState<{ id: string; reason: string } | null>(null);
   const qk = useMemo(
     () => adminQueryKeys.reviews(`p=${page}|s=${status}|pv=${providerId}|cu=${customerId}|q=${search}`),
     [page, status, providerId, customerId, search]
@@ -68,9 +71,17 @@ export function ReviewsListPage() {
   const moderateReview = useMutation({
     mutationFn: ({ id, updates }: { id: string; updates: Record<string, unknown> }) =>
       adminApi.patchJson(`/api/admin/reviews/${id}`, updates),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: qk });
+      if ("is_flagged" in vars.updates) {
+        adminToast.success(vars.updates.is_flagged ? "Review flagged" : "Review unflagged");
+      } else if ("is_visible" in vars.updates) {
+        adminToast.success(vars.updates.is_visible ? "Review shown" : "Review hidden");
+      } else {
+        adminToast.success("Review updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Moderation failed: ${e.message}`),
   });
 
   function setStatus(next: string) {
@@ -299,13 +310,7 @@ export function ReviewsListPage() {
                           type="button"
                           className="rounded bg-red-500 px-2 py-1 text-xs text-white hover:bg-red-600 disabled:opacity-50"
                           disabled={moderateReview.isPending}
-                          onClick={() => {
-                            const reason = prompt("Flag reason (optional):");
-                            moderateReview.mutate({
-                              id: String(row.id),
-                              updates: { is_flagged: true, is_visible: false, flagged_reason: reason || null },
-                            });
-                          }}
+                          onClick={() => setFlagModal({ id: String(row.id), reason: "" })}
                         >
                           Flag
                         </button>
@@ -347,6 +352,52 @@ export function ReviewsListPage() {
           </button>
         </div>
       ) : null}
+
+      {/* Flag review modal — replaces native prompt() */}
+      {flagModal && (
+        <AdminModal
+          open
+          onClose={() => setFlagModal(null)}
+          title="Flag review"
+          description="This review will be hidden and flagged for admin review."
+          footer={
+            <>
+              <button
+                type="button"
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50"
+                onClick={() => setFlagModal(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={moderateReview.isPending}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                onClick={() => {
+                  moderateReview.mutate({
+                    id: flagModal.id,
+                    updates: { is_flagged: true, is_visible: false, flagged_reason: flagModal.reason || null },
+                  });
+                  setFlagModal(null);
+                }}
+              >
+                {moderateReview.isPending ? "Flagging…" : "Flag review"}
+              </button>
+            </>
+          }
+        >
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Reason (optional)</label>
+            <textarea
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none"
+              rows={3}
+              placeholder="Describe why this review is being flagged…"
+              value={flagModal.reason}
+              onChange={(e) => setFlagModal((f) => f ? { ...f, reason: e.target.value } : f)}
+            />
+          </div>
+        </AdminModal>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -54,6 +55,7 @@ function MiniBarChart({ value, max }: { value: number; max: number }) {
 }
 
 export function AnalyticsGeoPage() {
+  useAdminDocumentTitle("Geo & Device Analytics");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Overview access is required.");
   const [tab, setTab] = useState<"geography" | "devices" | "bookings">("geography");
   const [providerSearch, setProviderSearch] = useState("");

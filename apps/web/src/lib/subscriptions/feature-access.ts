@@ -104,11 +104,17 @@ async function getProviderSubscriptionTier(
   features: any;
   isFree: boolean;
 } | null> {
-  // Try to get active subscription
+  // Try to get active subscription (include rows with null expires_at for lifetime/free plans).
+  // Also include past_due subscriptions within a 3-day grace period so providers don't
+  // immediately lose access on a single failed charge retry.
+  const nowIso = new Date().toISOString();
+  const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
   const { data: subscription } = await supabase
     .from("provider_subscriptions")
     .select(`
       plan_id,
+      status,
+      updated_at,
       plan:subscription_plans(
         id,
         name,
@@ -117,9 +123,26 @@ async function getProviderSubscriptionTier(
       )
     `)
     .eq("provider_id", providerId)
-    .eq("status", "active")
-    .gte("expires_at", new Date().toISOString())
+    .in("status", ["active", "past_due"])
+    .or(`expires_at.gte.${nowIso},expires_at.is.null`)
+    .order("status", { ascending: true })
     .maybeSingle();
+
+  // For past_due: only allow if within 3-day grace period from when status changed
+  if (subscription?.status === "past_due") {
+    const updatedAt = (subscription as any).updated_at;
+    if (updatedAt && updatedAt < graceCutoff) {
+      // Past grace period — treat as no subscription
+    } else if (subscription?.plan) {
+      const plan = subscription.plan as any;
+      return {
+        planId: plan.id,
+        planName: plan.name,
+        features: plan.features || {},
+        isFree: plan.is_free || false,
+      };
+    }
+  }
 
   if (subscription?.plan) {
     const plan = subscription.plan as any;
@@ -247,7 +270,7 @@ export async function isProviderSubscriptionFeatureEnabled(
 ): Promise<boolean> {
   const supabase = await getSupabaseServer();
   const tier = await getProviderSubscriptionTier(supabase, providerId);
-  if (!tier) return true;
+  if (!tier) return false;
   return resolvePlanFeatureEnabled(tier.features as Record<string, unknown>, featureKey);
 }
 

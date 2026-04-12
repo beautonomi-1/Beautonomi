@@ -21,7 +21,9 @@ export type BookingStatus =
   | "in_progress"
   | "completed"
   | "cancelled"
-  | "no_show";
+  | "no_show"
+  | "waiting"
+  | "checked_in";
 
 /**
  * Customer Portal Status Mapping
@@ -96,6 +98,8 @@ export function mapStatusToProvider(dbStatus: BookingStatus): ProviderBookingSta
     completed: "completed",
     cancelled: "cancelled",
     no_show: "no_show",
+    waiting: "booked",
+    checked_in: "booked",
   };
   return mapping[dbStatus] || "booked";
 }
@@ -112,7 +116,11 @@ export function mapStatusFromProvider(providerStatus: ProviderBookingStatus): Bo
     cancelled: "cancelled",
     no_show: "no_show",
   };
-  return mapping[providerStatus] || "confirmed";
+  const mapped = mapping[providerStatus];
+  if (!mapped) {
+    throw new Error(`Unknown provider booking status: "${providerStatus}"`);
+  }
+  return mapped;
 }
 
 /**
@@ -126,6 +134,8 @@ export function getStatusLabel(status: BookingStatus): string {
     completed: "Completed",
     cancelled: "Cancelled",
     no_show: "No Show",
+    waiting: "Waiting",
+    checked_in: "Checked In",
   };
   return labels[status] || status;
 }
@@ -141,6 +151,8 @@ export function getStatusColor(status: BookingStatus): string {
     completed: "bg-green-100 text-green-800",
     cancelled: "bg-red-100 text-red-800",
     no_show: "bg-orange-100 text-orange-800",
+    waiting: "bg-amber-100 text-amber-800",
+    checked_in: "bg-teal-100 text-teal-800",
   };
   return colors[status] || "bg-gray-100 text-gray-800";
 }

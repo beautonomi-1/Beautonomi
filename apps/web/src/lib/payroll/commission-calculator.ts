@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getProviderRevenue } from "@/lib/reports/revenue-helpers";
+import { STAFF_COMMISSION_REVENUE_TYPES } from "@/lib/reports/constants";
 import { percentOf, sumMoney } from "@beautonomi/utils";
 
 export interface CommissionResult {
@@ -51,16 +52,18 @@ export async function calculateStaffCommission(
   const baseServiceRate = staff.service_commission_rate ?? staff.commission_rate ?? 0;
   const baseProductRate = staff.product_commission_rate ?? staff.commission_rate ?? 0;
 
-  if (!staff.commission_enabled && baseServiceRate === 0 && baseProductRate === 0) {
+  if (staff.commission_enabled === false && baseServiceRate === 0 && baseProductRate === 0) {
     return result;
   }
 
-  // 2. Get provider revenue by booking (actual paid amounts)
+  // 2. Get provider revenue by booking for commission base: provider_earnings only (not travel_fee/tip).
   const { revenueByBooking } = await getProviderRevenue(
     supabaseAdmin,
     providerId,
     fromDate,
-    toDate
+    toDate,
+    null,
+    { transactionTypes: STAFF_COMMISSION_REVENUE_TYPES }
   );
 
   // 3. Get bookings with booking_services
@@ -138,7 +141,7 @@ export async function calculateStaffCommission(
       const overrideRate = offering?.commission_rate_override;
       const effectiveRate = overrideRate != null ? overrideRate : baseServiceRate;
       result.serviceCommission +=
-        percentOf(revShare, staff.commission_enabled ? effectiveRate : 0);
+        percentOf(revShare, staff.commission_enabled !== false ? effectiveRate : 0);
     }
   }
 
@@ -185,7 +188,7 @@ export async function calculateStaffCommission(
         result.productRevenue += price;
         const prodRate = product?.commission_rate_override != null ? product.commission_rate_override : baseProductRate;
         result.productCommission +=
-          percentOf(price, staff.commission_enabled ? prodRate : 0);
+          percentOf(price, staff.commission_enabled !== false ? prodRate : 0);
       }
     }
   }
@@ -216,7 +219,7 @@ export async function calculateStaffCommission(
         const price = Number((item as any).total_price || 0);
         result.productRevenue += price;
         result.productCommission +=
-          percentOf(price, staff.commission_enabled ? baseProductRate : 0);
+          percentOf(price, staff.commission_enabled !== false ? baseProductRate : 0);
       }
     }
   }
@@ -255,7 +258,7 @@ export async function calculateStaffCommission(
       if (offering?.team_member_commission_enabled === false) continue;
       const revShare = (Number(svc.price || 0) / totalServicePrice) * bookingRevenue;
       const rate = offering?.commission_rate_override != null ? offering.commission_rate_override : effectiveServiceRate;
-      result.serviceCommission += percentOf(revShare, staff.commission_enabled ? rate : 0);
+      result.serviceCommission += percentOf(revShare, staff.commission_enabled !== false ? rate : 0);
     }
   }
 
@@ -270,12 +273,12 @@ export async function calculateStaffCommission(
     if (sid !== staffId) continue;
     const price = Number((bp as any).total_price || 0);
     const rate = product?.commission_rate_override != null ? product.commission_rate_override : effectiveProductRate;
-    result.productCommission += percentOf(price, staff.commission_enabled ? rate : 0);
+    result.productCommission += percentOf(price, staff.commission_enabled !== false ? rate : 0);
   }
 
   for (const item of saleItems || []) {
     const price = Number((item as any).total_price || 0);
-    result.productCommission += percentOf(price, staff.commission_enabled ? effectiveProductRate : 0);
+    result.productCommission += percentOf(price, staff.commission_enabled !== false ? effectiveProductRate : 0);
   }
 
   result.totalCommission = sumMoney(result.serviceCommission, result.productCommission);

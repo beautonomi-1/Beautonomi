@@ -200,7 +200,7 @@ export async function GET(request: NextRequest) {
             }, 0) / staffReviews.length
           : 0;
 
-      const commissionEnabled = staff.commission_enabled === true;
+      const commissionEnabled = staff.commission_enabled !== false;
       let commissionEarned = 0;
       if (commissionEnabled) {
         const commissionResult = await calculateStaffCommission(

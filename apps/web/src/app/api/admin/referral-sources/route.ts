@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const createSchema = z.object({
   provider_id: z.string().uuid(),
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = getSupabaseAdmin();
     const body = createSchema.parse(await request.json());
 
@@ -80,6 +81,20 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.referral_source.create",
+      entity_type: "referral_source",
+      entity_id: data.id,
+      module: "providers_operations",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name: body.name, provider_id: body.provider_id },
+      ...extractRequestMeta(request),
+    });
+
     return successResponse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {

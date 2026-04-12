@@ -64,9 +64,8 @@ interface FinanceSummary {
     subscriptions: number;
     ads: number;
     service_fees: number;
-    ecommerce_fees: number;
+    ecommerce_fees_detail?: number;
     wallet_topups: number;
-    cancellation_fees: number;
     total: number;
   };
 
@@ -75,14 +74,14 @@ interface FinanceSummary {
     subscriptions: number;
     ads: number;
     service_fees: number;
-    ecommerce_fees: number;
+    ecommerce_fees_detail?: number;
     wallet_topups: number;
-    cancellation_fees: number;
     total: number;
   };
 
   provider_revenue?: {
     provider_earnings: number;
+    cancellation_fees: number;
     tips: number;
     taxes_collected: number;
     refunds: number;
@@ -121,9 +120,14 @@ export default function AdminFinance() {
   const [total, setTotal] = useState(0);
   const limit = 50; // Items per page
 
+  // Support ?provider_id= param for filtering by specific provider (linked from admin provider detail)
+  const providerId = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("provider_id")
+    : null;
+
   useEffect(() => {
     loadFinanceData();
-  }, [startDate, endDate, page]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/page change
+  }, [startDate, endDate, page, providerId]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/page change
 
   const loadFinanceData = async () => {
     try {
@@ -134,6 +138,7 @@ export default function AdminFinance() {
       const summaryParams = new URLSearchParams();
       if (startDate) summaryParams.set("start_date", startDate);
       if (endDate) summaryParams.set("end_date", endDate);
+      if (providerId) summaryParams.set("provider_id", providerId);
 
       const summaryResponse = await fetcher.get<{
         data: FinanceSummary;
@@ -146,6 +151,7 @@ export default function AdminFinance() {
       const txParams = new URLSearchParams();
       if (startDate) txParams.set("start_date", startDate);
       if (endDate) txParams.set("end_date", endDate);
+      if (providerId) txParams.set("provider_id", providerId);
       txParams.set("page", page.toString());
       txParams.set("limit", "50");
 
@@ -485,9 +491,9 @@ export default function AdminFinance() {
                       { label: "Subscriptions", value: summary.revenue_streams.subscriptions, desc: "Provider subscription payments" },
                       { label: "Ads Revenue", value: summary.revenue_streams.ads, desc: "Ad campaign prepayments" },
                       { label: "Service Fees", value: summary.revenue_streams.service_fees, desc: "Customer-facing checkout fees" },
-                      { label: "Ecommerce Fees", value: summary.revenue_streams.ecommerce_fees, desc: "Product order platform fees" },
+                      { label: "Ecommerce Fees (in commission)", value: summary.revenue_streams.ecommerce_fees_detail ?? 0, desc: "Included in booking commission total" },
                       { label: "Wallet Top-ups", value: summary.revenue_streams.wallet_topups, desc: "Wallet funding by customers" },
-                      { label: "Cancellation Fees", value: summary.revenue_streams.cancellation_fees, desc: "Fees retained from cancellations" },
+                      
                     ].map((item) => (
                       <div key={item.label} className="bg-gray-50 rounded-lg p-3">
                         <p className="text-xs text-gray-500">{item.label}</p>
@@ -515,6 +521,7 @@ export default function AdminFinance() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
                     {[
                       { label: "Provider Earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings, desc: "Net provider share from bookings & orders" },
+                      { label: "Cancellation Fees", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0, desc: "Fees retained by providers on cancellations" },
                       { label: "Tips", value: summary.provider_revenue?.tips ?? summary.tips_gross, desc: "Customer tips (100% to provider)" },
                       { label: "Taxes Collected", value: summary.provider_revenue?.taxes_collected ?? summary.taxes_gross, desc: "Tax pass-through (provider remits)" },
                       { label: "Refunds", value: summary.provider_revenue?.refunds ?? summary.refunds_gross, desc: "Refunds deducted from provider balance" },

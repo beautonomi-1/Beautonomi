@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const patchSchema = z.object({
   plan_id: z.string().uuid().optional(),
@@ -25,7 +26,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     const { id } = await params;
     const body = await request.json();
     const parsed = patchSchema.safeParse(body);
@@ -76,6 +77,23 @@ export async function PATCH(
       }
       throw error;
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.provider_subscription.update",
+      entity_type: "provider_subscription",
+      entity_id: id,
+      module: "finance",
+      risk_level: "critical",
+      retention_tier: "financial",
+      status: "succeeded",
+      after_json: { plan_id, status, billing_period },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: admin.role === "superadmin",
+    });
 
     return successResponse(row);
   } catch (error) {

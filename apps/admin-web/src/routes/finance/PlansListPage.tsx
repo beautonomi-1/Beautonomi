@@ -18,6 +18,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 import { publicEnv } from "@/config/publicEnv";
 
@@ -123,6 +124,16 @@ export function PlansListPage() {
   const [eMarketingBullets, setEMarketingBullets] = useState("");
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.plans() });
+
+  const deletePlan = useMutation({
+    mutationFn: (id: string) => adminApi.deleteJson(`/api/admin/subscription-plans/${id}`),
+    onSuccess: (res) => {
+      invalidate();
+      const r = res as { action?: string; message?: string };
+      adminToast.success(r.message ?? "Plan deleted");
+    },
+    onError: (err: Error) => adminToast.error(`Delete failed: ${err.message}`),
+  });
 
   const createPlan = useMutation({
     mutationFn: () =>
@@ -735,9 +746,22 @@ export function PlansListPage() {
                     {r.paystack_plan_code_monthly || r.paystack_plan_code_yearly ? "codes set" : "—"}
                   </AdminTd>
                   <AdminTd>
-                    <button type="button" className="text-sm text-gray-900 underline" onClick={() => openEdit(r)}>
-                      Edit
-                    </button>
+                    <div className="flex gap-3">
+                      <button type="button" className="text-sm text-gray-900 underline" onClick={() => openEdit(r)}>
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletePlan.isPending}
+                        className="text-sm text-red-600 underline disabled:opacity-50"
+                        onClick={() => {
+                          if (confirm(`Delete plan "${r.name ?? r.id}"? Providers with active subscriptions will keep access (plan deactivated).`))
+                            deletePlan.mutate(String(r.id));
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </AdminTd>
                 </tr>
               );

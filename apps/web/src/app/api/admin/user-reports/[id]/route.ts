@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, errorResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/user-reports/[id]
@@ -108,6 +109,21 @@ export async function PATCH(
       .single();
 
     if (error) return handleApiError(error, "Failed to update report");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.user_report.resolve",
+      entity_type: "user_report",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { status, is_adverse_finding: isAdverseFinding },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(updated);
   } catch (error) {

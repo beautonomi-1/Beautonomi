@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const globalCategorySchema = z.object({
   name: z.string().min(1, "Category name is required"),
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
 
     const supabase = await getSupabaseServer(request);
     let body;
@@ -134,6 +135,19 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.global_category.create",
+      entity_type: "global_service_category",
+      entity_id: category.id,
+      module: "content_catalog",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name, slug: normalizedSlug },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse(category);
   } catch (error) {

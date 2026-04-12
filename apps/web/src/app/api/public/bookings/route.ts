@@ -342,12 +342,20 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // 7. Return response
+          // 7. Return response — include price breakdown and display flags for confirmation screen
           return successResponse({
             booking_id: booking.id,
             booking_number: booking.booking_number,
             payment_url: paymentUrl,
             ...(recurring_subscription ? { recurring_subscription } : {}),
+            // Display hints for confirmation screen — respect admin settings
+            display: {
+              show_service_fee: v.showServiceFeeToCustomer,
+              service_fee_amount: v.serviceFeeAmount,
+              tax_amount: v.taxAmount,
+              tax_rate: v.taxRate,
+              tax_inclusive: v.taxIncluded,
+            },
           });
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {

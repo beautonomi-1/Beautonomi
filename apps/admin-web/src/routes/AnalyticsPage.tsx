@@ -5,6 +5,7 @@ import { Building2, CalendarDays, TrendingUp, Users } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
@@ -72,6 +73,7 @@ function Sparkline({ series, valueKey }: { series: Point[]; valueKey: "count" | 
 }
 
 export function AnalyticsPage() {
+  useAdminDocumentTitle("Analytics");
   const { allowed, denied } = useSuperadminPage("Analytics is superadmin only.");
   const [period, setPeriod] = useState("30d");
 

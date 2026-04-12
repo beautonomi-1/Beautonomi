@@ -1,5 +1,5 @@
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -33,6 +33,7 @@ export function AutomationsListPage() {
   const search = sp.get("search") || "";
   const status = sp.get("status") || "all";
   const type = sp.get("type") || "all";
+  const [searchInput, setSearchInput] = useState(search);
   const qk = useMemo(() => adminQueryKeys.automations(`q=${search}|s=${status}|t=${type}`), [search, status, type]);
 
   const q = useQuery({
@@ -85,10 +86,18 @@ export function AutomationsListPage() {
           <input
             type="text"
             placeholder="Search by name…"
-            defaultValue={search}
-            onChange={(e) => updateFilter("search", e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && updateFilter("search", searchInput)}
             className="w-56 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
+          <button
+            type="button"
+            className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50"
+            onClick={() => updateFilter("search", searchInput)}
+          >
+            Search
+          </button>
 
           {/* Status filter */}
           <select
@@ -124,7 +133,7 @@ export function AutomationsListPage() {
           {(search || status !== "all" || type !== "all") && (
             <button
               type="button"
-              onClick={() => navigate({ search: "" }, { replace: true })}
+              onClick={() => { setSearchInput(""); navigate({ search: "" }, { replace: true }); }}
               className="text-xs text-indigo-600 hover:underline"
             >
               Clear filters

@@ -255,7 +255,7 @@ export async function GET(request: NextRequest) {
     const ledgerAgg = aggregateFinanceLedgerRows(allLedgerRows);
 
     const platformRevenueNet =
-      ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net;
+      ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net + ledgerAgg.service_fee_revenue;
 
     return successResponse({
       period,
@@ -284,7 +284,7 @@ export async function GET(request: NextRequest) {
         salesByDay: salesByDayArray,
         redemptionsByDay: redemptionsByDayArray,
       },
-      cancellationFeesRetained: totalCancellationFeesRetained,
+      cancellationFeesRetainedByProviders: totalCancellationFeesRetained,
       promotionDiscountsGiven: totalPromotionDiscounts,
       netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
 

@@ -31,6 +31,22 @@ function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as BookingStatus);
 }
 
+const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
+  pending: ["confirmed", "cancelled", "rejected"],
+  confirmed: ["in_progress", "cancelled", "no_show"],
+  in_progress: ["completed", "cancelled"],
+  completed: [],
+  cancelled: [],
+  rejected: [],
+  no_show: ["confirmed"],
+};
+
+function isValidStatusTransition(from: string, to: string): boolean {
+  const allowed = VALID_STATUS_TRANSITIONS[from];
+  if (!allowed) return true;
+  return allowed.includes(to);
+}
+
 function resolveLoyaltyBaseAmount(booking: {
   subtotal?: number | null;
   total_amount?: number | null;
@@ -706,6 +722,18 @@ export async function PATCH(
       }
     }
 
+    // Validate status transition
+    if (requestedDbStatus) {
+      const currentDbStatus = (currentBooking as BookingRow).status;
+      if (!isValidStatusTransition(currentDbStatus, requestedDbStatus)) {
+        return errorResponse(
+          `Cannot transition booking from "${currentDbStatus}" to "${requestedDbStatus}"`,
+          "INVALID_STATUS_TRANSITION",
+          400
+        );
+      }
+    }
+
     // Update booking
     const updateData: Record<string, unknown> = {
       updated_at: new Date().toISOString(),
@@ -909,13 +937,28 @@ export async function PATCH(
 
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
     // edit_appointments already passed requirePermission + branch checks above.
-    const { error: updateError } = await supabaseAdminPatch
+    // Enforce optimistic lock via version check in WHERE clause.
+    const updateQuery = supabaseAdminPatch
       .from("bookings")
       .update(updateData)
       .eq("id", id);
 
+    if (version !== undefined) {
+      updateQuery.eq("version", currentVersion);
+    }
+
+    const { error: updateError, count } = await updateQuery.select("id").maybeSingle();
+
     if (updateError) {
       throw updateError;
+    }
+
+    if (version !== undefined && count === 0) {
+      return errorResponse(
+        "This booking was modified by another user. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // When a provider cancels a booking and applies a cancellation fee, record it in the
@@ -949,7 +992,7 @@ export async function PATCH(
             fees: 0,
             commission: 0,
             net: appliedCancelFee,
-            description: `Cancellation fee retained for booking ${bookingRef ?? id} (provider cancellation)`,
+            description: `Cancellation fee for booking ${bookingRef ?? id} — provider-retained (provider cancellation)`,
             created_at: new Date().toISOString(),
           });
         }

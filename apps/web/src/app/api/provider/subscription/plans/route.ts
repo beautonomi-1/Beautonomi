@@ -50,17 +50,82 @@ export async function GET(request: NextRequest) {
       return handleApiError(error, "Failed to load subscription plans");
     }
 
-    const result = (plans || []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      amount: Number(p.amount || p.price_monthly || 0),
-      currency: p.currency || lastResortCurrency,
-      interval: p.interval || "month",
-      features: p.features || [],
-      limits: p.limits || { max_bookings: null, max_staff: null, max_locations: null },
-      is_popular: p.is_popular || false,
-      is_free: p.is_free === true || Number(p.amount || p.price_monthly || 0) === 0,
-    }));
+    const result = (plans || []).flatMap((p: any) => {
+      const features =
+        Array.isArray(p.features) ? p.features : (p.features ? Object.values(p.features) : []);
+      const limits = p.limits || { max_bookings: null, max_staff: null, max_locations: null };
+      const options: any[] = [];
+
+      if (p.is_free) {
+        options.push({
+          id: `${p.id}:free`,
+          plan_id: p.id,
+          name: p.name,
+          amount: 0,
+          price: 0,
+          currency: p.currency || lastResortCurrency,
+          interval: "month",
+          billing_period: "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: true,
+        });
+        return options;
+      }
+
+      if (p.price_monthly != null) {
+        options.push({
+          id: `${p.id}:monthly`,
+          plan_id: p.id,
+          name: p.name,
+          amount: Number(p.price_monthly),
+          price: Number(p.price_monthly),
+          currency: p.currency || lastResortCurrency,
+          interval: "month",
+          billing_period: "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: false,
+        });
+      }
+      if (p.price_yearly != null) {
+        options.push({
+          id: `${p.id}:yearly`,
+          plan_id: p.id,
+          name: p.name,
+          amount: Number(p.price_yearly),
+          price: Number(p.price_yearly),
+          currency: p.currency || lastResortCurrency,
+          interval: "year",
+          billing_period: "yearly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: false,
+        });
+      }
+
+      if (options.length === 0) {
+        options.push({
+          id: p.id,
+          plan_id: p.id,
+          name: p.name,
+          amount: Number(p.amount || 0),
+          price: Number(p.amount || 0),
+          currency: p.currency || lastResortCurrency,
+          interval: p.interval || "month",
+          billing_period: p.interval === "year" ? "yearly" : "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: Number(p.amount || 0) === 0,
+        });
+      }
+
+      return options;
+    });
 
     return successResponse(result);
   } catch (error) {

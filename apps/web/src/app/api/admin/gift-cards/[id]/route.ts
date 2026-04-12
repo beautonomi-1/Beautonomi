@@ -10,6 +10,7 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const updateGiftCardSchema = z.object({
   balance: z.number().min(0, "Balance cannot be negative").optional(),
@@ -57,9 +58,10 @@ export async function GET(
       console.error("Error fetching redemptions:", redemptionsError);
     }
 
+    const gc = giftCard as Record<string, any>;
     return successResponse({
       gift_card: {
-        ...giftCard,
+        ...gc,
         redemptions: redemptions || [],
       },
     });
@@ -76,7 +78,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -119,6 +121,22 @@ export async function PATCH(
       throw error;
     }
 
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.gift_card.update",
+      entity_type: "gift_card",
+      entity_id: id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      after_json: updateData as Record<string, any>,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse({ gift_card: giftCard });
   } catch (error) {
     return handleApiError(error, "Failed to update gift card");
@@ -133,7 +151,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -153,6 +171,21 @@ export async function DELETE(
     if (!deleted) {
       return notFoundResponse("Gift card not found");
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.gift_card.delete",
+      entity_type: "gift_card",
+      entity_id: id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({ message: "Gift card deleted successfully" });
   } catch (error) {

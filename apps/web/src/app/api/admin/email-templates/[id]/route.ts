@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(
   request: NextRequest,
@@ -118,6 +119,19 @@ export async function PATCH(
         .eq("id", id);
     }
 
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.email_template.update",
+      entity_type: "email_template",
+      entity_id: id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: updateData,
+      ...extractRequestMeta(request),
+    });
+
     return NextResponse.json({ template: data });
   } catch (error: unknown) {
     console.error("Error updating email template:", error);
@@ -134,7 +148,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
@@ -146,6 +160,18 @@ export async function DELETE(
       .or(`tenant_id.eq.${tenantId},tenant_id.is.null`);
 
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.email_template.delete",
+      entity_type: "email_template",
+      entity_id: id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: unknown) {

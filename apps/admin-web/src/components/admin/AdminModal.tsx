@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 /**
- * Confirmations and short forms (UI conventions §7). Backdrop click closes.
+ * Confirmations and short forms (UI conventions §7). Backdrop click and Escape key close.
  */
 export function AdminModal({
   open,
@@ -20,6 +20,26 @@ export function AdminModal({
   footer: ReactNode;
   labelledBy?: string;
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => {
+      prev?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
@@ -29,7 +49,9 @@ export function AdminModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg"
+        ref={dialogRef}
+        tabIndex={-1}
+        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg"
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

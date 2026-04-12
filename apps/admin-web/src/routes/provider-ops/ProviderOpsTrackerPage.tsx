@@ -54,21 +54,21 @@ export function ProviderOpsTrackerPage() {
       if (status !== "all") p.set("status", status);
       p.set("page", String(page)); p.set("limit", String(PAGE_SIZE));
       if (search) p.set("search", search);
-      return adminApi.getJson<{ data: { data: TrackerRow[]; meta: { total: number; has_more: boolean } } }>(`/api/admin/provider-ops/tracker?${p}`, { timeoutMs: 60_000 });
+      return adminApi.getJson<{ data: TrackerRow[]; meta: { total: number; has_more: boolean } }>(`/api/admin/provider-ops/tracker?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
   });
 
   const statsQ = useQuery({
     queryKey: adminQueryKeys.providerOps.trackerStats(),
-    queryFn: () => adminApi.getJson<{ data: TrackerStats }>("/api/admin/provider-ops/tracker/stats", { timeoutMs: 30_000 }),
+    queryFn: () => adminApi.getJson<TrackerStats>("/api/admin/provider-ops/tracker/stats", { timeoutMs: 30_000 }),
     enabled: allowed,
   });
 
-  const rows = q.data?.data?.data ?? [];
-  const total = q.data?.data?.meta?.total ?? 0;
-  const hasMore = q.data?.data?.meta?.has_more ?? false;
-  const stats = statsQ.data?.data;
+  const rows = q.data?.data ?? [];
+  const total = q.data?.meta?.total ?? 0;
+  const hasMore = q.data?.meta?.has_more ?? false;
+  const stats = statsQ.data;
 
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);

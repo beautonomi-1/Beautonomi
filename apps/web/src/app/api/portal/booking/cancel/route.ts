@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -193,6 +193,41 @@ export async function POST(request: NextRequest) {
         );
       } catch (refundErr) {
         console.error("Error processing refund during portal cancellation:", refundErr);
+      }
+    }
+
+    // Record cancellation fee in the finance ledger (provider-retained income)
+    if (cancellationFeeApplied > 0) {
+      try {
+        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
+        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+          tenant_id: provForCurrency?.tenant_id ?? null,
+          provider_id: booking.provider_id,
+        });
+        const bookingRef = (booking as { booking_number?: string }).booking_number || validation.bookingId.slice(0, 8);
+        // Idempotent: only insert if no existing cancellation_fee row for this booking
+        const { data: existingRow } = await adminSupabase
+          .from("finance_transactions")
+          .select("id")
+          .eq("booking_id", validation.bookingId)
+          .eq("transaction_type", "cancellation_fee")
+          .maybeSingle();
+        if (!existingRow) {
+          await adminSupabase.from("finance_transactions").insert({
+            tenant_id: cancelFeeTenantId,
+            booking_id: validation.bookingId,
+            provider_id: booking.provider_id,
+            transaction_type: "cancellation_fee",
+            amount: cancellationFeeApplied,
+            fees: 0,
+            commission: 0,
+            net: cancellationFeeApplied,
+            description: `Cancellation fee for booking ${bookingRef} — provider-retained (portal cancellation)`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (feeErr) {
+        console.error("[portal cancel] cancellation_fee ledger insert failed:", feeErr);
       }
     }
 

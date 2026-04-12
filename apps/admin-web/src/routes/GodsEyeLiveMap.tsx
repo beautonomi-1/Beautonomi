@@ -401,8 +401,8 @@ export function GodsEyeLiveMap() {
     return (
       <AdminPanel>
         <p className="text-sm text-gray-700">
-          Add a Mapbox public token under <span className="font-medium">Integrations → Mapbox</span> (or{" "}
-          <code className="rounded bg-gray-100 px-1 text-xs">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code>) to enable the live map.
+          Configure Mapbox in <span className="font-medium">Integrations &gt; Mapbox</span> to enable the live map, or set the{" "}
+          <code className="rounded bg-gray-100 px-1 text-xs">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> environment variable.
         </p>
       </AdminPanel>
     );

@@ -5,6 +5,7 @@ import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
@@ -14,7 +15,7 @@ const patchSchema = z.object({
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
@@ -38,6 +39,20 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
     const { data, error } = await supabase.from("referral_sources").update(update).eq("id", id).select().single();
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.referral_source.update",
+      entity_type: "referral_source",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: update,
+      ...extractRequestMeta(request),
+    });
+
     return successResponse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -49,7 +64,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
@@ -67,6 +82,19 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
     const { error } = await supabase.from("referral_sources").delete().eq("id", id);
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.referral_source.delete",
+      entity_type: "referral_source",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
+
     return successResponse({ ok: true });
   } catch (error) {
     return handleApiError(error, "Failed to delete referral source");

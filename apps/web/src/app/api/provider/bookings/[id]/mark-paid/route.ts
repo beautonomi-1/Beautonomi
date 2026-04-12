@@ -57,7 +57,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, tenant_id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
+      .select("id, status, tenant_id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -71,6 +71,17 @@ export async function POST(
       (booking as { tenant_id?: string | null }).tenant_id,
     );
     if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    // Guard: only allow marking paid on confirmed/in_progress/completed bookings
+    const validPaymentStatuses = ["confirmed", "in_progress", "completed"];
+    const bookingStatus = (booking as { status?: string }).status;
+    if (bookingStatus && !validPaymentStatuses.includes(bookingStatus)) {
+      return errorResponse(
+        `Cannot record payment for a booking with status "${bookingStatus}"`,
+        "INVALID_STATUS",
+        400
+      );
+    }
 
     const { format: formatMoney } = await getTenantMoneyFormatter(
       (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
@@ -298,6 +309,23 @@ export async function POST(
         500,
         errorDetails
       );
+    }
+
+    // Record booking event for audit trail
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "payment_received",
+        event_data: {
+          payment_id: payment.id,
+          amount: paymentAmount,
+          payment_method,
+          reference: reference || null,
+        },
+        created_by: user.id,
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create payment booking event:", eventErr);
     }
 
     // Verify payment was created with correct status and amount

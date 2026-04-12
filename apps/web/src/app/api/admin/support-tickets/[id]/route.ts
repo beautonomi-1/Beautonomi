@@ -5,6 +5,7 @@ import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { notifySupportTicketUpdated, notifySupportStaffInboxActivity } from "@/lib/notifications/notification-service";
 import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(
   request: NextRequest,
@@ -65,7 +66,7 @@ export async function PATCH(
 ) {
   try {
     const supabase = await getSupabaseServer(request);
-    await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
+    const { user } = await requireRoleInApi([...SUPPORT_TICKET_STAFF_ROLES] as UserRole[], request);
 
     const { id } = await params;
 
@@ -166,6 +167,21 @@ export async function PATCH(
         console.error("Support ticket status notification failed:", notifyErr);
       }
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.support_ticket.update",
+      entity_type: "support_ticket",
+      entity_id: id,
+      module: "support",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: updateData,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return NextResponse.json({ ticket: data });
   } catch (error: unknown) {

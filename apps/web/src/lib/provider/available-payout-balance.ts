@@ -19,7 +19,12 @@ export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
   options?: GetAvailablePayoutBalanceOptions
-): Promise<{ availableBalance: number; pendingPayoutsSum: number }> {
+): Promise<{
+  availableBalance: number;
+  pendingPayoutsSum: number;
+  rawBalance: number;
+  hasNegativeBalance: boolean;
+}> {
   const allTime = "1970-01-01T00:00:00.000Z";
   const now = new Date();
   const nowIso = now.toISOString();
@@ -114,7 +119,9 @@ export async function getAvailablePayoutBalance(
   const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum;
   /** 2dp so UI and POST /api/provider/payouts validation never disagree on fractional cents */
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const availableBalance = Math.max(0, round2(rawAvailable));
+  const rawBalance = round2(rawAvailable);
+  const availableBalance = Math.max(0, rawBalance);
+  const hasNegativeBalance = rawBalance < -0.01;
 
-  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum) };
+  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum), rawBalance, hasNegativeBalance };
 }

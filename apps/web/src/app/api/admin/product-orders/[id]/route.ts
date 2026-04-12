@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const patchOrderSchema = z.object({
   status: z.enum(["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "refunded"]).optional(),
@@ -77,7 +78,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_ECOMMERCE, request);
     const { id } = await params;
     const body = await request.json();
     const parsed = patchOrderSchema.parse(body);
@@ -98,6 +99,21 @@ export async function PATCH(
 
     if (error) throw error;
     if (!data) return notFoundResponse("Order not found");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.product_order.update",
+      entity_type: "product_order",
+      entity_id: id,
+      module: "ecommerce",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: updates,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(data);
   } catch (err) {

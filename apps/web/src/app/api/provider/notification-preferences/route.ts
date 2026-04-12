@@ -1,28 +1,8 @@
 import { NextRequest } from "next/server";
+import { z } from "zod";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { z } from "zod";
-
-const notificationChannelSchema = z.object({
-  email: z.boolean().optional(),
-  sms: z.boolean().optional(),
-  push: z.boolean().optional(),
-});
-
-const patchSchema = z.object({
-  booking_updates: notificationChannelSchema.optional(),
-  booking_cancellations: notificationChannelSchema.optional(),
-  booking_reminders: notificationChannelSchema.optional(),
-  new_reviews: notificationChannelSchema.optional(),
-  review_responses: notificationChannelSchema.optional(),
-  client_messages: notificationChannelSchema.optional(),
-  payment_received: notificationChannelSchema.optional(),
-  payout_updates: notificationChannelSchema.optional(),
-  waitlist_notifications: notificationChannelSchema.optional(),
-  system_updates: notificationChannelSchema.optional(),
-  marketing: notificationChannelSchema.optional(),
-  unsubscribe_marketing: z.boolean().optional(),
-}).passthrough(); // Allow additional fields for flexibility
+import { notificationPreferencesSchema as patchSchema } from "@/lib/schemas/provider-booking";
 
 /**
  * GET /api/provider/notification-preferences
@@ -122,8 +102,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    // Only provider owners and superadmins can update preferences
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const { user } = await requireRoleInApi(['provider_owner', 'provider_staff', 'superadmin'], request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
 

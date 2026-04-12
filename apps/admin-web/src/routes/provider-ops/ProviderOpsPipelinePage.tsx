@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -12,6 +12,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 const PIPELINE_STAGES = [
   { key: "new", label: "New", color: "border-blue-300 bg-blue-50" },
@@ -39,17 +40,22 @@ export function ProviderOpsPipelinePage() {
 
   const leads = q.data?.data ?? [];
 
-  async function handleDrop(targetStage: string) {
+  const stageMut = useMutation({
+    mutationFn: ({ id, stage }: { id: string; stage: string }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+    },
+    onError: (e: Error) => adminToast.error(`Stage update failed: ${e.message}`),
+  });
+
+  function handleDrop(targetStage: string) {
     setDragOverStage(null);
     if (!draggedLeadId) return;
     const lead = leads.find((l) => l.id === draggedLeadId);
     if (!lead || lead.commercial_stage === targetStage) { setDraggedLeadId(null); return; }
-
     setDraggedLeadId(null);
-    try {
-      await adminApi.patchJson(`/api/admin/provider-ops/leads/${lead.id}/stage`, { stage: targetStage });
-      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
-    } catch { /* silent */ }
+    stageMut.mutate({ id: lead.id, stage: targetStage });
   }
 
   if (denied) return denied;

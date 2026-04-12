@@ -10,6 +10,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/users/[id]/wallet-transactions
@@ -122,6 +123,24 @@ export async function POST(
     });
 
     if (error) throw error;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.wallet.topup",
+      entity_type: "user_wallet",
+      entity_id: userId,
+      module: "finance",
+      risk_level: "critical",
+      retention_tier: "financial",
+      status: "succeeded",
+      reason: description,
+      after_json: { amount, currency, description },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: admin.role === "superadmin",
+    });
 
     return successResponse(data);
   } catch (error) {

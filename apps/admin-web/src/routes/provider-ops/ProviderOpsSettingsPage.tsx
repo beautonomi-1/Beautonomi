@@ -10,6 +10,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { useState, useEffect } from "react";
+import { adminToast } from "@/lib/adminToast";
 
 interface OpsSettings {
   stall_threshold_hours: number;
@@ -37,7 +38,29 @@ export function ProviderOpsSettingsPage() {
 
   const save = useMutation({
     mutationFn: () => adminApi.patchJson<{ data: OpsSettings }>("/api/admin/provider-ops/settings", localSettings!),
-    onSuccess: (res) => { setLocalSettings(res.data); void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.settings() }); },
+    onSuccess: (res) => {
+      setLocalSettings(res.data);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.settings() });
+      adminToast.success("Settings saved");
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to save settings"),
+  });
+
+  const runStallCheck = useMutation({
+    mutationFn: () => adminApi.postJson<{
+      processed: number;
+      stalled: number;
+      dropped: number;
+      on_track: number;
+      sms_sent: number;
+    }>("/api/admin/provider-ops/run-stall-check", {}),
+    onSuccess: (res) => {
+      adminToast.success(
+        `Stall check complete — ${res.processed} drafts scanned: ${res.stalled} stalled, ${res.dropped} dropped, ${res.on_track} on track${res.sms_sent > 0 ? `, ${res.sms_sent} SMS sent` : ""}.`
+      );
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Stall check failed"),
   });
 
   if (denied) return denied;
@@ -58,9 +81,20 @@ export function ProviderOpsSettingsPage() {
       <AdminPageHeader
         title="Provider Ops Settings"
         actions={
-          <button type="button" disabled={save.isPending} onClick={() => save.mutate()} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
-            {save.isPending ? "Saving..." : "Save Changes"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={runStallCheck.isPending}
+              onClick={() => runStallCheck.mutate()}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              title="Run stall detection now and update draft statuses"
+            >
+              {runStallCheck.isPending ? "Running…" : "Run stall check"}
+            </button>
+            <button type="button" disabled={save.isPending} onClick={() => save.mutate()} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+              {save.isPending ? "Saving..." : "Save Changes"}
+            </button>
+          </div>
         }
       />
 

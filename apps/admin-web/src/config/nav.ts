@@ -136,6 +136,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Fee Management", href: "/admin/fees", icon: CreditCard },
       { title: "Platform Fees", href: "/admin/settings/platform-fees", icon: DollarSign },
       { title: "Taxes", href: "/admin/taxes", icon: Receipt },
+      { title: "Period Locks", href: "/admin/period-locks", icon: Receipt },
       { title: "Plans & pricing", href: "/admin/plans", icon: CreditCard },
       { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard },
       { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp },
@@ -189,6 +190,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare },
       { title: "Marketing Automations", href: "/admin/automations", icon: Zap },
       { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell },
+      { title: "SMS Templates", href: "/admin/sms-templates", icon: MessageSquare },
+      { title: "Email Templates", href: "/admin/email-templates", icon: Bell },
     ],
   },
   {
@@ -218,6 +221,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     section: ADMIN_SECTION_PLATFORM_CONFIG,
     items: [
       { title: "Settings", href: "/admin/settings", icon: Settings },
+      { title: "Tenants", href: "/admin/settings/tenants", icon: Network, superadminOnly: true },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers, superadminOnly: true },
       {

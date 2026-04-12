@@ -20,6 +20,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
+import { adminToast } from "@/lib/adminToast";
 
 type LogRow = Record<string, unknown> & {
   id?: string;
@@ -90,7 +91,7 @@ export function AuditLogsPage() {
           className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
           onClick={() =>
             void downloadAdminBlob("/api/admin/export/audit-logs", `audit-logs-${Date.now()}.csv`).catch(() =>
-              alert("Export failed")
+              adminToast.error("Export failed — please try again")
             )
           }
         >

@@ -57,6 +57,15 @@ type FinanceSummary = {
   total_platform_take_after_referrals: number;
   gmv_growth: number;
   period: FinancePeriod;
+  negative_balance_providers?: {
+    count: number;
+    providers: Array<{
+      provider_id: string;
+      raw_balance: number;
+      business_name: string | null;
+      slug: string | null;
+    }>;
+  };
 };
 
 type FinanceTransaction = {
@@ -79,15 +88,21 @@ function SummaryMetricCard({
   label,
   value,
   trend,
+  tooltip,
 }: {
   label: string;
   value: number;
   trend?: number;
+  /** Optional hover tooltip explaining the metric or an accounting note. */
+  tooltip?: string;
 }) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+    <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm" title={tooltip}>
       <div className="flex items-start justify-between gap-2">
-        <span className="text-xs font-medium text-gray-500">{label}</span>
+        <span className={`text-xs font-medium text-gray-500 ${tooltip ? "cursor-help underline decoration-dotted" : ""}`}>
+          {label}
+          {tooltip ? <span className="ml-0.5 text-gray-400">ⓘ</span> : null}
+        </span>
         {trend !== undefined && Number.isFinite(trend) ? (
           <span
             className={`inline-flex shrink-0 items-center gap-0.5 text-xs font-medium ${
@@ -262,6 +277,22 @@ export function FinanceOverviewPage() {
         </div>
       ) : null}
 
+      {summary && summary.negative_balance_providers && summary.negative_balance_providers.count > 0 ? (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">
+            {summary.negative_balance_providers.count} provider
+            {summary.negative_balance_providers.count === 1 ? "" : "s"} with negative payout ledger balance
+          </p>
+          <p className="mt-1 text-amber-900/90">
+            Usually from refunds after funds were already paid out. See the full list on{" "}
+            <Link className="font-semibold underline" to={adminSpaTo("/payouts")}>
+              Payouts
+            </Link>
+            .
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-gray-600">{periodLabel}</p>
         <button
@@ -344,8 +375,10 @@ export function FinanceOverviewPage() {
                 is what providers keep after commission.
               </li>
               <li>
-                Referral wallet credits are a platform expense; <strong>Total platform take (after referrals &amp; wallet)</strong>{" "}
-                includes wallet top-ups and subtracts referral payouts.
+                <strong>Wallet top-ups collected</strong> is deferred revenue — it is cash received but not yet earned.
+                Revenue is recognised when the wallet balance is spent on a booking. The{" "}
+                <strong>Total platform take (after referrals)</strong> figure includes top-ups for cash-flow context;
+                exclude them for recognised-revenue reporting.
               </li>
               <li>
                 <strong>Cancellation fees retained</strong> sums <code className="rounded bg-gray-100 px-1">bookings.cancellation_fee</code> for
@@ -375,10 +408,14 @@ export function FinanceOverviewPage() {
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <SummaryMetricCard label="Gateway fees" value={summary.gateway_fees} />
               <SummaryMetricCard label="Refunds (gross)" value={summary.refunds_gross} />
-              <SummaryMetricCard label="Cancellation fees retained" value={summary.cancellation_fees_retained ?? 0} />
+              <SummaryMetricCard label="Cancellation fees (provider-retained)" value={summary.cancellation_fees_retained ?? 0} />
               <SummaryMetricCard label="Gift card sales" value={summary.gift_card_sales} />
               <SummaryMetricCard label="Membership sales" value={summary.membership_sales} />
-              <SummaryMetricCard label="Wallet top-up revenue" value={summary.wallet_topup_revenue ?? 0} />
+              <SummaryMetricCard
+                label="Wallet top-ups collected"
+                value={summary.wallet_topup_revenue ?? 0}
+                tooltip="Cash received for wallet top-ups. This is deferred revenue — recognised when the wallet balance is spent on bookings, not when collected."
+              />
               <SummaryMetricCard label="Referral payouts" value={summary.referral_payouts ?? 0} />
             </div>
           </AdminPanel>
@@ -394,7 +431,7 @@ export function FinanceOverviewPage() {
                   <tbody className="divide-y divide-gray-100">
                     <tr>
                       <th scope="row" className="bg-gray-50/80 px-3 py-2.5 text-left font-medium text-gray-700">
-                        Cancellation fees retained (bookings)
+                        Cancellation fees — provider-retained (bookings)
                       </th>
                       <td className="px-3 py-2.5 text-right tabular-nums text-gray-900">
                         {formatAdminCurrency(cancellationReconciliation.cancellationFeesRetained)}

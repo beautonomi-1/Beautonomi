@@ -28,7 +28,7 @@ export type FinanceLedgerAggregate = {
   wallet_collected: number;
   /** Gift card credits applied to bookings (gift-card-only or split gift-card+card payments). */
   gift_card_collected: number;
-  /** Cancellation fees retained by the platform/provider (negative in customer P&L, positive in platform revenue). */
+  /** Cancellation fees retained by the provider (configured by provider's cancellation policy). */
   cancellation_fees_retained: number;
   /** Total discount value applied via promotion codes (reduces net revenue). */
   promotion_discounts: number;
@@ -86,8 +86,9 @@ export function aggregateFinanceLedgerRows(rows: FinanceLedgerRow[]): FinanceLed
 
   const platformCommissionGross = sum(tx, ["payment", "additional_charge_payment"], "net");
   const platformRefundImpact = sum(tx, ["refund"], "net");
-  // Cancellation fees retained are additional platform/provider revenue beyond commissions
-  const platformCommissionNet = platformCommissionGross + platformRefundImpact + cancellationFeesRetained;
+  // Cancellation fees are provider-retained income (not platform commission).
+  // They are tracked separately via `cancellation_fees_retained`.
+  const platformCommissionNet = platformCommissionGross + platformRefundImpact;
 
   const platformTakeNet = platformCommissionNet - gatewayFeesServices;
 

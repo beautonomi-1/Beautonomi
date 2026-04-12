@@ -9,6 +9,7 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -31,7 +32,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const admin = getSupabaseAdmin();
     const { id: zone_id } = await params;
@@ -78,6 +79,15 @@ export async function POST(
       .select("version, geometry")
       .eq("id", zone_id)
       .single();
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id, actor_role: user.role,
+      action: "admin.service_zone.include_drawn", entity_type: "platform_zone",
+      entity_id: zone_id, module: "operations", risk_level: "medium",
+      retention_tier: "operational", status: "succeeded",
+      ip_address: reqMeta.ip_address, user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       included: Number(result.included ?? 0),

@@ -127,6 +127,8 @@ export default function ProviderBookingDetail() {
   const [chargeAmount, setChargeAmount] = useState<string>("");
   const [isRequestingCharge, setIsRequestingCharge] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
 
   // Reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
@@ -302,6 +304,28 @@ export default function ProviderBookingDetail() {
     try {
       setIsUpdating(true);
       setConflictError(null);
+
+      if (newStatus === "started") {
+        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/start-service`, {});
+        setBooking({ ...booking, status: "in_progress" as Booking["status"], ...res.booking });
+        toast.success("Service started");
+        loadBooking();
+        return;
+      }
+
+      if (newStatus === "completed") {
+        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
+        toast.success("Service completed");
+        loadBooking();
+        return;
+      }
+
+      if (newStatus === "cancelled") {
+        setShowCancelDialog(true);
+        return;
+      }
+
       const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         {
@@ -318,13 +342,50 @@ export default function ProviderBookingDetail() {
       
       setBooking({ ...booking, status: newStatus as Booking["status"], ...response.booking });
       toast.success("Booking status updated");
-      loadBooking(); // Reload to get latest version
+      loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
         setConflictError("This booking was modified by another user. Please refresh and try again.");
         toast.error("Conflict detected. Please refresh and try again.");
       } else {
-        toast.error("Failed to update booking status");
+        const msg = error instanceof Error ? error.message : "Failed to update booking status";
+        toast.error(msg);
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!booking) return;
+    try {
+      setIsUpdating(true);
+      setConflictError(null);
+      const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
+        `/api/provider/bookings/${bookingId}`,
+        {
+          status: "cancelled",
+          cancellation_reason: cancellationReason || "No reason provided",
+          version: booking.version,
+        }
+      );
+      if (response.conflict) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+        return;
+      }
+      setBooking({ ...booking, status: "cancelled" as Booking["status"], ...response.booking });
+      toast.success("Booking cancelled");
+      setShowCancelDialog(false);
+      setCancellationReason("");
+      loadBooking();
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 409) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+      } else {
+        const msg = error instanceof Error ? error.message : "Failed to cancel booking";
+        toast.error(msg);
       }
     } finally {
       setIsUpdating(false);
@@ -956,6 +1017,22 @@ export default function ProviderBookingDetail() {
             View Receipt PDF
           </a>
         </div>
+
+        {booking.status === "cancelled" && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            <h3 className="text-sm font-semibold text-red-800 mb-1">Booking Cancelled</h3>
+            {(booking as any).cancellation_reason && (
+              <p className="text-sm text-red-700">
+                <span className="font-medium">Reason:</span> {(booking as any).cancellation_reason}
+              </p>
+            )}
+            {(booking as any).cancelled_at && (
+              <p className="text-xs text-red-500 mt-1">
+                Cancelled on {new Date((booking as any).cancelled_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Customer Info */}
@@ -1957,6 +2034,40 @@ export default function ProviderBookingDetail() {
                 </Button>
                 <Button variant="outline" onClick={() => setShowMarkPaid(false)} className="flex-1">
                   Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Booking Dialog */}
+        {showCancelDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold text-red-700">Cancel Booking</h3>
+              <p className="text-sm text-gray-600">
+                This action cannot be undone. Please provide a reason for cancellation.
+              </p>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Cancellation reason</label>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm min-h-[80px]"
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="Enter the reason for cancellation..."
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmCancel}
+                  disabled={isUpdating}
+                  className="flex-1"
+                >
+                  {isUpdating ? "Cancelling..." : "Confirm Cancellation"}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowCancelDialog(false); setCancellationReason(""); }} className="flex-1">
+                  Back
                 </Button>
               </div>
             </div>

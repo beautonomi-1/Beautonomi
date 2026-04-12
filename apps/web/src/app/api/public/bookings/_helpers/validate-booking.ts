@@ -49,11 +49,15 @@ export interface ValidatedBookingData {
 
   tipAmount: number;
   taxRate: number;
+  /** true = tax is already included in service prices (extract, don't add) */
+  taxIncluded: boolean;
   taxAmount: number;
 
   serviceFeeAmount: number;
   serviceFeePercentage: number;
   serviceFeeConfigId: string | null;
+  /** Whether the service fee should be displayed to the customer on the booking confirmation screen */
+  showServiceFeeToCustomer: boolean;
 
   totalAmount: number;
   loyaltyPointsEarned: number;
@@ -967,13 +971,45 @@ export async function validateBooking(
   // to the platform default (|| 0 would treat 0% as "not set" which causes bogus 15% fallback)
   const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
   let taxRate: number;
+  let taxIncluded = false; // whether tax is already included in prices (inclusive) vs added on top (exclusive)
   if (rawProviderTaxRate == null) {
+    // Load platform default — also check the `included` flag if a tax_rate reference row is configured
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
+    // Check for platform-level inclusive tax configuration
+    try {
+      const { data: taxRefRow } = await supabaseAdmin
+        .from("reference_data")
+        .select("metadata")
+        .eq("type", "tax_rate")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (taxRefRow?.metadata && typeof taxRefRow.metadata === "object") {
+        const meta = taxRefRow.metadata as Record<string, unknown>;
+        if (meta.included === true) taxIncluded = true;
+      }
+    } catch {
+      // Non-critical; default to exclusive tax
+    }
   } else {
     taxRate = Math.max(0, Number(rawProviderTaxRate));
+    // Provider-level inclusive flag if set
+    taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
   }
-  const taxAmount = taxRate > 0 ? percentOf(subtotalAfterMembership, taxRate) : 0;
+
+  // Inclusive tax: tax is already embedded in the service prices — extract it from subtotal.
+  // Formula: tax_amount = subtotal - (subtotal / (1 + rate/100))
+  // Exclusive tax (default): tax_amount = subtotal × rate/100 (added on top).
+  let taxAmount = 0;
+  if (taxRate > 0) {
+    if (taxIncluded) {
+      taxAmount = subtotalAfterMembership - subtotalAfterMembership / (1 + taxRate / 100);
+    } else {
+      taxAmount = percentOf(subtotalAfterMembership, taxRate);
+    }
+  }
 
   // ── Service fee ──────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
@@ -1007,6 +1043,7 @@ export async function validateBooking(
   }
 
   // Fallback to platform settings if no provider fee config
+  let showServiceFeeToCustomer = true; // default: show — prevents hidden charges
   if (serviceFeeAmount === 0 && !serviceFeeConfigId) {
     const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
       supabase: supabaseAdmin,
@@ -1023,15 +1060,28 @@ export async function validateBooking(
     const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
     const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
 
+    // Respect the show_service_fee_to_customer admin setting
+    if (payoutSettings.show_service_fee_to_customer === false) {
+      showServiceFeeToCustomer = false;
+    }
+
     if (serviceFeeType === "percentage") {
       serviceFeePercentage = fallbackFeePercentage;
       serviceFeeAmount = percentOf(subtotalAfterMembership, serviceFeePercentage);
     } else {
       serviceFeeAmount = fallbackFeeFixed;
     }
+  } else if (serviceFeeConfigId) {
+    // Provider-specific fee config: always show since it's explicitly configured per provider
+    showServiceFeeToCustomer = true;
   }
 
-  const totalAmount = sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
+  // For tax-inclusive pricing, subtotalAfterMembership already embeds VAT — do NOT add
+  // taxAmount again (it is the extracted portion for display/reporting only).
+  // For tax-exclusive pricing, tax is on top of the subtotal.
+  const totalAmount = taxIncluded
+    ? sumMoney(subtotalAfterMembership, tipAmount, serviceFeeAmount)
+    : sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
 
   // ── Loyalty points ───────────────────────────────────────────────────────
   let loyaltyPointsEarned = 0;
@@ -1630,11 +1680,13 @@ export async function validateBooking(
 
     tipAmount,
     taxRate,
+    taxIncluded,
     taxAmount,
 
     serviceFeeAmount,
     serviceFeePercentage,
     serviceFeeConfigId,
+    showServiceFeeToCustomer,
 
     totalAmount: totalAmountAfterLoyalty,
     loyaltyPointsEarned,

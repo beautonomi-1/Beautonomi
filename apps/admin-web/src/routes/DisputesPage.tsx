@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -15,6 +16,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { adminToast } from "@/lib/adminToast";
 
 interface DisputeBooking {
   id: string;
@@ -42,6 +44,7 @@ interface Dispute {
 const LIMIT = 50;
 
 export function DisputesPage() {
+  useAdminDocumentTitle("Disputes");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required for disputes."
@@ -49,15 +52,22 @@ export function DisputesPage() {
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(0, parseInt(sp.get("page") || "0", 10) || 0);
+  const statusFilter = sp.get("status") || "all";
+  const tab = sp.get("tab") || "all";
 
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [tab, setTab] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState(sp.get("q") || "");
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolution, setResolution] = useState<"refund_full" | "refund_partial" | "deny">("deny");
   const [refundAmount, setRefundAmount] = useState("");
   const [notes, setNotes] = useState("");
   const deferredSearch = useDeferredValue(searchQuery);
+
+  // Persist search query to URL after a short debounce
+  useEffect(() => {
+    const t = setTimeout(() => updateSp({ q: searchQuery || null, page: null }), 400);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery]);
 
   const q = useQuery({
     queryKey: adminQueryKeys.disputes.list({ statusFilter, page }),
@@ -76,11 +86,25 @@ export function DisputesPage() {
   const total = q.data?.total ?? disputes.length;
   const totalPages = Math.ceil(total / LIMIT);
 
-  function setPage(next: number) {
+  function updateSp(updates: Record<string, string | null>) {
     const n = new URLSearchParams(sp);
-    if (next === 0) n.delete("page");
-    else n.set("page", String(next));
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null || v === "" || v === "0" || v === "all") n.delete(k);
+      else n.set(k, v);
+    }
     setSp(n, { replace: true });
+  }
+
+  function setPage(next: number) {
+    updateSp({ page: next === 0 ? null : String(next) });
+  }
+
+  function setStatusFilter(val: string) {
+    updateSp({ status: val === "all" ? null : val, page: null });
+  }
+
+  function setTab(val: string) {
+    updateSp({ tab: val === "all" ? null : val });
   }
 
   const filtered = useMemo(() => {
@@ -130,7 +154,9 @@ export function DisputesPage() {
       setResolveId(null);
       setNotes("");
       setRefundAmount("");
+      adminToast.success("Dispute resolved");
     },
+    onError: (e: Error) => adminToast.error(`Failed to resolve dispute: ${e.message}`),
   });
 
   if (denied) return denied;

@@ -28,6 +28,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
+import * as ImagePicker from "expo-image-picker";
 import { APP_URL } from "@/config/public-env";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
@@ -381,6 +382,47 @@ export default function BookingDetailScreen() {
 
   // At-salon check-in (Client arrived)
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+
+  // Consent document upload
+  const [uploadingConsentFormId, setUploadingConsentFormId] = useState<string | null>(null);
+
+  async function handleUploadConsentDocument(formId: string) {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      setUploadingConsentFormId(formId);
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const fileName = asset.fileName || `consent-${formId}.jpg`;
+      const mimeType = asset.mimeType || "image/jpeg";
+
+      const formData = new FormData();
+      formData.append("form_id", formId);
+      formData.append("file", { uri, name: fileName, type: mimeType } as unknown as Blob);
+
+      const res = await api.fetch<{ url: string }>(`/api/provider/bookings/${id}/consent-document`, {
+        method: "POST",
+        body: formData,
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.error) {
+        Alert.alert("Error", String(res.error));
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Consent document uploaded");
+        await refresh();
+      }
+    } catch (err) {
+      Alert.alert("Error", "Failed to upload document");
+    } finally {
+      setUploadingConsentFormId(null);
+    }
+  }
 
   // Audit log
   const [showAuditLog, setShowAuditLog] = useState(false);
@@ -822,6 +864,66 @@ export default function BookingDetailScreen() {
   const handleStatusChange = async (newStatus: string) => {
     if (!id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (newStatus === "started") {
+      const { error: err } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      await refresh();
+      return;
+    }
+
+    if (newStatus === "completed") {
+      const { error: err } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      await refresh();
+      return;
+    }
+
+    if (newStatus === "cancelled") {
+      Alert.prompt(
+        "Cancel Booking",
+        "Please provide a reason for cancellation:",
+        [
+          { text: "Back", style: "cancel" },
+          {
+            text: "Cancel Booking",
+            style: "destructive",
+            onPress: async (reason: string | undefined) => {
+              const version = (b as BookingDetail & { version?: number }).version;
+              const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+                status: newStatus,
+                cancellation_reason: reason || "No reason provided",
+                ...(version !== undefined && { version }),
+              });
+              if (err) {
+                if (isConflictError(err)) {
+                  Alert.alert(
+                    "Conflict",
+                    "This booking was modified by another user. Please refresh and try again.",
+                    [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+                  );
+                } else {
+                  Alert.alert("Error", err);
+                }
+                return;
+              }
+              await refresh();
+            },
+          },
+        ],
+        "plain-text",
+        "",
+        "default"
+      );
+      return;
+    }
+
     const version = (b as BookingDetail & { version?: number }).version;
     const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
       status: newStatus,
@@ -2530,14 +2632,40 @@ export default function BookingDetailScreen() {
                     ) : null
                   )) : null}
                   {b.provider_form_responses ? Object.entries(b.provider_form_responses).map(([formId, answers]) =>
-                    typeof answers === "object" && answers !== null ? Object.entries(answers as Record<string, unknown>).map(([fieldId, val]) => (
-                      val != null && val !== "" ? (
-                        <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
-                          <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
-                        </View>
-                      ) : null
-                    )) : null
+                    typeof answers === "object" && answers !== null ? (
+                      <View key={formId}>
+                        {Object.entries(answers as Record<string, unknown>)
+                          .filter(([k]) => k !== "_consent_document_url")
+                          .map(([fieldId, val]) => (
+                            val != null && val !== "" ? (
+                              <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                                <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
+                                <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
+                              </View>
+                            ) : null
+                          ))}
+                        {(answers as Record<string, unknown>)._consent_document_url ? (
+                          <TouchableOpacity
+                            style={twStyle("mt-2 flex-row items-center")}
+                            onPress={() => Linking.openURL(String((answers as Record<string, unknown>)._consent_document_url))}
+                          >
+                            <Ionicons name="document-text-outline" size={16} color="#6366f1" />
+                            <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>View consent document</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        <TouchableOpacity
+                          style={twStyle("mt-1 flex-row items-center")}
+                          onPress={() => handleUploadConsentDocument(formId)}
+                          disabled={uploadingConsentFormId === formId}
+                        >
+                          <Ionicons name="cloud-upload-outline" size={16} color="#6b7280" />
+                          <Text style={twStyle("ml-1 text-sm font-medium text-gray-600")}>
+                            {(answers as Record<string, unknown>)._consent_document_url ? "Replace" : "Upload"} consent document
+                          </Text>
+                          {uploadingConsentFormId === formId && <ActivityIndicator size="small" style={{ marginLeft: 8 }} />}
+                        </TouchableOpacity>
+                      </View>
+                    ) : null
                   ) : null}
                 </View>
               </View>

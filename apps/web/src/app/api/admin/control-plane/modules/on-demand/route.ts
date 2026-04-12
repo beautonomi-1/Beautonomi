@@ -3,6 +3,7 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const ENVS = ["production", "staging", "development"];
 
@@ -77,6 +78,23 @@ export async function PUT(request: NextRequest) {
       recordKey: `on_demand.${environment}`,
       before: before as Record<string, any> | null,
       after: after as Record<string, any> | null,
+    });
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.control_plane.on_demand.update",
+      entity_type: "on_demand_module_config",
+      module: "platform_config",
+      risk_level: "high",
+      retention_tier: "access",
+      status: "succeeded",
+      before_json: before as Record<string, any> | null,
+      after_json: after as Record<string, any> | null,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: user.role === "superadmin",
     });
 
     return successResponse(after);

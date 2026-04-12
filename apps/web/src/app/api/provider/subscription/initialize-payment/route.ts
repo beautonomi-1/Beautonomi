@@ -16,8 +16,16 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
 
+/**
+ * Accept both bare UUIDs and composite plan IDs (e.g. "uuid:monthly", "uuid:free").
+ */
+function extractPlanId(rawId: string): string {
+  if (rawId.includes(":")) return rawId.split(":")[0];
+  return rawId;
+}
+
 const initializePaymentSchema = z.object({
-  plan_id: z.string().uuid('Plan ID is required'),
+  plan_id: z.string().min(1, 'Plan ID is required'),
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
   in_app: z.boolean().optional(),
 });
@@ -59,7 +67,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { plan_id, billing_period, in_app } = initializePaymentSchema.parse(body);
+    const parsed = initializePaymentSchema.parse(body);
+    const plan_id = extractPlanId(parsed.plan_id);
+    const billing_period = parsed.billing_period;
+    const in_app = parsed.in_app;
 
     // Get subscription plan
     const { data: plan, error: planError } = await supabase

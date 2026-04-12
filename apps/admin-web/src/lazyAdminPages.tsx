@@ -49,6 +49,9 @@ export const BillingPage = lazy(() =>
 export const TaxesPage = lazy(() =>
   import("@/routes/finance/TaxesPage").then((m) => ({ default: m.TaxesPage }))
 );
+export const PeriodLocksPage = lazy(() =>
+  import("@/routes/finance/PeriodLocksPage").then((m) => ({ default: m.PeriodLocksPage }))
+);
 export const ProviderSubscriptionsPage = lazy(() =>
   import("@/routes/finance/ProviderSubscriptionsPage").then((m) => ({ default: m.ProviderSubscriptionsPage }))
 );
@@ -135,6 +138,9 @@ export const CustomFieldsListPage = lazy(() =>
 );
 export const ReferralsSettingsPage = lazy(() =>
   import("@/routes/settings/ReferralsSettingsPage").then((m) => ({ default: m.ReferralsSettingsPage }))
+);
+export const TenantsListPage = lazy(() =>
+  import("@/routes/settings/TenantsListPage").then((m) => ({ default: m.TenantsListPage }))
 );
 export const TenantDomainsListPage = lazy(() =>
   import("@/routes/settings/TenantDomainsListPage").then((m) => ({ default: m.TenantDomainsListPage }))
@@ -251,6 +257,12 @@ export const NotificationTemplatesListPage = lazy(() =>
 );
 export const NotificationsConfigPage = lazy(() =>
   import("@/routes/marketing/NotificationsConfigPage").then((m) => ({ default: m.NotificationsConfigPage }))
+);
+export const SmsTemplatesListPage = lazy(() =>
+  import("@/routes/marketing/SmsTemplatesListPage").then((m) => ({ default: m.SmsTemplatesListPage }))
+);
+export const EmailTemplatesListPage = lazy(() =>
+  import("@/routes/marketing/EmailTemplatesListPage").then((m) => ({ default: m.EmailTemplatesListPage }))
 );
 export const AutomationsListPage = lazy(() =>
   import("@/routes/marketing/AutomationsListPage").then((m) => ({ default: m.AutomationsListPage }))

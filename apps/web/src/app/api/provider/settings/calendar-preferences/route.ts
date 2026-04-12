@@ -7,6 +7,7 @@ import {
   getProviderIdForUser,
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
+import { calendarPreferencesSchema } from "@/lib/schemas/provider-booking";
 
 const DEFAULT_PREFS = {
   highContrast: false,
@@ -73,7 +74,9 @@ export async function PATCH(request: NextRequest) {
     const providerId = await getProviderIdForUser(user.id, supabase);
     if (!providerId) return notFoundResponse("Provider not found");
 
-    const body = await request.json();
+    const rawBody = await request.json();
+    const parsed = calendarPreferencesSchema.safeParse(rawBody);
+    const body = parsed.success ? parsed.data : rawBody;
 
     try {
       const { error: upsertError } = await supabase

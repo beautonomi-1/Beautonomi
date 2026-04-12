@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -16,6 +17,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type AdsOverview = {
   campaigns_by_status: Record<string, number>;
@@ -67,6 +69,7 @@ function fmt(v: number) {
 const LIMIT = 20;
 
 export function AdsListPage() {
+  useAdminDocumentTitle("Ads & Campaigns");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_MARKETING_COMMS,
     "Marketing & comms access is required."
@@ -106,11 +109,18 @@ export function AdsListPage() {
         status: payload.status,
         reason: payload.reason || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.ads.all() });
       setModerateId(null);
       setModerateReason("");
+      adminToast.success(
+        vars.status === "active" ? "Campaign approved" :
+        vars.status === "rejected" ? "Campaign rejected" :
+        vars.status === "suspended" ? "Campaign suspended" :
+        "Campaign status updated"
+      );
     },
+    onError: (e: Error) => adminToast.error(`Moderation failed: ${e.message}`),
   });
 
   const campaigns = campaignsQ.data?.campaigns ?? [];

@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -15,6 +16,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 interface BookingListRow {
   id: string;
@@ -38,6 +40,7 @@ type BookingsPayload = BookingListRow[] | { bookings: BookingListRow[]; total?: 
 const LIMIT = 50;
 
 export function BookingsPage() {
+  useAdminDocumentTitle("Bookings");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required for bookings."
@@ -76,10 +79,14 @@ export function BookingsPage() {
     mutationFn: async (payload: { booking_ids: string[]; action: "cancel" | "complete" | "export" }) => {
       await adminApi.postJson("/api/admin/bookings/bulk", payload);
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setSelectedIds(new Set());
+      const count = vars.booking_ids.length;
+      const label = vars.action === "cancel" ? "cancelled" : vars.action === "complete" ? "completed" : "exported";
+      adminToast.success(`${count} booking${count !== 1 ? "s" : ""} ${label}`);
     },
+    onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
   });
 
   const allRows = useMemo<BookingListRow[]>(() => {
@@ -207,7 +214,7 @@ export function BookingsPage() {
           <button
             type="button"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900"
-            onClick={() => void exportCsv().catch(() => alert("Export failed"))}
+            onClick={() => void exportCsv().catch(() => adminToast.error("Export failed — please try again"))}
           >
             Export CSV
           </button>

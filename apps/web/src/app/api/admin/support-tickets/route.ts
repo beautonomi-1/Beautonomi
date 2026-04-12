@@ -4,6 +4,7 @@ import { requireRoleInApi, handleApiError } from "@/lib/supabase/api-helpers";
 import type { UserRole } from "@/types/beautonomi";
 import { SUPPORT_TICKET_STAFF_ROLES } from "@/lib/support/support-ticket-staff";
 import { computeSlaResolutionDueIso } from "@/lib/support/support-ticket-sla";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 function sanitizeIlikeTerm(raw: string) {
   // Strip PostgREST/or filter metacharacters so q cannot break `.or(...)`.
@@ -143,13 +144,28 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    const ticketId = (data as { id: string }).id;
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.support_ticket.create",
+      entity_type: "support_ticket",
+      entity_id: ticketId,
+      module: "support",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     const createdAt = (data as { created_at?: string }).created_at;
     if (createdAt) {
       const slaDue = computeSlaResolutionDueIso(createdAt, priorityVal);
       const { data: withSla, error: slaErr } = await supabase
         .from("support_tickets")
         .update({ sla_resolution_due_at: slaDue })
-        .eq("id", (data as { id: string }).id)
+        .eq("id", ticketId)
         .select()
         .single();
       if (!slaErr && withSla) {

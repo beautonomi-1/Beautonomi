@@ -1,11 +1,12 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_SUPPORT } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { useDebouncedUrlParam } from "@/hooks/useDebouncedUrlParam";
 import { useAdminSession } from "@/providers/AdminSessionProvider";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -25,6 +26,8 @@ import { labelForSupportTicketCategory, SUPPORT_TICKET_CATEGORY_GROUPS } from "@
 import { buildSupportTicketsSearchParams, supportTicketsPageSize } from "@/lib/buildSupportTicketsSearchParams";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
+import { AdminModal } from "@/components/admin/AdminModal";
 
 interface SupportTicket {
   id: string;
@@ -62,12 +65,40 @@ function ticketAgeDays(createdAt: string): number {
 }
 
 export function SupportTicketsPage() {
+  useAdminDocumentTitle("Support Tickets");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_SUPPORT,
     "Support section access is required for support tickets."
   );
   const { bootstrap } = useAdminSession();
   const [searchParams, setSearchParams] = useSearchParams();
+  const qc = useQueryClient();
+
+  const [showCreate, setShowCreate] = useState(false);
+  const [newSubject, setNewSubject] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPriority, setNewPriority] = useState("medium");
+  const [newCategory, setNewCategory] = useState("");
+
+  const createMut = useMutation({
+    mutationFn: () =>
+      adminApi.postJson("/api/admin/support-tickets", {
+        subject: newSubject.trim(),
+        description: newDescription.trim(),
+        priority: newPriority,
+        category: newCategory || null,
+      }),
+    onSuccess: () => {
+      adminToast.success("Support ticket created");
+      setShowCreate(false);
+      setNewSubject("");
+      setNewDescription("");
+      setNewPriority("medium");
+      setNewCategory("");
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.supportTickets.all() });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to create ticket"),
+  });
 
   const statusFilter = searchParams.get("status") ?? "all";
   const priorityFilter = searchParams.get("priority") ?? "all";
@@ -194,7 +225,53 @@ export function SupportTicketsPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Support tickets" description="Filters sync to the URL for sharing (see ADMIN_SPA_UI_CONVENTIONS, section 5)" />
+      <AdminPageHeader
+        title="Support tickets"
+        description="Filters sync to the URL for sharing."
+        actions={
+          <button
+            type="button"
+            onClick={() => setShowCreate(true)}
+            className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            + New ticket
+          </button>
+        }
+      />
+
+      <AdminModal open={showCreate} title="Create support ticket" onClose={() => setShowCreate(false)} footer={null}>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Subject *</label>
+            <input type="text" value={newSubject} onChange={(e) => setNewSubject(e.target.value)} placeholder="Describe the issue briefly" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Description *</label>
+            <textarea rows={4} value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Full issue details…" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Priority</label>
+              <select value={newPriority} onChange={(e) => setNewPriority(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none">
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+              <input type="text" value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="e.g. billing, booking" className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+            <button type="button" onClick={() => setShowCreate(false)} className="rounded-lg border border-gray-300 px-4 py-2 text-sm hover:bg-gray-50">Cancel</button>
+            <button type="button" disabled={createMut.isPending || !newSubject.trim() || !newDescription.trim()} onClick={() => createMut.mutate()} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
+              {createMut.isPending ? "Creating…" : "Create ticket"}
+            </button>
+          </div>
+        </div>
+      </AdminModal>
 
       <AdminPanel>
         <div className="flex flex-col gap-4">

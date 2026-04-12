@@ -81,6 +81,10 @@ export const adminQueryKeys = {
 
   notificationsConfig: () => [...adminQueryKeys.root, "notifications", "config"] as const,
 
+  smsTemplates: (q: string) => [...adminQueryKeys.root, "sms-templates", q] as const,
+
+  emailTemplates: (q: string) => [...adminQueryKeys.root, "email-templates", q] as const,
+
   automations: (q: string) => [...adminQueryKeys.root, "automations", q] as const,
 
   broadcastHistory: (q: string) => [...adminQueryKeys.root, "broadcast", "history", q] as const,
@@ -108,6 +112,7 @@ export const adminQueryKeys = {
     summary: (range: string) => [...adminQueryKeys.finance.all(), "summary", range] as const,
     transactions: (filters: { range: string; page: number; type: string; limit: number }) =>
       [...adminQueryKeys.finance.all(), "transactions", filters] as const,
+    periodLocks: () => [...adminQueryKeys.finance.all(), "period-locks"] as const,
   },
 
   payouts: {

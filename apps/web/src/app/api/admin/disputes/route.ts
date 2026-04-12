@@ -90,10 +90,11 @@ export async function GET(request: NextRequest) {
 
     const { count } = await countQuery;
 
-    // Get statistics
+    // Get statistics (tenant-scoped via booking join)
     const { data: stats } = await supabase
       .from("booking_disputes")
-      .select("status, opened_by, resolution");
+      .select("status, opened_by, resolution, booking:bookings!inner(tenant_id)")
+      .eq("booking.tenant_id", tenantId);
 
     const statistics = {
       total: stats?.length || 0,

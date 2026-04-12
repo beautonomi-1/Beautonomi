@@ -4,6 +4,7 @@ import { ADMIN_SECTION_PLATFORM_CONFIG } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
@@ -19,6 +20,37 @@ interface PlatformFeesData {
   platform_service_fee_fixed: number;
   show_service_fee_to_customer: boolean;
   cash_enabled_on_platform: boolean;
+  commission_enabled?: boolean;
+  platform_commission_percentage?: number;
+}
+
+function Toggle({
+  checked,
+  onChange,
+  id,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  id: string;
+}) {
+  return (
+    <button
+      type="button"
+      id={id}
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+        checked ? "bg-indigo-600" : "bg-gray-200"
+      }`}
+    >
+      <span
+        className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
+          checked ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
 }
 
 export function PlatformFeesPage() {
@@ -40,6 +72,8 @@ export function PlatformFeesPage() {
   const [feeFixed, setFeeFixed] = useState("0");
   const [showToCustomer, setShowToCustomer] = useState(true);
   const [cashEnabled, setCashEnabled] = useState(false);
+  const [commissionEnabled, setCommissionEnabled] = useState(false);
+  const [commissionPercentage, setCommissionPercentage] = useState("0");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -49,6 +83,8 @@ export function PlatformFeesPage() {
       setFeeFixed(String(q.data.platform_service_fee_fixed ?? 0));
       setShowToCustomer(q.data.show_service_fee_to_customer !== false);
       setCashEnabled(q.data.cash_enabled_on_platform === true);
+      setCommissionEnabled(q.data.commission_enabled === true);
+      setCommissionPercentage(String(q.data.platform_commission_percentage ?? 0));
     }
   }, [q.data]);
 
@@ -60,12 +96,16 @@ export function PlatformFeesPage() {
         platform_service_fee_fixed: parseFloat(feeFixed) || 0,
         show_service_fee_to_customer: showToCustomer,
         cash_enabled_on_platform: cashEnabled,
+        commission_enabled: commissionEnabled,
+        platform_commission_percentage: parseFloat(commissionPercentage) || 0,
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.platformFees() });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
+      adminToast.success("Platform fees saved");
     },
+    onError: (e: Error) => adminToast.error(`Failed to save fees: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -74,7 +114,7 @@ export function PlatformFeesPage() {
       <div className="space-y-6">
         <AdminPageHeader title="Platform Fees" />
         <AdminPanel>
-          <AdminPageSkeleton rows={4} />
+          <AdminPageSkeleton rows={6} />
         </AdminPanel>
       </div>
     );
@@ -95,11 +135,13 @@ export function PlatformFeesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Platform Fees"
-        description="Configure service fees charged on customer bookings."
+        description="Configure service fees and commission rates applied to bookings."
       />
 
+      {/* ── Customer Service Fee ─────────────────────────────────────────────── */}
       <AdminPanel>
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-gray-800">Customer Service Fee</h2>
           <button
             type="button"
             className={adminToolbarButtonClass(q.isFetching)}
@@ -109,6 +151,9 @@ export function PlatformFeesPage() {
             Refresh
           </button>
         </div>
+        <p className="text-xs text-gray-500 mb-5">
+          A service fee added to the customer's booking total. It is separate from the platform commission charged to providers.
+        </p>
 
         <div className="space-y-6 max-w-xl">
           {/* Fee type */}
@@ -134,7 +179,7 @@ export function PlatformFeesPage() {
           {feeType === "percentage" ? (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Platform Service Fee Percentage
+                Service Fee Percentage
               </label>
               <div className="flex items-center gap-2">
                 <input
@@ -153,7 +198,7 @@ export function PlatformFeesPage() {
           ) : (
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">
-                Fixed Platform Service Fee Amount
+                Fixed Service Fee Amount
               </label>
               <input
                 type="number"
@@ -172,24 +217,10 @@ export function PlatformFeesPage() {
             <div>
               <p className="text-sm font-medium text-gray-700">Show fee to customer</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Displays the service fee line on the customer checkout summary.
+                Displays the service fee as an itemised line on the customer checkout summary.
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={showToCustomer}
-              onClick={() => setShowToCustomer((v) => !v)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                showToCustomer ? "bg-indigo-600" : "bg-gray-200"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-                  showToCustomer ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+            <Toggle checked={showToCustomer} onChange={setShowToCustomer} id="show-fee-toggle" />
           </div>
 
           {/* Toggle: cash enabled */}
@@ -197,43 +228,76 @@ export function PlatformFeesPage() {
             <div>
               <p className="text-sm font-medium text-gray-700">Cash payments enabled</p>
               <p className="text-xs text-gray-400 mt-0.5">
-                Allows providers and customers to use cash as a payment option.
+                Allows providers and customers to use cash as a payment option at checkout.
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={cashEnabled}
-              onClick={() => setCashEnabled((v) => !v)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-                cashEnabled ? "bg-indigo-600" : "bg-gray-200"
-              }`}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition ${
-                  cashEnabled ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+            <Toggle checked={cashEnabled} onChange={setCashEnabled} id="cash-toggle" />
+          </div>
+        </div>
+      </AdminPanel>
+
+      {/* ── Platform Commission ──────────────────────────────────────────────── */}
+      <AdminPanel>
+        <h2 className="text-sm font-semibold text-gray-800 mb-1">Platform Commission</h2>
+        <p className="text-xs text-gray-500 mb-5">
+          The percentage of each booking's service value retained by the platform as commission. The remainder goes to the provider as earnings. Applied to all payment paths (card, wallet, gift card, cash).
+        </p>
+
+        <div className="space-y-5 max-w-xl">
+          {/* Toggle: commission enabled */}
+          <div className="flex items-center justify-between rounded-lg border border-gray-200 p-4">
+            <div>
+              <p className="text-sm font-medium text-gray-700">Commission enabled</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                When off, 100% of booking value flows to the provider (no platform take).
+              </p>
+            </div>
+            <Toggle checked={commissionEnabled} onChange={setCommissionEnabled} id="commission-toggle" />
           </div>
 
-          {/* Save */}
-          {saveMutation.error && (
-            <p className="text-sm text-red-600">{saveMutation.error.message}</p>
+          {/* Commission rate */}
+          {commissionEnabled && (
+            <div className="space-y-1">
+              <label className="block text-sm font-medium text-gray-700">
+                Commission Percentage
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={commissionPercentage}
+                  onChange={(e) => setCommissionPercentage(e.target.value)}
+                  className="w-24 rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                <span className="text-sm text-gray-500">%</span>
+              </div>
+              <p className="text-xs text-gray-400">
+                Platform retains this percentage; provider earns the rest. E.g. 15% commission → provider receives 85%.
+              </p>
+            </div>
           )}
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              disabled={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-            >
-              {saveMutation.isPending ? "Saving…" : "Save changes"}
-            </button>
-            {saved && (
-              <span className="text-sm text-green-600 font-medium">Saved!</span>
-            )}
-          </div>
+        </div>
+      </AdminPanel>
+
+      {/* ── Save ─────────────────────────────────────────────────────────────── */}
+      <AdminPanel>
+        {saveMutation.error && (
+          <p className="text-sm text-red-600 mb-3">{saveMutation.error.message}</p>
+        )}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+            className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {saveMutation.isPending ? "Saving…" : "Save changes"}
+          </button>
+          {saved && (
+            <span className="text-sm text-green-600 font-medium">Saved!</span>
+          )}
         </div>
       </AdminPanel>
     </div>

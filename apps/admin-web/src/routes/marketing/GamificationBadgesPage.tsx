@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 
 type BadgeRow = Record<string, unknown> & {
   id?: string;
@@ -103,7 +104,9 @@ export function GamificationBadgesPage() {
       setNReq("{}");
       setNBen("{}");
       setNDesc("");
+      adminToast.success("Badge created");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create badge: ${e.message}`),
   });
 
   const patchBadge = useMutation({
@@ -112,12 +115,18 @@ export function GamificationBadgesPage() {
     onSuccess: () => {
       invalidate();
       setEditId(null);
+      adminToast.success("Badge updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update badge: ${e.message}`),
   });
 
   const deleteBadge = useMutation({
     mutationFn: (id: string) => adminApi.deleteJson<unknown>(`/api/admin/gamification/badges/${id}`),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Badge deleted");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to delete badge: ${e.message}`),
   });
 
   function openEdit(row: BadgeRow) {

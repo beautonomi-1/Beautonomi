@@ -8,11 +8,12 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { verifyCronRequest } from "@/lib/cron-auth";
 
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const auth = verifyCronRequest(request);
+  if (!auth.valid) {
+    return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 });
   }
 
   const supabase = getSupabaseAdmin();
@@ -63,7 +64,8 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // 3. End impression pack campaigns that used all impressions
+  // 3. End impression pack campaigns that used all impressions.
+  // Use per-campaign count queries instead of loading all events into memory.
   const { data: packCampaigns } = await supabase
     .from("ads_campaigns")
     .select("id, pack_impressions")
@@ -71,28 +73,25 @@ export async function GET(request: NextRequest) {
     .eq("billing_model", "impression_pack")
     .not("pack_impressions", "is", null);
 
+  const exhaustedIds: string[] = [];
   if (packCampaigns && packCampaigns.length > 0) {
-    const packIds = packCampaigns.map((c: any) => c.id);
-    const { data: impressionCounts } = await supabase
-      .from("ads_events")
-      .select("campaign_id")
-      .in("campaign_id", packIds)
-      .eq("event_type", "impression");
+    for (const campaign of packCampaigns) {
+      const { count } = await supabase
+        .from("ads_events")
+        .select("id", { count: "exact", head: true })
+        .eq("campaign_id", campaign.id)
+        .eq("event_type", "impression");
 
-    const countMap: Record<string, number> = {};
-    (impressionCounts ?? []).forEach((e: any) => {
-      countMap[e.campaign_id] = (countMap[e.campaign_id] ?? 0) + 1;
-    });
+      if ((count ?? 0) >= Number(campaign.pack_impressions)) {
+        exhaustedIds.push(campaign.id);
+      }
+    }
 
-    const exhausted = packCampaigns.filter(
-      (c: any) => (countMap[c.id] ?? 0) >= Number(c.pack_impressions)
-    );
-
-    if (exhausted.length > 0) {
+    if (exhaustedIds.length > 0) {
       await supabase
         .from("ads_campaigns")
         .update({ status: "ended", updated_at: now })
-        .in("id", exhausted.map((c: any) => c.id));
+        .in("id", exhaustedIds);
     }
   }
 
@@ -100,6 +99,8 @@ export async function GET(request: NextRequest) {
     ok: true,
     expired: {
       time_based: (timeExpired ?? []).length,
+      budget_exhausted: budgetExpired ? "rpc" : "fallback",
+      impression_pack_exhausted: exhaustedIds.length,
     },
   });
 }

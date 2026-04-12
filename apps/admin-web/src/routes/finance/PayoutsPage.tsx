@@ -18,6 +18,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 
 type PayoutRow = Record<string, unknown> & {
   id?: string;
@@ -27,12 +28,28 @@ type PayoutRow = Record<string, unknown> & {
   provider?: { business_name?: string } | null;
 };
 
-type PayoutsEnvelope = {
-  data: PayoutRow[];
-  meta?: { page: number; limit: number; total: number; has_more: boolean };
+type NegativeBalanceProvidersMeta = {
+  count: number;
+  providers: Array<{
+    provider_id: string;
+    raw_balance: number;
+    business_name: string | null;
+    slug: string | null;
+  }>;
 };
 
-type ModalState = { kind: "reject" | "mark_failed"; id: string } | null;
+type PayoutsEnvelope = {
+  data: PayoutRow[];
+  meta?: {
+    page: number;
+    limit: number;
+    total: number;
+    has_more: boolean;
+    negative_balance_providers?: NegativeBalanceProvidersMeta;
+  };
+};
+
+type ModalState = { kind: "reject" | "mark_failed" | "approve"; id: string; providerName?: string } | null;
 
 export function PayoutsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
@@ -60,6 +77,7 @@ export function PayoutsPage() {
 
   const rows = q.data?.data ?? [];
   const meta = q.data?.meta;
+  const negativeBalances = meta?.negative_balance_providers;
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.payouts.all() });
 
@@ -67,6 +85,7 @@ export function PayoutsPage() {
     mutationFn: (id: string) => adminApi.postJson(`/api/admin/payouts/${id}/approve`, { notes: "" }),
     onSuccess: () => {
       invalidate();
+      setModal(null);
       adminToast.success("Payout approved");
     },
     onError: (e: Error) => adminToast.error(e.message),
@@ -134,6 +153,10 @@ export function PayoutsPage() {
 
   function submitModal() {
     if (!modal) return;
+    if (modal.kind === "approve") {
+      approveMut.mutate(modal.id);
+      return;
+    }
     const text = reason.trim();
     if (modal.kind === "reject") {
       if (!text) return;
@@ -180,7 +203,10 @@ export function PayoutsPage() {
                     type="button"
                     className="min-h-11 touch-manipulation text-left text-sm font-semibold text-gray-900 underline disabled:opacity-50"
                     disabled={approveMut.isPending || busyThis}
-                    onClick={() => approveMut.mutate(id)}
+                    onClick={() => {
+                      setReason("");
+                      setModal({ kind: "approve", id, providerName: (r.provider as { business_name?: string } | null)?.business_name });
+                    }}
                   >
                     Approve
                   </button>
@@ -263,7 +289,8 @@ export function PayoutsPage() {
   }
 
   const tabs = ["all", "pending", "processing", "completed", "failed"] as const;
-  const modalBusy = rejectMut.isPending || markFailedMut.isPending;
+  const modalBusy = approveMut.isPending || rejectMut.isPending || markFailedMut.isPending;
+  const isApproveModal = modal?.kind === "approve";
 
   return (
     <div className="space-y-6">
@@ -271,6 +298,32 @@ export function PayoutsPage() {
         title="Payouts"
         description="Provider withdrawal queue for this market. Balances are validated when the provider requests a payout; marking paid records the finance ledger so their available balance stays accurate."
       />
+      {negativeBalances && negativeBalances.count > 0 ? (
+        <AdminPanel>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+            <p className="font-semibold">
+              Negative provider payout balances ({negativeBalances.count})
+            </p>
+            <p className="mt-1 text-amber-900/90">
+              These providers have a ledger shortfall (for example refunds after money was already paid out). Available
+              balance shows as 0 for new requests; recover manually if your policy requires clawback.
+            </p>
+            <ul className="mt-2 max-h-48 list-disc space-y-1 overflow-y-auto pl-5">
+              {negativeBalances.providers.slice(0, 25).map((p) => (
+                <li key={p.provider_id} className="tabular-nums">
+                  {p.business_name ?? p.slug ?? p.provider_id}: {formatAdminCurrency(p.raw_balance)}
+                </li>
+              ))}
+            </ul>
+            {negativeBalances.providers.length > 25 ? (
+              <p className="mt-2 text-xs text-amber-900/80">
+                Showing 25 of {negativeBalances.providers.length} providers (most negative first).
+              </p>
+            ) : null}
+          </div>
+        </AdminPanel>
+      ) : null}
+
       <AdminPanel>
         <h3 className="text-sm font-semibold text-gray-900 mb-2">How actions work</h3>
         <ul className="list-disc space-y-1 pl-5 text-sm text-gray-700">
@@ -311,8 +364,14 @@ export function PayoutsPage() {
       <AdminModal
         open={modal != null}
         onClose={closeModal}
-        title={modal?.kind === "reject" ? "Reject payout" : "Mark payout failed"}
-        description={modal?.kind === "reject" ? "A reason is required." : "A failure reason is required."}
+        title={isApproveModal ? "Confirm payout approval" : modal?.kind === "reject" ? "Reject payout" : "Mark payout failed"}
+        description={
+          isApproveModal
+            ? `Approve payout for ${modal?.providerName ?? "this provider"}? This cannot be undone.`
+            : modal?.kind === "reject"
+              ? "A reason is required."
+              : "A failure reason is required."
+        }
         footer={
           <>
             <button type="button" className={adminToolbarButtonClass()} onClick={closeModal}>
@@ -321,21 +380,28 @@ export function PayoutsPage() {
             <button
               type="button"
               className="inline-flex min-h-11 min-w-[5.5rem] items-center justify-center rounded-xl bg-gray-900 px-4 text-sm font-medium text-white disabled:opacity-50"
-              disabled={modalBusy || !reason.trim()}
+              disabled={modalBusy || (!isApproveModal && !reason.trim())}
               onClick={() => submitModal()}
             >
-              Submit
+              {isApproveModal ? "Approve" : "Submit"}
             </button>
           </>
         }
       >
-        <textarea
-          className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3 text-sm shadow-inner"
-          rows={4}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          placeholder="Reason…"
-        />
+        {isApproveModal ? (
+          <p className="text-sm text-gray-600">
+            Approving a payout moves it to <strong>processing</strong> and notifies the provider. Make sure the payout amount
+            and provider details are correct before proceeding.
+          </p>
+        ) : (
+          <textarea
+            className="min-h-[120px] w-full rounded-xl border border-gray-300 p-3 text-sm shadow-inner"
+            rows={4}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Reason…"
+          />
+        )}
       </AdminModal>
 
       <AdminDataList

@@ -30,7 +30,7 @@ export function ProviderOpsDashboardPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.dashboard(),
-    queryFn: () => adminApi.getJson<{ data: DashboardData }>("/api/admin/provider-ops/dashboard", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<DashboardData>("/api/admin/provider-ops/dashboard", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
@@ -41,7 +41,7 @@ export function ProviderOpsDashboardPage() {
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
   }
 
-  const data = q.data?.data;
+  const data = q.data;
   if (!data) return <AdminRetryBlock message="No data returned" onRetry={() => void q.refetch()} />;
 
   const urgentTotal = data.urgent.stalled_signups + data.urgent.dropped_off + data.urgent.pending_approval;

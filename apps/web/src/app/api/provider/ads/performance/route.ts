@@ -47,27 +47,42 @@ export async function GET(request: NextRequest) {
       .eq("provider_id", providerId);
     const lifetimeSpent = (campaigns ?? []).reduce((s: number, c: any) => s + Number(c.spent ?? 0), 0);
 
+    const campaignBidMap = new Map<string, number>();
+    for (const c of campaigns ?? []) {
+      campaignBidMap.set(c.id, Number(c.bid_cpc ?? 0));
+    }
+
+    const hasDateFilter = !!(startDate || endDate);
+
     const byCampaign: Record<string, { impressions: number; clicks: number; books: number; spent: number }> = {};
+    let periodSpent = 0;
     for (const e of events ?? []) {
       const cid = e.campaign_id ?? "uncategorized";
       if (!byCampaign[cid]) byCampaign[cid] = { impressions: 0, clicks: 0, books: 0, spent: 0 };
       if (e.event_type === "impression") byCampaign[cid].impressions += 1;
-      if (e.event_type === "click") byCampaign[cid].clicks += 1;
+      if (e.event_type === "click") {
+        byCampaign[cid].clicks += 1;
+        const bidCpc = campaignBidMap.get(cid) ?? 0;
+        byCampaign[cid].spent += bidCpc;
+        periodSpent += bidCpc;
+      }
       if (e.event_type === "book") byCampaign[cid].books += 1;
     }
+    // For campaigns with no events in period, still include with 0 stats
     for (const c of campaigns ?? []) {
       if (!byCampaign[c.id]) byCampaign[c.id] = { impressions: 0, clicks: 0, books: 0, spent: 0 };
-      byCampaign[c.id].spent = Number(c.spent ?? 0);
+      if (!hasDateFilter) {
+        byCampaign[c.id].spent = Number(c.spent ?? 0);
+      }
     }
-
-    const hasDateFilter = !!(startDate || endDate);
 
     return successResponse({
       summary: {
         impressions,
         clicks,
-        spend: lifetimeSpent,
-        spend_label: hasDateFilter ? "lifetime (all-time total)" : "lifetime",
+        spend: hasDateFilter ? periodSpent : lifetimeSpent,
+        spend_label: hasDateFilter ? "estimated for period" : "lifetime",
+        lifetime_spend: lifetimeSpent,
         sales: books,
       },
       by_campaign: byCampaign,

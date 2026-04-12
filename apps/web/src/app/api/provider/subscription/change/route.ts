@@ -37,7 +37,8 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    const { plan_id } = body;
+    const rawPlanId = body.plan_id;
+    const plan_id = typeof rawPlanId === "string" && rawPlanId.includes(":") ? rawPlanId.split(":")[0] : rawPlanId;
 
     if (!plan_id) {
       return handleApiError(new Error("plan_id is required"), "VALIDATION_ERROR", 400);
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const { data: plan } = await supabaseAdmin
       .from("subscription_plans")
-      .select("id, name, amount, is_free")
+      .select("id, name, price_monthly, price_yearly, is_free")
       .eq("id", plan_id)
       .eq("is_active", true)
       .maybeSingle();
@@ -56,7 +57,11 @@ export async function POST(request: NextRequest) {
 
     // Only allow switching to free plans via this route.
     // Paid plan upgrades must go through the upgrade/initialize-payment flow.
-    const isFreeTarget = (plan as any).is_free === true || Number((plan as any).amount || 0) === 0;
+    const planAmount = Math.min(
+      Number((plan as any).price_monthly || 0),
+      Number((plan as any).price_yearly || 0),
+    );
+    const isFreeTarget = (plan as any).is_free === true || planAmount === 0;
     if (!isFreeTarget) {
       return handleApiError(
         new Error("Paid plan changes require the upgrade flow with payment"),

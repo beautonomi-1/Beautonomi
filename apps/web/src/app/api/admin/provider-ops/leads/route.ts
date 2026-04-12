@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const VALID_STAGES = [
   "new",
@@ -198,6 +199,19 @@ export async function POST(request: NextRequest) {
       description: `Lead created via ${source}`,
       metadata: { source, created_by_name: user.full_name || user.email },
       performed_by: user.id,
+    });
+
+    void writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.lead.create",
+      entity_type: "provider_lead",
+      entity_id: lead.id,
+      module: "provider_ops",
+      risk_level: "medium",
+      retention_tier: "operational",
+      metadata: { source, business_name: leadData.business_name },
+      ...extractRequestMeta(request),
     });
 
     return successResponse(lead);

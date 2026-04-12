@@ -11,6 +11,8 @@ const platformFeesSchema = z.object({
   platform_service_fee_fixed: z.number().min(0).optional(),
   show_service_fee_to_customer: z.boolean().optional(),
   cash_enabled_on_platform: z.boolean().optional(),
+  commission_enabled: z.boolean().optional(),
+  platform_commission_percentage: z.number().min(0).max(100).optional(),
 });
 
 const DEFAULT_PLATFORM_FEES = {
@@ -51,6 +53,8 @@ export async function GET(request: NextRequest) {
       platform_service_fee_fixed: (payouts?.platform_service_fee_fixed as number) ?? 0,
       show_service_fee_to_customer: (payouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform: paymentTypes?.cash === true,
+      commission_enabled: (payouts?.commission_enabled as boolean) !== false,
+      platform_commission_percentage: (payouts?.platform_commission_percentage as number) ?? 0,
     });
   } catch (error) {
     return handleApiError(error, 'Failed to fetch platform fee settings');
@@ -91,6 +95,12 @@ export async function PATCH(request: NextRequest) {
     if (validatedData.show_service_fee_to_customer !== undefined) {
       payouts.show_service_fee_to_customer = validatedData.show_service_fee_to_customer;
     }
+    if (validatedData.commission_enabled !== undefined) {
+      payouts.commission_enabled = validatedData.commission_enabled;
+    }
+    if (validatedData.platform_commission_percentage !== undefined) {
+      payouts.platform_commission_percentage = validatedData.platform_commission_percentage;
+    }
     if (validatedData.cash_enabled_on_platform !== undefined) {
       paymentTypes.cash = validatedData.cash_enabled_on_platform;
     }
@@ -123,6 +133,8 @@ export async function PATCH(request: NextRequest) {
         show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
         cash_enabled_on_platform:
           ((updated?.settings as Record<string, any> | undefined)?.payment_types as Record<string, any> | undefined)?.cash === true,
+        commission_enabled: (outPayouts?.commission_enabled as boolean) !== false,
+        platform_commission_percentage: (outPayouts?.platform_commission_percentage as number) ?? 0,
       });
     }
 
@@ -149,6 +161,8 @@ export async function PATCH(request: NextRequest) {
       show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform:
         ((inserted?.settings as Record<string, any> | undefined)?.payment_types as Record<string, any> | undefined)?.cash === true,
+      commission_enabled: (outPayouts?.commission_enabled as boolean) !== false,
+      platform_commission_percentage: (outPayouts?.platform_commission_percentage as number) ?? 0,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {

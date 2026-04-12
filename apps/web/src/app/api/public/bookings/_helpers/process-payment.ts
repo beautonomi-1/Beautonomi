@@ -13,6 +13,7 @@ import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-dr
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
@@ -620,24 +621,19 @@ async function insertNoGatewayLedger(
     provider_id: draft.provider_id,
   });
 
-  // Platform settings for commission
-  const { data: settingsRow } = await (supabase.from("platform_settings") as any)
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payoutSettings = (settingsRow as any)?.settings?.payouts || {};
-  const commissionEnabled = payoutSettings.commission_enabled !== false;
-  const commissionRate = commissionEnabled
-    ? (payoutSettings.platform_commission_percentage ?? 0)
-    : 0;
+  const resolvedTenantId = booking.tenant_id ?? marketTenantId ?? null;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: resolvedTenantId,
+    providerId: draft.provider_id,
+  });
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
+    commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
 
-  const providerEarnings = subtractMoney(v.commissionBase, platformCommission) + v.travelFee + v.tipAmount;
+  // provider_earnings represents the service-base share going to the provider, EXCLUDING tip and
+  // travel fee — those are inserted as their own finance_transactions rows ("tip", "travel_fee")
+  // to match the Paystack webhook path and avoid double-counting in aggregate reports.
+  const providerEarnings = subtractMoney(v.commissionBase, platformCommission);
 
   // Determine the settlement method label for ledger descriptions and provider field.
   // Priority: wallet > gift_card > package/entitlement (zero-cost)

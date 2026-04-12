@@ -2,7 +2,7 @@
  * Browser Mapbox public token + style — single entry point for client code.
  * Calls GET /api/public/directions-config (mapbox_config + server-side env fallbacks).
  *
- * Use this instead of process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN for interactive maps and static images.
+ * Falls back to `NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN` when the API returns no token (e.g. local dev).
  * (Server geocoding uses the secret via getMapboxService / platform_secrets.)
  */
 
@@ -13,6 +13,10 @@ export type MapboxPublicMapConfig = {
 };
 
 export async function fetchMapboxPublicMapConfig(): Promise<MapboxPublicMapConfig> {
+  const envToken =
+    typeof process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN === "string"
+      ? process.env.NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN.trim()
+      : "";
   try {
     const res = await fetch("/api/public/directions-config", { cache: "no-store" });
     const json = (await res.json().catch(() => ({}))) as {
@@ -28,12 +32,18 @@ export async function fetchMapboxPublicMapConfig(): Promise<MapboxPublicMapConfi
     const styleRaw = data?.mapboxStyleUrl;
     const styleUrl =
       typeof styleRaw === "string" && styleRaw.trim() ? styleRaw.trim() : null;
+    const accessToken = token || envToken || null;
     return {
-      accessToken: token,
+      accessToken,
       styleUrl,
-      provider: token ? "mapbox" : "google",
+      provider: accessToken ? "mapbox" : "google",
     };
   } catch {
-    return { accessToken: null, styleUrl: null, provider: "google" };
+    const accessToken = envToken || null;
+    return {
+      accessToken,
+      styleUrl: null,
+      provider: accessToken ? "mapbox" : "google",
+    };
   }
 }

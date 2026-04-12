@@ -21,6 +21,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import {
@@ -246,23 +247,15 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     : 1;
   const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
 
-  // Get platform commission settings
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payoutSettings = (settingsRow as { settings?: { payouts?: { commission_enabled?: boolean; platform_commission_percentage?: number } } } | null)?.settings?.payouts ?? {};
-  const commissionEnabled = payoutSettings.commission_enabled !== false;
-  const commissionRate = commissionEnabled
-    ? (payoutSettings.platform_commission_percentage ?? 0)
-    : 0;
+  const resolvedTenantIdForPlatformSettings =
+    bookingData.tenant_id ?? financeTenantId ?? null;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: resolvedTenantIdForPlatformSettings,
+    providerId: bookingData.provider_id ?? null,
+  });
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
+    commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
 
   // Provider earnings for this charge: commission base minus platform take.
   // Travel and tip are booking-level items recorded separately (not per-charge).
@@ -1234,16 +1227,10 @@ async function handleCustomOfferSuccess(
   }
 
   // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
-  const { data: settingsRow } = await adminSupabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
+  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
+    tenantId: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    providerId: req.provider_id ?? null,
+  });
   const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
@@ -1561,6 +1548,27 @@ async function handleWalletTopupSuccess(
     provider_id: null,
   });
 
+  // Mark paid FIRST with atomic WHERE status='pending' guard to prevent double-credit
+  const { data: markedPaid, error: markError } = await supabase
+    .from("wallet_topups")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      paystack_reference: payload.reference,
+      updated_at: new Date().toISOString(),
+      tenant_id: topupWalletTenantId,
+    })
+    .eq("id", topupId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+
+  if (markError || !markedPaid) {
+    console.log(`Wallet topup ${topupId} already processed or update failed, skipping credit`);
+    return;
+  }
+
+  // Credit wallet only after status is atomically flipped to 'paid'
   await supabase.rpc("wallet_credit_admin", {
     p_user_id: topupRow.user_id,
     p_amount: amountInCurrency,
@@ -1570,17 +1578,6 @@ async function handleWalletTopupSuccess(
     p_reference_type: "wallet_topup",
     p_tenant_id: topupWalletTenantId,
   });
-
-  await supabase
-    .from("wallet_topups")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      paystack_reference: payload.reference,
-      updated_at: new Date().toISOString(),
-      tenant_id: topupWalletTenantId,
-    })
-    .eq("id", topupId);
 }
 
 async function handleWalletTopupFailed(
@@ -1988,32 +1985,18 @@ async function handleProviderSubscriptionOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await supabase.from("finance_transactions").insert([
-    {
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: providerSubOrderFinanceTenantId,
-      transaction_type: "provider_subscription_payment",
-      amount: netAmount,
-      fees: feesInCurrency,
-      commission: 0,
-      net: netAmount,
-      description: `Provider subscription payment`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: providerSubOrderFinanceTenantId,
-      transaction_type: "provider_expense",
-      amount: amountInCurrency,
-      fees: 0,
-      commission: 0,
-      net: -amountInCurrency,
-      description: `Provider subscription fee`,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  await supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: providerId,
+    tenant_id: providerSubOrderFinanceTenantId,
+    transaction_type: "provider_subscription_payment",
+    amount: netAmount,
+    fees: feesInCurrency,
+    commission: 0,
+    net: netAmount,
+    description: `Provider subscription payment`,
+    created_at: new Date().toISOString(),
+  });
 }
 
 async function handleProviderSubscriptionOrderFailed(
@@ -2337,15 +2320,10 @@ async function handleBookingRemainingSuccess(
     return;
   }
 
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: bookingData.tenant_id ?? payRemainingFinanceTenantId ?? null,
+    providerId,
+  });
   const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 
@@ -2490,18 +2468,11 @@ async function handleAdditionalChargeSuccess(
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Commission
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
-  const platformCommission = percentOf(netAmount, commissionRate);
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: bookingData.tenant_id ?? additionalChargeFinanceTenantId ?? null,
+    providerId,
+  });
+  const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 
   await supabase.from("additional_charges")
