@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, notFoundResponse, handleApiError,
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { isValidAdminBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
 
 /**
  * GET /api/admin/bookings/[id]
@@ -100,6 +101,19 @@ export async function PATCH(
 
     if (!booking) {
       return notFoundResponse("Booking not found");
+    }
+
+    const currentStatus = (booking as { status?: string }).status ?? "";
+    if (
+      body.status !== undefined &&
+      body.status !== currentStatus &&
+      !isValidAdminBookingStatusTransition(currentStatus, String(body.status))
+    ) {
+      return errorResponse(
+        `Cannot transition booking from ${currentStatus} to ${String(body.status)}`,
+        "INVALID_STATUS_TRANSITION",
+        400
+      );
     }
 
     const updateData: Record<string, unknown> = {

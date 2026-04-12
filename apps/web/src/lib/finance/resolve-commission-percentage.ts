@@ -22,7 +22,9 @@ export async function resolveCommissionPercentageForProvider(
     .maybeSingle();
 
   const payoutSettings = (settingsRow as { settings?: { payouts?: { commission_enabled?: boolean; platform_commission_percentage?: number } } } | null)?.settings?.payouts ?? {};
-  const commissionEnabled = payoutSettings.commission_enabled !== false;
+  // Default to commission OFF unless explicitly enabled in settings.
+  // This prevents accidental provider commission charging when the flag is missing.
+  const commissionEnabled = payoutSettings.commission_enabled === true;
   const platformDefaultRate = payoutSettings.platform_commission_percentage ?? 0;
 
   if (!commissionEnabled) return 0;

@@ -122,6 +122,7 @@ export default function App() {
           <Route path="period-locks" element={<P.PeriodLocksPage />} />
           <Route path="provider-subscriptions" element={<P.ProviderSubscriptionsPage />} />
           <Route path="subscription-revenue" element={<P.SubscriptionMetricsPage />} />
+          <Route path="wallet-reconciliation" element={<P.WalletReconciliationPage />} />
           <Route path="plans" element={<P.PlansListPage />} />
           <Route path="pricing-plans" element={<Navigate to="../plans" replace />} />
           <Route path="subscription-plans" element={<Navigate to="../plans" replace />} />
@@ -161,6 +162,7 @@ export default function App() {
           <Route path="system-health" element={<P.SystemHealthPage />} />
           <Route path="monitoring" element={<P.MonitoringHealthPage />} />
           <Route path="security" element={<P.SecurityPolicyPage />} />
+          <Route path="service-zones/:id" element={<P.ServiceZoneDetailPage />} />
           <Route path="service-zones" element={<P.ServiceZonesListPage />} />
           <Route path="settings" element={<P.GeneralSettingsPage />} />
           <Route path="settings/app-version" element={<P.AppVersionSettingsPage />} />
@@ -175,6 +177,11 @@ export default function App() {
           <Route path="settings/admin-team" element={<P.AdminTeamPage />} />
           <Route path="content/learning" element={<P.LearningArticlesPage />} />
           <Route path="content/resources" element={<P.ContentResourcesPage />} />
+          <Route path="content/faqs" element={<P.ContentFaqsPage />} />
+          <Route path="content/about-us" element={<P.ContentAboutUsPage />} />
+          <Route path="content/pages" element={<P.ContentPagesPage />} />
+          <Route path="content/featured-cities" element={<P.ContentFeaturedCitiesPage />} />
+          <Route path="content/app-links" element={<P.ContentAppLinksPage />} />
           <Route path="content" element={<P.ContentHubPage />} />
           <Route path="explore/:id" element={<P.ExplorePostDetailPage />} />
           <Route path="explore" element={<P.ExplorePostsPage />} />

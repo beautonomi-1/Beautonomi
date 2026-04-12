@@ -410,29 +410,35 @@ export default function CartScreen() {
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: "right" }}>
                   Subtotal: {fmt(g.subtotal)}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (isGuestCart) {
-                      signInForCheckout(g.provider.id);
-                      return;
-                    }
-                    haptic.medium();
-                    router.push({
-                      pathname: "/(app)/(tabs)/shop/product-checkout",
-                      params: { provider_id: g.provider.id },
-                    } as any);
-                  }}
-                  style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
-                >
-                  {isPickupOnly ? (
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
-                    </View>
-                  ) : (
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
-                  )}
-                </TouchableOpacity>
+                {g.items.some((i) => !i.in_stock) ? (
+                  <View style={{ marginTop: 12, backgroundColor: "#D1D5DB", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Remove out-of-stock items to checkout</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (isGuestCart) {
+                        signInForCheckout(g.provider.id);
+                        return;
+                      }
+                      haptic.medium();
+                      router.push({
+                        pathname: "/(app)/(tabs)/shop/product-checkout",
+                        params: { provider_id: g.provider.id },
+                      } as any);
+                    }}
+                    style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+                  >
+                    {isPickupOnly ? (
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
               );
             })}

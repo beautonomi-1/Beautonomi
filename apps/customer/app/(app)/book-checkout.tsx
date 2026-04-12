@@ -90,6 +90,17 @@ interface HoldData {
   payment_wallet?: boolean;
   gift_cards?: boolean;
   cash_enabled_on_platform?: boolean;
+  /** Provider tax rate (0 when provider hasn't enabled tax). */
+  tax_rate_percent?: number;
+  /** Whether tax is inclusive in the service prices. */
+  tax_inclusive?: boolean;
+  /** Service fee config from provider or platform settings. */
+  service_fee_config?: {
+    type: string;
+    percentage: number;
+    fixed: number;
+    show: boolean;
+  };
 }
 
 interface ConsumeResponse {
@@ -642,6 +653,9 @@ export default function BookCheckoutScreen() {
             ? (data as { tip_presets: number[] }).tip_presets
             : undefined,
           cancellation_policy: data.cancellation_policy as HoldData["cancellation_policy"],
+          tax_rate_percent: (data as any).tax_rate_percent != null ? Number((data as any).tax_rate_percent) : 0,
+          tax_inclusive: Boolean((data as any).tax_inclusive),
+          service_fee_config: (data as any).service_fee_config ?? undefined,
           ...(packageIdFromHold ? { package_id: packageIdFromHold } : {}),
         };
         setHold(holdData);
@@ -1037,7 +1051,28 @@ export default function BookCheckoutScreen() {
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
-  const total = Math.max(0, prePromoTotal - appliedPromoDiscount + tipAmount);
+  const subtotalAfterPromo = Math.max(0, prePromoTotal - appliedPromoDiscount);
+
+  // Tax: only when provider has set a non-zero tax rate
+  const taxRatePercent = hold?.tax_rate_percent ?? 0;
+  const isTaxInclusive = hold?.tax_inclusive ?? false;
+  const taxAmount = taxRatePercent > 0
+    ? isTaxInclusive
+      ? subtotalAfterPromo - subtotalAfterPromo / (1 + taxRatePercent / 100)
+      : Math.round((subtotalAfterPromo * taxRatePercent) / 100 * 100) / 100
+    : 0;
+
+  // Service fee: only when configured and visible to customer
+  const sfConfig = hold?.service_fee_config;
+  const serviceFeeAmount = sfConfig && sfConfig.show
+    ? sfConfig.type === "percentage"
+      ? Math.round((subtotalAfterPromo * sfConfig.percentage) / 100 * 100) / 100
+      : sfConfig.fixed
+    : 0;
+
+  const total = isTaxInclusive
+    ? Math.max(0, subtotalAfterPromo + tipAmount + serviceFeeAmount)
+    : Math.max(0, subtotalAfterPromo + taxAmount + tipAmount + serviceFeeAmount);
 
   useEffect(() => {
     if (hold && hold_id && total != null && !checkoutTrackedRef.current) {
@@ -2223,7 +2258,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
@@ -2251,6 +2286,22 @@ export default function BookCheckoutScreen() {
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
                       <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(appliedPromoDiscount, currency)}</Text>
+                    </View>
+                  )}
+                  {taxAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                        Tax{taxRatePercent > 0 ? ` (${taxRatePercent}%)` : ""}{isTaxInclusive ? " (incl.)" : ""}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                        {isTaxInclusive ? "" : "+"}{formatCurrency(taxAmount, currency)}
+                      </Text>
+                    </View>
+                  )}
+                  {serviceFeeAmount > 0 && sfConfig?.show && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Platform Fee</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(serviceFeeAmount, currency)}</Text>
                     </View>
                   )}
                   {tipAmount > 0 && (

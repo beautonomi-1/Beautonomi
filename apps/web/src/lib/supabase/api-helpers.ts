@@ -442,6 +442,49 @@ export async function requireAdminSection(
 }
 
 /**
+ * Require admin access if the user can access any of the given sections (OR).
+ * Superadmin can access all sections. Uses effective section roles from DB when set.
+ */
+export async function requireAdminSectionAny(
+  sections: AdminSection[],
+  request?: NextRequest | Request
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new Error("Authentication required");
+  const effectiveRoles = await getEffectiveAdminSectionRoles();
+  const role = user.role as UserRole;
+  if (role !== "superadmin") {
+    const ok = sections.some((section) => canAccessSection(role, section, effectiveRoles));
+    if (!ok) {
+      throw new Error(
+        `Insufficient permissions: access to one of sections '${sections.join("', '")}' required`
+      );
+    }
+  }
+
+  if (request && (user.role as string) !== "superadmin") {
+    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
+    const { data: memberships } = await supabase
+      .from("user_tenant_roles")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .eq("is_active", true);
+    if (!memberships || memberships.length === 0) {
+      throw new Error(
+        "Admin user has no active tenant assignment (user_tenant_roles). Superadmins are exempt."
+      );
+    }
+    const allowed = memberships.some((m: { tenant_id: string }) => m.tenant_id === tenantId);
+    if (!allowed) {
+      throw new Error("Admin is not assigned to this tenant for the current host");
+    }
+  }
+
+  return { user };
+}
+
+/**
  * Get pagination parameters from request
  */
 export function getPaginationParams(request: Request) {

@@ -80,6 +80,7 @@ export async function PATCH(
       "tags",
       "is_dormant",
       "lost_reason",
+      "onboarding_data",
     ];
 
     const updates: Record<string, unknown> = {};

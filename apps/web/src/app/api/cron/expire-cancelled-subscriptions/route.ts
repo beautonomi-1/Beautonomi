@@ -2,11 +2,11 @@
  * GET /api/cron/expire-cancelled-subscriptions
  *
  * Transitions provider subscriptions through their lifecycle:
- * 1. cancelled_at IS NOT NULL + status='active' + expires_at passed → status='cancelled'
- * 2. auto_renew=false + status='active' + expires_at passed → status='expired'
+ * 1. cancelled_at IS NOT NULL + status='active' + expires_at passed → status='expired' (cancel-at-period-end)
+ * 2. auto_renew=false + status='active' + expires_at passed + not cancelled → status='expired'
  * 3. status='past_due' + past 3-day grace period + expires_at passed → status='expired'
  *
- * Runs daily via Vercel cron.
+ * Runs daily via Vercel cron (02:00 UTC).
  */
 
 import { NextRequest } from "next/server";
@@ -28,11 +28,11 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const now = new Date().toISOString();
 
-    // 1. Transition subscriptions that were cancelled and whose billing period has ended
+    // 1. Cancel-at-period-end: cancelled_at set while still active; expire when billing period ends
     const { data: expired, error } = await supabase
       .from("provider_subscriptions")
       .update({
-        status: "cancelled",
+        status: "expired",
         updated_at: now,
       })
       .eq("status", "active")
@@ -101,9 +101,9 @@ export async function GET(request: NextRequest) {
 
     // Notify affected providers about their expired subscriptions
     const allExpired = [
-      ...(expired ?? []).map((s) => ({ ...s, reason: "cancelled" })),
-      ...(naturalExpired ?? []).map((s) => ({ ...s, reason: "expired" })),
-      ...(pastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" })),
+      ...(expired ?? []).map((s) => ({ ...s, reason: "cancelled_at_period_end" as const })),
+      ...(naturalExpired ?? []).map((s) => ({ ...s, reason: "expired" as const })),
+      ...(pastDueExpired ?? []).map((s) => ({ ...s, reason: "payment_failed" as const })),
     ];
 
     let notified = 0;
@@ -123,7 +123,7 @@ export async function GET(request: NextRequest) {
         if (!prov?.userId) continue;
 
         try {
-          const reasonMsg = sub.reason === "cancelled"
+          const reasonMsg = sub.reason === "cancelled_at_period_end"
             ? "Your subscription has been cancelled as the billing period ended."
             : sub.reason === "payment_failed"
               ? "Your subscription has expired due to unsuccessful payment renewal."

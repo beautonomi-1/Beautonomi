@@ -91,6 +91,10 @@ export async function POST(
 
     const bookingData = booking as any;
 
+    const totalAmount = Number(bookingData.total_amount ?? 0);
+    const totalPaidStored = Number(bookingData.total_paid ?? 0);
+    const remainingBalance = Math.max(0, totalAmount - totalPaidStored);
+
     // Check if booking is in progress or completed
     if (!["in_progress", "completed"].includes(bookingData.status)) {
       return errorResponse("Can only request additional payment for in-progress or completed bookings", "INVALID_STATUS", 400);
@@ -142,7 +146,7 @@ export async function POST(
         [bookingData.customer_id],
         {
           partial_amount: `${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}`,
-          remaining_balance: `${newCharge.currency} ${Math.max(0, Number(bookingData.total_amount || 0) - Number(bookingData.total_paid || 0) + Number(newCharge.amount)).toFixed(2)}`,
+          remaining_balance: `${newCharge.currency} ${remainingBalance.toFixed(2)}`,
           booking_number: bookingData.booking_number || bookingData.ref_number || "",
           booking_id: id,
           charge_description: newCharge.description || "Additional charge",
@@ -164,6 +168,7 @@ export async function POST(
     return successResponse({
       booking: updatedBooking as Booking,
       charge: newCharge,
+      remaining_balance: remainingBalance,
       message: "Additional payment request created successfully",
     });
   } catch (error) {

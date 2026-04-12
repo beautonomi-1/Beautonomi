@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       .from("users")
       .select("id, email, full_name, phone, role, created_at")
       .eq("tenant_id", tenantId)
-      .in("role", ["provider_owner", "provider_staff", "provider"]);
+      .in("role", ["provider_owner", "provider_staff"]);
     if (tenantUsersErr) throw tenantUsersErr;
 
     const tenantUserIds = (tenantUsers ?? []).map((u: { id: string }) => u.id);

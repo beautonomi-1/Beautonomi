@@ -55,7 +55,7 @@ export default function GroupAppointmentsSettingsScreen() {
   const [form, setForm] = useState<GroupBookingSettings>({
     enableGroupBooking: false,
     allowOnlineGroupBooking: false,
-    maxGroupSize: 10,
+    maxGroupSize: 5,
     enabledLocations: [],
     excludedServices: [],
   });
@@ -84,7 +84,8 @@ export default function GroupAppointmentsSettingsScreen() {
       Alert.alert("Error", err);
     } else {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      Alert.alert("Saved", "Group booking settings saved successfully.");
+      void refresh();
     }
   }
 

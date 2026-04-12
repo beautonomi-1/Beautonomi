@@ -83,8 +83,25 @@ export async function POST(request: NextRequest) {
         ? Number(planData.price_yearly ?? 0)
         : Number(planData.price_monthly ?? 0);
     if (!amount || amount <= 0) {
+      const now = new Date();
+      const expiresAt = new Date(now);
+      if (billingPeriod === "yearly") {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      } else {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+      }
+      await supabase
+        .from("provider_subscriptions")
+        .update({
+          status: "active",
+          started_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("provider_id", providerId);
+
       return successResponse({
-        message: "Free plans do not require renewal payment.",
+        message: "Free plan renewed successfully.",
         is_free: true,
       });
     }

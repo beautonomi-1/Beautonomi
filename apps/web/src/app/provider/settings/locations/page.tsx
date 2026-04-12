@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { LocationMapPickerDialog } from "@/components/mapbox/LocationMapPickerDialog";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
 import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
@@ -327,6 +328,8 @@ function LocationDialog({
     sunday: { open: "09:00", close: "18:00", closed: false },
   };
 
+  const [locationMapPickerOpen, setLocationMapPickerOpen] = useState(false);
+
   const [formData, setFormData] = useState({
     label: location?.name ?? "",
     address_line1: location?.address_line1 ?? "",
@@ -519,6 +522,10 @@ function LocationDialog({
                   className="relative z-[1]"
                   required
                 />
+                <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setLocationMapPickerOpen(true)}>
+                  <MapPin className="w-4 h-4 mr-2" />
+                  Drop pin on map
+                </Button>
               </div>
               <div>
                 <Label htmlFor="address_line2">Address line 2 (optional)</Label>
@@ -530,7 +537,7 @@ function LocationDialog({
                   className="mt-1.5"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="city">City *</Label>
                   <Input
@@ -551,7 +558,7 @@ function LocationDialog({
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label htmlFor="postal_code">Postal code</Label>
                   <Input
@@ -605,6 +612,26 @@ function LocationDialog({
           </div>
         </form>
       </DialogContent>
+
+      <LocationMapPickerDialog
+        open={locationMapPickerOpen}
+        onOpenChange={setLocationMapPickerOpen}
+        initialLatitude={formData.latitude ?? undefined}
+        initialLongitude={formData.longitude ?? undefined}
+        defaultCountryName={formData.country || undefined}
+        onLocationPicked={(loc) => {
+          setFormData(prev => ({
+            ...prev,
+            address_line1: loc.address_line1 || prev.address_line1,
+            city: loc.city || prev.city,
+            state: loc.state || prev.state,
+            postal_code: loc.postal_code || prev.postal_code,
+            country: loc.country || prev.country,
+            latitude: loc.latitude,
+            longitude: loc.longitude,
+          }));
+        }}
+      />
     </Dialog>
   );
 }

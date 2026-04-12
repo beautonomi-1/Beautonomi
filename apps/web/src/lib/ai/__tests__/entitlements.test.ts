@@ -19,9 +19,11 @@ describe("checkProviderAiEntitlement", () => {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 in: vi.fn(() => ({
-                  order: vi.fn(() => ({
-                    limit: vi.fn(() => ({
-                      maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
+                  or: vi.fn(() => ({
+                    order: vi.fn(() => ({
+                      limit: vi.fn(() => ({
+                        maybeSingle: vi.fn(() => Promise.resolve({ data: null, error: null })),
+                      })),
                     })),
                   })),
                 })),
@@ -45,11 +47,13 @@ describe("checkProviderAiEntitlement", () => {
             select: vi.fn(() => ({
               eq: vi.fn(() => ({
                 in: vi.fn(() => ({
-                  order: vi.fn(() => ({
-                    limit: vi.fn(() => ({
-                      maybeSingle: vi.fn(() =>
-                        Promise.resolve({ data: { plan_id: "plan-1" }, error: null })
-                      ),
+                  or: vi.fn(() => ({
+                    order: vi.fn(() => ({
+                      limit: vi.fn(() => ({
+                        maybeSingle: vi.fn(() =>
+                          Promise.resolve({ data: { plan_id: "plan-1" }, error: null })
+                        ),
+                      })),
                     })),
                   })),
                 })),

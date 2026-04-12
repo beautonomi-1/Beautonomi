@@ -18,6 +18,8 @@ export interface EndOfDayResponse {
   bookingPaymentsTotal: number;
   walletTotal: number;
   salesTotal: number;
+  tipsTotal: number;
+  cancellationFeesTotal: number;
   total: number;
   bookingCount: number;
   salesCount: number;
@@ -161,7 +163,28 @@ export async function GET(request: NextRequest) {
     }
     const salesCount = (salesRows || []).length;
 
-    const total = bookingPaymentsTotal + walletTotal + salesTotal;
+    // Ledger-based tips and cancellation fees for the day
+    let tipsTotal = 0;
+    let cancellationFeesTotal = 0;
+    try {
+      const { data: ledgerRows } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("transaction_type, amount, net")
+        .eq("provider_id", providerId)
+        .in("transaction_type", ["tip", "cancellation_fee"])
+        .gte("created_at", dayStart)
+        .lt("created_at", dayEndISO);
+      for (const r of ledgerRows ?? []) {
+        const row = r as { transaction_type: string; amount?: number; net?: number };
+        if (row.transaction_type === "tip") {
+          tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        } else if (row.transaction_type === "cancellation_fee") {
+          cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
+        }
+      }
+    } catch { /* non-critical — report still works without ledger extras */ }
+
+    const total = bookingPaymentsTotal + walletTotal + salesTotal + tipsTotal + cancellationFeesTotal;
 
     const response: EndOfDayResponse = {
       date: dateStr,
@@ -169,10 +192,12 @@ export async function GET(request: NextRequest) {
       bookingPaymentsTotal,
       walletTotal,
       salesTotal,
+      tipsTotal,
+      cancellationFeesTotal,
       total,
       bookingCount,
       salesCount,
-      note: "Cash-register style: sums booking_payments and sales by payment date. For ledger-based revenue, use the payments report.",
+      note: "Cash-register style: sums booking_payments, sales, tips, and cancellation fees by payment date. For ledger-based revenue, use the payments report.",
     };
 
     return successResponse(response);

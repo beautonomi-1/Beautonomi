@@ -59,7 +59,7 @@ const ReferralsPage = () => {
       
       // Load referral data from API
       const [referralRes, settingsRes] = await Promise.all([
-        fetcher.get<{ data: { referral_code: string; referral_link: string; stats: ReferralStats; settings: ReferralSettings } }>("/api/me/referrals", { cache: "no-store" }),
+        fetcher.get<{ data: { referral_code: string; referral_link: string; stats: ReferralStats; settings: ReferralSettings } }>("/api/me/referrals", { staleTimeMs: 30_000 }),
         fetcher.get<{ data: ReferralSettings }>("/api/public/referrals/settings").catch(() => null),
       ]);
 

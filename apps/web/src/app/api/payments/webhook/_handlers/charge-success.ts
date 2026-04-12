@@ -11,6 +11,7 @@
  *   - Additional charges on existing bookings
  */
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -64,7 +65,25 @@ type PaystackChargeData = {
   authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string };
   message?: string;
   gateway_response?: string;
+  /** Present on some subscription renewal charges (Paystack object shape varies by event). */
+  subscription?: { subscription_code?: string };
+  plan?: { subscription?: { subscription_code?: string } };
 };
+
+/**
+ * Resolve Paystack subscription code from a charge.failed / charge payload.
+ * Renewals may omit booking metadata; subscription linkage can appear on metadata or nested objects.
+ */
+function extractPaystackSubscriptionCodeFromCharge(data: PaystackChargeData): string | null {
+  const meta = data.metadata || {};
+  const fromMeta = meta.subscription_code ?? meta.paystack_subscription_code;
+  if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim();
+  const direct = data.subscription?.subscription_code;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const fromPlan = data.plan?.subscription?.subscription_code;
+  if (typeof fromPlan === "string" && fromPlan.trim()) return fromPlan.trim();
+  return null;
+}
 
 /** Booking row fields used in charge handlers */
 type ChargeBookingRow = Record<string, unknown> & {
@@ -798,12 +817,136 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     .eq("id", o.id);
 }
 
+/**
+ * Recurring subscription renewal failed at the card charge layer (charge.failed).
+ * Complements invoice.payment_failed / invoice.update — some flows only emit charge.failed.
+ * Sets provider_subscriptions to past_due (grace handled by cron), records payment_transactions metadata, notifies once.
+ */
+async function handleSubscriptionRenewalChargeFailed(
+  data: PaystackChargeData,
+  subscriptionCode: string,
+  supabase: SupabaseClient,
+) {
+  const { reference, amount, fees, message, gateway_response } = data;
+  const paystackRef =
+    reference ||
+    `sub_renew_failed:${subscriptionCode}:${crypto.randomUUID()}`;
+
+  const { data: existingTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", paystackRef)
+    .maybeSingle();
+  if (existingTx) {
+    console.log(
+      `Subscription renewal charge.failed already recorded for ref ${paystackRef}`,
+    );
+    return;
+  }
+
+  const { data: subRow } = await supabase
+    .from("provider_subscriptions")
+    .select("provider_id, plan_id, status, subscription_plans:plan_id(name)")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .maybeSingle();
+
+  if (!subRow) {
+    console.warn(
+      `charge.failed: no provider_subscriptions row for subscription_code ${subscriptionCode}`,
+    );
+    return;
+  }
+
+  const prevStatus = (subRow as { status?: string }).status;
+  if (prevStatus !== "active" && prevStatus !== "past_due") {
+    console.log(
+      `charge.failed: skip past_due handling for subscription ${subscriptionCode} (status=${prevStatus})`,
+    );
+    return;
+  }
+
+  const amountSmallest = amount ?? 0;
+  const feesSmallest = fees ?? 0;
+  const failureMeta = {
+    source: "paystack_charge_failed",
+    subscription_code: subscriptionCode,
+    paystack_reference: reference ?? null,
+    failure_reason: message || gateway_response || "paystack_charge_failed",
+    failed_at: new Date().toISOString(),
+    kind: "subscription_renewal",
+  };
+
+  await supabase
+    .from("provider_subscriptions")
+    .update({
+      status: "past_due",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("paystack_subscription_code", subscriptionCode);
+
+  await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference: paystackRef,
+    amount: convertFromSmallestUnit(amountSmallest),
+    fees: convertFromSmallestUnit(feesSmallest),
+    net_amount: convertFromSmallestUnit(amountSmallest - feesSmallest),
+    status: "failed",
+    provider: "paystack",
+    transaction_type: "provider_subscription_payment",
+    metadata: failureMeta,
+    created_at: new Date().toISOString(),
+  });
+
+  if (prevStatus !== "active") {
+    return;
+  }
+
+  try {
+    const subData = subRow as {
+      provider_id?: string;
+      subscription_plans?: { name?: string } | null;
+    };
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("user_id, business_name")
+      .eq("id", subData.provider_id)
+      .maybeSingle();
+    if (provider) {
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      await sendTemplateNotification(
+        "subscription_payment_failed",
+        [(provider as { user_id: string }).user_id],
+        {
+          business_name:
+            (provider as { business_name?: string }).business_name || "Provider",
+          plan_name: subData.subscription_plans?.name || "subscription",
+          amount: `${convertFromSmallestUnit(amountSmallest)}`,
+          app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+        },
+        ["push"],
+        { appType: "provider" },
+      );
+    }
+  } catch (notifErr) {
+    console.warn(
+      "Failed to send subscription_payment_failed (charge.failed):",
+      notifErr,
+    );
+  }
+}
+
 async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, message, gateway_response } = data;
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id) {
       await handleProductOrderChargeFailed(data, supabase);
+      return;
+    }
+    const subscriptionCode = extractPaystackSubscriptionCodeFromCharge(data);
+    if (subscriptionCode) {
+      await handleSubscriptionRenewalChargeFailed(data, subscriptionCode, supabase);
       return;
     }
     if (metadata?.custom_offer_id) {

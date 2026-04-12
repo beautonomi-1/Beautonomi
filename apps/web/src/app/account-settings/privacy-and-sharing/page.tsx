@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Eye, Share2, Download, Trash2, HelpCircle } from "lucide-react";
+import { Eye, Share2, Download, HelpCircle } from "lucide-react";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
@@ -84,7 +84,7 @@ const PrivacyPage = () => {
           showLengthOfStay: boolean;
           analytics_consent?: boolean;
         };
-      }>("/api/me/privacy-settings", { cache: "no-store" });
+      }>("/api/me/privacy-settings", { staleTimeMs: 30_000 });
 
       type PrivacySettingsPayload = {
         accountVisibility?: boolean;
@@ -138,7 +138,7 @@ const PrivacyPage = () => {
           requestedAt?: string;
           readyAt?: string;
         };
-      }>("/api/me/request-data", { cache: "no-store" });
+      }>("/api/me/request-data", { staleTimeMs: 30_000 });
       
       type DataExportStatusPayload = { isReady?: boolean; isPending?: boolean; downloadUrl?: string; fileName?: string };
       const responseData: DataExportStatusPayload = response.data ?? (response as DataExportStatusPayload);
@@ -546,34 +546,6 @@ const PrivacyPage = () => {
                           </Button>
                         )}
                       </motion.div>
-
-                      <motion.div
-                        whileHover={{ scale: 1.01 }}
-                        className="backdrop-blur-xl bg-white/80 border border-red-200 rounded-xl p-5"
-                      >
-                        <div className="flex items-start gap-3 mb-4">
-                          <div className="p-2 bg-red-50 rounded-full border border-red-100">
-                            <Trash2 className="w-5 h-5 text-red-600" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="text-base font-semibold text-gray-900 mb-1">
-                              Delete your account
-                            </h3>
-                            <p className="text-sm font-light text-gray-600 mb-2">
-                              Permanently remove your account and all data (bookings, messages, profile).
-                              You will need to enter your password and type &quot;DELETE&quot; to confirm.
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => setShowDeleteDialog(true)}
-                          disabled={isDeletingAccount}
-                          variant="destructive"
-                          className="bg-red-600 hover:bg-red-700"
-                        >
-                          Delete account
-                        </Button>
-                      </motion.div>
                     </div>
                   </div>
 
@@ -616,6 +588,32 @@ const PrivacyPage = () => {
                       </div>
                     </div>
                   </motion.div>
+
+                  <div className="pt-6 border-t border-gray-200/80">
+                    <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">
+                      Advanced
+                    </p>
+                    <p className="text-sm text-gray-500 font-light mb-3 max-w-xl">
+                      To permanently delete your account we require your password and typing{" "}
+                      <span className="font-mono font-medium text-gray-600">DELETE</span> to confirm.
+                      Prefer a break first? Use{" "}
+                      <a
+                        href="/account-settings/login-and-security"
+                        className="text-gray-700 underline underline-offset-2 hover:text-gray-900"
+                      >
+                        Login &amp; security
+                      </a>{" "}
+                      to deactivate.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteDialog(true)}
+                      disabled={isDeletingAccount}
+                      className="text-sm text-gray-500 hover:text-gray-800 underline underline-offset-2 decoration-gray-400 hover:decoration-gray-600 transition-colors disabled:opacity-50"
+                    >
+                      Request permanent account deletion…
+                    </button>
+                  </div>
                 </motion.div>
               </TabsContent>
 

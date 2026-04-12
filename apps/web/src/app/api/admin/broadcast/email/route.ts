@@ -36,7 +36,8 @@ export async function POST(request: NextRequest) {
       const { data: users } = await supabase
         .from("users")
         .select("id")
-        .eq("role", "customer");
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId);
       userIds = users?.map((u: { id: string }) => u.id) ?? [];
     } else if (recipient_type === "all_providers") {
       const { data: providers } = await supabase

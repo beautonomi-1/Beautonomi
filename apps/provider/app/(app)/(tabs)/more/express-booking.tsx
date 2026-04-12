@@ -132,6 +132,7 @@ export default function ExpressBookingScreen() {
   const [newLinkSlug, setNewLinkSlug] = useState("");
   const [creatingLink, setCreatingLink] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
 
   useEffect(() => {
     if (!prefillModalLink) return;
@@ -148,12 +149,13 @@ export default function ExpressBookingScreen() {
   const loadExpressLinks = useCallback(async () => {
     setExpressLinksLoading(true);
     setExpressLinksError(null);
+    setSubscriptionRequired(false);
     let list: ExpressLinkRow[] = [];
     let errorOut: string | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await api.get<ExpressLinkRow[] | { data?: ExpressLinkRow[] }>(
+        const res = await api.get<ExpressLinkRow[] | { data?: ExpressLinkRow[]; code?: string }>(
           "/api/provider/express-booking"
         );
         if (!res.error) {
@@ -163,7 +165,16 @@ export default function ExpressBookingScreen() {
           errorOut = null;
           break;
         }
-        const status = (res.error as { status?: number }).status;
+        const errObj = res.error as { status?: number; code?: string; message?: string };
+        const status = errObj.status;
+        if (status === 403) {
+          const bodyCode = errObj.code || (res.data as { code?: string })?.code;
+          if (bodyCode === "SUBSCRIPTION_REQUIRED" || (errObj.message ?? "").toLowerCase().includes("subscription")) {
+            setSubscriptionRequired(true);
+            errorOut = null;
+            break;
+          }
+        }
         errorOut = getApiErrorMessage(res.error, "Failed to load short links");
         if (status === 401 || status === 403) break;
         if (attempt < 1) await new Promise((r) => setTimeout(r, 450));
@@ -579,7 +590,41 @@ export default function ExpressBookingScreen() {
             </View>
           )}
 
-          {expressLinksLoading ? (
+          {subscriptionRequired ? (
+            <View
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "#fde68a",
+                backgroundColor: "#fffbeb",
+                padding: 20,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                <Ionicons name="lock-closed-outline" size={20} color="#b45309" />
+                <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "600", color: "#92400e" }}>
+                  Upgrade Required
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, color: "#78350f", marginBottom: 12 }}>
+                Express booking links are available on a paid subscription plan. Upgrade to unlock this feature.
+              </Text>
+              <TouchableOpacity
+                style={{
+                  alignSelf: "flex-start",
+                  borderRadius: 12,
+                  backgroundColor: "#4f46e5",
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                }}
+                onPress={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
+                accessibilityLabel="Go to subscription page"
+                accessibilityRole="button"
+              >
+                <Text style={{ fontWeight: "600", color: Colors.white }}>View Plans</Text>
+              </TouchableOpacity>
+            </View>
+          ) : expressLinksLoading ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 16 }}>
               <ActivityIndicator color={Colors.primary} />
               <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Loading express links…</Text>

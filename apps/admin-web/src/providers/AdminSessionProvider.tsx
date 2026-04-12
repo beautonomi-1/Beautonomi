@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UserRole } from "@beautonomi/types";
 import type { AdminSection } from "@beautonomi/admin-access";
@@ -6,6 +7,7 @@ import { ADMIN_SECTION_USERS_TRUST, canAccessSection } from "@beautonomi/admin-a
 import { AdminApiError, isForbiddenStatus, isUnauthorizedStatus } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { adminSpaTo } from "@/lib/adminSpaPath";
 import { signOut as signOutAuth } from "@/lib/authSignIn";
 
 export interface BootstrapState {
@@ -40,6 +42,7 @@ const AdminSessionContext = createContext<AdminSessionContextValue | null>(null)
 
 export function AdminSessionProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
 
   const bootstrapQuery = useQuery({
     queryKey: adminQueryKeys.bootstrap(),
@@ -118,6 +121,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
       signOut: async () => {
         await signOutAuth();
         qc.removeQueries({ queryKey: adminQueryKeys.root });
+        navigate(adminSpaTo("/admin/login"), { replace: true });
       },
       canAccess,
       canUseGlobalSearch,
@@ -133,6 +137,7 @@ export function AdminSessionProvider({ children }: { children: React.ReactNode }
     sectionPermQuery.isLoading,
     sectionPermQuery.refetch,
     qc,
+    navigate,
   ]);
 
   return <AdminSessionContext.Provider value={value}>{children}</AdminSessionContext.Provider>;

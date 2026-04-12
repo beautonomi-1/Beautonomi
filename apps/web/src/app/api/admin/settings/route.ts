@@ -34,6 +34,7 @@ interface PlatformSettings {
     platform_service_fee_type: "percentage" | "fixed";
     platform_service_fee_percentage: number;
     platform_service_fee_fixed: number;
+    commission_enabled?: boolean;
     platform_commission_percentage: number;
     show_service_fee_to_customer: boolean;
   };
@@ -192,6 +193,7 @@ function getDefaultPlatformSettings(): PlatformSettings {
         platform_service_fee_type: "fixed",
         platform_service_fee_percentage: 0,
         platform_service_fee_fixed: 0,
+        commission_enabled: false,
         platform_commission_percentage: 0,
         show_service_fee_to_customer: true,
       },

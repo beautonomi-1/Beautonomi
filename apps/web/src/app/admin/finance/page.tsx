@@ -42,6 +42,7 @@ interface FinanceSummary {
   ads_gross: number;
   ads_gateway_fees: number;
   total_platform_take_net: number;
+  total_platform_take_net_including_customer_fees?: number;
 
   provider_earnings: number;
   refunds_gross: number;
@@ -54,6 +55,8 @@ interface FinanceSummary {
   total_platform_take_after_referrals: number;
 
   service_fee_revenue?: number;
+  platform_fee_revenue?: number;
+  customer_paid_platform_fees?: number;
   ecommerce_platform_fees?: number;
   additional_charge_gross?: number;
   travel_fees?: number;
@@ -61,6 +64,7 @@ interface FinanceSummary {
 
   revenue_streams?: {
     booking_commission: number;
+    customer_paid_platform_fees?: number;
     subscriptions: number;
     ads: number;
     service_fees: number;
@@ -71,6 +75,7 @@ interface FinanceSummary {
 
   platform_revenue?: {
     booking_commission: number;
+    customer_paid_platform_fees?: number;
     subscriptions: number;
     ads: number;
     service_fees: number;
@@ -462,10 +467,10 @@ export default function AdminFinance() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <SummaryCard
                   title="Total Platform Take (Net)"
-                  value={summary.total_platform_take_net}
+                  value={summary.total_platform_take_net_including_customer_fees ?? summary.total_platform_take_net}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
-                  infoTooltip="Commission (net) + Subscription revenue + Ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
+                  infoTooltip="Commission (net) + customer-paid platform fees + subscription revenue + ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
                 />
                 <SummaryCard
                   title="Total Platform Take (after referrals & wallet)"
@@ -488,9 +493,10 @@ export default function AdminFinance() {
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                     {[
                       { label: "Booking Commission", value: summary.revenue_streams.booking_commission, desc: "Net commission after gateway fees" },
+                      { label: "Platform Fees (Customer-Paid)", value: summary.revenue_streams.customer_paid_platform_fees ?? summary.revenue_streams.service_fees, desc: "Checkout platform fees paid by customers" },
                       { label: "Subscriptions", value: summary.revenue_streams.subscriptions, desc: "Provider subscription payments" },
                       { label: "Ads Revenue", value: summary.revenue_streams.ads, desc: "Ad campaign prepayments" },
-                      { label: "Service Fees", value: summary.revenue_streams.service_fees, desc: "Customer-facing checkout fees" },
+                      { label: "Service Fees (Legacy Label)", value: summary.revenue_streams.service_fees, desc: "Same as customer-paid platform fees" },
                       { label: "Ecommerce Fees (in commission)", value: summary.revenue_streams.ecommerce_fees_detail ?? 0, desc: "Included in booking commission total" },
                       { label: "Wallet Top-ups", value: summary.revenue_streams.wallet_topups, desc: "Wallet funding by customers" },
                       

@@ -21,6 +21,8 @@ const DEFAULT_PLATFORM_FEES = {
   platform_service_fee_fixed: 0,
   show_service_fee_to_customer: false,
   cash_enabled_on_platform: false,
+  commission_enabled: false,
+  platform_commission_percentage: 0,
 };
 
 /**
@@ -53,7 +55,7 @@ export async function GET(request: NextRequest) {
       platform_service_fee_fixed: (payouts?.platform_service_fee_fixed as number) ?? 0,
       show_service_fee_to_customer: (payouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform: paymentTypes?.cash === true,
-      commission_enabled: (payouts?.commission_enabled as boolean) !== false,
+      commission_enabled: (payouts?.commission_enabled as boolean) === true,
       platform_commission_percentage: (payouts?.platform_commission_percentage as number) ?? 0,
     });
   } catch (error) {
@@ -133,7 +135,7 @@ export async function PATCH(request: NextRequest) {
         show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
         cash_enabled_on_platform:
           ((updated?.settings as Record<string, any> | undefined)?.payment_types as Record<string, any> | undefined)?.cash === true,
-        commission_enabled: (outPayouts?.commission_enabled as boolean) !== false,
+        commission_enabled: (outPayouts?.commission_enabled as boolean) === true,
         platform_commission_percentage: (outPayouts?.platform_commission_percentage as number) ?? 0,
       });
     }
@@ -161,7 +163,7 @@ export async function PATCH(request: NextRequest) {
       show_service_fee_to_customer: (outPayouts?.show_service_fee_to_customer as boolean) !== false,
       cash_enabled_on_platform:
         ((inserted?.settings as Record<string, any> | undefined)?.payment_types as Record<string, any> | undefined)?.cash === true,
-      commission_enabled: (outPayouts?.commission_enabled as boolean) !== false,
+      commission_enabled: (outPayouts?.commission_enabled as boolean) === true,
       platform_commission_percentage: (outPayouts?.platform_commission_percentage as number) ?? 0,
     });
   } catch (error) {

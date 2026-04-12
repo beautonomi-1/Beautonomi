@@ -83,7 +83,7 @@ const LoginAccount = () => {
     const loadProfile = async () => {
       if (!user) return;
       try {
-        const res = await fetcher.get<{ data?: { email?: string; phone?: string } }>("/api/me/profile", { cache: "no-store" });
+        const res = await fetcher.get<{ data?: { email?: string; phone?: string } }>("/api/me/profile", { staleTimeMs: 30_000 });
         const data = res?.data ?? (res as { email?: string; phone?: string });
         const email = data?.email;
         const phone = data?.phone;
@@ -103,7 +103,7 @@ const LoginAccount = () => {
   }, [user]);
 
   useEffect(() => {
-    fetcher.get<{ data: typeof securityCopy }>("/api/public/account-security-copy", { cache: "no-store" })
+    fetcher.get<{ data: typeof securityCopy }>("/api/public/account-security-copy", { staleTimeMs: 30_000 })
       .then((res: { data?: typeof securityCopy }) => {
         const data = res?.data ?? res;
         if (data && typeof data === "object" && "title" in data && data.title) setSecurityCopy(data as typeof securityCopy);
@@ -114,7 +114,7 @@ const LoginAccount = () => {
   const loadPasswordInfo = async () => {
     if (!user) return;
     try {
-      const response = await fetcher.get<{ data: { password_changed_at?: string | null } }>("/api/me/profile", { cache: "no-store" });
+      const response = await fetcher.get<{ data: { password_changed_at?: string | null } }>("/api/me/profile", { staleTimeMs: 30_000 });
       // Handle both response.data and direct response structure
       const profileData = response.data ?? (response as { password_changed_at?: string | null });
       const passwordChangedAt = profileData?.password_changed_at;

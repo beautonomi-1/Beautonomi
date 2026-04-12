@@ -64,7 +64,7 @@ const PaymentPage = () => {
 
   const loadPaymentSafetyCopy = async () => {
     try {
-      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>("/api/public/payment-safety-copy", { cache: "no-store" });
+      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>("/api/public/payment-safety-copy", { staleTimeMs: 60_000 });
       if (res?.data) setPaymentSafetyCopy(res.data);
     } catch {
       // use fallback in render
@@ -73,7 +73,7 @@ const PaymentPage = () => {
 
   const loadCouponCount = async () => {
     try {
-      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", { cache: "no-store" });
+      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", { staleTimeMs: 30_000 });
       setCouponCount(response.data?.count || 0);
     } catch (error) {
       console.error("Failed to load coupon count:", error);
@@ -105,7 +105,7 @@ const PaymentPage = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", { cache: "no-store" });
+      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", { staleTimeMs: 15_000 });
       setPaymentMethods(response.data || []);
     } catch (err) {
       const errorMessage =

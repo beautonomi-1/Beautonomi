@@ -10,6 +10,10 @@
  *   - invoice.create           — New invoice for subscription renewal
  *   - invoice.update            — Invoice status updated after charge attempt
  *   - invoice.payment_failed    — Subscription payment failed
+ *
+ * Recurring renewal failures that surface as charge.failed (card decline) are handled in
+ * charge-success.ts (handleChargeFailed → subscription renewal branch), not here, to avoid
+ * double-processing with invoice.* events.
  */
 import { NextResponse } from "next/server";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";

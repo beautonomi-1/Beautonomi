@@ -204,7 +204,7 @@ export function AdsListPage() {
             ].map(({ label, value }) => (
               <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
                 <div className="text-xs text-gray-500">{label}</div>
-                <div className="mt-1 text-lg font-bold text-gray-900">{value}</div>
+                <div className="mt-1 text-lg font-bold text-gray-900">{String(value)}</div>
               </div>
             ))}
           </div>
@@ -214,7 +214,7 @@ export function AdsListPage() {
               <div className="flex flex-wrap gap-2">
                 {Object.entries(overview.campaigns_by_status).map(([s, count]) => (
                   <span key={s} className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[s] ?? "bg-gray-100 text-gray-700"}`}>
-                    {s}: <strong>{count}</strong>
+                    {s}: <strong>{String(count)}</strong>
                   </span>
                 ))}
               </div>
@@ -224,7 +224,7 @@ export function AdsListPage() {
               <div className="flex flex-wrap gap-2">
                 {Object.entries(overview.campaigns_by_model ?? {}).map(([m, count]) => (
                   <span key={m} className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-medium text-indigo-800">
-                    {MODEL_LABELS[m] ?? m}: <strong>{count}</strong>
+                    {MODEL_LABELS[m] ?? m}: <strong>{String(count)}</strong>
                   </span>
                 ))}
               </div>

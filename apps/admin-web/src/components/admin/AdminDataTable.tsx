@@ -58,6 +58,10 @@ export function AdminTh({
   );
 }
 
-export function AdminTd({ children, className = "" }: { children?: ReactNode; className?: string }) {
-  return <td className={`px-3 py-3 align-top md:px-4 ${className}`}>{children}</td>;
+export function AdminTd({ children, className = "", colSpan }: { children?: ReactNode; className?: string; colSpan?: number }) {
+  return (
+    <td colSpan={colSpan} className={`px-3 py-3 align-top md:px-4 ${className}`}>
+      {children}
+    </td>
+  );
 }

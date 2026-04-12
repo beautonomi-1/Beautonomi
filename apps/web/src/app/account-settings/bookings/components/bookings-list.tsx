@@ -6,17 +6,14 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import type { Booking } from "@/types/beautonomi";
 
-/** Booking as returned from list API (may include display names). */
 type BookingListItem = Booking & { provider_name?: string; services?: Array<{ offering_name?: string }> };
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { Calendar, MapPin, Clock, User, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
 
 interface BookingsListProps {
   status?: "upcoming" | "past" | "cancelled";
-  /** Increment to force refetch (e.g. when realtime update received) */
   refreshTrigger?: number;
 }
 
@@ -44,9 +41,8 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
             has_more: boolean;
           };
           error: null;
-        }>(`/api/me/bookings${params}`, { cache: "no-store" });
+        }>(`/api/me/bookings${params}`, { staleTimeMs: 15_000 });
 
-        // Handle paginated response - extract items array
         const bookingsData = response.data?.items || response.data || [];
         setBookings(Array.isArray(bookingsData) ? bookingsData : []);
       } catch (err) {
@@ -129,20 +125,10 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
             };
 
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="text-center py-12 md:py-16"
-      >
-        <motion.div
-          initial={{ scale: 0.9 }}
-          animate={{ scale: 1 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-          className="inline-flex items-center justify-center w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 mb-6"
-        >
+      <div className="text-center py-12 md:py-16 animate-in fade-in duration-300">
+        <div className="inline-flex items-center justify-center w-20 h-20 md:w-24 md:h-24 rounded-full bg-gradient-to-br from-pink-100 to-rose-100 mb-6">
           <Sparkles className="w-10 h-10 md:w-12 md:h-12 text-[#FF0077]" />
-        </motion.div>
+        </div>
         <h3 className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 mb-3">
           {empty.title}
         </h3>
@@ -150,32 +136,22 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
           {empty.description}
         </p>
         <Link href="/search" className="inline-block">
-          <motion.div
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+          <Button
+            className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold px-8 py-6 text-base shadow-lg hover:shadow-xl transition-all"
           >
-            <Button 
-              className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold px-8 py-6 text-base shadow-lg hover:shadow-xl transition-all"
-            >
-              {empty.cta}
-            </Button>
-          </motion.div>
+            {empty.cta}
+          </Button>
         </Link>
-      </motion.div>
+      </div>
     );
   }
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {bookings.map((booking, index) => (
-        <motion.div
+      {bookings.map((booking) => (
+        <div
           key={booking.id}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: index * 0.1 }}
-          whileHover={{ scale: 1.01, y: -2 }}
-          whileTap={{ scale: 0.98 }}
-          className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-6 md:p-8 shadow-lg hover:shadow-2xl transition-all duration-300"
+          className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-2xl p-6 md:p-8 shadow-lg hover:shadow-2xl hover:-translate-y-0.5 active:scale-[0.99] transition-all duration-200"
         >
           <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
             <div className="flex-1">
@@ -260,35 +236,25 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
 
             <div className="flex flex-col gap-3 w-full sm:w-auto md:w-48 flex-shrink-0">
               <Link href={`/account-settings/bookings/${booking.id}`} className="w-full">
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                <Button
+                  variant="outline"
+                  className="w-full border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077] transition-colors"
                 >
-                  <Button 
-                    variant="outline" 
-                    className="w-full border-gray-300 hover:border-[#FF0077] hover:text-[#FF0077] transition-colors"
-                  >
-                    View Details
-                  </Button>
-                </motion.div>
+                  View Details
+                </Button>
               </Link>
               {booking.status === "confirmed" && (
                 <>
-                  <motion.div
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                  <Button
+                    className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold shadow-md hover:shadow-lg transition-all"
+                    onClick={() => {
+                      router.push(
+                        `/account-settings/bookings/${booking.id}/reschedule`
+                      );
+                    }}
                   >
-                    <Button
-                      className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white font-semibold shadow-md hover:shadow-lg transition-all"
-                      onClick={() => {
-                        router.push(
-                          `/account-settings/bookings/${booking.id}/reschedule`
-                        );
-                      }}
-                    >
-                      Reschedule
-                    </Button>
-                  </motion.div>
+                    Reschedule
+                  </Button>
                   <Link href={`/account-settings/bookings/${booking.id}`} className="w-full block">
                     <Button
                       variant="outline"
@@ -301,7 +267,7 @@ export default function BookingsList({ status, refreshTrigger }: BookingsListPro
               )}
             </div>
           </div>
-        </motion.div>
+        </div>
       ))}
     </div>
   );

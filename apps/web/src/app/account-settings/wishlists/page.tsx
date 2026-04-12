@@ -92,7 +92,7 @@ const Page = () => {
     (providerId: string, inWishlist: boolean) => {
       if (inWishlist) {
         fetcher
-          .get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" })
+          .get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { staleTimeMs: 30_000 })
           .then((res) => {
             const d = (res as any)?.data ?? res;
             setSavedProviders(Array.isArray(d) ? d : d?.data ?? []);
@@ -114,7 +114,7 @@ const Page = () => {
         
         // Load wishlists
         try {
-          const wl = await fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", { cache: "no-store" });
+          const wl = await fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", { staleTimeMs: 30_000 });
           setWishlists(wl.data || []);
         } catch (wlErr) {
           console.error("Error loading wishlists:", wlErr);
@@ -130,7 +130,7 @@ const Page = () => {
 
         // Load saved providers from all wishlists
         try {
-          const providers = await fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" });
+          const providers = await fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { staleTimeMs: 30_000 });
           setSavedProviders(providers.data || []);
         } catch (providersErr) {
           console.error("Error loading saved providers:", providersErr);
@@ -139,7 +139,7 @@ const Page = () => {
 
         // Load saved products from all wishlists
         try {
-          const products = await fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", { cache: "no-store" });
+          const products = await fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", { staleTimeMs: 30_000 });
           setSavedProducts(products.data || []);
         } catch (productsErr) {
           console.error("Error loading saved products:", productsErr);
@@ -151,7 +151,7 @@ const Page = () => {
           setSavedPostsLoading(true);
           const savedRes = await fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
             "/api/explore/saved?limit=50",
-            { cache: "no-store" }
+            { staleTimeMs: 30_000 }
           );
           const body = (savedRes as any)?.data ?? savedRes;
           const list = Array.isArray(body) ? body : body?.data ?? [];
@@ -165,7 +165,7 @@ const Page = () => {
 
         // Load explore boards (collections)
         try {
-          const collRes = await fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", { cache: "no-store" });
+          const collRes = await fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", { staleTimeMs: 30_000 });
           const collBody = (collRes as any)?.data ?? collRes;
           const collList = Array.isArray(collBody) ? collBody : collBody?.data ?? [];
           setCollections(collList);

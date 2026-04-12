@@ -41,6 +41,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
 
 type BusinessData = {
@@ -556,12 +557,22 @@ export default function BusinessDetailsScreen() {
             </View>
             <View style={twStyle("mb-4")}>
               <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              <AddressAutocomplete
                 value={form.address_line1 ?? ""}
-                onChangeText={(t) => setForm((f) => ({ ...f, address_line1: t.trim() || null }))}
-                placeholder="Street address"
-                placeholderTextColor="#9ca3af"
+                onSelect={(addr: ParsedAddress) => {
+                  setForm((f) => ({
+                    ...f,
+                    address_line1: addr.address_line1 || f.address_line1,
+                    city: addr.city || f.city,
+                    state: addr.state || f.state,
+                    postal_code: addr.postal_code || f.postal_code,
+                    country: addr.country || f.country,
+                  }));
+                }}
+                onBlur={(query) => {
+                  if (query.trim()) setForm((f) => ({ ...f, address_line1: query.trim() }));
+                }}
+                placeholder="Start typing address…"
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>

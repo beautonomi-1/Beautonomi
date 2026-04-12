@@ -140,6 +140,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Plans & pricing", href: "/admin/plans", icon: CreditCard },
       { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard },
       { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp },
+      { title: "Wallet Reconciliation", href: "/admin/wallet-reconciliation", icon: Wallet },
       { title: "Billing", href: "/admin/billing", icon: CreditCard },
     ],
   },

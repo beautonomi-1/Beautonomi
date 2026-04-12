@@ -142,15 +142,26 @@ export async function GET(request: NextRequest) {
 
     // Cancellation fees: provider-retained income from late cancellations
     let cancellationFeesTotal = 0;
+    let tipsTotal = 0;
+    let additionalChargesTotal = 0;
     try {
-      const { data: cancelFeeRows } = await supabaseAdmin
+      const { data: extraLedgerRows } = await supabaseAdmin
         .from("finance_transactions")
-        .select("net")
+        .select("transaction_type, net, amount")
         .eq("provider_id", providerId)
-        .eq("transaction_type", "cancellation_fee")
+        .in("transaction_type", ["cancellation_fee", "tip", "additional_charge", "additional_charge_payment"])
         .gte("created_at", periodStart.toISOString())
         .lte("created_at", periodEnd.toISOString());
-      cancellationFeesTotal = (cancelFeeRows ?? []).reduce((s, r) => s + Number((r as any).net ?? 0), 0);
+      for (const r of extraLedgerRows ?? []) {
+        const row = r as { transaction_type: string; net?: number; amount?: number };
+        if (row.transaction_type === "cancellation_fee") {
+          cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
+        } else if (row.transaction_type === "tip") {
+          tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        } else if (row.transaction_type === "additional_charge" || row.transaction_type === "additional_charge_payment") {
+          additionalChargesTotal += Number(row.net ?? row.amount ?? 0);
+        }
+      }
     } catch { /* non-critical */ }
 
     const netRevenue = totalRevenue + cancellationFeesTotal - totalRefunded;
@@ -176,6 +187,8 @@ export async function GET(request: NextRequest) {
       period,
       totalRevenue,
       cancellationFees: cancellationFeesTotal,
+      tipsTotal,
+      additionalChargesTotal,
       netRevenue,
       totalBookings,
       completedBookings,

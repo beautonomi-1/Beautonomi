@@ -12,24 +12,26 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 
-interface HealthCheck {
-  name: string;
-  status: "ok" | "degraded" | "error" | string;
-  latency_ms?: number;
-  message?: string | null;
-  details?: Record<string, unknown>;
+interface MetricRow {
+  id?: string;
+  metric_type?: string;
+  metric_name?: string;
+  value?: number;
+  unit?: string;
+  status?: string;
+  metadata?: Record<string, unknown>;
+  recorded_at?: string;
 }
 
 interface SystemHealthData {
-  overall_status?: "ok" | "degraded" | "error" | string;
-  checks?: HealthCheck[];
-  summary?: {
-    total: number;
-    ok: number;
-    degraded: number;
-    error: number;
+  metrics?: MetricRow[];
+  stats?: {
+    api_requests?: { total: number; successful: number; failed: number; avg_response_time: number };
+    database?: { connections: number; query_time: number; slow_queries: number };
+    server?: { cpu_usage: number; memory_usage: number; disk_usage: number };
+    errors?: { total: number; rate: number };
   };
-  checked_at?: string;
+  timestamp?: string;
   [key: string]: unknown;
 }
 
@@ -86,10 +88,26 @@ export function SystemHealthPage() {
   }
 
   const data = q.data;
-  const overall = data?.overall_status ?? "unknown";
-  const checks = Array.isArray(data?.checks) ? data!.checks : [];
-  const summary = data?.summary;
-  const checkedAt = data?.checked_at;
+  const stats = data?.stats;
+  const metrics = Array.isArray(data?.metrics) ? data!.metrics : [];
+  const checkedAt = data?.timestamp;
+
+  const errTotal = stats?.errors?.total ?? 0;
+  const apiTotal = stats?.api_requests?.total ?? 0;
+  const apiFailed = stats?.api_requests?.failed ?? 0;
+  const overall: string =
+    errTotal > 10 || apiFailed > apiTotal * 0.2
+      ? "error"
+      : errTotal > 0 || apiFailed > 0
+        ? "degraded"
+        : "ok";
+
+  const metricsByType = new Map<string, MetricRow[]>();
+  for (const m of metrics) {
+    const t = m.metric_type ?? "other";
+    if (!metricsByType.has(t)) metricsByType.set(t, []);
+    metricsByType.get(t)!.push(m);
+  }
 
   return (
     <div className="space-y-6">
@@ -144,55 +162,90 @@ export function SystemHealthPage() {
               )}
             </div>
           </div>
-          {summary && (
-            <div className="flex items-center gap-4 text-sm">
-              <span className="text-green-700">{summary.ok} ok</span>
-              <span className="text-amber-700">{summary.degraded} degraded</span>
-              <span className="text-red-700">{summary.error} errors</span>
-            </div>
-          )}
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-700">{metrics.length} metric{metrics.length !== 1 ? "s" : ""}</span>
+            <span className="text-red-700">{errTotal} error{errTotal !== 1 ? "s" : ""}</span>
+          </div>
         </div>
       </AdminPanel>
 
-      {/* Health checks */}
-      {checks.length > 0 ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {checks.map((check) => (
-            <AdminPanel key={check.name}>
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900 capitalize">{check.name.replace(/_/g, " ")}</p>
-                  {check.message && (
-                    <p className="mt-1 text-xs text-gray-500">{check.message}</p>
-                  )}
-                </div>
-                <StatusBadge status={check.status} />
-              </div>
-              {check.latency_ms !== undefined && (
-                <div className="mt-3 flex items-center justify-between text-sm">
-                  <span className="text-gray-500">Latency</span>
-                  <span className={`font-mono font-medium ${check.latency_ms > 1000 ? "text-red-600" : check.latency_ms > 300 ? "text-amber-600" : "text-green-700"}`}>
-                    {check.latency_ms}ms
-                  </span>
-                </div>
-              )}
-              {check.details && Object.keys(check.details).length > 0 && (
-                <dl className="mt-2 space-y-0.5 text-xs text-gray-500">
-                  {Object.entries(check.details).map(([k, v]) => (
-                    <div key={k} className="flex justify-between">
-                      <dt className="capitalize">{k.replace(/_/g, " ")}</dt>
-                      <dd className="font-medium text-gray-700">{String(v)}</dd>
-                    </div>
-                  ))}
-                </dl>
-              )}
-            </AdminPanel>
-          ))}
+      {/* Stats cards */}
+      {stats && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <AdminPanel>
+            <p className="text-xs font-medium text-gray-500 uppercase">API Requests</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{stats.api_requests?.total ?? 0}</p>
+            <div className="mt-2 flex gap-3 text-xs">
+              <span className="text-green-700">{stats.api_requests?.successful ?? 0} ok</span>
+              <span className="text-red-700">{stats.api_requests?.failed ?? 0} failed</span>
+            </div>
+            {(stats.api_requests?.avg_response_time ?? 0) > 0 && (
+              <p className="mt-1 text-xs text-gray-500">Avg {Math.round(stats.api_requests!.avg_response_time)}ms</p>
+            )}
+          </AdminPanel>
+          <AdminPanel>
+            <p className="text-xs font-medium text-gray-500 uppercase">Database</p>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Connections</span><span className="font-medium">{stats.database?.connections ?? 0}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Avg query</span><span className="font-medium">{stats.database?.query_time ?? 0}ms</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Slow queries</span><span className={`font-medium ${(stats.database?.slow_queries ?? 0) > 0 ? "text-amber-700" : ""}`}>{stats.database?.slow_queries ?? 0}</span></div>
+            </div>
+          </AdminPanel>
+          <AdminPanel>
+            <p className="text-xs font-medium text-gray-500 uppercase">Server</p>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">CPU</span><span className="font-medium">{stats.server?.cpu_usage ?? 0}%</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Memory</span><span className="font-medium">{stats.server?.memory_usage ?? 0}%</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Disk</span><span className="font-medium">{stats.server?.disk_usage ?? 0}%</span></div>
+            </div>
+          </AdminPanel>
+          <AdminPanel>
+            <p className="text-xs font-medium text-gray-500 uppercase">Errors</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{stats.errors?.total ?? 0}</p>
+            <p className="mt-1 text-xs text-gray-500">{(stats.errors?.rate ?? 0).toFixed(1)} / hour</p>
+          </AdminPanel>
         </div>
+      )}
+
+      {/* Metric rows */}
+      {metrics.length > 0 ? (
+        Array.from(metricsByType.entries()).map(([metricType, rows]) => (
+          <AdminPanel key={metricType}>
+            <h2 className="mb-3 text-sm font-semibold text-gray-900 capitalize">{metricType.replace(/_/g, " ")} metrics ({rows.length})</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-gray-100 bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Name</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Value</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Unit</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Recorded</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {rows.map((m, i) => (
+                    <tr key={String(m.id ?? i)} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-xs font-medium text-gray-700">{String(m.metric_name ?? "—").replace(/_/g, " ")}</td>
+                      <td className="px-3 py-2">
+                        <StatusBadge status={m.status === "healthy" ? "ok" : m.status ?? "ok"} />
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-xs">{m.value ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{m.unit ?? ""}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">
+                        {m.recorded_at ? new Date(m.recorded_at).toLocaleString() : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </AdminPanel>
+        ))
       ) : (
         <AdminPanel>
           <p className="py-6 text-center text-sm text-gray-400">
-            No granular health check data available. See raw response below.
+            No health metrics recorded in the last {hours} hours. The system will populate data as traffic flows.
           </p>
         </AdminPanel>
       )}

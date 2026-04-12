@@ -58,8 +58,8 @@ const TaxesPage = () => {
       setError(null);
 
       const [taxInfoResponse, documentsResponse] = await Promise.all([
-        fetcher.get<{ data: { tax_info: TaxInfo | null; vat_id: string | null } }>("/api/me/tax-info", { cache: "no-store" }),
-        fetcher.get<{ data: TaxDocument[] }>("/api/me/tax-documents", { cache: "no-store" }),
+        fetcher.get<{ data: { tax_info: TaxInfo | null; vat_id: string | null } }>("/api/me/tax-info", { staleTimeMs: 30_000 }),
+        fetcher.get<{ data: TaxDocument[] }>("/api/me/tax-documents", { staleTimeMs: 30_000 }),
       ]);
 
       setTaxInfo(taxInfoResponse.data.tax_info);

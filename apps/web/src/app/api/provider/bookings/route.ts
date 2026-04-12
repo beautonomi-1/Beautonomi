@@ -29,19 +29,20 @@ import {
 // Map frontend status to database enum values
 // Frontend: booked, started, completed, cancelled, no_show
 // Database: pending, confirmed, in_progress, completed, cancelled, no_show
-function mapStatusToDatabase(frontendStatus: string): string {
+function mapStatusToDatabase(frontendStatus: string): string | null {
   const mapping: Record<string, string> = {
     booked: "confirmed",
     started: "in_progress",
     completed: "completed",
     cancelled: "cancelled",
     no_show: "no_show",
-    // Also handle database values passed directly
     pending: "pending",
     confirmed: "confirmed",
     in_progress: "in_progress",
+    waiting: "waiting",
+    checked_in: "checked_in",
   };
-  return mapping[frontendStatus] || "confirmed";
+  return mapping[frontendStatus] ?? null;
 }
 
 // Map database status to frontend status
@@ -177,10 +178,11 @@ async function handleGetProviderBookings(request: NextRequest) {
       // Handle comma-separated statuses; map frontend values (e.g. "booked") to DB enum (pending, confirmed, in_progress, completed, cancelled, no_show)
       if (status.includes(",")) {
         const raw = status.split(",").map(s => s.trim()).filter(Boolean);
-        const statuses = [...new Set(raw.map(mapStatusToDatabase))];
+        const statuses = [...new Set(raw.map(mapStatusToDatabase).filter((s): s is string => s !== null))];
         if (statuses.length) query = query.in("status", statuses);
       } else {
-        query = query.eq("status", mapStatusToDatabase(status));
+        const dbStatus = mapStatusToDatabase(status);
+        if (dbStatus) query = query.eq("status", dbStatus);
       }
     }
 
@@ -704,7 +706,11 @@ async function handleCreateProviderBooking(request: NextRequest) {
       tip_amount: serverTipAmount,
       total_amount: finalTotalAmount,
       currency: body.currency || lastResortCurrency,
-      status: mapStatusToDatabase(finalStatus),
+      status: (() => {
+        const mapped = mapStatusToDatabase(finalStatus);
+        if (!mapped) throw new Error(`Unknown booking status: "${finalStatus}"`);
+        return mapped;
+      })(),
       payment_status: (() => {
         if (body.payment_option === "deposit") {
           // Deposit booking: if cash deposit was collected now, partially_paid; otherwise pending

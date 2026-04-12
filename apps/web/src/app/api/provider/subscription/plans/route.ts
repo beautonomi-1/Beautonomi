@@ -11,6 +11,7 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
       .from("subscription_plans")
       .select("*")
       .eq("is_active", true)
-      .order("amount", { ascending: true });
+      .order("price_monthly", { ascending: true, nullsFirst: true });
 
     if (error) {
       console.error("Error fetching subscription plans:", error);
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
       return options;
     });
 
-    return successResponse(result);
+    return successResponse(result.map(ensurePlanOptionHasBarePlanId));
   } catch (error) {
     console.error("Error fetching subscription plans:", error);
     return handleApiError(error, "Failed to load subscription plans");

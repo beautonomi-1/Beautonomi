@@ -17,6 +17,7 @@ import StepPayment from "./steps/step-payment";
 import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
+import { toast } from "sonner";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -642,10 +643,13 @@ export default function BookingFlow() {
           end_at: endDateTime.toISOString(),
           location_type: bookingState.mode === "mobile" ? "at_home" : "at_salon",
           location_id: bookingState.selectedLocationId ?? null,
+          previous_hold_id: bookingState.holdId || null,
         }
       );
       return res?.data?.hold_id ?? res?.data?.id ?? null;
-    } catch {
+    } catch (err) {
+      console.warn("[booking] hold creation failed:", err);
+      toast.warning("Could not reserve your time slot. It may no longer be available.");
       return null;
     }
   };
@@ -1093,7 +1097,7 @@ export default function BookingFlow() {
                   onNavigateToStep={(step) => {
                     if (step === "calendar") {
                       if (bookingState.holdId) releaseHold(bookingState.holdId);
-                      updateBookingState({ holdId: null });
+                      updateBookingState({ holdId: null, selectedTimeSlot: null });
                     }
                     const idx = activeStepOrder.indexOf(step);
                     if (idx >= 0) setCurrentStepIndex(idx);

@@ -212,12 +212,18 @@ export default function CartPage() {
                   <span className="text-lg font-bold text-pink-600">R{group.subtotal.toFixed(2)}</span>
                 </div>
                 <div className="px-5 pb-4">
-                  <Link
-                    href={`/shop/checkout?provider_id=${group.provider?.id}`}
-                    className="block w-full py-3 bg-pink-600 text-white text-center rounded-xl font-semibold hover:bg-pink-700 transition-colors"
-                  >
-                    Checkout — R{group.subtotal.toFixed(2)}
-                  </Link>
+                  {group.items.some((i) => !i.in_stock) ? (
+                    <div className="w-full py-3 bg-gray-300 text-white text-center rounded-xl font-semibold cursor-not-allowed">
+                      Remove out-of-stock items to checkout
+                    </div>
+                  ) : (
+                    <Link
+                      href={`/shop/checkout?provider_id=${group.provider?.id}`}
+                      className="block w-full py-3 bg-pink-600 text-white text-center rounded-xl font-semibold hover:bg-pink-700 transition-colors"
+                    >
+                      Checkout — R{group.subtotal.toFixed(2)}
+                    </Link>
+                  )}
                 </div>
               </div>
             ))}

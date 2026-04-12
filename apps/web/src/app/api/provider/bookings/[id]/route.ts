@@ -22,6 +22,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { isOTPExpired } from "@/lib/otp/generator";
 import { isQRCodeExpired } from "@/lib/qr/generator";
+import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -29,22 +30,6 @@ function mapStatusToDatabase(frontendStatus: string): string {
 
 function mapStatusFromDatabase(dbStatus: string): string {
   return mapStatusToProvider(dbStatus as BookingStatus);
-}
-
-const VALID_STATUS_TRANSITIONS: Record<string, string[]> = {
-  pending: ["confirmed", "cancelled", "rejected"],
-  confirmed: ["in_progress", "cancelled", "no_show"],
-  in_progress: ["completed", "cancelled"],
-  completed: [],
-  cancelled: [],
-  rejected: [],
-  no_show: ["confirmed"],
-};
-
-function isValidStatusTransition(from: string, to: string): boolean {
-  const allowed = VALID_STATUS_TRANSITIONS[from];
-  if (!allowed) return true;
-  return allowed.includes(to);
 }
 
 function resolveLoyaltyBaseAmount(booking: {
@@ -620,11 +605,11 @@ export async function PATCH(
     // Conflict detection: Check if booking was modified by another user
     const { version, updated_at } = body;
     if (version !== undefined) {
-      // Using version number for optimistic locking
-      const currentVersion = (currentBooking as BookingRow).version || 0;
-      if (version !== currentVersion) {
+      // Using version number for optimistic locking (client hint; DB update still uses .eq("version"))
+      const clientExpectedVersion = (currentBooking as BookingRow).version || 0;
+      if (version !== clientExpectedVersion) {
         return errorResponse(
-          "This booking was modified by another user. Please refresh and try again.",
+          "Booking was modified by another user. Please refresh and try again.",
           "CONFLICT",
           409
         );
@@ -636,7 +621,7 @@ export async function PATCH(
       if (Math.abs(currentUpdatedAt - providedUpdatedAt) > 1000) {
         // More than 1 second difference indicates a conflict
         return errorResponse(
-          "This booking was modified by another user. Please refresh and try again.",
+          "Booking was modified by another user. Please refresh and try again.",
           "CONFLICT",
           409
         );
@@ -722,12 +707,12 @@ export async function PATCH(
       }
     }
 
-    // Validate status transition
+    // Validate status transition (strict provider lifecycle)
     if (requestedDbStatus) {
-      const currentDbStatus = (currentBooking as BookingRow).status;
-      if (!isValidStatusTransition(currentDbStatus, requestedDbStatus)) {
+      const currentDbStatus = (currentBooking as BookingRow).status ?? "";
+      if (!isValidProviderBookingStatusTransition(currentDbStatus, requestedDbStatus)) {
         return errorResponse(
-          `Cannot transition booking from "${currentDbStatus}" to "${requestedDbStatus}"`,
+          `Cannot transition booking from ${currentDbStatus} to ${requestedDbStatus}`,
           "INVALID_STATUS_TRANSITION",
           400
         );
@@ -937,25 +922,21 @@ export async function PATCH(
 
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
     // edit_appointments already passed requirePermission + branch checks above.
-    // Enforce optimistic lock via version check in WHERE clause.
-    const updateQuery = supabaseAdminPatch
+    // Enforce optimistic lock: UPDATE only succeeds if version still matches the row we read.
+    const { data: updatedRows, error: updateError } = await supabaseAdminPatch
       .from("bookings")
       .update(updateData)
-      .eq("id", id);
-
-    if (version !== undefined) {
-      updateQuery.eq("version", currentVersion);
-    }
-
-    const { error: updateError, count } = await updateQuery.select("id").maybeSingle();
+      .eq("id", id)
+      .eq("version", currentVersion)
+      .select("id");
 
     if (updateError) {
       throw updateError;
     }
 
-    if (version !== undefined && count === 0) {
+    if (!updatedRows || updatedRows.length === 0) {
       return errorResponse(
-        "This booking was modified by another user. Please refresh and try again.",
+        "Booking was modified by another user. Please refresh and try again.",
         "CONFLICT",
         409
       );

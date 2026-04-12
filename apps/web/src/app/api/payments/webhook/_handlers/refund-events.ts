@@ -44,9 +44,9 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     return;
   }
 
-  // Find the original payment transaction
+  // Find the original payment transaction (include metadata to detect product orders)
   const { data: txn } = await supabase.from("payment_transactions")
-    .select("id, booking_id")
+    .select("id, booking_id, metadata")
     .eq("reference", reference)
     .eq("status", "success")
     .maybeSingle();
@@ -82,8 +82,8 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
     created_at: new Date().toISOString(),
   });
 
-  // If linked to a booking, update its payment status
   if (txn?.booking_id) {
+    // Booking-linked refund: update booking payment status and create ledger entry
     const { data: bookingRow } = await supabase
       .from("bookings")
       .select("provider_id, tenant_id")
@@ -103,7 +103,6 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       })
       .eq("id", txn.booking_id);
 
-    // Finance ledger entry (provider_id keeps tenant-scoped admin/reporting consistent)
     await supabase.from("finance_transactions").insert({
       booking_id: txn.booking_id,
       provider_id: providerId,
@@ -116,6 +115,69 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       description: `Refund processed (${reference})`,
       created_at: new Date().toISOString(),
     });
+  } else {
+    // Non-booking refund: check if this is a product order refund via metadata
+    const metadata = (txn as any)?.metadata ?? {};
+    const productOrderId = metadata?.product_order_id ?? null;
+
+    if (productOrderId) {
+      const { data: orderRow } = await supabase
+        .from("product_orders")
+        .select("id, provider_id, tenant_id, order_number, payment_status")
+        .eq("id", productOrderId)
+        .maybeSingle();
+
+      if (orderRow) {
+        const providerId = (orderRow as any).provider_id ?? null;
+        const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: (orderRow as any).tenant_id ?? null,
+          provider_id: providerId,
+        });
+
+        await (supabase.from("product_orders") as any)
+          .update({
+            payment_status: "refunded",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", productOrderId);
+
+        await supabase.from("finance_transactions").insert({
+          booking_id: null,
+          provider_id: providerId,
+          tenant_id: refundLedgerTenantId,
+          transaction_type: "refund",
+          amount: refundAmount,
+          fees: 0,
+          commission: 0,
+          net: -refundAmount,
+          description: `Product order refund (${(orderRow as any).order_number ?? productOrderId})`,
+          created_at: new Date().toISOString(),
+        });
+      }
+    } else if (txn) {
+      // Generic non-booking, non-product-order refund: still record ledger for completeness
+      // Try to resolve provider from the original payment_transactions metadata
+      const origMeta = (txn as any)?.metadata ?? {};
+      const origProviderId = origMeta?.provider_id ?? null;
+      if (origProviderId) {
+        const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
+          tenant_id: null,
+          provider_id: origProviderId,
+        });
+        await supabase.from("finance_transactions").insert({
+          booking_id: null,
+          provider_id: origProviderId,
+          tenant_id: refundLedgerTenantId,
+          transaction_type: "refund",
+          amount: refundAmount,
+          fees: 0,
+          commission: 0,
+          net: -refundAmount,
+          description: `Refund processed (${reference})`,
+          created_at: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   console.log(`Refund processed for transaction ${reference} — ${refundAmount}`);

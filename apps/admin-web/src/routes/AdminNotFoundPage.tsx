@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
+import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { NAV_GROUPS } from "@/config/nav";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 
 const QUICK_LINKS: { to: string; label: string }[] = [
   { to: adminSpaTo("/admin/dashboard"), label: "Dashboard" },
@@ -25,8 +27,11 @@ function sidebarSpaPaths(): string[] {
 }
 
 export function AdminNotFoundPage() {
+  const { denied } = useAdminSectionPage(ADMIN_SECTION_OVERVIEW, "Overview access is required.");
   const location = useLocation();
   const registered = sidebarSpaPaths();
+
+  if (denied) return denied;
 
   return (
     <div className="space-y-6">

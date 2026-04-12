@@ -56,7 +56,7 @@ export default function LoyaltyPage() {
   const load = async () => {
     try {
       setIsLoading(true);
-      const res = await fetcher.get<{ data: LoyaltyData }>("/api/me/loyalty", { cache: "no-store" });
+      const res = await fetcher.get<{ data: LoyaltyData }>("/api/me/loyalty", { staleTimeMs: 15_000 });
       setLoyaltyData(res.data);
     } catch (e) {
       toast.error("Failed to load loyalty points");

@@ -16,15 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-
-/**
- * Accept both bare UUIDs and composite plan IDs (e.g. "uuid:monthly", "uuid:free").
- * The plans endpoint returns composite IDs; extract the bare UUID for DB lookups.
- */
-function extractPlanId(rawId: string): string {
-  if (rawId.includes(":")) return rawId.split(":")[0];
-  return rawId;
-}
+import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 const upgradeSubscriptionSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -81,7 +73,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const parsed = upgradeSubscriptionSchema.parse(body);
-    const plan_id = extractPlanId(parsed.plan_id);
+    const plan_id = extractSubscriptionPlanUuid(parsed.plan_id);
     const billing_period = parsed.billing_period;
 
     // Get subscription plan
@@ -111,6 +103,8 @@ export async function POST(request: NextRequest) {
           expires_at: expiresAt.toISOString(),
           billing_period: "yearly",
           auto_renew: false,
+          paystack_sync_pending: false,
+          paystack_sync_note: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: "provider_id" })
         .select()
@@ -274,6 +268,8 @@ export async function POST(request: NextRequest) {
           paystack_authorization_code: authorizationCode,
           paystack_customer_code: customerCode,
           next_payment_date: paystackSubscription?.next_payment_date,
+          paystack_sync_pending: false,
+          paystack_sync_note: null,
           updated_at: new Date().toISOString(),
         }, { onConflict: "provider_id" })
         .select()

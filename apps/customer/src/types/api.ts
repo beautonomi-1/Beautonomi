@@ -285,6 +285,7 @@ export interface CartItem {
     brand?: string | null;
     quantity: number;
     has_variants?: boolean;
+    tax_rate?: string | number | null;
   };
   provider: { id: string; business_name: string; slug: string };
 }

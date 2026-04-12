@@ -22,12 +22,12 @@ export function ProviderOpsReportsPage() {
 
   const funnelQ = useQuery({
     queryKey: adminQueryKeys.providerOps.reportsFunnel(),
-    queryFn: () => adminApi.getJson<{ data: FunnelData }>("/api/admin/provider-ops/reports/funnel", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<FunnelData>("/api/admin/provider-ops/reports/funnel", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
   const dropoffQ = useQuery({
     queryKey: adminQueryKeys.providerOps.reportsDropoff(),
-    queryFn: () => adminApi.getJson<{ data: StepDropoff }>("/api/admin/provider-ops/reports/step-dropoff", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<StepDropoff>("/api/admin/provider-ops/reports/step-dropoff", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
@@ -37,9 +37,13 @@ export function ProviderOpsReportsPage() {
     if (isAdminApiAuthFailure(funnelQ.error)) return <PermissionDenied />;
     return <AdminRetryBlock message={funnelQ.error.message} onRetry={() => void funnelQ.refetch()} />;
   }
+  if (dropoffQ.error) {
+    if (isAdminApiAuthFailure(dropoffQ.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={dropoffQ.error.message} onRetry={() => void dropoffQ.refetch()} />;
+  }
 
-  const funnel = funnelQ.data?.data;
-  const dropoff = dropoffQ.data?.data;
+  const funnel = funnelQ.data;
+  const dropoff = dropoffQ.data;
 
   return (
     <div className="space-y-6">

@@ -3,6 +3,7 @@ import { getSupabaseServer } from '@/lib/supabase/server';
 import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-db';
 import { getTenantRegionConfig } from '@/lib/regions/config';
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 export async function GET(request: NextRequest) {
   try {
@@ -83,7 +84,7 @@ export async function GET(request: NextRequest) {
       return options;
     });
 
-    return NextResponse.json({ data: out });
+    return NextResponse.json({ data: out.map(ensurePlanOptionHasBarePlanId) });
   } catch (error) {
     console.error('Error in subscription-plans GET route:', error);
     return NextResponse.json(

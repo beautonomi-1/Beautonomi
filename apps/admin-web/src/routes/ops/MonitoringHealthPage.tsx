@@ -12,35 +12,37 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 
-interface ErrorEvent {
-  id?: string;
-  severity?: "error" | "warning" | "info" | string;
-  message?: string;
-  source?: string;
-  count?: number;
-  first_seen?: string;
-  last_seen?: string;
-  resolved?: boolean;
+interface EndpointHealth {
+  endpoint?: string;
+  method?: string;
+  average_response_time_ms?: number;
+  success_rate?: number;
+  total_checks?: number;
+  last_check?: string;
+  last_status?: "healthy" | "degraded" | "down" | string;
 }
 
 interface MonitoringData {
-  summary?: {
-    total_errors?: number;
-    critical?: number;
-    warning?: number;
-    info?: number;
-    resolved?: number;
-  };
-  errors?: ErrorEvent[];
-  probes?: Record<string, unknown>[];
-  checked_at?: string;
+  overall_status?: "healthy" | "degraded" | "down" | string;
+  total_endpoints?: number;
+  healthy_endpoints?: number;
+  degraded_endpoints?: number;
+  down_endpoints?: number;
+  average_response_time_ms?: number;
+  endpoints?: EndpointHealth[];
   [key: string]: unknown;
 }
 
-const SEVERITY_STYLE: Record<string, string> = {
-  error: "bg-red-100 text-red-800",
-  warning: "bg-amber-100 text-amber-800",
-  info: "bg-blue-100 text-blue-800",
+const EP_STATUS_STYLE: Record<string, string> = {
+  healthy: "bg-green-100 text-green-800",
+  degraded: "bg-amber-100 text-amber-800",
+  down: "bg-red-100 text-red-800",
+};
+
+const OVERALL_DOT: Record<string, string> = {
+  healthy: "bg-green-500",
+  degraded: "bg-amber-500",
+  down: "bg-red-500",
 };
 
 export function MonitoringHealthPage() {
@@ -76,14 +78,14 @@ export function MonitoringHealthPage() {
   }
 
   const data = q.data;
-  const summary = data?.summary;
-  const errors = Array.isArray(data?.errors) ? data!.errors : [];
+  const overall = data?.overall_status ?? "healthy";
+  const endpoints = Array.isArray(data?.endpoints) ? data!.endpoints : [];
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Monitoring"
-        description="Platform error logs and health probes."
+        description="API endpoint health probes and response times."
         actions={
           <div className="flex items-center gap-2">
             <select
@@ -119,61 +121,77 @@ export function MonitoringHealthPage() {
         }
       />
 
-      {/* Summary */}
-      {summary && (
-        <AdminPanel>
-          <h2 className="mb-4 text-sm font-semibold text-gray-900">Error summary (last {hours}h)</h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-            {[
-              { label: "Total Errors", value: summary.total_errors ?? 0, cls: "text-gray-900" },
-              { label: "Critical", value: summary.critical ?? 0, cls: "text-red-700" },
-              { label: "Warnings", value: summary.warning ?? 0, cls: "text-amber-700" },
-              { label: "Info", value: summary.info ?? 0, cls: "text-blue-700" },
-              { label: "Resolved", value: summary.resolved ?? 0, cls: "text-green-700" },
-            ].map(({ label, value, cls }) => (
-              <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-center">
-                <div className={`text-2xl font-bold ${cls}`}>{value}</div>
-                <div className="mt-1 text-xs text-gray-500">{label}</div>
-              </div>
-            ))}
+      {/* Overall status + summary */}
+      <AdminPanel>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`h-4 w-4 rounded-full ${OVERALL_DOT[overall] ?? "bg-gray-400"} shadow-sm`} />
+            <p className="font-semibold text-gray-900">
+              Platform status: <span className="capitalize">{overall}</span>
+            </p>
           </div>
-        </AdminPanel>
-      )}
+          {data?.average_response_time_ms != null && (
+            <p className="text-sm text-gray-500">Avg response: <span className="font-mono font-medium">{Math.round(data.average_response_time_ms)}ms</span></p>
+          )}
+        </div>
+      </AdminPanel>
 
-      {/* Error log table */}
-      {errors.length > 0 ? (
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Endpoints", value: data?.total_endpoints ?? 0, cls: "text-gray-900" },
+          { label: "Healthy", value: data?.healthy_endpoints ?? 0, cls: "text-green-700" },
+          { label: "Degraded", value: data?.degraded_endpoints ?? 0, cls: "text-amber-700" },
+          { label: "Down", value: data?.down_endpoints ?? 0, cls: "text-red-700" },
+        ].map(({ label, value, cls }) => (
+          <AdminPanel key={label}>
+            <div className="text-center">
+              <div className={`text-2xl font-bold ${cls}`}>{value}</div>
+              <div className="mt-1 text-xs text-gray-500">{label}</div>
+            </div>
+          </AdminPanel>
+        ))}
+      </div>
+
+      {/* Endpoint table */}
+      {endpoints.length > 0 ? (
         <AdminPanel>
-          <h2 className="mb-3 text-sm font-semibold text-gray-900">Error events ({errors.length})</h2>
+          <h2 className="mb-3 text-sm font-semibold text-gray-900">Endpoint health ({endpoints.length})</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-gray-100 bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Severity</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Message</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Source</th>
-                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Count</th>
-                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Last seen</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Endpoint</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Method</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Avg time</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Success</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Checks</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Last check</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {errors.map((e, i) => (
-                  <tr key={e.id ?? i} className="hover:bg-gray-50">
+                {endpoints.map((ep, i) => (
+                  <tr key={`${ep.endpoint}-${ep.method}-${i}`} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 font-mono text-xs text-gray-700">{ep.endpoint ?? "—"}</td>
+                    <td className="px-3 py-2 text-xs font-medium text-gray-600">{ep.method ?? "GET"}</td>
                     <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_STYLE[e.severity ?? "info"] ?? "bg-gray-100 text-gray-600"}`}>
-                        {e.severity ?? "info"}
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${EP_STATUS_STYLE[ep.last_status ?? ""] ?? "bg-gray-100 text-gray-600"}`}>
+                        {ep.last_status ?? "unknown"}
                       </span>
                     </td>
-                    <td className="max-w-xs truncate px-3 py-2 text-xs text-gray-700">{e.message ?? "—"}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-gray-500">{e.source ?? "—"}</td>
-                    <td className="px-3 py-2 text-right font-medium">{e.count ?? 1}</td>
+                    <td className="px-3 py-2 text-right font-mono text-xs">
+                      <span className={`font-medium ${(ep.average_response_time_ms ?? 0) > 3000 ? "text-red-600" : (ep.average_response_time_ms ?? 0) > 1000 ? "text-amber-600" : "text-green-700"}`}>
+                        {ep.average_response_time_ms ?? 0}ms
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right text-xs">
+                      <span className={`font-medium ${(ep.success_rate ?? 0) < 90 ? "text-red-600" : (ep.success_rate ?? 0) < 99 ? "text-amber-600" : "text-green-700"}`}>
+                        {(ep.success_rate ?? 0).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-xs font-medium">{ep.total_checks ?? 0}</td>
                     <td className="px-3 py-2 text-xs text-gray-500">
-                      {e.last_seen ? new Date(e.last_seen).toLocaleString() : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${e.resolved ? "bg-green-100 text-green-800" : "bg-red-50 text-red-700"}`}>
-                        {e.resolved ? "Resolved" : "Open"}
-                      </span>
+                      {ep.last_check ? new Date(ep.last_check).toLocaleString() : "—"}
                     </td>
                   </tr>
                 ))}
@@ -184,7 +202,7 @@ export function MonitoringHealthPage() {
       ) : (
         <AdminPanel>
           <p className="py-6 text-center text-sm text-gray-400">
-            No error events in the last {hours} hours. See raw response for probe data.
+            No endpoint health data available. Probes will auto-populate on next monitoring check.
           </p>
         </AdminPanel>
       )}

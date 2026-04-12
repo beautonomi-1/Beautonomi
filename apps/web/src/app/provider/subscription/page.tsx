@@ -37,6 +37,15 @@ interface ProviderSubscription {
   plan?: any;
 }
 
+function featureLabel(feature: unknown): string {
+  if (typeof feature === "string") return feature;
+  if (feature && typeof feature === "object") {
+    const f = feature as Record<string, unknown>;
+    return String(f.name || f.label || f.title || f.description || JSON.stringify(feature));
+  }
+  return String(feature ?? "");
+}
+
 export default function SubscriptionPage() {
   const [subscription, setSubscription] = useState<ProviderSubscription | null>(null);
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
@@ -341,7 +350,7 @@ export default function SubscriptionPage() {
                       {(Array.isArray(currentPlan.features) ? currentPlan.features : []).map((feature, index) => (
                         <li key={index} className="flex items-center gap-2 text-sm">
                           <Check className="w-4 h-4 text-green-600" />
-                          {feature}
+                          {featureLabel(feature)}
                         </li>
                       ))}
                     </ul>
@@ -414,7 +423,7 @@ export default function SubscriptionPage() {
                         {(Array.isArray(plan.features) ? plan.features : []).map((feature, index) => (
                           <li key={index} className="flex items-center gap-2 text-sm">
                             <Check className="w-4 h-4 text-green-600" />
-                            {feature}
+                            {featureLabel(feature)}
                           </li>
                         ))}
                       </ul>

@@ -84,8 +84,11 @@ export async function GET(request: Request) {
     // Cancellation fees from ledger (single source of truth, not from bookings table)
     const cancellationFeesRetained = agg.cancellation_fees_retained;
 
+    const customerPaidPlatformFees = agg.service_fee_revenue;
+    const totalPlatformTakeNetIncludingCustomerFees =
+      agg.platform_take_net + customerPaidPlatformFees;
     const totalPlatformTakeAfterReferrals =
-      agg.platform_take_net + agg.subscription_net + agg.ads_net + agg.service_fee_revenue + walletTopupRevenue - referralPayouts;
+      agg.platform_take_net + agg.subscription_net + agg.ads_net + customerPaidPlatformFees + walletTopupRevenue - referralPayouts;
 
     const period = startDate && endDate ? "custom" : "month";
     let previousStart: string;
@@ -147,6 +150,8 @@ export async function GET(request: Request) {
         ads_gross: agg.ads_gross,
         ads_gateway_fees: agg.ads_gateway_fees,
         total_platform_take_net: agg.platform_take_net + agg.subscription_net + agg.ads_net,
+        total_platform_take_net_including_customer_fees:
+          totalPlatformTakeNetIncludingCustomerFees + agg.subscription_net + agg.ads_net,
 
         provider_earnings: agg.provider_earnings_net,
         cancellation_fees_retained: cancellationFeesRetained,
@@ -154,7 +159,9 @@ export async function GET(request: Request) {
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,
 
-        service_fee_revenue: agg.service_fee_revenue,
+        service_fee_revenue: customerPaidPlatformFees,
+        platform_fee_revenue: customerPaidPlatformFees,
+        customer_paid_platform_fees: customerPaidPlatformFees,
         ecommerce_platform_fees: agg.ecommerce_platform_fees,
         additional_charge_gross: agg.additional_charge_gross,
         travel_fees: agg.travel_fees,
@@ -165,12 +172,13 @@ export async function GET(request: Request) {
 
         platform_revenue: {
           booking_commission: agg.platform_take_net,
+          customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
-          service_fees: agg.service_fee_revenue,
+          service_fees: customerPaidPlatformFees,
           ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupRevenue,
-          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + agg.service_fee_revenue,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + customerPaidPlatformFees,
         },
 
         provider_revenue: {
@@ -184,12 +192,13 @@ export async function GET(request: Request) {
 
         revenue_streams: {
           booking_commission: agg.platform_take_net,
+          customer_paid_platform_fees: customerPaidPlatformFees,
           subscriptions: agg.subscription_net,
           ads: agg.ads_net,
-          service_fees: agg.service_fee_revenue,
+          service_fees: customerPaidPlatformFees,
           ecommerce_fees_detail: agg.ecommerce_platform_fees,
           wallet_topups: walletTopupRevenue,
-          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + agg.service_fee_revenue,
+          total: agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue + customerPaidPlatformFees,
         },
 
         gmv_growth: gmvGrowth,

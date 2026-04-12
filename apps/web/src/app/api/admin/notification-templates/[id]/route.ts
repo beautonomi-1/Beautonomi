@@ -63,11 +63,23 @@ export async function PATCH(
     const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
     if (body.body !== undefined) updateData.body = body.body;
-    if (body.channels !== undefined) updateData.channels = body.channels;
+    if (body.channels !== undefined) {
+      updateData.channels = Array.isArray(body.channels)
+        ? body.channels
+        : typeof body.channels === "string"
+          ? body.channels.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : body.channels;
+    }
     if (body.email_subject !== undefined) updateData.email_subject = body.email_subject;
     if (body.email_body !== undefined) updateData.email_body = body.email_body;
     if (body.sms_body !== undefined) updateData.sms_body = body.sms_body;
-    if (body.variables !== undefined) updateData.variables = body.variables;
+    if (body.variables !== undefined) {
+      updateData.variables = Array.isArray(body.variables)
+        ? body.variables
+        : typeof body.variables === "string"
+          ? body.variables.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : body.variables;
+    }
     if (body.url !== undefined) updateData.url = body.url;
     if (body.enabled !== undefined) updateData.enabled = body.enabled;
     if (body.description !== undefined) updateData.description = body.description;

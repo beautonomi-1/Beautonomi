@@ -10,11 +10,13 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
  */
 export async function determineProviderPlan(providerId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
+  const nowIso = new Date().toISOString();
   const { data } = await supabase
     .from("provider_subscriptions")
     .select("plan_id")
     .eq("provider_id", providerId)
     .in("status", ["active", "trialing"])
+    .or(`expires_at.gte.${nowIso},expires_at.is.null`)
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();

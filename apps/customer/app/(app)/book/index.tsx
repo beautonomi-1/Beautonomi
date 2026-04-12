@@ -1551,6 +1551,7 @@ export default function BookScreen() {
           location_type: locationType,
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
           address,
+          previous_hold_id: excludeHoldIdForSlots || null,
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),

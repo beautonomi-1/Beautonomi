@@ -138,7 +138,7 @@ export default function CustomRequestsPage() {
       setIsLoading(true);
       setError(null);
       const endpoint = isProvider ? "/api/provider/custom-requests" : "/api/me/custom-requests";
-      const res = await fetcher.get<{ data: CustomRequest[] }>(endpoint, { cache: "no-store" });
+      const res = await fetcher.get<{ data: CustomRequest[] }>(endpoint, { staleTimeMs: 15_000 });
       setItems(res.data || []);
     } catch (err) {
       const errorMessage =
@@ -157,7 +157,7 @@ export default function CustomRequestsPage() {
     if (!isProvider) return;
     try {
       setIsLoadingClients(true);
-      const res = await fetcher.get<{ data: Client[] }>("/api/provider/clients", { cache: "no-store" });
+      const res = await fetcher.get<{ data: Client[] }>("/api/provider/clients", { staleTimeMs: 15_000 });
       setClients(res.data || []);
     } catch (err) {
       console.error("Failed to load clients:", err);
@@ -171,8 +171,8 @@ export default function CustomRequestsPage() {
     if (!isProvider) return;
     try {
       const [staffRes, locRes] = await Promise.all([
-        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/staff", { cache: "no-store" }),
-        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/locations", { cache: "no-store" }),
+        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/staff", { staleTimeMs: 15_000 }),
+        fetcher.get<{ data: Array<{ id: string; name: string }> }>("/api/provider/locations", { staleTimeMs: 15_000 }),
       ]);
       setStaffList(staffRes.data?.map((s) => ({ id: s.id, name: s.name })) ?? []);
       setLocationsList(locRes.data?.map((l) => ({ id: l.id, name: l.name })) ?? []);

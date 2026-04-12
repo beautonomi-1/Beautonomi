@@ -81,7 +81,9 @@ export async function calculatePayRun(
         : periodType === "monthly"
           ? salary
           : salary / 4;
-    // tips_enabled defaults true in DB; only exclude when explicitly false
+    // Tips are a separate pay-run line item sourced from booking_tip_allocations.
+    // They are NOT included in the commission base (STAFF_COMMISSION_REVENUE_TYPES
+    // = ["provider_earnings"] only), so there is no double-count.
     const staffTipsEnabled = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
     const tipsAmount = staffTipsEnabled ? (tipsByStaff.get(staff.id) || 0) : 0;
 

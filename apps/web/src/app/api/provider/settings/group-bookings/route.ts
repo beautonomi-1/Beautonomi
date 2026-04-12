@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -118,7 +119,10 @@ export async function PATCH(request: NextRequest) {
       updateData.group_booking_excluded_services = body.excluded_services;
     }
 
-    const { data, error } = await supabase
+    // Use service role so staff with edit_settings can update (RLS on providers allows
+    // UPDATE only for owner user_id = auth.uid()).
+    const supabaseAdmin = getSupabaseAdmin();
+    const { data, error } = await supabaseAdmin
       .from("providers")
       .update(updateData)
       .eq("id", providerId)

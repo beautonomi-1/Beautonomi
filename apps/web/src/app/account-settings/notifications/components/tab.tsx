@@ -247,7 +247,7 @@ const Page = () => {
       setError(null);
       const response = await fetcher.get<{ data: NotificationPreferences }>(
         "/api/me/notification-preferences",
-        { cache: "no-store" }
+        { staleTimeMs: 30_000 }
       );
       setPreferences(response.data || {});
       setUnsubscribeMarketing(response.data?.unsubscribe_marketing || false);

@@ -223,13 +223,15 @@ export async function GET(
       paid_at: ac.paid_at || null,
     }));
 
+    const bRaw = bookingRaw as Record<string, unknown>;
     const completedPayments = (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>;
-    const amountPaid = completedPayments
+    const paymentsPaid = completedPayments
       .filter((p) => p.status === "completed")
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const walletCredit = Number(bRaw.wallet_amount ?? 0);
+    const giftCardCredit = Number(bRaw.gift_card_amount ?? 0);
+    const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
     const balanceDue = Math.max(0, totalFromRow - amountPaid);
-
-    const bRaw = bookingRaw as Record<string, unknown>;
     const depositRequired = Boolean(bRaw.deposit_required);
     const depositAmount = Number(bRaw.deposit_amount || 0);
     const depositPercentage = Number(bRaw.deposit_percentage || 0);

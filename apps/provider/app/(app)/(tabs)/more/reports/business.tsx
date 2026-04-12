@@ -67,6 +67,7 @@ const PERIOD_FILTERS = [
 type OverviewResponse = {
   period?: string;
   totalRevenue?: number;
+  cancellationFees?: number;
   netRevenue?: number;
   totalBookings?: number;
   completedBookings?: number;
@@ -236,6 +237,27 @@ export default function BusinessReportScreen() {
           />
         </View>
       </View>
+
+      {((overview?.cancellationFees ?? 0) > 0 || (overview?.totalRefunded ?? 0) > 0 || (overview?.netRevenue ?? 0) !== (overview?.totalRevenue ?? 0)) && (
+        <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>
+          {(overview?.cancellationFees ?? 0) > 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Cancellation Fees</Text>
+              <Text style={twStyle("text-sm font-medium text-amber-600")}>{formatCurrency(overview!.cancellationFees!)}</Text>
+            </View>
+          )}
+          {(overview?.totalRefunded ?? 0) > 0 && (
+            <View style={twStyle("flex-row justify-between mb-2")}>
+              <Text style={twStyle("text-sm text-gray-500")}>Refunds</Text>
+              <Text style={twStyle("text-sm font-medium text-red-600")}>−{formatCurrency(overview!.totalRefunded!)}</Text>
+            </View>
+          )}
+          <View style={twStyle("flex-row justify-between pt-2 border-t border-gray-50")}>
+            <Text style={twStyle("text-sm font-semibold text-gray-700")}>Net Revenue</Text>
+            <Text style={twStyle("text-sm font-bold text-indigo-600")}>{formatCurrency(overview?.netRevenue ?? r?.revenue.total ?? 0)}</Text>
+          </View>
+        </View>
+      )}
 
       {r?.revenue.by_service && r.revenue.by_service.length > 0 && (
         <View style={twStyle("mb-4 rounded-xl border border-gray-100 bg-white p-4")}>

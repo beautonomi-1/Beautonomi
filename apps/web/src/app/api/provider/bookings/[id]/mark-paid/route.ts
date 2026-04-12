@@ -72,9 +72,16 @@ export async function POST(
     );
     if (bookingMarketMismatch) return bookingMarketMismatch;
 
+    const bookingStatus = (booking as { status?: string }).status ?? "";
+    if (["cancelled", "refunded", "no_show"].includes(bookingStatus)) {
+      return errorResponse(
+        `Cannot record payment for a booking with status "${bookingStatus}"`,
+        "INVALID_STATUS",
+        400
+      );
+    }
     // Guard: only allow marking paid on confirmed/in_progress/completed bookings
     const validPaymentStatuses = ["confirmed", "in_progress", "completed"];
-    const bookingStatus = (booking as { status?: string }).status;
     if (bookingStatus && !validPaymentStatuses.includes(bookingStatus)) {
       return errorResponse(
         `Cannot record payment for a booking with status "${bookingStatus}"`,

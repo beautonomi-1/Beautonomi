@@ -28,18 +28,18 @@ export function ProviderOpsSettingsPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.settings(),
-    queryFn: () => adminApi.getJson<{ data: OpsSettings }>("/api/admin/provider-ops/settings", { timeoutMs: 30_000 }),
+    queryFn: () => adminApi.getJson<OpsSettings>("/api/admin/provider-ops/settings", { timeoutMs: 30_000 }),
     enabled: allowed,
   });
 
   useEffect(() => {
-    if (q.data?.data) setLocalSettings(q.data.data);
+    if (q.data) setLocalSettings(q.data);
   }, [q.data]);
 
   const save = useMutation({
-    mutationFn: () => adminApi.patchJson<{ data: OpsSettings }>("/api/admin/provider-ops/settings", localSettings!),
+    mutationFn: () => adminApi.patchJson<OpsSettings>("/api/admin/provider-ops/settings", localSettings!),
     onSuccess: (res) => {
-      setLocalSettings(res.data);
+      setLocalSettings(res);
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.settings() });
       adminToast.success("Settings saved");
     },

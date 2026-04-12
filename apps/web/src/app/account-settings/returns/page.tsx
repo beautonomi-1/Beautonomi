@@ -33,7 +33,7 @@ export default function MyReturnsPage() {
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
-    const res = await fetcher.get<{ data: { returns: ReturnRequest[] } }>("/api/me/returns", { cache: "no-store" });
+    const res = await fetcher.get<{ data: { returns: ReturnRequest[] } }>("/api/me/returns", { staleTimeMs: 15_000 });
     if (res?.data?.returns) setReturns(res.data.returns);
     setLoading(false);
   }, []);

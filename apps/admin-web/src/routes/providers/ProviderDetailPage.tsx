@@ -22,6 +22,7 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+import { ProviderBankAccountModal } from "./ProviderBankAccountModal";
 
 type PayoutAccountRow = Record<string, unknown> & {
   id?: string;
@@ -83,6 +84,7 @@ export function ProviderDetailPage() {
   const [deductPoints, setDeductPoints] = useState("");
   const [deductReason, setDeductReason] = useState("");
   const [showDeduct, setShowDeduct] = useState(false);
+  const [showAddBankAccount, setShowAddBankAccount] = useState(false);
 
   const q = useQuery({
     queryKey: adminQueryKeys.providers.detail(id),
@@ -393,10 +395,30 @@ export function ProviderDetailPage() {
       </div>
 
       <AdminPanel>
-        <h2 className="text-lg font-semibold text-gray-900">Payout accounts</h2>
-        <p className="mt-1 text-sm text-gray-600">
-          Bank / transfer recipients on file for payouts (masked account details).
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Payout accounts</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Bank / transfer recipients on file for payouts (masked account details).
+            </p>
+          </div>
+          {providerCanonicalId && (
+            <button
+              type="button"
+              className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50"
+              onClick={() => setShowAddBankAccount(true)}
+            >
+              Add bank account
+            </button>
+          )}
+        </div>
+        {providerCanonicalId && (
+          <ProviderBankAccountModal
+            open={showAddBankAccount}
+            onClose={() => setShowAddBankAccount(false)}
+            providerId={providerCanonicalId}
+          />
+        )}
         {payoutAccountsQ.isLoading ? (
           <p className="mt-4 text-sm text-gray-500">Loading payout accounts…</p>
         ) : (payoutAccountsQ.data ?? []).length === 0 ? (

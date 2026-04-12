@@ -22,6 +22,7 @@ interface Subscription {
   id: string;
   status: string;
   expires_at: string | null;
+  cancelled_at?: string | null;
   plan?: Plan | null;
 }
 
@@ -58,6 +59,8 @@ export function SubscriptionContent() {
       : null;
   const status = sub?.status ?? "none";
   const expiresAt = sub?.expires_at ? new Date(sub.expires_at) : null;
+  const isCancelled = Boolean(sub?.cancelled_at);
+  const displayStatus = isCancelled ? "cancelled" : status;
 
   return (
     <ScrollView
@@ -95,11 +98,13 @@ export function SubscriptionContent() {
                 paddingHorizontal: 10,
                 paddingVertical: 4,
                 backgroundColor:
-                  status === "active"
-                    ? "#dcfce7"
-                    : status === "expired"
-                      ? "#fee2e2"
-                      : Colors.gray[100],
+                  isCancelled
+                    ? "#fef3c7"
+                    : status === "active"
+                      ? "#dcfce7"
+                      : status === "expired"
+                        ? "#fee2e2"
+                        : Colors.gray[100],
               }}
             >
               <Text
@@ -107,15 +112,16 @@ export function SubscriptionContent() {
                   fontSize: 12,
                   fontWeight: "500",
                   textTransform: "capitalize",
-                  color:
-                    status === "active"
+                  color: isCancelled
+                    ? "#92400e"
+                    : status === "active"
                       ? "#166534"
                       : status === "expired"
                         ? "#b91c1c"
                         : Colors.gray[700],
                 }}
               >
-                {status}
+                {displayStatus}
               </Text>
             </View>
           </View>
@@ -129,7 +135,11 @@ export function SubscriptionContent() {
           )}
           {expiresAt && (
             <Text style={{ marginTop: 4, fontSize: 12, color: Colors.gray[500] }}>
-              {status === "active" ? "Renews " : "Expired "}
+              {isCancelled
+                ? "Cancelled — access until "
+                : status === "active"
+                  ? "Active — renews "
+                  : "Expired "}
               {expiresAt.toLocaleDateString(undefined, {
                 month: "short",
                 day: "numeric",

@@ -46,6 +46,23 @@ interface Subscription {
   };
 }
 
+function featureLabel(f: unknown): string {
+  if (typeof f === "string") return f;
+  if (f && typeof f === "object") {
+    const obj = f as Record<string, unknown>;
+    for (const key of ["name", "label", "title", "description"]) {
+      if (typeof obj[key] === "string") return obj[key] as string;
+    }
+    if ("enabled" in obj) {
+      const keys = Object.keys(obj).filter((k) => k !== "enabled");
+      if (keys.length > 0 && typeof obj[keys[0]] === "string") return obj[keys[0]] as string;
+      return keys[0] ?? (obj.enabled ? "Enabled" : "Disabled");
+    }
+    return JSON.stringify(f);
+  }
+  return String(f ?? "");
+}
+
 export default function SubscriptionScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const appState = useRef(AppState.currentState);
@@ -201,22 +218,35 @@ export default function SubscriptionScreen() {
               <Text style={twStyle("text-lg font-semibold text-gray-900")}>
                 {(subscription.plan as Subscription["plan"])?.name ?? "Plan"}
               </Text>
-              <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
-                Status: {subscription.status}
-              </Text>
               {subscription.cancelled_at ? (
-                <Text style={twStyle("mt-0.5 text-xs text-red-500")}>
-                  Cancels: {subscription.expires_at ? formatDate(subscription.expires_at) : "End of billing period"}
+                <Text style={twStyle("mt-0.5 text-sm text-gray-700")}>
+                  Cancelled — access until{" "}
+                  {subscription.expires_at ? formatDate(subscription.expires_at) : "end of billing period"}
                 </Text>
-              ) : subscription.expires_at ? (
-                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
-                  Renews: {formatDate(subscription.expires_at)}
-                </Text>
-              ) : null}
+              ) : (
+                <>
+                  <Text style={twStyle("mt-0.5 text-sm text-gray-600")}>
+                    Status: {subscription.status}
+                  </Text>
+                  {subscription.expires_at ? (
+                    <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                      Active — renews {formatDate(subscription.expires_at)}
+                    </Text>
+                  ) : null}
+                </>
+              )}
             </View>
-            <View style={twStyle("rounded-full bg-indigo-100 px-3 py-1")}>
-              <Text style={twStyle("text-sm font-medium text-indigo-700")}>
-                {subscription.status}
+            <View
+              style={twStyle(
+                `rounded-full px-3 py-1 ${subscription.cancelled_at ? "bg-amber-100" : "bg-indigo-100"}`
+              )}
+            >
+              <Text
+                style={twStyle(
+                  `text-sm font-medium ${subscription.cancelled_at ? "text-amber-800" : "text-indigo-700"}`
+                )}
+              >
+                {subscription.cancelled_at ? "Cancelled" : subscription.status}
               </Text>
             </View>
           </View>
@@ -233,11 +263,11 @@ export default function SubscriptionScreen() {
           {subscription.cancelled_at && (
             <View style={twStyle("mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
               <Text style={twStyle("text-xs text-amber-700 text-center")}>
-                Your subscription has been cancelled and will end at the end of the current billing period.
+                You still have access until the date above; no further renewal charges apply.
               </Text>
             </View>
           )}
-          {subscription.status === "active" && subscription.expires_at && (
+          {subscription.status === "active" && !subscription.cancelled_at && subscription.expires_at && (
             <TouchableOpacity
               style={twStyle("mt-2 rounded-xl bg-indigo-600 py-2")}
               onPress={handleRenew}
@@ -281,7 +311,7 @@ export default function SubscriptionScreen() {
                       : `${formatCurrency(plan.amount, plan.currency)}/${plan.billing_period === "yearly" ? "year" : "month"}`}
                   </Text>
                 </View>
-                {(subscription?.plan as Subscription["plan"])?.id !== plan.id && (
+                {(subscription?.plan as Subscription["plan"])?.id !== plan.plan_id && (
                   <ActionButton
                     label={plan.is_free || plan.amount === 0 ? "Activate" : "Upgrade"}
                     variant="secondary"
@@ -294,7 +324,7 @@ export default function SubscriptionScreen() {
                 <View style={twStyle("mt-2 border-t border-gray-50 pt-2")}>
                   {plan.features.slice(0, 3).map((f, i) => (
                     <Text key={i} style={twStyle("text-xs text-gray-600")}>
-                      • {String(f)}
+                      • {featureLabel(f)}
                     </Text>
                   ))}
                 </View>

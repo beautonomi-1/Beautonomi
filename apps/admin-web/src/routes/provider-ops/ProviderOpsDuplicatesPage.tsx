@@ -25,11 +25,11 @@ export function ProviderOpsDuplicatesPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.duplicates(),
-    queryFn: () => adminApi.getJson<{ data: PossibleDuplicate[] }>("/api/admin/provider-ops/duplicates", { timeoutMs: 60_000 }),
+    queryFn: () => adminApi.getJson<PossibleDuplicate[]>("/api/admin/provider-ops/duplicates", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
-  const duplicates = q.data?.data ?? [];
+  const duplicates = (Array.isArray(q.data) ? q.data : []) as PossibleDuplicate[];
 
   const filtered = useMemo(() => {
     if (!searchQuery.trim()) return duplicates;

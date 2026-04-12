@@ -46,6 +46,24 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.trim();
     const assignedTo = searchParams.get("assigned_to");
     const country = searchParams.get("country");
+    const categoryId = searchParams.get("category_id");
+
+    // Pre-resolve lead IDs for category filter (join through provider_lead_categories)
+    let categoryLeadIds: string[] | null = null;
+    if (categoryId) {
+      const { data: catRows } = await supabase
+        .from("provider_lead_categories")
+        .select("lead_id")
+        .eq("global_category_id", categoryId);
+      categoryLeadIds = (catRows ?? []).map((r: { lead_id: string }) => r.lead_id);
+      if (categoryLeadIds.length === 0) {
+        return successResponse({
+          data: [],
+          meta: { page, limit, total: 0, has_more: false },
+          stage_counts: { all: 0 },
+        });
+      }
+    }
 
     let query = supabase
       .from("provider_leads")
@@ -74,6 +92,9 @@ export async function GET(request: NextRequest) {
     if (country) {
       query = query.eq("country", country);
     }
+    if (categoryId && categoryLeadIds) {
+      query = query.in("id", categoryLeadIds);
+    }
     if (search) {
       const safe = search.replace(/[%_]/g, "");
       query = query.or(
@@ -86,34 +107,38 @@ export async function GET(request: NextRequest) {
 
     const total = count || 0;
 
-    // Also fetch stage counts for the current filters (excluding stage filter)
-    let countsQuery = supabase
-      .from("provider_leads")
-      .select("commercial_stage")
-      .eq("tenant_id", tenantId);
+    // Fetch accurate stage counts using individual head:true count queries (avoids PostgREST row limit)
+    const buildBaseCountQuery = () => {
+      let q = supabase
+        .from("provider_leads")
+        .select("*", { count: "exact", head: true })
+        .eq("tenant_id", tenantId);
+      if (source && source !== "all") q = q.eq("source", source);
+      if (assignedTo) q = q.eq("assigned_to", assignedTo);
+      if (country) q = q.eq("country", country);
+      if (categoryId) {
+        q = q.in("id", categoryLeadIds!);
+      }
+      if (search) {
+        const safe = search.replace(/[%_]/g, "");
+        q = q.or(
+          `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
+        );
+      }
+      return q;
+    };
 
-    if (source && source !== "all") {
-      countsQuery = countsQuery.eq("source", source);
-    }
-    if (assignedTo) {
-      countsQuery = countsQuery.eq("assigned_to", assignedTo);
-    }
-    if (country) {
-      countsQuery = countsQuery.eq("country", country);
-    }
-    if (search) {
-      const safe = search.replace(/[%_]/g, "");
-      countsQuery = countsQuery.or(
-        `business_name.ilike.%${safe}%,contact_person_name.ilike.%${safe}%,email.ilike.%${safe}%,phone_e164.ilike.%${safe}%`
-      );
-    }
-
-    const { data: allStages } = await countsQuery;
+    const countResults = await Promise.all(
+      VALID_STAGES.map(async (s) => {
+        const { count: c } = await buildBaseCountQuery().eq("commercial_stage", s);
+        return [s, c ?? 0] as const;
+      })
+    );
     const stageCounts: Record<string, number> = {};
     let allCount = 0;
-    for (const row of allStages || []) {
-      stageCounts[row.commercial_stage] = (stageCounts[row.commercial_stage] || 0) + 1;
-      allCount++;
+    for (const [s, c] of countResults) {
+      stageCounts[s] = c;
+      allCount += c;
     }
     stageCounts.all = allCount;
 
@@ -151,7 +176,7 @@ export async function POST(request: NextRequest) {
       return errorResponse(`Invalid stage: ${stage}`, "VALIDATION_ERROR", 400);
     }
 
-    const leadData = {
+    const leadData: Record<string, unknown> = {
       tenant_id: tenantId,
       lead_name: body.lead_name || null,
       business_name: body.business_name || null,
@@ -176,6 +201,10 @@ export async function POST(request: NextRequest) {
       tags: body.tags || [],
       created_by: user.id,
     };
+
+    if (body.onboarding_data && typeof body.onboarding_data === "object") {
+      leadData.onboarding_data = body.onboarding_data;
+    }
 
     const { data: lead, error } = await supabase
       .from("provider_leads")

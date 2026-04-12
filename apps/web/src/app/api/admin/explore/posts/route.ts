@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     if (dateTo) query = query.lte("published_at", dateTo + "T23:59:59.999Z");
 
     if (search) {
-      const safeSearch = search.replace(/[%*]/g, "").trim();
+      const safeSearch = search.replace(/[%*\\(),."]/g, "").trim();
       if (safeSearch) {
         const { data: providerRows } = await supabaseAdmin
           .from("providers")
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
         const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
         if (providerIds.length > 0) {
           query = query.or(
-            `caption.ilike.*${safeSearch}*,provider_id.in.(${providerIds.join(",")})`
+            `caption.ilike.%${safeSearch}%,provider_id.in.(${providerIds.join(",")})`
           );
         } else {
           query = query.ilike("caption", `%${safeSearch}%`);
@@ -120,7 +120,10 @@ export async function GET(request: NextRequest) {
 
     const { data, error, count } = await query;
 
-    if (error) return handleApiError(error, "Failed to fetch posts");
+    if (error) {
+      console.error("explore_posts query error:", { message: error.message, details: error.details, hint: error.hint, code: error.code });
+      return handleApiError(error, `Failed to fetch posts: ${error.message}`);
+    }
 
     return successResponse({
       posts: data || [],
@@ -129,6 +132,7 @@ export async function GET(request: NextRequest) {
       offset,
     });
   } catch (error) {
+    console.error("explore_posts catch error:", error);
     return handleApiError(error, "Failed to fetch posts");
   }
 }

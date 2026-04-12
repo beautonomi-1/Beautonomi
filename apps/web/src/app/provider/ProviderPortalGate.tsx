@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 
@@ -35,12 +35,15 @@ function writeGateCache() {
 export function ProviderPortalGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  // Start ready if we already have a valid cached check for this session
-  const [ready, setReady] = useState(() => readGateCache());
 
-  useEffect(() => {
-    const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/embed"];
-    const isAllowedPath = allowedPaths.some((p) => pathname === p || pathname?.startsWith(p + "/"));
+  const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/embed"];
+  const isAllowedPath = allowedPaths.some((p) => pathname === p || pathname?.startsWith(p + "/"));
+
+  // SSR and the first client render must match. Do not read sessionStorage in useState — on the
+  // server it is always "no cache" while the client can have a warm cache, which caused React #418.
+  const [ready, setReady] = useState(isAllowedPath);
+
+  useLayoutEffect(() => {
     if (isAllowedPath) {
       setReady(true);
       return;

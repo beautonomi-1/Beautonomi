@@ -194,6 +194,8 @@ path,class,note
 /api/admin/provider-ops/duplicates,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/leads/[id]/activities,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/leads/[id]/assign,T,"uses resolveAdminApiTenantId"
+/api/admin/provider-ops/leads/[id]/convert,T,"uses resolveAdminApiTenantId"
+/api/admin/provider-ops/leads/[id]/invite,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/leads/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/leads/[id]/stage,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/leads/export,T,"uses resolveAdminApiTenantId"

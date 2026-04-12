@@ -49,16 +49,17 @@ export const ALL_ADMIN_ROLES: UserRole[] = [
 
 /** Section -> roles that can access that section. Superadmin is implied everywhere. */
 export const ADMIN_SECTION_ROLES: Record<AdminSection, UserRole[]> = {
-  [ADMIN_SECTION_OVERVIEW]: ["superadmin", "admin_support"],
+  /** Dashboard / overview: any role that can use the admin shell should see it. */
+  [ADMIN_SECTION_OVERVIEW]: [...ALL_ADMIN_ROLES],
   [ADMIN_SECTION_SUPPORT]: ["superadmin", "support_agent", "admin_support"],
-  [ADMIN_SECTION_PROVIDERS_OPERATIONS]: ["superadmin", "admin_support"],
+  [ADMIN_SECTION_PROVIDERS_OPERATIONS]: ["superadmin", "admin_support", "admin_operations"],
   [ADMIN_SECTION_FINANCE]: ["superadmin", "admin_finance"],
   [ADMIN_SECTION_USERS_TRUST]: ["superadmin", "admin_trust"],
   [ADMIN_SECTION_CONTENT_CATALOG]: ["superadmin", "admin_content"],
-  [ADMIN_SECTION_ECOMMERCE]: ["superadmin", "admin_ecommerce"],
+  [ADMIN_SECTION_ECOMMERCE]: ["superadmin", "admin_ecommerce", "admin_operations"],
   [ADMIN_SECTION_MARKETING_COMMS]: ["superadmin", "admin_marketing"],
   [ADMIN_SECTION_INTEGRATIONS_DEV]: ["superadmin", "admin_integrations"],
-  [ADMIN_SECTION_OPERATIONS]: ["superadmin", "admin_operations"],
+  [ADMIN_SECTION_OPERATIONS]: ["superadmin", "admin_operations", "admin_support"],
   [ADMIN_SECTION_PLATFORM_CONFIG]: ["superadmin", "admin_platform_config"],
   [ADMIN_SECTION_PROVIDER_OPS]: ["superadmin", "admin_operations", "admin_support"],
 };

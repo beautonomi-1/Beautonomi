@@ -599,7 +599,7 @@ export default function StepPayment({
           error.code === "HOLD_INVALID" ||
           error.code === "HOLD_EXPIRED";
         if (isHoldExpired) {
-          updateBookingState({ holdId: null });
+          updateBookingState({ holdId: null, selectedTimeSlot: null });
           toast.error(
             "Your hold expired. Please select your time slot again.",
             { duration: 6000 }
@@ -614,7 +614,7 @@ export default function StepPayment({
           error.code === "AVAILABILITY_OVERLAP" ||
           /overlap|unavailable|already booked|conflict/i.test(error.message ?? "");
         if (isAvailabilityConflict) {
-          updateBookingState({ holdId: null });
+          updateBookingState({ holdId: null, selectedTimeSlot: null });
           toast.error(
             "That time slot was just taken. Please choose another time.",
             { duration: 6000 }
@@ -987,7 +987,7 @@ export default function StepPayment({
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Service Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
+              <span>Platform Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}

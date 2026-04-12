@@ -17,6 +17,7 @@
     "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/admin-api-client": "workspace:*",
     "@beautonomi/types": "workspace:*",
+    "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@sentry/react": "^10.39.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.47.10",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@types/mapbox__mapbox-gl-draw": "^1.4.9",
     "@types/react": "^19.0.6",
     "@types/react-dom": "^19.0.3",
     "@vitejs/plugin-react": "^4.2.1",

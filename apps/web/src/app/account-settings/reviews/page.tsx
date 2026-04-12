@@ -63,7 +63,7 @@ export default function ReviewsPage() {
   const loadReviews = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: { reviews: Review[] } }>("/api/me/reviews", { cache: "no-store" });
+      const response = await fetcher.get<{ data: { reviews: Review[] } }>("/api/me/reviews", { staleTimeMs: 30_000 });
       setReviews(response.data.reviews);
     } catch (error) {
       console.error("Failed to load reviews:", error);

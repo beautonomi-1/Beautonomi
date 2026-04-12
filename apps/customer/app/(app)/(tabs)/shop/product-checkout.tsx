@@ -245,7 +245,13 @@ export default function ProductCheckoutScreen() {
   }, [provider_id, user, fetchCart, providerCartForTracking]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
+  const providerItems = providerCart?.items ?? [];
   const subtotal = providerCart?.subtotal ?? 0;
+  const taxAmount = providerItems.reduce((s, i) => {
+    const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
+    const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
+    return s + Math.round((linePrice * rate) / 100 * 100) / 100;
+  }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -258,7 +264,7 @@ export default function ProductCheckoutScreen() {
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + deliveryFee + platformFee;
+  const total = subtotal + taxAmount + deliveryFee + platformFee;
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
@@ -916,7 +922,7 @@ export default function ProductCheckoutScreen() {
             <View style={{ marginTop: 12, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
               <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
-                A platform service fee of {fmt(platformFee)} applies to online payments
+                A platform fee of {fmt(platformFee)} applies to online payments
               </Text>
             </View>
           )}
@@ -970,6 +976,12 @@ export default function ProductCheckoutScreen() {
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
             </View>
+            {taxAmount > 0 && (
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
+                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(taxAmount)}</Text>
+              </View>
+            )}
             {fulfillment === "delivery" && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
@@ -980,7 +992,7 @@ export default function ProductCheckoutScreen() {
             )}
             {platformFee > 0 && platformFeeConfig.show && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Service Fee</Text>
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform Fee</Text>
                 <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
               </View>
             )}

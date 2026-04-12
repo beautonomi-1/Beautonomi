@@ -15,14 +15,7 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
-
-/**
- * Accept both bare UUIDs and composite plan IDs (e.g. "uuid:monthly", "uuid:free").
- */
-function extractPlanId(rawId: string): string {
-  if (rawId.includes(":")) return rawId.split(":")[0];
-  return rawId;
-}
+import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 const initializePaymentSchema = z.object({
   plan_id: z.string().min(1, 'Plan ID is required'),
@@ -68,7 +61,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const parsed = initializePaymentSchema.parse(body);
-    const plan_id = extractPlanId(parsed.plan_id);
+    const plan_id = extractSubscriptionPlanUuid(parsed.plan_id);
     const billing_period = parsed.billing_period;
     const in_app = parsed.in_app;
 

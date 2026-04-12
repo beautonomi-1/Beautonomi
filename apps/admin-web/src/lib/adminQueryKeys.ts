@@ -93,6 +93,10 @@ export const adminQueryKeys = {
 
   serviceZones: (q: string) => [...adminQueryKeys.root, "service-zones", q] as const,
 
+  serviceZoneDetail: (id: string) => [...adminQueryKeys.root, "service-zones", "detail", id] as const,
+
+  serviceZoneRollout: (id: string) => [...adminQueryKeys.root, "service-zones", "rollout", id] as const,
+
   explorePosts: (q: string) => [...adminQueryKeys.root, "explore", "posts", q] as const,
   /** Invalidate every Explore list query regardless of URL filter string (TanStack prefix match). */
   explorePostsAll: () => [...adminQueryKeys.root, "explore", "posts"] as const,
@@ -113,6 +117,7 @@ export const adminQueryKeys = {
     transactions: (filters: { range: string; page: number; type: string; limit: number }) =>
       [...adminQueryKeys.finance.all(), "transactions", filters] as const,
     periodLocks: () => [...adminQueryKeys.finance.all(), "period-locks"] as const,
+    walletReconciliation: () => [...adminQueryKeys.finance.all(), "wallet-reconciliation"] as const,
   },
 
   payouts: {
@@ -203,6 +208,16 @@ export const adminQueryKeys = {
   globalCategories: () => [...adminQueryKeys.root, "catalog", "global-categories"] as const,
 
   contentResources: () => [...adminQueryKeys.root, "content", "resources"] as const,
+
+  contentFaqs: () => [...adminQueryKeys.root, "content", "faqs"] as const,
+
+  contentAboutUs: () => [...adminQueryKeys.root, "content", "about-us"] as const,
+
+  contentPages: () => [...adminQueryKeys.root, "content", "pages"] as const,
+
+  contentFeaturedCities: () => [...adminQueryKeys.root, "content", "featured-cities"] as const,
+
+  contentAppLinks: () => [...adminQueryKeys.root, "content", "app-links"] as const,
 
   verificationDetail: (id: string) => [...adminQueryKeys.root, "verifications", "detail", id] as const,
 

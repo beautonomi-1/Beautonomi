@@ -43,6 +43,8 @@ export async function GET(request: NextRequest) {
     const methodMap = new Map<string, { amount: number; count: number }>();
 
     let cancellationFeesTotal = 0;
+    let tipsCollected = 0;
+    const recentRefundList: { date: string; amount: number; reason?: string; booking_ref?: string }[] = [];
 
     all.forEach((t: any) => {
       const val = Number(t.net ?? t.amount ?? 0);
@@ -56,9 +58,18 @@ export async function GET(request: NextRequest) {
         }
         methodMap.set(method, existing);
       } else if (t.transaction_type === "refund") {
-        totalRefunded += Math.abs(Number(t.amount ?? 0));
+        const refundAmt = Math.abs(Number(t.amount ?? 0));
+        totalRefunded += refundAmt;
+        recentRefundList.push({
+          date: t.created_at,
+          amount: refundAmt,
+          reason: (t.metadata as any)?.reason || undefined,
+          booking_ref: t.booking_id || undefined,
+        });
       } else if (t.transaction_type === "cancellation_fee") {
         cancellationFeesTotal += Math.abs(val);
+      } else if (t.transaction_type === "tip") {
+        tipsCollected += Math.abs(val);
       }
     });
 
@@ -80,12 +91,15 @@ export async function GET(request: NextRequest) {
       total_collected: totalCollected,
       total_refunded: totalRefunded,
       cancellation_fees: cancellationFeesTotal,
+      tips_collected: tipsCollected,
       net_revenue: totalCollected + cancellationFeesTotal - totalRefunded,
       by_method: Array.from(methodMap.entries())
         .map(([method, data]) => ({ method, ...data }))
         .sort((a, b) => b.amount - a.amount),
       recent_payouts: recentPayouts,
-      recent_refunds: [],
+      recent_refunds: recentRefundList
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 10),
     });
   } catch (error) {
     console.error("Error in payments report:", error);

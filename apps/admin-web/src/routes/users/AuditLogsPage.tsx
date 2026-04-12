@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ADMIN_SECTION_USERS_TRUST } from "@beautonomi/admin-access";
@@ -26,8 +26,23 @@ type LogRow = Record<string, unknown> & {
   id?: string;
   action?: string;
   entity_type?: string;
+  entity_id?: string;
   created_at?: string;
-  actor?: { full_name?: string; email?: string } | null;
+  module?: string;
+  risk_level?: string;
+  status?: string;
+  reason?: string;
+  ip_address?: string;
+  user_agent?: string;
+  session_id?: string;
+  request_id?: string;
+  before_json?: Record<string, unknown> | null;
+  after_json?: Record<string, unknown> | null;
+  changed_fields?: string[] | null;
+  metadata_json?: Record<string, unknown> | null;
+  actor_role?: string;
+  superadmin_bypass_used?: boolean;
+  actor?: { id?: string; full_name?: string; email?: string } | null;
 };
 
 type LogsEnvelope = {
@@ -35,20 +50,99 @@ type LogsEnvelope = {
   meta?: { page: number; limit: number; total: number; has_more: boolean };
 };
 
+const RISK_LEVELS = ["low", "medium", "high", "critical"] as const;
+const STATUSES = ["attempted", "succeeded", "failed"] as const;
+const PAGE_SIZES = [20, 30, 50, 100] as const;
+
+function riskBadgeClass(risk: string): string {
+  switch (risk) {
+    case "critical": return "bg-red-100 text-red-800";
+    case "high": return "bg-orange-100 text-orange-800";
+    case "medium": return "bg-amber-100 text-amber-800";
+    case "low": return "bg-green-100 text-green-800";
+    default: return "bg-gray-100 text-gray-700";
+  }
+}
+
+function statusBadgeClass(status: string): string {
+  switch (status) {
+    case "succeeded": return "bg-green-100 text-green-800";
+    case "failed": return "bg-red-100 text-red-800";
+    case "attempted": return "bg-amber-100 text-amber-800";
+    default: return "bg-gray-100 text-gray-700";
+  }
+}
+
+function formatDateTime(iso: string | undefined): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return String(iso).slice(0, 19);
+  }
+}
+
+function JsonDiff({ before, after, fields }: { before?: Record<string, unknown> | null; after?: Record<string, unknown> | null; fields?: string[] | null }) {
+  const changedKeys = fields ?? (before && after ? Object.keys(after).filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k])) : []);
+  if (!before && !after) return <p className="text-sm text-gray-400 italic">No state data recorded.</p>;
+  if (changedKeys.length === 0 && before && after) return <p className="text-sm text-gray-400 italic">No field-level changes detected.</p>;
+  return (
+    <div className="space-y-1 text-xs font-mono">
+      {changedKeys.map((field) => (
+        <div key={field} className="flex flex-wrap gap-2">
+          <span className="font-semibold text-gray-700">{field}:</span>
+          {before?.[field] !== undefined && (
+            <span className="rounded bg-red-50 px-1 text-red-700 line-through">{JSON.stringify(before[field])}</span>
+          )}
+          {after?.[field] !== undefined && (
+            <span className="rounded bg-green-50 px-1 text-green-700">{JSON.stringify(after[field])}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function AuditLogsPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_USERS_TRUST, "Users & trust access is required.");
   const [sp, setSp] = useSearchParams();
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
+  const limit = parseInt(sp.get("limit") || "30", 10) || 30;
   const search = sp.get("search") || "";
-  const qk = useMemo(() => `${page}|${search}`, [page, search]);
+  const action = sp.get("action") || "";
+  const entityType = sp.get("entity_type") || "";
+  const riskLevel = sp.get("risk_level") || "";
+  const status = sp.get("status") || "";
+  const startDate = sp.get("start_date") || "";
+  const endDate = sp.get("end_date") || "";
+
+  const qk = useMemo(
+    () => `${page}|${limit}|${search}|${action}|${entityType}|${riskLevel}|${status}|${startDate}|${endDate}`,
+    [page, limit, search, action, entityType, riskLevel, status, startDate, endDate]
+  );
 
   const q = useQuery({
     queryKey: adminQueryKeys.auditLogs(qk),
     queryFn: async () => {
       const p = new URLSearchParams();
       p.set("page", String(page));
-      p.set("limit", "30");
+      p.set("limit", String(limit));
       if (search) p.set("search", search);
+      if (action) p.set("action", action);
+      if (entityType) p.set("entity_type", entityType);
+      if (riskLevel) p.set("risk_level", riskLevel);
+      if (status) p.set("status", status);
+      if (startDate) p.set("start_date", startDate);
+      if (endDate) p.set("end_date", endDate);
       return adminApi.getRawJson<LogsEnvelope>(`/api/admin/audit-logs?${p}`, { timeoutMs: 60_000 });
     },
     enabled: allowed,
@@ -56,15 +150,33 @@ export function AuditLogsPage() {
 
   const rows = q.data?.data ?? [];
   const meta = q.data?.meta;
+  const totalPages = meta ? Math.max(1, Math.ceil(meta.total / meta.limit)) : 1;
 
-  function updateParams(next: Record<string, string | null>) {
-    const n = new URLSearchParams(sp);
-    for (const [k, v] of Object.entries(next)) {
-      if (v == null || v === "") n.delete(k);
-      else n.set(k, v);
-    }
-    setSp(n, { replace: true });
-  }
+  const updateParams = useCallback(
+    (next: Record<string, string | null>) => {
+      const n = new URLSearchParams(sp);
+      for (const [k, v] of Object.entries(next)) {
+        if (v == null || v === "") n.delete(k);
+        else n.set(k, v);
+      }
+      setSp(n, { replace: true });
+    },
+    [sp, setSp]
+  );
+
+  const hasFilters = !!(action || entityType || riskLevel || status || startDate || endDate || search);
+
+  const riskCounts = useMemo(() => {
+    const counts: Record<string, number> = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (const r of rows) if (r.risk_level && counts[r.risk_level] !== undefined) counts[r.risk_level]++;
+    return counts;
+  }, [rows]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { succeeded: 0, failed: 0, attempted: 0 };
+    for (const r of rows) if (r.status && counts[r.status] !== undefined) counts[r.status]++;
+    return counts;
+  }, [rows]);
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -85,6 +197,24 @@ export function AuditLogsPage() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title="Audit logs" />
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        {RISK_LEVELS.map((rl) => (
+          <div key={rl} className="rounded-xl border border-gray-100 bg-white p-3 text-center shadow-sm">
+            <div className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${riskBadgeClass(rl)}`}>{rl}</div>
+            <div className="mt-1 text-xl font-bold text-gray-900">{riskCounts[rl]}</div>
+          </div>
+        ))}
+        {STATUSES.map((st) => (
+          <div key={st} className="rounded-xl border border-gray-100 bg-white p-3 text-center shadow-sm">
+            <div className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(st)}`}>{st}</div>
+            <div className="mt-1 text-xl font-bold text-gray-900">{statusCounts[st]}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Toolbar: Export */}
       <div className="flex flex-wrap gap-3">
         <button
           type="button"
@@ -98,20 +228,86 @@ export function AuditLogsPage() {
           Export CSV
         </button>
       </div>
+
+      {/* Filter bar */}
       <AdminPanel>
-        <input
-          type="search"
-          placeholder="Search action / entity / role"
-          defaultValue={search}
-          onBlur={(e) => updateParams({ search: e.target.value.trim() || null, page: "1" })}
-          className="w-full max-w-md rounded-lg border border-gray-300 px-3 py-2 text-sm"
-        />
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <input
+            type="search"
+            placeholder="Search action / entity / role"
+            defaultValue={search}
+            onBlur={(e) => updateParams({ search: e.target.value.trim() || null, page: "1" })}
+            onKeyDown={(e) => { if (e.key === "Enter") updateParams({ search: (e.target as HTMLInputElement).value.trim() || null, page: "1" }); }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Action (e.g. create, update)"
+            defaultValue={action}
+            onBlur={(e) => updateParams({ action: e.target.value.trim() || null, page: "1" })}
+            onKeyDown={(e) => { if (e.key === "Enter") updateParams({ action: (e.target as HTMLInputElement).value.trim() || null, page: "1" }); }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <input
+            type="text"
+            placeholder="Entity type"
+            defaultValue={entityType}
+            onBlur={(e) => updateParams({ entity_type: e.target.value.trim() || null, page: "1" })}
+            onKeyDown={(e) => { if (e.key === "Enter") updateParams({ entity_type: (e.target as HTMLInputElement).value.trim() || null, page: "1" }); }}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          />
+          <select
+            value={riskLevel}
+            onChange={(e) => updateParams({ risk_level: e.target.value || null, page: "1" })}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">All risk levels</option>
+            {RISK_LEVELS.map((rl) => <option key={rl} value={rl}>{rl.charAt(0).toUpperCase() + rl.slice(1)}</option>)}
+          </select>
+          <select
+            value={status}
+            onChange={(e) => updateParams({ status: e.target.value || null, page: "1" })}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+          >
+            <option value="">All statuses</option>
+            {STATUSES.map((st) => <option key={st} value={st}>{st.charAt(0).toUpperCase() + st.slice(1)}</option>)}
+          </select>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => updateParams({ start_date: e.target.value || null, page: "1" })}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            title="Start date"
+          />
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => updateParams({ end_date: e.target.value || null, page: "1" })}
+            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            title="End date"
+          />
+          {hasFilters && (
+            <button
+              type="button"
+              className="rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100"
+              onClick={() =>
+                updateParams({
+                  search: null, action: null, entity_type: null, risk_level: null, status: null, start_date: null, end_date: null, page: "1",
+                })
+              }
+            >
+              Clear all filters
+            </button>
+          )}
+        </div>
         {meta ? (
-          <p className="mt-2 text-sm text-gray-600">
-            Page {meta.page} · showing {rows.length} · total {meta.total}
+          <p className="mt-3 text-sm text-gray-600">
+            Page {meta.page} of {totalPages} · showing {rows.length} of {meta.total} logs
           </p>
         ) : null}
       </AdminPanel>
+
+      {/* Table */}
       {rows.length === 0 ? (
         <EmptyState title="No logs" />
       ) : (
@@ -121,23 +317,26 @@ export function AuditLogsPage() {
               <AdminTh>When</AdminTh>
               <AdminTh>Actor</AdminTh>
               <AdminTh>Action</AdminTh>
+              <AdminTh>Module</AdminTh>
               <AdminTh>Entity</AdminTh>
+              <AdminTh>Status</AdminTh>
+              <AdminTh>Risk</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((r) => (
-              <tr key={String(r.id)}>
-                <AdminTd className="whitespace-nowrap text-xs">{String(r.created_at ?? "").slice(0, 19)}</AdminTd>
-                <AdminTd className="text-xs">{String(r.actor?.full_name ?? r.actor?.email ?? "")}</AdminTd>
-                <AdminTd className="text-xs">{String(r.action ?? "")}</AdminTd>
-                <AdminTd className="text-xs">{String(r.entity_type ?? "")}</AdminTd>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const isExpanded = expandedId === String(r.id);
+              return (
+                <RowGroup key={String(r.id)} row={r} isExpanded={isExpanded} onToggle={() => setExpandedId(isExpanded ? null : String(r.id))} />
+              );
+            })}
           </AdminTableBody>
         </AdminDataTable>
       )}
-      {meta && meta.has_more ? (
-        <div className="flex gap-2">
+
+      {/* Pagination */}
+      {meta && meta.total > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
@@ -146,15 +345,116 @@ export function AuditLogsPage() {
           >
             Previous
           </button>
+          <span className="text-sm text-gray-600">
+            Page {page} of {totalPages}
+          </span>
           <button
             type="button"
-            className="rounded border border-gray-300 px-3 py-2 text-sm"
+            className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+            disabled={page >= totalPages}
             onClick={() => updateParams({ page: String(page + 1) })}
           >
             Next
           </button>
+          <select
+            value={String(limit)}
+            onChange={(e) => updateParams({ limit: e.target.value, page: "1" })}
+            className="ml-auto rounded border border-gray-300 px-2 py-2 text-sm"
+          >
+            {PAGE_SIZES.map((s) => (
+              <option key={s} value={String(s)}>{s} per page</option>
+            ))}
+          </select>
         </div>
-      ) : null}
+      )}
+    </div>
+  );
+}
+
+function RowGroup({ row, isExpanded, onToggle }: { row: LogRow; isExpanded: boolean; onToggle: () => void }) {
+  return (
+    <>
+      <tr className="cursor-pointer hover:bg-gray-50" onClick={onToggle}>
+        <AdminTd className="whitespace-nowrap text-xs">{formatDateTime(row.created_at)}</AdminTd>
+        <AdminTd className="text-xs">
+          <div>{String(row.actor?.full_name ?? "")}</div>
+          {row.actor?.email && <div className="text-gray-500">{row.actor.email}</div>}
+        </AdminTd>
+        <AdminTd className="text-xs">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${riskBadgeClass(row.risk_level ?? "medium")}`}>
+            {String(row.action ?? "")}
+          </span>
+        </AdminTd>
+        <AdminTd className="text-xs">{String(row.module ?? "—")}</AdminTd>
+        <AdminTd className="text-xs">
+          <div>{String(row.entity_type ?? "")}</div>
+          {row.entity_id && <div className="font-mono text-[10px] text-gray-400">{String(row.entity_id).slice(0, 12)}…</div>}
+        </AdminTd>
+        <AdminTd className="text-xs">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadgeClass(row.status ?? "")}`}>
+            {String(row.status ?? "—")}
+          </span>
+        </AdminTd>
+        <AdminTd className="text-xs">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${riskBadgeClass(row.risk_level ?? "")}`}>
+            {String(row.risk_level ?? "—")}
+          </span>
+        </AdminTd>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <AdminTd colSpan={7} className="bg-gray-50 p-4">
+            <ExpandedDetail row={row} />
+          </AdminTd>
+        </tr>
+      )}
+    </>
+  );
+}
+
+function ExpandedDetail({ row }: { row: LogRow }) {
+  return (
+    <div className="grid gap-4 text-sm sm:grid-cols-2">
+      <div>
+        <h4 className="font-semibold text-gray-900">Actor details</h4>
+        <dl className="mt-2 space-y-1 text-xs">
+          <div><dt className="inline text-gray-500">Name: </dt><dd className="inline">{String(row.actor?.full_name ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">Email: </dt><dd className="inline">{String(row.actor?.email ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">Role: </dt><dd className="inline">{String(row.actor_role ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">Superadmin bypass: </dt><dd className="inline">{row.superadmin_bypass_used ? "Yes" : "No"}</dd></div>
+        </dl>
+      </div>
+
+      <div>
+        <h4 className="font-semibold text-gray-900">Request info</h4>
+        <dl className="mt-2 space-y-1 text-xs">
+          <div><dt className="inline text-gray-500">IP: </dt><dd className="inline font-mono">{String(row.ip_address ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">User agent: </dt><dd className="inline break-all">{String(row.user_agent ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">Session: </dt><dd className="inline font-mono">{String(row.session_id ?? "—")}</dd></div>
+          <div><dt className="inline text-gray-500">Request ID: </dt><dd className="inline font-mono">{String(row.request_id ?? "—")}</dd></div>
+        </dl>
+      </div>
+
+      {row.reason && (
+        <div className="sm:col-span-2">
+          <h4 className="font-semibold text-gray-900">Reason</h4>
+          <p className="mt-1 text-xs text-gray-700">{row.reason}</p>
+        </div>
+      )}
+
+      <div className="sm:col-span-2">
+        <h4 className="font-semibold text-gray-900">Changed fields</h4>
+        <div className="mt-2">
+          <JsonDiff before={row.before_json} after={row.after_json} fields={row.changed_fields} />
+        </div>
+      </div>
+
+      {row.metadata_json && Object.keys(row.metadata_json).length > 0 && (
+        <div className="sm:col-span-2">
+          <h4 className="font-semibold text-gray-900">Metadata</h4>
+          <pre className="mt-1 max-h-40 overflow-auto rounded bg-gray-100 p-2 text-xs">{JSON.stringify(row.metadata_json, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }

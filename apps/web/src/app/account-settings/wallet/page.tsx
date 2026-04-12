@@ -41,7 +41,7 @@ export default function WalletPage() {
   const load = async () => {
     try {
       setIsLoading(true);
-      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { cache: "no-store" });
+      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { staleTimeMs: 15_000 });
       setWallet(res.data.wallet);
       setTransactions(res.data.transactions || []);
     } catch (e) {
@@ -55,7 +55,7 @@ export default function WalletPage() {
   const refresh = async () => {
     try {
       setIsRefreshing(true);
-      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { cache: "no-store" });
+      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { staleTimeMs: 0 });
       setWallet(res.data.wallet);
       setTransactions(res.data.transactions || []);
       toast.success("Wallet refreshed");

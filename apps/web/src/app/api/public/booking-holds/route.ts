@@ -60,6 +60,7 @@ const createHoldSchema = z.object({
     .optional()
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
+  previous_hold_id: z.string().uuid().optional().nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
   /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
   package_id: z.string().uuid().optional().nullable(),
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
           location_id,
           address,
           guest_fingerprint_hash,
+          previous_hold_id,
           resource_ids,
           package_id: bodyPackageId,
           primary_package_id: bodyPrimaryPackageId,
@@ -164,24 +166,24 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Max 1 active, non-expired hold per fingerprint
-        if (guest_fingerprint_hash) {
-          const { data: activeHold } = await supabase
+        // Release a specific previous hold if the client tells us about it
+        if (previous_hold_id) {
+          await supabase
             .from("booking_holds")
-            .select("id")
+            .update({ hold_status: "cancelled" })
+            .eq("id", previous_hold_id)
+            .eq("hold_status", "active");
+        }
+
+        // Cancel any existing active holds from the same client so a retry
+        // doesn't collide with the user's own stale hold.
+        if (guest_fingerprint_hash) {
+          await supabase
+            .from("booking_holds")
+            .update({ hold_status: "cancelled" })
             .eq("guest_fingerprint_hash", guest_fingerprint_hash)
             .eq("hold_status", "active")
-            .gt("expires_at", nowIso)
-            .limit(1)
-            .maybeSingle();
-          if (activeHold) {
-            return handleApiError(
-              new Error("You already have an active booking hold. Please complete or cancel it first."),
-              "You already have an active booking hold. Please complete or cancel it first.",
-              "ACTIVE_HOLD_EXISTS",
-              429
-            );
-          }
+            .eq("provider_id", provider_id);
         }
 
         // Load provider

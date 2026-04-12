@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         )
       `)
       .eq("status", "active")
-      .gte("expires_at", new Date().toISOString());
+      .or(`expires_at.gte.${new Date().toISOString()},expires_at.is.null`);
 
     let revenueFromAutomations = 0;
     const providersWithActiveAutomations = new Set(

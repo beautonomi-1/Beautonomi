@@ -202,8 +202,23 @@ export async function processBookingRefund(
       return { success: false, error: "Failed to credit customer wallet. Refund recorded for retry." };
     }
 
-    // Convention: amount = absolute refund value (positive, matching refund-events.ts).
-    // net = negative to correctly reduce platform net revenue in aggregate reports.
+    // Record booking event for audit trail
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "refund_issued",
+        event_data: {
+          refund_id: (refundRecord as { id: string }).id,
+          amount: refundAmount,
+          refund_method: "store_credit",
+          reason: `Cancellation refund (${lateLabel})`,
+          is_late_cancellation: options.isLateCancellation,
+        },
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create refund booking event:", eventErr);
+    }
+
     const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
       tenant_id: walletTenantId,
       booking_id: bookingId,

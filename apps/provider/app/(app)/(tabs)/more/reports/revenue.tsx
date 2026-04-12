@@ -32,6 +32,8 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
 
 interface RevenueData {
   total_revenue: number;
+  cancellation_fees?: number;
+  total_revenue_inclusive?: number;
   previous_revenue?: number;
   revenue_by_service: { service: string; revenue: number }[];
   revenue_by_staff: { staff: string; revenue: number }[];
@@ -200,6 +202,17 @@ export default function RevenueReport() {
               </View>
             )}
           </View>
+
+          {((data.cancellation_fees ?? 0) > 0 || (data.total_revenue_inclusive ?? 0) > data.total_revenue) && (
+            <View style={twStyle("mt-4 flex-row")}>
+              <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+                <StatCard title="Cancellation Fees" value={formatCurrency(data.cancellation_fees ?? 0)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+              </View>
+              <View style={twStyle("flex-1")}>
+                <StatCard title="Total (incl. fees)" value={formatCurrency(data.total_revenue_inclusive ?? data.total_revenue)} icon="wallet-outline" iconColor="#6366f1" iconBg="bg-indigo-50" compact />
+              </View>
+            </View>
+          )}
 
           {data.daily_trend.length > 0 && (
             <View>

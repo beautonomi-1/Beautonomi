@@ -118,7 +118,7 @@ export async function POST(
 
     // Update booking with version bump
     const currentVersion = (bookingData as { version?: number }).version || 0;
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("bookings")
       .update({
         status: "completed",
@@ -127,10 +127,19 @@ export async function POST(
         updated_at: new Date().toISOString(),
         version: currentVersion + 1,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("version", currentVersion)
+      .select("id");
 
     if (updateError) {
       throw updateError;
+    }
+    if (!updatedRows?.length) {
+      return errorResponse(
+        "Booking was modified by another user. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // Fetch updated booking

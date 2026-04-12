@@ -22,12 +22,16 @@ interface CartItem {
   id: string;
   quantity: number;
   effective_price?: number;
-  product_variant?: { option_values?: Record<string, string> } | null;
+  in_stock?: boolean;
+  product_variant?: { option_values?: Record<string, string>; quantity?: number } | null;
   product: {
     id: string;
     name: string;
     retail_price: number;
     image_urls: string[];
+    tax_rate?: string | number | null;
+    quantity?: number;
+    is_active?: boolean;
   };
 }
 
@@ -211,6 +215,10 @@ export default function ProductCheckoutPage() {
     (s, i) => s + linePrice(i),
     0,
   );
+  const taxAmount = items.reduce((s, i) => {
+    const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
+    return s + Math.round((linePrice(i) * rate) / 100 * 100) / 100;
+  }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -223,13 +231,24 @@ export default function ProductCheckoutPage() {
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + deliveryFee + platformFee;
+  const total = subtotal + taxAmount + deliveryFee + platformFee;
   const hasAnyEnabledPaymentMethod = paystackEnabled || cashEnabledOnPlatform;
 
+  const hasOutOfStock = items.some((i) => i.in_stock === false);
+
   const handlePlaceOrder = useCallback(async () => {
-    if (!providerId) return;
-    if (fulfillment === "delivery" && !selectedAddress) return;
-    if (fulfillment === "collection" && !selectedLocation) return;
+    if (!providerId) {
+      setPageError("Missing provider. Please go back to cart and try again.");
+      return;
+    }
+    if (fulfillment === "delivery" && !selectedAddress) {
+      setPageError("Please select a delivery address.");
+      return;
+    }
+    if (fulfillment === "collection" && !selectedLocation) {
+      setPageError("Please select a collection point.");
+      return;
+    }
 
     setPlacing(true);
     setPageError(null);
@@ -536,7 +555,7 @@ export default function ProductCheckoutPage() {
             </div>
             {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
-                A platform service fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online payments
+                A platform fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online payments
               </div>
             )}
           </div>
@@ -569,6 +588,15 @@ export default function ProductCheckoutPage() {
                   {subtotal.toFixed(2)}
                 </span>
               </div>
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Tax</span>
+                  <span className="text-gray-900">
+                    {tenantCurrency}
+                    {taxAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
               {fulfillment === "delivery" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Delivery</span>
@@ -579,7 +607,7 @@ export default function ProductCheckoutPage() {
               )}
               {platformFee > 0 && platformFeeConfig.show && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Service Fee</span>
+                  <span className="text-gray-500">Platform Fee</span>
                   <span className="text-gray-900">
                     {tenantCurrency}
                     {platformFee.toFixed(2)}
@@ -596,10 +624,17 @@ export default function ProductCheckoutPage() {
             </div>
           </div>
 
+          {hasOutOfStock && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              Some items in your cart are out of stock. Please update your cart before placing the order.
+            </div>
+          )}
+
           {/* Pay button */}
           <button
             onClick={handlePlaceOrder}
-            disabled={placing || !hasAnyEnabledPaymentMethod}
+            disabled={placing || !hasAnyEnabledPaymentMethod || hasOutOfStock}
             className="w-full py-4 bg-pink-600 text-white rounded-xl font-bold text-lg hover:bg-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {placing ? (

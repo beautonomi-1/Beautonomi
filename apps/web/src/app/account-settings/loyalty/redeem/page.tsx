@@ -50,7 +50,7 @@ export default function LoyaltyRedeemPage() {
           redemption_rate: number;
           redemption_currency: string;
         };
-      }>("/api/me/loyalty", { cache: "no-store" });
+      }>("/api/me/loyalty", { staleTimeMs: 15_000 });
       setPointsBalance(response.data.points_balance);
       setRedemptionRate(response.data.redemption_rate);
       setCurrency(response.data.redemption_currency);

@@ -33,6 +33,8 @@ const DATE_RANGES: { label: string; value: DateRange }[] = [
 interface PaymentsData {
   total_collected: number;
   total_refunded: number;
+  cancellation_fees?: number;
+  tips_collected?: number;
   net_revenue: number;
   by_method: { method: string; amount: number; count: number }[];
   recent_payouts: { date: string; amount: number; status: string }[];
@@ -113,6 +115,21 @@ export default function PaymentsReport() {
               <StatCard title="Refunded" value={formatCurrency(data.total_refunded)} icon="arrow-up-circle-outline" iconColor="#ef4444" iconBg="bg-red-50" compact />
             </View>
           </View>
+
+          {((data.cancellation_fees ?? 0) > 0 || (data.tips_collected ?? 0) > 0) && (
+            <View style={twStyle("flex-row mt-4")}>
+              {(data.tips_collected ?? 0) > 0 && (
+                <View style={[twStyle("flex-1"), { marginRight: (data.cancellation_fees ?? 0) > 0 ? 12 : 0 }]}>
+                  <StatCard title="Tips" value={formatCurrency(data.tips_collected!)} icon="heart-outline" iconColor="#10b981" iconBg="bg-emerald-50" compact />
+                </View>
+              )}
+              {(data.cancellation_fees ?? 0) > 0 && (
+                <View style={twStyle("flex-1")}>
+                  <StatCard title="Cancellation Fees" value={formatCurrency(data.cancellation_fees!)} icon="close-circle-outline" iconColor="#f59e0b" iconBg="bg-amber-50" compact />
+                </View>
+              )}
+            </View>
+          )}
 
           <View style={[twStyle("rounded-2xl bg-sky-50 p-5 items-center"), { marginTop: 16, marginBottom: 16 }]}>
             <Text style={twStyle("text-sm text-sky-700")}>Net Revenue</Text>

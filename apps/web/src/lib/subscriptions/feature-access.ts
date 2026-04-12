@@ -109,7 +109,7 @@ async function getProviderSubscriptionTier(
   // immediately lose access on a single failed charge retry.
   const nowIso = new Date().toISOString();
   const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: subscription } = await supabase
+  const { data: subscription, error: subscriptionError } = await supabase
     .from("provider_subscriptions")
     .select(`
       plan_id,
@@ -124,9 +124,15 @@ async function getProviderSubscriptionTier(
     `)
     .eq("provider_id", providerId)
     .in("status", ["active", "past_due"])
+    // Null expires_at = never expires (lifetime / free rows); do not use expires_at.gte alone.
     .or(`expires_at.gte.${nowIso},expires_at.is.null`)
     .order("status", { ascending: true })
     .maybeSingle();
+
+  if (subscriptionError) {
+    console.error("getProviderSubscriptionTier: provider_subscriptions query failed", subscriptionError);
+    return null;
+  }
 
   // For past_due: only allow if within 3-day grace period from when status changed
   if (subscription?.status === "past_due") {
@@ -242,23 +248,22 @@ export async function checkStaffSmsNotificationsFeatureAccess(
 }
 
 /**
- * Resolves a boolean flag from plan features. If the key is missing, returns true (legacy plans).
- * If the key is an object, uses `enabled` when set; if `enabled` is omitted, returns true so
- * objects like `{ max_forms: 5 }` still allow access unless explicitly disabled.
+ * Resolves a boolean flag from plan features (fail-closed: deny unless explicitly allowed).
  */
 export function resolvePlanFeatureEnabled(
   features: Record<string, unknown> | null | undefined,
   key: string
 ): boolean {
-  if (!features || typeof features !== "object") return true;
+  if (!features || typeof features !== "object") return false;
   const node = features[key];
-  if (node === undefined || node === null) return true;
+  if (node === undefined || node === null) return false;
+  if (typeof node === "boolean") return node;
   if (typeof node === "object" && node !== null) {
     const o = node as { enabled?: boolean };
-    if (o.enabled === undefined) return true;
+    if (o.enabled === undefined) return false;
     return o.enabled === true;
   }
-  return true;
+  return false;
 }
 
 /**
@@ -639,7 +644,7 @@ export async function getProviderFeatureAccess(
         enabled: false,
         apiAccess: false,
       },
-      isFree: true,
+      isFree: false,
     };
   }
 

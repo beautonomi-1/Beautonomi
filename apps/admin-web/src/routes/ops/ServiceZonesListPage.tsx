@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Archive, Globe, Edit2, RotateCcw } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
@@ -223,9 +223,16 @@ export function ServiceZonesListPage() {
                 </AdminTd>
                 <AdminTd>
                   <div className="flex flex-wrap gap-2">
+                    <Link
+                      to={`/service-zones/${z.id}`}
+                      className="text-xs text-indigo-600 hover:underline inline-flex items-center gap-0.5"
+                    >
+                      <Edit2 className="inline h-3 w-3" />
+                      Manage
+                    </Link>
                     <button
                       type="button"
-                      className="text-xs text-indigo-600 hover:underline"
+                      className="text-xs text-gray-600 hover:underline"
                       onClick={() => {
                         setEditZone(z);
                         setEditForm({
@@ -235,7 +242,6 @@ export function ServiceZonesListPage() {
                         });
                       }}
                     >
-                      <Edit2 className="inline h-3 w-3 mr-0.5" />
                       Edit
                     </button>
                     {z.status !== "archived" ? (

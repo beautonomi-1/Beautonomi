@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, clearFetcherCache } from "@/lib/http/fetcher";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -161,7 +161,12 @@ export default function ProviderProductOrdersPage() {
     try {
       const payload: Record<string, any> = { status: newStatus };
       if (trackingNumber) payload.tracking_number = trackingNumber;
-      await fetcher.patch(`/api/provider/product-orders/${orderId}`, payload);
+      const res = await fetcher.patch<{ data?: { order?: ProductOrder } }>(`/api/provider/product-orders/${orderId}`, payload);
+      const updatedOrder = res?.data?.order;
+      if (updatedOrder) {
+        setOrders(prev => prev.map(o => o.id === updatedOrder.id ? { ...o, ...updatedOrder } : o));
+      }
+      clearFetcherCache();
       fetchOrders();
     } catch {
       setError("Failed to update order status");

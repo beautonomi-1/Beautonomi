@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
@@ -99,5 +99,64 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     return handleApiError(error, "Failed to run wallet reconciliation");
+  }
+}
+
+/**
+ * PATCH /api/admin/finance/wallet-reconciliation
+ *
+ * Corrects the stored balance on a wallet to match the computed transaction sum.
+ * Body: { wallet_id: string }
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) {
+      return handleApiError(new Error("Unauthorized"), "AUTH_REQUIRED", 401);
+    }
+
+    const body = await request.json();
+    const walletId: string | undefined = body?.wallet_id;
+    if (!walletId) {
+      return NextResponse.json({ error: "wallet_id is required" }, { status: 400 });
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    const { data: wallet, error: wErr } = await supabase
+      .from("user_wallets")
+      .select("id, user_id, balance")
+      .eq("id", walletId)
+      .single();
+    if (wErr || !wallet) {
+      return NextResponse.json({ error: "Wallet not found" }, { status: 404 });
+    }
+
+    const { data: txRows } = await supabase
+      .from("wallet_transactions")
+      .select("type, amount")
+      .eq("wallet_id", walletId);
+
+    let computedBalance = 0;
+    for (const tx of (txRows ?? []) as { type?: string; amount?: number }[]) {
+      const amt = Number(tx.amount ?? 0);
+      computedBalance += tx.type === "debit" ? -amt : amt;
+    }
+    computedBalance = Math.max(0, Number(computedBalance.toFixed(2)));
+
+    const { error: updateErr } = await supabase
+      .from("user_wallets")
+      .update({ balance: computedBalance, updated_at: new Date().toISOString() })
+      .eq("id", walletId);
+
+    if (updateErr) throw updateErr;
+
+    return successResponse({
+      wallet_id: walletId,
+      previous_balance: Number((wallet as { balance?: number }).balance ?? 0),
+      corrected_balance: computedBalance,
+    });
+  } catch (error) {
+    return handleApiError(error, "Failed to fix wallet balance");
   }
 }

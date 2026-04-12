@@ -26,10 +26,16 @@ type ProductRow = Record<string, unknown> & {
   id?: string;
   name?: string;
   sku?: string;
+  brand?: string;
+  category?: string;
   retail_price?: number;
+  supply_price?: number;
   quantity?: number;
   is_active?: boolean;
   retail_sales_enabled?: boolean;
+  has_variants?: boolean;
+  variant_count?: number;
+  variant_option_types?: { name: string; values: string[] }[];
   provider?: { id?: string; business_name?: string; status?: string } | null;
 };
 
@@ -195,19 +201,25 @@ export function ProductCatalogPage() {
             <tr>
               <AdminTh>Name</AdminTh>
               <AdminTh>SKU</AdminTh>
+              <AdminTh>Brand</AdminTh>
               <AdminTh>Provider</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Retail</AdminTh>
               <AdminTh>Price</AdminTh>
               <AdminTh>Qty</AdminTh>
+              <AdminTh>Variants</AdminTh>
               <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
             {rows.map((p) => (
               <tr key={String(p.id)} className={p.is_active === false ? "opacity-50" : ""}>
-                <AdminTd className="font-medium">{String(p.name ?? "")}</AdminTd>
+                <AdminTd>
+                  <div className="font-medium">{String(p.name ?? "")}</div>
+                  {p.category && <div className="text-xs text-gray-400">{String(p.category)}</div>}
+                </AdminTd>
                 <AdminTd className="font-mono text-xs">{String(p.sku ?? "—")}</AdminTd>
+                <AdminTd className="text-xs text-gray-600">{String(p.brand ?? "—")}</AdminTd>
                 <AdminTd>
                   {p.provider?.id ? (
                     <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${p.provider.id}`)}>
@@ -237,8 +249,29 @@ export function ProductCatalogPage() {
                     {p.retail_sales_enabled ? "yes" : "no"}
                   </button>
                 </AdminTd>
-                <AdminTd className="tabular-nums">{Number(p.retail_price ?? 0).toFixed(2)}</AdminTd>
+                <AdminTd className="tabular-nums">
+                  <div>{Number(p.retail_price ?? 0).toFixed(2)}</div>
+                  {p.supply_price != null && Number(p.supply_price) > 0 && (
+                    <div className="text-xs text-gray-400">cost {Number(p.supply_price).toFixed(2)}</div>
+                  )}
+                </AdminTd>
                 <AdminTd className="tabular-nums">{String(p.quantity ?? "")}</AdminTd>
+                <AdminTd>
+                  {p.has_variants ? (
+                    <div>
+                      <span className="rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-800">
+                        {p.variant_count ?? 0} variant{(p.variant_count ?? 0) !== 1 ? "s" : ""}
+                      </span>
+                      {Array.isArray(p.variant_option_types) && p.variant_option_types.length > 0 && (
+                        <div className="mt-0.5 text-xs text-gray-400">
+                          {p.variant_option_types.map((o) => o.name).join(", ")}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-gray-400">—</span>
+                  )}
+                </AdminTd>
                 <AdminTd className="text-xs text-gray-400">—</AdminTd>
               </tr>
             ))}

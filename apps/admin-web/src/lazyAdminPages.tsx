@@ -61,6 +61,9 @@ export const SubscriptionMetricsPage = lazy(() =>
 export const PlansListPage = lazy(() =>
   import("@/routes/finance/PlansListPage").then((m) => ({ default: m.PlansListPage }))
 );
+export const WalletReconciliationPage = lazy(() =>
+  import("@/routes/finance/WalletReconciliationPage").then((m) => ({ default: m.WalletReconciliationPage }))
+);
 export const PlatformFeesPage = lazy(() =>
   import("@/routes/settings/PlatformFeesPage").then((m) => ({ default: m.PlatformFeesPage }))
 );
@@ -282,6 +285,9 @@ export const IsoCodesPage = lazy(() =>
 export const ServiceZonesListPage = lazy(() =>
   import("@/routes/ops/ServiceZonesListPage").then((m) => ({ default: m.ServiceZonesListPage }))
 );
+export const ServiceZoneDetailPage = lazy(() =>
+  import("@/routes/ops/ServiceZoneDetailPage").then((m) => ({ default: m.ServiceZoneDetailPage }))
+);
 export const ContentHubPage = lazy(() =>
   import("@/routes/content/ContentHubPage").then((m) => ({ default: m.ContentHubPage }))
 );
@@ -302,6 +308,21 @@ export const GlobalCategoriesPage = lazy(() =>
 );
 export const ContentResourcesPage = lazy(() =>
   import("@/routes/content/ContentResourcesPage").then((m) => ({ default: m.ContentResourcesPage }))
+);
+export const ContentFaqsPage = lazy(() =>
+  import("@/routes/content/ContentFaqsPage").then((m) => ({ default: m.ContentFaqsPage }))
+);
+export const ContentAboutUsPage = lazy(() =>
+  import("@/routes/content/ContentAboutUsPage").then((m) => ({ default: m.ContentAboutUsPage }))
+);
+export const ContentPagesPage = lazy(() =>
+  import("@/routes/content/ContentPagesPage").then((m) => ({ default: m.ContentPagesPage }))
+);
+export const ContentFeaturedCitiesPage = lazy(() =>
+  import("@/routes/content/ContentFeaturedCitiesPage").then((m) => ({ default: m.ContentFeaturedCitiesPage }))
+);
+export const ContentAppLinksPage = lazy(() =>
+  import("@/routes/content/ContentAppLinksPage").then((m) => ({ default: m.ContentAppLinksPage }))
 );
 export const ReferralSourcesPage = lazy(() =>
   import("@/routes/providers/ReferralSourcesPage").then((m) => ({ default: m.ReferralSourcesPage }))

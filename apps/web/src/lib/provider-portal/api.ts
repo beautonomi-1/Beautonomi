@@ -1356,16 +1356,18 @@ export class ProviderApiClient implements ProviderApi {
         params.append('limit', pagination.limit.toString());
       }
 
-      const response = await fetcher.get<PaginatedResponse<Sale>>(
+      const response = await fetcher.get<any>(
         `/api/provider/sales?${params.toString()}`
       );
-      
+
+      const payload = response.data;
+      const salesArray = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
       return {
-        data: response.data ?? [],
-        total: response.total ?? 0,
-        page: response.page ?? 1,
-        limit: response.limit ?? 20,
-        total_pages: response.total_pages ?? 1,
+        data: salesArray,
+        total: payload?.total ?? salesArray.length,
+        page: payload?.page ?? 1,
+        limit: payload?.limit ?? 20,
+        total_pages: payload?.total_pages ?? 1,
       };
     } catch (error: any) {
       await this.logProviderApiFailure(

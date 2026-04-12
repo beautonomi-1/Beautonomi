@@ -7,7 +7,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
-import { motion } from "framer-motion";
 import { useAuth } from "@/providers/AuthProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useCustomerBookingsRealtime } from "@/hooks/useSupabaseRealtime";
@@ -39,28 +38,16 @@ const Page = () => {
             ]} 
           />
 
-          {/* Page Header - Glass Card Style */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
-          >
+          <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-2">
               Bookings
             </h1>
             <p className="text-sm md:text-base text-gray-600 font-light">
               Manage your appointments and view your booking history
             </p>
-          </motion.div>
+          </div>
 
-          {/* Tabs Container - Glass Card Style */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
-          >
+          <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="mb-6 md:mb-8 grid grid-cols-3 w-full bg-gray-100/50 p-1 rounded-xl">
                 <TabsTrigger 
@@ -108,7 +95,7 @@ const Page = () => {
                 </Link>
               </p>
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </AuthGuard>
