@@ -647,12 +647,6 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        console.log("[booking-holds] created", {
-          holdId: hold.id,
-          providerId: provider_id,
-          expiresAt: hold.expires_at,
-        });
-
         return successResponse({
           hold_id: hold.id,
           expires_at: hold.expires_at,

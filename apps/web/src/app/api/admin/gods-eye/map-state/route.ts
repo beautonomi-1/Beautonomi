@@ -1,10 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection,
-  successResponse,
-  handleApiError,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchGodsEyeCustomerMarkers } from "@/lib/admin/gods-eye-customer-markers";
 
@@ -18,13 +14,13 @@ type AtHomeBookingOut = { booking_id: string; provider_id: string; customer_targ
 
 /**
  * GET /api/admin/gods-eye/map-state
- * Overview section. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
- * `customer_markers` (saved address or last booking coords) is included only for **superadmin** — traction / oversight.
+ * Superadmin only. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
+ * `customer_markers` (saved address or last booking coords) when `customer_markers_max` is positive — superadmin-only route.
  * Query: location_type?, booking_status?, provider_status?, time_window_mins?, customer_markers_max? (default 2000, max 5000)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -72,7 +68,7 @@ export async function GET(request: NextRequest) {
     const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
 
     let customer_markers: Awaited<ReturnType<typeof fetchGodsEyeCustomerMarkers>> = [];
-    if (user.role === "superadmin" && customerMarkersMax > 0) {
+    if (customerMarkersMax > 0) {
       try {
         customer_markers = await fetchGodsEyeCustomerMarkers(admin, tenantId, customerMarkersMax);
       } catch (e) {

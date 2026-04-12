@@ -1,7 +1,6 @@
 import { NextRequest } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase/admin';
-import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { collectTenantScopedUserIds } from "@/lib/tenant/admin-tenant-scope";
 import {
@@ -14,8 +13,7 @@ type ProviderRow = { id: string; business_name?: string; owner_name?: string; ra
 
 export async function GET(request: NextRequest) {
   try {
-    // Require superadmin role
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const tenantId = await resolveAdminApiTenantId(request);
 
     const supabase = getSupabaseAdmin();

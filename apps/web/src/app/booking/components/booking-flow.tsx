@@ -683,7 +683,7 @@ export default function BookingFlow() {
     setCurrentStepIndex(Math.max(0, Math.min(activeStepOrder.length - 1, stepIndex)));
   }, [activeStepOrder.length]);
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (effectiveStepIndex > 0) {
       setDirection(-1);
       const prevStep = effectiveStepOrder[effectiveStepIndex - 1];
@@ -691,7 +691,8 @@ export default function BookingFlow() {
       // Clear hold when returning to the calendar step so a fresh hold is created
       // for the newly selected slot (prevents stale hold_id mismatch).
       if (prevStep === "calendar") {
-        if (bookingState.holdId) releaseHold(bookingState.holdId);
+        const id = bookingState.holdId;
+        if (id) await releaseHold(id);
         updateBookingState({ holdId: null });
       }
       setCurrentStepIndex(prevIndex);
@@ -1094,9 +1095,10 @@ export default function BookingFlow() {
                 <StepPayment
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
-                  onNavigateToStep={(step) => {
+                  onNavigateToStep={async (step) => {
                     if (step === "calendar") {
-                      if (bookingState.holdId) releaseHold(bookingState.holdId);
+                      const id = bookingState.holdId;
+                      if (id) await releaseHold(id);
                       updateBookingState({ holdId: null, selectedTimeSlot: null });
                     }
                     const idx = activeStepOrder.indexOf(step);

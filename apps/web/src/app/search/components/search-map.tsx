@@ -5,6 +5,7 @@ import Image from "next/image";
 import type mapboxgl from "mapbox-gl";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 
 function createPriceMarker(price: number): HTMLDivElement {
   const el = document.createElement("div");
@@ -52,6 +53,7 @@ const SearchMap: React.FC = () => {
     if (!mapContainerRef.current) return;
 
     let cancelled = false;
+    let detachResize: (() => void) | undefined;
 
     (async () => {
       const [{ accessToken, styleUrl }, mapboxModule] = await Promise.all([
@@ -62,16 +64,17 @@ const SearchMap: React.FC = () => {
       const mb = mapboxModule.default;
       if (cancelled || !mapContainerRef.current || !accessToken) return;
 
-      mb.accessToken = accessToken;
-
+      const el = mapContainerRef.current;
       const map = new mb.Map({
-        container: mapContainerRef.current,
+        container: el,
+        accessToken,
         style: styleUrl?.trim() || "mapbox://styles/mapbox/light-v11",
         center: [-0.1278, 51.5074],
         zoom: 13,
       });
 
       map.addControl(new mb.NavigationControl(), "top-right");
+      detachResize = attachMapResize(map, el);
 
       markersRef.current = listings.map((listing) => {
         const el = createPriceMarker(listing.price);
@@ -96,6 +99,7 @@ const SearchMap: React.FC = () => {
 
     return () => {
       cancelled = true;
+      detachResize?.();
       markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       mapRef.current?.remove();

@@ -128,8 +128,14 @@ export const AdminMapContainer = forwardRef<AdminMapHandle, AdminMapContainerPro
     }
 
     return (
-      <div className={`relative overflow-hidden rounded-xl border border-gray-200 bg-gray-50 ${className}`}>
-        <div ref={containerRef} className="absolute inset-0" />
+      <div
+        className={`relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-gray-50 ${className}`}
+      >
+        {/*
+         * Flex child (not absolute inset-0) so the map canvas gets a real height in flex layouts
+         * (matches Next.js MarketMap — avoids 0×0 canvas when parent height comes from flex-grow).
+         */}
+        <div ref={containerRef} className="min-h-[240px] w-full flex-1" />
       </div>
     );
   },

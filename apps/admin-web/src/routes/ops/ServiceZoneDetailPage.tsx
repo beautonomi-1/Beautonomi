@@ -26,6 +26,7 @@ import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
 import { ServiceZoneMapEditor } from "@/components/maps/ServiceZoneMapEditor";
+import type { ZoneBbox } from "@/components/maps/serviceZoneMapGeo";
 
 type AreaRow = {
   id: string;
@@ -48,6 +49,8 @@ type ZoneDetail = {
   inclusions: AreaRow[];
   exclusions: AreaRow[];
   geometry_geojson?: unknown;
+  bbox?: unknown;
+  centroid?: unknown;
   fragment_count?: number;
   disconnected_fragments?: boolean;
 };
@@ -271,6 +274,10 @@ export function ServiceZoneDetailPage() {
           zoneId={id!}
           zoneVersion={zone.version}
           geometryGeojson={zone.geometry_geojson}
+          zoneBbox={zone.bbox as ZoneBbox}
+          zoneCentroid={zone.centroid}
+          disconnectedFragments={Boolean(zone.disconnected_fragments)}
+          countryCode={zone.country_code}
           allowEdits={!isActive}
           className="min-h-[380px]"
           onCoverageUpdated={invalidateAll}

@@ -25,6 +25,8 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { adminToast } from "@/lib/adminToast";
+import { ServiceZonesOverviewMap } from "@/components/maps/ServiceZonesOverviewMap";
+import type { ZoneBbox } from "@/components/maps/serviceZoneMapGeo";
 
 type ZoneRow = {
   id: string;
@@ -36,6 +38,7 @@ type ZoneRow = {
   has_geometry?: boolean;
   published_at?: string | null;
   updated_at?: string;
+  bbox?: ZoneBbox;
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -176,6 +179,16 @@ export function ServiceZonesListPage() {
           Include archived zones
         </label>
       </AdminPanel>
+
+      {rows.length > 0 ? (
+        <AdminPanel>
+          <h3 className="mb-2 text-sm font-semibold text-gray-900">Zone overview</h3>
+          <p className="mb-3 text-xs text-gray-600">
+            Bounding boxes for each market. Click a region to open zone details — same idea as the Next.js Market Coverage map.
+          </p>
+          <ServiceZonesOverviewMap zones={rows} className="min-h-[320px]" />
+        </AdminPanel>
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState

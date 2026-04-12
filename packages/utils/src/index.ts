@@ -96,3 +96,4 @@ export {
   type BookingPricingInput,
   type BookingPricingResult,
 } from "./booking/calculateBookingPricing";
+export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";

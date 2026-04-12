@@ -12,6 +12,7 @@ import { Map, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type mapboxgl from "mapbox-gl";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { SearchQueryBarWithSuggestions } from "./search-query-bar";
 
@@ -160,6 +161,7 @@ export default function SearchResults({
     }
 
     let cancelled = false;
+    let detachResize: (() => void) | undefined;
 
     (async () => {
       const [{ accessToken, styleUrl }, mapboxModule] = await Promise.all([
@@ -170,16 +172,17 @@ export default function SearchResults({
       const mb = mapboxModule.default;
       if (cancelled || !mapContainerRef.current || !accessToken) return;
 
-      mb.accessToken = accessToken;
-
+      const el = mapContainerRef.current;
       const map = new mb.Map({
-        container: mapContainerRef.current,
+        container: el,
+        accessToken,
         style: styleUrl?.trim() || "mapbox://styles/mapbox/light-v11",
         center: [28.0473, -26.2041],
         zoom: 11,
       });
 
       map.addControl(new mb.NavigationControl(), "top-right");
+      detachResize = attachMapResize(map, el);
 
       const bounds = new mb.LngLatBounds();
       let hasMarkers = false;
@@ -216,6 +219,7 @@ export default function SearchResults({
 
     return () => {
       cancelled = true;
+      detachResize?.();
       mapRef.current?.remove();
       mapRef.current = null;
     };

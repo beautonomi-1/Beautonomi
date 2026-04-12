@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { Loader2, MapPin, Check } from "lucide-react";
 import { toast } from "sonner";
 
@@ -57,21 +58,25 @@ export default function ServiceZoneMap({
     if (!mapContainerRef.current) return;
 
     let mapInstance: any = null;
+    let detachResize: (() => void) | undefined;
+    let cancelled = false;
 
     const initMap = async () => {
       try {
         const mapboxgl = (await import("mapbox-gl")).default;
         await import("mapbox-gl/dist/mapbox-gl.css");
+        if (cancelled || !mapContainerRef.current) return;
 
         const cfg = await fetchMapboxPublicMapConfig();
+        if (cancelled || !mapContainerRef.current) return;
         if (!cfg.accessToken) {
           throw new Error("Mapbox public token not configured (Admin → Mapbox)");
         }
 
-        mapboxgl.accessToken = cfg.accessToken;
-
+        const container = mapContainerRef.current!;
         mapInstance = new mapboxgl.Map({
-          container: mapContainerRef.current!,
+          container,
+          accessToken: cfg.accessToken,
           style: cfg.styleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
           center: providerLocation
             ? [providerLocation.longitude, providerLocation.latitude]
@@ -79,10 +84,13 @@ export default function ServiceZoneMap({
           zoom: providerLocation ? 12 : 10,
         });
 
+        detachResize = attachMapResize(mapInstance, container);
+
         mapRef.current = mapInstance;
         mapInstance.addControl(new mapboxgl.NavigationControl(), "top-right");
 
         mapInstance.on("load", () => {
+          if (cancelled) return;
           // Provider location marker
           if (providerLocation) {
             new mapboxgl.Marker({ color: "#FF0077" })
@@ -266,6 +274,8 @@ export default function ServiceZoneMap({
     void initMap();
 
     return () => {
+      cancelled = true;
+      detachResize?.();
       popupsRef.current.forEach((p) => { try { p.remove(); } catch { /* ignore */ } });
       popupsRef.current = [];
       if (mapInstance) mapInstance.remove();

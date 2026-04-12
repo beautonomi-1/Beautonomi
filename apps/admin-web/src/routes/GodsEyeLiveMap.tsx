@@ -204,7 +204,9 @@ export function GodsEyeLiveMap() {
   const renderLayers = useCallback(() => {
     const map = mapRef.current;
     if (!map || !mapReady || !mapState) return;
-    if (!map.isStyleLoaded()) return;
+
+    const apply = () => {
+      if (!map.isStyleLoaded()) return;
 
     const pos = (lat: number, lng: number) => toMapPosition(lat, lng, privacyMode);
 
@@ -335,6 +337,13 @@ export function GodsEyeLiveMap() {
       "circle-stroke-width": 2,
       "circle-stroke-color": "#fff",
     });
+    };
+
+    if (map.isStyleLoaded()) {
+      apply();
+    } else {
+      map.once("idle", apply);
+    }
   }, [mapReady, mapState, privacyMode]);
 
   useEffect(() => {
@@ -401,8 +410,9 @@ export function GodsEyeLiveMap() {
     return (
       <AdminPanel>
         <p className="text-sm text-gray-700">
-          Configure Mapbox in <span className="font-medium">Integrations &gt; Mapbox</span> to enable the live map, or set the{" "}
-          <code className="rounded bg-gray-100 px-1 text-xs">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> environment variable.
+          Configure Mapbox under <span className="font-medium">Mapbox</span> in the admin nav to enable the live map, or set{" "}
+          <code className="rounded bg-gray-100 px-1 text-xs">VITE_MAPBOX_ACCESS_TOKEN</code> /{" "}
+          <code className="rounded bg-gray-100 px-1 text-xs">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for local dev.
         </p>
       </AdminPanel>
     );

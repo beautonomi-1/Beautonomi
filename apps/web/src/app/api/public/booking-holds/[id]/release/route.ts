@@ -26,13 +26,11 @@ export async function POST(
 
     const supabase = getSupabaseAdmin();
 
-    const { count } = await supabase
+    await supabase
       .from("booking_holds")
       .update({ hold_status: "cancelled" })
       .eq("id", id)
       .eq("hold_status", "active");
-
-    console.log("[booking-holds] released", { holdId: id, rowsUpdated: count ?? "unknown" });
 
     return successResponse({ released: true });
   } catch (error) {

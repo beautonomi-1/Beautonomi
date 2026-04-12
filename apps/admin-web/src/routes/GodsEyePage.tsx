@@ -23,11 +23,10 @@ import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
 import { AdminQueryBlock } from "@/components/admin/AdminQueryBlock";
-import { ADMIN_SECTION_OVERVIEW } from "@beautonomi/admin-access";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
 import { cn } from "@/lib/cn";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { GodsEyeLiveMap } from "@/routes/GodsEyeLiveMap";
 
 interface ActivityRow {
@@ -171,10 +170,7 @@ const quickLinks: { to: string; label: string; icon: LucideIcon; description: st
 ];
 
 export function GodsEyePage() {
-  const { allowed, denied } = useAdminSectionPage(
-    ADMIN_SECTION_OVERVIEW,
-    "Overview access is required."
-  );
+  const { allowed, denied } = useSuperadminPage("Superadmin access is required.");
 
   const q = useQuery({
     queryKey: adminQueryKeys.godsEye(),

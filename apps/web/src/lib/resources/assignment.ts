@@ -48,7 +48,7 @@ export async function checkResourceAvailability(
       continue;
     }
 
-    // Count concurrent bookings for this resource, excluding cancelled/no-show/failed
+    // Count concurrent bookings for this resource, excluding cancelled/no-show
     // to match the SQL lock_booking_resources_for_update status filter
     const { data: existingBookings, error } = await supabase
       .from('booking_resources')
@@ -56,7 +56,7 @@ export async function checkResourceAvailability(
       .eq('resource_id', resourceId)
       .lt('scheduled_start_at', endAt.toISOString())
       .gt('scheduled_end_at', startAt.toISOString())
-      .not('bookings.status', 'in', '("cancelled","no_show","failed")')
+      .not('bookings.status', 'in', '("cancelled","no_show")')
       .neq('booking_id', excludeBookingId || '00000000-0000-0000-0000-000000000000');
 
     if (error) {

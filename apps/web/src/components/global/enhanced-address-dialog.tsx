@@ -44,19 +44,27 @@ export default function EnhancedAddressDialog({
     token: string;
     styleUrl?: string | null;
   } | null>(null);
+  const [mapboxLoading, setMapboxLoading] = useState(false);
   const { availability, checkAvailability } = useServiceAvailability();
   const { addLocation } = useRecentLocations();
 
   useEffect(() => {
     if (!isOpen) return;
     let cancelled = false;
+    setMapboxLoading(true);
     (async () => {
       try {
         const cfg = await fetchMapboxPublicMapConfig();
-        if (cancelled || !cfg.accessToken) return;
-        setMapboxConfig({ token: cfg.accessToken, styleUrl: cfg.styleUrl });
+        if (cancelled) return;
+        if (cfg.accessToken && cfg.accessToken.trim()) {
+          setMapboxConfig({ token: cfg.accessToken.trim(), styleUrl: cfg.styleUrl });
+        } else {
+          setMapboxConfig(null);
+        }
       } catch {
         if (!cancelled) setMapboxConfig(null);
+      } finally {
+        if (!cancelled) setMapboxLoading(false);
       }
     })();
     return () => {
@@ -132,7 +140,11 @@ export default function EnhancedAddressDialog({
           {selectedAddress && (
             <div className="border rounded-lg overflow-hidden">
               <div className="aspect-video w-full">
-                {mapboxConfig?.token ? (
+                {mapboxLoading ? (
+                  <div className="flex h-full min-h-[200px] w-full items-center justify-center bg-slate-50">
+                    <Loader2 className="h-8 w-8 animate-spin text-slate-400" aria-hidden />
+                  </div>
+                ) : mapboxConfig?.token ? (
                   <MapboxMapPreview
                     latitude={selectedAddress.latitude}
                     longitude={selectedAddress.longitude}

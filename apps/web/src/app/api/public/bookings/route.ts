@@ -267,16 +267,11 @@ export async function POST(request: NextRequest) {
 
         // 4b. Consume the hold so it no longer blocks availability
         if (validatedDraft.hold_id) {
-          const { count } = await supabaseAdmin
+          await supabaseAdmin
             .from("booking_holds")
             .update({ hold_status: "consumed" })
             .eq("id", validatedDraft.hold_id)
             .eq("hold_status", "active");
-          console.log("[bookings] hold consumed", {
-            holdId: validatedDraft.hold_id,
-            bookingId: booking.id,
-            rowsUpdated: count ?? "unknown",
-          });
         }
 
         // 5. Process payment (gift card, wallet, Paystack card, cash)

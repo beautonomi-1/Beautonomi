@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection,
+import {
+  requireSuperadmin,
   successResponse,
   handleApiError,
   errorResponse,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+} from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
 const bodySchema = z.object({
@@ -20,7 +20,7 @@ const bodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    const { user } = await requireSuperadmin(request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parse = bodySchema.safeParse(body);

@@ -56,7 +56,7 @@ export async function checkBookingConflict(
       )
     `)
     .eq('staff_id', staffId)
-    .not('bookings.status', 'in', '("cancelled","no_show","failed")')
+    .not('bookings.status', 'in', '("cancelled","no_show")')
     .lt('scheduled_start_at', effectiveEndAt.toISOString())
     .gt('scheduled_end_at', startAt.toISOString());
 
@@ -177,7 +177,7 @@ export async function checkBookingConflictForProvider(
       )
     `)
     .eq('bookings.provider_id', providerId)
-    .not('bookings.status', 'in', '("cancelled","no_show","failed")')
+    .not('bookings.status', 'in', '("cancelled","no_show")')
     .lt('scheduled_start_at', effectiveEndAt.toISOString())
     .gt('scheduled_end_at', startAt.toISOString());
 

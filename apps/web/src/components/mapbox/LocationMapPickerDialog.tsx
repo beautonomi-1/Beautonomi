@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, MapPinned } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 import { mapGeocodeFeatureToAddressParts } from "@beautonomi/utils";
 import type { GeocodeResult } from "@/lib/mapbox/mapbox";
 import { toast } from "sonner";
@@ -50,6 +51,7 @@ export function LocationMapPickerDialog({
   defaultCountryName,
   onLocationPicked,
 }: LocationMapPickerDialogProps) {
+  const [mapboxState, setMapboxState] = useState<"loading" | "ready" | "missing">("loading");
   const [token, setToken] = useState<string | null>(null);
   const [styleUrl, setStyleUrl] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
@@ -61,15 +63,21 @@ export function LocationMapPickerDialog({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    setMapboxState("loading");
     (async () => {
       try {
         const cfg = await fetchMapboxPublicMapConfig();
         if (!cancelled) {
-          setToken(cfg.accessToken);
+          const t = cfg.accessToken && cfg.accessToken.trim() ? cfg.accessToken.trim() : null;
+          setToken(t);
           setStyleUrl(cfg.styleUrl);
+          setMapboxState(t ? "ready" : "missing");
         }
       } catch {
-        if (!cancelled) setToken(null);
+        if (!cancelled) {
+          setToken(null);
+          setMapboxState("missing");
+        }
       }
     })();
     return () => {
@@ -97,20 +105,23 @@ export function LocationMapPickerDialog({
     const centerLat = hasValidInitial ? initialLatitude! : DEFAULT_CENTER[1];
 
     let cancelled = false;
+    let detachResize: (() => void) | undefined;
 
     (async () => {
       const mapboxgl = (await import("mapbox-gl")).default;
       await import("mapbox-gl/dist/mapbox-gl.css");
       if (cancelled || !mapContainerRef.current) return;
 
-      mapboxgl.accessToken = token;
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
+        accessToken: token,
         style: styleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
         center: [centerLng, centerLat],
         zoom: hasValidInitial ? 16 : 11,
       });
       map.addControl(new mapboxgl.NavigationControl(), "top-right");
+
+      detachResize = attachMapResize(map, mapContainerRef.current);
 
       const marker = new mapboxgl.Marker({ color: "#FF0077", draggable: true })
         .setLngLat([centerLng, centerLat])
@@ -123,6 +134,7 @@ export function LocationMapPickerDialog({
 
     return () => {
       cancelled = true;
+      detachResize?.();
       setMapReady(false);
       markerRef.current?.remove();
       markerRef.current = null;
@@ -180,12 +192,19 @@ export function LocationMapPickerDialog({
         </DialogHeader>
 
         <div className="px-4 py-3 sm:px-5">
-          {!token ? (
+          {mapboxState === "loading" ? (
             <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
               <Loader2 className="h-8 w-8 animate-spin text-slate-400" aria-hidden />
               <p className="text-sm font-medium text-slate-800">Loading map…</p>
-              <p className="text-xs text-slate-600">
-                If this stays empty, Mapbox may not be configured—use address search above instead.
+            </div>
+          ) : mapboxState === "missing" ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50/90 p-6 text-center">
+              <MapPinned className="h-10 w-10 text-amber-600/80" aria-hidden />
+              <p className="text-sm font-semibold text-amber-950">Map not configured</p>
+              <p className="text-xs text-amber-900/90">
+                Add a public Mapbox token in admin (Mapbox settings) or set{" "}
+                <code className="rounded bg-amber-100 px-1 text-[11px]">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for local
+                dev. You can still confirm your location using address search above.
               </p>
             </div>
           ) : (
@@ -203,7 +222,7 @@ export function LocationMapPickerDialog({
           <Button
             type="button"
             className="w-full sm:w-auto"
-            disabled={!token || !mapReady || applying}
+            disabled={mapboxState !== "ready" || !mapReady || applying}
             onClick={() => void handleApply()}
           >
             {applying ? (

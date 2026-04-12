@@ -46,7 +46,7 @@ interface StepPaymentProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
   /** Navigate by step id (works when `?package=` reorders steps). */
-  onNavigateToStep: (step: BookingStep) => void;
+  onNavigateToStep: (step: BookingStep) => void | Promise<void>;
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
@@ -1309,14 +1309,26 @@ export default function StepPayment({
                         ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
                         : null;
 
+                      const selectCard = () => {
+                        setSelectedCardId(card.id);
+                        setUseNewCard(false);
+                      };
+
                       return (
-                        <motion.button
+                        <motion.div
                           key={card.id}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           whileHover={{ scale: 1.01 }}
                           whileTap={{ scale: 0.99 }}
-                          onClick={() => { setSelectedCardId(card.id); setUseNewCard(false); }}
-                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
+                          onClick={selectCard}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              selectCard();
+                            }
+                          }}
+                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
                             active
                               ? "border-primary bg-pink-50"
                               : "border-gray-200 hover:border-gray-300 bg-white"
@@ -1352,7 +1364,7 @@ export default function StepPayment({
                             )}
                           </div>
                           {active && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
-                        </motion.button>
+                        </motion.div>
                       );
                     })}
                   </div>

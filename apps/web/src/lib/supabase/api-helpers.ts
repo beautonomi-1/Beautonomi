@@ -442,6 +442,20 @@ export async function requireAdminSection(
 }
 
 /**
+ * Superadmin-only admin APIs (Gods Eye, …). Matches Next.js RoleGuard `superadmin` and admin nav `superadminOnly`.
+ */
+export async function requireSuperadmin(
+  request?: NextRequest | Request
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new Error("Authentication required");
+  if ((user.role as string) !== "superadmin") {
+    throw new Error("Insufficient permissions: superadmin access required");
+  }
+  return { user };
+}
+
+/**
  * Require admin access if the user can access any of the given sections (OR).
  * Superadmin can access all sections. Uses effective section roles from DB when set.
  */
