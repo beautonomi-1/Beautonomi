@@ -106,6 +106,7 @@ path,class,note
 /api/admin/fees/adjustments,T,"uses resolveAdminApiTenantId"
 /api/admin/fees/configs,T,"review: likely tenant-scoped ops"
 /api/admin/fees/reconciliations,T,"review: likely tenant-scoped ops"
+/api/admin/finance/adjustments,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/summary,T,"uses resolveAdminApiTenantId"
 /api/admin/finance/period-locks/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/finance/period-locks,T,"uses resolveAdminApiTenantId"
