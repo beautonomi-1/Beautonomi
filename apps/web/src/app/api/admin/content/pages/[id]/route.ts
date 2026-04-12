@@ -174,6 +174,8 @@ export async function PUT(
   }
 }
 
+export { PUT as PATCH };
+
 /**
  * DELETE /api/admin/content/pages/[id]
  * 

@@ -13,6 +13,14 @@ interface WalletMismatch {
   currency: string;
 }
 
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = typeof record.code === "string" ? record.code : "";
+  const message = typeof record.message === "string" ? record.message : "";
+  return code === "42703" && message.includes(column);
+}
+
 /**
  * GET /api/admin/finance/wallet-reconciliation
  *
@@ -35,8 +43,31 @@ export async function GET(request: NextRequest) {
       .select("id, user_id, balance, currency")
       .order("updated_at", { ascending: false })
       .limit(1000);
+
     if (tenantId) {
-      walletsQuery = walletsQuery.eq("tenant_id", tenantId);
+      const { data: tenantWalletRows, error: tenantWalletsError } = await supabase
+        .from("wallet_transactions")
+        .select("wallet_id")
+        .eq("tenant_id", tenantId)
+        .limit(5000);
+
+      if (tenantWalletsError) {
+        if (isMissingColumnError(tenantWalletsError, "tenant_id")) {
+          console.warn(
+            "[wallet-reconciliation] wallet_transactions.tenant_id missing, continuing without tenant scoping"
+          );
+        } else {
+          throw tenantWalletsError;
+        }
+      } else {
+        const scopedWalletIds = Array.from(
+          new Set((tenantWalletRows ?? []).map((row: { wallet_id?: string }) => row.wallet_id).filter(Boolean))
+        );
+        if (scopedWalletIds.length === 0) {
+          return successResponse({ mismatches: [], checked: 0, healthy: 0 });
+        }
+        walletsQuery = walletsQuery.in("id", scopedWalletIds);
+      }
     }
     const { data: wallets, error: walletsError } = await walletsQuery;
     if (walletsError) throw walletsError;
@@ -128,6 +159,24 @@ export async function PATCH(request: NextRequest) {
       .select("id, user_id, balance")
       .eq("id", walletId)
       .single();
+    const tenantId = await resolveAdminApiTenantId(request);
+    if (tenantId) {
+      const { data: tenantScopedTx, error: tenantCheckError } = await supabase
+        .from("wallet_transactions")
+        .select("wallet_id")
+        .eq("wallet_id", walletId)
+        .eq("tenant_id", tenantId)
+        .limit(1);
+
+      if (tenantCheckError) {
+        if (!isMissingColumnError(tenantCheckError, "tenant_id")) {
+          throw tenantCheckError;
+        }
+      } else if (!tenantScopedTx || tenantScopedTx.length === 0) {
+        return NextResponse.json({ error: "Wallet not found" }, { status: 404 });
+      }
+    }
+
     if (wErr || !wallet) {
       return NextResponse.json({ error: "Wallet not found" }, { status: 404 });
     }

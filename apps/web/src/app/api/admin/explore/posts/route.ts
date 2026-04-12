@@ -14,6 +14,47 @@ const _SORT_OPTIONS = [
   "save_count_desc",
   "created_at_desc",
 ] as const;
+const SELECT_WITH_SAVE_COUNT = `
+        id,
+        provider_id,
+        caption,
+        media_urls,
+        status,
+        published_at,
+        like_count,
+        comment_count,
+        save_count,
+        is_hidden,
+        moderation_notes,
+        moderated_at,
+        moderated_by,
+        created_at,
+        providers:provider_id!inner(business_name, slug, tenant_id)
+      `;
+const SELECT_WITHOUT_SAVE_COUNT = `
+        id,
+        provider_id,
+        caption,
+        media_urls,
+        status,
+        published_at,
+        like_count,
+        comment_count,
+        is_hidden,
+        moderation_notes,
+        moderated_at,
+        moderated_by,
+        created_at,
+        providers:provider_id!inner(business_name, slug, tenant_id)
+      `;
+
+function isMissingSaveCountColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = typeof record.code === "string" ? record.code : "";
+  const message = typeof record.message === "string" ? record.message : "";
+  return code === "42703" && message.includes("save_count");
+}
 
 /**
  * GET /api/admin/explore/posts
@@ -47,78 +88,69 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    let query = supabaseAdmin
+    const buildQuery = async (includeSaveCount: boolean) => {
+      const selectClause = includeSaveCount ? SELECT_WITH_SAVE_COUNT : SELECT_WITHOUT_SAVE_COUNT;
+      let query = supabaseAdmin
       .from("explore_posts")
-      .select(
-        `
-        id,
-        provider_id,
-        caption,
-        media_urls,
-        status,
-        published_at,
-        like_count,
-        comment_count,
-        save_count,
-        is_hidden,
-        moderation_notes,
-        moderated_at,
-        moderated_by,
-        created_at,
-        providers:provider_id!inner(business_name, slug, tenant_id)
-      `,
-        { count: "exact" }
-      )
+      .select(selectClause, { count: "exact" })
       .eq("providers.tenant_id", tenantId)
       .range(offset, offset + limit - 1);
 
-    if (status) query = query.eq("status", status);
-    if (providerId) query = query.eq("provider_id", providerId);
-    if (hidden === "true") query = query.eq("is_hidden", true);
-    if (hidden === "false") query = query.eq("is_hidden", false);
-    if (dateFrom) query = query.gte("published_at", dateFrom);
-    if (dateTo) query = query.lte("published_at", dateTo + "T23:59:59.999Z");
+      if (status) query = query.eq("status", status);
+      if (providerId) query = query.eq("provider_id", providerId);
+      if (hidden === "true") query = query.eq("is_hidden", true);
+      if (hidden === "false") query = query.eq("is_hidden", false);
+      if (dateFrom) query = query.gte("published_at", dateFrom);
+      if (dateTo) query = query.lte("published_at", dateTo + "T23:59:59.999Z");
 
-    if (search) {
-      const safeSearch = search.replace(/[%*\\(),."]/g, "").trim();
-      if (safeSearch) {
-        const { data: providerRows } = await supabaseAdmin
-          .from("providers")
-          .select("id")
-          .eq("tenant_id", tenantId)
-          .ilike("business_name", `%${safeSearch}%`);
-        const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
-        if (providerIds.length > 0) {
-          query = query.or(
-            `caption.ilike.%${safeSearch}%,provider_id.in.(${providerIds.join(",")})`
-          );
-        } else {
-          query = query.ilike("caption", `%${safeSearch}%`);
+      if (search) {
+        const safeSearch = search.replace(/[%*\\(),."]/g, "").trim();
+        if (safeSearch) {
+          const { data: providerRows } = await supabaseAdmin
+            .from("providers")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .ilike("business_name", `%${safeSearch}%`);
+          const providerIds = (providerRows || []).map((p: { id: string }) => p.id);
+          if (providerIds.length > 0) {
+            query = query.or(
+              `caption.ilike.%${safeSearch}%,provider_id.in.(${providerIds.join(",")})`
+            );
+          } else {
+            query = query.ilike("caption", `%${safeSearch}%`);
+          }
         }
       }
-    }
 
-    switch (sort) {
-      case "published_at_asc":
-        query = query.order("published_at", { ascending: true }).order("id", { ascending: true });
-        break;
-      case "like_count_desc":
-        query = query.order("like_count", { ascending: false }).order("published_at", { ascending: false });
-        break;
-      case "comment_count_desc":
-        query = query.order("comment_count", { ascending: false }).order("published_at", { ascending: false });
-        break;
-      case "save_count_desc":
-        query = query.order("save_count", { ascending: false }).order("published_at", { ascending: false });
-        break;
-      case "created_at_desc":
-        query = query.order("created_at", { ascending: false }).order("id", { ascending: false });
-        break;
-      default:
-        query = query.order("published_at", { ascending: false }).order("id", { ascending: false });
-    }
+      switch (sort) {
+        case "published_at_asc":
+          query = query.order("published_at", { ascending: true }).order("id", { ascending: true });
+          break;
+        case "like_count_desc":
+          query = query.order("like_count", { ascending: false }).order("published_at", { ascending: false });
+          break;
+        case "comment_count_desc":
+          query = query.order("comment_count", { ascending: false }).order("published_at", { ascending: false });
+          break;
+        case "save_count_desc":
+          query = includeSaveCount
+            ? query.order("save_count", { ascending: false }).order("published_at", { ascending: false })
+            : query.order("published_at", { ascending: false }).order("id", { ascending: false });
+          break;
+        case "created_at_desc":
+          query = query.order("created_at", { ascending: false }).order("id", { ascending: false });
+          break;
+        default:
+          query = query.order("published_at", { ascending: false }).order("id", { ascending: false });
+      }
+      return query;
+    };
 
-    const { data, error, count } = await query;
+    let { data, error, count } = await buildQuery(true);
+    if (error && isMissingSaveCountColumnError(error)) {
+      console.warn("[admin/explore/posts] save_count column missing; falling back to compatibility mode");
+      ({ data, error, count } = await buildQuery(false));
+    }
 
     if (error) {
       console.error("explore_posts query error:", { message: error.message, details: error.details, hint: error.hint, code: error.code });

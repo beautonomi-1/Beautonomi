@@ -13,7 +13,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -23,7 +23,7 @@ export async function GET(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
 
     const { data: template, error } = await supabase
       .from("notification_templates")
@@ -47,7 +47,7 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -57,7 +57,7 @@ export async function PATCH(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     const updateData: Record<string, unknown> = {};
@@ -116,7 +116,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -126,7 +126,7 @@ export async function DELETE(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
 
     const { error } = await supabase
       .from("notification_templates")

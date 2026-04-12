@@ -5,6 +5,10 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  FINANCE_METRIC_CONTRACT_VERSION,
+  getFinanceMetricContracts,
+} from "@/lib/admin/finance-metric-contracts";
 
 export async function GET(request: NextRequest) {
   try {
@@ -254,7 +258,7 @@ export async function GET(request: NextRequest) {
     );
     const ledgerAgg = aggregateFinanceLedgerRows(allLedgerRows);
 
-    const platformRevenueNet =
+    const platformRecognizedRevenueNet =
       ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net + ledgerAgg.service_fee_revenue;
 
     return successResponse({
@@ -286,18 +290,37 @@ export async function GET(request: NextRequest) {
       },
       cancellationFeesRetainedByProviders: totalCancellationFeesRetained,
       promotionDiscountsGiven: totalPromotionDiscounts,
+      // Booking-side operational metric (GMV after discounts), not platform recognized revenue.
+      gmvAfterDiscounts: totalRevenue - totalPromotionDiscounts,
       netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
 
       platformRevenue: {
         booking_commission_net: ledgerAgg.platform_take_net,
         subscription_net: ledgerAgg.subscription_net,
         ads_net: ledgerAgg.ads_net,
-        total_platform_revenue_net: platformRevenueNet,
+        service_fee_revenue_net: ledgerAgg.service_fee_revenue,
+        total_platform_revenue_net: platformRecognizedRevenueNet,
         gateway_fees_total: ledgerAgg.gateway_fees_services + ledgerAgg.subscription_gateway_fees + ledgerAgg.ads_gateway_fees,
         provider_earnings_net: ledgerAgg.provider_earnings_net,
         refunds_gross: ledgerAgg.refunds_gross,
+        refunds_abs_gross: ledgerAgg.refunds_abs_gross,
+        provider_refund_impact_net: ledgerAgg.provider_refund_net_impact,
+        platform_refund_contra: ledgerAgg.platform_refund_contra,
         tips_gross: ledgerAgg.tips_gross,
         taxes_gross: ledgerAgg.taxes_gross,
+      },
+      passThrough: {
+        taxes_collected: ledgerAgg.taxes_gross,
+        tips_collected: ledgerAgg.tips_gross,
+      },
+      metrics_meta: {
+        contract_version: FINANCE_METRIC_CONTRACT_VERSION,
+        generated_at: new Date().toISOString(),
+        contracts: getFinanceMetricContracts([
+          "platformRecognizedRevenue",
+          "providerNetEarnings",
+          "taxesCollected",
+        ]),
       },
     });
   } catch (error) {

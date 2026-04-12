@@ -74,6 +74,7 @@ export function ServiceZoneMapEditor({
   const [pendingGeom, setPendingGeom] = useState<GeoJSON.Polygon | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [layersVersion, setLayersVersion] = useState(0);
+  const [layerError, setLayerError] = useState<string | null>(null);
 
   const onCoverageUpdatedRef = useRef(onCoverageUpdated);
   onCoverageUpdatedRef.current = onCoverageUpdated;
@@ -89,9 +90,15 @@ export function ServiceZoneMapEditor({
           `/api/admin/service-zones/${zoneId}/map-layers`,
           { timeoutMs: 60_000 },
         );
-        if (!cancelled) setLayers(res?.data ?? res as unknown as MapLayersPayload);
+        if (!cancelled) {
+          setLayers(res?.data ?? (res as unknown as MapLayersPayload));
+          setLayerError(null);
+        }
       } catch {
-        if (!cancelled) setLayers(null);
+        if (!cancelled) {
+          setLayers(null);
+          setLayerError("Could not load saved zone layers. You can still draw and save a new shape.");
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -243,6 +250,12 @@ export function ServiceZoneMapEditor({
           </ul>
         </div>
       )}
+
+      {mapReady && layerError ? (
+        <div className="absolute right-3 top-3 z-10 max-w-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          {layerError}
+        </div>
+      ) : null}
 
       {/* Toolbar */}
       {mapReady && allowEdits && (

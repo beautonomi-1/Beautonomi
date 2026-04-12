@@ -68,37 +68,55 @@ export async function GET(request: NextRequest) {
           .select('id, customer_id, scheduled_at, total_amount, status')
           .eq('tenant_id', tenantId)
           .in('customer_id', customerIds)
+          .in('status', ['confirmed', 'completed'])
           .gte('scheduled_at', startISO)
           .lte('scheduled_at', endISO)
       : { data: [] };
 
-    const bookingsByCustomer: Record<string, { count: number; total_amount: number }> = {};
-    (bookings || []).forEach((b: { customer_id: string; total_amount?: number; status: string }) => {
+    const bookingsByCustomer: Record<string, { count: number; total_amount: number; last_booking_at?: string }> = {};
+    (bookings || []).forEach((b: { customer_id: string; total_amount?: number; status: string; scheduled_at?: string }) => {
       const id = b.customer_id;
       if (!bookingsByCustomer[id]) bookingsByCustomer[id] = { count: 0, total_amount: 0 };
       bookingsByCustomer[id].count += 1;
       if (b.total_amount) bookingsByCustomer[id].total_amount += Number(b.total_amount);
+      if (b.scheduled_at) {
+        const prev = bookingsByCustomer[id].last_booking_at;
+        if (!prev || new Date(b.scheduled_at) > new Date(prev)) {
+          bookingsByCustomer[id].last_booking_at = b.scheduled_at;
+        }
+      }
     });
 
-    type CustomerRow = { id: string; full_name?: string | null; email?: string | null };
+    type CustomerRow = { id: string; full_name?: string | null; email?: string | null; created_at?: string };
     const customersWithMetrics = (customers || []).map((c: CustomerRow) => {
-      const data = bookingsByCustomer[c.id] || { count: 0, total_amount: 0 };
+      const data = bookingsByCustomer[c.id] || { count: 0, total_amount: 0, last_booking_at: null };
       return {
         customer_id: c.id,
         customer_name: c.full_name ?? c.email ?? "Unknown",
         bookings_count: data.count,
         total_spent: data.total_amount,
+        last_booking_at: data.last_booking_at ?? null,
+        created_at: c.created_at ?? null,
       };
     });
 
     const sorted = customersWithMetrics.sort((a, b) => b.total_spent - a.total_spent);
     const totalCustomers = sorted.length;
-    const customersWithBookings = sorted.filter((c) => c.bookings_count > 0).length;
+    const activeCustomers = sorted.filter((c) => c.bookings_count > 0).length;
+    const totalBookings = sorted.reduce((sum, c) => sum + c.bookings_count, 0);
+    const newCustomers = sorted.filter((c) => {
+      if (!c.created_at) return false;
+      const created = new Date(c.created_at);
+      return created >= startDate && created <= endDate;
+    }).length;
+    const avgBookingsPerCustomer = totalCustomers > 0 ? totalBookings / totalCustomers : 0;
 
     return successResponse({
       period,
       totalCustomers,
-      customersWithBookings,
+      activeCustomers,
+      newCustomers,
+      avgBookingsPerCustomer: Number(avgBookingsPerCustomer.toFixed(2)),
       customers: sorted,
     });
   } catch (error) {

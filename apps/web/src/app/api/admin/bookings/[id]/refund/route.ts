@@ -9,6 +9,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 /**
  * POST /api/admin/bookings/[id]/refund
@@ -83,6 +84,8 @@ export async function POST(
       tenant_id: (loaded.booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
       provider_id: b.provider_id ?? null,
     });
+    const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     // 1. Credit customer wallet (refunds always go to wallet)
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;

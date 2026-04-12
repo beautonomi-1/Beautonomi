@@ -224,7 +224,7 @@ export async function processBookingRefund(
       booking_id: bookingId,
       provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
       transaction_type: "refund",
-      amount: refundAmount,
+      amount: -refundAmount,
       fees: 0,
       commission: 0,
       net: -refundAmount,

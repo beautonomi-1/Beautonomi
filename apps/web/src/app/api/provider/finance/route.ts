@@ -359,6 +359,15 @@ export async function GET(request: NextRequest) {
         additional_charges_this_period: additionalChargesThisPeriod,
       },
       transactions: transactions,
+      language_context: {
+        audience: "provider",
+        glossary: {
+          available_balance: "Amount currently available for payout after hold period and prior payouts.",
+          pending_payouts: "Payout requests created but not yet completed.",
+          refunds_total: "Total refund-related deductions affecting your earnings in the selected range.",
+          platform_fees_deducted: "Fees retained by platform according to configuration for this market.",
+        },
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch finance data");

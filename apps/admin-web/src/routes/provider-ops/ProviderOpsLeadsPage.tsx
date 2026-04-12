@@ -319,7 +319,7 @@ export function ProviderOpsLeadsPage() {
   return (
     <div
       className={cn(
-        "flex h-[calc(100vh-4rem)] flex-col overflow-hidden",
+        "flex min-h-[calc(100vh-4rem)] flex-col overflow-x-hidden overflow-y-hidden",
         dragOver && "ring-2 ring-inset ring-blue-300 bg-blue-50/30 rounded-xl",
       )}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -528,8 +528,36 @@ export function ProviderOpsLeadsPage() {
           </div>
         )}
       </div>
+
+      {selectedLeadId && (
+        <div className="fixed inset-0 z-40 bg-black/40 p-3 lg:hidden">
+          <div className="mx-auto flex h-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <DetailPanel
+              lead={detail}
+              activities={activities}
+              isLoading={detailQ.isLoading}
+              noteText={noteText}
+              setNoteText={setNoteText}
+              onAddNote={() => addNoteMut.mutate(selectedLeadId)}
+              addingNote={addNoteMut.isPending}
+              onStageChange={(s) => stageMutateSafe(stageChangeMut, selectedLeadId, s)}
+              onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
+              onClose={() => setSelectedLeadId(null)}
+              isDeleting={deleteMut.isPending}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function stageMutateSafe(
+  stageMut: { mutate: (args: { id: string; newStage: string }) => void },
+  id: string,
+  newStage: string
+) {
+  stageMut.mutate({ id, newStage });
 }
 
 // ─── Table view ───────────────────────────────────────────────────────────────
@@ -561,7 +589,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
 
   return (
     <div className="flex-1 overflow-auto">
-      <table className="w-full min-w-[700px]">
+      <table className="w-full min-w-[640px]">
         <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm">
           <tr className="border-b border-gray-200">
             <th className="w-10 px-3 py-3">

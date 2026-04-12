@@ -195,7 +195,7 @@ export function ProviderOpsPipelinePage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col overflow-hidden">
+    <div className="flex min-h-[calc(100vh-4rem)] flex-col overflow-hidden">
       <style>{`
         @keyframes pipeline-card-land {
           from { opacity: 0.65; transform: translateY(8px) scale(0.98); }

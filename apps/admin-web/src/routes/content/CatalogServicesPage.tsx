@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
@@ -295,6 +295,13 @@ export function CatalogServicesPage() {
         }
       />
 
+      <AdminPanel>
+        <p className="text-sm text-gray-700">
+          Use this catalog to define reusable service templates (duration, category, allowed location types) that providers can adopt.
+          Editing here updates the master definition used across onboarding and provider configuration surfaces.
+        </p>
+      </AdminPanel>
+
       {creating && (
         <ServiceFormUI
           value={newForm}
@@ -323,7 +330,7 @@ export function CatalogServicesPage() {
           </AdminTableHead>
           <AdminTableBody>
             {rows.map((r) => (
-              <>
+              <Fragment key={r.id}>
                 <tr key={r.id}>
                   <AdminTd className="font-medium">{r.name}</AdminTd>
                   <AdminTd className="text-xs text-gray-500">{r.category_name ?? "—"}</AdminTd>
@@ -387,7 +394,7 @@ export function CatalogServicesPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </AdminTableBody>
         </AdminDataTable>

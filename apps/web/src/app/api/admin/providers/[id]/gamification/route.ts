@@ -43,7 +43,7 @@ export async function GET(
         badge_earned_at,
         last_calculated_at,
         provider_badges!provider_points_current_badge_id_fkey (
-          id, name, slug, tier, icon, min_points, description
+          id, name, slug, tier, icon_url, requirements, description, color
         )
       `)
       .eq("provider_id", providerId)
@@ -51,7 +51,7 @@ export async function GET(
 
     const { data: allBadges } = await supabase
       .from("provider_badges")
-      .select("id, name, slug, tier, icon, min_points, description, color")
+      .select("id, name, slug, tier, icon_url, requirements, description, color")
       .eq("is_active", true)
       .order("tier", { ascending: true });
 
@@ -81,12 +81,15 @@ export async function GET(
       );
       if (nextBadge) {
         const totalPoints = pointsData.total_points || 0;
+        const nextMinPoints = Number(
+          ((nextBadge as { requirements?: Record<string, unknown> }).requirements?.min_points as number | undefined) ?? 0
+        );
         progressToNextBadge = {
           next_badge: nextBadge,
-          points_needed: Math.max(0, (nextBadge as { min_points: number }).min_points - totalPoints),
+          points_needed: Math.max(0, nextMinPoints - totalPoints),
           progress_percent: Math.min(
             100,
-            Math.round((totalPoints / (nextBadge as { min_points: number }).min_points) * 100)
+            nextMinPoints > 0 ? Math.round((totalPoints / nextMinPoints) * 100) : 0
           ),
         };
       }

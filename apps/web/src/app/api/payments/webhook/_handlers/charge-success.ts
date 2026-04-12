@@ -286,6 +286,44 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const stdRequiresDeposit = Boolean(metadata?.requires_deposit);
   const stdIsDeposit = stdRequiresDeposit && stdPaymentOption === "deposit";
 
+  // Ensure booking_payments parity for webhook-first flows.
+  // This keeps bookings.total_paid / payment_status aligned even if redirect verify is skipped.
+  // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
+  if (amountInCurrency > 0) {
+    const { data: existingBookingPayment } = await supabase
+      .from("booking_payments")
+      .select("id")
+      .eq("payment_provider", "paystack")
+      .eq("payment_provider_id", reference)
+      .maybeSingle();
+
+    if (!existingBookingPayment) {
+      const { error: bookingPaymentInsertError } = await supabase
+        .from("booking_payments")
+        .insert({
+          booking_id: metadata.booking_id,
+          tenant_id: financeTenantId,
+          amount: amountInCurrency,
+          payment_method: "card",
+          payment_provider: "paystack",
+          payment_provider_id: reference,
+          payment_provider_data: {
+            source: "paystack_webhook",
+            payment_option: stdPaymentOption,
+            requires_deposit: stdRequiresDeposit,
+            save_card: Boolean(metadata?.save_card),
+          },
+          status: "completed",
+          notes: stdIsDeposit
+            ? `Deposit payment received via Paystack webhook. Ref: ${reference}`
+            : `Payment received via Paystack webhook. Ref: ${reference}`,
+        });
+      if (bookingPaymentInsertError && bookingPaymentInsertError.code !== "23505") {
+        console.error("[charge-success] booking_payments insert failed:", bookingPaymentInsertError);
+      }
+    }
+  }
+
   const { error: updateError } = await supabase
     .from("bookings")
     .update({
@@ -630,6 +668,28 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
         commission: 0,
         net: giftCardAmountApplied,
         description: `Gift card contribution for booking ${bookingData.booking_number} (split payment)`,
+        created_at: webhookNow,
+      });
+    }
+
+    // Keep gift-card liability rollforward balanced across all booking payment paths.
+    const { data: existingGcLiabilityReduction } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "gift_card_liability_reduction")
+      .maybeSingle();
+    if (!existingGcLiabilityReduction) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "gift_card_liability_reduction",
+        amount: giftCardAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: -giftCardAmountApplied,
+        description: `Gift card liability reduction for booking ${bookingData.booking_number} (split payment)`,
         created_at: webhookNow,
       });
     }
@@ -1941,23 +2001,59 @@ async function handleMembershipOrderSuccess(
   const orderData = order as MembershipOrderRow;
   if (orderData.status === "paid") return;
 
-  const providerId = orderData.provider_id ?? null;
+  const { data: planRow } = await (supabase.from("membership_plans") as any)
+    .select("id, provider_id")
+    .eq("id", orderData.plan_id)
+    .maybeSingle();
+  const planProviderId = (planRow as { provider_id?: string | null } | null)?.provider_id ?? null;
+  if (!planProviderId) {
+    console.error("Membership plan missing or has no provider:", orderData.plan_id);
+    return;
+  }
+  if (orderData.provider_id && orderData.provider_id !== planProviderId) {
+    console.error("Membership order/provider mismatch:", {
+      orderId,
+      orderProviderId: orderData.provider_id,
+      planProviderId,
+      planId: orderData.plan_id,
+    });
+    return;
+  }
+  const providerId = planProviderId;
 
   const membershipFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
     provider_id: providerId,
   });
 
-  const expiresAt = new Date();
+  const now = new Date();
+  const { data: existingMembership } = await (supabase.from("user_memberships") as any)
+    .select("id, status, started_at, expires_at")
+    .eq("user_id", orderData.user_id)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  const existing = existingMembership as
+    | { status?: string | null; started_at?: string | null; expires_at?: string | null }
+    | null;
+  const existingExpiry = existing?.expires_at ? new Date(existing.expires_at) : null;
+  const existingExpiryValid = Boolean(existingExpiry && Number.isFinite(existingExpiry.getTime()));
+  const hasFutureActiveTerm =
+    existing?.status === "active" &&
+    existingExpiryValid &&
+    (existingExpiry as Date).getTime() > now.getTime();
+  const renewalStart = hasFutureActiveTerm ? (existingExpiry as Date) : now;
+  const expiresAt = new Date(renewalStart);
   expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const startedAt =
+    hasFutureActiveTerm && existing?.started_at ? existing.started_at : now.toISOString();
 
   await supabase.from("user_memberships").upsert(
     {
       user_id: orderData.user_id,
-      provider_id: orderData.provider_id,
+      provider_id: providerId,
       plan_id: orderData.plan_id,
       status: "active",
-      started_at: new Date().toISOString(),
+      started_at: startedAt,
       expires_at: expiresAt.toISOString(),
       metadata: { source: "purchase", membership_order_id: orderId },
       updated_at: new Date().toISOString(),

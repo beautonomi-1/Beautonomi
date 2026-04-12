@@ -52,7 +52,7 @@ export function ProviderOpsDashboardPage() {
         title="Provider Ops Hub"
         description="Supply operations overview — who needs help right now"
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Link to={adminSpaTo("/admin/provider-ops/leads/new")} className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Add Lead</Link>
             <Link to={adminSpaTo("/admin/provider-ops/tracker")} className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800">Tracker</Link>
           </div>
@@ -67,7 +67,7 @@ export function ProviderOpsDashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <KpiCard label="Signups Today" value={data.kpis.signups_today} />
         <KpiCard label="Signups This Week" value={data.kpis.signups_this_week} />
         <KpiCard label="Leads This Week" value={data.kpis.leads_this_week} />

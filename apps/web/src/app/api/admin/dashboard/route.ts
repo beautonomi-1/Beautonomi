@@ -6,6 +6,10 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  FINANCE_METRIC_CONTRACT_VERSION,
+  getFinanceMetricContracts,
+} from "@/lib/admin/finance-metric-contracts";
 
 /** Ledger window for “all-time” dashboard cards (avoids unbounded row fetch). */
 const LEDGER_TOTAL_MONTHS = 24;
@@ -246,13 +250,13 @@ export async function GET(request: NextRequest) {
       wTotal = 0;
     }
 
-    // ecommerce_platform_fees is NOT double-counted: product order fees are in platform_take_net
-    // (see aggregate). Match GET /api/admin/finance/summary `platform_revenue.total`.
-    const sumPlatformRevenue = (p: typeof total, wallet: number) =>
-      p.platform_take_net + p.subscription_net + p.ads_net + p.service_fee_revenue + wallet;
-    const platformNetTotal = sumPlatformRevenue(total, wTotal);
-    const thisMonthPlatformNet = sumPlatformRevenue(thisMonth, wThisMonth);
-    const lastMonthPlatformNet = sumPlatformRevenue(lastMonth, wLastMonth);
+    // ecommerce_platform_fees is NOT double-counted: product order fees are in platform_take_net.
+    // Wallet topups are custodial cash inflows (liability), not recognized platform revenue.
+    const sumPlatformRecognizedRevenue = (p: typeof total) =>
+      p.platform_take_net + p.subscription_net + p.ads_net + p.service_fee_revenue;
+    const platformNetTotal = sumPlatformRecognizedRevenue(total);
+    const thisMonthPlatformNet = sumPlatformRecognizedRevenue(thisMonth);
+    const lastMonthPlatformNet = sumPlatformRecognizedRevenue(lastMonth);
     const revenueGrowth =
       lastMonthPlatformNet !== 0
         ? Math.round(
@@ -294,7 +298,7 @@ export async function GET(request: NextRequest) {
       total_revenue: platformNetTotal,
       pending_approvals: pendingApprovals || 0,
       active_bookings_today: bookingsToday || 0,
-      revenue_today: sumPlatformRevenue(today, wToday),
+      revenue_today: sumPlatformRecognizedRevenue(today),
       revenue_this_month: thisMonthPlatformNet,
       revenue_growth: revenueGrowth,
       users_growth: usersGrowth,
@@ -333,7 +337,7 @@ export async function GET(request: NextRequest) {
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
         ecommerce_fees_detail: total.ecommerce_platform_fees,
-        wallet_topups: wTotal,
+        wallet_topups_cash_collected: wTotal,
         total: platformNetTotal,
       },
 
@@ -349,7 +353,7 @@ export async function GET(request: NextRequest) {
         subscriptions: total.subscription_net,
         ads: total.ads_net,
         service_fees: total.service_fee_revenue,
-        wallet_topups: wTotal,
+        wallet_topups_cash_collected: wTotal,
         total: platformNetTotal,
       },
 
@@ -362,9 +366,18 @@ export async function GET(request: NextRequest) {
         customer_growth_basis:
           "New customer accounts with preferred_home_tenant in this market (this month vs last month).",
         platform_net_includes:
-          "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer service fees + paid wallet topups. Matches finance summary platform revenue total. Cancellation fees are provider revenue.",
+          "Booking platform take (includes ecommerce in commission) + subscription net + ads net + customer service fees. Wallet topups are tracked as cash/liability, not recognized revenue. Cancellation fees are provider revenue.",
         bookings_growth_basis: "Bookings created this calendar month vs last month (tenant scope).",
         providers_growth_basis: "Active providers created this calendar month vs last month (tenant scope).",
+      },
+      metrics_meta: {
+        contract_version: FINANCE_METRIC_CONTRACT_VERSION,
+        generated_at: generatedAt,
+        contracts: getFinanceMetricContracts([
+          "platformRecognizedRevenue",
+          "liabilityWalletTopups",
+          "taxesCollected",
+        ]),
       },
     });
   } catch (error) {

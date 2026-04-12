@@ -10,6 +10,7 @@ import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 const refundSchema = z.object({
   amount: z.number().min(0.01).optional(), // If not provided, full refund
@@ -136,6 +137,8 @@ export async function POST(
       tenant_id: bookingData.tenant_id ?? tenantId,
       provider_id: bookingData.provider_id,
     });
+    const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     if (refundAmount > Number(txData.amount)) {
       return NextResponse.json(

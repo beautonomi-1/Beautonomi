@@ -69,6 +69,71 @@ const createHoldSchema = z.object({
 
 const HOLD_EXPIRY_MINUTES = 20;
 
+type HoldOverlapScopeArgs = {
+  supabase: SupabaseClient;
+  providerId: string;
+  staffId: string | null;
+  startAtIso: string;
+  endAtIso: string;
+  nowIso: string;
+};
+
+async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): Promise<void> {
+  const query = args.staffId
+    ? args.supabase
+        .from("booking_holds")
+        .update({ hold_status: "expired" })
+        .eq("provider_id", args.providerId)
+        .eq("staff_id", args.staffId)
+        .eq("hold_status", "active")
+        .lte("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso)
+    : args.supabase
+        .from("booking_holds")
+        .update({ hold_status: "expired" })
+        .eq("provider_id", args.providerId)
+        .is("staff_id", null)
+        .eq("hold_status", "active")
+        .lte("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso);
+  const { error } = await query;
+  if (error) {
+    console.warn("[booking-holds] stale hold expiry failed (inline cleanup):", error.message);
+  }
+}
+
+async function hasActiveHoldOverlapForScope(args: HoldOverlapScopeArgs): Promise<boolean> {
+  const query = args.staffId
+    ? args.supabase
+        .from("booking_holds")
+        .select("id")
+        .eq("provider_id", args.providerId)
+        .eq("staff_id", args.staffId)
+        .eq("hold_status", "active")
+        .gt("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso)
+        .limit(1)
+    : args.supabase
+        .from("booking_holds")
+        .select("id")
+        .eq("provider_id", args.providerId)
+        .is("staff_id", null)
+        .eq("hold_status", "active")
+        .gt("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso)
+        .limit(1);
+  const { data, error } = await query;
+  if (error) {
+    console.error("[booking-holds] overlap query failed:", error.message);
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
 export async function POST(request: NextRequest) {
   return withRouteMetrics(
     request,
@@ -285,6 +350,32 @@ export async function POST(request: NextRequest) {
         const { dbStaffId: holdStaffIdForDb, syntheticToken: syntheticStaffPublicId } =
           normalizePublicStaffIdForDatabase(rawStaffKey ?? undefined);
 
+        await expireStaleOverlappingHoldsForScope({
+          supabase,
+          providerId: provider_id,
+          staffId: holdStaffIdForDb,
+          startAtIso: startDate.toISOString(),
+          endAtIso: endDate.toISOString(),
+          nowIso,
+        });
+
+        const insertScopeConflict = await hasActiveHoldOverlapForScope({
+          supabase,
+          providerId: provider_id,
+          staffId: holdStaffIdForDb,
+          startAtIso: startDate.toISOString(),
+          endAtIso: endDate.toISOString(),
+          nowIso,
+        });
+        if (insertScopeConflict) {
+          return handleApiError(
+            new Error("This time slot is no longer available. Please select another time."),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409
+          );
+        }
+
         // Build booking_services_snapshot
         let cursor = new Date(startDate);
         const bookingServicesSnapshot: Array<{
@@ -419,6 +510,7 @@ export async function POST(request: NextRequest) {
           const { data } = await supabase
             .from("booking_holds")
             .select("id")
+            .eq("provider_id", provider_id)
             .eq("hold_status", "active")
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())

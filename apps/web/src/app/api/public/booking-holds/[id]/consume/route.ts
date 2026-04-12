@@ -227,6 +227,11 @@ export async function POST(
 
     const expiresAt = new Date(hold.expires_at);
     if (expiresAt < new Date()) {
+      await adminSupabase
+        .from("booking_holds")
+        .update({ hold_status: "expired" })
+        .eq("id", hold.id)
+        .eq("hold_status", "active");
       return handleApiError(
         new Error("Hold has expired"),
         "Your hold has expired. Please select a new time.",

@@ -21,6 +21,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { AdminModal } from "@/components/admin/AdminModal";
 
 type ProductRow = Record<string, unknown> & {
   id?: string;
@@ -53,6 +54,7 @@ export function ProductCatalogPage() {
   const search = sp.get("search") || "";
   const category = sp.get("category") || "";
   const [searchDraft, setSearchDraft] = useState(search);
+  const [detailProduct, setDetailProduct] = useState<ProductRow | null>(null);
   useEffect(() => {
     setSearchDraft(search);
   }, [search]);
@@ -272,7 +274,15 @@ export function ProductCatalogPage() {
                     <span className="text-xs text-gray-400">—</span>
                   )}
                 </AdminTd>
-                <AdminTd className="text-xs text-gray-400">—</AdminTd>
+                <AdminTd>
+                  <button
+                    type="button"
+                    className="text-xs text-primary underline"
+                    onClick={() => setDetailProduct(p)}
+                  >
+                    View details
+                  </button>
+                </AdminTd>
               </tr>
             ))}
           </AdminTableBody>
@@ -298,6 +308,45 @@ export function ProductCatalogPage() {
           </button>
         </div>
       ) : null}
+
+      <AdminModal
+        open={!!detailProduct}
+        onClose={() => setDetailProduct(null)}
+        title={String(detailProduct?.name ?? "Product details")}
+        footer={
+          <button
+            type="button"
+            className="rounded border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+            onClick={() => setDetailProduct(null)}
+          >
+            Close
+          </button>
+        }
+      >
+        {detailProduct ? (
+          <div className="space-y-2 text-sm text-gray-700">
+            <p><strong>SKU:</strong> {String(detailProduct.sku ?? "—")}</p>
+            <p><strong>Brand:</strong> {String(detailProduct.brand ?? "—")}</p>
+            <p><strong>Category:</strong> {String(detailProduct.category ?? "—")}</p>
+            <p><strong>Retail price:</strong> {Number(detailProduct.retail_price ?? 0).toFixed(2)}</p>
+            <p><strong>Supply price:</strong> {Number(detailProduct.supply_price ?? 0).toFixed(2)}</p>
+            <p><strong>Quantity:</strong> {String(detailProduct.quantity ?? "—")}</p>
+            <p><strong>Variants:</strong> {detailProduct.has_variants ? `${detailProduct.variant_count ?? 0}` : "No variants"}</p>
+            {Array.isArray(detailProduct.variant_option_types) && detailProduct.variant_option_types.length > 0 ? (
+              <div>
+                <p className="font-medium text-gray-900">Variant options</p>
+                <ul className="mt-1 list-disc pl-5 text-xs">
+                  {detailProduct.variant_option_types.map((o) => (
+                    <li key={o.name}>
+                      {o.name}: {(o.values || []).join(", ")}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </AdminModal>
     </div>
   );
 }

@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
+    const startDate = searchParams.get("start_date");
+    const endDate = searchParams.get("end_date");
 
     // Get tax rates from reference_data
     const { data: taxRates, error: taxError } = await supabase
@@ -52,14 +54,17 @@ export async function GET(request: NextRequest) {
     }
 
     // Get platform-wide tax statistics
-    const { data: bookings } = await supabase
+    let bookingsQuery = supabase
       .from("bookings")
-      .select("tax_amount, total_amount, status")
+      .select("tax_amount, total_amount, status, scheduled_at")
       .eq("tenant_id", tenantId)
-      .eq("status", "completed");
+      .in("status", ["confirmed", "completed"]);
+    if (startDate) bookingsQuery = bookingsQuery.gte("scheduled_at", startDate);
+    if (endDate) bookingsQuery = bookingsQuery.lte("scheduled_at", `${endDate}T23:59:59.999Z`);
+    const { data: bookings } = await bookingsQuery;
 
     const totalTaxCollected = bookings?.reduce((sum, b) => sum + (Number(b.tax_amount) || 0), 0) || 0;
-    const totalRevenue = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
+    const taxableGmv = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
 
     // Fetch platform default tax rate from platform_settings for display
     let defaultTaxRate: number | null = null;
@@ -86,9 +91,14 @@ export async function GET(request: NextRequest) {
       default_tax_rate: defaultTaxRate,
       statistics: {
         total_tax_collected: totalTaxCollected,
-        total_revenue: totalRevenue,
-        tax_percentage: totalRevenue > 0 ? (totalTaxCollected / totalRevenue) * 100 : 0,
+        // Kept for backward compatibility with existing UIs; this is GMV basis, not platform revenue.
+        total_revenue: taxableGmv,
+        taxable_gmv: taxableGmv,
+        platform_revenue: 0,
+        tax_percentage: taxableGmv > 0 ? (totalTaxCollected / taxableGmv) * 100 : 0,
         total_bookings: bookings?.length || 0,
+        note:
+          "Taxes are pass-through and not recognized platform revenue. Statistics are booking-tax based for the selected reporting window.",
       },
     });
   } catch (error) {

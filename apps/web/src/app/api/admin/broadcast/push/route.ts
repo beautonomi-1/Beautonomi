@@ -6,6 +6,14 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = typeof record.code === "string" ? record.code : "";
+  const message = typeof record.message === "string" ? record.message : "";
+  return code === "42703" && message.includes(column);
+}
+
 /**
  * POST /api/admin/broadcast/push
  * 
@@ -33,18 +41,39 @@ export async function POST(request: NextRequest) {
 
     // Get user IDs based on recipient type
     if (recipient_type === "all_users") {
-      const { data: users } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from("users")
         .select("id")
         .eq("role", "customer")
         .eq("preferred_home_tenant_id", tenantId);
-      userIds = users?.map((u: { id: string }) => u.id) ?? [];
+      if (usersError) {
+        if (isMissingColumnError(usersError, "preferred_home_tenant_id")) {
+          console.warn(
+            "[broadcast/push] users.preferred_home_tenant_id missing, falling back to role-only customer targeting"
+          );
+          const { data: fallbackUsers, error: fallbackUsersError } = await supabase
+            .from("users")
+            .select("id")
+            .eq("role", "customer");
+          if (fallbackUsersError) {
+            return handleApiError(fallbackUsersError, "Failed to resolve recipients");
+          }
+          userIds = fallbackUsers?.map((u: { id: string }) => u.id) ?? [];
+        } else {
+          return handleApiError(usersError, "Failed to resolve recipients");
+        }
+      } else {
+        userIds = users?.map((u: { id: string }) => u.id) ?? [];
+      }
     } else if (recipient_type === "all_providers") {
-      const { data: providers } = await supabase
+      const { data: providers, error: providerError } = await supabase
         .from("providers")
         .select("user_id")
         .eq("tenant_id", tenantId)
         .not("user_id", "is", null);
+      if (providerError) {
+        return handleApiError(providerError, "Failed to resolve provider recipients");
+      }
       userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
     } else if (recipient_type === "custom" && user_ids && Array.isArray(user_ids)) {
       userIds = user_ids;

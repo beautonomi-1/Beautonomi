@@ -52,11 +52,71 @@ type FinanceSummary = {
   refunds_gross: number;
   gift_card_sales: number;
   membership_sales: number;
+  service_fee_revenue?: number;
   wallet_topup_revenue: number;
   referral_payouts: number;
   total_platform_take_after_referrals: number;
   gmv_growth: number;
   period: FinancePeriod;
+  platform_revenue?: {
+    booking_commission?: number;
+    customer_paid_platform_fees?: number;
+    subscriptions?: number;
+    ads?: number;
+    service_fees?: number;
+    ecommerce_fees_detail?: number;
+    wallet_topups?: number;
+    total?: number;
+    total_after_referrals?: number;
+  };
+  provider_revenue?: {
+    provider_earnings?: number;
+    cancellation_fees?: number;
+    tips?: number;
+    taxes_collected?: number;
+    refunds?: number;
+    refund_impact_net?: number;
+    net_after_refunds?: number;
+  };
+  liabilities?: {
+    wallet_topups_cash_collected?: number;
+    gift_card_outstanding?: number;
+  };
+  pass_through?: {
+    taxes_collected?: number;
+    tips_collected?: number;
+  };
+  reconciliation?: {
+    generated_at?: string;
+    checks?: {
+      ledger_vs_bookings_gmv?: {
+        ledger_gmv?: number;
+        bookings_gmv?: number;
+        variance?: number;
+        variance_pct?: number;
+        status?: string;
+      };
+      negative_provider_payout_balances?: { count?: number; status?: string };
+      refund_burden_pressure?: { provider_refund_impact?: number; provider_earnings?: number; status?: string };
+      platform_net_health?: { platform_net?: number; status?: string };
+    };
+  };
+  metrics_meta?: {
+    contract_version?: string;
+    generated_at?: string;
+    contracts?: Array<{
+      key: string;
+      label: string;
+      formula: string;
+      source: string[];
+      timezone: string;
+      cadence: string;
+    }>;
+  };
+  language_context?: {
+    audience?: string;
+    glossary?: Record<string, string>;
+  };
   negative_balance_providers?: {
     count: number;
     providers: Array<{
@@ -264,6 +324,41 @@ export function FinanceOverviewPage() {
       ? `Custom range: ${summary.period.start_date} → ${summary.period.end_date}`
       : "Rolling month (default) — set dates below for a fixed range";
 
+  const platformRevenueDrivers = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Booking commission (net)", value: summary.platform_revenue?.booking_commission ?? summary.platform_take_net },
+      { label: "Customer service/platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
+      { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
+      { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
+      { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
+    ];
+  }, [summary]);
+
+  const platformDeductions = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Platform refund contra", value: Math.abs(summary.platform_refund_impact ?? 0) },
+      { label: "Referral payouts", value: Math.abs(summary.referral_payouts ?? 0) },
+    ];
+  }, [summary]);
+
+  const providerRevenueDrivers = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Provider earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings ?? 0 },
+      { label: "Cancellation fees retained", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0 },
+      { label: "Tips collected", value: summary.provider_revenue?.tips ?? summary.tips_gross ?? 0 },
+    ];
+  }, [summary]);
+
+  const providerDeductions = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Refund impact (provider side)", value: Math.abs(summary.provider_revenue?.refund_impact_net ?? 0) },
+    ];
+  }, [summary]);
+
   return (
     <div className="space-y-6">
       <AdminPageHeader
@@ -389,19 +484,65 @@ export function FinanceOverviewPage() {
             </ul>
           </details>
 
-          <AdminPanel>
-            <h2 className="mb-4 text-base font-semibold text-gray-900">Core revenue</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <SummaryMetricCard
-                label="Services collected (gross)"
-                value={summary.service_collected_gross}
-                trend={summary.gmv_growth}
-              />
-              <SummaryMetricCard label="Commission (gross)" value={summary.platform_commission_gross} />
-              <SummaryMetricCard label="Platform take (net)" value={summary.platform_take_net} />
-              <SummaryMetricCard label="Provider earnings" value={summary.provider_earnings} />
-            </div>
-          </AdminPanel>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <AdminPanel>
+              <h2 className="mb-4 text-base font-semibold text-gray-900">Platform Earnings</h2>
+              <div className="space-y-2 text-sm">
+                {platformRevenueDrivers.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">{item.label}</span>
+                    <span className="tabular-nums font-medium text-gray-900">{formatAdminCurrency(item.value)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-gray-200 pt-2">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Deductions</p>
+                  {platformDeductions.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-3">
+                      <span className="text-gray-600">{item.label}</span>
+                      <span className="tabular-nums font-medium text-red-700">-{formatAdminCurrency(item.value)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 border-t border-gray-200 pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-gray-900">Net platform earnings</span>
+                    <span className="tabular-nums text-lg font-semibold text-gray-900">
+                      {formatAdminCurrency(summary.platform_revenue?.total ?? summary.total_platform_take_net)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </AdminPanel>
+
+            <AdminPanel>
+              <h2 className="mb-4 text-base font-semibold text-gray-900">Provider Earnings</h2>
+              <div className="space-y-2 text-sm">
+                {providerRevenueDrivers.map((item) => (
+                  <div key={item.label} className="flex items-center justify-between gap-3">
+                    <span className="text-gray-600">{item.label}</span>
+                    <span className="tabular-nums font-medium text-gray-900">{formatAdminCurrency(item.value)}</span>
+                  </div>
+                ))}
+                <div className="border-t border-gray-200 pt-2">
+                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500">Deductions</p>
+                  {providerDeductions.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between gap-3">
+                      <span className="text-gray-600">{item.label}</span>
+                      <span className="tabular-nums font-medium text-red-700">-{formatAdminCurrency(item.value)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-2 border-t border-gray-200 pt-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="font-semibold text-gray-900">Net provider earnings</span>
+                    <span className="tabular-nums text-lg font-semibold text-gray-900">
+                      {formatAdminCurrency(summary.provider_revenue?.net_after_refunds ?? summary.provider_earnings)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </AdminPanel>
+          </div>
 
           <AdminPanel>
             <h2 className="mb-4 text-base font-semibold text-gray-900">Deductions &amp; other flows</h2>
@@ -412,9 +553,14 @@ export function FinanceOverviewPage() {
               <SummaryMetricCard label="Gift card sales" value={summary.gift_card_sales} />
               <SummaryMetricCard label="Membership sales" value={summary.membership_sales} />
               <SummaryMetricCard
-                label="Wallet top-ups collected"
-                value={summary.wallet_topup_revenue ?? 0}
-                tooltip="Cash received for wallet top-ups. This is deferred revenue — recognised when the wallet balance is spent on bookings, not when collected."
+                label="Wallet top-ups cash collected"
+                value={summary.liabilities?.wallet_topups_cash_collected ?? summary.wallet_topup_revenue ?? 0}
+                tooltip="Custodial cash inflow (liability), not recognized platform revenue."
+              />
+              <SummaryMetricCard
+                label="Gift card outstanding liability"
+                value={summary.liabilities?.gift_card_outstanding ?? 0}
+                tooltip="Unredeemed gift card balance payable to future redemptions."
               />
               <SummaryMetricCard label="Referral payouts" value={summary.referral_payouts ?? 0} />
             </div>
@@ -477,8 +623,8 @@ export function FinanceOverviewPage() {
               <SummaryMetricCard label="Subscription revenue (net)" value={summary.subscription_net} />
               <SummaryMetricCard label="Ads revenue (net)" value={summary.ads_net ?? 0} />
               <SummaryMetricCard label="Subscription fees (gross)" value={summary.subscription_collected_gross} />
-              <SummaryMetricCard label="Tips (gross)" value={summary.tips_gross} />
-              <SummaryMetricCard label="Taxes (gross)" value={summary.taxes_gross} />
+              <SummaryMetricCard label="Tips collected (pass-through)" value={summary.pass_through?.tips_collected ?? summary.tips_gross} />
+              <SummaryMetricCard label="Taxes collected (pass-through)" value={summary.pass_through?.taxes_collected ?? summary.taxes_gross} />
             </div>
           </AdminPanel>
 
@@ -492,6 +638,79 @@ export function FinanceOverviewPage() {
               />
             </div>
           </AdminPanel>
+
+          {summary.reconciliation?.checks ? (
+            <AdminPanel>
+              <h2 className="mb-3 text-base font-semibold text-gray-900">Reconciliation controls</h2>
+              <p className="mb-4 text-sm text-gray-600">
+                Daily control checks to validate ledger accuracy and payout/refund risk.
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Ledger vs bookings GMV</p>
+                  <p className="mt-1 text-sm text-gray-700">
+                    Variance {formatAdminCurrency(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance ?? 0)} (
+                    {formatAdminNumber(Math.abs(summary.reconciliation.checks.ledger_vs_bookings_gmv?.variance_pct ?? 0))}%)
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Negative payout balances</p>
+                  <p className="mt-1 text-sm text-gray-700">
+                    {formatAdminNumber(summary.reconciliation.checks.negative_provider_payout_balances?.count ?? 0)} providers flagged
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Refund burden pressure</p>
+                  <p className="mt-1 text-sm text-gray-700">
+                    Provider refund impact {formatAdminCurrency(
+                      summary.reconciliation.checks.refund_burden_pressure?.provider_refund_impact ?? 0
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 p-3">
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Platform net health</p>
+                  <p className="mt-1 text-sm text-gray-700">
+                    Net {formatAdminCurrency(summary.reconciliation.checks.platform_net_health?.platform_net ?? 0)}
+                  </p>
+                </div>
+              </div>
+            </AdminPanel>
+          ) : null}
+
+          {summary.metrics_meta ? (
+            <AdminPanel>
+              <h2 className="mb-3 text-base font-semibold text-gray-900">Metric contracts</h2>
+              <p className="mb-2 text-sm text-gray-600">
+                Version {summary.metrics_meta.contract_version ?? "n/a"} · generated{" "}
+                {summary.metrics_meta.generated_at ? new Date(summary.metrics_meta.generated_at).toLocaleString() : "—"}
+              </p>
+              <div className="space-y-2">
+                {(summary.metrics_meta.contracts ?? []).map((metric) => (
+                  <div key={metric.key} className="rounded-lg border border-gray-200 p-3 text-sm">
+                    <p className="font-medium text-gray-900">{metric.label}</p>
+                    <p className="mt-1 font-mono text-xs text-gray-700">{metric.formula}</p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Source: {metric.source.join(", ")} · TZ: {metric.timezone} · Cadence: {metric.cadence}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </AdminPanel>
+          ) : null}
+
+          {summary.language_context?.glossary ? (
+            <AdminPanel>
+              <h2 className="mb-3 text-base font-semibold text-gray-900">Admin glossary context</h2>
+              <div className="space-y-2 text-sm">
+                {Object.entries(summary.language_context.glossary).map(([key, value]) => (
+                  <div key={key} className="rounded-lg border border-gray-200 p-3">
+                    <p className="font-medium text-gray-900">{key.replace(/_/g, " ")}</p>
+                    <p className="mt-1 text-gray-600">{value}</p>
+                  </div>
+                ))}
+              </div>
+            </AdminPanel>
+          ) : null}
         </>
       ) : null}
 

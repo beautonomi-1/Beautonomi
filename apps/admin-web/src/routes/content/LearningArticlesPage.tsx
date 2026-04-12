@@ -21,6 +21,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
 
 type Article = {
   id: string;
@@ -38,14 +39,18 @@ type Article = {
   image_url?: string | null;
 };
 
+type LearningCategory = { id: string; title: string; slug: string };
+
 function ArticleForm({
   initial,
+  categories,
   onSave,
   onCancel,
   isSaving,
   error,
 }: {
   initial: Partial<Article>;
+  categories: LearningCategory[];
   onSave: (d: Partial<Article>) => void;
   onCancel: () => void;
   isSaving: boolean;
@@ -91,13 +96,19 @@ function ArticleForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Category ID *</label>
-          <input
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono text-xs"
+          <label className="block text-xs font-medium text-gray-600 mb-1">Category *</label>
+          <select
+            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            placeholder="UUID of learning category"
-          />
+          >
+            <option value="">Select category</option>
+            {categories.map((cat) => (
+              <option key={cat.id} value={cat.id}>
+                {cat.title} ({cat.slug})
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
@@ -134,7 +145,11 @@ function ArticleForm({
         </div>
         <div className="sm:col-span-2">
           <label className="block text-xs font-medium text-gray-600 mb-1">Body (HTML/Markdown)</label>
-          <textarea rows={5} className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono text-xs" value={body} onChange={(e) => setBody(e.target.value)} />
+          {contentType === "article" ? (
+            <RichTextEditor value={body} onChange={setBody} />
+          ) : (
+            <textarea rows={5} className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono text-xs" value={body} onChange={(e) => setBody(e.target.value)} />
+          )}
         </div>
         <div className="flex items-center gap-2">
           <input type="checkbox" id="internal" checked={isInternal} onChange={(e) => setIsInternal(e.target.checked)} className="accent-indigo-600" />
@@ -190,6 +205,28 @@ export function LearningArticlesPage() {
     enabled: allowed,
   });
 
+  const categoriesQ = useQuery({
+    queryKey: [...adminQueryKeys.learningArticles(status || "all"), "categories"],
+    queryFn: () =>
+      adminApi.getJson<{ data: LearningCategory[] }>("/api/admin/content/learning/categories", {
+        timeoutMs: 60_000,
+      }),
+    enabled: allowed,
+  });
+  const featuredQ = useQuery({
+    queryKey: [...adminQueryKeys.learningArticles(status || "all"), "featured"],
+    queryFn: () => adminApi.getJson<{ article_ids: string[] }>("/api/admin/content/learning/featured"),
+    enabled: allowed,
+  });
+  const homepageQ = useQuery({
+    queryKey: [...adminQueryKeys.learningArticles(status || "all"), "homepage"],
+    queryFn: () =>
+      adminApi.getJson<Record<string, unknown>>("/api/admin/content/learning/homepage", {
+        timeoutMs: 60_000,
+      }),
+    enabled: allowed,
+  });
+
   const [creating, setCreating] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [mutError, setMutError] = useState<string | null>(null);
@@ -216,6 +253,16 @@ export function LearningArticlesPage() {
   });
 
   const rows = (q.data ?? []) as Article[];
+  const categories = categoriesQ.data?.data ?? [];
+  const [featuredInput, setFeaturedInput] = useState("");
+  const featuredMut = useMutation({
+    mutationFn: (ids: string[]) => adminApi.patchJson("/api/admin/content/learning/featured", { article_ids: ids }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...adminQueryKeys.learningArticles(status || "all"), "featured"] });
+      setMutError(null);
+    },
+    onError: (e) => setMutError(e instanceof Error ? e.message : "Failed to update featured"),
+  });
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -240,6 +287,35 @@ export function LearningArticlesPage() {
       <AdminPageHeader title="Learning articles" description="Manage learning center articles." />
 
       <AdminPanel>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Learning homepage controls</h2>
+        <p className="mb-2 text-xs text-gray-500">
+          Homepage section keys loaded: {homepageQ.data ? Object.keys(homepageQ.data).join(", ") : "loading..."}
+        </p>
+        <label className="block text-xs font-medium text-gray-600">Featured article IDs (comma separated)</label>
+        <textarea
+          rows={2}
+          className="mt-1 w-full rounded border border-gray-300 px-2 py-1.5 text-xs font-mono"
+          value={featuredInput || (featuredQ.data?.article_ids ?? []).join(", ")}
+          onChange={(e) => setFeaturedInput(e.target.value)}
+          placeholder="uuid-1, uuid-2"
+        />
+        <button
+          type="button"
+          className="mt-2 rounded border border-gray-300 px-3 py-1.5 text-xs hover:bg-gray-50 disabled:opacity-50"
+          disabled={featuredMut.isPending}
+          onClick={() => {
+            const ids = featuredInput
+              .split(",")
+              .map((v) => v.trim())
+              .filter(Boolean);
+            featuredMut.mutate(ids);
+          }}
+        >
+          Save featured list
+        </button>
+      </AdminPanel>
+
+      <AdminPanel>
         <div className="flex items-center justify-between mb-4">
           <button
             type="button"
@@ -261,6 +337,7 @@ export function LearningArticlesPage() {
           <div className="mb-4">
             <ArticleForm
               initial={{}}
+              categories={categories}
               onSave={(d) => createMut.mutate(d)}
               onCancel={() => setCreating(false)}
               isSaving={createMut.isPending}
@@ -272,6 +349,7 @@ export function LearningArticlesPage() {
           <div className="mb-4">
             <ArticleForm
               initial={editRow}
+              categories={categories}
               onSave={(d) => updateMut.mutate(d as Partial<Article> & { id: string })}
               onCancel={() => setEditId(null)}
               isSaving={updateMut.isPending}

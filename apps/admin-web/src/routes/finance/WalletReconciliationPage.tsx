@@ -83,9 +83,7 @@ export function WalletReconciliationPage() {
 
   const { mismatches = [], checked = 0, healthy = 0, total_mismatches = 0 } = q.data ?? {};
 
-  const rows = mismatchesOnly
-    ? mismatches
-    : mismatches;
+  const rows = mismatchesOnly ? mismatches : mismatches;
 
   return (
     <div className="space-y-6">

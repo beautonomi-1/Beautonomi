@@ -1257,6 +1257,7 @@ export default function OnlineBookingFlowNew({
         location_id: bookingData.venueType === "at_salon" ? bookingData.selectedLocation?.id ?? null : null,
         address: addressPayload,
         resource_ids: bookingData.selectedResourceIds?.length ? bookingData.selectedResourceIds : undefined,
+        previous_hold_id: holdId || null,
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
       });
       const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;

@@ -33,7 +33,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency, cancellation_fee, customer_package_entitlement_id'
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id'
       )
       .eq('id', bookingId)
       .single();
@@ -155,10 +155,17 @@ export async function POST(
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
     const totalPaid = roundCurrency2(Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0)));
+    const walletCollected = roundCurrency2(
+      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
+    );
+    const giftCardCollected = roundCurrency2(
+      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
+    );
+    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
     const isLate = checkResult.isLateCancellation === true;
     const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    /** Wallet credit must not exceed money actually collected (e.g. pending / unpaid bookings). */
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    /** Wallet credit must not exceed money actually collected across card, wallet, and gift card. */
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(
       Number(bFin.subtotal ?? 0) -
@@ -343,7 +350,7 @@ export async function POST(
           bookingTotal,
           cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: totalPaid }
+          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
         );
 
         if (refundResult.success && refundResult.amount && refundResult.amount > 0) {
