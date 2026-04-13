@@ -1035,7 +1035,7 @@ export function AppointmentSidebar({
     if (mode !== "view" || !selectedAppointment?.id || !updateSelectedAppointment) return;
     const existingServices = (selectedAppointment as any).services;
     if (Array.isArray(existingServices) && existingServices.length > 0) {
-      return; // Already have full data (e.g. from /provider/appointments)
+      return; // Already have full data (e.g. from /provider/bookings)
     }
     const fetchFullAppointment = async () => {
       try {
@@ -1051,7 +1051,7 @@ export function AppointmentSidebar({
     fetchFullAppointment();
   }, [mode, selectedAppointment?.id, activeBookingId]);
 
-  // Listen for custom event to open sidebar in CREATE mode (from /provider/appointments)
+  // Listen for custom event to open sidebar in CREATE mode (from /provider/bookings)
   useEffect(() => {
     const handleOpenSidebar = () => {
       const now = new Date();

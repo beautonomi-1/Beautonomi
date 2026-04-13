@@ -335,9 +335,7 @@ export function BookingsClient({
       payment_status: (booking as any).payment_status || "",
       created_by: booking.customer_name || "",
       total_amount: booking.total_amount,
-      currency: booking.currency,
-      services: booking.services,
-    };
+    } as Appointment;
     openViewMode(apt);
   }, []);
 

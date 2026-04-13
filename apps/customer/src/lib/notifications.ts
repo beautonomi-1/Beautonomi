@@ -155,9 +155,11 @@ export function navigateFromNotification(n: Notification): void {
   // ── Link / action_url heuristics (fallback) ───────────────────────────────
   if (link) {
     if (link.includes("/account-settings/bookings/") || link.includes("/bookings/")) {
-      const id = link.split("/").filter(Boolean).pop();
-      if (id && id.length > 8) {
-        router.push({ pathname: "/(app)/booking-detail", params: { id } });
+      const segments = link.split("/").filter(Boolean);
+      const bookingsIdx = segments.findIndex((s) => s === "bookings");
+      const bookingId = bookingsIdx >= 0 && bookingsIdx + 1 < segments.length ? segments[bookingsIdx + 1] : null;
+      if (bookingId && bookingId.length > 8) {
+        router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
         return;
       }
     }

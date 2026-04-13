@@ -630,7 +630,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
   }, [initialCalendar]);
 
-  // Load services using same API as /provider/appointments (listServices)
+  // Load services using same API as /provider/bookings (listServices)
   const servicesLoadedRef = useRef(false);
   const loadServices = useCallback(async () => {
     if (servicesLoadedRef.current || services.length > 0) return;
