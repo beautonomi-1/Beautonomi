@@ -7,6 +7,15 @@
     "pnpm": ">=10.33.0"
   },
   "pnpm": {
+    "packageExtensions": {
+      "@asamuzakjp/css-color": {
+        "dependencies": {
+          "@csstools/css-calc": "2.1.4",
+          "@csstools/css-parser-algorithms": "3.0.5",
+          "@csstools/css-tokenizer": "3.0.4"
+        }
+      }
+    },
     "overrides": {
       "react": "19.1.0",
       "react-dom": "19.1.0",
