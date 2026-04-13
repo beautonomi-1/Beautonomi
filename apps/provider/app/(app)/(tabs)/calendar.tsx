@@ -726,6 +726,7 @@ export default function CalendarScreen() {
     staleTimeMs: 10_000,
   });
   const { execute: patchBooking } = useApiMutation("patch");
+  const { execute: postBookingAction } = useApiMutation("post");
   const { execute: createTimeBlock, loading: creatingBlock } = useApiMutation("post");
   const { execute: deleteAvailabilityBlock } = useApiMutation("delete");
   const { execute: updateAvailabilityBlock, loading: savingAvailabilityEdit } = useApiMutation("put");
@@ -1201,6 +1202,16 @@ export default function CalendarScreen() {
   async function changeBookingStatus(bookingId: string, newStatus: string) {
     if (bookings) {
       setBookings(bookings.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b)));
+    }
+    if (newStatus === "completed") {
+      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
+      if (error) { Alert.alert("Error", error); refresh(); }
+      return;
+    }
+    if (newStatus === "started") {
+      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
+      if (error) { Alert.alert("Error", error); refresh(); }
+      return;
     }
     const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, { status: newStatus });
     if (error) { Alert.alert("Error", error); refresh(); }

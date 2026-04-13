@@ -1356,12 +1356,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const clientNameForRating = apt.client_name?.trim() || "Client";
 
     try {
-      // Update appointment status to completed
-      await providerApi.updateAppointment(apt.id, {
-        status: "completed",
-        notes: notes || apt.notes,
-        ...((apt as any).version !== undefined && { version: (apt as any).version }),
-      });
+      await providerApi.completeService(apt.id);
+      if (notes && notes !== apt.notes) {
+        await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
+      }
 
       // Create sale record with payment details (all services + products on the booking)
       try {
@@ -1418,7 +1416,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
   };
 
-  // Handle status update from status manager
   const handleStatusManagerUpdate = async (
     appointmentId: string,
     newStatus: string,
@@ -1426,11 +1423,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     _notes?: string
   ) => {
     try {
-      const apt = appointments.find((a) => a.id === appointmentId || (a as any).booking_id === appointmentId);
-      await providerApi.updateAppointment(appointmentId, {
-        status: newStatus as Appointment["status"],
-        ...(apt && (apt as any).version !== undefined && { version: (apt as any).version }),
-      });
+      if (newStatus === "completed" || newStatus === "in_progress" || newStatus === "started") {
+        if (newStatus === "completed") {
+          await providerApi.completeService(appointmentId);
+        } else {
+          await providerApi.startService(appointmentId);
+        }
+      } else {
+        const apt = appointments.find((a) => a.id === appointmentId || (a as any).booking_id === appointmentId);
+        await providerApi.updateAppointment(appointmentId, {
+          status: newStatus as Appointment["status"],
+          ...(apt && (apt as any).version !== undefined && { version: (apt as any).version }),
+        });
+      }
       setIsStatusManagerOpen(false);
       setSelectedAppointment(null);
       loadData();

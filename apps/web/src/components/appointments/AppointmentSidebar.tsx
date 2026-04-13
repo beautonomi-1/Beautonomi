@@ -2269,15 +2269,47 @@ export function AppointmentSidebar({
     const previousAppointment = { ...selectedAppointment };
     try {
       const dbStatus = unmapStatus(newStatus);
+
+      if (newStatus === AppointmentStatus.IN_SERVICE) {
+        const result = await providerApi.startService(activeBookingId);
+        updateSelectedAppointment({ ...selectedAppointment, ...result, status: "in_progress" });
+        onAppointmentUpdated?.({ ...selectedAppointment, ...result, status: "in_progress" });
+        onRefresh?.();
+        toast.success("Service started");
+        setSaving(false);
+        return;
+      }
+
+      if (newStatus === AppointmentStatus.COMPLETED) {
+        const result = await providerApi.completeService(activeBookingId);
+        updateSelectedAppointment({ ...selectedAppointment, ...result, status: "completed" });
+        onAppointmentUpdated?.({ ...selectedAppointment, ...result, status: "completed" });
+        onRefresh?.();
+        toast.success("Appointment completed");
+        if (selectedAppointment?.id && selectedAppointment?.client_id) {
+          try {
+            const ratingCheck = await fetch(`/api/provider/ratings?booking_id=${activeBookingId}`);
+            if (ratingCheck.ok) {
+              const ratingData = await ratingCheck.json();
+              if (!ratingData.data?.has_rating) {
+                setShowRatingDialog(true);
+              }
+            } else {
+              setShowRatingDialog(true);
+            }
+          } catch {
+            setShowRatingDialog(true);
+          }
+        }
+        setSaving(false);
+        return;
+      }
+
       const updatePayload: Record<string, any> = { status: dbStatus };
 
       // Client Arrived: set current_stage so the UI and calendar reflect WAITING state
       if (newStatus === AppointmentStatus.WAITING) {
         updatePayload.current_stage = "client_arrived";
-      }
-      // Mark In Service: clear client_arrived (we're now in service), status becomes started
-      if (newStatus === AppointmentStatus.IN_SERVICE) {
-        updatePayload.current_stage = null; // Cleared when service starts
       }
 
       const updated = { ...selectedAppointment, status: dbStatus, ...updatePayload };
@@ -2297,32 +2329,6 @@ export function AppointmentSidebar({
       switch (newStatus) {
         case AppointmentStatus.WAITING:
           successMessage = "Client marked as arrived";
-          break;
-        case AppointmentStatus.IN_SERVICE:
-          successMessage = "Service started";
-          break;
-        case AppointmentStatus.COMPLETED:
-          successMessage = "Appointment completed";
-          // Check if rating already exists, then show rating dialog
-          if (selectedAppointment?.id && selectedAppointment?.client_id) {
-            try {
-              const ratingCheck = await fetch(`/api/provider/ratings?booking_id=${activeBookingId}`);
-              if (ratingCheck.ok) {
-                const ratingData = await ratingCheck.json();
-                // If no rating exists for this booking, show dialog
-                if (!ratingData.data?.has_rating) {
-                  setShowRatingDialog(true);
-                }
-              } else {
-                // Show dialog if check fails (might be first time)
-                setShowRatingDialog(true);
-              }
-            } catch (error) {
-              console.error("Error checking existing rating:", error);
-              // Show dialog anyway if check fails
-              setShowRatingDialog(true);
-            }
-          }
           break;
         case AppointmentStatus.CONFIRMED:
           successMessage = "Appointment confirmed";

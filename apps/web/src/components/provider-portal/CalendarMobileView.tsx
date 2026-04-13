@@ -1354,7 +1354,8 @@ export function CalendarMobileView({
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
                                     </button>
                                   )}
-                                {onStatusChange && apt.status === "booked" && height > 40 && (
+                                {onStatusChange && apt.status === "booked" && height > 40 &&
+                                  (apt.location_type !== "at_home" || apt.current_stage === "provider_arrived" || apt.arrival_otp_verified || apt.qr_code_verified) && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -2081,7 +2082,8 @@ export function CalendarMobileView({
                                       Checkout
                                     </button>
                                   )}
-                                  {onStatusChange && apt.status === "booked" && (
+                                  {onStatusChange && apt.status === "booked" &&
+                                    (apt.location_type !== "at_home" || apt.current_stage === "provider_arrived" || apt.arrival_otp_verified || apt.qr_code_verified) && (
                                     <button
                                       type="button"
                                       onClick={(e) => {

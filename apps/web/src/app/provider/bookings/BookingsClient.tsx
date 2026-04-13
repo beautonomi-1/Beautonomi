@@ -175,11 +175,34 @@ export function BookingsClient({
     const booking = bookings.find((b) => b.id === bookingId);
     try {
       setConflictError(null);
+
+      if (newStatus === "completed") {
+        await fetcher.post(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        toast.success("Service completed");
+        loadBookings();
+        if (booking) {
+          setPendingRatingBooking({
+            id: booking.id,
+            customer_name: booking.customer_name ?? "Customer",
+            location_id: booking.location_id ?? null,
+            location_name: booking.location_name ?? null,
+          });
+        }
+        return;
+      }
+
+      if (newStatus === "started") {
+        await fetcher.post(`/api/provider/bookings/${bookingId}/start-service`, {});
+        toast.success("Service started");
+        loadBookings();
+        return;
+      }
+
       const response = await fetcher.patch<{ booking: Booking; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         {
           status: newStatus,
-          version, // Include version for conflict detection
+          version,
         }
       );
       
@@ -191,21 +214,13 @@ export function BookingsClient({
       
       toast.success("Booking status updated");
       loadBookings();
-
-      if (newStatus === "completed" && booking) {
-        setPendingRatingBooking({
-          id: booking.id,
-          customer_name: booking.customer_name ?? "Customer",
-          location_id: booking.location_id ?? null,
-          location_name: booking.location_name ?? null,
-        });
-      }
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
         setConflictError("This booking was modified by another user. Please refresh and try again.");
         toast.error("Conflict detected. Please refresh and try again.");
       } else {
-        toast.error("Failed to update booking status");
+        const msg = error instanceof Error ? error.message : "Failed to update booking status";
+        toast.error(msg);
       }
     }
   };
