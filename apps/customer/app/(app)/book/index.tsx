@@ -49,6 +49,7 @@ import {
   getPendingExcludeHoldId,
   setPendingExcludeHoldId,
 } from "@/lib/booking-flow-hold";
+import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Skeleton } from "@/components/Skeleton";
 import type {
@@ -1540,6 +1541,8 @@ export default function BookScreen() {
         });
       }
 
+      const fingerprint = await getGuestFingerprintHash();
+
       const res = await api.post<{ hold_id?: string; id?: string }>(
         "/api/public/booking-holds",
         {
@@ -1552,6 +1555,7 @@ export default function BookScreen() {
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
           address,
           previous_hold_id: excludeHoldIdForSlots || null,
+          guest_fingerprint_hash: fingerprint,
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),

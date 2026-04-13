@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useState, useCallback, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import { Button } from "@/components/ui/button";
@@ -640,6 +641,7 @@ function BookContinueContent() {
         tip_amount: tipAmount > 0 ? tipAmount : undefined,
         promotion_code: promotionCode.trim() || undefined,
         gift_card_code: prefillGiftCardCode.trim() || undefined,
+        guest_fingerprint_hash: getGuestFingerprintHash(),
       };
       if (prefillConsumeProducts.length > 0) {
         payload.products = prefillConsumeProducts.map((r) => ({

@@ -29,6 +29,7 @@ import { useSavedCards } from "@/hooks/useSavedCards";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
+import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
@@ -1409,11 +1410,14 @@ export default function BookCheckoutScreen() {
     setError(null);
 
     try {
+      const fingerprint = await getGuestFingerprintHash();
+
       const payload: Record<string, unknown> = {
         payment_method: paymentMethod === "wallet" ? "card" : paymentMethod === "giftcard" ? "giftcard" : paymentMethod,
         payment_option: paymentOption,
         use_wallet: paymentMethod === "wallet" || (paymentMethod === "card" && useWallet),
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
+        guest_fingerprint_hash: fingerprint,
       };
       if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
         payload.payment_method_id = selectedCardId;
