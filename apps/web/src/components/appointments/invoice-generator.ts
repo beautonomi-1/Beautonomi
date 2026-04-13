@@ -170,12 +170,17 @@ export function generateInvoiceHTMLFromData(
         ${invoiceData.additional_charges && invoiceData.additional_charges.length > 0 ? `
           <div class="section" style="margin-top: 20px;">
             <h3>Additional Charges</h3>
-            ${invoiceData.additional_charges.map((charge: any) => `
+            ${invoiceData.additional_charges.map((charge: any) => {
+              const statusLabel = charge.status === 'paid'
+                ? `Paid${charge.paid_at ? ' on ' + new Date(charge.paid_at).toLocaleDateString() : ''}`
+                : (charge.status || 'pending');
+              const statusColor = charge.status === 'paid' ? '#28a745' : '#dc3545';
+              return `
               <div class="summary-row">
-                <span>${charge.description || 'Additional charge'} <em style="color: #666; font-size: 0.85em;">(${charge.status || 'pending'})</em></span>
+                <span>${charge.description || 'Additional charge'} <em style="color: ${statusColor}; font-size: 0.85em;">(${statusLabel})</em></span>
                 <span>${formatCurrency(charge.amount || 0)}</span>
-              </div>
-            `).join('')}
+              </div>`;
+            }).join('')}
           </div>
         ` : ''}
         

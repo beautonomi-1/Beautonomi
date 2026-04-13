@@ -46,9 +46,11 @@ export async function POST(
       reference 
     } = body;
 
-    if (!payment_method || !['cash', 'card', 'mobile', 'bank_transfer', 'other'].includes(payment_method)) {
+    const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
+    const effectivePaymentMethod = payment_method === 'mobile' ? 'other' : payment_method;
+    if (!payment_method || !validPaymentMethods.includes(effectivePaymentMethod)) {
       return errorResponse(
-        "Valid payment_method is required (cash, card, mobile, bank_transfer, other)",
+        "Valid payment_method is required (cash, card, bank_transfer, other)",
         "VALIDATION_ERROR",
         400
       );
@@ -166,29 +168,23 @@ export async function POST(
       );
     }
 
-    // Determine payment provider based on method
     let paymentProvider = 'other';
-    if (payment_method === 'cash') {
+    if (effectivePaymentMethod === 'cash') {
       paymentProvider = 'cash';
-    } else if (payment_method === 'card') {
-      paymentProvider = 'yoco'; // Yoco card terminal or manual terminal
+    } else if (effectivePaymentMethod === 'card') {
+      paymentProvider = 'yoco';
     }
 
-    // Create payment record using a database function to properly handle enum types
-    // The status column is an enum, and there may be triggers that also need enum values
-    // Using RPC ensures proper type casting
     let payment: any = null;
     let paymentError: any = null;
-    
-    // Try using a database function first (if it exists). `booking_payments.tenant_id` is enforced
-    // by DB triggers after migration 381 (or must be set on direct insert below).
+
     try {
       const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
         'create_booking_payment',
         {
           p_booking_id: bookingId,
           p_amount: paymentAmount,
-          p_payment_method: payment_method,
+          p_payment_method: effectivePaymentMethod,
           p_payment_provider: paymentProvider,
           p_status: 'completed',
           p_notes: notes || `Payment received via ${payment_method}`,
@@ -196,37 +192,31 @@ export async function POST(
           p_reference: reference || null,
         }
       );
-      
+
       if (!rpcError && rpcPayment) {
         payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
       } else if (rpcError && !rpcError.message?.includes('function') && !rpcError.message?.includes('does not exist')) {
         paymentError = rpcError;
       }
     } catch {
-      // RPC function doesn't exist or failed, continue to fallback
       console.log("RPC function not available, using direct insert");
     }
-    
-    // Fallback: Direct insert (may fail due to enum, but we'll handle it)
+
     if (!payment && !paymentError) {
       const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
       const paymentData: any = {
         booking_id: bookingId,
         amount: paymentAmount,
-        payment_method,
+        payment_method: effectivePaymentMethod,
         payment_provider: paymentProvider,
-        status: 'completed', // Explicitly set status to 'completed' so trigger counts it
+        status: 'completed',
         notes: notes || `Payment received via ${payment_method}`,
         created_by: user.id,
         ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
       };
 
       if (reference) {
-        paymentData.reference = reference;
-        // Yoco: store payment_provider_id so webhook idempotency skips duplicate booking_payment
-        if (paymentProvider === 'yoco') {
-          paymentData.payment_provider_id = reference;
-        }
+        paymentData.payment_provider_id = reference;
       }
       
       // Try insert with status

@@ -2783,6 +2783,28 @@ async function handleAdditionalChargeSuccess(
     .eq("payment_provider", "paystack")
     .eq("payment_provider_transaction_id", reference);
 
+  // Create booking_payments row for ledger parity with walk-in mark-paid flow
+  try {
+    await supabase.from("booking_payments").insert({
+      booking_id: bookingId,
+      amount: amountInCurrency,
+      payment_method: "card",
+      payment_provider: "paystack",
+      payment_provider_id: reference,
+      payment_provider_data: {
+        additional_charge_id: chargeId,
+        paystack_reference: reference,
+        paystack_fees: feesInCurrency,
+      },
+      status: "completed",
+      notes: `Additional charge payment via Paystack (${(charge as { description?: string }).description || "add-on"})`,
+      created_by: bookingData.customer_id,
+      ...(bookingData.tenant_id ? { tenant_id: bookingData.tenant_id } : {}),
+    });
+  } catch (bpErr) {
+    console.warn("[additional-charge-webhook] booking_payments insert failed:", bpErr);
+  }
+
   await supabase.from("booking_events").insert({
     booking_id: bookingId,
     event_type: "additional_payment_paid",
@@ -2790,7 +2812,40 @@ async function handleAdditionalChargeSuccess(
     created_by: bookingData.customer_id,
   });
 
-  // Notify customer + provider
+  // In-app notification rows
+  try {
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    const bookingRef = bookingData.booking_number || bookingId.slice(0, 8).toUpperCase();
+    const notifCurrency = bookingData.currency || "ZAR";
+    await insertNotification({
+      user_id: bookingData.customer_id,
+      type: "additional_charge_paid",
+      title: "Additional Payment Confirmed",
+      message: `Your additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} for booking #${bookingRef} was successful.`,
+      data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
+      action_url: `/account-settings/bookings/${bookingId}`,
+    });
+    const { data: providerRowForNotif } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", bookingData.provider_id)
+      .single();
+    const providerUserIdForNotif = (providerRowForNotif as { user_id?: string } | null)?.user_id;
+    if (providerUserIdForNotif) {
+      await insertNotification({
+        user_id: providerUserIdForNotif,
+        type: "additional_charge_paid",
+        title: "Additional Payment Received",
+        message: `Additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} received for booking #${bookingRef}.`,
+        data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
+        action_url: `/provider/bookings/${bookingId}`,
+      });
+    }
+  } catch (notifErr) {
+    console.warn("[additional-charge-webhook] in-app notification failed:", notifErr);
+  }
+
+  // Push notification (customer + provider)
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     const notifyCurrency =

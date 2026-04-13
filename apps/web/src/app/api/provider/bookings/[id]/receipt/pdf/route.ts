@@ -157,10 +157,13 @@ export async function GET(
       doc.moveDown(0.4);
       doc.fontSize(11).text("Additional charges:", { underline: true });
       for (const charge of r.additional_charges) {
+        const statusLabel = charge.status === "paid"
+          ? `Paid${charge.paid_at ? ` on ${new Date(charge.paid_at).toLocaleDateString()}` : ""}`
+          : (charge.status || "pending");
         doc
           .fontSize(10)
           .text(
-            `${charge.description || "Charge"}: ${money(charge.amount)} (${charge.status || "pending"})`
+            `${charge.description || "Charge"}: ${money(charge.amount)} (${statusLabel})`
           );
       }
     }
@@ -256,6 +259,7 @@ type ReceiptData = {
     description?: string;
     amount?: number;
     status?: string;
+    paid_at?: string | null;
   }>;
   location_type?: string;
   service_address?: {

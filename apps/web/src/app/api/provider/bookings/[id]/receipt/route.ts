@@ -177,6 +177,8 @@ export async function GET(
       amount: Number(ac.amount || 0),
       currency: ac.currency || b.currency || currencyFallback,
       status: ac.status || "pending",
+      requested_at: ac.requested_at || null,
+      paid_at: ac.paid_at || null,
     }));
 
     const depositRequired = Boolean(b.deposit_required);

@@ -49,9 +49,11 @@ export async function POST(
       reference 
     } = body;
 
-    if (!payment_method || !['cash', 'card', 'mobile', 'bank_transfer', 'other'].includes(payment_method)) {
+    const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
+    const effectiveMethod = payment_method === 'mobile' ? 'other' : payment_method;
+    if (!payment_method || !validPaymentMethods.includes(effectiveMethod)) {
       return errorResponse(
-        "Valid payment_method is required (cash, card, mobile, bank_transfer, other)",
+        "Valid payment_method is required (cash, card, bank_transfer, other)",
         "VALIDATION_ERROR",
         400
       );
@@ -117,33 +119,31 @@ export async function POST(
     const chargeAmount = Number(charge.amount);
     const currency = charge.currency || booking.currency || lastResortCurrency;
 
-    // Determine payment provider based on method
     let paymentProvider = 'other';
-    if (payment_method === 'cash') {
+    if (effectiveMethod === 'cash') {
       paymentProvider = 'cash';
-    } else if (payment_method === 'card') {
-      paymentProvider = 'yoco'; // Yoco card terminal or manual terminal
+    } else if (effectiveMethod === 'card') {
+      paymentProvider = 'yoco';
     }
 
     const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
-    // Create payment record for the additional charge
-    const paymentData: any = {
+    const paymentData: Record<string, unknown> = {
       booking_id: bookingId,
       amount: chargeAmount,
-      payment_method,
+      payment_method: effectiveMethod,
       payment_provider: paymentProvider,
       status: 'completed',
       notes: notes || `Additional charge payment: ${charge.description} (via ${payment_method})`,
       created_by: user.id,
       ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
-      metadata: {
+      payment_provider_data: {
         additional_charge_id: chargeId,
         charge_description: charge.description,
       },
     };
 
     if (reference) {
-      paymentData.reference = reference;
+      paymentData.payment_provider_id = reference;
     }
 
     // Insert payment record

@@ -138,7 +138,28 @@ export async function POST(
       console.error("Failed to create booking event for additional charge:", eventError);
     }
 
-    // Notify customer using template
+    // In-app notification for the customer
+    try {
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      const bookingRef = bookingData.booking_number || bookingData.ref_number || id.slice(0, 8).toUpperCase();
+      await insertNotification({
+        user_id: bookingData.customer_id,
+        type: "payment_request",
+        title: "Payment Requested",
+        message: `Your provider has requested an additional payment of ${newCharge.currency} ${Number(newCharge.amount).toFixed(2)} for: ${newCharge.description || "Additional charge"}. Booking #${bookingRef}.`,
+        data: {
+          booking_id: id,
+          charge_id: newCharge.id,
+          amount: Number(newCharge.amount),
+          description: newCharge.description,
+        },
+        action_url: `/account-settings/bookings/${id}`,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to insert in-app notification for additional charge:", notifErr);
+    }
+
+    // Push / email notification via OneSignal
     try {
       const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
       await sendTemplateNotification(

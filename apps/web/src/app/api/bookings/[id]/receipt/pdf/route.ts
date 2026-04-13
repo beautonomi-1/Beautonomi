@@ -29,7 +29,7 @@ type ReceiptPayload = {
     deposit_amount?: number;
     deposit_percentage?: number;
     payment_option?: string;
-    additional_charges?: Array<{ description?: string; amount?: number; status?: string }>;
+    additional_charges?: Array<{ description?: string; amount?: number; status?: string; paid_at?: string | null }>;
     receipt_header?: string | null;
     receipt_footer?: string | null;
   };
@@ -152,7 +152,10 @@ export async function GET(
       doc.moveDown(0.4);
       doc.fontSize(11).text("Additional charges:", { underline: true });
       for (const charge of receipt.additional_charges) {
-        doc.fontSize(10).text(`${charge.description || "Charge"}: ${money(charge.amount, currency)} (${charge.status || "pending"})`);
+        const statusLabel = charge.status === "paid"
+          ? `Paid${charge.paid_at ? ` on ${new Date(charge.paid_at).toLocaleDateString()}` : ""}`
+          : (charge.status || "pending");
+        doc.fontSize(10).text(`${charge.description || "Charge"}: ${money(charge.amount, currency)} (${statusLabel})`);
       }
     }
 

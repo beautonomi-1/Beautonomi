@@ -70,6 +70,7 @@ interface Receipt {
     description: string;
     amount: number;
     status: string;
+    paid_at?: string | null;
   }>;
   receipt_header?: string | null;
   receipt_footer?: string | null;
@@ -326,14 +327,19 @@ export default function ReceiptPage() {
                 <h3 className="font-semibold mb-2 text-sm">Additional Charges</h3>
                 <div className="space-y-2">
                   {receipt.additional_charges!.map((charge) => (
-                    <div key={charge.id} className="flex justify-between text-sm">
-                      <span>{charge.description}</span>
-                      <div className="flex items-center gap-2">
-                        <span>{formatCurrency(charge.amount)}</span>
-                        <Badge variant="outline" className="text-xs">
-                          {charge.status}
-                        </Badge>
+                    <div key={charge.id}>
+                      <div className="flex justify-between text-sm">
+                        <span>{charge.description}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{formatCurrency(charge.amount)}</span>
+                          <Badge variant="outline" className={`text-xs ${charge.status === "paid" ? "bg-green-50 text-green-700 border-green-200" : ""}`}>
+                            {charge.status}
+                          </Badge>
+                        </div>
                       </div>
+                      {charge.paid_at && (
+                        <p className="text-xs text-gray-500 mt-0.5">Paid on {new Date(charge.paid_at).toLocaleDateString()}</p>
+                      )}
                     </div>
                   ))}
                 </div>
