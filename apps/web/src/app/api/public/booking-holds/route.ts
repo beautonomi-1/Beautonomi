@@ -79,59 +79,52 @@ type HoldOverlapScopeArgs = {
 };
 
 async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): Promise<void> {
-  const query = args.staffId
-    ? args.supabase
-        .from("booking_holds")
-        .update({ hold_status: "expired" })
-        .eq("provider_id", args.providerId)
-        .eq("staff_id", args.staffId)
-        .eq("hold_status", "active")
-        .lte("expires_at", args.nowIso)
-        .lt("start_at", args.endAtIso)
-        .gt("end_at", args.startAtIso)
-    : args.supabase
-        .from("booking_holds")
-        .update({ hold_status: "expired" })
-        .eq("provider_id", args.providerId)
-        .is("staff_id", null)
-        .eq("hold_status", "active")
-        .lte("expires_at", args.nowIso)
-        .lt("start_at", args.endAtIso)
-        .gt("end_at", args.startAtIso);
-  const { error } = await query;
+  // Expire ALL past-due holds for this provider in the overlapping time range,
+  // regardless of staff_id. This prevents stale holds from a different staff
+  // resolution from blocking the current request.
+  const { error } = await args.supabase
+    .from("booking_holds")
+    .update({ hold_status: "expired" })
+    .eq("provider_id", args.providerId)
+    .eq("hold_status", "active")
+    .lte("expires_at", args.nowIso)
+    .lt("start_at", args.endAtIso)
+    .gt("end_at", args.startAtIso);
   if (error) {
     console.warn("[booking-holds] stale hold expiry failed (inline cleanup):", error.message);
   }
 }
 
-async function hasActiveHoldOverlapForScope(args: HoldOverlapScopeArgs): Promise<boolean> {
+type HoldOverlapResult = { id: string; guest_fingerprint_hash: string | null }[];
+
+async function findActiveHoldOverlapsForScope(args: HoldOverlapScopeArgs): Promise<HoldOverlapResult> {
   const query = args.staffId
     ? args.supabase
         .from("booking_holds")
-        .select("id")
+        .select("id, guest_fingerprint_hash")
         .eq("provider_id", args.providerId)
         .eq("staff_id", args.staffId)
         .eq("hold_status", "active")
         .gt("expires_at", args.nowIso)
         .lt("start_at", args.endAtIso)
         .gt("end_at", args.startAtIso)
-        .limit(1)
+        .limit(5)
     : args.supabase
         .from("booking_holds")
-        .select("id")
+        .select("id, guest_fingerprint_hash")
         .eq("provider_id", args.providerId)
         .is("staff_id", null)
         .eq("hold_status", "active")
         .gt("expires_at", args.nowIso)
         .lt("start_at", args.endAtIso)
         .gt("end_at", args.startAtIso)
-        .limit(1);
+        .limit(5);
   const { data, error } = await query;
   if (error) {
     console.error("[booking-holds] overlap query failed:", error.message);
-    return false;
+    return [];
   }
-  return (data?.length ?? 0) > 0;
+  return (data as HoldOverlapResult) ?? [];
 }
 
 export async function POST(request: NextRequest) {
@@ -359,7 +352,7 @@ export async function POST(request: NextRequest) {
           nowIso,
         });
 
-        const insertScopeConflict = await hasActiveHoldOverlapForScope({
+        const scopeOverlaps = await findActiveHoldOverlapsForScope({
           supabase,
           providerId: provider_id,
           staffId: holdStaffIdForDb,
@@ -367,13 +360,24 @@ export async function POST(request: NextRequest) {
           endAtIso: endDate.toISOString(),
           nowIso,
         });
-        if (insertScopeConflict) {
-          return handleApiError(
-            new Error("This time slot is no longer available. Please select another time."),
-            "This time slot is no longer available. Please select another time.",
-            "CONFLICT",
-            409
-          );
+        if (scopeOverlaps.length > 0) {
+          // If all overlapping holds belong to this same guest, cancel them and proceed
+          if (
+            guest_fingerprint_hash &&
+            scopeOverlaps.every((h) => h.guest_fingerprint_hash === guest_fingerprint_hash)
+          ) {
+            await supabase
+              .from("booking_holds")
+              .update({ hold_status: "cancelled" })
+              .in("id", scopeOverlaps.map((h) => h.id));
+          } else {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
         }
 
         // Build booking_services_snapshot
@@ -496,7 +500,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff
+        // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff.
+        // First expire any stale (past-due) holds for the resolved staff scope — the earlier
+        // broad expiry targeted holdStaffIdForDb which may differ after "anyone" staff resolution.
         const distinctSnapshotStaffIds = [
           ...new Set(
             bookingServicesSnapshot
@@ -505,40 +511,63 @@ export async function POST(request: NextRequest) {
           ),
         ];
 
-        let overlappingHolds: { id: string }[] | null = null;
+        if (distinctSnapshotStaffIds.length > 0) {
+          await supabase
+            .from("booking_holds")
+            .update({ hold_status: "expired" })
+            .eq("provider_id", provider_id)
+            .eq("hold_status", "active")
+            .lte("expires_at", nowIso)
+            .lt("start_at", endDate.toISOString())
+            .gt("end_at", startDate.toISOString())
+            .in("staff_id", distinctSnapshotStaffIds);
+        }
+
+        let overlappingHolds: { id: string; guest_fingerprint_hash: string | null }[] | null = null;
         if (distinctSnapshotStaffIds.length > 0) {
           const { data } = await supabase
             .from("booking_holds")
-            .select("id")
+            .select("id, guest_fingerprint_hash")
             .eq("provider_id", provider_id)
             .eq("hold_status", "active")
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
             .in("staff_id", distinctSnapshotStaffIds)
-            .limit(1);
+            .limit(5);
           overlappingHolds = data;
         } else {
           const { data: anyoneOverlaps } = await supabase
             .from("booking_holds")
-            .select("id")
+            .select("id, guest_fingerprint_hash")
             .eq("hold_status", "active")
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
             .eq("provider_id", provider_id)
             .is("staff_id", null)
-            .limit(1);
+            .limit(5);
           overlappingHolds = anyoneOverlaps;
         }
 
         if (overlappingHolds && overlappingHolds.length > 0) {
-          return handleApiError(
-            new Error("This time slot is no longer available. Please select another time."),
-            "This time slot is no longer available. Please select another time.",
-            "CONFLICT",
-            409
-          );
+          // If ALL overlapping holds belong to this same guest, cancel them and proceed
+          if (
+            guest_fingerprint_hash &&
+            overlappingHolds.every((h) => h.guest_fingerprint_hash === guest_fingerprint_hash)
+          ) {
+            await supabase
+              .from("booking_holds")
+              .update({ hold_status: "cancelled" })
+              .in("id", overlappingHolds.map((h) => h.id));
+          } else {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
         }
 
         // Location validation

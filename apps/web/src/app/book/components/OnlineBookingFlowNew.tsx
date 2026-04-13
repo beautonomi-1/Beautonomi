@@ -14,6 +14,7 @@ import { Loader2, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { rememberBookingDraftTenant } from "@/lib/booking/booking-draft-tenant";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import {
   BookingNav,
   StepVenue,
@@ -419,7 +420,10 @@ export default function OnlineBookingFlowNew({
   const [slots, setSlots] = useState<Array<{ start: string; end: string; staff_id?: string; is_available?: boolean }>>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [holdId, setHoldId] = useState<string | null>(null);
+  const [holdId, setHoldId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return sessionStorage.getItem("beautonomi_hold_id") || null; } catch { return null; }
+  });
   const [gateOpen, setGateOpen] = useState(false);
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [creatingHold, setCreatingHold] = useState(false);
@@ -1258,11 +1262,13 @@ export default function OnlineBookingFlowNew({
         address: addressPayload,
         resource_ids: bookingData.selectedResourceIds?.length ? bookingData.selectedResourceIds : undefined,
         previous_hold_id: holdId || null,
+        guest_fingerprint_hash: getGuestFingerprintHash(),
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
       });
       const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;
       if (id) {
         setHoldId(id);
+        try { sessionStorage.setItem("beautonomi_hold_id", id); } catch {}
         try {
           const tc = await fetch("/api/public/tenant-context", { credentials: "same-origin", cache: "no-store" }).then((r) =>
             r.json().catch(() => null)

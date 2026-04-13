@@ -18,6 +18,7 @@ import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -644,6 +645,7 @@ export default function BookingFlow() {
           location_type: bookingState.mode === "mobile" ? "at_home" : "at_salon",
           location_id: bookingState.selectedLocationId ?? null,
           previous_hold_id: bookingState.holdId || null,
+          guest_fingerprint_hash: getGuestFingerprintHash(),
         }
       );
       return res?.data?.hold_id ?? res?.data?.id ?? null;
