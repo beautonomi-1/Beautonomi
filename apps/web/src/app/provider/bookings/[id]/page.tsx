@@ -318,6 +318,7 @@ export default function ProviderBookingDetail() {
         setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
         toast.success("Service completed");
         loadBooking();
+        setShowProviderCompletionModal(true);
         return;
       }
 
@@ -1823,13 +1824,25 @@ export default function ProviderBookingDetail() {
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Confirm
               </Button>
-              <Button
-                onClick={() => handleStatusChange("started")}
-                disabled={isUpdating}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-              >
-                Start Service
-              </Button>
+              {isAtHome ? (
+                (isArrived || booking.arrival_otp_verified || booking.qr_code_verified) && (
+                  <Button
+                    onClick={() => handleStatusChange("started")}
+                    disabled={isUpdating}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+                  >
+                    Start Service
+                  </Button>
+                )
+              ) : (
+                <Button
+                  onClick={() => handleStatusChange("started")}
+                  disabled={isUpdating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+                >
+                  Start Service
+                </Button>
+              )}
             </>
           )}
           {isStarted && (

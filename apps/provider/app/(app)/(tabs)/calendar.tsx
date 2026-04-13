@@ -285,7 +285,7 @@ const STAFF_TIMEOFF_OVERLAY_COLORS = {
 };
 
 const STATUS_ACTIONS = [
-  { key: "confirmed", label: "Confirm" },
+  { key: "booked", label: "Confirm" },
   { key: "started", label: "Start Service" },
   { key: "completed", label: "Complete" },
   { key: "no_show", label: "No Show" },

@@ -882,6 +882,7 @@ export default function BookingDetailScreen() {
         return;
       }
       await refresh();
+      setShowRateClientSheet(true);
       return;
     }
 
@@ -947,10 +948,18 @@ export default function BookingDetailScreen() {
   const showStatusActions = () => {
     const actions: { label: string; status: string; destructive?: boolean }[] = [];
     if (b.status !== "confirmed" && b.status !== "booked" && isActive) {
-      actions.push({ label: "Confirm", status: "confirmed" });
+      actions.push({ label: "Confirm", status: "booked" });
     }
-    if (b.status === "confirmed" || b.status === "booked") {
-      actions.push({ label: "Start service", status: "started" });
+    if (isAtHome) {
+      if ((isArrived || arrivalVerified) && !isStarted) {
+        actions.push({ label: "Start service", status: "started" });
+      }
+    } else {
+      const salonReady =
+        b.status === "confirmed" || b.status === "booked" || clientArrivedAtSalon;
+      if (salonReady && !isStarted) {
+        actions.push({ label: "Start service", status: "started" });
+      }
     }
     if (isStarted) {
       actions.push({ label: "Complete", status: "completed" });

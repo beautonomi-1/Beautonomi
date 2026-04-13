@@ -107,11 +107,13 @@ export function mapStatusToProvider(dbStatus: BookingStatus): ProviderBookingSta
 /**
  * Map provider portal status to database status
  */
-export function mapStatusFromProvider(providerStatus: ProviderBookingStatus): BookingStatus {
-  const mapping: Record<ProviderBookingStatus, BookingStatus> = {
+export function mapStatusFromProvider(providerStatus: ProviderBookingStatus | string): BookingStatus {
+  const mapping: Record<string, BookingStatus> = {
     pending: "pending",
     booked: "confirmed",
+    confirmed: "confirmed",
     started: "in_progress",
+    in_progress: "in_progress",
     completed: "completed",
     cancelled: "cancelled",
     no_show: "no_show",
