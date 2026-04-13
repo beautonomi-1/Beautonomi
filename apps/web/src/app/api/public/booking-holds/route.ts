@@ -570,19 +570,12 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Location validation
+        // Location validation — at_home address is optional for holds (collected
+        // later in the flow); travel fee is simply skipped when absent.
         if (location_type === "at_salon" && !location_id) {
           return handleApiError(
             new Error("location_id is required for at_salon bookings"),
             "location_id is required for at_salon",
-            "VALIDATION_ERROR",
-            400
-          );
-        }
-        if (location_type === "at_home" && !address) {
-          return handleApiError(
-            new Error("address is required for at_home bookings"),
-            "address is required for at_home",
             "VALIDATION_ERROR",
             400
           );

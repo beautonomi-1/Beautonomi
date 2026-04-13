@@ -646,6 +646,19 @@ export default function BookingFlow() {
           location_id: bookingState.selectedLocationId ?? null,
           previous_hold_id: bookingState.holdId || null,
           guest_fingerprint_hash: getGuestFingerprintHash(),
+          ...(bookingState.mode === "mobile" && bookingState.address?.structuredAddress
+            ? {
+                address: {
+                  line1: bookingState.address.structuredAddress.line1,
+                  city: bookingState.address.structuredAddress.city,
+                  country: bookingState.address.structuredAddress.country,
+                  postal_code: bookingState.address.structuredAddress.postalCode,
+                  ...(bookingState.address.coordinates
+                    ? { latitude: bookingState.address.coordinates.lat, longitude: bookingState.address.coordinates.lng }
+                    : {}),
+                },
+              }
+            : {}),
         }
       );
       return res?.data?.hold_id ?? res?.data?.id ?? null;
