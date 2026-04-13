@@ -14,7 +14,7 @@ export function PricingFeatureHtml({ html, className }: PricingFeatureHtmlProps)
   return (
     <span
       className={className}
-      // eslint-disable-next-line react/no-danger -- sanitized with DOMPurify
+      // eslint-disable-next-line react/no-danger -- sanitized with sanitize-html
       dangerouslySetInnerHTML={{ __html: safe }}
     />
   );

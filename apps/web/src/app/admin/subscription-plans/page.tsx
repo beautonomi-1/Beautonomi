@@ -47,7 +47,7 @@ import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import WysiwygEditor from "@/components/admin/WysiwygEditor";
-import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html";
+import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html-shared";
 
 // Complex feature gating structure matching migration 133
 interface FeatureGating {

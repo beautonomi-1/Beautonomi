@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html";
+import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html-shared";
 
 /**
  * Marketing/feature bullets shown on /pricing — stored in `pricing_plan_features`,
