@@ -1,7 +1,8 @@
 import PricingPageClient from "./pricing-page-client";
 import { getPricingPageData } from "./pricing-data";
 
-export const revalidate = 300;
+/** Tenant resolution uses `headers()` — cannot be statically generated alongside `revalidate`. */
+export const dynamic = "force-dynamic";
 
 export default async function PricingPage() {
   const { plans, faqs, pageContent } = await getPricingPageData();

@@ -319,7 +319,7 @@ export function ProviderOpsLeadsPage() {
   return (
     <div
       className={cn(
-        "flex min-h-[calc(100vh-4rem)] flex-col overflow-x-hidden overflow-y-hidden",
+        "flex min-h-[calc(100dvh-4rem)] flex-col overflow-x-hidden overflow-y-hidden pb-[env(safe-area-inset-bottom,0px)]",
         dragOver && "ring-2 ring-inset ring-blue-300 bg-blue-50/30 rounded-xl",
       )}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -327,24 +327,24 @@ export function ProviderOpsLeadsPage() {
       onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files?.[0]; if (f) void handleImportFile(f); }}
     >
       {/* Top header */}
-      <div className="flex-shrink-0 px-1 pt-1">
+      <div className="flex-shrink-0 px-2 pt-1 sm:px-1">
         <AdminPageHeader
           title="Lead Inbox"
           description={`${total.toLocaleString()} leads · Manage your provider pipeline`}
           actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <a href="/api/admin/provider-ops/leads/template?format=with-categories" download className={adminToolbarButtonClass()}>
-                <Download className="mr-1.5 h-4 w-4" />Template
+            <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
+              <a href="/api/admin/provider-ops/leads/template?format=with-categories" download className={cn(adminToolbarButtonClass(), "min-h-11 touch-manipulation justify-center sm:justify-start")}>
+                <Download className="mr-1.5 h-4 w-4 shrink-0" />Template
               </a>
               <input ref={fileInputRef} type="file" accept=".csv,.tsv,.txt" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void handleImportFile(f); }} />
-              <button type="button" disabled={importing} className={adminToolbarButtonClass(importing)} onClick={() => fileInputRef.current?.click()}>
-                <Upload className="mr-1.5 h-4 w-4" />{importing ? "Importing…" : "Import"}
+              <button type="button" disabled={importing} className={cn(adminToolbarButtonClass(importing), "min-h-11 touch-manipulation justify-center sm:justify-start")} onClick={() => fileInputRef.current?.click()}>
+                <Upload className="mr-1.5 h-4 w-4 shrink-0" />{importing ? "…" : "Import"}
               </button>
-              <button type="button" disabled={exporting || total === 0} className={adminToolbarButtonClass(exporting || total === 0)} onClick={() => void handleExport()}>
-                <Download className="mr-1.5 h-4 w-4" />Export
+              <button type="button" disabled={exporting || total === 0} className={cn(adminToolbarButtonClass(exporting || total === 0), "min-h-11 touch-manipulation justify-center sm:justify-start")} onClick={() => void handleExport()}>
+                <Download className="mr-1.5 h-4 w-4 shrink-0" />Export
               </button>
-              <Link to={adminSpaTo("/admin/provider-ops/leads/new")} className="inline-flex min-h-11 items-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors">
-                <Plus className="mr-1.5 h-4 w-4" />New Lead
+              <Link to={adminSpaTo("/admin/provider-ops/leads/new")} className="col-span-2 inline-flex min-h-11 items-center justify-center rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 transition-colors touch-manipulation sm:col-span-1">
+                <Plus className="mr-1.5 h-4 w-4 shrink-0" />New Lead
               </Link>
             </div>
           }
@@ -366,11 +366,11 @@ export function ProviderOpsLeadsPage() {
         </div>
       )}
 
-      {/* Stage tabs */}
-      <div className="flex-shrink-0 overflow-x-auto px-1 pb-3">
-        <div className="flex items-center gap-1.5">
+      {/* Stage tabs — horizontal scroll on narrow screens */}
+      <div className="flex-shrink-0 overflow-x-auto overscroll-x-contain px-2 pb-3 [-webkit-overflow-scrolling:touch] sm:px-1">
+        <div className="flex w-max min-w-full items-center gap-1.5 pb-0.5 sm:w-auto sm:flex-wrap">
           {STAGES.map((s) => (
-            <button key={s} type="button" className={adminTabButtonClass(stage === s)} onClick={() => setStage(s)}>
+            <button key={s} type="button" className={cn(adminTabButtonClass(stage === s), "touch-manipulation whitespace-nowrap")} onClick={() => setStage(s)}>
               {s !== "all" && <span className={cn("mr-1.5 inline-block h-2 w-2 rounded-full", STAGE_DOT[s])} />}
               {STAGE_LABELS[s]}
               {stageCounts[s] != null && <span className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-semibold">{stageCounts[s]}</span>}
@@ -380,30 +380,32 @@ export function ProviderOpsLeadsPage() {
       </div>
 
       {/* Toolbar: search + filters + view toggle + bulk actions */}
-      <div className="flex-shrink-0 px-1 pb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[200px] max-w-md">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by name, email, phone…"
-              value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && commitSearch()}
-              className="w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-9 pr-4 text-sm placeholder:text-gray-400 focus:border-gray-500 focus:outline-none"
-            />
+      <div className="flex-shrink-0 px-2 pb-3 sm:px-1">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex w-full gap-2 sm:max-w-md sm:flex-1">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="search"
+                enterKeyHint="search"
+                placeholder="Search name, email, phone…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && commitSearch()}
+                className="w-full min-h-11 rounded-xl border border-gray-300 bg-white py-2.5 pl-9 pr-4 text-base sm:text-sm placeholder:text-gray-400 focus:border-gray-500 focus:outline-none"
+              />
+            </div>
+            <button type="button" className="min-h-11 shrink-0 touch-manipulation rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800" onClick={commitSearch}>Search</button>
           </div>
-          <button type="button" className="rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800" onClick={commitSearch}>Search</button>
-          <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors", filtersOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
-            <Filter className="h-4 w-4" />Filters{filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-
-          <div className="ml-auto flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
+            <button type="button" onClick={() => setFiltersOpen(!filtersOpen)} className={cn("inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors touch-manipulation", filtersOpen ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50")}>
+              <Filter className="h-4 w-4" />Filters{filtersOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </button>
             {selectedIds.size > 0 && (
-              <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
-                <span className="font-medium text-blue-700">{selectedIds.size} selected</span>
+              <div className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm sm:flex-initial">
+                <span className="shrink-0 font-medium text-blue-700">{selectedIds.size} selected</span>
                 <select
-                  className="rounded-lg border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700"
+                  className="min-w-0 flex-1 rounded-lg border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700 sm:flex-initial"
                   defaultValue=""
                   onChange={(e) => {
                     if (!e.target.value) return;
@@ -415,15 +417,14 @@ export function ProviderOpsLeadsPage() {
                   <option value="">Bulk stage…</option>
                   {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                 </select>
-                <button type="button" onClick={() => setSelectedIds(new Set())} className="text-blue-500 hover:text-blue-700"><X className="h-3.5 w-3.5" /></button>
+                <button type="button" onClick={() => setSelectedIds(new Set())} className="shrink-0 text-blue-500 hover:text-blue-700"><X className="h-3.5 w-3.5" /></button>
               </div>
             )}
-
-            <div className="flex rounded-xl border border-gray-300 bg-white">
-              <button type="button" onClick={() => setViewMode("table")} className={cn("rounded-l-xl px-2.5 py-2 transition-colors", viewMode === "table" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}>
+            <div className="ml-auto flex shrink-0 rounded-xl border border-gray-300 bg-white sm:ml-0">
+              <button type="button" onClick={() => setViewMode("table")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-l-xl px-2.5 py-2 transition-colors", viewMode === "table" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Table view">
                 <LayoutList className="h-4 w-4" />
               </button>
-              <button type="button" onClick={() => setViewMode("card")} className={cn("rounded-r-xl px-2.5 py-2 transition-colors", viewMode === "card" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")}>
+              <button type="button" onClick={() => setViewMode("card")} className={cn("min-h-11 min-w-11 touch-manipulation rounded-r-xl px-2.5 py-2 transition-colors", viewMode === "card" ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-50")} aria-label="Card view">
                 <LayoutGrid className="h-4 w-4" />
               </button>
             </div>
@@ -530,8 +531,13 @@ export function ProviderOpsLeadsPage() {
       </div>
 
       {selectedLeadId && (
-        <div className="fixed inset-0 z-40 bg-black/40 p-3 lg:hidden">
-          <div className="mx-auto flex h-full max-w-xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+        <div
+          className="fixed inset-0 z-40 flex items-stretch justify-center bg-black/40 px-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] lg:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Lead details"
+        >
+          <div className="mx-auto flex h-[min(100dvh,100svh)] max-h-[100dvh] w-full max-w-xl min-h-0 flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <DetailPanel
               lead={detail}
               activities={activities}
@@ -588,7 +594,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   return (
-    <div className="flex-1 overflow-auto">
+    <div className="flex-1 overflow-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
       <table className="w-full min-w-[640px]">
         <thead className="sticky top-0 z-10 bg-gray-50/95 backdrop-blur-sm">
           <tr className="border-b border-gray-200">
@@ -619,7 +625,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
               <tr
                 key={lead.id}
                 className={cn(
-                  "cursor-pointer transition-colors",
+                  "group cursor-pointer transition-colors",
                   isSelected ? "bg-blue-50/80" : "hover:bg-gray-50/80",
                 )}
                 onClick={() => onSelectLead(lead.id)}
@@ -643,20 +649,33 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                   </div>
                 </td>
                 <td className="px-3 py-2.5">
-                  {isHovered ? (
+                  {/* Touch: always show stage control (no hover). Desktop: badge until row hover */}
+                  <div className="md:hidden">
                     <select
                       value={lead.commercial_stage}
                       onClick={(e) => e.stopPropagation()}
                       onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value); }}
-                      className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700"
+                      className="max-w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-700 touch-manipulation"
                     >
                       {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
                     </select>
-                  ) : (
-                    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", badge)}>
-                      {lead.commercial_stage.replace(/_/g, " ")}
-                    </span>
-                  )}
+                  </div>
+                  <div className="hidden md:block">
+                    {isHovered ? (
+                      <select
+                        value={lead.commercial_stage}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => { e.stopPropagation(); onStageChange(lead.id, e.target.value); }}
+                        className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700"
+                      >
+                        {STAGES.filter((s) => s !== "all").map((s) => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
+                      </select>
+                    ) : (
+                      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset", badge)}>
+                        {lead.commercial_stage.replace(/_/g, " ")}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="hidden px-3 py-2.5 md:table-cell">
                   <span className="inline-block rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[11px] font-medium text-gray-600">{lead.source}</span>
@@ -680,23 +699,21 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                   <span className="text-xs text-gray-500">{new Date(lead.created_at).toLocaleDateString()}</span>
                 </td>
                 <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
-                  {isHovered && (
-                    <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
                       {lead.phone_e164 && (
-                        <a href={`tel:${lead.phone_e164}`} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Call">
+                        <a href={`tel:${lead.phone_e164}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Call">
                           <Phone className="h-3.5 w-3.5" />
                         </a>
                       )}
                       {lead.email && (
-                        <a href={`mailto:${lead.email}`} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Email">
+                        <a href={`mailto:${lead.email}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Email">
                           <Mail className="h-3.5 w-3.5" />
                         </a>
                       )}
-                      <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Full page">
+                      <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Full page">
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
                     </div>
-                  )}
                 </td>
               </tr>
             );
@@ -799,9 +816,9 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-5 py-4">
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-3 min-w-0">
+      <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gray-900 text-sm font-bold text-white">
               {name.charAt(0).toUpperCase()}
             </div>
@@ -815,7 +832,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
               </div>
             </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
+          <button type="button" onClick={onClose} className="min-h-11 min-w-11 shrink-0 touch-manipulation rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close details">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -823,19 +840,19 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
         {/* Quick actions */}
         <div className="mt-3 flex flex-wrap gap-1.5">
           {lead.phone_e164 && (
-            <a href={`tel:${lead.phone_e164}`} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <a href={`tel:${lead.phone_e164}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
               <Phone className="h-3 w-3" />Call
             </a>
           )}
           {lead.email && (
-            <a href={`mailto:${lead.email}`} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+            <a href={`mailto:${lead.email}`} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
               <Mail className="h-3 w-3" />Email
             </a>
           )}
-          <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+          <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
             <ExternalLink className="h-3 w-3" />Full Page
           </Link>
-          <button type="button" disabled={isDeleting} onClick={onDelete} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50">
+          <button type="button" disabled={isDeleting} onClick={onDelete} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-medium text-red-600 touch-manipulation hover:bg-red-50 disabled:opacity-50">
             <Trash2 className="h-3 w-3" />Delete
           </button>
         </div>
@@ -844,16 +861,17 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto">
         {/* Stage selector */}
-        <div className="border-b border-gray-100 px-5 py-3">
+        <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
           <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Stage</label>
-          <div className="flex flex-wrap gap-1">
+          <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-0.5 [-webkit-overflow-scrolling:touch] sm:mx-0 sm:overflow-visible sm:px-0 sm:pb-0">
+          <div className="flex w-max max-w-none flex-nowrap gap-1 sm:w-auto sm:flex-wrap">
             {STAGES.filter((s) => s !== "all").map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => onStageChange(s)}
                 className={cn(
-                  "rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+                  "touch-manipulation whitespace-nowrap rounded-full px-2.5 py-1.5 text-[11px] font-medium transition-colors sm:py-1",
                   s === lead.commercial_stage ? "bg-gray-900 text-white" : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50",
                 )}
               >
@@ -862,10 +880,11 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
               </button>
             ))}
           </div>
+          </div>
         </div>
 
         {/* Contact info */}
-        <div className="border-b border-gray-100 px-5 py-3">
+        <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
           <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Contact</label>
           <div className="space-y-2">
             <InfoRow icon={User} label="Name" value={lead.contact_person_name ?? lead.business_name} />
@@ -879,7 +898,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
         {/* Categories */}
         {cats.length > 0 && (
-          <div className="border-b border-gray-100 px-5 py-3">
+          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
             <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Categories</label>
             <div className="flex flex-wrap gap-1.5">
               {cats.map((c) => (
@@ -893,7 +912,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
         {/* Tags */}
         {lead.tags?.length > 0 && (
-          <div className="border-b border-gray-100 px-5 py-3">
+          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
             <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tags</label>
             <div className="flex flex-wrap gap-1.5">
               {lead.tags.map((tag) => (
@@ -907,7 +926,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
         {/* Description */}
         {(lead.description || lead.notes) && (
-          <div className="border-b border-gray-100 px-5 py-3">
+          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
             <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Notes</label>
             {lead.description && <p className="text-sm text-gray-700 leading-relaxed">{lead.description}</p>}
             {lead.notes && <p className="mt-1 text-sm italic text-gray-500">{lead.notes}</p>}
@@ -916,7 +935,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
         {/* Matched provider */}
         {lead.matched_provider_id && (
-          <div className="border-b border-gray-100 px-5 py-3">
+          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
             <div className="rounded-lg border border-green-200 bg-green-50 p-3">
               <p className="text-xs font-semibold text-green-800">Matched Provider</p>
               <Link to={adminSpaTo(`/admin/providers/${lead.matched_provider_id}`)} className="mt-1 inline-flex items-center gap-1 text-sm text-green-700 underline">
@@ -927,7 +946,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
         )}
 
         {/* Activity timeline */}
-        <div className="px-5 py-3">
+        <div className="px-4 py-3 sm:px-5">
           <label className="mb-3 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Activity Timeline</label>
           {activities.length > 0 ? (
             <div className="relative space-y-0">
@@ -967,20 +986,20 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           )}
 
           {/* Add note */}
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="text"
               placeholder="Add a note…"
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && noteText.trim() && onAddNote()}
-              className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+              className="min-h-11 w-full flex-1 rounded-lg border border-gray-200 px-3 py-2 text-base placeholder:text-gray-400 focus:border-gray-400 focus:outline-none sm:text-sm"
             />
             <button
               type="button"
               disabled={!noteText.trim() || addingNote}
               onClick={onAddNote}
-              className="rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors"
+              className="min-h-11 w-full shrink-0 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors touch-manipulation sm:w-auto"
             >
               Add
             </button>

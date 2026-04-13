@@ -13,6 +13,7 @@ const updateCitySchema = z.object({
   image_url: z.string().url().optional().nullable(),
   description: z.string().optional().nullable(),
   is_active: z.boolean().optional(),
+  display_order: z.number().int().min(0).optional(),
 });
 
 /**
@@ -240,3 +241,5 @@ export async function DELETE(
     );
   }
 }
+
+export { PUT as PATCH };

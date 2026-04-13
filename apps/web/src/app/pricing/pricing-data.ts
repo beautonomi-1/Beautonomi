@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabasePublicAnon } from "@/lib/supabase/public-anon";
 import { headers } from "next/headers";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
@@ -42,7 +42,7 @@ export async function getPricingPageData(): Promise<{
   };
 
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabasePublicAnon();
     const h = await headers();
     const host = h.get("x-forwarded-host") || h.get("host") || "";
     const req = new Request("https://tenant-resolve.local/", { headers: { host } });

@@ -86,6 +86,13 @@ type AdminTeamPayload = {
 
 const DEFAULT_INVITE = { email: "", full_name: "", role: "admin_support" as AdminRole };
 
+function formatLastSignIn(iso: string | null | undefined): string {
+  if (iso == null || iso === "") return "Never";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
 function RoleBadge({ role }: { role: string }) {
   const color = ROLE_COLORS[role] ?? "bg-gray-100 text-gray-800";
   return (
@@ -202,8 +209,29 @@ export function AdminTeamPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Admin team"
-        description="Platform administrators and their role access. Only superadmins can invite, promote, or remove admin access."
+        description="Platform administrators and their role access. Only superadmins can manage this list."
       />
+
+      <AdminPanel className="!p-4">
+        <h2 className="text-sm font-semibold text-gray-900">What you can do</h2>
+        <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm text-gray-600">
+          <li>
+            <strong className="font-medium text-gray-800">Invite admin</strong> — Sends a Supabase invite email if the address is new, or promotes an existing account to the chosen admin role.
+          </li>
+          <li>
+            <strong className="font-medium text-gray-800">Change role</strong> — Updates which admin permissions they have (you cannot change your own role here).
+          </li>
+          <li>
+            <strong className="font-medium text-gray-800">Deactivate / Reactivate</strong> — Sets <code className="rounded bg-gray-100 px-1 text-xs">deactivated_at</code> on their profile so they should not be able to use admin until reactivated.
+          </li>
+          <li>
+            <strong className="font-medium text-gray-800">Remove access</strong> — Sets their role to <strong>customer</strong>; their login account remains (not deleted).
+          </li>
+        </ul>
+        <p className="mt-3 text-xs text-gray-500">
+          Last sign-in comes from Supabase Auth (successful login). It can show “Never” for invited users who have not accepted yet, or if Auth has no session recorded.
+        </p>
+      </AdminPanel>
 
       <AdminMutationAlert
         errors={[
@@ -313,10 +341,8 @@ export function AdminTeamPage() {
                         {active ? "Active" : "Deactivated"}
                       </span>
                     </AdminTd>
-                    <AdminTd className="text-xs text-gray-500">
-                      {m.last_sign_in_at
-                        ? new Date(m.last_sign_in_at).toLocaleDateString()
-                        : "Never"}
+                    <AdminTd className="text-xs text-gray-600" title={m.last_sign_in_at ?? undefined}>
+                      {formatLastSignIn(m.last_sign_in_at)}
                     </AdminTd>
                     <AdminTd className="text-xs text-gray-500">
                       {new Date(m.created_at).toLocaleDateString()}

@@ -272,10 +272,13 @@ const nextConfig = {
 
 const configWithAnalyzer = analyzer(nextConfig);
 
+/** When unset, source maps / release upload are skipped — keep the webpack plugin quiet (avoids CI noise). */
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+
 export default withSentryConfig(configWithAnalyzer, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: !process.env.CI,
+  authToken: sentryAuthToken,
+  silent: !sentryAuthToken,
   widenClientFileUpload: true,
 });

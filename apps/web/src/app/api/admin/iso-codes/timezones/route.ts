@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: timezones, error } = await supabase
       .from("iso_timezones")
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validationResult = timezoneSchema.safeParse(body);

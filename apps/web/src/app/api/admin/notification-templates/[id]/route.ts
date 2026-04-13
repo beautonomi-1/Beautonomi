@@ -64,11 +64,20 @@ export async function PATCH(
     if (body.title !== undefined) updateData.title = body.title;
     if (body.body !== undefined) updateData.body = body.body;
     if (body.channels !== undefined) {
-      updateData.channels = Array.isArray(body.channels)
+      const raw = Array.isArray(body.channels)
         ? body.channels
         : typeof body.channels === "string"
           ? body.channels.split(",").map((s: string) => s.trim()).filter(Boolean)
-          : body.channels;
+          : [];
+      const allowed = ["push", "email", "sms", "live_activities"];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((c: string) => (c === "in_app" ? "push" : c))
+            .filter((c: string) => allowed.includes(c)),
+        ),
+      );
+      updateData.channels = normalized.length > 0 ? normalized : ["push"];
     }
     if (body.email_subject !== undefined) updateData.email_subject = body.email_subject;
     if (body.email_body !== undefined) updateData.email_body = body.email_body;

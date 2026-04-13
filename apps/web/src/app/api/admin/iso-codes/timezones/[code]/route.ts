@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -27,7 +27,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: timezone, error } = await supabase
       .from("iso_timezones")
@@ -81,7 +81,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validationResult = updateTimezoneSchema.safeParse(body);
@@ -153,6 +153,11 @@ export async function PUT(
   }
 }
 
+/** PATCH — same as PUT (admin SPA uses `patchJson`). */
+export async function PATCH(request: Request, ctx: { params: Promise<{ code: string }> }) {
+  return PUT(request, ctx);
+}
+
 /**
  * DELETE /api/admin/iso-codes/timezones/[code]
  */
@@ -167,7 +172,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     // Check if timezone is default
     const { data: timezone } = await supabase

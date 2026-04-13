@@ -5,13 +5,10 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { Activity } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { fetchMapboxPublicMapConfig } from "@/lib/fetchMapboxPublicMapConfig";
 import { adminSpaAbsoluteUrl } from "@/lib/adminSpaPath";
-import { AdminPanel } from "@/components/ui/AdminPanel";
+import { AdminMapContainer } from "@/components/maps/AdminMapContainer";
 
 const POLL_MS = 10_000;
-const DEFAULT_CENTER: [number, number] = [28.0473, -26.2041];
-const DEFAULT_ZOOM = 6;
 
 function fuzzCoord(c: number, meters: number): number {
   const delta = (meters / 111320) * (Math.random() - 0.5) * 2;
@@ -86,39 +83,19 @@ type MapState = {
 };
 
 export function GodsEyeLiveMap() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [mapboxToken, setMapboxToken] = useState<string | null | undefined>(undefined);
-  const [mapboxStyleUrl, setMapboxStyleUrl] = useState<string | null>(null);
   const [privacyMode, setPrivacyMode] = useState(false);
-
-  const mapDataEnabled =
-    mapboxToken !== undefined && typeof mapboxToken === "string" && mapboxToken.length > 0;
 
   const mapQ = useQuery({
     queryKey: [...adminQueryKeys.godsEye(), "map-state"] as const,
     queryFn: () =>
       adminApi.getJson<MapState>("/api/admin/gods-eye/map-state?customer_markers_max=2500", { timeoutMs: 120_000 }),
     refetchInterval: POLL_MS,
-    enabled: mapDataEnabled,
   });
 
   const mapState = mapQ.data ?? null;
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cfg = await fetchMapboxPublicMapConfig();
-      if (cancelled) return;
-      setMapboxToken(cfg.accessToken ?? null);
-      setMapboxStyleUrl(cfg.styleUrl);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   useEffect(() => {
     (async () => {
@@ -133,73 +110,19 @@ export function GodsEyeLiveMap() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (mapboxToken == null || !mapboxToken || !containerRef.current) return;
-    let cancelled = false;
-
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      accessToken: mapboxToken,
-      style: mapboxStyleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
-      center: DEFAULT_CENTER,
-      zoom: DEFAULT_ZOOM,
-      attributionControl: true,
-    });
-    map.addControl(new mapboxgl.NavigationControl(), "top-right");
-    map.on("load", () => {
-      if (cancelled) return;
-      // Flex/sidebar layouts often leave the canvas at 0×0 until after paint — resize after layout.
-      const bump = () => {
-        try {
-          map.resize();
-        } catch {
-          /* ignore */
-        }
-      };
-      bump();
-      requestAnimationFrame(() => {
-        bump();
-        requestAnimationFrame(bump);
-      });
-      setMapReady(true);
-    });
+  const handleMapReady = useCallback((map: mapboxgl.Map) => {
     mapRef.current = map;
+    setMapReady(true);
+  }, []);
 
+  useEffect(() => {
     return () => {
-      cancelled = true;
       popupRef.current?.remove();
       popupRef.current = null;
-      map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
-  }, [mapboxToken, mapboxStyleUrl]);
-
-  /** Keep the canvas sized when the shell layout (sidebar, devtools, etc.) changes. */
-  useEffect(() => {
-    if (!mapReady) return;
-    const map = mapRef.current;
-    const el = containerRef.current;
-    if (!map || !el) return;
-
-    const bump = () => {
-      try {
-        map.resize();
-      } catch {
-        /* ignore */
-      }
-    };
-    bump();
-
-    const ro = new ResizeObserver(() => bump());
-    ro.observe(el);
-
-    window.addEventListener("resize", bump);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", bump);
-    };
-  }, [mapReady]);
+  }, []);
 
   const renderLayers = useCallback(() => {
     const map = mapRef.current;
@@ -398,26 +321,6 @@ export function GodsEyeLiveMap() {
     };
   }, [mapReady]);
 
-  if (mapboxToken === undefined) {
-    return (
-      <AdminPanel>
-        <p className="text-sm text-gray-600">Loading map configuration…</p>
-      </AdminPanel>
-    );
-  }
-
-  if (!mapboxToken) {
-    return (
-      <AdminPanel>
-        <p className="text-sm text-gray-700">
-          Configure Mapbox under <span className="font-medium">Mapbox</span> in the admin nav to enable the live map, or set{" "}
-          <code className="rounded bg-gray-100 px-1 text-xs">VITE_MAPBOX_ACCESS_TOKEN</code> /{" "}
-          <code className="rounded bg-gray-100 px-1 text-xs">NEXT_PUBLIC_MAPBOX_ACCESS_TOKEN</code> for local dev.
-        </p>
-      </AdminPanel>
-    );
-  }
-
   const sum = mapState?.summary;
 
   return (
@@ -468,16 +371,20 @@ export function GodsEyeLiveMap() {
           <p className="text-xs text-gray-500">Refreshes every {POLL_MS / 1000}s. Click a marker for details and profile link.</p>
         </div>
 
-        <div className="relative min-h-[420px] flex-1 overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
-          <div ref={containerRef} className="absolute inset-0" />
-          {mapQ.isLoading && !mapState ? (
-            <div className="absolute inset-0 flex items-center justify-center bg-white/80">
+        <div className="relative min-h-[420px] flex-1">
+          {/*
+           * Use AdminMapContainer (same as service zones): flex-sized canvas avoids 0×0 Mapbox in admin shell layouts.
+           * Do not use absolute inset-0 for the map container — it often yields an invisible canvas in flex rows.
+           */}
+          <AdminMapContainer className="min-h-[420px] w-full flex-1" onMapReady={handleMapReady} />
+          {mapReady && mapQ.isLoading && !mapState ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/70">
               <Activity className="h-8 w-8 animate-spin text-gray-400" aria-hidden />
             </div>
           ) : null}
           {mapQ.error ? (
-            <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-red-700">
-              {(mapQ.error as Error).message ?? "Failed to load map"}
+            <div className="absolute inset-0 flex items-center justify-center bg-white/90 p-4 text-center text-sm text-red-700">
+              {(mapQ.error as Error).message ?? "Failed to load map data"}
             </div>
           ) : null}
         </div>

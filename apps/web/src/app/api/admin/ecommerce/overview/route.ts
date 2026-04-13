@@ -46,22 +46,40 @@ export async function GET(request: NextRequest) {
     };
 
     let products_summary = {
+      /** Parent `products` rows in this tenant (not variant rows). */
+      total_products: 0,
+      /** `product_variants` rows for those products — true sellable SKUs when `has_variants`. */
+      variant_skus: 0,
+      /** @deprecated Use total_products; kept for older admin bundles. */
       total_skus: 0,
       active: 0,
       retail_enabled: 0,
       inactive: 0,
+      /** Products with has_variants = true (stock/pricing live on variant rows). */
+      products_with_variants: 0,
     };
     if (providerIds.length > 0) {
       const { data: products } = await supabase
         .from("products")
-        .select("id, is_active, retail_sales_enabled")
+        .select("id, is_active, retail_sales_enabled, has_variants")
         .in("provider_id", providerIds);
       const plist = products ?? [];
+      const productIds = plist.map((p: { id: string }) => p.id);
+
+      let variant_skus = 0;
+      if (productIds.length > 0) {
+        const { data: variantRows } = await supabase.from("product_variants").select("id").in("product_id", productIds);
+        variant_skus = (variantRows ?? []).length;
+      }
+
       products_summary = {
+        total_products: plist.length,
+        variant_skus,
         total_skus: plist.length,
         active: plist.filter((p: { is_active?: boolean }) => p.is_active).length,
         retail_enabled: plist.filter((p: { retail_sales_enabled?: boolean }) => p.retail_sales_enabled).length,
         inactive: plist.filter((p: { is_active?: boolean }) => !p.is_active).length,
+        products_with_variants: plist.filter((p: { has_variants?: boolean }) => p.has_variants).length,
       };
     }
 

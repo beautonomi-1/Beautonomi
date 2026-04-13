@@ -129,6 +129,101 @@ export function AdsListPage() {
   const totalPages = Math.ceil(total / LIMIT);
   const selectedCampaign = campaigns.find((c) => c.id === moderateId) ?? null;
 
+  const campaignsTable = useMemo(() => {
+    if (campaigns.length === 0) {
+      return <EmptyState title="No campaigns" description="No campaigns match these filters." />;
+    }
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="border-b border-gray-100 bg-gray-50">
+            <tr>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Provider</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Model</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Budget</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Spent</th>
+              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Period</th>
+              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {campaigns.map((c) => (
+              <tr key={c.id} className="hover:bg-gray-50 transition-colors">
+                <td className="px-3 py-3">
+                  <Link
+                    to={adminSpaTo(`/admin/ads/${c.id}`)}
+                    className="font-medium text-gray-900 underline decoration-gray-400 underline-offset-2 hover:decoration-gray-900"
+                  >
+                    {c.provider_name}
+                  </Link>
+                  <div className="text-xs font-mono text-gray-400">{c.id.slice(0, 8)}…</div>
+                </td>
+                <td className="px-3 py-3">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[c.status] ?? "bg-gray-100 text-gray-700"}`}
+                  >
+                    {c.status}
+                  </span>
+                </td>
+                <td className="px-3 py-3 text-xs text-gray-600">
+                  {MODEL_LABELS[c.billing_model] ?? c.billing_model}
+                  {c.billing_model === "time_based" && c.duration_days ? ` (${c.duration_days}d)` : ""}
+                  {c.billing_model === "impression_pack" && c.pack_impressions ? ` (${c.pack_impressions} imp)` : ""}
+                </td>
+                <td className="px-3 py-3 text-right font-medium">{fmt(c.budget)}</td>
+                <td className="px-3 py-3 text-right text-gray-600">
+                  {c.billing_model === "time_based" ? "—" : fmt(c.spent)}
+                </td>
+                <td className="px-3 py-3 text-xs text-gray-500">
+                  {c.start_at
+                    ? `${new Date(c.start_at).toLocaleDateString()}${c.end_at ? ` → ${new Date(c.end_at).toLocaleDateString()}` : " →"}`
+                    : "—"}
+                </td>
+                <td className="px-3 py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Link
+                      to={adminSpaTo(`/admin/ads/${c.id}`)}
+                      className="rounded border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      View
+                    </Link>
+                    {c.status === "active" && (
+                      <button
+                        type="button"
+                        className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
+                        disabled={moderateMutation.isPending}
+                        onClick={() => {
+                          setModerateId(c.id);
+                          setModerateAction("paused");
+                        }}
+                      >
+                        Pause
+                      </button>
+                    )}
+                    {(c.status === "active" || c.status === "paused" || c.status === "draft") && (
+                      <button
+                        type="button"
+                        className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
+                        disabled={moderateMutation.isPending}
+                        onClick={() => {
+                          setModerateId(c.id);
+                          setModerateAction("ended");
+                        }}
+                      >
+                        End
+                      </button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }, [campaigns, moderateMutation.isPending]);
+
   function setStatus(next: string) {
     const n = new URLSearchParams(sp);
     if (next === "all") n.delete("status");
@@ -277,91 +372,7 @@ export function AdsListPage() {
           ))}
         </div>
 
-        {useMemo(() => (
-          campaigns.length === 0 ? (
-            <EmptyState title="No campaigns" description="No campaigns match these filters." />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-gray-100 bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Provider</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Status</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Model</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Budget</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Spent</th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Period</th>
-                    <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {campaigns.map((c) => (
-                    <tr key={c.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-3 py-3">
-                        <Link
-                          to={adminSpaTo(`/admin/ads/${c.id}`)}
-                          className="font-medium text-gray-900 underline decoration-gray-400 underline-offset-2 hover:decoration-gray-900"
-                        >
-                          {c.provider_name}
-                        </Link>
-                        <div className="text-xs font-mono text-gray-400">{c.id.slice(0, 8)}…</div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE[c.status] ?? "bg-gray-100 text-gray-700"}`}>
-                          {c.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-3 text-xs text-gray-600">
-                        {MODEL_LABELS[c.billing_model] ?? c.billing_model}
-                        {c.billing_model === "time_based" && c.duration_days ? ` (${c.duration_days}d)` : ""}
-                        {c.billing_model === "impression_pack" && c.pack_impressions ? ` (${c.pack_impressions} imp)` : ""}
-                      </td>
-                      <td className="px-3 py-3 text-right font-medium">{fmt(c.budget)}</td>
-                      <td className="px-3 py-3 text-right text-gray-600">
-                        {c.billing_model === "time_based" ? "—" : fmt(c.spent)}
-                      </td>
-                      <td className="px-3 py-3 text-xs text-gray-500">
-                        {c.start_at
-                          ? `${new Date(c.start_at).toLocaleDateString()}${c.end_at ? ` → ${new Date(c.end_at).toLocaleDateString()}` : " →"}`
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Link
-                            to={adminSpaTo(`/admin/ads/${c.id}`)}
-                            className="rounded border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                          >
-                            View
-                          </Link>
-                          {c.status === "active" && (
-                            <button
-                              type="button"
-                              className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
-                              disabled={moderateMutation.isPending}
-                              onClick={() => { setModerateId(c.id); setModerateAction("paused"); }}
-                            >
-                              Pause
-                            </button>
-                          )}
-                          {(c.status === "active" || c.status === "paused" || c.status === "draft") && (
-                            <button
-                              type="button"
-                              className="rounded bg-red-600 px-2 py-1 text-xs text-white hover:bg-red-700 disabled:opacity-50"
-                              disabled={moderateMutation.isPending}
-                              onClick={() => { setModerateId(c.id); setModerateAction("ended"); }}
-                            >
-                              End
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )
-        ), [campaigns, moderateMutation.isPending])}
+        {campaignsTable}
 
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">

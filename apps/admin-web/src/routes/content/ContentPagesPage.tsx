@@ -20,7 +20,9 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { Plus, Search } from "lucide-react";
 
 type PageContent = {
   id: string;
@@ -36,6 +38,11 @@ type PageContent = {
 };
 
 type PagePayload = { data?: PageContent[] };
+
+const EMPTY_PAGE_CONTENT_INITIAL: Partial<PageContent> = {
+  content_type: "html",
+  metadata: { title: "", subtitle: "" },
+};
 
 function tryParseJson(input: string): Record<string, unknown> {
   if (!input.trim()) return {};
@@ -76,30 +83,40 @@ function PageContentForm({
   const displayTitle = String(metadataPreview.title ?? `${pageSlug || "page"} / ${sectionKey || "section"}`);
 
   return (
-    <div className="space-y-3 rounded-lg border border-indigo-200 bg-indigo-50 p-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-5 text-sm">
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Page slug *</label>
+          <label className="block text-xs font-medium text-gray-700">Page slug *</label>
           <input
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             value={pageSlug}
             onChange={(e) => setPageSlug(e.target.value)}
             placeholder="privacy-policy"
+            disabled={Boolean(initial.id)}
+            readOnly={Boolean(initial.id)}
           />
+          {initial.id ? (
+            <p className="mt-1 text-xs text-gray-500">Slug cannot be changed after creation.</p>
+          ) : null}
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Section key *</label>
+          <label className="block text-xs font-medium text-gray-700">Section key *</label>
           <input
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             value={sectionKey}
             onChange={(e) => setSectionKey(e.target.value)}
             placeholder="hero_body"
+            disabled={Boolean(initial.id)}
+            readOnly={Boolean(initial.id)}
           />
+          {initial.id ? (
+            <p className="mt-1 text-xs text-gray-500">Section key cannot be changed after creation.</p>
+          ) : null}
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Content type</label>
+          <label className="block text-xs font-medium text-gray-700">Content type</label>
           <select
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             value={contentType}
             onChange={(e) => setContentType(e.target.value as PageContent["content_type"])}
           >
@@ -111,55 +128,60 @@ function PageContentForm({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-600">Display order</label>
+          <label className="block text-xs font-medium text-gray-700">Display order</label>
           <input
             type="number"
             min="0"
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
+            className="mt-1.5 min-h-11 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
             value={order}
             onChange={(e) => setOrder(e.target.value)}
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-600">
+          <label className="block text-xs font-medium text-gray-700">
             Content {contentType === "html" ? "(WYSIWYG)" : ""}
           </label>
-          {contentType === "html" ? (
-            <RichTextEditor value={content} onChange={setContent} />
-          ) : (
-            <textarea
-              rows={8}
-              className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          )}
+          <div className="mt-1.5">
+            {contentType === "html" ? (
+              <RichTextEditor value={content} onChange={setContent} />
+            ) : (
+              <textarea
+                rows={8}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+              />
+            )}
+          </div>
         </div>
         <div className="sm:col-span-2">
-          <label className="mb-1 block text-xs font-medium text-gray-600">Metadata (JSON)</label>
+          <label className="block text-xs font-medium text-gray-700">Metadata (JSON)</label>
           <textarea
             rows={6}
-            className="w-full rounded border border-gray-300 px-2 py-1.5 text-sm font-mono"
+            className="mt-1.5 w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
             value={metadataText}
             onChange={(e) => setMetadataText(e.target.value)}
           />
           <p className="mt-1 text-xs text-gray-500">Preview title: {displayTitle}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 sm:col-span-2">
           <input
             id="page-content-active"
             type="checkbox"
+            className="h-4 w-4 accent-gray-900"
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
-            className="accent-indigo-600"
           />
-          <label htmlFor="page-content-active" className="text-sm text-gray-700">
+          <label htmlFor="page-content-active" className="text-sm text-gray-800">
             Active
           </label>
         </div>
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
-      <div className="flex gap-2">
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      <div className="flex flex-col-reverse gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:justify-end">
+        <button type="button" className={adminToolbarButtonClass(false)} onClick={onCancel}>
+          Cancel
+        </button>
         <button
           type="button"
           disabled={isSaving || !pageSlug.trim() || !sectionKey.trim()}
@@ -175,16 +197,9 @@ function PageContentForm({
               is_active: isActive,
             })
           }
-          className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+          className="min-h-11 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
         >
-          {isSaving ? "Saving..." : initial.id ? "Update" : "Create"}
-        </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
-        >
-          Cancel
+          {isSaving ? "Saving…" : initial.id ? "Save changes" : "Create section"}
         </button>
       </div>
     </div>
@@ -205,8 +220,9 @@ export function ContentPagesPage() {
     enabled: allowed,
   });
 
-  const [creating, setCreating] = useState(false);
+  const [modal, setModal] = useState<"create" | "edit" | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [mutError, setMutError] = useState<string | null>(null);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.contentPages() });
@@ -215,7 +231,7 @@ export function ContentPagesPage() {
     mutationFn: (d: Partial<PageContent>) => adminApi.postJson("/api/admin/content/pages", d),
     onSuccess: () => {
       invalidate();
-      setCreating(false);
+      setModal(null);
       setMutError(null);
     },
     onError: (e) => setMutError(e instanceof Error ? e.message : "Failed"),
@@ -226,6 +242,7 @@ export function ContentPagesPage() {
       adminApi.patchJson(`/api/admin/content/pages/${id}`, d),
     onSuccess: () => {
       invalidate();
+      setModal(null);
       setEditId(null);
       setMutError(null);
     },
@@ -242,6 +259,26 @@ export function ContentPagesPage() {
   });
 
   const rows = (q.data?.data ?? []) as PageContent[];
+
+  const filteredRows = useMemo(() => {
+    const qv = search.trim().toLowerCase();
+    if (!qv) return rows;
+    return rows.filter((r) => {
+      const meta = r.metadata as Record<string, unknown> | undefined;
+      const title = String(meta?.title ?? "");
+      const hay = [
+        r.page_slug,
+        r.section_key,
+        title,
+        r.content_type,
+        typeof r.content === "string" ? r.content.slice(0, 500) : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(qv);
+    });
+  }, [rows, search]);
 
   if (denied) return denied;
   if (q.isLoading) {
@@ -265,61 +302,96 @@ export function ContentPagesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="CMS Pages"
-        description="Manage seeded public page sections with page slug, section key, and rich HTML content."
+        description="Manage public page sections: each row is a block keyed by page slug and section (like the legacy Next admin content hub). Use HTML + metadata for titles and layout hints."
       />
 
+      <div className="rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
+        <strong>Note:</strong> Slug and section identify a block in the app; create a new row for each distinct pair. Editing does not change slug or section—create a new section if you need a different key.
+      </div>
+
       <AdminPanel>
-        <div className="mb-4 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => {
-              setCreating(true);
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="search"
+              placeholder="Search slug, section, title, or body…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="min-h-11 w-full rounded-xl border border-gray-300 py-2.5 pl-10 pr-3 text-sm"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={adminToolbarButtonClass(q.isFetching)}
+              disabled={q.isFetching}
+              onClick={() => void q.refetch()}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditId(null);
+                setMutError(null);
+                setModal("create");
+              }}
+              className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-sm font-medium text-white hover:bg-gray-800"
+            >
+              <Plus className="h-4 w-4" />
+              New page section
+            </button>
+          </div>
+        </div>
+      </AdminPanel>
+
+      {mutError && !modal ? <p className="text-sm text-red-600">{mutError}</p> : null}
+
+      <AdminModal
+        open={modal !== null}
+        onClose={() => {
+          setModal(null);
+          setEditId(null);
+          setMutError(null);
+        }}
+        title={modal === "edit" ? "Edit page section" : "New page section"}
+        description="HTML sections power marketing and legal pages. Metadata JSON often includes title and subtitle for the UI."
+        size="xl"
+        footer={null}
+      >
+        {modal === "create" ? (
+          <PageContentForm
+            key="cms-page-create"
+            initial={EMPTY_PAGE_CONTENT_INITIAL}
+            onSave={(d) => createMut.mutate(d)}
+            onCancel={() => {
+              setModal(null);
+              setMutError(null);
+            }}
+            isSaving={createMut.isPending}
+            error={mutError}
+          />
+        ) : modal === "edit" && editRow ? (
+          <PageContentForm
+            key={editRow.id}
+            initial={editRow}
+            onSave={(d) => updateMut.mutate(d as Partial<PageContent> & { id: string })}
+            onCancel={() => {
+              setModal(null);
               setEditId(null);
               setMutError(null);
             }}
-            className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-700"
-          >
-            + New page section
-          </button>
-          <button
-            type="button"
-            className={adminToolbarButtonClass(q.isFetching)}
-            disabled={q.isFetching}
-            onClick={() => void q.refetch()}
-          >
-            Refresh
-          </button>
-        </div>
-
-        {creating && (
-          <div className="mb-4">
-            <PageContentForm
-              initial={{ content_type: "html", metadata: { title: "", subtitle: "" } }}
-              onSave={(d) => createMut.mutate(d)}
-              onCancel={() => setCreating(false)}
-              isSaving={createMut.isPending}
-              error={mutError}
-            />
-          </div>
-        )}
-
-        {editId && editRow && (
-          <div className="mb-4">
-            <PageContentForm
-              initial={editRow}
-              onSave={(d) => updateMut.mutate(d as Partial<PageContent> & { id: string })}
-              onCancel={() => setEditId(null)}
-              isSaving={updateMut.isPending}
-              error={mutError}
-            />
-          </div>
-        )}
-      </AdminPanel>
-
-      {mutError && !creating && !editId && <p className="px-1 text-sm text-red-600">{mutError}</p>}
+            isSaving={updateMut.isPending}
+            error={mutError}
+          />
+        ) : null}
+      </AdminModal>
 
       {rows.length === 0 ? (
-        <EmptyState title="No page content sections" />
+        <EmptyState title="No page content sections" description="Create a section to add copy for a page slug." />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState title="No matches" description="Try a different search term." />
       ) : (
         <AdminDataTable>
           <AdminTableHead>
@@ -330,11 +402,11 @@ export function ContentPagesPage() {
               <AdminTh>Type</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Updated</AdminTh>
-              <AdminTh>Actions</AdminTh>
+              <AdminTh className="text-right">Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
-            {rows.map((r) => {
+            {filteredRows.map((r) => {
               const title = String((r.metadata as Record<string, unknown> | undefined)?.title ?? "");
               const displayTitle = title || `${r.page_slug} / ${r.section_key}`;
               return (
@@ -355,16 +427,16 @@ export function ContentPagesPage() {
                   <AdminTd className="text-xs text-gray-500">
                     {(r.updated_at ?? r.created_at ?? "").slice(0, 10)}
                   </AdminTd>
-                  <AdminTd>
-                    <div className="flex gap-2">
+                  <AdminTd className="text-right">
+                    <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => {
                           setEditId(r.id);
-                          setCreating(false);
                           setMutError(null);
+                          setModal("edit");
                         }}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs hover:bg-gray-50"
+                        className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium hover:bg-gray-50"
                       >
                         Edit
                       </button>

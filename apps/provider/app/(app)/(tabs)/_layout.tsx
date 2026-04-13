@@ -129,7 +129,6 @@ export default function TabsLayout() {
         options={{
           title: t("payments.transactionHistory"),
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "card" : "card-outline"} focused={focused} />,
-          href: null,
         }}
       />
       <Tabs.Screen

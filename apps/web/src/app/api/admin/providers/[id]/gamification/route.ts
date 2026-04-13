@@ -39,6 +39,7 @@ export async function GET(
       .select(`
         id,
         total_points,
+        lifetime_points,
         current_badge_id,
         badge_earned_at,
         last_calculated_at,
@@ -81,8 +82,11 @@ export async function GET(
       );
       if (nextBadge) {
         const totalPoints = pointsData.total_points || 0;
+        const req = (nextBadge as { requirements?: Record<string, unknown> }).requirements ?? {};
         const nextMinPoints = Number(
-          ((nextBadge as { requirements?: Record<string, unknown> }).requirements?.min_points as number | undefined) ?? 0
+          (req.min_points as number | undefined) ??
+            (req.points as number | undefined) ??
+            0
         );
         progressToNextBadge = {
           next_badge: nextBadge,
@@ -96,7 +100,8 @@ export async function GET(
     }
 
     return successResponse({
-      total_points: pointsData?.total_points || 0,
+      total_points: pointsData?.total_points ?? 0,
+      lifetime_points: pointsData?.lifetime_points ?? 0,
       current_badge: badge || null,
       badge_earned_at: pointsData?.badge_earned_at || null,
       last_calculated_at: pointsData?.last_calculated_at || null,

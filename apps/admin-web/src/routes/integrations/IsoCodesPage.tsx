@@ -110,7 +110,8 @@ export function IsoCodesPage() {
     enabled: allowed,
   });
 
-  const rows = (q.data ?? []).filter((r) => {
+  const rawList = Array.isArray(q.data) ? q.data : [];
+  const rows = rawList.filter((r) => {
     if (!search.trim()) return true;
     const lo = search.toLowerCase();
     return Object.values(r).some((v) => String(v ?? "").toLowerCase().includes(lo));
@@ -274,7 +275,19 @@ export function IsoCodesPage() {
       </AdminModal>
 
       {rows.length === 0 ? (
-        <EmptyState title="No rows" action={<button type="button" onClick={openCreate} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">+ Add entry</button>} />
+        <EmptyState
+          title="No rows"
+          description={
+            rawList.length === 0
+              ? "No reference data yet. Run DB migrations (including seed migration for ISO tables) or add entries manually."
+              : "No matches for your search — clear the search box or add a new entry."
+          }
+          action={
+            <button type="button" onClick={openCreate} className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800">
+              + Add entry
+            </button>
+          }
+        />
       ) : (
         <>
           <AdminDataTable>

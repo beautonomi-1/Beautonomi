@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Plus, Trash2, Globe, Send, XCircle, MapPin, BarChart3 } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Globe, Send, XCircle, MapPin, BarChart3, Crosshair } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
@@ -76,6 +76,16 @@ const AREA_TYPES = [
   { value: "country", label: "Country (all areas)" },
 ];
 
+function formatResolvedPostalLabel(r: {
+  postal_code: string;
+  province_name?: string | null;
+  city_name?: string | null;
+  town_name?: string | null;
+}) {
+  const place = [r.town_name, r.city_name, r.province_name].filter(Boolean).join(", ");
+  return place ? `${r.postal_code} · ${place}` : r.postal_code;
+}
+
 export function ServiceZoneDetailPage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
@@ -90,6 +100,17 @@ export function ServiceZoneDetailPage() {
 
   const [showAddExclusion, setShowAddExclusion] = useState(false);
   const [exclusionForm, setExclusionForm] = useState({ type: "postal_code" as string, postal_code: "" });
+
+  const [lookupLat, setLookupLat] = useState("");
+  const [lookupLng, setLookupLng] = useState("");
+  const [resolvedAtPoint, setResolvedAtPoint] = useState<
+    Array<{
+      postal_code: string;
+      province_name?: string | null;
+      city_name?: string | null;
+      town_name?: string | null;
+    }> | null
+  >(null);
 
   const zoneQuery = useQuery({
     queryKey: adminQueryKeys.serviceZoneDetail(id!),
@@ -152,6 +173,66 @@ export function ServiceZoneDetailPage() {
     onSuccess: () => {
       adminToast.success("Exclusion removed");
       invalidateAll();
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const resolvePointMut = useMutation({
+    mutationFn: async () => {
+      const lat = parseFloat(lookupLat.replace(",", "."));
+      const lng = parseFloat(lookupLng.replace(",", "."));
+      if (Number.isNaN(lat) || Number.isNaN(lng)) {
+        throw new Error("Enter valid latitude and longitude (WGS84).");
+      }
+      const cc = zoneQuery.data?.country_code;
+      if (!cc) throw new Error("Zone has no country code.");
+      return adminApi.postJson<{
+        postal_areas: Array<{
+          postal_code: string;
+          province_name?: string | null;
+          city_name?: string | null;
+          town_name?: string | null;
+        }>;
+        note?: string;
+      }>("/api/admin/service-zones/areas/resolve-point", {
+        country_code: cc,
+        lat,
+        lng,
+      });
+    },
+    onSuccess: (res) => {
+      const rows = res.postal_areas ?? [];
+      setResolvedAtPoint(rows);
+      if (res.note) adminToast.info(res.note);
+      else if (rows.length === 0) {
+        adminToast.info("No postal polygon in the dataset covers this point.");
+      } else {
+        adminToast.success(`Found ${rows.length} postal code(s) at this location.`);
+      }
+    },
+    onError: (e: Error) => adminToast.error(e.message),
+  });
+
+  const bulkIncludeResolvedMut = useMutation({
+    mutationFn: async () => {
+      if (!resolvedAtPoint?.length || !id) return { added: 0, skipped: true as const };
+      let added = 0;
+      for (const r of resolvedAtPoint) {
+        const res = await adminApi.postJson<{ included?: number }>(`/api/admin/service-zones/${id}/include`, {
+          type: "postal_code",
+          ref_code: r.postal_code,
+          ref_name: formatResolvedPostalLabel(r),
+        });
+        added += Number(res.included ?? 0);
+      }
+      return { added, skipped: false as const };
+    },
+    onSuccess: (result) => {
+      invalidateAll();
+      if (result.skipped) return;
+      adminToast.success(
+        result.added > 0 ? `Added ${result.added} new inclusion(s) from lookup.` : "No new rows (already included or no matches).",
+      );
     },
     onError: (e: Error) => adminToast.error(e.message),
   });
@@ -284,6 +365,120 @@ export function ServiceZoneDetailPage() {
         />
       </AdminPanel>
 
+      {/* Coordinate → postal lookup (same dataset as polygon / manual tools) */}
+      <AdminPanel>
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900">
+          <Crosshair className="h-4 w-4 text-indigo-600" />
+          Postal codes from coordinates
+        </h3>
+        <p className="mb-4 text-xs text-gray-600">
+          Enter a WGS84 point (latitude, longitude). We match against <span className="font-medium">postal_areas</span> polygons for{" "}
+          {zone.country_code ?? "this country"} — same source as drawn inclusions and exclusions.
+          {isActive ? (
+            <span className="mt-1 block text-amber-800">
+              This zone is published — unpublish to add or remove areas (including from lookup).
+            </span>
+          ) : null}
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600">Latitude</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="w-full min-w-[10rem] rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="-26.2041"
+              value={lookupLat}
+              onChange={(e) => setLookupLat(e.target.value)}
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="block text-xs font-medium text-gray-600">Longitude</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="w-full min-w-[10rem] rounded-md border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="28.0473"
+              value={lookupLng}
+              onChange={(e) => setLookupLng(e.target.value)}
+            />
+          </div>
+          <button
+            type="button"
+            className={adminToolbarButtonClass(resolvePointMut.isPending)}
+            disabled={resolvePointMut.isPending}
+            onClick={() => resolvePointMut.mutate()}
+          >
+            {resolvePointMut.isPending ? "Resolving…" : "Resolve to postal codes"}
+          </button>
+        </div>
+        {resolvedAtPoint && resolvedAtPoint.length > 0 ? (
+          <div className="mt-4 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-medium text-gray-700">Matches</p>
+              <button
+                type="button"
+                className="rounded-lg border border-green-300 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-900 hover:bg-green-100 disabled:opacity-50"
+                disabled={bulkIncludeResolvedMut.isPending || isActive}
+                onClick={() => bulkIncludeResolvedMut.mutate()}
+              >
+                {bulkIncludeResolvedMut.isPending ? "Adding…" : "Add all as inclusions"}
+              </button>
+            </div>
+            <AdminDataTable>
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Postal code</AdminTh>
+                  <AdminTh>Area</AdminTh>
+                  <AdminTh />
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {resolvedAtPoint.map((r) => (
+                  <tr key={r.postal_code}>
+                    <AdminTd className="font-mono text-xs">{r.postal_code}</AdminTd>
+                    <AdminTd className="max-w-xs truncate text-xs text-gray-700">
+                      {[r.town_name, r.city_name, r.province_name].filter(Boolean).join(", ") || "—"}
+                    </AdminTd>
+                    <AdminTd>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          className="rounded border border-green-200 bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
+                          disabled={addInclusionMut.isPending || isActive}
+                          onClick={() =>
+                            addInclusionMut.mutate({
+                              type: "postal_code",
+                              ref_code: r.postal_code,
+                              ref_name: formatResolvedPostalLabel(r),
+                            })
+                          }
+                        >
+                          Include
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-800 hover:bg-red-100 disabled:opacity-50"
+                          disabled={addExclusionMut.isPending || isActive}
+                          onClick={() =>
+                            addExclusionMut.mutate({
+                              type: "postal_code",
+                              postal_code: r.postal_code,
+                            })
+                          }
+                        >
+                          Exclude
+                        </button>
+                      </div>
+                    </AdminTd>
+                  </tr>
+                ))}
+              </AdminTableBody>
+            </AdminDataTable>
+          </div>
+        ) : null}
+      </AdminPanel>
+
       {/* Included areas */}
       <AdminPanel>
         <div className="mb-4 flex items-center justify-between">
@@ -378,13 +573,17 @@ export function ServiceZoneDetailPage() {
             <AdminTableBody>
               {zone.exclusions.map((exc) => (
                 <tr key={exc.id}>
-                  <AdminTd className="max-w-xs truncate font-medium">{exc.ref_name ?? "—"}</AdminTd>
+                  <AdminTd className="max-w-xs truncate font-medium">
+                    {exc.type === "custom_polygon" ? "Drawn polygon (map)" : (exc.ref_name ?? "—")}
+                  </AdminTd>
                   <AdminTd>
                     <span className="rounded bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
-                      {exc.type ?? "—"}
+                      {exc.type === "custom_polygon" ? "custom_polygon" : (exc.type ?? "—")}
                     </span>
                   </AdminTd>
-                  <AdminTd className="text-xs tabular-nums">{exc.ref_code ?? "—"}</AdminTd>
+                  <AdminTd className="text-xs tabular-nums">
+                    {exc.type === "custom_polygon" ? "—" : (exc.ref_code ?? "—")}
+                  </AdminTd>
                   <AdminTd className="text-xs text-gray-500">{exc.created_at ? new Date(exc.created_at).toLocaleDateString() : "—"}</AdminTd>
                   <AdminTd>
                     <button
@@ -570,7 +769,8 @@ export function ServiceZoneDetailPage() {
               onChange={(e) => setExclusionForm((f) => ({ ...f, postal_code: e.target.value }))}
             />
             <p className="text-xs text-gray-400">
-              The postal code must exist in the postal areas dataset for country {zone.country_code ?? "—"}.
+              The postal code must exist in the postal areas dataset for country {zone.country_code ?? "—"}. For arbitrary shapes, use{" "}
+              <strong>Draw exclusion</strong> on the zone map above.
             </p>
           </div>
         </div>

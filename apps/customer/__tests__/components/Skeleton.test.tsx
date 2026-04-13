@@ -7,16 +7,16 @@ import {
   ConversationSkeleton,
 } from "@/components/Skeleton";
 
+/** `Animated.View` + progressbar role is not always matched by `getByRole` in RN Testing Library — use label. */
 describe("Skeleton", () => {
   it("renders with default props", () => {
     render(<Skeleton />);
-    expect(screen.getByRole("progressbar")).toBeTruthy();
+    expect(screen.getByLabelText("Loading content")).toBeTruthy();
   });
 
   it("renders with custom dimensions", () => {
     render(<Skeleton width={200} height={40} borderRadius={12} />);
-    const skeleton = screen.getByRole("progressbar");
-    expect(skeleton).toBeTruthy();
+    expect(screen.getByLabelText("Loading content")).toBeTruthy();
   });
 
   it("has accessible label", () => {

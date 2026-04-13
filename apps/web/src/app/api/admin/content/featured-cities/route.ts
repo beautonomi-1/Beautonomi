@@ -14,6 +14,8 @@ const citySchema = z.object({
   image_url: z.string().url().optional().nullable(),
   description: z.string().optional().nullable(),
   is_active: z.boolean().optional().default(true),
+  /** Matches `featured_cities.display_order` (list sort). */
+  display_order: z.number().int().min(0).optional().default(0),
 });
 
 const _updateCitySchema = citySchema.partial();
@@ -40,7 +42,7 @@ export async function GET(request: NextRequest) {
       tenantId,
       select: "*",
       dedupeKey: (city) => `${city.country}:${city.name}`.toLowerCase(),
-      orderBy: { column: "name", ascending: true },
+      orderBy: { column: "display_order", ascending: true },
     });
     const cities = scoped.data;
 
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, country, image_url, description, is_active } = validationResult.data;
+    const { name, country, image_url, description, is_active, display_order } = validationResult.data;
 
     const { data: city, error } = await supabase
       .from("featured_cities")
@@ -124,6 +126,7 @@ export async function POST(request: NextRequest) {
         image_url: image_url || null,
         description: description || null,
         is_active,
+        display_order,
       })
       .select()
       .single();

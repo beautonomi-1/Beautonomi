@@ -58,9 +58,20 @@ export function AdminTh({
   );
 }
 
-export function AdminTd({ children, className = "", colSpan }: { children?: ReactNode; className?: string; colSpan?: number }) {
+export function AdminTd({
+  children,
+  className = "",
+  colSpan,
+  title,
+}: {
+  children?: ReactNode;
+  className?: string;
+  colSpan?: number;
+  /** Native tooltip on hover (e.g. full ISO timestamp). */
+  title?: string;
+}) {
   return (
-    <td colSpan={colSpan} className={`px-3 py-3 align-top md:px-4 ${className}`}>
+    <td colSpan={colSpan} className={`px-3 py-3 align-top md:px-4 ${className}`} title={title}>
       {children}
     </td>
   );

@@ -15,6 +15,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { cn } from "@/lib/cn";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -38,6 +39,11 @@ type PayoutAccountRow = Record<string, unknown> & {
 };
 
 type ProviderDetail = Record<string, unknown> & {
+  slug?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  staff?: unknown[] | null;
+  offerings?: unknown[] | null;
   owner?: { id?: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
   stats?: { booking_count?: number; review_count?: number; average_rating?: number };
   locations?: Record<string, unknown>[];
@@ -56,6 +62,64 @@ type ProviderDetail = Record<string, unknown> & {
 
 function str(v: unknown): string {
   return v == null ? "" : String(v);
+}
+
+/** Admin gamification GET returns nested badge objects — never String() them. */
+type GamificationBadgeRow = {
+  id?: string;
+  name?: string | null;
+  slug?: string | null;
+  tier?: number | null;
+  icon_url?: string | null;
+  description?: string | null;
+  color?: string | null;
+};
+
+type GamificationPayload = {
+  total_points?: number;
+  lifetime_points?: number;
+  current_badge?: GamificationBadgeRow | GamificationBadgeRow[] | null;
+  badge_earned_at?: string | null;
+  last_calculated_at?: string | null;
+  progress_to_next_badge?: {
+    next_badge?: GamificationBadgeRow | null;
+    points_needed?: number;
+    progress_percent?: number;
+  } | null;
+  milestones?: { id?: string; milestone_type?: string; achieved_at?: string; metadata?: Record<string, unknown> | null }[];
+  recent_transactions?: {
+    id?: string;
+    points?: number;
+    source?: string;
+    description?: string | null;
+    created_at?: string;
+  }[];
+};
+
+function normalizeBadge(b: GamificationPayload["current_badge"]): GamificationBadgeRow | null {
+  if (b == null) return null;
+  if (Array.isArray(b)) return (b[0] as GamificationBadgeRow) ?? null;
+  return b as GamificationBadgeRow;
+}
+
+function formatPoints(n: unknown): string {
+  if (n == null || n === "") return "—";
+  const num = typeof n === "number" ? n : Number(n);
+  if (Number.isNaN(num)) return "—";
+  return num.toLocaleString();
+}
+
+function formatNextBadgeProgress(p: GamificationPayload["progress_to_next_badge"]): { headline: string; detail: string } {
+  if (!p?.next_badge) {
+    return { headline: "Top tier", detail: "No higher badge configured, or max tier reached." };
+  }
+  const name = p.next_badge.name || p.next_badge.slug || "Next badge";
+  const needed = p.points_needed ?? 0;
+  const pct = p.progress_percent ?? 0;
+  return {
+    headline: `${name} · ${needed.toLocaleString()} pts to go`,
+    detail: `${pct}% of points required for next tier`,
+  };
 }
 
 type Draft = {
@@ -108,7 +172,7 @@ export function ProviderDetailPage() {
   const gamificationQ = useQuery({
     queryKey: adminQueryKeys.providerGamification(providerCanonicalId),
     queryFn: () =>
-      adminApi.getJson<Record<string, unknown>>(
+      adminApi.getJson<GamificationPayload>(
         `/api/admin/providers/${encodeURIComponent(providerCanonicalId)}/gamification`,
         { timeoutMs: 30_000 }
       ),
@@ -205,6 +269,8 @@ export function ProviderDetailPage() {
   const stats = row.stats;
   const business = str(row.business_name) || str(row.slug) || id;
   const locations = Array.isArray(row.locations) ? row.locations : [];
+  const staffCount = Array.isArray(row.staff) ? row.staff.length : 0;
+  const offeringsCount = Array.isArray(row.offerings) ? row.offerings.length : 0;
   const yoco = row.yoco_summary;
   const yocoDerived = yoco?.derived ?? {};
 
@@ -293,6 +359,38 @@ export function ProviderDetailPage() {
           payoutAccountsQ.error instanceof Error ? payoutAccountsQ.error : null,
         ]}
       />
+
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Provider overview</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Quick snapshot of this account — use it alongside bookings, reviews, and gamification below.
+        </p>
+        <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Slug</dt>
+            <dd className="mt-1 font-mono text-sm text-gray-900">{str(row.slug) || "—"}</dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Created</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {row.created_at ? new Date(String(row.created_at)).toLocaleString() : "—"}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Last updated</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {row.updated_at ? new Date(String(row.updated_at)).toLocaleString() : "—"}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Catalog</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {locations.length} location{locations.length === 1 ? "" : "s"} · {staffCount} staff · {offeringsCount}{" "}
+              service{offeringsCount === 1 ? "" : "s"}
+            </dd>
+          </div>
+        </dl>
+      </AdminPanel>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <AdminPanel className="lg:col-span-2">
@@ -605,12 +703,17 @@ export function ProviderDetailPage() {
 
       {/* Gamification Panel */}
       <AdminPanel>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Gamification & badges</h2>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Gamification & badges</h2>
+            <p className="mt-1 text-sm text-gray-600">
+              Points, current tier badge, and progress toward the next badge (same data the provider sees in-app).
+            </p>
+          </div>
           {providerCanonicalId && (
             <button
               type="button"
-              className="rounded border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+              className="shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
               onClick={() => setShowDeduct((v) => !v)}
             >
               {showDeduct ? "Cancel" : "Deduct Points"}
@@ -618,66 +721,195 @@ export function ProviderDetailPage() {
           )}
         </div>
         {gamificationQ.isLoading ? (
-          <p className="mt-2 text-sm text-gray-400">Loading…</p>
+          <p className="mt-4 text-sm text-gray-400">Loading gamification…</p>
         ) : gamificationQ.data ? (
-          <div className="mt-4 space-y-4">
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              {[
-                { label: "Current Badge", value: String(gamificationQ.data.badge ?? gamificationQ.data.current_badge ?? gamificationQ.data.tier ?? "—") },
-                { label: "Total Points", value: String(gamificationQ.data.total_points ?? gamificationQ.data.points ?? "—") },
-                { label: "Lifetime Points", value: String(gamificationQ.data.lifetime_points ?? gamificationQ.data.lifetime_earned ?? "—") },
-                { label: "Next Milestone", value: String(gamificationQ.data.next_milestone ?? gamificationQ.data.points_to_next ?? "—") },
-              ].map(({ label, value }) => (
-                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
-                  <div className="text-xs text-gray-500">{label}</div>
-                  <div className="mt-1 text-xl font-bold text-gray-900">{value}</div>
+          (() => {
+            const g = gamificationQ.data;
+            const badge = normalizeBadge(g.current_badge);
+            const next = formatNextBadgeProgress(g.progress_to_next_badge);
+            const milestones = g.milestones ?? [];
+            const txs = g.recent_transactions ?? [];
+
+            return (
+              <div className="mt-4 space-y-6">
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Total points</div>
+                    <div className="mt-1 text-xl font-bold tabular-nums text-gray-900">{formatPoints(g.total_points)}</div>
+                    <p className="mt-1 text-[11px] text-gray-500">Current balance (can go down after deductions)</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Lifetime points</div>
+                    <div className="mt-1 text-xl font-bold tabular-nums text-gray-900">{formatPoints(g.lifetime_points)}</div>
+                    <p className="mt-1 text-[11px] text-gray-500">Earned all-time (never decreases)</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Next badge</div>
+                    <div className="mt-1 text-sm font-semibold leading-snug text-gray-900">{next.headline}</div>
+                    <p className="mt-1 text-[11px] text-gray-500">{next.detail}</p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                    <div className="text-xs text-gray-500">Recalculated</div>
+                    <div className="mt-1 text-sm font-medium text-gray-900">
+                      {g.last_calculated_at ? new Date(String(g.last_calculated_at)).toLocaleString() : "—"}
+                    </div>
+                    <p className="mt-1 text-[11px] text-gray-500">Badge earned:{" "}
+                      {g.badge_earned_at ? new Date(String(g.badge_earned_at)).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
                 </div>
-              ))}
-            </div>
-            {showDeduct && (
-              <div className="rounded-lg border border-red-100 bg-red-50 p-4 space-y-3">
-                <p className="text-sm font-medium text-red-800">Deduct points from provider</p>
-                <div className="flex gap-3">
-                  <input
-                    type="number"
-                    min="1"
-                    value={deductPoints}
-                    onChange={(e) => setDeductPoints(e.target.value)}
-                    placeholder="Points to deduct"
-                    className="w-32 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="text"
-                    value={deductReason}
-                    onChange={(e) => setDeductReason(e.target.value)}
-                    placeholder="Reason for deduction"
-                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50"
-                  disabled={deductPointsMutation.isPending || !deductPoints || parseInt(deductPoints, 10) <= 0}
-                  onClick={() => {
-                    const pts = parseInt(deductPoints, 10);
-                    if (!isNaN(pts) && pts > 0) {
-                      deductPointsMutation.mutate({ points: pts, reason: deductReason.trim() || "Admin deduction" });
-                      setDeductPoints("");
-                      setDeductReason("");
-                      setShowDeduct(false);
-                    }
-                  }}
+
+                <div
+                  className={cn(
+                    "overflow-hidden rounded-xl border border-gray-200",
+                    badge?.color ? "" : "bg-white",
+                  )}
+                  style={
+                    badge?.color
+                      ? { borderColor: `${badge.color}55`, background: `linear-gradient(135deg, ${badge.color}14 0%, white 48%)` }
+                      : undefined
+                  }
                 >
-                  {deductPointsMutation.isPending ? "Processing…" : "Deduct Points"}
-                </button>
-                {deductPointsMutation.error && (
-                  <p className="text-sm text-red-700">{deductPointsMutation.error.message}</p>
+                  <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
+                    {badge?.icon_url ? (
+                      <img
+                        src={String(badge.icon_url)}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-lg border border-gray-200 bg-white object-contain"
+                      />
+                    ) : (
+                      <div
+                        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-gray-100 text-lg font-bold text-gray-600"
+                        style={badge?.color ? { backgroundColor: `${badge.color}22`, borderColor: `${badge.color}44` } : undefined}
+                      >
+                        {badge?.name?.charAt(0) ?? "?"}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Current badge</p>
+                      <p className="mt-1 text-lg font-semibold text-gray-900">
+                        {badge?.name ?? "No badge yet"}
+                      </p>
+                      <p className="mt-0.5 text-sm text-gray-600">
+                        {[badge?.slug ? `Slug: ${badge.slug}` : null, badge?.tier != null ? `Tier ${badge.tier}` : null]
+                          .filter(Boolean)
+                          .join(" · ") || "Assigns when point rules and recalculation run."}
+                      </p>
+                      {badge?.description ? (
+                        <p className="mt-2 text-sm leading-relaxed text-gray-700">{badge.description}</p>
+                      ) : !badge ? (
+                        <p className="mt-2 text-sm text-gray-500">No badge row linked — provider may be new or below the first tier threshold.</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Recent point transactions</h3>
+                    {txs.length === 0 ? (
+                      <p className="mt-2 text-sm text-gray-500">No transactions yet.</p>
+                    ) : (
+                      <AdminDataTable className="mt-2">
+                        <AdminTableHead>
+                          <tr>
+                            <AdminTh>When</AdminTh>
+                            <AdminTh>Points</AdminTh>
+                            <AdminTh>Source</AdminTh>
+                            <AdminTh className="hidden sm:table-cell">Note</AdminTh>
+                          </tr>
+                        </AdminTableHead>
+                        <AdminTableBody>
+                          {txs.map((t) => (
+                            <tr key={str(t.id)}>
+                              <AdminTd className="whitespace-nowrap text-xs">
+                                {t.created_at ? new Date(String(t.created_at)).toLocaleString() : "—"}
+                              </AdminTd>
+                              <AdminTd className={cn("font-medium tabular-nums", (t.points ?? 0) < 0 ? "text-red-700" : "text-gray-900")}>
+                                {(t.points ?? 0) > 0 ? "+" : ""}
+                                {t.points ?? "—"}
+                              </AdminTd>
+                              <AdminTd className="font-mono text-xs">{str(t.source)}</AdminTd>
+                              <AdminTd className="hidden max-w-[12rem] truncate text-xs text-gray-600 sm:table-cell">
+                                {str(t.description) || "—"}
+                              </AdminTd>
+                          </tr>
+                          ))}
+                        </AdminTableBody>
+                      </AdminDataTable>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900">Milestones</h3>
+                    {milestones.length === 0 ? (
+                      <p className="mt-2 text-sm text-gray-500">No milestones recorded.</p>
+                    ) : (
+                      <ul className="mt-2 space-y-2 text-sm">
+                        {milestones.slice(0, 12).map((m) => (
+                          <li
+                            key={str(m.id)}
+                            className="flex items-start justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-2"
+                          >
+                            <span className="font-medium text-gray-800">{str(m.milestone_type).replace(/_/g, " ")}</span>
+                            <span className="shrink-0 text-xs text-gray-500">
+                              {m.achieved_at ? new Date(String(m.achieved_at)).toLocaleDateString() : "—"}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                {showDeduct && (
+                  <div className="rounded-lg border border-red-100 bg-red-50 p-4 space-y-3">
+                    <p className="text-sm font-medium text-red-800">Deduct points from provider</p>
+                    <p className="text-xs text-red-700/90">
+                      Creates a negative transaction. Total points decrease; lifetime points are not reduced by deductions.
+                    </p>
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        type="number"
+                        min="1"
+                        value={deductPoints}
+                        onChange={(e) => setDeductPoints(e.target.value)}
+                        placeholder="Points"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm sm:w-32"
+                      />
+                      <input
+                        type="text"
+                        value={deductReason}
+                        onChange={(e) => setDeductReason(e.target.value)}
+                        placeholder="Reason (shown on transaction)"
+                        className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-lg bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+                      disabled={deductPointsMutation.isPending || !deductPoints || parseInt(deductPoints, 10) <= 0}
+                      onClick={() => {
+                        const pts = parseInt(deductPoints, 10);
+                        if (!isNaN(pts) && pts > 0) {
+                          deductPointsMutation.mutate({ points: pts, reason: deductReason.trim() || "Admin deduction" });
+                          setDeductPoints("");
+                          setDeductReason("");
+                          setShowDeduct(false);
+                        }
+                      }}
+                    >
+                      {deductPointsMutation.isPending ? "Processing…" : "Deduct Points"}
+                    </button>
+                    {deductPointsMutation.error && (
+                      <p className="text-sm text-red-700">{deductPointsMutation.error.message}</p>
+                    )}
+                  </div>
                 )}
               </div>
-            )}
-          </div>
+            );
+          })()
         ) : (
-          <p className="mt-2 text-sm text-gray-500">No gamification data available.</p>
+          <p className="mt-4 text-sm text-gray-500">No gamification data available.</p>
         )}
       </AdminPanel>
     </div>

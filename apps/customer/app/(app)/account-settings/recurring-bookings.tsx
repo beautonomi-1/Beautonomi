@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
+import { API_RECURRING_BOOKINGS, apiRecurringBookingPath } from "@/lib/customer-api-paths";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { STACK_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
@@ -228,7 +229,7 @@ export default function RecurringBookingsScreen() {
     else setLoading(true);
     setError(null);
     try {
-      const res = await api.get<RecurringBookingsResponse>("/api/recurring-bookings", {
+      const res = await api.get<RecurringBookingsResponse>(API_RECURRING_BOOKINGS, {
         cache: "no-store",
       });
       if (res.error) {
@@ -280,7 +281,7 @@ export default function RecurringBookingsScreen() {
       } else if (editEndDate.trim()) {
         payload.end_date = editEndDate.trim();
       }
-      const res = await api.patch(`/api/recurring-bookings/${editing.id}`, payload);
+      const res = await api.patch(apiRecurringBookingPath(editing.id), payload);
       if (res.error) {
         Alert.alert("Error", res.error.message || "Failed to update schedule");
       } else {
@@ -299,7 +300,7 @@ export default function RecurringBookingsScreen() {
     if (booking.status === "cancelled") return;
     setTogglingId(booking.id);
     try {
-      const res = await api.patch(`/api/recurring-bookings/${booking.id}`, {
+      const res = await api.patch(apiRecurringBookingPath(booking.id), {
         is_active: booking.status === "paused",
       });
       if (res.error) {
@@ -332,7 +333,7 @@ export default function RecurringBookingsScreen() {
           onPress: async () => {
             setCancellingId(booking.id);
             try {
-              const res = await api.delete(`/api/recurring-bookings/${booking.id}`);
+              const res = await api.delete(apiRecurringBookingPath(booking.id));
               if (res.error) {
                 Alert.alert("Error", res.error.message || "Failed to cancel booking");
               } else {

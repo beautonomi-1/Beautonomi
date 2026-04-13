@@ -33,6 +33,8 @@ interface WalletMismatch {
 
 interface ReconciliationPayload {
   mismatches: WalletMismatch[];
+  /** Full list of wallets examined (healthy + mismatch); prefer this for the table */
+  checked_wallets?: WalletMismatch[];
   total_mismatches: number;
   checked: number;
   healthy: number;
@@ -81,9 +83,10 @@ export function WalletReconciliationPage() {
     );
   }
 
-  const { mismatches = [], checked = 0, healthy = 0, total_mismatches = 0 } = q.data ?? {};
+  const { mismatches = [], checked_wallets, checked = 0, healthy = 0, total_mismatches = 0 } = q.data ?? {};
 
-  const rows = mismatchesOnly ? mismatches : mismatches;
+  const fullList = checked_wallets?.length ? checked_wallets : mismatches;
+  const rows = mismatchesOnly ? mismatches : fullList;
 
   return (
     <div className="space-y-6">
@@ -131,13 +134,30 @@ export function WalletReconciliationPage() {
           </button>
         </div>
 
-        {rows.length === 0 ? (
+        {checked > 0 && rows.length === 0 && !mismatchesOnly && total_mismatches === 0 && (!checked_wallets || checked_wallets.length === 0) ? (
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50/90 px-4 py-6 text-center">
+            <p className="text-sm font-medium text-emerald-900">
+              All {checked} wallet{checked === 1 ? "" : "s"} in scope match transaction totals.
+            </p>
+            <p className="mt-1 text-xs text-emerald-800/90">
+              Stored balances equal the sum of wallet credits minus debits.
+            </p>
+          </div>
+        ) : rows.length === 0 ? (
           <EmptyState
-            title={mismatchesOnly ? "No mismatches" : "No wallets found"}
+            title={
+              checked === 0
+                ? "No wallets in scope"
+                : mismatchesOnly
+                  ? "No mismatches"
+                  : "No rows to show"
+            }
             description={
-              mismatchesOnly
-                ? "All wallet balances match their transaction history."
-                : "No wallet data was returned."
+              checked === 0
+                ? "No wallets matched this tenant’s transaction scope, or wallet data is empty."
+                : mismatchesOnly
+                  ? "All checked wallet balances match their transaction history."
+                  : "No wallet rows available."
             }
           />
         ) : (
@@ -161,14 +181,20 @@ export function WalletReconciliationPage() {
                   <AdminTd>{row.wallet_balance.toFixed(2)}</AdminTd>
                   <AdminTd>{row.transaction_sum.toFixed(2)}</AdminTd>
                   <AdminTd>
-                    <span className={row.difference === 0 ? "text-gray-500" : "font-medium text-red-600"}>
+                    <span
+                      className={
+                        Math.abs(row.difference) < 0.011
+                          ? "text-emerald-700"
+                          : "font-medium text-red-600"
+                      }
+                    >
                       {row.difference > 0 ? "+" : ""}
                       {row.difference.toFixed(2)}
                     </span>
                   </AdminTd>
                   <AdminTd>{row.currency}</AdminTd>
                   <AdminTd>
-                    {row.difference !== 0 && (
+                    {Math.abs(row.difference) > 0.011 && (
                       <button
                         type="button"
                         disabled={fixMut.isPending}
@@ -200,6 +226,7 @@ export function WalletReconciliationPage() {
           <li>Differences greater than 0.01 are flagged as mismatches.</li>
           <li>&ldquo;Fix balance&rdquo; sets the stored balance to the calculated value. This does <em>not</em> create a correcting transaction.</li>
           <li>Up to 1 000 wallets are checked per request (ordered by most recently updated).</li>
+          <li>The table lists every wallet checked (not only mismatches). Turn on &ldquo;Mismatches only&rdquo; to hide healthy rows.</li>
         </ul>
       </div>
     </div>

@@ -62,9 +62,24 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
+    const rows = adminUsers ?? [];
+    /** `last_sign_in_at` lives on auth.users; merge from Auth Admin API. */
+    const members = await Promise.all(
+      rows.map(async (u) => {
+        const { data: authUser, error: authErr } = await supabase.auth.admin.getUserById(u.id);
+        if (authErr || !authUser?.user) {
+          return { ...u, last_sign_in_at: null as string | null };
+        }
+        return {
+          ...u,
+          last_sign_in_at: authUser.user.last_sign_in_at ?? null,
+        };
+      })
+    );
+
     return successResponse({
-      members: adminUsers ?? [],
-      total: (adminUsers ?? []).length,
+      members,
+      total: members.length,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch admin team");

@@ -106,7 +106,7 @@ export function NotificationsConfigPage() {
 
   const testMutation = useMutation({
     mutationFn: (channel: string) =>
-      adminApi.postJson("/api/admin/notification-preferences/test", { channel }),
+      adminApi.postJson("/api/admin/notifications/test", { channel }),
     onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.notificationsConfig() }),
   });
 
@@ -130,7 +130,7 @@ export function NotificationsConfigPage() {
   const channels = [
     { key: "push", label: "Push (OneSignal)", color: "bg-blue-500" },
     { key: "email", label: "Email", color: "bg-indigo-500" },
-    { key: "sms", label: "SMS (Twilio)", color: "bg-green-500" },
+    { key: "sms", label: "SMS (OneSignal)", color: "bg-green-500" },
     { key: "whatsapp", label: "WhatsApp", color: "bg-emerald-500" },
     { key: "in_app", label: "In-App", color: "bg-purple-500" },
   ];

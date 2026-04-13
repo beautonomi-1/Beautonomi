@@ -1,14 +1,9 @@
 /* global jest */
 /**
- * react-native's package entry is Flow/ESM-heavy; Jest in "node" env cannot parse it.
- * App modules (e.g. lib/analytics) import Platform from "react-native" — mock before any test file loads them.
+ * Extra setup after jest-expo (react-native/jest preset) initializes.
+ * Do not mock `react-native` here — jest-expo provides compatible mocks.
  */
-jest.mock("react-native", () => {
-  const Platform = {
-    OS: "ios",
-    Version: 17,
-    select: (spec) =>
-      spec && typeof spec === "object" ? spec.ios ?? spec.default : undefined,
-  };
-  return { Platform };
-});
+
+jest.mock("@react-native-async-storage/async-storage", () =>
+  require("@react-native-async-storage/async-storage/jest/async-storage-mock")
+);

@@ -7,6 +7,11 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  fetchAllPaged,
+  chunkIds,
+  unwrapEmbedded,
+} from "@/lib/provider-ops/postgrest-unbounded";
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,37 +23,37 @@ export async function GET(request: NextRequest) {
     const dropOffThresholdHours = 168;
     const now = Date.now();
 
-    const { data: tenantUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("role", "provider_owner");
-    const tenantUserIds = (tenantUsers || []).map((u: { id: string }) => u.id);
+    const rawDrafts = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
+      const r = await supabase
+        .from("provider_onboarding_drafts")
+        .select("user_id, current_step, updated_at, users!inner(tenant_id, role)")
+        .eq("users.tenant_id", tenantId)
+        .range(from, to);
+      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
+    });
 
-    const { data: drafts, error: draftsErr } = await supabase
-      .from("provider_onboarding_drafts")
-      .select("user_id, current_step, updated_at")
-      .in("user_id", tenantUserIds.length > 0 ? tenantUserIds : ["__none__"]);
-    if (draftsErr) throw draftsErr;
+    const drafts = rawDrafts.filter((d) => {
+      const u = unwrapEmbedded<{ role?: string }>(d, "users");
+      return u?.role === "provider_owner";
+    });
 
-    const userIds = (drafts || []).map(
-      (d: { user_id: string }) => d.user_id
-    );
+    const userIds = drafts.map((d) => String(d.user_id));
 
-    const { data: existingProviders } = await supabase
-      .from("providers")
-      .select("user_id, status")
-      .eq("tenant_id", tenantId)
-      .in("user_id", userIds.length > 0 ? userIds : ["__none__"]);
+    const completedUserIds = new Set<string>();
+    for (const chunk of chunkIds(userIds, 120)) {
+      const { data: existingProviders, error: epErr } = await supabase
+        .from("providers")
+        .select("user_id, status")
+        .eq("tenant_id", tenantId)
+        .in("user_id", chunk.length > 0 ? chunk : ["__none__"]);
+      if (epErr) throw epErr;
+      for (const p of existingProviders || []) {
+        completedUserIds.add((p as { user_id: string }).user_id);
+      }
+    }
 
-    const completedUserIds = new Set(
-      (existingProviders || []).map(
-        (p: { user_id: string }) => p.user_id
-      )
-    );
-
-    const inProgress = (drafts || []).filter(
-      (d: { user_id: string }) => !completedUserIds.has(d.user_id)
+    const inProgress = drafts.filter(
+      (d) => !completedUserIds.has(String(d.user_id))
     );
 
     let totalInProgress = 0;

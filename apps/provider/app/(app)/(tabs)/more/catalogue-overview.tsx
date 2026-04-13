@@ -172,7 +172,20 @@ export default function CatalogueOverviewScreen() {
                 <Ionicons name="cut-outline" size={24} color="#ec4899" />
               </View>
               <Text style={{ fontWeight: "500", color: Colors.gray[900] }}>No services yet</Text>
-              <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>Add services in the portal to show them here.</Text>
+              <Text style={{ marginTop: 4, fontSize: 14, color: Colors.gray[500] }}>
+                Add services in Catalogue to show them here.
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  router.push("/(app)/(tabs)/more/catalogue" as never);
+                }}
+                style={{ marginTop: 16, alignSelf: "flex-start", borderRadius: 12, backgroundColor: Colors.primary, paddingHorizontal: 18, paddingVertical: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Open catalogue to add services"
+              >
+                <Text style={{ fontWeight: "600", color: Colors.white }}>Open catalogue</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             services.map((s) => (

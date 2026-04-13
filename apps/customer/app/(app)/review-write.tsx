@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { api } from "@/lib/api-client";
+import { apiBookingReviewPath } from "@/lib/customer-api-paths";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -44,9 +45,11 @@ export default function ReviewWriteScreen() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
+  /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
+  const [hasExistingReview, setHasExistingReview] = useState(false);
   const { pickFromLibrary } = useImagePicker();
 
-  const isEdit = !!reviewId;
+  const isEdit = !!reviewId || hasExistingReview;
 
   const uniqueStaff = useMemo(() => {
     const map = new Map<string, string>();
@@ -61,6 +64,7 @@ export default function ReviewWriteScreen() {
     let cancelled = false;
     const loadContext = async () => {
       setLoadingContext(true);
+      setHasExistingReview(false);
       try {
         const [bookingRes, reviewRes] = await Promise.all([
           api.get<any>(`/api/me/bookings/${bookingId}`),
@@ -91,6 +95,12 @@ export default function ReviewWriteScreen() {
           (reviewRaw?.review as Record<string, unknown> | undefined) ??
           (Array.isArray(reviewRaw?.reviews) ? (reviewRaw?.reviews as Record<string, unknown>[])[0] : undefined);
         if (existingReview) {
+          setHasExistingReview(true);
+          const rv = Number(existingReview.rating);
+          if (Number.isFinite(rv) && rv >= 1 && rv <= 5) setRating(rv);
+          const cm = existingReview.comment;
+          if (typeof cm === "string") setComment(cm);
+
           const existingServices = Array.isArray(existingReview.service_ratings)
             ? (existingReview.service_ratings as Record<string, unknown>[])
             : [];
@@ -147,8 +157,9 @@ export default function ReviewWriteScreen() {
             ? { staff_id: uniqueStaff[0].id, rating }
             : undefined;
 
+      const path = apiBookingReviewPath(bookingId);
       if (isEdit) {
-        const res = await api.patch(`/api/bookings/${bookingId}/review`, {
+        const res = await api.patch(path, {
           rating,
           comment: comment.trim() || undefined,
           photos: photos.length > 0 ? photos : undefined,
@@ -158,7 +169,7 @@ export default function ReviewWriteScreen() {
         if (res.error) Alert.alert("Error", res.error.message || "Failed to update review");
         else router.back();
       } else {
-        const res = await api.post(`/api/bookings/${bookingId}/review`, {
+        const res = await api.post(path, {
           rating,
           comment: comment.trim() || undefined,
           photos: photos.length > 0 ? photos : undefined,
@@ -334,7 +345,11 @@ export default function ReviewWriteScreen() {
             })}
           </View>
         )}
-        <TouchableOpacity onPress={submit} disabled={loading || rating < 1} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: (loading || rating < 1) ? 0.5 : 1 }}>
+        <TouchableOpacity
+          onPress={submit}
+          disabled={loading || loadingContext || rating < 1}
+          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading || loadingContext || rating < 1 ? 0.5 : 1 }}
+        >
           {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit</Text>}
         </TouchableOpacity>
       </ScrollView>

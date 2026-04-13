@@ -5,6 +5,10 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  resolveOneSignalCredentials,
+  type OneSignalAppType,
+} from "@/lib/platform/secrets";
 
 function isMissingColumnError(error: unknown, column: string): boolean {
   if (!error || typeof error !== "object") return false;
@@ -85,7 +89,23 @@ export async function POST(request: NextRequest) {
       return errorResponse("No recipients found", "VALIDATION_ERROR", 400);
     }
 
-    // Send push broadcast
+    const oneSignalAppType: OneSignalAppType | undefined =
+      recipient_type === "all_users"
+        ? "customer"
+        : recipient_type === "all_providers"
+          ? "provider"
+          : undefined;
+
+    const osCreds = await resolveOneSignalCredentials(oneSignalAppType);
+    if (!osCreds.appId || !osCreds.restKey) {
+      return errorResponse(
+        "Push is not configured for this deployment. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY (or ONESIGNAL_APP_ID_CUSTOMER / _PROVIDER and matching REST keys), or configure OneSignal under Superadmin → platform settings.",
+        "ONESIGNAL_NOT_CONFIGURED",
+        503
+      );
+    }
+
+    // Send push broadcast (pass request-scoped supabase so device lookup matches this session / RLS)
     const result = await sendToUsers(
       userIds,
       {
@@ -99,11 +119,21 @@ export async function POST(request: NextRequest) {
         },
       },
       ["push"],
-      recipient_type === "all_users" ? { appType: "customer" } : recipient_type === "all_providers" ? { appType: "provider" } : undefined
+      {
+        appType: oneSignalAppType,
+        supabaseClient: supabase,
+      }
     );
 
     if (!result.success) {
-      return errorResponse(result.error || "Failed to send broadcast", "BROADCAST_ERROR", 500);
+      const detail = result.error || result.message || "Failed to send broadcast";
+      const notConfigured =
+        typeof detail === "string" && detail.includes("OneSignal API keys not configured");
+      return errorResponse(
+        detail,
+        notConfigured ? "ONESIGNAL_NOT_CONFIGURED" : "BROADCAST_ERROR",
+        notConfigured ? 503 : 500
+      );
     }
 
     // Log broadcast

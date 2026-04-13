@@ -4,12 +4,14 @@ import { resolveTenantIdWithZaFallback } from '@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from '@/lib/regions/config';
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
 
 export async function GET(request: NextRequest) {
   try {
     let defaultCurrency: string = LAST_RESORT_CURRENCY;
+    let tenantId: string | null = null;
     try {
-      const tenantId = await resolveTenantIdWithZaFallback(request);
+      tenantId = await resolveTenantIdWithZaFallback(request);
       const tenantRegion = await getTenantRegionConfig(tenantId);
       defaultCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     } catch (tenantErr) {
@@ -35,11 +37,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const planRows = (plans || []) as { id: string }[];
+    const featureMap = await getDisplayFeatureBulletsForSubscriptionPlans(
+      supabase,
+      tenantId,
+      planRows.map((p) => p.id)
+    );
+
     // Shape expected by provider subscription UI: flatten into monthly/yearly options.
     // Free plans (is_free=true with null prices) get a single entry with price=0.
+    // `features` are marketing bullets from pricing_plan_features (same as public /pricing), not raw JSON limits.
     const out = (plans || []).flatMap((p: any) => {
-      const features =
-        Array.isArray(p.features) ? p.features : (p.features ? Object.values(p.features) : []);
+      const features = featureMap.get(p.id) ?? [];
+      const description =
+        typeof p.description === "string" && p.description.trim() ? p.description.trim() : null;
       const options: any[] = [];
 
       if (p.is_free) {
@@ -47,6 +58,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:free`,
           plan_id: p.id,
           name: p.name,
+          description,
           price: 0,
           currency: p.currency || defaultCurrency,
           billing_period: "monthly",
@@ -62,6 +74,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:monthly`,
           plan_id: p.id,
           name: p.name,
+          description,
           price: Number(p.price_monthly),
           currency: p.currency || defaultCurrency,
           billing_period: "monthly",
@@ -74,6 +87,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:yearly`,
           plan_id: p.id,
           name: p.name,
+          description,
           price: Number(p.price_yearly),
           currency: p.currency || defaultCurrency,
           billing_period: "yearly",

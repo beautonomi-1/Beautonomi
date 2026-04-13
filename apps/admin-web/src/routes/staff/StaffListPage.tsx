@@ -30,7 +30,12 @@ type StaffStatistics = {
   active: number;
   inactive: number;
   by_staff_role: { owner: number; manager: number; employee: number };
-  by_user_role: { provider_owner: number; provider_staff: number; no_account: number };
+  by_user_role: {
+    provider_owner: number;
+    provider_staff: number;
+    customer_with_staff_login?: number;
+    no_account: number;
+  };
 };
 
 type StaffMember = {
@@ -54,6 +59,16 @@ type StaffPayload = {
   staff: StaffMember[];
   statistics: StaffStatistics;
 };
+
+/** Raw users.role; provider APIs may treat customer+active staff as provider_staff — see page description. */
+function formatAccountRoleLabel(m: Pick<StaffMember, "user_id" | "user_role">): string {
+  const r = m.user_role ?? "";
+  if (!m.user_id) return "—";
+  if (r === "provider_owner" || r === "provider_staff") return r;
+  if (r === "customer") return "customer (provider app: yes)";
+  if (!r) return "—";
+  return r;
+}
 
 export function StaffListPage() {
   const qc = useQueryClient();
@@ -173,7 +188,17 @@ export function StaffListPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Staff"
-        description="Cross-provider staff directory — edit profiles, activate/deactivate, send password reset. Parity with legacy admin."
+        description={
+          <span className="block max-w-3xl text-sm font-normal leading-relaxed text-gray-600">
+            Cross-provider directory of <code className="rounded bg-gray-100 px-1">provider_staff</code> rows.{" "}
+            <strong>Account role</strong> is the value stored on <code className="rounded bg-gray-100 px-1">users.role</code>. If it
+            shows <code className="rounded bg-gray-100 px-1">customer</code> but this person has a linked login and an{" "}
+            <strong>active</strong> staff row, the provider web app and mobile APIs still grant access: the session is treated as{" "}
+            <code className="rounded bg-gray-100 px-1">provider_staff</code> for those routes (same pattern as{" "}
+            <code className="rounded bg-gray-100 px-1">requireRoleInApi</code> in the API). Use the user admin tools if you need to
+            change the stored role to <code className="rounded bg-gray-100 px-1">provider_staff</code> for reporting consistency.
+          </span>
+        }
       />
 
       <AdminMutationAlert
@@ -184,13 +209,18 @@ export function StaffListPage() {
       />
 
       {statistics ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-7">
           {[
             ["Total", statistics.total, "text-gray-900"],
             ["Active", statistics.active, "text-green-700"],
             ["Inactive", statistics.inactive, "text-amber-800"],
             ["Owners (account)", statistics.by_user_role?.provider_owner ?? 0, "text-amber-800"],
             ["Staff (account)", statistics.by_user_role?.provider_staff ?? 0, "text-sky-800"],
+            [
+              "Customer login, staff row",
+              statistics.by_user_role?.customer_with_staff_login ?? 0,
+              "text-violet-800",
+            ],
             ["No linked account", statistics.by_user_role?.no_account ?? 0, "text-gray-600"],
           ].map(([label, val, cls]) => (
             <AdminPanel key={String(label)} className="!p-4">
@@ -222,6 +252,7 @@ export function StaffListPage() {
               <option value="all">All</option>
               <option value="provider_owner">Provider owner</option>
               <option value="provider_staff">Provider staff</option>
+              <option value="customer">Customer (still gets provider app if active staff)</option>
             </select>
           </label>
           <label className="block w-full text-sm lg:w-44">
@@ -294,7 +325,9 @@ export function StaffListPage() {
                   <AdminTd>
                     <span className="rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium">{m.role}</span>
                   </AdminTd>
-                  <AdminTd className="text-xs text-gray-600">{m.user_role ?? "—"}</AdminTd>
+                  <AdminTd className="text-xs text-gray-600">
+                    <span className="font-mono">{formatAccountRoleLabel(m)}</span>
+                  </AdminTd>
                   <AdminTd>{m.is_active ? "Yes" : "No"}</AdminTd>
                   <AdminTd className="text-right">
                     <div className="flex flex-col items-end gap-1">

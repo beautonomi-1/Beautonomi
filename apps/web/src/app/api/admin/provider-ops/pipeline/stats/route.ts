@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,32 +15,24 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: leads, error } = await supabase
-      .from("provider_leads")
-      .select("id, commercial_stage")
-      .eq("tenant_id", tenantId);
-    if (error) throw error;
-
-    const stages = [
-      "new",
-      "contacted",
-      "qualified",
-      "proposal_sent",
-      "negotiating",
-      "won",
-      "lost",
-      "nurture",
-      "matched",
-    ];
+    // Head-only count queries — avoids PostgREST default row cap on large tenants
+    const countResults = await Promise.all(
+      PROVIDER_LEAD_PIPELINE_STAGES.map(async (stage) => {
+        const { count, error } = await supabase
+          .from("provider_leads")
+          .select("*", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .eq("commercial_stage", stage);
+        if (error) throw error;
+        return [stage, count ?? 0] as const;
+      })
+    );
 
     const counts: Record<string, number> = {};
-    for (const s of stages) counts[s] = 0;
     let total = 0;
-
-    for (const lead of leads || []) {
-      const stage = lead.commercial_stage as string;
-      counts[stage] = (counts[stage] || 0) + 1;
-      total++;
+    for (const [stage, c] of countResults) {
+      counts[stage] = c;
+      total += c;
     }
 
     return successResponse({

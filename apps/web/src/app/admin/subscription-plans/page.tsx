@@ -46,6 +46,8 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import WysiwygEditor from "@/components/admin/WysiwygEditor";
+import { isBlankHtmlContent } from "@/lib/html/pricing-feature-html";
 
 // Complex feature gating structure matching migration 133
 interface FeatureGating {
@@ -449,7 +451,7 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
 
       // When consolidated view: sync pricing page entry so public pricing and onboarding use it
       if (useMergedPlans && formData.show_on_pricing_page && savedPlan?.id) {
-        const featureLines = formData.pricing_features.map((s) => s.trim()).filter(Boolean);
+        const featureLines = formData.pricing_features.filter((s) => !isBlankHtmlContent(s));
         const pricingPayload = {
           ...(selectedPlan?.pricing_plan ? { id: selectedPlan.pricing_plan.id } : {}),
           name: formData.name,
@@ -1026,7 +1028,8 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                             </Button>
                           </div>
                           <p className="text-xs text-gray-500">
-                            Each bullet appears as a separate line on /pricing. Edit each one freely.
+                            Each row is one bullet on /pricing. Use the rich editor for bold, links, and lists (stored as
+                            safe HTML in <code className="text-xs">pricing_plan_features</code>).
                           </p>
                           {formData.pricing_features.length === 0 ? (
                             <p className="text-sm text-gray-500 border border-dashed rounded-lg p-4 text-center">
@@ -1083,17 +1086,18 @@ export default function SubscriptionPlansPage({ useMergedPlans = false }: PlansP
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
                                   </div>
-                                  <Textarea
-                                    value={line}
-                                    onChange={(e) => {
-                                      const next = [...formData.pricing_features];
-                                      next[i] = e.target.value;
-                                      setFormData({ ...formData, pricing_features: next });
-                                    }}
-                                    rows={4}
-                                    className="flex-1 min-h-[5.5rem] text-sm"
-                                    placeholder={`Feature ${i + 1}…`}
-                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <WysiwygEditor
+                                      compact
+                                      value={line}
+                                      onChange={(next) => {
+                                        const copy = [...formData.pricing_features];
+                                        copy[i] = next;
+                                        setFormData({ ...formData, pricing_features: copy });
+                                      }}
+                                      placeholder={`Feature ${i + 1}…`}
+                                    />
+                                  </div>
                                 </li>
                               ))}
                             </ul>

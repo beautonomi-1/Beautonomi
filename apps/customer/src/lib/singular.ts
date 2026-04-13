@@ -95,9 +95,10 @@ export function buildCustomerRoute(params: SingularLinkParams): { pathname: stri
     return { pathname: "/(app)/product-orders" };
   }
   if (screen === "review-write" || path === "review-write") {
-    const id = q.id ?? q.booking_id ?? "";
-    if (!id) return { pathname: "/(app)/review-write" };
-    return { pathname: "/(app)/review-write", params: { id } };
+    /** Must match `review-write` screen (`bookingId`); keep legacy query keys for old links. */
+    const bookingId = String(q.bookingId ?? q.booking_id ?? q.id ?? "").trim();
+    if (!bookingId) return { pathname: "/(app)/review-write" };
+    return { pathname: "/(app)/review-write", params: { bookingId } };
   }
   if (screen === "bookings" || path === "bookings") {
     return { pathname: "/(app)/(tabs)/bookings" };

@@ -8,6 +8,11 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  fetchAllPaged,
+  chunkIds,
+  unwrapEmbedded,
+} from "@/lib/provider-ops/postgrest-unbounded";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -78,110 +83,111 @@ export async function GET(request: NextRequest) {
     const stallThresholdHours = 24;
     const dropOffThresholdHours = 168;
 
-    // Load tenant users first so drafts are DB-scoped to this tenant
-    const { data: tenantUsers, error: tenantUsersErr } = await supabase
-      .from("users")
-      .select("id, email, full_name, phone, role, created_at")
-      .eq("tenant_id", tenantId)
-      .in("role", ["provider_owner", "provider_staff"]);
-    if (tenantUsersErr) throw tenantUsersErr;
-
-    const tenantUserIds = (tenantUsers ?? []).map((u: { id: string }) => u.id);
-    if (tenantUserIds.length === 0) {
-      return successResponse({ data: [], meta: { total: 0, page, limit, has_more: false } });
-    }
-
-    const { data: drafts, error: draftsErr } = await supabase
-      .from("provider_onboarding_drafts")
-      .select(
-        `
-        id,
-        user_id,
-        draft_data,
-        current_step,
-        created_at,
-        updated_at
-      `
-      )
-      .in("user_id", tenantUserIds)
-      .order("updated_at", { ascending: false });
-    if (draftsErr) throw draftsErr;
-
-    const userIds = (drafts || []).map(
-      (d: { user_id: string }) => d.user_id
-    );
-    if (userIds.length === 0) {
-      return successResponse({ data: [], meta: { total: 0, page, limit, has_more: false } });
-    }
-
-    // Build a map from the already-loaded tenant users
-    const users = (tenantUsers ?? []).filter((u: { id: string }) => userIds.includes(u.id));
-
-    const usersMap = new Map<
-      string,
-      {
-        id: string;
-        email: string;
-        full_name: string;
-        phone: string;
-        role: string;
-        created_at: string;
-      }
-    >();
-    for (const u of users || []) {
-      usersMap.set(
-        u.id,
-        u as {
-          id: string;
-          email: string;
-          full_name: string;
-          phone: string;
-          role: string;
-          created_at: string;
-        }
-      );
-    }
-
-    const { data: providers } = await supabase
-      .from("providers")
-      .select("id, user_id, status, business_name")
-      .eq("tenant_id", tenantId)
-      .in("user_id", userIds);
-
-    const providersMap = new Map<
-      string,
-      { id: string; status: string; business_name: string }
-    >();
-    for (const p of providers || []) {
-      providersMap.set(
-        p.user_id,
-        p as { id: string; status: string; business_name: string }
-      );
-    }
-
-    const { data: trackingRecords } = await supabase
-      .from("provider_onboarding_tracking")
-      .select("*")
-      .eq("tenant_id", tenantId)
-      .in("user_id", userIds);
-
-    const trackingMap = new Map<string, Record<string, unknown>>();
-    for (const t of trackingRecords || []) {
-      trackingMap.set(t.user_id as string, t as Record<string, unknown>);
-    }
-
-    type DraftRow = {
+    type DraftWithUser = {
       id: string;
       user_id: string;
       draft_data: Record<string, unknown>;
       current_step: number;
       created_at: string;
       updated_at: string;
+      users: {
+        id: string;
+        email: string;
+        full_name: string;
+        phone: string;
+        role: string;
+        created_at: string;
+      };
     };
 
-    const results = (drafts || [])
-      .map((draft: DraftRow) => {
-        const user = usersMap.get(draft.user_id);
+    const joined = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
+      const r = await supabase
+        .from("provider_onboarding_drafts")
+        .select(
+          `
+        id,
+        user_id,
+        draft_data,
+        current_step,
+        created_at,
+        updated_at,
+        users!inner(id, email, full_name, phone, role, created_at, tenant_id)
+      `
+        )
+        .eq("users.tenant_id", tenantId)
+        .order("updated_at", { ascending: false })
+        .range(from, to);
+      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
+    });
+
+    const drafts: DraftWithUser[] = joined
+      .map((row) => {
+        const u = unwrapEmbedded<{
+          id: string;
+          email: string;
+          full_name: string;
+          phone: string;
+          role: string;
+          created_at: string;
+        }>(row, "users");
+        if (!u || !["provider_owner", "provider_staff"].includes(u.role ?? "")) return null;
+        return {
+          id: String(row.id),
+          user_id: String(row.user_id),
+          draft_data: (row.draft_data as Record<string, unknown>) ?? {},
+          current_step: Number(row.current_step ?? 1),
+          created_at: String(row.created_at),
+          updated_at: String(row.updated_at),
+          users: u,
+        };
+      })
+      .filter((x): x is DraftWithUser => x != null);
+
+    if (drafts.length === 0) {
+      return successResponse({ data: [], meta: { total: 0, page, limit, has_more: false } });
+    }
+
+    const userIds = drafts.map((d) => d.user_id);
+
+    const providersFlat: { id: string; user_id: string; status: string; business_name: string }[] =
+      [];
+    for (const chunk of chunkIds(userIds, 120)) {
+      const { data: providers, error: pErr } = await supabase
+        .from("providers")
+        .select("id, user_id, status, business_name")
+        .eq("tenant_id", tenantId)
+        .in("user_id", chunk);
+      if (pErr) throw pErr;
+      providersFlat.push(...((providers || []) as typeof providersFlat));
+    }
+
+    const providersMap = new Map<
+      string,
+      { id: string; status: string; business_name: string }
+    >();
+    for (const p of providersFlat) {
+      providersMap.set(p.user_id, p);
+    }
+
+    const trackingRecords: Record<string, unknown>[] = [];
+    for (const chunk of chunkIds(userIds, 120)) {
+      const { data: tr, error: trErr } = await supabase
+        .from("provider_onboarding_tracking")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .in("user_id", chunk);
+      if (trErr) throw trErr;
+      trackingRecords.push(...(tr || []));
+    }
+
+    const trackingMap = new Map<string, Record<string, unknown>>();
+    for (const t of trackingRecords) {
+      trackingMap.set(t.user_id as string, t as Record<string, unknown>);
+    }
+
+    const results = drafts
+      .map((draft) => {
+        const user = draft.users;
         if (!user) return null;
 
         const provider = providersMap.get(draft.user_id);

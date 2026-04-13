@@ -1,6 +1,6 @@
 /**
  * Provider report navigation — mirrors `apps/web` provider reports hub.
- * Use native stacks where we ship a screen; otherwise open the matching web report in the browser portal.
+ * All reports open in-app: native screens call `/api/provider/reports/*` (same handlers as the web portal).
  */
 import Ionicons from "@expo/vector-icons/Ionicons";
 
@@ -15,13 +15,12 @@ export type ProviderReportItem = {
   bg: string;
 } & (
   | { target: "native"; screen: string }
-  | { target: "portal"; webPath: string }
+  | { target: "detail"; reportId: string }
   | { target: "route"; route: string }
 );
 
 export type ProviderReportCategory = { title: string; reports: ProviderReportItem[] };
 
-/** `webPath` is absolute on the Next app, e.g. `/provider/reports/sales/summary`. */
 export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
   {
     title: "Sales",
@@ -33,8 +32,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "stats-chart-outline",
         color: "#16a34a",
         bg: "#dcfce7",
-        target: "portal",
-        webPath: "/provider/reports/sales/summary",
+        target: "detail",
+        reportId: "sales-summary",
       },
       {
         id: "service-performance",
@@ -53,8 +52,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "bag-outline",
         color: "#4f46e5",
         bg: "#e0e7ff",
-        target: "portal",
-        webPath: "/provider/reports/products/sales",
+        target: "detail",
+        reportId: "product-sales",
       },
       {
         id: "revenue-trends",
@@ -63,8 +62,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "trending-up-outline",
         color: "#059669",
         bg: "#d1fae5",
-        target: "portal",
-        webPath: "/provider/reports/sales/trends",
+        target: "detail",
+        reportId: "revenue-trends",
       },
     ],
   },
@@ -88,8 +87,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "cash-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
-        target: "portal",
-        webPath: "/provider/reports/staff/commission",
+        target: "detail",
+        reportId: "staff-commission",
       },
       {
         id: "staff-hours",
@@ -98,8 +97,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "time-outline",
         color: "#0369a1",
         bg: "#e0f2fe",
-        target: "portal",
-        webPath: "/provider/reports/staff/hours",
+        target: "detail",
+        reportId: "staff-hours",
       },
     ],
   },
@@ -123,8 +122,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "pie-chart-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
-        target: "portal",
-        webPath: "/provider/reports/bookings/status",
+        target: "detail",
+        reportId: "booking-status",
       },
       {
         id: "occupancy",
@@ -133,8 +132,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "bar-chart-outline",
         color: "#0d9488",
         bg: "#ccfbf1",
-        target: "portal",
-        webPath: "/provider/reports/occupancy",
+        target: "detail",
+        reportId: "occupancy",
       },
       {
         id: "cancellations",
@@ -143,8 +142,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "close-circle-outline",
         color: "#dc2626",
         bg: "#fee2e2",
-        target: "portal",
-        webPath: "/provider/reports/bookings/cancellations",
+        target: "detail",
+        reportId: "cancellations",
       },
       {
         id: "no-shows",
@@ -153,8 +152,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "alert-circle-outline",
         color: "#ea580c",
         bg: "#ffedd5",
-        target: "portal",
-        webPath: "/provider/reports/bookings/no-shows",
+        target: "detail",
+        reportId: "no-shows",
       },
     ],
   },
@@ -178,8 +177,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "heart-outline",
         color: "#e11d48",
         bg: "#ffe4e6",
-        target: "portal",
-        webPath: "/provider/reports/clients/retention",
+        target: "detail",
+        reportId: "client-retention",
       },
       {
         id: "new-clients",
@@ -188,8 +187,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "person-add-outline",
         color: "#0891b2",
         bg: "#cffafe",
-        target: "portal",
-        webPath: "/provider/reports/clients/new",
+        target: "detail",
+        reportId: "new-clients",
       },
       {
         id: "client-lifetime-value",
@@ -198,8 +197,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "trophy-outline",
         color: "#ca8a04",
         bg: "#fef9c3",
-        target: "portal",
-        webPath: "/provider/reports/clients/lifetime-value",
+        target: "detail",
+        reportId: "client-lifetime-value",
       },
     ],
   },
@@ -223,8 +222,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "today-outline",
         color: "#4338ca",
         bg: "#e0e7ff",
-        target: "portal",
-        webPath: "/provider/reports/end-of-day",
+        target: "detail",
+        reportId: "end-of-day",
       },
       {
         id: "refunds",
@@ -233,8 +232,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "return-down-back-outline",
         color: "#b91c1c",
         bg: "#fee2e2",
-        target: "portal",
-        webPath: "/provider/reports/payments/refunds",
+        target: "detail",
+        reportId: "refunds",
       },
       {
         id: "payment-methods",
@@ -243,8 +242,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "wallet-outline",
         color: "#0f766e",
         bg: "#ccfbf1",
-        target: "portal",
-        webPath: "/provider/reports/payments/methods",
+        target: "detail",
+        reportId: "payment-methods",
       },
       {
         id: "payouts",
@@ -253,8 +252,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "arrow-redo-outline",
         color: "#65a30d",
         bg: "#ecfccb",
-        target: "portal",
-        webPath: "/provider/reports/payments/payouts",
+        target: "detail",
+        reportId: "payouts",
       },
       {
         id: "yoco-reconciliation",
@@ -263,8 +262,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "phone-portrait-outline",
         color: "#6b21a8",
         bg: "#f3e8ff",
-        target: "portal",
-        webPath: "/provider/reports/payments/yoco-reconciliation",
+        target: "detail",
+        reportId: "yoco-reconciliation",
       },
     ],
   },
@@ -288,8 +287,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "layers-outline",
         color: "#6366f1",
         bg: "#e0e7ff",
-        target: "portal",
-        webPath: "/provider/reports/products/inventory",
+        target: "detail",
+        reportId: "inventory",
       },
       {
         id: "top-products",
@@ -298,8 +297,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "ribbon-outline",
         color: "#c026d3",
         bg: "#fae8ff",
-        target: "portal",
-        webPath: "/provider/reports/products/top",
+        target: "detail",
+        reportId: "top-products",
       },
     ],
   },
@@ -328,8 +327,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "pricetag-outline",
         color: "#0f766e",
         bg: "#ccfbf1",
-        target: "portal",
-        webPath: "/provider/reports/packages/sales",
+        target: "detail",
+        reportId: "package-sales",
       },
       {
         id: "package-usage",
@@ -338,8 +337,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "analytics-outline",
         color: "#0e7490",
         bg: "#cffafe",
-        target: "portal",
-        webPath: "/provider/reports/packages/usage",
+        target: "detail",
+        reportId: "package-usage",
       },
       {
         id: "packages-native",
@@ -363,8 +362,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "pie-chart-outline",
         color: "#6366f1",
         bg: "#eef2ff",
-        target: "portal",
-        webPath: "/provider/reports/business/overview",
+        target: "native",
+        screen: "business",
       },
       {
         id: "performance-dashboard",
@@ -373,8 +372,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "flash-outline",
         color: "#7c3aed",
         bg: "#ede9fe",
-        target: "portal",
-        webPath: "/provider/reports/business/dashboard",
+        target: "detail",
+        reportId: "performance-dashboard",
       },
       {
         id: "comparison",
@@ -383,18 +382,8 @@ export const PROVIDER_REPORT_CATEGORIES: ProviderReportCategory[] = [
         icon: "git-compare-outline",
         color: "#2563eb",
         bg: "#dbeafe",
-        target: "portal",
-        webPath: "/provider/reports/business/comparison",
-      },
-      {
-        id: "business-native",
-        name: "Business insights (app)",
-        description: "Native overview with filters",
-        icon: "stats-chart-outline",
-        color: "#4f46e5",
-        bg: "#e0e7ff",
-        target: "native",
-        screen: "business",
+        target: "detail",
+        reportId: "comparison",
       },
       {
         id: "revenue-native",

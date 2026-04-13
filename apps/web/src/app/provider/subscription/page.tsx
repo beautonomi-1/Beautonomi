@@ -11,15 +11,19 @@ import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
 import { SettingsDetailLayout } from "@/components/provider/SettingsDetailLayout";
 import { PageHeader } from "@/components/provider/PageHeader";
+import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 interface SubscriptionPlan {
   id: string;
   plan_id: string;
   name: string;
+  /** Short pitch — same source as public /pricing cards when linked in CMS */
+  description?: string | null;
   price: number;
   currency: string;
   billing_period: "monthly" | "yearly";
+  /** Marketing bullets (from `pricing_plan_features`, same as /pricing) */
   features: string[];
   is_popular?: boolean;
   is_free?: boolean;
@@ -34,16 +38,28 @@ interface ProviderSubscription {
   cancelled_at?: string | null;
   billing_period?: "monthly" | "yearly";
   auto_renew?: boolean;
-  plan?: any;
+  plan?: {
+    id?: string;
+    name?: string;
+    description?: string | null;
+    features?: unknown;
+    feature_bullets?: string[];
+    price_monthly?: number | null;
+    price_yearly?: number | null;
+    currency?: string;
+    is_free?: boolean;
+  };
 }
 
-function featureLabel(feature: unknown): string {
-  if (typeof feature === "string") return feature;
-  if (feature && typeof feature === "object") {
-    const f = feature as Record<string, unknown>;
-    return String(f.name || f.label || f.title || f.description || JSON.stringify(feature));
-  }
-  return String(feature ?? "");
+function formatPlanPriceMain(plan: SubscriptionPlan): string {
+  if (plan.is_free || plan.price === 0) return "Free";
+  if (plan.currency === "ZAR") return `R${plan.price}`;
+  return `${plan.currency} ${plan.price}`;
+}
+
+function formatPlanPricePeriod(plan: SubscriptionPlan): string {
+  if (plan.is_free || plan.price === 0) return "";
+  return plan.billing_period === "monthly" ? "/month" : "/year";
 }
 
 export default function SubscriptionPage() {
@@ -238,18 +254,28 @@ export default function SubscriptionPage() {
   }
 
   // The joined plan from the subscription API uses price_monthly/price_yearly; normalise to SubscriptionPlan shape
-  const rawPlan: any = subscription?.plan;
-  const isFree = rawPlan?.is_free || (rawPlan?.price_monthly == null && rawPlan?.price_yearly == null);
+  const rawPlan = subscription?.plan;
+  const isFree =
+    rawPlan?.is_free ||
+    (rawPlan?.price_monthly == null && rawPlan?.price_yearly == null);
+  const bullets =
+    rawPlan?.feature_bullets && Array.isArray(rawPlan.feature_bullets) && rawPlan.feature_bullets.length > 0
+      ? rawPlan.feature_bullets
+      : [];
   const currentPlanFromSubscription: SubscriptionPlan | null = rawPlan
     ? {
         id: rawPlan.id ?? "",
         plan_id: rawPlan.id ?? subscription?.plan_id ?? "",
         name: rawPlan.name ?? "",
-        price: rawPlan.price ?? rawPlan.price_monthly ?? 0,
+        description: rawPlan.description ?? null,
+        price:
+          subscription?.billing_period === "yearly" && rawPlan.price_yearly != null
+            ? Number(rawPlan.price_yearly)
+            : Number(rawPlan.price_monthly ?? rawPlan.price_yearly ?? 0),
         currency: rawPlan.currency ?? "ZAR",
         billing_period: subscription?.billing_period ?? "monthly",
-        features: Array.isArray(rawPlan.features) ? rawPlan.features : [],
-        is_free: isFree,
+        features: bullets,
+        is_free: Boolean(isFree),
       }
     : null;
   const currentPlan =
@@ -318,8 +344,8 @@ export default function SubscriptionPage() {
                       </Badge>
                     )}
                   </CardTitle>
-                  <CardDescription>
-                    {currentPlan?.name || "No plan selected"}
+                  <CardDescription className="text-base text-gray-600">
+                    {currentPlan?.description || currentPlan?.name || "No plan selected"}
                   </CardDescription>
                 </div>
               </div>
@@ -336,21 +362,19 @@ export default function SubscriptionPage() {
 
               {currentPlan && (
                 <div>
-                  <p className="text-2xl font-bold mb-2">
-                    {currentPlan.is_free || currentPlan.price === 0 ? "Free" : `${currentPlan.currency} ${currentPlan.price}`}
-                    {!currentPlan.is_free && currentPlan.price > 0 && (
-                      <span className="text-base font-normal text-gray-600">
-                        /{currentPlan.billing_period === "monthly" ? "month" : "year"}
-                      </span>
-                    )}
-                  </p>
+                  <div className="mb-2 flex flex-wrap items-baseline gap-1">
+                    <span className="text-4xl font-bold text-gray-900">{formatPlanPriceMain(currentPlan)}</span>
+                    {formatPlanPricePeriod(currentPlan) ? (
+                      <span className="text-lg text-gray-600">{formatPlanPricePeriod(currentPlan)}</span>
+                    ) : null}
+                  </div>
                   <div className="space-y-2">
-                    <p className="font-medium">Features included:</p>
-                    <ul className="space-y-1">
+                    <p className="font-medium text-gray-900">What&apos;s included</p>
+                    <ul className="space-y-3">
                       {(Array.isArray(currentPlan.features) ? currentPlan.features : []).map((feature, index) => (
-                        <li key={index} className="flex items-center gap-2 text-sm">
-                          <Check className="w-4 h-4 text-green-600" />
-                          {featureLabel(feature)}
+                        <li key={index} className="flex items-start gap-3 text-sm text-gray-700">
+                          <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF0077]" />
+                          <span>{feature}</span>
                         </li>
                       ))}
                     </ul>
@@ -379,66 +403,78 @@ export default function SubscriptionPage() {
             </CardContent>
           </Card>
 
-          {/* Available Plans */}
+          {/* Available Plans — match public /pricing card layout */}
           {plans.length > 0 && (
             <div>
-              <h3 className="text-xl font-semibold mb-4">Available Plans</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {plans.map((plan) => (
-                  <Card
-                    key={plan.id}
-                    className={
-                      plan.is_popular
-                        ? "border-2 border-[#FF0077] relative"
-                        : subscription?.plan_id === plan.plan_id
-                        ? "border-2 border-gray-300"
-                        : ""
-                    }
-                  >
-                    {plan.is_popular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge className="bg-[#FF0077] text-white">Most Popular</Badge>
-                      </div>
-                    )}
-                    {subscription?.plan_id === plan.plan_id && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <Badge variant="secondary">Current Plan</Badge>
-                      </div>
-                    )}
-                    <CardHeader>
-                      <CardTitle>{plan.name}</CardTitle>
-                      <CardDescription>
-                        <span className="text-2xl font-bold">
-                          {(plan as any).is_free || plan.price === 0 ? "Free" : `${plan.currency} ${plan.price}`}
-                        </span>
-                        {!((plan as any).is_free) && plan.price > 0 && (
-                          <span className="text-sm text-gray-600">
-                            /{plan.billing_period === "monthly" ? "month" : "year"}
+              <h3 className="mb-6 text-xl font-semibold text-gray-900">Available plans</h3>
+              <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+                {plans.map((plan) => {
+                  const isCurrent =
+                    subscription?.plan_id === plan.plan_id &&
+                    (subscription?.billing_period ?? "monthly") === plan.billing_period;
+                  return (
+                    <div
+                      key={plan.id}
+                      className={`relative rounded-2xl border-2 bg-white p-8 ${
+                        plan.is_popular ? "border-[#FF0077] shadow-xl md:scale-[1.02]" : "border-gray-200"
+                      } ${isCurrent ? "ring-2 ring-gray-400 ring-offset-2" : ""}`}
+                    >
+                      {plan.is_popular && (
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2 transform">
+                          <span className="rounded-full bg-[#FF0077] px-4 py-1 text-sm font-semibold text-white">
+                            Most Popular
                           </span>
-                        )}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ul className="space-y-2 mb-4">
+                        </div>
+                      )}
+                      {isCurrent && (
+                        <div className="absolute -top-4 right-4">
+                          <Badge variant="secondary" className="shadow-sm">
+                            Current
+                          </Badge>
+                        </div>
+                      )}
+                      <div className="mb-8 text-center">
+                        <h4 className="mb-2 text-2xl font-bold text-gray-900">{plan.name}</h4>
+                        {plan.currency ? (
+                          <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">
+                            {plan.currency}
+                          </p>
+                        ) : null}
+                        <div className="mb-2 flex items-baseline justify-center gap-1">
+                          <span className="text-4xl font-bold text-gray-900">{formatPlanPriceMain(plan)}</span>
+                          {formatPlanPricePeriod(plan) ? (
+                            <span className="text-gray-600">{formatPlanPricePeriod(plan)}</span>
+                          ) : null}
+                        </div>
+                        {plan.description ? (
+                          <p className="text-sm text-gray-600">{plan.description}</p>
+                        ) : null}
+                      </div>
+                      <ul className="mb-8 space-y-4">
                         {(Array.isArray(plan.features) ? plan.features : []).map((feature, index) => (
-                          <li key={index} className="flex items-center gap-2 text-sm">
-                            <Check className="w-4 h-4 text-green-600" />
-                            {featureLabel(feature)}
+                          <li key={index} className="flex items-start gap-3 text-sm">
+                            <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-[#FF0077]" />
+                            <div className="min-w-0 flex-1 text-left text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0">
+                              <PricingFeatureHtml html={feature} className="block" />
+                            </div>
                           </li>
                         ))}
                       </ul>
-                      {subscription?.plan_id !== plan.plan_id && (
+                      {!isCurrent && (
                         <Button
-                          className="w-full"
+                          className={`w-full rounded-full py-6 text-lg font-semibold ${
+                            plan.is_popular
+                              ? "bg-[#FF0077] text-white hover:bg-[#D60565]"
+                              : "bg-gray-900 text-white hover:bg-gray-800"
+                          }`}
                           onClick={() => handleUpgrade(plan.id)}
-                          variant={plan.is_popular ? "default" : "outline"}
                         >
-                          {subscription?.status === "trial" ? "Upgrade from Trial" : "Switch Plan"}
+                          {subscription?.status === "trial" ? "Upgrade from Trial" : "Switch plan"}
                         </Button>
                       )}
-                    </CardContent>
-                  </Card>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

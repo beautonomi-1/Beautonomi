@@ -4,7 +4,7 @@ import { requireAdminSection, successResponse, handleApiError } from "@/lib/supa
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
-interface WalletMismatch {
+interface WalletReconciliationRow {
   user_id: string;
   wallet_id: string;
   wallet_balance: number;
@@ -64,7 +64,13 @@ export async function GET(request: NextRequest) {
           new Set((tenantWalletRows ?? []).map((row: { wallet_id?: string }) => row.wallet_id).filter(Boolean))
         );
         if (scopedWalletIds.length === 0) {
-          return successResponse({ mismatches: [], checked: 0, healthy: 0 });
+          return successResponse({
+            mismatches: [],
+            checked_wallets: [],
+            total_mismatches: 0,
+            checked: 0,
+            healthy: 0,
+          });
         }
         walletsQuery = walletsQuery.in("id", scopedWalletIds);
       }
@@ -73,7 +79,13 @@ export async function GET(request: NextRequest) {
     if (walletsError) throw walletsError;
 
     if (!wallets?.length) {
-      return successResponse({ mismatches: [], checked: 0, healthy: 0 });
+      return successResponse({
+        mismatches: [],
+        checked_wallets: [],
+        total_mismatches: 0,
+        checked: 0,
+        healthy: 0,
+      });
     }
 
     type WalletRow = { id: string; user_id: string; balance?: number; currency?: string };
@@ -98,23 +110,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const mismatches: WalletMismatch[] = [];
+    const mismatches: WalletReconciliationRow[] = [];
+    const checked_wallets: WalletReconciliationRow[] = [];
     let healthy = 0;
     const TOLERANCE = 0.01;
 
     for (const w of walletRows) {
       const storedBalance = Number(w.balance ?? 0);
       const computedSum = txSumMap.get(w.id) ?? 0;
-      const diff = Math.abs(storedBalance - computedSum);
-      if (diff > TOLERANCE) {
-        mismatches.push({
-          user_id: w.user_id,
-          wallet_id: w.id,
-          wallet_balance: storedBalance,
-          transaction_sum: Number(computedSum.toFixed(2)),
-          difference: Number((storedBalance - computedSum).toFixed(2)),
-          currency: w.currency ?? "ZAR",
-        });
+      const signedDiff = storedBalance - computedSum;
+      const row: WalletReconciliationRow = {
+        user_id: w.user_id,
+        wallet_id: w.id,
+        wallet_balance: storedBalance,
+        transaction_sum: Number(computedSum.toFixed(2)),
+        difference: Number(signedDiff.toFixed(2)),
+        currency: w.currency ?? "ZAR",
+      };
+      checked_wallets.push(row);
+      if (Math.abs(signedDiff) > TOLERANCE) {
+        mismatches.push(row);
       } else {
         healthy++;
       }
@@ -123,7 +138,10 @@ export async function GET(request: NextRequest) {
     mismatches.sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference));
 
     return successResponse({
+      /** Drifted wallets only (for alerts / compact views) */
       mismatches: mismatches.slice(0, 100),
+      /** Every wallet examined in this run — use for full table when all are healthy */
+      checked_wallets,
       total_mismatches: mismatches.length,
       checked: walletRows.length,
       healthy,

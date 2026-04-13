@@ -1,4 +1,11 @@
 import { type ReactNode, useEffect, useRef } from "react";
+import { cn } from "@/lib/cn";
+
+const MODAL_MAX: Record<"md" | "lg" | "xl", string> = {
+  md: "max-w-md",
+  lg: "max-w-xl",
+  xl: "max-w-[95vw] sm:max-w-3xl",
+};
 
 /**
  * Confirmations and short forms (UI conventions §7). Backdrop click and Escape key close.
@@ -11,6 +18,7 @@ export function AdminModal({
   children,
   footer,
   labelledBy = "admin-modal-title",
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,6 +27,8 @@ export function AdminModal({
   children: ReactNode;
   footer: ReactNode;
   labelledBy?: string;
+  /** Wide dialogs for CMS-style forms (notification templates, rich editors). */
+  size?: "md" | "lg" | "xl";
 }) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
@@ -51,7 +61,10 @@ export function AdminModal({
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg"
+        className={cn(
+          "max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg",
+          MODAL_MAX[size],
+        )}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

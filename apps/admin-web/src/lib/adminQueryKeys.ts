@@ -106,6 +106,8 @@ export const adminQueryKeys = {
   catalogServices: (categoryId: string) => [...adminQueryKeys.root, "catalog", "services", categoryId] as const,
 
   learningArticles: (q: string) => [...adminQueryKeys.root, "learning", "articles", q] as const,
+  /** Prefix-match invalidates all learning article list queries (any status filter). */
+  learningArticlesAll: () => [...adminQueryKeys.root, "learning", "articles"] as const,
 
   addons: (q: string) => [...adminQueryKeys.root, "addons", q] as const,
 

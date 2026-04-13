@@ -158,8 +158,14 @@ export function ServiceZoneMapEditor({
       map.on("draw.create", (e: { features: GeoJSON.Feature[] }) => {
         const feature = e.features[0];
         const geom = feature?.geometry;
-        if (!geom || geom.type !== "Polygon") {
-          adminToast.error("Draw one closed polygon area.");
+        let poly: GeoJSON.Polygon | null = null;
+        if (geom?.type === "Polygon") {
+          poly = geom as GeoJSON.Polygon;
+        } else if (geom?.type === "MultiPolygon" && geom.coordinates[0]?.length) {
+          poly = { type: "Polygon", coordinates: geom.coordinates[0] };
+        }
+        if (!poly) {
+          adminToast.error("Draw one closed polygon area (double-click to finish).");
           try {
             draw.deleteAll();
           } catch {
@@ -168,7 +174,7 @@ export function ServiceZoneMapEditor({
           setDrawIntent("none");
           return;
         }
-        setPendingGeom(geom as GeoJSON.Polygon);
+        setPendingGeom(poly);
         setConfirmOpen(true);
       });
     })();

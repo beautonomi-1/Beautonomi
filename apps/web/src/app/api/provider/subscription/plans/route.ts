@@ -12,6 +12,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
 
 export async function GET(request: NextRequest) {
   try {
@@ -44,16 +45,24 @@ export async function GET(request: NextRequest) {
       .from("subscription_plans")
       .select("*")
       .eq("is_active", true)
-      .order("price_monthly", { ascending: true, nullsFirst: true });
+      .order("display_order", { ascending: true, nullsFirst: false });
 
     if (error) {
       console.error("Error fetching subscription plans:", error);
       return handleApiError(error, "Failed to load subscription plans");
     }
 
+    const planRows = (plans || []) as { id: string }[];
+    const featureMap = await getDisplayFeatureBulletsForSubscriptionPlans(
+      supabaseAdmin,
+      effectiveTenantId,
+      planRows.map((p) => p.id)
+    );
+
     const result = (plans || []).flatMap((p: any) => {
-      const features =
-        Array.isArray(p.features) ? p.features : (p.features ? Object.values(p.features) : []);
+      const features = featureMap.get(p.id) ?? [];
+      const description =
+        typeof p.description === "string" && p.description.trim() ? p.description.trim() : null;
       const limits = p.limits || { max_bookings: null, max_staff: null, max_locations: null };
       const options: any[] = [];
 
@@ -62,6 +71,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:free`,
           plan_id: p.id,
           name: p.name,
+          description,
           amount: 0,
           price: 0,
           currency: p.currency || lastResortCurrency,
@@ -80,6 +90,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:monthly`,
           plan_id: p.id,
           name: p.name,
+          description,
           amount: Number(p.price_monthly),
           price: Number(p.price_monthly),
           currency: p.currency || lastResortCurrency,
@@ -96,6 +107,7 @@ export async function GET(request: NextRequest) {
           id: `${p.id}:yearly`,
           plan_id: p.id,
           name: p.name,
+          description,
           amount: Number(p.price_yearly),
           price: Number(p.price_yearly),
           currency: p.currency || lastResortCurrency,
@@ -113,6 +125,7 @@ export async function GET(request: NextRequest) {
           id: p.id,
           plan_id: p.id,
           name: p.name,
+          description,
           amount: Number(p.amount || 0),
           price: Number(p.amount || 0),
           currency: p.currency || lastResortCurrency,

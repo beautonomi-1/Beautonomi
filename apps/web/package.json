@@ -76,6 +76,7 @@
     "framer-motion": "^11.11.17",
     "geist": "^1.7.0",
     "html5-qrcode": "^2.3.8",
+    "isomorphic-dompurify": "^3.8.0",
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.18.1",
     "marked": "^15.0.12",

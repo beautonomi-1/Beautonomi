@@ -28,10 +28,14 @@ type OverviewPayload = {
     by_payment_status?: Record<string, number>;
   };
   products_summary?: {
+    total_products?: number;
+    variant_skus?: number;
+    /** @deprecated */
     total_skus?: number;
     active?: number;
     retail_enabled?: number;
     inactive?: number;
+    products_with_variants?: number;
   };
   returns_summary?: { total?: number; pending?: number; escalated?: number };
   recent_orders?: Record<string, unknown>[];
@@ -80,6 +84,8 @@ export function EcommerceOverviewPage() {
   const ps = d?.products_summary ?? {};
   const rs = d?.returns_summary ?? {};
   const recent = d?.recent_orders ?? [];
+  const productCount = ps.total_products ?? ps.total_skus ?? 0;
+  const variantSkuCount = ps.variant_skus ?? 0;
 
   return (
     <div className="space-y-6">
@@ -110,14 +116,18 @@ export function EcommerceOverviewPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Product orders" value={String(os.total_orders ?? 0)} />
         <StatCard
           label="Paid revenue (orders)"
           value={`ZAR ${Number(os.total_revenue_paid ?? 0).toFixed(2)}`}
         />
         <StatCard label="Pending orders" value={String(os.pending ?? 0)} />
-        <StatCard label="Product SKUs" value={String(ps.total_skus ?? 0)} />
+        <StatCard
+          label="Products"
+          value={String(productCount)}
+        />
+        <StatCard label="Variant SKUs" value={String(variantSkuCount)} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -158,8 +168,12 @@ export function EcommerceOverviewPage() {
               <dd className="font-medium tabular-nums">{ps.retail_enabled ?? 0}</dd>
             </div>
             <div className="flex justify-between gap-4">
-              <dt className="text-gray-600">Inactive SKUs</dt>
+              <dt className="text-gray-600">Inactive products</dt>
               <dd className="font-medium tabular-nums">{ps.inactive ?? 0}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-gray-600">Products with variants</dt>
+              <dd className="font-medium tabular-nums">{ps.products_with_variants ?? 0}</dd>
             </div>
             <div className="mt-4 flex justify-between gap-4 border-t border-gray-100 pt-4">
               <dt className="text-gray-600">Return requests (total)</dt>

@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { unauthorizedResponse } from "@/lib/auth/requireRole";
-import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchOrphanRefundPaymentTxsForTenant } from "@/lib/admin/payment-transactions-tenant-scope";
 
@@ -26,19 +25,39 @@ type RefundListRow = {
   refunded_by_user?: unknown;
 };
 
+function unwrapEmbed<T>(v: T | T[] | null | undefined): T | null {
+  if (v == null) return null;
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v;
+}
+
+/** PostgREST sometimes returns FK embeds as one object or an array — normalize for admin UI. */
+function normalizeRefundListRow(row: RefundListRow): RefundListRow {
+  const booking = row.booking;
+  if (!booking || typeof booking !== "object") return row;
+  const b = booking as Record<string, unknown>;
+  const customer = unwrapEmbed(b.customer as { id?: string; full_name?: string | null; email?: string | null } | undefined);
+  const provider = unwrapEmbed(b.provider as { id?: string; business_name?: string | null } | undefined);
+  return {
+    ...row,
+    booking: { ...b, customer, provider },
+  };
+}
+
 /**
  * GET /api/admin/refunds
  *
  * Fetch payment_transactions that are either refund-related (type refund or already have refund_amount)
  * or successful charges (status=success) so admins can process refunds. Merges booking-linked rows
  * for the tenant with non-booking gateway rows attributed via metadata (gift, membership, subscriptions).
+ *
+ * **Source:** `payment_transactions` (+ booking/customer embeds). **Processing** a refund (POST
+ * `/api/admin/refunds/[id]`) credits the customer via `wallet_credit_admin` — cash back to bank is not
+ * automatic; wallet is used for future bookings unless support runs a separate payout flow.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    if (!user) {
-      return unauthorizedResponse("Authentication required");
-    }
+    await requireAdminSectionAny([ADMIN_SECTION_FINANCE, ADMIN_SECTION_PROVIDERS_OPERATIONS], request);
 
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -130,16 +149,21 @@ export async function GET(request: NextRequest) {
     });
 
     const total = merged.length;
-    const refunds = merged.slice(offset, offset + limit);
+    const refunds = merged.slice(offset, offset + limit).map(normalizeRefundListRow);
 
-    const totalRefunded = merged.reduce(
+    const rowsWithRefundRecorded = merged.filter((r) => {
+      const n = parseFloat(String(r.refund_amount ?? "0"));
+      return !Number.isNaN(n) && n > 0;
+    });
+    const totalRefundedAmount = rowsWithRefundRecorded.reduce(
       (sum, t) => sum + (parseFloat(String(t.refund_amount || "0")) || 0),
       0,
     );
 
     const statistics = {
-      total,
-      total_refunded: totalRefunded,
+      total_transactions: total,
+      total_refunded_amount: totalRefundedAmount,
+      rows_with_refund_recorded: rowsWithRefundRecorded.length,
       by_status: {
         success: merged.filter((r) => r.status === "success").length,
         failed: merged.filter((r) => r.status === "failed").length,
@@ -147,7 +171,10 @@ export async function GET(request: NextRequest) {
         refunded: merged.filter((r) => r.status === "refunded").length,
         partially_refunded: merged.filter((r) => r.status === "partially_refunded").length,
       },
-      average_refund: total > 0 ? (totalRefunded / total).toFixed(2) : "0.00",
+      average_refund_among_recorded:
+        rowsWithRefundRecorded.length > 0
+          ? (totalRefundedAmount / rowsWithRefundRecorded.length).toFixed(2)
+          : "0.00",
     };
 
     return successResponse({

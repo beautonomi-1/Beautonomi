@@ -195,7 +195,7 @@ export function ProviderOpsPipelinePage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col overflow-hidden">
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]">
       <style>{`
         @keyframes pipeline-card-land {
           from { opacity: 0.65; transform: translateY(8px) scale(0.98); }
@@ -205,10 +205,10 @@ export function ProviderOpsPipelinePage() {
           animation: pipeline-card-land 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
         }
       `}</style>
-      <div className="flex-shrink-0 px-1 pt-1">
+      <div className="flex-shrink-0 px-2 pt-1 sm:px-1">
         <AdminPageHeader
           title="Pipeline Board"
-          description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status`}
+          description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
         />
         {q.hasNextPage && (
           <div className="mt-2 flex items-center gap-3 px-1 pb-1">
@@ -224,7 +224,7 @@ export function ProviderOpsPipelinePage() {
         )}
       </div>
 
-      <div className="flex flex-1 gap-3 overflow-x-auto px-1 pb-4">
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 pb-4 [-webkit-overflow-scrolling:touch] touch-pan-x sm:px-1">
         {PIPELINE_STAGES.map((stage) => {
           const stageLeads = leads.filter((l) => l.commercial_stage === stage.key);
           const isOver = dragOverStage === stage.key;
@@ -232,7 +232,7 @@ export function ProviderOpsPipelinePage() {
             <div
               key={stage.key}
               className={cn(
-                "flex w-72 flex-shrink-0 flex-col rounded-xl border-2 transition-all duration-150",
+                "flex w-[min(85vw,18rem)] max-w-sm flex-shrink-0 flex-col rounded-xl border-2 transition-all duration-150 sm:w-72",
                 isOver
                   ? "border-[3px] border-blue-500 bg-blue-100/70 shadow-xl ring-4 ring-blue-300/40 scale-[1.02]"
                   : stage.color,
@@ -262,7 +262,7 @@ export function ProviderOpsPipelinePage() {
               </div>
 
               {/* Cards */}
-              <div className="flex-1 space-y-2 overflow-y-auto p-2">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain p-2 [-webkit-overflow-scrolling:touch]">
                 {stageLeads.map((lead) => {
                   const name = lead.business_name || lead.contact_person_name || "Unnamed";
                   const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories?.name).filter(Boolean);

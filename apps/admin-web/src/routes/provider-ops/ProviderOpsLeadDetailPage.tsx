@@ -212,9 +212,9 @@ export function ProviderOpsLeadDetailPage() {
   const hasEmail = !!lead.email;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6 pb-12">
+    <div className="mx-auto max-w-7xl space-y-6 px-3 pb-[max(3rem,env(safe-area-inset-bottom,0px))] pt-1 sm:px-4 lg:px-0">
       {/* Back link */}
-      <Link to={adminSpaTo("/admin/provider-ops/leads")} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+      <Link to={adminSpaTo("/admin/provider-ops/leads")} className="inline-flex min-h-11 items-center gap-1.5 text-sm text-gray-500 touch-manipulation hover:text-gray-700 transition-colors">
         <ArrowLeft className="h-4 w-4" />Back to Lead Inbox
       </Link>
 
@@ -237,23 +237,23 @@ export function ProviderOpsLeadDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {Boolean(lead.phone_e164) ? (
-            <a href={`tel:${String(lead.phone_e164)}`} className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <a href={`tel:${String(lead.phone_e164)}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors">
               <Phone className="h-4 w-4" />Call
             </a>
           ) : null}
           {Boolean(lead.email) ? (
-            <a href={`mailto:${String(lead.email)}`} className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+            <a href={`mailto:${String(lead.email)}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors">
               <Mail className="h-4 w-4" />Email
             </a>
           ) : null}
           <button
             type="button"
             onClick={() => setShowAssignForm(!showAssignForm)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors"
           >
             <UserPlus className="h-4 w-4" />Assign
           </button>
-          <button type="button" className="inline-flex items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 hover:bg-red-50 transition-colors" onClick={() => { if (confirm("Delete this lead? This action cannot be undone.")) deleteLead.mutate(); }}>
+          <button type="button" className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-red-300 bg-white px-4 py-2.5 text-sm font-medium text-red-700 touch-manipulation hover:bg-red-50 transition-colors" onClick={() => { if (confirm("Delete this lead? This action cannot be undone.")) deleteLead.mutate(); }}>
             <Trash2 className="h-4 w-4" />Delete
           </button>
         </div>
@@ -262,18 +262,22 @@ export function ProviderOpsLeadDetailPage() {
       {/* Assign form */}
       {showAssignForm && (
         <AdminPanel className="!border-blue-200 !bg-blue-50/50">
-          <div className="flex items-center gap-3">
-            <UserPlus className="h-4 w-4 text-blue-600" />
-            <input
-              type="text"
-              placeholder="Enter team member name or ID…"
-              value={assignInput}
-              onChange={(e) => setAssignInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && assignInput.trim() && assignMut.mutate(assignInput.trim())}
-              className="flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-blue-400 focus:outline-none"
-            />
-            <button type="button" disabled={!assignInput.trim() || assignMut.isPending} onClick={() => assignMut.mutate(assignInput.trim())} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">Assign</button>
-            <button type="button" onClick={() => setShowAssignForm(false)} className="text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+          <div className="flex gap-3">
+            <UserPlus className="mt-3 h-4 w-4 shrink-0 text-blue-600" aria-hidden />
+            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                placeholder="Enter team member name or ID…"
+                value={assignInput}
+                onChange={(e) => setAssignInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && assignInput.trim() && assignMut.mutate(assignInput.trim())}
+                className="min-h-11 w-full flex-1 rounded-lg border border-blue-200 bg-white px-3 py-2 text-base placeholder:text-gray-400 focus:border-blue-400 focus:outline-none sm:text-sm"
+              />
+              <div className="flex shrink-0 gap-2">
+                <button type="button" disabled={!assignInput.trim() || assignMut.isPending} onClick={() => assignMut.mutate(assignInput.trim())} className="min-h-11 flex-1 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:flex-none">Assign</button>
+                <button type="button" onClick={() => setShowAssignForm(false)} className="min-h-11 px-2 text-sm text-gray-500 hover:text-gray-700">Cancel</button>
+              </div>
+            </div>
           </div>
         </AdminPanel>
       )}
@@ -281,18 +285,18 @@ export function ProviderOpsLeadDetailPage() {
       {/* Invite result banner */}
       {inviteResult && (
         <AdminPanel className="!border-green-200 !bg-green-50/50">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
               <h3 className="flex items-center gap-2 text-sm font-semibold text-green-800">
-                <Link2 className="h-4 w-4" /> Onboarding Invite Sent
+                <Link2 className="h-4 w-4 shrink-0" /> Onboarding Invite Sent
               </h3>
               <p className="mt-1 text-xs text-green-700">Sent to: {inviteResult.sent_to}</p>
-              <div className="mt-2 flex items-center gap-2">
-                <code className="rounded bg-green-100 px-2 py-1 text-xs text-green-800 break-all">{inviteResult.invite_link}</code>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                <code className="block max-w-full overflow-x-auto rounded bg-green-100 px-2 py-1 text-xs text-green-800 break-all">{inviteResult.invite_link}</code>
                 <button
                   type="button"
                   onClick={() => void handleCopyLink(inviteResult.invite_link)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-green-300 bg-white px-2 py-1 text-xs text-green-700 hover:bg-green-50"
+                  className="inline-flex items-center justify-center gap-1 self-start rounded-lg border border-green-300 bg-white px-3 py-2 text-xs text-green-700 touch-manipulation hover:bg-green-50 sm:self-center"
                 >
                   {copiedLink ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                   {copiedLink ? "Copied" : "Copy"}
@@ -304,9 +308,10 @@ export function ProviderOpsLeadDetailPage() {
         </AdminPanel>
       )}
 
-      {/* Stage progress bar */}
-      <AdminPanel>
-        <div className="flex items-center gap-1">
+      {/* Stage progress bar — scroll horizontally on narrow viewports */}
+      <AdminPanel className="overflow-hidden">
+        <div className="-mx-1 overflow-x-auto overscroll-x-contain px-1 pb-1 [-webkit-overflow-scrolling:touch] lg:mx-0 lg:overflow-visible lg:px-0 lg:pb-0">
+          <div className="flex min-w-max gap-1 lg:min-w-0">
           {STAGES.map((s, i) => {
             const isActive = s === stage;
             const isPast = i < currentStageIdx;
@@ -318,7 +323,7 @@ export function ProviderOpsLeadDetailPage() {
                 disabled={stageChange.isPending}
                 onClick={() => stageChange.mutate(s)}
                 className={cn(
-                  "group relative flex-1 rounded-lg py-2.5 text-center text-[11px] font-medium transition-all",
+                  "group relative min-w-[5.5rem] flex-shrink-0 rounded-lg px-1.5 py-2.5 text-center text-[11px] font-medium transition-all touch-manipulation lg:min-w-0 lg:flex-1",
                   isActive ? "bg-gray-900 text-white shadow-md" :
                   isPast ? "bg-gray-200 text-gray-700 hover:bg-gray-300" :
                   isTerminal ? "border border-dashed border-gray-300 text-gray-400 hover:border-gray-400 hover:text-gray-600" :
@@ -326,13 +331,14 @@ export function ProviderOpsLeadDetailPage() {
                 )}
               >
                 <span className={cn("mr-1 inline-block h-1.5 w-1.5 rounded-full", isActive ? "bg-white" : STAGE_DOT[s])} />
-                {STAGE_LABELS[s]}
+                <span className="whitespace-nowrap">{STAGE_LABELS[s]}</span>
                 {i < STAGES.length - 1 && !isTerminal && (
-                  <ChevronRight className="absolute -right-2 top-1/2 z-10 h-3.5 w-3.5 -translate-y-1/2 text-gray-300" />
+                  <ChevronRight className="absolute -right-1.5 top-1/2 z-10 hidden h-3.5 w-3.5 -translate-y-1/2 text-gray-300 lg:block" aria-hidden />
                 )}
               </button>
             );
           })}
+          </div>
         </div>
       </AdminPanel>
 
@@ -450,23 +456,23 @@ export function ProviderOpsLeadDetailPage() {
             )}
 
             {/* Add note */}
-            <div className="mt-4 flex gap-2 border-t border-gray-100 pt-4">
-              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100">
+            <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-end">
+              <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 sm:mb-0.5">
                 <StickyNote className="h-3.5 w-3.5 text-blue-600" />
               </div>
-              <div className="flex flex-1 gap-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   type="text"
                   placeholder="Add a note…"
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && noteText.trim() && addNote.mutate()}
-                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                  className="min-h-11 w-full flex-1 rounded-lg border border-gray-200 px-3 py-2 text-base placeholder:text-gray-400 focus:border-gray-400 focus:outline-none sm:text-sm"
                 />
                 <button
                   type="button"
                   disabled={!noteText.trim() || addNote.isPending}
-                  className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors"
+                  className="min-h-11 w-full shrink-0 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 hover:bg-gray-800 transition-colors touch-manipulation sm:w-auto"
                   onClick={() => addNote.mutate()}
                 >
                   Add Note

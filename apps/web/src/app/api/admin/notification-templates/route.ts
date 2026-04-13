@@ -32,7 +32,11 @@ export async function GET(request: NextRequest) {
       apply: (q) => {
         let r = q;
         if (enabled !== null) r = r.eq("enabled", enabled === "true");
-        if (channel) r = r.contains("channels", [channel]);
+        if (channel) {
+          // in_app in admin UI maps to push delivery (same as legacy Next admin)
+          const ch = channel === "in_app" ? "push" : channel;
+          r = r.contains("channels", [ch]);
+        }
         return r;
       },
       dedupeKey: (row) => String(row.key ?? row.id ?? ""),

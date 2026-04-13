@@ -134,6 +134,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Marketing",
     description: "Integrations and ads",
     items: [
+      { title: "AI studio", description: "Profile and content suggestions (plan-based)", href: "/provider/settings/ai", mobileRoute: "/(app)/(tabs)/more/ai-studio" },
       { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/settings/ads" },
       { title: "Email integration", description: "SendGrid, Mailchimp", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
       { title: "Twilio integration", description: "SMS and WhatsApp", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },

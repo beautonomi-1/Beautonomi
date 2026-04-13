@@ -21,6 +21,8 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 import { publicEnv } from "@/config/publicEnv";
+import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { isBlankHtmlContent } from "@/lib/pricingFeatureHtml";
 
 type PricingPlanLink = {
   id?: string;
@@ -121,7 +123,8 @@ export function PlansListPage() {
   const [eDescDisplay, setEDescDisplay] = useState("");
   const [eCtaText, setECtaText] = useState("Get started");
   const [eOrderPricing, setEOrderPricing] = useState("0");
-  const [eMarketingBullets, setEMarketingBullets] = useState("");
+  /** One rich-text row per `pricing_plan_features` line (HTML from WYSIWYG). */
+  const [eMarketingFeatures, setEMarketingFeatures] = useState<string[]>([]);
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: adminQueryKeys.plans() });
 
@@ -236,10 +239,7 @@ export function PlansListPage() {
           : adminApi.postJson<PlanRow & { id: string }>("/api/admin/pricing-plans", pricingPayload));
         const ppId = ppResult && typeof ppResult === "object" && "id" in ppResult ? String(ppResult.id) : prevPp?.id;
         if (ppId) {
-          const lines = eMarketingBullets
-            .split("\n")
-            .map((l) => l.trim())
-            .filter(Boolean);
+          const lines = eMarketingFeatures.filter((t) => !isBlankHtmlContent(t));
           await adminApi.putJson(`/api/admin/pricing-plans/${ppId}/features`, { features: lines });
         }
       } else if (prevPp?.id) {
@@ -289,7 +289,7 @@ export function PlansListPage() {
     setEDescDisplay(pp?.description != null ? String(pp.description) : "");
     setECtaText(String(pp?.cta_text ?? "Get started"));
     setEOrderPricing(String(pp?.display_order ?? row.display_order ?? 0));
-    setEMarketingBullets("");
+    setEMarketingFeatures([]);
   }
 
   useEffect(() => {
@@ -302,15 +302,14 @@ export function PlansListPage() {
       .getJson<Array<{ feature_text?: string }>>(`/api/admin/pricing-plans/${id}/features`, { timeoutMs: 30_000 })
       .then((rows) => {
         if (cancelled || !Array.isArray(rows)) return;
-        setEMarketingBullets(
+        setEMarketingFeatures(
           rows
             .map((r) => r.feature_text)
-            .filter((t): t is string => typeof t === "string" && t.length > 0)
-            .join("\n"),
+            .filter((t): t is string => typeof t === "string" && t.length > 0),
         );
       })
       .catch(() => {
-        if (!cancelled) setEMarketingBullets("");
+        if (!cancelled) setEMarketingFeatures([]);
       });
     return () => {
       cancelled = true;
@@ -680,15 +679,89 @@ export function PlansListPage() {
                       onChange={(e) => setECtaText(e.target.value)}
                     />
                   </label>
-                  <label className="text-sm sm:col-span-2">
-                    Bullet lines (one per line → <code className="text-xs">pricing_plan_features</code>)
-                    <textarea
-                      className="mt-1 w-full min-h-[120px] rounded border border-gray-300 px-2 py-2 text-sm"
-                      value={eMarketingBullets}
-                      onChange={(e) => setEMarketingBullets(e.target.value)}
-                      placeholder={"Basic calendar\nEmail notifications\n..."}
-                    />
-                  </label>
+                  <div className="text-sm sm:col-span-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        Plan bullets (rich text → <code className="text-xs">pricing_plan_features.feature_text</code>)
+                      </span>
+                      <button
+                        type="button"
+                        className="rounded border border-gray-300 px-2 py-1 text-xs"
+                        onClick={() => setEMarketingFeatures((prev) => [...prev, ""])}
+                      >
+                        Add bullet
+                      </button>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Bold, links, and lists; content is sanitized on save. Use the full Next.js{" "}
+                      <code className="rounded bg-white px-1">/admin/plans</code> editor for a larger Quill toolbar if
+                      needed.
+                    </p>
+                    <div className="mt-3 space-y-4">
+                      {eMarketingFeatures.map((html, i) => (
+                        <div key={i} className="flex gap-2 items-start">
+                          <div className="flex flex-col gap-0.5 pt-1 shrink-0">
+                            <button
+                              type="button"
+                              className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] disabled:opacity-40"
+                              disabled={i === 0}
+                              aria-label="Move up"
+                              onClick={() => {
+                                if (i === 0) return;
+                                setEMarketingFeatures((prev) => {
+                                  const next = [...prev];
+                                  [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                                  return next;
+                                });
+                              }}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] disabled:opacity-40"
+                              disabled={i === eMarketingFeatures.length - 1}
+                              aria-label="Move down"
+                              onClick={() => {
+                                if (i >= eMarketingFeatures.length - 1) return;
+                                setEMarketingFeatures((prev) => {
+                                  const next = [...prev];
+                                  [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                                  return next;
+                                });
+                              }}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-700"
+                              aria-label="Remove"
+                              onClick={() =>
+                                setEMarketingFeatures((prev) => prev.filter((_, j) => j !== i))
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <RichTextEditor
+                              value={html}
+                              onChange={(next) =>
+                                setEMarketingFeatures((prev) => {
+                                  const copy = [...prev];
+                                  copy[i] = next;
+                                  return copy;
+                                })
+                              }
+                              minHeightClassName="min-h-[100px]"
+                              placeholder={`Bullet ${i + 1}`}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ) : null}
             </div>

@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabasePublicAnon } from "@/lib/supabase/public-anon";
 
 export type LearnCategoryRow = {
   id: string;
@@ -34,7 +34,7 @@ function buildTree(items: LearnCategoryRow[], parentId: string | null = null): L
 }
 
 async function fetchLearnCategoryRows(audience: string | null): Promise<LearnCategoryRow[]> {
-  const supabase = await getSupabaseServer();
+  const supabase = getSupabasePublicAnon();
   let query = supabase
     .from("learning_categories")
     .select("id, title, slug, icon, sort_order, audience, parent_id")
@@ -95,7 +95,7 @@ export async function getLearnSidebarPayload(): Promise<{
 
 /** Same as GET /api/public/learn/home */
 export async function getPublicLearnHome(): Promise<LearnHomePayload> {
-  const supabase = await getSupabaseServer();
+  const supabase = getSupabasePublicAnon();
 
   const { data: sections } = await supabase
     .from("learning_homepage_sections")

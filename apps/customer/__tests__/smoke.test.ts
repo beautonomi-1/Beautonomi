@@ -1,6 +1,5 @@
 /**
- * Minimal smoke test (runs without React Native/Expo runtime).
- * RN component tests under __tests__/components/ are excluded in jest.config (see testPathIgnorePatterns).
+ * Minimal smoke test. Full suite uses `jest-expo` + test Babel config (see `jest.config.js`, `babel.config.js`).
  */
 describe("Customer app – smoke (node)", () => {
   it("runs in Jest", () => {

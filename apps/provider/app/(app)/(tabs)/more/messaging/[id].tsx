@@ -450,6 +450,10 @@ export default function ChatScreen() {
                 );
                 const showOfferCard = !!offer;
                 const hasCustomRequest = msg.attachments?.some((a: { type?: string }) => a.type === "custom_request");
+                const customRequestAtt = msg.attachments?.find((a: { type?: string }) => a?.type === "custom_request") as
+                  | { request_id?: string; id?: string }
+                  | undefined;
+                const customRequestNavId = customRequestAtt?.request_id ?? customRequestAtt?.id;
                 const files = fileLikeAttachments(msg.attachments);
                 const hasText = !!(msg.content && msg.content.trim());
 
@@ -567,14 +571,27 @@ export default function ChatScreen() {
                     ) : null}
 
                     {hasCustomRequest ? (
-                      <View
+                      <TouchableOpacity
+                        activeOpacity={0.85}
+                        onPress={() => {
+                          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                          if (customRequestNavId) {
+                            router.push(`/(app)/(tabs)/more/custom-requests/${customRequestNavId}` as never);
+                          } else {
+                            router.push("/(app)/(tabs)/more/custom-requests" as never);
+                          }
+                        }}
                         style={twStyle(
                           `max-w-[85%] rounded-xl px-3 py-2 mb-1 border border-blue-100 ${isMe ? "bg-blue-50 self-end" : "bg-blue-50 self-start"}`
                         )}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open custom request details"
                       >
                         <Text style={twStyle("text-xs font-semibold text-blue-900")}>Custom request</Text>
-                        <Text style={twStyle("text-xs text-blue-800 mt-0.5")}>Open the web portal to view full details.</Text>
-                      </View>
+                        <Text style={twStyle("text-xs text-blue-800 mt-0.5")}>
+                          Tap to open the full request in the app{customRequestNavId ? "" : " (inbox)"}.
+                        </Text>
+                      </TouchableOpacity>
                     ) : null}
 
                     {files.length > 0 ? (

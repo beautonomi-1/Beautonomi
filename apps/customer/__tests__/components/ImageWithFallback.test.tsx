@@ -11,7 +11,7 @@ describe("ImageWithFallback", () => {
         accessibilityLabel="Test image"
       />
     );
-    expect(screen.getByRole("image")).toBeTruthy();
+    expect(screen.getByLabelText("Test image")).toBeTruthy();
   });
 
   it("renders fallback when source is null", () => {
