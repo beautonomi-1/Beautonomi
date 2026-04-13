@@ -77,7 +77,7 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard" },
       { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" },
-      { icon: CalendarCheck, label: "Appointments", href: "/provider/appointments", permission: "view_calendar" },
+      { icon: CalendarCheck, label: "Bookings", href: "/provider/bookings", permission: "view_calendar" },
     ],
   },
   {

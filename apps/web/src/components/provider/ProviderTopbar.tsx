@@ -68,7 +68,7 @@ export function ProviderTopbar() {
       ["/provider/dashboard", "Dashboard"],
       ["/provider/clients", "Clients"],
       ["/provider/bookings", "Bookings"],
-      ["/provider/appointments", "Appointments"],
+      ["/provider/appointments", "Bookings"],
       ["/provider/sales", "Sales"],
       ["/provider/finance", "Finance"],
       ["/provider/analytics", "Analytics"],

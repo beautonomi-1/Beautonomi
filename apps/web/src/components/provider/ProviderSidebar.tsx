@@ -57,7 +57,7 @@ const navigationSections = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard", permission: undefined }, // Always accessible
       { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarCheck, label: "Appointments", href: "/provider/appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarCheck, label: "Bookings", href: "/provider/bookings", permission: "view_calendar" as keyof StaffPermissions },
     ],
   },
   {
