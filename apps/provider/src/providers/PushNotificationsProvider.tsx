@@ -7,7 +7,7 @@
  * Notification templates are configured from the superadmin portal.
  */
 import { useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { Platform, Vibration } from "react-native";
 import { router } from "expo-router";
 import type {
   NotificationClickEvent,
@@ -157,12 +157,23 @@ function handleNotificationRoute(data: Record<string, unknown>) {
     }
 
     switch (type) {
-      // Incoming on-demand request – open accept/decline screen (works when app was closed)
       case "on_demand_incoming":
         if (onDemandRequestId) {
           router.push({
             pathname: "/(app)/on-demand/incoming/[id]",
             params: { id: onDemandRequestId },
+          });
+        } else {
+          router.push("/(app)/(tabs)/more/bookings");
+        }
+        break;
+
+      case "on_demand_expired":
+      case "on_demand_cancelled":
+        if (bookingId) {
+          router.push({
+            pathname: "/(app)/(tabs)/more/bookings/[id]",
+            params: { id: bookingId },
           });
         } else {
           router.push("/(app)/(tabs)/more/bookings");
@@ -308,10 +319,14 @@ function usePushRegistration() {
 
     let cancelled = false;
     (async () => {
-      const fromApi = await getOneSignalAppId();
-      if (cancelled) return;
-      const id = fromApi || ONE_SIGNAL_APP_ID || "";
-      setAppId(id ? id : null);
+      try {
+        const fromApi = await getOneSignalAppId();
+        if (cancelled) return;
+        const id = fromApi || ONE_SIGNAL_APP_ID || "";
+        setAppId(id ? id : null);
+      } catch {
+        // Push optional — ignore config fetch failures
+      }
     })();
     return () => {
       cancelled = true;
@@ -374,6 +389,20 @@ function usePushRegistration() {
             "foregroundWillDisplay",
             (event: NotificationWillDisplayEvent) => {
               event.getNotification().display();
+              // Vibrate for booking notifications to grab attention
+              const data = (event.getNotification() as any).additionalData as
+                | Record<string, unknown>
+                | undefined;
+              const tKey = String(data?.template_key ?? data?.type ?? "");
+              if (
+                PROVIDER_BOOKING_TEMPLATE_KEYS.has(tKey) ||
+                tKey === "new_booking" ||
+                tKey === "booking_request"
+              ) {
+                if (Platform.OS !== "web") {
+                  Vibration.vibrate([0, 400, 200, 400]);
+                }
+              }
             },
           );
         }
@@ -387,9 +416,13 @@ function usePushRegistration() {
           await registerWithBackend(subId);
         } else {
           const retry = setTimeout(async () => {
-            const retryId =
-              await OneSignal.User.pushSubscription.getIdAsync();
-            if (retryId) await registerWithBackend(retryId);
+            try {
+              const retryId =
+                await OneSignal.User.pushSubscription.getIdAsync();
+              if (retryId) await registerWithBackend(retryId);
+            } catch {
+              // ignore
+            }
           }, 3000);
           unsubscribe = () => clearTimeout(retry);
         }

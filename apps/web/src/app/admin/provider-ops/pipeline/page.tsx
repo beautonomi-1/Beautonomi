@@ -52,11 +52,11 @@ export default function PipelineBoardPage() {
   const loadLeads = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetcher.get<{ data: Lead[] }>(
+      const res = await fetcher.get<{ data: { data: Lead[] } }>(
         "/api/admin/provider-ops/leads?limit=500",
         { staleTimeMs: 0 }
       );
-      setLeads(res.data || []);
+      setLeads(res.data?.data || []);
     } catch (err) {
       if (err instanceof FetchTimeoutError) setError("Request timed out");
       else if (err instanceof FetchError) setError(err.message);
@@ -156,7 +156,7 @@ export default function PipelineBoardPage() {
           </div>
         </div>
 
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 -mx-4 px-4 md:mx-0 md:px-0" style={{ WebkitOverflowScrolling: "touch", overscrollBehaviorX: "contain" }}>
           {PIPELINE_STAGES.map((stage) => {
             const stageLeads = leads.filter(
               (l) => l.commercial_stage === stage.key
@@ -186,7 +186,7 @@ export default function PipelineBoardPage() {
                   </div>
                 </div>
 
-                <div className="p-2 space-y-2 min-h-[200px] max-h-[calc(100vh-280px)] overflow-y-auto">
+                <div className="p-2 space-y-2 min-h-[200px] max-h-[calc(100vh-280px)] max-h-[calc(100dvh-280px)] overflow-y-auto">
                   {stageLeads.map((lead) => (
                     <PipelineCard
                       key={lead.id}

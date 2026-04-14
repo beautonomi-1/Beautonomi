@@ -196,9 +196,12 @@ export default function ExpressBookingScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    await loadExpressLinks();
-    setRefreshing(false);
+    try {
+      await refresh();
+      await loadExpressLinks();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, loadExpressLinks]);
 
   async function handleCopyLink() {

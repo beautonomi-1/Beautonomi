@@ -8,6 +8,7 @@ import {
   RefreshControl,
   Linking,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
@@ -125,8 +126,11 @@ export default function ProfileScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchProfileData();
-    setRefreshing(false);
+    try {
+      await fetchProfileData();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchProfileData]);
 
   if (!user) {
@@ -692,7 +696,12 @@ export default function ProfileScreen() {
       {/* ── Sign out ── */}
       <View style={{ paddingHorizontal: 16, marginTop: 20 }}>
         <TouchableOpacity
-          onPress={() => signOut()}
+          onPress={() =>
+            Alert.alert("Log out", "Are you sure you want to log out?", [
+              { text: "Cancel", style: "cancel" },
+              { text: "Log out", style: "destructive", onPress: () => signOut() },
+            ])
+          }
           style={{ paddingVertical: 16, alignItems: "center" }}
           accessibilityRole="button"
           accessibilityLabel="Log out"

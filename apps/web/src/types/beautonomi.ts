@@ -349,6 +349,8 @@ export interface BookingDraft {
     enabled: boolean;
     frequency: 'weekly' | 'biweekly' | 'monthly';
   };
+  /** Travel buffer minutes used during availability check; must match `/api/availability` travelBuffer. */
+  availability_travel_buffer_minutes?: number;
 }
 
 export interface BookingService {

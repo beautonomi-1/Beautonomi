@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, ScrollView, RefreshControl } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -41,8 +41,11 @@ export default function EngagementHubScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && !data) {
@@ -80,6 +83,44 @@ export default function EngagementHubScreen() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
       >
+        {/* Quick actions */}
+        <View style={{ flexDirection: "row", paddingHorizontal: 16, paddingTop: 16, gap: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/messaging" as never)}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
+            accessibilityLabel="Messages"
+            accessibilityRole="button"
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Messages</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Client conversations</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(tabs)/more/marketing-hub" as never)}
+            style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white, padding: 14 }}
+            accessibilityLabel="Marketing"
+            accessibilityRole="button"
+          >
+            <Ionicons name="megaphone-outline" size={20} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900] }}>Marketing</Text>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Campaigns & promos</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={Colors.gray[400]} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Reviews section header */}
+        <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8 }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>Reviews</Text>
+          <Text style={{ fontSize: 13, color: Colors.gray[500], marginTop: 2 }}>
+            {reviews.length > 0 ? `${reviews.length} review${reviews.length !== 1 ? "s" : ""}` : "No reviews yet"}
+          </Text>
+        </View>
+
         {reviews.length === 0 ? (
           <View style={{ paddingVertical: 48, paddingHorizontal: 16, alignItems: "center" }}>
             <Ionicons name="chatbubbles-outline" size={48} color="#9ca3af" />

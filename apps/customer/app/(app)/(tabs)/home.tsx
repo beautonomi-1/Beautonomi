@@ -432,15 +432,17 @@ export default function HomeScreen() {
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
 
-  const searchContextCategorySlug =
+  const activeCategorySlug =
     activeCategory === "All"
       ? undefined
-      : globalCategories.find((c) => c.name === activeCategory)?.slug;
+      : globalCategories.find((c) => c.name === activeCategory)?.slug ?? activeCategory.toLowerCase();
+
+  const searchContextCategorySlug = activeCategorySlug;
 
   const { data, loading, refreshing, error, refetch } = useHomeData(
     effectiveLat,
     effectiveLng,
-    activeCategory
+    activeCategorySlug
   );
 
   const handleCategoryPress = useCallback((cat: string) => {

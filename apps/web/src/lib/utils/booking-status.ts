@@ -77,7 +77,7 @@ export function mapStatusToCustomer(dbStatus: BookingStatus, scheduledAt: string
 export function mapStatusFromCustomer(customerStatus: CustomerBookingStatus): BookingStatus[] {
   switch (customerStatus) {
     case "upcoming":
-      return ["pending", "confirmed", "in_progress"];
+      return ["pending", "confirmed", "in_progress", "waiting", "checked_in"];
     case "past":
       return ["completed"];
     case "cancelled":

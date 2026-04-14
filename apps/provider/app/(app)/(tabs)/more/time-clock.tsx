@@ -19,6 +19,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -63,21 +64,27 @@ export default function TimeClockScreen() {
   const [editingCard, setEditingCard] = useState<TimeCard | null>(null);
   const [editForm, setEditForm] = useState({ clockIn: "", clockOut: "", notes: "" });
 
-  const { data: staff } = useApi<StaffMember[]>("/api/provider/staff");
-  const { data: timeCards, loading, refresh } = useApi<TimeCard[]>("/api/provider/time-clock");
+  const { data: staff, loading: staffLoading, error: staffLoadError, refresh: refreshStaff } = useApi<StaffMember[]>("/api/provider/staff");
+  const { data: timeCards, loading: timeCardsLoading, error: timeCardsLoadError, refresh: refreshTimeCards } = useApi<TimeCard[]>("/api/provider/time-clock");
   const { execute: clockAction, loading: clocking } = useApiMutation("post");
   const { execute: updateCard, loading: updatingCard } = useApiMutation("patch");
 
   useEffect(() => {
-    const interval = setInterval(() => { refresh(); }, 30000);
+    const interval = setInterval(() => {
+      void refreshStaff();
+      void refreshTimeCards();
+    }, 30000);
     return () => clearInterval(interval);
-  }, [refresh]);
+  }, [refreshStaff, refreshTimeCards]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
-  }, [refresh]);
+    try {
+      await Promise.all([refreshStaff(), refreshTimeCards()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshStaff, refreshTimeCards]);
 
   useMemo(() => {
     if (!timeCards) return [];
@@ -128,7 +135,7 @@ export default function TimeClockScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowPinClock(false);
     setPin("");
-    refresh();
+    void Promise.all([refreshStaff(), refreshTimeCards()]);
   }
 
   async function handleDirectClock(staffId: string, action: "clock_in" | "clock_out") {
@@ -139,7 +146,7 @@ export default function TimeClockScreen() {
     const { error } = await clockAction(path, {});
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    refresh();
+    void Promise.all([refreshStaff(), refreshTimeCards()]);
   }
 
   function openEditCard(card: TimeCard) {
@@ -161,7 +168,7 @@ export default function TimeClockScreen() {
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setEditingCard(null);
-    refresh();
+    void Promise.all([refreshStaff(), refreshTimeCards()]);
   }
 
   return (
@@ -202,7 +209,11 @@ export default function TimeClockScreen() {
 
       {tab === "clock" ? (
         <>
-          {loading && !staff ? (
+          {staffLoadError && !staff ? (
+            <ErrorState message={staffLoadError} onRetry={refreshStaff} />
+          ) : timeCardsLoadError && !timeCards ? (
+            <ErrorState message={timeCardsLoadError} onRetry={refreshTimeCards} />
+          ) : (staffLoading && !staff && !staffLoadError) || (timeCardsLoading && !staff && !staffLoadError && !timeCardsLoadError) ? (
             <SkeletonList rows={4} />
           ) : allStaffWithStatus.length === 0 ? (
             <EmptyState icon="people-outline" title="No staff" description="Add team members to use the time clock" />
@@ -265,7 +276,9 @@ export default function TimeClockScreen() {
             <FilterChipGroup options={CARD_FILTERS} selected={cardFilter} onSelect={setCardFilter} />
           </View>
 
-          {loading && !timeCards ? (
+          {timeCardsLoadError && !timeCards ? (
+            <ErrorState message={timeCardsLoadError} onRetry={refreshTimeCards} />
+          ) : timeCardsLoading && !timeCards && !timeCardsLoadError ? (
             <SkeletonList rows={5} />
           ) : filteredCards.length === 0 ? (
             <EmptyState icon="time-outline" title="No time cards" description="Time entries will appear here" />

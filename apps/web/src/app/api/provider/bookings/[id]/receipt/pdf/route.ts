@@ -1,31 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
+import { GET as getProviderReceiptJson } from "../route";
 
 /**
  * GET /api/provider/bookings/[id]/receipt/pdf
  *
  * Generate a real PDF receipt for a provider booking.
- * Fetches data from the sibling receipt GET route and renders via PDFKit.
+ * Calls the sibling receipt handler directly (same process) to avoid
+ * internal HTTP fetch issues with auth/cookie forwarding in production.
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
+    const resolvedParams = await params;
+    const id = resolvedParams.id;
 
-    const upstreamUrl = new URL(
-      `/api/provider/bookings/${id}/receipt`,
-      request.url
-    );
-    const upstream = await fetch(upstreamUrl.toString(), {
-      method: "GET",
-      headers: {
-        cookie: request.headers.get("cookie") ?? "",
-        authorization: request.headers.get("authorization") ?? "",
-      },
-      cache: "no-store",
-    });
+    const upstream = await getProviderReceiptJson(request, { params: Promise.resolve(resolvedParams) });
 
     if (!upstream.ok) {
       const text = await upstream.text();

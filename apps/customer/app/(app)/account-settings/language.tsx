@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useTranslation, supportedLanguages, i18n } from "@beautonomi/i18n";
@@ -41,7 +41,10 @@ export default function LanguageSettings() {
     await changeLanguage(code);
     setCurrentCode(code);
     if (API_LANGUAGE_CODES.has(code)) {
-      await api.post("/api/me/preferences", { language: code }).catch(() => {});
+      const res = await api.post("/api/me/preferences", { language: code });
+      if (res.error) {
+        Alert.alert("Note", "Language changed locally but could not sync to your account.");
+      }
       refresh();
     }
   }, [currentCode, refresh]);

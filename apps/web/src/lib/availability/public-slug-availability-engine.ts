@@ -85,6 +85,8 @@ export async function computePublicSlugAvailabilitySlots(args: {
   /** Active provider_staff rows (any-staff mode); empty when solo synthetic */
   activeStaffRows: Array<{ id: string }>;
   excludeHoldId?: string;
+  /** Exclude a booking from conflict checks (reschedule flow) */
+  excludeBookingId?: string;
 }): Promise<AvailabilitySlot[]> {
   const {
     supabase,
@@ -96,6 +98,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
     staffIdParam,
     activeStaffRows,
     excludeHoldId,
+    excludeBookingId,
   } = args;
 
   const anyoneMode =
@@ -119,6 +122,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
       providerId,
       {
         excludeHoldId,
+        excludeBookingId,
         publicCalendarParity: {
           ...parityBase,
           slotStaffId: staffColumnId,

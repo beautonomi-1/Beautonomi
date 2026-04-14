@@ -44,8 +44,11 @@ export default function CatalogueOfferingsHubScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshServices(), refreshProducts(), refreshPackages()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshServices(), refreshProducts(), refreshPackages()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshServices, refreshProducts, refreshPackages]);
 
   const goServices = useCallback(() => {

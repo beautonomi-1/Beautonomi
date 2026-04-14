@@ -58,45 +58,72 @@ export default function PayrollScreen() {
   const [periodDate, setPeriodDate] = useState(() => new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const { data, loading, error, refresh } = useApi<PayRun[]>("/api/provider/pay-runs");
+  const { data, loading, error: loadError, refresh } = useApi<PayRun[]>("/api/provider/pay-runs");
   const { execute: approveRun } = useApiMutation("post");
   const { execute: markPaidRun } = useApiMutation("post");
   const { execute: createPayRun, loading: creating } = useApiMutation("post");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const payRuns: PayRun[] = Array.isArray(data) ? data : [];
 
   const handleApprove = useCallback(
-    async (run: PayRun) => {
+    (run: PayRun) => {
       if (run.status !== "draft") return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
-      if (err) {
-        Alert.alert("Error", err);
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      Alert.alert(
+        "Approve pay run?",
+        "This will lock the pay run for payment. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Approve",
+            onPress: async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
+              if (err) {
+                Alert.alert("Error", err);
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              refresh();
+            },
+          },
+        ]
+      );
     },
     [approveRun, refresh]
   );
 
   const handleMarkPaid = useCallback(
-    async (run: PayRun) => {
+    (run: PayRun) => {
       if (run.status !== "approved") return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
-      if (err) {
-        Alert.alert("Error", err);
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      Alert.alert(
+        "Mark as paid?",
+        "Confirm that this pay run has been paid out to staff.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Mark paid",
+            onPress: async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
+              if (err) {
+                Alert.alert("Error", err);
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              refresh();
+            },
+          },
+        ]
+      );
     },
     [markPaidRun, refresh]
   );
@@ -137,7 +164,7 @@ export default function PayrollScreen() {
       ? format(periodDate, "MMMM yyyy")
       : `${format(subDays(periodDate, 6), "MMM d")} – ${format(periodDate, "MMM d, yyyy")}`;
 
-  if (loading && !data) {
+  if (loading && !data && !loadError) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
@@ -148,12 +175,12 @@ export default function PayrollScreen() {
     );
   }
 
-  if (error && !data) {
+  if (loadError && !data) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error} onRetry={refresh} />
+          <ErrorState message={loadError} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );

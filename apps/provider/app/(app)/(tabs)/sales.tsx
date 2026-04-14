@@ -251,8 +251,11 @@ export default function SalesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshMetrics(), refreshSales()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshMetrics(), refreshSales()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers

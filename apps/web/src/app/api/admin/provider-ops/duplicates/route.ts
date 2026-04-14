@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
         const { data: usersByEmail } = await supabase
           .from("users")
           .select("id, full_name, email, phone, role")
-          .eq("tenant_id", tenantId)
+          .eq("preferred_home_tenant_id", tenantId)
           .eq("email", lead.email)
           .eq("role", "provider_owner");
 

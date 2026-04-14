@@ -16,6 +16,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { StatCard } from "@/components/ui/StatCard";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -98,7 +99,7 @@ export default function SalesHistoryScreen() {
     return parts.join("&");
   }, [page, search, dateRange, selectedLocationId]);
 
-  const { data: salesData, loading, refresh } = useApi<SalesResponse>(
+  const { data: salesData, loading, error: salesError, refresh } = useApi<SalesResponse>(
     `/api/provider/sales?${params}`
   );
 
@@ -106,8 +107,11 @@ export default function SalesHistoryScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const stats = useMemo(() => {
@@ -153,8 +157,10 @@ export default function SalesHistoryScreen() {
         <FilterChipGroup options={DATE_FILTERS} selected={dateFilter} onSelect={setDateFilter} />
       </View>
 
-      {loading && !sales.length ? (
+      {loading && !sales.length && !salesError ? (
         <SkeletonList rows={5} />
+      ) : salesError && !salesData ? (
+        <ErrorState message="Could not load sales. Pull down to retry." onRetry={refresh} />
       ) : sales.length === 0 ? (
         <EmptyState
           icon="receipt-outline"

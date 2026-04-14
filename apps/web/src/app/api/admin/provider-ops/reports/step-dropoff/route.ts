@@ -7,6 +7,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
 
 const STEP_NAMES: Record<number, string> = {
   1: "Team Size",
@@ -34,21 +35,22 @@ export async function GET(request: NextRequest) {
     const stallThresholdMs = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    const { data: tenantUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("role", "provider_owner");
-    const tenantUserIds = (tenantUsers || []).map((u: { id: string }) => u.id);
+    const draftsRaw = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
+      const r = await supabase
+        .from("provider_onboarding_drafts")
+        .select("user_id, current_step, updated_at, users!inner(preferred_home_tenant_id, role)")
+        .eq("users.preferred_home_tenant_id", tenantId)
+        .range(from, to);
+      return { data: r.data as Record<string, unknown>[] | null, error: r.error };
+    });
 
-    const { data: drafts } = await supabase
-      .from("provider_onboarding_drafts")
-      .select("user_id, current_step, updated_at")
-      .in("user_id", tenantUserIds.length > 0 ? tenantUserIds : ["__none__"]);
+    const drafts = draftsRaw.filter((d) => {
+      const u = (d as any).users;
+      const user = Array.isArray(u) ? u[0] : u;
+      return user?.role === "provider_owner";
+    });
 
-    const userIds = (drafts || []).map(
-      (d: { user_id: string }) => d.user_id
-    );
+    const userIds = (drafts || []).map((d) => (d as { user_id: string }).user_id);
     const { data: providers } = await supabase
       .from("providers")
       .select("user_id")
@@ -59,11 +61,13 @@ export async function GET(request: NextRequest) {
       (providers || []).map((p: { user_id: string }) => p.user_id)
     );
 
-    const stuckDrafts = (drafts || []).filter(
-      (d: { user_id: string; updated_at: string }) =>
-        !completedIds.has(d.user_id) &&
-        now - new Date(d.updated_at).getTime() > stallThresholdMs
-    );
+    const stuckDrafts = (drafts || []).filter((d) => {
+      const row = d as { user_id: string; updated_at: string };
+      return (
+        !completedIds.has(row.user_id) &&
+        now - new Date(row.updated_at).getTime() > stallThresholdMs
+      );
+    });
 
     const stepDropoff: Record<
       number,

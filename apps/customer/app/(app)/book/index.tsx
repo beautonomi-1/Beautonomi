@@ -77,6 +77,8 @@ export interface SelectedServiceItem {
   buffer_minutes?: number;
   price: number;
   currency: string;
+  /** When false, at-home booking is not allowed for this line. */
+  supports_at_home?: boolean;
 }
 
 const STEP_LABEL_KEYS: Record<Step, string> = {
@@ -297,7 +299,11 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
     ? items.length === 1 ? items[0].title : `${items.length} services`
     : (variant?.title ?? service?.title);
   const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
-  const displayDuration = items ? items.reduce((s, i) => s + i.duration_minutes, 0) : (variant?.duration_minutes ?? service?.duration_minutes);
+  const displayDuration = items
+    ? (items.length > 1
+        ? buildSlotParamsFromSelectedServices(items).durationMinutes
+        : items.reduce((s, i) => s + i.duration_minutes, 0))
+    : (variant?.duration_minutes ?? service?.duration_minutes);
   const currency = provider.currency ?? items?.[0]?.currency ?? getTenantDefaultCurrency();
 
   return (
@@ -1122,6 +1128,9 @@ export default function BookScreen() {
       if (locationType === "at_home") {
         params.set("travel_buffer_minutes", "30");
       }
+      if (reschedule_booking_id) {
+        params.set("exclude_booking_id", reschedule_booking_id);
+      }
       const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
         `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
       );
@@ -1253,6 +1262,9 @@ export default function BookScreen() {
         }
         if (locationType === "at_home") {
           params.set("travel_buffer_minutes", "30");
+        }
+        if (reschedule_booking_id) {
+          params.set("exclude_booking_id", reschedule_booking_id);
         }
         try {
           const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
@@ -1501,7 +1513,15 @@ export default function BookScreen() {
             },
           ]
         : [];
-    if (!provider || servicesForHold.length === 0 || !selectedStaff || !selectedSlot) return;
+    if (!provider || servicesForHold.length === 0) return;
+    if (!selectedStaff) {
+      Alert.alert("Select a stylist", "Please choose a staff member before continuing.");
+      return;
+    }
+    if (!selectedSlot) {
+      Alert.alert("Select a time", "Please pick an available time slot before continuing.");
+      return;
+    }
     setCreatingHold(true);
     try {
       const latLng = atHomeCoords;
@@ -2231,7 +2251,7 @@ export default function BookScreen() {
                     {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                   </Pressable>
                 ))}
-                {provider.supports_house_calls && selectedService?.supports_at_home && (
+                {provider.supports_house_calls && (selectedServices.length > 0 ? selectedServices.every((s) => s.supports_at_home !== false) : selectedService?.supports_at_home) && (
                   <Pressable
                     onPress={() => {
                       haptic.light();
@@ -3245,7 +3265,7 @@ export default function BookScreen() {
             }}>
               {(() => {
                 const venueValid = locationType === "at_salon"
-                  ? (selectedLocation != null || salonLocations.length === 0)
+                  ? selectedLocation != null
                   : (Boolean(atHomeAddress.line1.trim()) && Boolean(atHomeAddress.city.trim()));
                 return (
                   <TouchableOpacity

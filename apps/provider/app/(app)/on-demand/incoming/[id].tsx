@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -30,7 +30,8 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function OnDemandIncomingScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const params = useLocalSearchParams<{ id: string }>();
+  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const onDemandConfig = useModuleConfig("on_demand");
   const ringtoneStopRef = useRef<(() => void) | null>(null);
   const { data, loading, error, refresh } = useApi<OnDemandRequest>(
@@ -41,9 +42,17 @@ export default function OnDemandIncomingScreen() {
 
   const request = data as OnDemandRequest | null;
   const isRequested = request?.status === "requested";
-  const expired = request?.expires_at
-    ? new Date(request.expires_at) <= new Date()
-    : false;
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!request?.expires_at) { setSecondsLeft(null); return; }
+    const calc = () => Math.max(0, Math.floor((new Date(request.expires_at).getTime() - Date.now()) / 1000));
+    setSecondsLeft(calc());
+    const iv = setInterval(() => setSecondsLeft(calc()), 1000);
+    return () => clearInterval(iv);
+  }, [request?.expires_at]);
+
+  const expired = secondsLeft !== null && secondsLeft <= 0;
   const canRespond = isRequested && !expired;
 
   // Play ringtone when incoming request is shown (same as web overlay)
@@ -75,13 +84,12 @@ export default function OnDemandIncomingScreen() {
       Alert.alert("Could not accept", typeof res.error === "string" ? res.error : "Please try again.");
       return;
     }
-    if (res.data) {
-      const payload = res.data as { booking_id?: string };
-      if (payload.booking_id) {
-        router.replace(`/(app)/(tabs)/more/bookings/${payload.booking_id}` as never);
-      } else {
-        router.back();
-      }
+    const payload = (res.data ?? {}) as { booking_id?: string };
+    if (payload.booking_id) {
+      router.replace(`/(app)/(tabs)/more/bookings/${payload.booking_id}` as never);
+    } else {
+      Alert.alert("Accepted", "The request was accepted successfully.");
+      router.back();
     }
   };
 
@@ -169,8 +177,8 @@ export default function OnDemandIncomingScreen() {
             Requested {formatDateTimeSafe(request.requested_at)}
           </Text>
           {request.expires_at && (
-            <Text style={twStyle("mt-1 text-xs text-gray-400")}>
-              Expires {formatDateTimeSafe(request.expires_at)}
+            <Text style={twStyle(`mt-1 text-xs ${expired ? "text-red-500 font-semibold" : secondsLeft !== null && secondsLeft <= 10 ? "text-orange-500 font-medium" : "text-gray-400"}`)}>
+              {expired ? "Expired" : secondsLeft !== null ? `Expires in ${secondsLeft}s` : `Expires ${formatDateTimeSafe(request.expires_at)}`}
             </Text>
           )}
         </View>

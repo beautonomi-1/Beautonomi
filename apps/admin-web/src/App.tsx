@@ -110,6 +110,9 @@ export default function App() {
           <Route path="provider-ops/duplicates" element={<P.ProviderOpsDuplicatesPage />} />
           <Route path="provider-ops/reports" element={<P.ProviderOpsReportsPage />} />
           <Route path="provider-ops/settings" element={<P.ProviderOpsSettingsPage />} />
+          <Route path="whatsapp/sessions" element={<P.WhatsAppSessionsPage />} />
+          <Route path="whatsapp/templates" element={<P.WhatsAppTemplatesPage />} />
+          <Route path="whatsapp/batches/:batchId" element={<P.WhatsAppBatchDetailPage />} />
           <Route path="staff" element={<P.StaffListPage />} />
           <Route path="reviews" element={<P.ReviewsListPage />} />
           <Route path="user-reports" element={<P.UserReportsListPage />} />
@@ -195,6 +198,7 @@ export default function App() {
             <Route path="integrations/sumsub" element={<P.CpIntegrationSumsubPage />} />
             <Route path="integrations/gemini" element={<P.CpIntegrationGeminiPage />} />
             <Route path="integrations/aura" element={<P.CpIntegrationAuraPage />} />
+            <Route path="integrations/wasender" element={<P.CpIntegrationWasenderPage />} />
             <Route path="modules/distance" element={<P.CpModuleDistancePage />} />
             <Route path="modules/on-demand" element={<P.CpModuleOnDemandPage />} />
             <Route path="modules/safety" element={<P.CpModuleSafetyPage />} />

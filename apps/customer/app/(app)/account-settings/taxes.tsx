@@ -129,13 +129,20 @@ export default function TaxesScreen() {
         }
       }
 
-      const rawDocs = docsRes.data;
-      if (Array.isArray(rawDocs)) {
-        setDocs(rawDocs as TaxDocument[]);
+      if (docsRes.error) {
+        setDocs([]);
+        if (!taxRes.error) {
+          setError("Tax info loaded but documents could not be fetched.");
+        }
       } else {
-        const obj = rawDocs as Record<string, unknown>;
-        const items = ((obj?.documents ?? obj?.data ?? []) as TaxDocument[]);
-        setDocs(Array.isArray(items) ? items : []);
+        const rawDocs = docsRes.data;
+        if (Array.isArray(rawDocs)) {
+          setDocs(rawDocs as TaxDocument[]);
+        } else {
+          const obj = rawDocs as Record<string, unknown>;
+          const items = ((obj?.documents ?? obj?.data ?? []) as TaxDocument[]);
+          setDocs(Array.isArray(items) ? items : []);
+        }
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load tax information");

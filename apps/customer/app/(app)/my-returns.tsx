@@ -70,6 +70,10 @@ export default function MyReturnsScreen() {
     setError(null);
     try {
       const res = await api.get<{ returns?: ReturnItem[] }>("/api/me/returns");
+      if (res.error) {
+        setError(res.error.message || "Failed to load returns");
+        return;
+      }
       const data = (res.data as { returns?: ReturnItem[] }) ?? res.data;
       const list = data?.returns ?? (Array.isArray(data) ? data : []);
       setReturns(Array.isArray(list) ? list : []);
@@ -112,17 +116,30 @@ export default function MyReturnsScreen() {
   );
 
   const handleEscalate = useCallback(
-    async (id: string) => {
-      setActionId(id);
-      try {
-        const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
-        if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to escalate");
-        else await load();
-      } catch {
-        Alert.alert("Error", "Failed to escalate");
-      } finally {
-        setActionId(null);
-      }
+    (id: string) => {
+      Alert.alert(
+        "Escalate return",
+        "Are you sure you want to escalate this return? Our support team will review it.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Escalate",
+            style: "destructive",
+            onPress: async () => {
+              setActionId(id);
+              try {
+                const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
+                if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to escalate");
+                else await load();
+              } catch {
+                Alert.alert("Error", "Failed to escalate");
+              } finally {
+                setActionId(null);
+              }
+            },
+          },
+        ],
+      );
     },
     [load]
   );

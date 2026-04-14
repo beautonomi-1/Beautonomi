@@ -449,21 +449,40 @@ export default function CustomRequestsScreen() {
   }, []);
 
   const handleCancelRequest = useCallback(
-    async (requestId: string) => {
-      setCancellingRequestId(requestId);
-      try {
-        const res = await api.post<{ cancelled?: boolean }>(`/api/me/custom-requests/${requestId}/cancel`, {});
-        if (res.error) {
-          Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to cancel request");
-          return;
-        }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        await load(true);
-      } catch (e) {
-        Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel request");
-      } finally {
-        setCancellingRequestId(null);
-      }
+    (requestId: string) => {
+      Alert.alert(
+        "Cancel this request?",
+        "The provider will be notified. You can submit a new request later.",
+        [
+          { text: "Keep request", style: "cancel" },
+          {
+            text: "Cancel request",
+            style: "destructive",
+            onPress: async () => {
+              setCancellingRequestId(requestId);
+              try {
+                const res = await api.post<{ cancelled?: boolean }>(
+                  `/api/me/custom-requests/${requestId}/cancel`,
+                  {}
+                );
+                if (res.error) {
+                  Alert.alert(
+                    "Error",
+                    (res.error as { message?: string })?.message ?? "Failed to cancel request"
+                  );
+                  return;
+                }
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                await load(true);
+              } catch (e) {
+                Alert.alert("Error", e instanceof Error ? e.message : "Failed to cancel request");
+              } finally {
+                setCancellingRequestId(null);
+              }
+            },
+          },
+        ]
+      );
     },
     [load]
   );

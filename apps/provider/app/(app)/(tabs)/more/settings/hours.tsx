@@ -471,6 +471,15 @@ export default function OperatingHoursScreen() {
         subtitle="Set your business hours for each day"
       />
 
+      {locations && locations.length === 0 && (
+        <View style={{ backgroundColor: "#FEF3C7", borderRadius: 12, padding: 16, marginBottom: 16 }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: "#92400E", marginBottom: 4 }}>No locations found</Text>
+          <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
+            Add a business location in your Business Profile settings before setting operating hours.
+          </Text>
+        </View>
+      )}
+
       <View style={{ backgroundColor: "#DBEAFE", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: "#1E40AF", lineHeight: 18 }}>
           These hours determine when customers can book at this location. Staff without custom work hours will follow these hours automatically.

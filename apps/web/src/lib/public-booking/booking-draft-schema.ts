@@ -153,5 +153,6 @@ export function toBookingDraftFromPublicBody(body: PublicBookingValidatedBody): 
     use_wallet: body.use_wallet,
     resource_ids: body.resource_ids,
     subscribe_recurring: body.subscribe_recurring,
+    availability_travel_buffer_minutes: body.availability_travel_buffer_minutes,
   };
 }

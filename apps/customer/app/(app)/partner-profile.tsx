@@ -1033,7 +1033,11 @@ export default function PartnerProfileScreen() {
 
   /* ── Data Loading ── */
   const load = useCallback(async () => {
-    if (!slug) return;
+    if (!slug) {
+      setLoading(false);
+      setError("Provider not found — missing profile link.");
+      return;
+    }
     setLoading(true);
     setError(null);
     const fromRouteLat = paramLat != null ? Number(paramLat) : NaN;
@@ -1111,6 +1115,7 @@ export default function PartnerProfileScreen() {
     setReviewsLoading(true);
     api.get<{ data?: { reviews?: Review[] } | Review[]; reviews?: Review[] }>(`/api/public/providers/${encodeURIComponent(slug)}/reviews`)
       .then((res) => {
+        if (res.error) { setReviews([]); return; }
         const raw = res.data as Record<string, unknown> | null;
         const nestedData = raw?.data;
         const list = (
@@ -1140,7 +1145,9 @@ export default function PartnerProfileScreen() {
         });
         setReviews(normalized);
       })
-      .catch(() => {})
+      .catch(() => {
+        setReviews([]);
+      })
       .finally(() => setReviewsLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when tab/slug; avoid refetch when reviews populated
   }, [activeTab, slug]);
@@ -1151,6 +1158,7 @@ export default function PartnerProfileScreen() {
     setStaffLoading(true);
     api.get<StaffMember[] | { data: StaffMember[] }>(`/api/public/providers/${encodeURIComponent(slug)}/staff`)
       .then((res) => {
+        if (res.error) return;
         const raw = res.data;
         setStaff(Array.isArray(raw) ? raw : (raw as { data: StaffMember[] })?.data || []);
       })
@@ -1165,6 +1173,7 @@ export default function PartnerProfileScreen() {
     setMembershipsLoading(true);
     api.get<{ data?: MembershipPlan[]; plans?: MembershipPlan[] }>(`/api/public/providers/${encodeURIComponent(slug)}/membership-plans`)
       .then((res) => {
+        if (res.error) return;
         const raw = res.data as Record<string, unknown> | null;
         const list = (raw?.data ?? raw?.plans ?? (Array.isArray(raw) ? raw : [])) as MembershipPlan[];
         setMemberships(list);
@@ -1181,6 +1190,7 @@ export default function PartnerProfileScreen() {
     setProviderProducts([]);
     api.get<PublicProviderProduct[]>(`/api/public/providers/${encodeURIComponent(slug)}/products`)
       .then((res) => {
+        if (res.error) return;
         const raw = res.data;
         setProviderProducts(Array.isArray(raw) ? raw : []);
       })
@@ -1193,6 +1203,10 @@ export default function PartnerProfileScreen() {
     if (!provider || !user) { setIsSaved(false); return; }
     api.post<{ is_in_wishlist: boolean }>("/api/me/wishlists/check", { item_type: "provider", item_id: provider.id })
       .then((r) => {
+        if (r.error) {
+          setIsSaved(false);
+          return;
+        }
         const d = (r.data ?? {}) as Record<string, unknown>;
         setIsSaved(Boolean(d.is_in_wishlist ?? (d.data as Record<string, unknown>)?.is_in_wishlist));
       })

@@ -248,32 +248,37 @@ export default function BusinessDetailsScreen() {
     const phoneE164 =
       composed && phoneNational.trim() ? normalizeSupabaseAuthPhone(composed) : undefined;
 
-    const res = await api.patch<BusinessData>("/api/provider/settings/business", {
-      business_name: form.business_name.trim() || undefined,
-      description: form.description?.trim() || null,
-      email: form.email.trim() || undefined,
-      phone: phoneE164,
-      website: form.website?.trim() || null,
-      address_line1: form.address_line1?.trim() || null,
-      city: form.city?.trim() || null,
-      state: form.state?.trim() || null,
-      postal_code: form.postal_code?.trim() || null,
-      country: form.country?.trim() || null,
-      yearsInBusiness: form.yearsInBusiness,
-      languagesSpoken: form.languagesSpoken,
-      instagram_url: form.instagram_url?.trim() || null,
-      facebook_url: form.facebook_url?.trim() || null,
-      tiktok_url: form.tiktok_url?.trim() || null,
-      twitter_url: form.twitter_url?.trim() || null,
-    });
-    setSaving(false);
-    if (res.error) {
-      Alert.alert("Error", res.error.message);
-      return;
+    try {
+      const res = await api.patch<BusinessData>("/api/provider/settings/business", {
+        business_name: form.business_name.trim() || undefined,
+        description: form.description?.trim() || null,
+        email: form.email.trim() || undefined,
+        phone: phoneE164,
+        website: form.website?.trim() || null,
+        address_line1: form.address_line1?.trim() || null,
+        city: form.city?.trim() || null,
+        state: form.state?.trim() || null,
+        postal_code: form.postal_code?.trim() || null,
+        country: form.country?.trim() || null,
+        yearsInBusiness: form.yearsInBusiness,
+        languagesSpoken: form.languagesSpoken,
+        instagram_url: form.instagram_url?.trim() || null,
+        facebook_url: form.facebook_url?.trim() || null,
+        tiktok_url: form.tiktok_url?.trim() || null,
+        twitter_url: form.twitter_url?.trim() || null,
+      });
+      if (res.error) {
+        Alert.alert("Error", res.error.message);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Saved", "Business details updated.");
+      refresh();
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+    } finally {
+      setSaving(false);
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Saved", "Business details updated.");
-    refresh();
   }, [form, refresh, t, phoneCountryCode, phoneNational]);
 
   if (loading && !data) {

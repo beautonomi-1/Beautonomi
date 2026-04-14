@@ -326,7 +326,7 @@ export default function BookingsScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <EmptyBookingsTab tab={tab} />
+            error ? null : <EmptyBookingsTab tab={tab} />
           }
         />
       )}

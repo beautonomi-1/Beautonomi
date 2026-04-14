@@ -348,11 +348,18 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    if (!customerEmail || !order) {
+    if (!order) {
       setPlacing(false);
-      Alert.alert("Order Placed!", `Your order ${order?.order_number} has been placed. Payment pending.`, [
-        { text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      Alert.alert("Error", "We could not confirm your order. Please check Product orders or try again.");
+      return;
+    }
+    if (!customerEmail) {
+      setPlacing(false);
+      Alert.alert(
+        "Order Placed!",
+        `Your order ${order.order_number} has been placed. Payment is pending — add an email in account settings to pay online, or complete payment from Orders.`,
+        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
+      );
       return;
     }
 
@@ -651,6 +658,18 @@ export default function ProductCheckoutScreen() {
         })()}
 
         {/* Collection location */}
+        {fulfillment === "collection" && locations.length === 0 && (
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Collection Point
+            </Text>
+            <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 14 }}>
+              <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
+                No collection locations are available for this provider. Please switch to delivery or contact the provider.
+              </Text>
+            </View>
+          </View>
+        )}
         {fulfillment === "collection" && locations.length > 0 && (
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>

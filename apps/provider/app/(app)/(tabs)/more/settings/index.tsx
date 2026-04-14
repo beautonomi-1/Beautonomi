@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Platform } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Switch, Platform, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -171,10 +171,14 @@ export default function SettingsScreen() {
 
   async function handleBiometricToggle() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (isEnabled) {
-      await disable();
-    } else {
-      await enable();
+    try {
+      if (isEnabled) {
+        await disable();
+      } else {
+        await enable();
+      }
+    } catch {
+      Alert.alert("Error", `Could not ${isEnabled ? "disable" : "enable"} ${biometricLabel}. Please try again.`);
     }
   }
 

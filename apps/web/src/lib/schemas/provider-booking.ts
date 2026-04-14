@@ -127,6 +127,7 @@ export const notificationPreferencesSchema = z.object({
   waitlist_notifications: channelPrefsSchema.optional(),
   system_updates: channelPrefsSchema.optional(),
   marketing: channelPrefsSchema.optional(),
+  booking_alert_sound: z.boolean().optional(),
   unsubscribe_marketing: z.boolean().optional(),
   quiet_hours_enabled: z.boolean().optional(),
   quiet_hours_start: z.string().regex(/^\d{2}:\d{2}$/).optional(),

@@ -92,8 +92,11 @@ export default function VerificationScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const statusData = data as VerificationStatusResponse | undefined;

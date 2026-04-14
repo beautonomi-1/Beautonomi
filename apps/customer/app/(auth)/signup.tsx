@@ -250,16 +250,20 @@ export default function SignupScreen() {
   async function handleOAuth(provider: "google" | "apple" | "facebook") {
     haptic.light();
     setLoading(true);
-    const { error } = await signInWithOAuth(provider);
-    setLoading(false);
-    if (error) {
-      // Cancelled is not an error worth surfacing
-      if (!error.message.toLowerCase().includes("cancel")) {
-        Alert.alert("Sign Up Failed", error.message);
+    try {
+      const { error } = await signInWithOAuth(provider);
+      if (error) {
+        if (!error.message.toLowerCase().includes("cancel")) {
+          Alert.alert("Sign Up Failed", error.message);
+        }
+      } else {
+        trackSignUp(provider);
+        await navigateAfterNewCustomerSignup(params.return_to);
       }
-    } else {
-      trackSignUp(provider);
-      await navigateAfterNewCustomerSignup(params.return_to);
+    } catch {
+      Alert.alert("Sign Up Failed", "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
   }
 

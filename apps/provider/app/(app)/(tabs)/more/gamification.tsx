@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -63,13 +64,19 @@ export function GamificationBadgesContent() {
   const { execute: recalculate, loading: recalculating } = useApiMutation("post");
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
   const handleRecalculate = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const { error: err } = await recalculate("/api/provider/gamification", {});
-    if (err) return;
+    if (err) {
+      Alert.alert("Error", err);
+      return;
+    }
     await refresh();
   }, [recalculate, refresh]);
 

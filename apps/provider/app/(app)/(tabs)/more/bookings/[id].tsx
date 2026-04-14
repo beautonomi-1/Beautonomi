@@ -445,6 +445,8 @@ export default function BookingDetailScreen() {
   const [showRateClientSheet, setShowRateClientSheet] = useState(false);
   const [rateClientStars, setRateClientStars] = useState(0);
   const [rateClientComment, setRateClientComment] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [submittingRateClient, setSubmittingRateClient] = useState(false);
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
@@ -470,13 +472,16 @@ export default function BookingDetailScreen() {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        await api.post(`/api/provider/bookings/${id}/location`, {
+        const res = await api.post(`/api/provider/bookings/${id}/location`, {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
           accuracy: loc.coords.accuracy ?? undefined,
         });
+        if (res.error && __DEV__) {
+          console.warn("[LocationSync] Failed to send location:", res.error);
+        }
       } catch {
-        // Ignore; next interval will retry
+        // Network error; next interval will retry
       }
     };
     locationPermissionDeniedRef.current = false;
@@ -887,41 +892,8 @@ export default function BookingDetailScreen() {
     }
 
     if (newStatus === "cancelled") {
-      Alert.prompt(
-        "Cancel Booking",
-        "Please provide a reason for cancellation:",
-        [
-          { text: "Back", style: "cancel" },
-          {
-            text: "Cancel Booking",
-            style: "destructive",
-            onPress: async (reason: string | undefined) => {
-              const version = (b as BookingDetail & { version?: number }).version;
-              const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
-                status: newStatus,
-                cancellation_reason: reason || "No reason provided",
-                ...(version !== undefined && { version }),
-              });
-              if (err) {
-                if (isConflictError(err)) {
-                  Alert.alert(
-                    "Conflict",
-                    "This booking was modified by another user. Please refresh and try again.",
-                    [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
-                  );
-                } else {
-                  Alert.alert("Error", err);
-                }
-                return;
-              }
-              await refresh();
-            },
-          },
-        ],
-        "plain-text",
-        "",
-        "default"
-      );
+      setCancelReason("");
+      setShowCancelModal(true);
       return;
     }
 
@@ -1006,10 +978,23 @@ export default function BookingDetailScreen() {
       return;
     }
     setRescheduling(true);
-    const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00`;
+    const naiveDt = new Date(`${rescheduleDateStr}T${rescheduleTime}:00`);
+    const offsetMin = naiveDt.getTimezoneOffset();
+    const tzSign = offsetMin <= 0 ? "+" : "-";
+    const absMin = Math.abs(offsetMin);
+    const tzHH = String(Math.floor(absMin / 60)).padStart(2, "0");
+    const tzMM = String(absMin % 60).padStart(2, "0");
+    const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00${tzSign}${tzHH}:${tzMM}`;
     try {
+      const staffIds = (b.services ?? []).map((s: { staff_id?: string | null }) => s.staff_id).filter((sid): sid is string => !!sid);
+      const checkParams = new URLSearchParams({
+        scheduled_at: newScheduledAt,
+        duration_minutes: String(durationMinutes),
+        exclude_booking_id: id,
+      });
+      if (staffIds.length > 0) checkParams.set("staff_ids", staffIds.join(","));
       const checkRes = await api.get<{ available?: boolean }>(
-        `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}&exclude_booking_id=${encodeURIComponent(id)}`
+        `/api/provider/bookings/check-availability?${checkParams}`
       );
       if (checkRes.error) {
         Alert.alert("Error", checkRes.error.message ?? "Could not verify availability. Please try again.");
@@ -2332,7 +2317,9 @@ export default function BookingDetailScreen() {
             textAlignVertical="top"
           />
           <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-            Refund is processed per your platform rules (e.g. wallet or original payment method). The booking balance will update after this succeeds.
+            {
+              "The refund amount will be credited to the customer's wallet balance. The booking balance will update after this succeeds."
+            }
           </Text>
           <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
@@ -2528,6 +2515,71 @@ export default function BookingDetailScreen() {
             >
               <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Cancel booking modal (cross-platform replacement for Alert.prompt) */}
+      <Modal
+        visible={showCancelModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowCancelModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setShowCancelModal(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Cancel Booking</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>Please provide a reason for cancellation:</Text>
+            <TextInput
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              placeholder="Reason for cancellation…"
+              placeholderTextColor={Colors.gray[400]}
+              multiline
+              numberOfLines={3}
+              style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, fontSize: 15, color: Colors.gray[900], backgroundColor: Colors.gray[50], textAlignVertical: "top", minHeight: 80 }}
+            />
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setShowCancelModal(false)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  setShowCancelModal(false);
+                  const version = (b as BookingDetail & { version?: number }).version;
+                  const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+                    status: "cancelled",
+                    cancellation_reason: cancelReason.trim() || "No reason provided",
+                    ...(version !== undefined && { version }),
+                  });
+                  if (err) {
+                    if (isConflictError(err)) {
+                      Alert.alert(
+                        "Conflict",
+                        "This booking was modified by another user. Please refresh and try again.",
+                        [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+                      );
+                    } else {
+                      Alert.alert("Error", err);
+                    }
+                    return;
+                  }
+                  await refresh();
+                }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#dc2626", alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

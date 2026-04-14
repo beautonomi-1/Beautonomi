@@ -30,6 +30,7 @@ import {
   Receipt,
   UserCheck,
   MessageSquare,
+  MessageCircle,
   TrendingUp,
   Zap,
   Coins,
@@ -205,6 +206,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
+      { title: "WhatsApp Sessions", href: "/admin/whatsapp/sessions", icon: MessageCircle },
+      { title: "WhatsApp Templates", href: "/admin/whatsapp/templates", icon: MessageCircle },
     ],
   },
   {

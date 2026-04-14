@@ -153,7 +153,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="cart"
         options={{
-          title: "Cart",
+          title: t("customer.cart", "Cart"),
           headerShown: true,
           tabBarIcon: ({ focused, color }) => (
             <View style={{ minWidth: 24, minHeight: 24, alignItems: "center", justifyContent: "center" }}>
@@ -185,7 +185,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="shop"
         options={{
-          title: "Shop",
+          title: t("customer.shop", "Shop"),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <View style={{ width: 24, height: 24, alignItems: "center", justifyContent: "center" }}>

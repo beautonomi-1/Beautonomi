@@ -623,6 +623,8 @@ export default function CalendarScreen() {
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [staffFilter, setStaffFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState(globalLocationId ?? "all");
+  const [cancelReasonBookingId, setCancelReasonBookingId] = useState<string | null>(null);
+  const [cancelReasonText, setCancelReasonText] = useState("");
 
   useEffect(() => {
     if (globalLocationId) setLocationFilter(globalLocationId);
@@ -824,12 +826,15 @@ export default function CalendarScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    const tasks = [refresh()];
-    if (secondaryEnabled) {
-      tasks.push(refreshTimeBlocks(), refreshAvailabilityBlocks(), refreshStaffUnavail());
+    try {
+      const tasks = [refresh()];
+      if (secondaryEnabled) {
+        tasks.push(refreshTimeBlocks(), refreshAvailabilityBlocks(), refreshStaffUnavail());
+      }
+      await Promise.all(tasks);
+    } finally {
+      setRefreshing(false);
     }
-    await Promise.all(tasks);
-    setRefreshing(false);
   }, [refresh, refreshTimeBlocks, refreshAvailabilityBlocks, refreshStaffUnavail, secondaryEnabled]);
 
   const weekDays = useMemo(() => {
@@ -1200,6 +1205,15 @@ export default function CalendarScreen() {
   }
 
   async function changeBookingStatus(bookingId: string, newStatus: string) {
+    if (newStatus === "cancelled") {
+      setCancelReasonBookingId(bookingId);
+      setCancelReasonText("");
+      return;
+    }
+    await applyBookingStatus(bookingId, newStatus);
+  }
+
+  async function applyBookingStatus(bookingId: string, newStatus: string, reason?: string) {
     if (bookings) {
       setBookings(bookings.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b)));
     }
@@ -1213,7 +1227,9 @@ export default function CalendarScreen() {
       if (error) { Alert.alert("Error", error); refresh(); }
       return;
     }
-    const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, { status: newStatus });
+    const body: Record<string, unknown> = { status: newStatus };
+    if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
+    const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
     if (error) { Alert.alert("Error", error); refresh(); }
   }
 
@@ -2792,6 +2808,39 @@ export default function CalendarScreen() {
           <ActionButton label="Add Time Block" onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
         </View>
       </BottomSheet>
+      {cancelReasonBookingId && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setCancelReasonBookingId(null)}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonBookingId(null)}>
+            <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Cancel booking</Text>
+              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>Reason for cancellation (optional):</Text>
+              <TextInput
+                value={cancelReasonText}
+                onChangeText={setCancelReasonText}
+                placeholder="e.g. Client requested"
+                multiline
+                style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 72, textAlignVertical: "top", marginBottom: 16 }}
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity onPress={() => setCancelReasonBookingId(null)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
+                  <Text style={{ fontWeight: "600", color: "#374151" }}>Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const bId = cancelReasonBookingId;
+                    const reason = cancelReasonText.trim() || "No reason provided";
+                    setCancelReasonBookingId(null);
+                    applyBookingStatus(bId, "cancelled", reason);
+                  }}
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
+                >
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </ScreenContainer>
   );
 }

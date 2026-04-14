@@ -61,6 +61,24 @@ export async function handleTransferEvent(
   }
 
   if (eventType === "transfer.success") {
+    // Write the payout ledger BEFORE marking the payout completed.
+    // If the ledger write fails, the payout stays in processing so
+    // getAvailablePayoutBalance won't under-count the reserve.
+    try {
+      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
+      await recordPayoutLedger(supabase, {
+        id: payoutData.id,
+        provider_id: payoutData.provider_id,
+        net_amount: payoutData.net_amount ?? payoutData.amount,
+        amount: payoutData.amount,
+        payout_number: payoutData.payout_number,
+      });
+    } catch (ledgerErr) {
+      console.error("Transfer success: failed to record payout ledger, leaving payout in processing:", ledgerErr);
+      // Don't mark completed — webhook will retry and the ledger write will succeed then.
+      return NextResponse.json({ received: false }, { status: 500 });
+    }
+
     const updatePayload = {
       status: "completed",
       completed_at: new Date().toISOString(),
@@ -74,19 +92,6 @@ export async function handleTransferEvent(
     await (supabase.from("payouts") as any)
       .update(updatePayload)
       .eq("id", payoutData.id);
-
-    try {
-      const { recordPayoutLedger } = await import("@/lib/provider/record-payout-ledger");
-      await recordPayoutLedger(supabase, {
-        id: payoutData.id,
-        provider_id: payoutData.provider_id,
-        net_amount: payoutData.net_amount ?? payoutData.amount,
-        amount: payoutData.amount,
-        payout_number: payoutData.payout_number,
-      });
-    } catch (ledgerErr) {
-      console.error("Transfer success: failed to record payout ledger:", ledgerErr);
-    }
 
     try {
       const { data: provider } = await supabase

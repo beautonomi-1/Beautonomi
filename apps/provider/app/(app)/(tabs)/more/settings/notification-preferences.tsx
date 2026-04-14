@@ -28,6 +28,7 @@ interface NotifPreferences {
   waitlist_notifications: ChannelPrefs;
   system_updates: ChannelPrefs;
   marketing: ChannelPrefs;
+  booking_alert_sound?: boolean;
   unsubscribe_marketing?: boolean;
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: string;
@@ -75,6 +76,7 @@ const DEFAULT_PREFS: NotifPreferences = {
   waitlist_notifications: { email: true, sms: false, push: true },
   system_updates: { email: true, sms: false, push: false },
   marketing: { email: true, sms: false, push: false },
+  booking_alert_sound: true,
   unsubscribe_marketing: false,
   quiet_hours_enabled: false,
   quiet_hours_start: "22:00",
@@ -202,6 +204,34 @@ export default function NotificationPreferencesScreen() {
         </Text>
         <Ionicons name="chevron-forward" size={16} color="#6366f1" />
       </TouchableOpacity>
+
+      {/* Booking alert sound */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-emerald-50")}>
+              <Ionicons name="volume-high-outline" size={18} color="#10b981" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                Booking Alert Sound
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Play a sound and vibrate when a new booking arrives
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.booking_alert_sound !== false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, booking_alert_sound: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#6ee7b7" }}
+            thumbColor={local.booking_alert_sound !== false ? "#10b981" : "#f4f4f5"}
+          />
+        </View>
+      </View>
 
       {/* Quiet hours */}
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>

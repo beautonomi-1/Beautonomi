@@ -118,10 +118,27 @@ export default function ReceiptPage() {
     }).format(amount);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!receipt) return;
-    window.open(`/api/bookings/${bookingId}/receipt/pdf`, "_blank");
-    toast.success("PDF receipt download started.");
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/receipt/pdf`);
+      if (!response.ok) {
+        throw new Error("Failed to generate PDF");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `receipt-${receipt.booking_number || bookingId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("PDF receipt downloaded.");
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      toast.error("Failed to download receipt. Please try again.");
+    }
   };
 
   const formatDate = (dateString: string) => {

@@ -42,8 +42,11 @@ export function BillingHistoryContent() {
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const items: BillingItem[] = Array.isArray(data) ? data : [];

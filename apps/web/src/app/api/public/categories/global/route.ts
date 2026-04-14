@@ -5,7 +5,7 @@ import type { ApiResponse } from "@/lib/supabase/api-helpers";
 
 /** Public data; browser + CDN cache so repeat navigation (home → category → back) is instant. */
 const CACHE_CONTROL =
-  "public, max-age=300, s-maxage=300, stale-while-revalidate=600";
+  "public, max-age=3600, s-maxage=3600, stale-while-revalidate=7200";
 
 /**
  * GET /api/public/categories/global

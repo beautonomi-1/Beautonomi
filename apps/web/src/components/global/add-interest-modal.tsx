@@ -6,7 +6,7 @@ import Image from 'next/image'
 import Pedicure from './../../../public/images/pedicure.png'
 import Manicure from './../../../public/images/manicure (1).png'
 import HairDye from './../../../public/images/hair-dye (1).png'
-import Facial from './../../../public/images/facial.png'
+import Facial from './../../../public/images/facial.svg'
 
 const interests = [
   { name: 'Pedicure', icon: Pedicure },

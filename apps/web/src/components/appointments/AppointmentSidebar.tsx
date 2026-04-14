@@ -19,7 +19,6 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import type { AppointmentSidebarProps, AppointmentService, AppointmentProduct, CreateFormData, CancelReason } from "./types";
 import { calculateBookingPricing } from "./pricing";
-import { generateInvoiceHTMLFromData as generateInvoiceHTMLFromDataUtil } from "./invoice-generator";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -1317,84 +1316,40 @@ export function AppointmentSidebar({
     
     try {
       const bookingId = activeBookingId;
-      const refNumber = selectedAppointment.ref_number;
       
       if (!bookingId) {
         throw new Error("Appointment ID is missing");
       }
       
-      // Fetch booking receipt data from API (not platform invoices)
-      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt`);
+      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
+        credentials: "include",
+      });
       
-      // Check if response is ok before parsing JSON
       if (!response.ok) {
-        let result;
-        try {
-          result = await response.json();
-        } catch {
-          // If JSON parsing fails, use status text
-          const statusText = response.statusText || `HTTP ${response.status}`;
-          console.error("Invoice API error (non-JSON response):", { 
-            bookingId, 
-            status: response.status, 
-            statusText 
-          });
-          throw new Error(`Failed to generate invoice: ${statusText}`);
-        }
-        
-        // Handle different error response formats
         let errorMessage = "Failed to generate invoice";
-        
-        if (result.error) {
-          if (typeof result.error === 'string') {
-            errorMessage = result.error;
-          } else if (result.error.message) {
-            errorMessage = result.error.message;
-          } else if (result.error.code) {
-            errorMessage = `Error: ${result.error.code}`;
-          } else if (Object.keys(result.error).length === 0) {
-            // Empty error object - use status code
-            errorMessage = `Booking not found (Status: ${response.status})`;
+        try {
+          const result = await response.json();
+          if (result.error) {
+            errorMessage = typeof result.error === "string" ? result.error : result.error.message || errorMessage;
           }
-        } else if (result.message) {
-          errorMessage = result.message;
-        } else {
-          // No error structure found, use status
-          errorMessage = `Failed to generate invoice (Status: ${response.status})`;
+        } catch {
+          errorMessage = `Failed to generate invoice (${response.status})`;
         }
-        
-        console.error("Invoice API error:", { 
-          bookingId, 
-          status: response.status, 
-          statusText: response.statusText,
-          result: result,
-          error: result.error,
-          fullResponse: JSON.stringify(result, null, 2)
-        });
         throw new Error(errorMessage);
       }
       
-      const result = await response.json();
-      
-      const invoiceData = result.data;
-      
-      if (!invoiceData) {
-        throw new Error("Invoice data is missing");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const pdfWindow = window.open(url, "_blank");
+      if (!pdfWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `invoice-${selectedAppointment.ref_number || bookingId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
-      
-      const invoiceWindow = window.open('', '_blank');
-      if (!invoiceWindow) {
-        toast.error("Please allow popups to print invoice");
-        return;
-      }
-      
-      const invoiceHTML = generateInvoiceHTMLFromData(invoiceData);
-      invoiceWindow.document.write(invoiceHTML);
-      invoiceWindow.document.close();
-      invoiceWindow.focus();
-      setTimeout(() => {
-        invoiceWindow.print();
-      }, 250);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       console.error("Failed to generate invoice:", error);
       toast.error(error instanceof Error ? error.message : "Failed to generate invoice");
@@ -1454,116 +1409,6 @@ export function AppointmentSidebar({
   }, [selectedAppointment, activeBookingId]);
 
 
-  // Generate invoice HTML from API data
-  const generateInvoiceHTMLFromData = (invoiceData: any) =>
-    generateInvoiceHTMLFromDataUtil(invoiceData, portalProvider?.currency);
-
-  // Generate invoice HTML (legacy function for backward compatibility)
-  const _generateInvoiceHTML = (data: CreateFormData, appointment: Appointment) => {
-    return `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Invoice - ${appointment.ref_number}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; }
-            .header { text-align: center; margin-bottom: 30px; }
-            .invoice-details { display: flex; justify-content: space-between; margin-bottom: 30px; }
-            .section { margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background-color: #f5f5f5; }
-            .total { font-size: 18px; font-weight: bold; }
-            .text-right { text-align: right; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>INVOICE</h1>
-            <p>Reference: ${appointment.ref_number}</p>
-            <p>Date: ${format(new Date(appointment.scheduled_date + 'T' + appointment.scheduled_time), 'PPP')}</p>
-          </div>
-          
-          <div class="invoice-details">
-            <div>
-              <h3>Bill To:</h3>
-              <p>${data.clientName}</p>
-              ${data.clientEmail ? `<p>${data.clientEmail}</p>` : ''}
-              ${data.clientPhone ? `<p>${data.clientPhone}</p>` : ''}
-            </div>
-          </div>
-          
-          <div class="section">
-            <table>
-              <thead>
-                <tr>
-                  <th>Description</th>
-                  <th class="text-right">Quantity</th>
-                  <th class="text-right">Price</th>
-                  <th class="text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${data.services.map(s => `
-                  <tr>
-                    <td>${s.serviceName}</td>
-                    <td class="text-right">1</td>
-                    <td class="text-right">R${s.price.toFixed(2)}</td>
-                    <td class="text-right">R${s.price.toFixed(2)}</td>
-                  </tr>
-                `).join('')}
-                ${data.products.map(p => `
-                  <tr>
-                    <td>${p.productName}</td>
-                    <td class="text-right">${p.quantity}</td>
-                    <td class="text-right">R${p.unitPrice.toFixed(2)}</td>
-                    <td class="text-right">R${p.totalPrice.toFixed(2)}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-          
-          <div class="section">
-            <table>
-              <tr>
-                <td class="text-right">Subtotal:</td>
-                <td class="text-right">R${data.subtotal.toFixed(2)}</td>
-              </tr>
-              ${data.discountAmount > 0 ? `
-                <tr>
-                  <td class="text-right">Discount:</td>
-                  <td class="text-right">-R${data.discountAmount.toFixed(2)}</td>
-                </tr>
-              ` : ''}
-              ${data.taxAmount > 0 ? `
-                <tr>
-                  <td class="text-right">Tax (${data.taxRate * 100}%):</td>
-                  <td class="text-right">R${data.taxAmount.toFixed(2)}</td>
-                </tr>
-              ` : ''}
-              ${data.travelFee > 0 ? `
-                <tr>
-                  <td class="text-right">Travel Fee:</td>
-                  <td class="text-right">R${data.travelFee.toFixed(2)}</td>
-                </tr>
-              ` : ''}
-              ${data.tipAmount > 0 ? `
-                <tr>
-                  <td class="text-right">Tip:</td>
-                  <td class="text-right">R${data.tipAmount.toFixed(2)}</td>
-                </tr>
-              ` : ''}
-              <tr class="total">
-                <td class="text-right">Total:</td>
-                <td class="text-right">R${data.totalAmount.toFixed(2)}</td>
-              </tr>
-            </table>
-          </div>
-        </body>
-      </html>
-    `;
-  };
 
   // Initialize form when mode changes
   useEffect(() => {

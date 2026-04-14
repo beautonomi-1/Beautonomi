@@ -73,14 +73,24 @@ export function TimeBlocksContent() {
   const { execute: postBlock, loading: creating } = useApiMutation<TimeBlock>("post");
   const { execute: deleteBlock } = useApiMutation("delete");
 
-  const activeStaff = (Array.isArray(staffData) ? staffData : []).filter(
+  const rawStaff = Array.isArray(staffData)
+    ? staffData
+    : staffData != null &&
+        typeof staffData === "object" &&
+        Array.isArray((staffData as { data?: StaffMember[] }).data)
+      ? (staffData as { data: StaffMember[] }).data
+      : [];
+  const activeStaff = rawStaff.filter(
     (s) => s.is_active !== false,
   );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const blocks: TimeBlock[] = Array.isArray(data) ? data : [];

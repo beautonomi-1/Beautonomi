@@ -28,6 +28,8 @@ function createStubClient(): SupabaseClient {
       signInWithOAuth: () => reject(),
       signInWithPassword: () => reject(),
       signUp: () => reject(),
+      resetPasswordForEmail: () => reject(),
+      updateUser: () => reject(),
       setSession: () => reject(),
       exchangeCodeForSession: () => reject(),
     },

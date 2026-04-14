@@ -49,9 +49,10 @@ export default function ExploreCollectionScreen() {
         const res = await api.get<CollectionData>(`/api/explore/collections/${id}`);
         if (res.error) {
           setError(res.error.message || "Could not load board");
+        } else if (res.data && typeof res.data === "object" && "name" in res.data) {
+          setCollection(res.data);
         } else {
-          const data = res.data ?? (res as any);
-          setCollection(data);
+          setError("Could not load board");
         }
       } catch {
         setError("Could not load board");
@@ -67,7 +68,16 @@ export default function ExploreCollectionScreen() {
     load();
   }, [load]);
 
-  if (!id) return null;
+  if (!id) {
+    return (
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff", padding: 24 }}>
+        <Text style={{ color: Colors.gray[500] }}>Collection not found</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
+          <Text style={{ color: Colors.primary, fontWeight: "600" }}>Go back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading && !collection) {
     return (
@@ -79,10 +89,18 @@ export default function ExploreCollectionScreen() {
 
   if (error || !collection) {
     return (
-      <View style={{ flex: 1, padding: contentPadding, justifyContent: "center" }}>
+      <View style={{ flex: 1, padding: contentPadding, justifyContent: "center", alignItems: "center" }}>
         <Text style={{ fontSize: 16, color: Colors.gray[600], textAlign: "center" }}>
           {error || "Board not found"}
         </Text>
+        {error && (
+          <TouchableOpacity
+            onPress={() => load()}
+            style={{ marginTop: 12, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: Colors.gray[100] }}
+          >
+            <Text style={{ color: Colors.primary, fontWeight: "600" }}>Retry</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity
           onPress={() => router.back()}
           style={{

@@ -16,6 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -88,7 +89,7 @@ export default function TeamRolesScreen() {
   const { data: teamAccess } = useApi<TeamAccessPayload>("/api/provider/team-access");
   const canManageTeam = teamAccess?.can_manage_team === true;
 
-  const { data: roles, loading, refresh } = useApi<Role[]>(
+  const { data: roles, loading, error: loadError, refresh } = useApi<Role[]>(
     "/api/provider/roles"
   );
   const { execute: createRole, loading: creating } = useApiPost<any, any>(
@@ -100,8 +101,11 @@ export default function TeamRolesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -326,8 +330,10 @@ export default function TeamRolesScreen() {
         </View>
       )}
 
-      {loading && !roles ? (
+      {loading && !roles && !loadError ? (
         <SkeletonList rows={4} />
+      ) : loadError && !roles ? (
+        <ErrorState message={loadError} onRetry={refresh} />
       ) : !filtered.length ? (
         <EmptyState
           icon="shield-outline"

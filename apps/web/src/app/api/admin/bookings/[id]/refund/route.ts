@@ -41,7 +41,7 @@ export async function POST(
       supabase,
       id,
       tenantId,
-      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id"
+      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id, wallet_amount, gift_card_amount"
     );
     if ("error" in loaded) return loaded.error;
 
@@ -60,13 +60,18 @@ export async function POST(
       booking_number: string;
       currency?: string;
       provider_id?: string | null;
+      wallet_amount?: number;
+      gift_card_amount?: number;
     };
 
     if (b.payment_status !== "paid" && b.payment_status !== "partially_paid") {
       return errorResponse("Can only refund paid or partially paid bookings", "INVALID_STATUS", 400);
     }
 
-    const availableForRefund = (b.total_paid ?? 0) - (b.total_refunded ?? 0);
+    // total_paid from booking_payments trigger only counts gateway payments.
+    // Include wallet and gift card amounts for the full collected total.
+    const totalCollected = (b.total_paid ?? 0) + (b.wallet_amount ?? 0) + (b.gift_card_amount ?? 0);
+    const availableForRefund = totalCollected - (b.total_refunded ?? 0);
     if (amount > availableForRefund) {
       const displayCurrency = b.currency || lastResortCurrency;
       const fmtAvail = new Intl.NumberFormat(adminRefundLocale, {

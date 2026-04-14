@@ -52,6 +52,7 @@ export default function NewLeadPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
 
   // Form state
   const [businessName, setBusinessName] = useState("");
@@ -88,7 +89,9 @@ export default function NewLeadPage() {
         );
         setCategories(res.data || []);
       } catch {
-        // Non-critical
+        toast.error("Failed to load categories");
+      } finally {
+        setCategoriesLoaded(true);
       }
     }
     loadCategories();
@@ -322,7 +325,9 @@ export default function NewLeadPage() {
                 </button>
               ))}
               {categories.length === 0 && (
-                <p className="text-xs text-zinc-400">Loading categories...</p>
+                <p className="text-xs text-zinc-400">
+                  {categoriesLoaded ? "No categories available" : "Loading categories..."}
+                </p>
               )}
             </div>
           </Section>

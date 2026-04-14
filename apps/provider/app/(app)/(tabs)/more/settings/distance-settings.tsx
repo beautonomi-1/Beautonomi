@@ -8,6 +8,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 
 interface DistanceSettings {
@@ -21,7 +22,7 @@ interface DistanceSettings {
 const PRESET_DISTANCES = [5, 10, 15, 25, 50, 100];
 
 export default function DistanceSettingsScreen() {
-  const { data: settings, loading, refresh } = useApi<DistanceSettings>("/api/provider/distance-settings");
+  const { data: settings, loading, error: loadError, refresh } = useApi<DistanceSettings>("/api/provider/distance-settings");
   const { execute: saveSettings, loading: saving } = useApiMutation("patch");
 
   const [enabled, setEnabled] = useState(false);
@@ -68,7 +69,15 @@ export default function DistanceSettingsScreen() {
     }
   }
 
-  if (loading && !settings) return <LoadingState />;
+  if (loading && !settings && !loadError) return <LoadingState />;
+  if (loadError && !settings) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Distance Settings" showBack subtitle="Service area radius" />
+        <ErrorState message={loadError} onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
 
   const dist = parseFloat(maxDistance) || 0;
   const sliderValue = Math.min(100, Math.max(1, dist || 10));

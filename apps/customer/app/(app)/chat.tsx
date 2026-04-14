@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
@@ -201,6 +202,25 @@ export default function ChatScreen() {
           });
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${id}`,
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === updated.id
+                ? { ...m, is_read: updated.is_read, read_at: updated.read_at ?? m.read_at }
+                : m
+            )
+          );
+        }
+      )
       .subscribe();
 
     return () => {
@@ -266,10 +286,13 @@ export default function ChatScreen() {
       } else {
         setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
         setInput(text);
+        const errMsg = (res.error as { message?: string })?.message || "Your message could not be sent. Please try again.";
+        Alert.alert("Send failed", errMsg);
       }
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
       setInput(text);
+      Alert.alert("Send failed", "Your message could not be sent. Please try again.");
     } finally {
       setSending(false);
     }
@@ -295,9 +318,15 @@ export default function ChatScreen() {
         "/api/me/messages/upload",
         formData as any
       );
+      if (res.error) {
+        Alert.alert("Upload failed", "Could not upload the image. Please try again.");
+        return;
+      }
       const atts = (res.data as any)?.attachments ?? [];
       if (atts.length > 0) {
         await send(atts);
+      } else {
+        Alert.alert("Upload failed", "Image uploaded but could not be attached. Please try again.");
       }
     } finally {
       setUploading(false);

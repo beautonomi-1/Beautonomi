@@ -6,6 +6,7 @@ import {
   Sparkles,
   Shield,
   UserCheck,
+  MessageCircle,
 } from "lucide-react";
 import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -49,6 +50,12 @@ const cards: { title: string; description: string; to: string; icon: typeof BarC
     description: "Identity and trust",
     to: adminSpaTo("/admin/control-plane/integrations/aura"),
     icon: UserCheck,
+  },
+  {
+    title: "WhatsApp (Wasender)",
+    description: "WhatsApp messaging for lead outreach",
+    to: adminSpaTo("/admin/control-plane/integrations/wasender"),
+    icon: MessageCircle,
   },
 ];
 

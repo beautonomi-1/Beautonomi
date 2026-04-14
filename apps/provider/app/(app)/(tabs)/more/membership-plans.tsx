@@ -20,6 +20,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -67,7 +68,7 @@ export default function MembershipPlansScreen() {
   const [form, setForm] = useState(INITIAL_FORM);
   const [showDetail, setShowDetail] = useState<MembershipPlan | null>(null);
 
-  const { data: rawData, loading, refresh } = useApi<PlansResponse>(
+  const { data: rawData, loading, error: loadError, refresh } = useApi<PlansResponse>(
     "/api/provider/membership-plans"
   );
   const plans = useMemo(
@@ -82,8 +83,11 @@ export default function MembershipPlansScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -245,7 +249,9 @@ export default function MembershipPlansScreen() {
         <FilterChipGroup options={STATUS_FILTERS} selected={filter} onSelect={setFilter} />
       </View>
 
-      {loading && !rawData ? (
+      {loadError && !rawData ? (
+        <ErrorState message={loadError} onRetry={refresh} />
+      ) : loading && !rawData && !loadError ? (
         <SkeletonList rows={4} />
       ) : filtered.length === 0 ? (
         <EmptyState

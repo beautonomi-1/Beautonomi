@@ -124,6 +124,10 @@ export default function AdsSettingsScreen() {
         api.get<{ impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[] }>("/api/provider/ads/packs"),
         api.get<GlobalCategory[]>("/api/public/categories/global?all=true"),
       ]);
+      const anyError = campRes.error || perfRes.error || packsRes.error;
+      if (anyError) {
+        Alert.alert("Error", "Some ads data could not be loaded. Pull to refresh.");
+      }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
       const pd = packsRes.data;
@@ -186,6 +190,10 @@ export default function AdsSettingsScreen() {
             : undefined,
         }
       );
+      if (res.error) {
+        Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+        return;
+      }
       const data = res.data as any;
       const campaign = data?.campaign ?? data;
       if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
@@ -216,6 +224,10 @@ export default function AdsSettingsScreen() {
           "/api/provider/ads/campaigns",
           { impression_pack_id: pack.id }
         );
+        if (res.error) {
+          Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+          return;
+        }
         const data = res.data as any;
         const campaign = data?.campaign ?? data;
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
@@ -240,12 +252,16 @@ export default function AdsSettingsScreen() {
     if (!editCampaign) return;
     setUpdating(editCampaign.id);
     try {
-      await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
+      const res = await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
         budget: editForm.budget ? parseFloat(editForm.budget.replace(/,/g, ".")) : undefined,
         daily_budget: editForm.daily_budget === "" ? null : editForm.daily_budget ? parseFloat(editForm.daily_budget.replace(/,/g, ".")) : undefined,
         bid_cpc: editForm.bid_cpc ? parseFloat(editForm.bid_cpc.replace(/,/g, ".")) : undefined,
         targeting: { global_category_ids: editForm.global_category_ids },
       });
+      if (res.error) {
+        Alert.alert("Error", (res.error as any)?.message ?? "Failed to update campaign");
+        return;
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
       loadAll();
@@ -261,7 +277,11 @@ export default function AdsSettingsScreen() {
     async (campaignId: string, status: "active" | "paused" | "ended") => {
       setUpdating(campaignId);
       try {
-        await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
+        const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
+        if (res.error) {
+          Alert.alert("Error", (res.error as any)?.message ?? "Failed to update status");
+          return;
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
       } catch (e: any) {

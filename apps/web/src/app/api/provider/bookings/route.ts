@@ -214,8 +214,10 @@ async function handleGetProviderBookings(request: NextRequest) {
     // Note: team_member_id filtering is done client-side in the API client
     // because staff_id is stored in booking_services (child table), not directly in bookings
 
+    const sortParam = searchParams.get("sort");
+    const ascending = sortParam === "scheduled_at" || sortParam === "scheduled_at:asc";
     const { data: bookings, error } = await query
-      .order("scheduled_at", { ascending: false });
+      .order("scheduled_at", { ascending });
 
     if (error) {
       throw error;

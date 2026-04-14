@@ -234,7 +234,6 @@ export default function RecurringBookingsScreen() {
       });
       if (res.error) {
         setError(res.error.message || "Failed to load recurring bookings");
-        setBookings([]);
       } else {
         const data = res.data;
         const raw = Array.isArray(data) ? (data as unknown as any[]) : data?.recurring ?? [];
@@ -243,7 +242,6 @@ export default function RecurringBookingsScreen() {
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load recurring bookings");
-      setBookings([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -561,7 +559,8 @@ export default function RecurringBookingsScreen() {
             style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end" }}
             onPress={() => !savingSchedule && setEditOpen(false)}
           >
-            <View
+            <Pressable
+              onPress={(e) => e.stopPropagation()}
               style={{
                 backgroundColor: Colors.white,
                 borderTopLeftRadius: 16,
@@ -683,7 +682,7 @@ export default function RecurringBookingsScreen() {
                   )}
                 </TouchableOpacity>
               </View>
-            </View>
+            </Pressable>
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>

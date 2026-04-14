@@ -103,6 +103,9 @@ export default function BookingDetailScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [icsLoading, setIcsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "receipt" | "details">("tracking");
+  const [cancelReasonModalOpen, setCancelReasonModalOpen] = useState(false);
+  const [cancelReasonText, setCancelReasonText] = useState("");
+  const cancelPendingRef = useRef<{ version?: number } | null>(null);
   const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
   const [showFallbackInput, setShowFallbackInput] = useState(false);
   const [fallbackOtp, setFallbackOtp] = useState("");
@@ -348,38 +351,47 @@ export default function BookingDetailScreen() {
       {
         text: "Cancel Booking",
         style: "destructive",
-        onPress: async () => {
-          setCancelling(true);
-          haptic.medium();
-          try {
-            const version = typeof booking.version === "number" ? booking.version : undefined;
-            const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
-              reason: "Customer request",
-              ...(version !== undefined ? { version } : {}),
-            });
-            if (res.error) {
-              const st = (res.error as { status?: number }).status;
-              if (st === 409) {
-                Alert.alert(
-                  "Could not cancel",
-                  "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
-                );
-                load();
-              } else {
-                Alert.alert("Error", res.error.message || "Failed to cancel");
-              }
-            } else {
-              haptic.success();
-              load();
-            }
-          } catch (e) {
-            Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
-          } finally {
-            setCancelling(false);
-          }
+        onPress: () => {
+          const version = typeof booking.version === "number" ? booking.version : undefined;
+          cancelPendingRef.current = { version };
+          setCancelReasonText("");
+          setCancelReasonModalOpen(true);
         },
       },
     ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking, id, load]);
+
+  const submitCancellation = useCallback(async (reason: string) => {
+    setCancelReasonModalOpen(false);
+    setCancelling(true);
+    haptic.medium();
+    try {
+      const pending = cancelPendingRef.current;
+      const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
+        reason: reason.trim() || "Customer request",
+        ...(pending?.version !== undefined ? { version: pending.version } : {}),
+      });
+      if (res.error) {
+        const st = (res.error as { status?: number }).status;
+        if (st === 409) {
+          Alert.alert(
+            "Could not cancel",
+            "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
+          );
+          load();
+        } else {
+          Alert.alert("Error", res.error.message || "Failed to cancel");
+        }
+      } else {
+        haptic.success();
+        load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+    } finally {
+      setCancelling(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable
   }, [booking, id]);
 
@@ -392,13 +404,19 @@ export default function BookingDetailScreen() {
         .map((s: any) => s.offering_id)
         .filter(Boolean)
         .join(",");
+      const staffId = (booking.services ?? []).find((s: any) => s.staff_id)?.staff_id;
+      const rescheduleParams: Record<string, string> = {
+        slug: provider.slug,
+        reschedule_booking_id: booking.id,
+      };
+      if (serviceIds) rescheduleParams.service_ids = serviceIds;
+      else if (booking.services?.[0]?.offering_id) rescheduleParams.service_id = booking.services[0].offering_id;
+      if (staffId) rescheduleParams.staff_id = staffId;
+      if ((booking as any).location_type) rescheduleParams.location_type = (booking as any).location_type;
+      if ((booking as any).location_id) rescheduleParams.location_id = (booking as any).location_id;
       router.push({
         pathname: "/(app)/book",
-        params: {
-          slug: provider.slug,
-          service_id: serviceIds || booking.services?.[0]?.offering_id || "",
-          reschedule_booking_id: booking.id,
-        },
+        params: rescheduleParams,
       });
     } else {
       openInBrowser();
@@ -410,11 +428,16 @@ export default function BookingDetailScreen() {
   const needsPayment =
     booking &&
     !isCashBooking &&
-    (booking.status === "pending" || booking.payment_status === "pending") &&
+    booking.status === "pending" &&
+    booking.payment_status === "pending" &&
     booking.total_amount > 0;
 
   const handlePay = async () => {
-    if (!booking || !user?.email) return;
+    if (!booking) return;
+    if (!user?.email) {
+      Alert.alert("Email required", "Please add an email to your account before making a payment.");
+      return;
+    }
     const result = await pay({
       booking_id: booking.id,
       amount: booking.total_amount,
@@ -588,8 +611,8 @@ export default function BookingDetailScreen() {
   const provider = booking.provider;
   const location = booking.location;
   const services = booking.services ?? booking.booking_services ?? [];
-  const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
-  const canCancel = isActive && booking.status !== "started" && booking.status !== "in_progress";
+  const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(booking.status);
+  const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(booking.status);
   const bookingRef = booking.booking_number || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
@@ -617,8 +640,12 @@ export default function BookingDetailScreen() {
                 <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Booking confirmed {formatTime(booking.selected_datetime)}</Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>Your booking with {provider?.business_name || "your provider"} is confirmed.</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
+                  {booking.status === "pending" ? "Booking pending" : booking.status === "waiting" ? "Checked in — waiting" : booking.status === "checked_in" ? "You're checked in" : booking.status === "in_progress" || booking.status === "started" ? "Service in progress" : "Booking confirmed"} {formatTime(booking.selected_datetime)}
+                </Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
+                  {booking.status === "pending" ? `Awaiting confirmation from ${provider?.business_name || "your provider"}.` : booking.status === "waiting" ? "The provider will be with you shortly." : booking.status === "checked_in" ? "You've arrived. The provider knows you're here." : `Your booking with ${provider?.business_name || "your provider"} is confirmed.`}
+                </Text>
               </View>
             </View>
             {helpUrl ? (
@@ -664,11 +691,13 @@ export default function BookingDetailScreen() {
                     ? "Service in progress"
                     : booking.status === "cancelled"
                       ? "Booking cancelled"
-                      : isProviderArrived
-                        ? "Provider has arrived"
-                        : isProviderEnRoute
-                          ? "Provider on the way"
-                          : "Your visit is confirmed"}
+                      : booking.status === "no_show"
+                        ? "Marked as no-show"
+                        : isProviderArrived
+                          ? "Provider has arrived"
+                          : isProviderEnRoute
+                            ? "Provider on the way"
+                            : "Your visit is confirmed"}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
@@ -1109,7 +1138,7 @@ export default function BookingDetailScreen() {
                 paddingHorizontal: 12,
                 paddingVertical: 4,
                 borderRadius: 9999,
-                backgroundColor: booking.status === "confirmed" ? "#DCFCE7" : booking.status === "cancelled" ? "#FEE2E2" : booking.status === "completed" ? "#DBEAFE" : "#FEF3C7",
+                backgroundColor: booking.status === "confirmed" ? "#DCFCE7" : booking.status === "cancelled" || booking.status === "no_show" ? "#FEE2E2" : booking.status === "completed" ? "#DBEAFE" : booking.status === "in_progress" || booking.status === "started" ? "#EDE9FE" : booking.status === "waiting" || booking.status === "checked_in" ? "#E0F2FE" : "#FEF3C7",
               }}
             >
               <Text
@@ -1117,10 +1146,10 @@ export default function BookingDetailScreen() {
                   fontSize: 12,
                   fontWeight: "600",
                   textTransform: "capitalize",
-                  color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : "#B45309",
+                  color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" || booking.status === "no_show" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : booking.status === "in_progress" || booking.status === "started" ? "#7C3AED" : booking.status === "waiting" || booking.status === "checked_in" ? "#0369A1" : "#B45309",
                 }}
               >
-                {booking.status}
+                {booking.status === "no_show" ? "No show" : booking.status === "in_progress" || booking.status === "started" ? "In progress" : booking.status === "checked_in" ? "Checked in" : booking.status}
               </Text>
             </View>
           </View>
@@ -1544,6 +1573,56 @@ export default function BookingDetailScreen() {
             >
               <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Cancel reason modal */}
+      <Modal visible={cancelReasonModalOpen} transparent animationType="fade" onRequestClose={() => setCancelReasonModalOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonModalOpen(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Why are you cancelling?</Text>
+            {["Change of plans", "Found another provider", "Scheduling conflict", "Other"].map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                onPress={() => {
+                  if (reason === "Other") {
+                    setCancelReasonText("");
+                  } else {
+                    setCancelReasonText(reason);
+                  }
+                }}
+                style={{
+                  paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginBottom: 6,
+                  backgroundColor: cancelReasonText === reason ? Colors.primaryLight : "#F3F4F6",
+                }}
+              >
+                <Text style={{ fontSize: 14, color: cancelReasonText === reason ? Colors.primary : "#374151" }}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
+            {!["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+              <TextInput
+                value={cancelReasonText}
+                onChangeText={setCancelReasonText}
+                placeholder="Tell us why (optional)"
+                multiline
+                style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 64, textAlignVertical: "top", marginTop: 6, marginBottom: 16 }}
+              />
+            )}
+            {["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+              <View style={{ marginBottom: 16 }} />
+            )}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity onPress={() => setCancelReasonModalOpen(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => submitCancellation(cancelReasonText)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

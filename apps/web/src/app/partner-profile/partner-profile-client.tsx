@@ -4,10 +4,20 @@ import dynamic from "next/dynamic";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import PartnerHeroMobile from "./components/partner-hero-mobile";
-import PartnerHero from "./components/partner-hero";
-import PartnerServices from "./components/partner-services";
 import Link from "next/link";
+
+const heroFallback = (
+  <div className="w-full h-[300px] md:h-[400px] bg-gray-100 animate-pulse" aria-hidden />
+);
+const PartnerHeroMobile = dynamic(() => import("./components/partner-hero-mobile"), {
+  loading: () => heroFallback,
+});
+const PartnerHero = dynamic(() => import("./components/partner-hero"), {
+  loading: () => heroFallback,
+});
+const PartnerServices = dynamic(() => import("./components/partner-services"), {
+  loading: () => tabChunkFallback,
+});
 import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_PROVIDER_PROFILE_VIEW } from "@/lib/analytics/amplitude/types";

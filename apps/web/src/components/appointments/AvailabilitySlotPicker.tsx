@@ -119,7 +119,7 @@ export function AvailabilitySlotPicker({
         date: selectedDate,
         mode,
         duration: String(duration),
-        travelBuffer: "0",
+        travelBuffer: mode === "mobile" ? "30" : "0",
       });
       if (providerId) params.set("providerId", providerId);
       if (locationId) params.set("locationId", locationId);

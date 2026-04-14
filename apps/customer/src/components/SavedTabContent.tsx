@@ -326,11 +326,14 @@ export function SavedTabContent({
   }, [activeTab, loadProviders, loadProducts, loadSavedPosts]);
 
   const handleUnsave = useCallback(async (postId: string) => {
-    setSavedPosts((prev) => prev.filter((p) => p.id !== postId));
+    const prev = savedPosts;
+    setSavedPosts((p) => p.filter((x) => x.id !== postId));
     try {
       await api.delete(`/api/explore/saved?post_id=${postId}`);
-    } catch {}
-  }, []);
+    } catch {
+      setSavedPosts(prev);
+    }
+  }, [savedPosts]);
 
   const savedProviderIds = useMemo(() => new Set(saved.map((p: any) => p.id)), [saved]);
   const handleSaveProvider = useCallback(

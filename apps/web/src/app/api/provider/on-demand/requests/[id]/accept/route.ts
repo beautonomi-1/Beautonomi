@@ -176,6 +176,16 @@ export async function POST(
 
     if (updateError) throw updateError;
     if (!updatedRow) {
+      // Atomic update failed — another accept won or the request expired.
+      // Clean up the orphan booking we just created.
+      try {
+        await admin
+          .from("bookings")
+          .update({ status: "cancelled", cancelled_at: new Date().toISOString(), cancellation_reason: "On-demand request expired or already handled" })
+          .eq("id", booking.id);
+      } catch (cleanupErr) {
+        console.error("Failed to clean up orphan booking after on-demand race:", cleanupErr);
+      }
       return errorResponse(
         "Request already handled or expired",
         "ALREADY_HANDLED_OR_EXPIRED",

@@ -279,7 +279,12 @@ export default function SearchScreen() {
           </View>
         )}
 
-        {loading && !searched ? null : !results && searched ? (
+        {loading ? (
+          <View style={{ paddingVertical: 48, alignItems: "center" }}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+            <Text style={{ color: Colors.gray[500], marginTop: 12 }}>Searching...</Text>
+          </View>
+        ) : !results && searched && !error ? (
           <View style={{ paddingVertical: 48, alignItems: "center" }}>
             <Text style={{ color: Colors.gray[600] }}>No results. Try different filters.</Text>
           </View>

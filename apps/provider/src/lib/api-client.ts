@@ -11,7 +11,7 @@ import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 
-/** Resolve API base URL with strict production safeguards. */
+/** Resolve API base URL with strict production safeguards. Never throws — callers expect sync resolution inside apiFetch try/catch. */
 function getApiBaseUrl(): string {
   const configured = APP_URL?.trim() ?? "";
   if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -29,9 +29,17 @@ function getApiBaseUrl(): string {
     }
   }
   if (!configured) {
-    throw new Error(
-      "Missing EXPO_PUBLIC_APP_URL for provider API client. Configure apps/provider/.env.local.",
+    if (__DEV__) {
+      console.warn(
+        "[API] Missing EXPO_PUBLIC_APP_URL; using http://localhost:3000 for dev. Configure apps/provider/.env.local for production.",
+      );
+      return "http://localhost:3000";
+    }
+    // Production without URL: avoid throwing (unhandled rejection). Requests fail with a clear network error.
+    console.error(
+      "Missing EXPO_PUBLIC_APP_URL for provider API client. Configure apps/provider/.env.",
     );
+    return "";
   }
   return configured;
 }
@@ -95,25 +103,24 @@ async function getAccessToken(): Promise<string | null> {
   }
 }
 
-// Lazy init so baseUrl is resolved at first request time (window is definitely ready)
-let _api: ReturnType<typeof createApiClient> | null = null;
-function getApi(): ReturnType<typeof createApiClient> {
-  if (!_api) {
-    const baseUrl = getApiBaseUrl();
-    if (__DEV__) {
-      console.log("[API] Provider API client baseUrl:", baseUrl);
-    }
-    _api = createApiClient({
-      baseUrl,
-      getAccessToken,
-      headers: { "X-App": "provider" },
-      getDefaultHeaders: () => ({
-        ...webApiTenantHeaders(),
-        "X-Active-Market-Country": getDeviceRegionCountryIso(),
-      }),
-    });
+/** Single client; each request resolves base URL via getApiBaseUrl (Expo web + dev localhost parity). */
+const baseApi = createApiClient({
+  baseUrl: APP_URL ?? "",
+  getBaseUrl: getApiBaseUrl,
+  getAccessToken,
+  headers: { "X-App": "provider" },
+  getDefaultHeaders: () => ({
+    ...webApiTenantHeaders(),
+    "X-Active-Market-Country": getDeviceRegionCountryIso(),
+  }),
+});
+
+if (__DEV__) {
+  try {
+    console.log("[API] Provider API client baseUrl:", getApiBaseUrl());
+  } catch {
+    console.log("[API] Provider API client (base URL will resolve on first request)");
   }
-  return _api;
 }
 
 /** True if error indicates session is invalid (expired/revoked); network errors are transient. */
@@ -176,18 +183,18 @@ async function withSessionRecovery<T>(
   return retry;
 }
 
-/** API client – baseUrl is resolved on first use; session recovery on 401. */
+/** API client – base URL resolved per request; session recovery on 401. */
 export const api = {
   get: <T>(path: string, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => getApi().get<T>(path, init)),
+    withSessionRecovery<T>(() => baseApi.get<T>(path, init)),
   post: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => getApi().post<T>(path, body, init)),
+    withSessionRecovery<T>(() => baseApi.post<T>(path, body, init)),
   put: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => getApi().put<T>(path, body, init)),
+    withSessionRecovery<T>(() => baseApi.put<T>(path, body, init)),
   patch: <T>(path: string, body?: Record<string, unknown>, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => getApi().patch<T>(path, body, init)),
+    withSessionRecovery<T>(() => baseApi.patch<T>(path, body, init)),
   delete: <T>(path: string, init?: ApiClientExtraOptions) =>
-    withSessionRecovery<T>(() => getApi().delete<T>(path, init)),
+    withSessionRecovery<T>(() => baseApi.delete<T>(path, init)),
   fetch: <T>(path: string, options?: Record<string, unknown>) =>
-    withSessionRecovery<T>(() => getApi().fetch<T>(path, options)),
+    withSessionRecovery<T>(() => baseApi.fetch<T>(path, options)),
 };

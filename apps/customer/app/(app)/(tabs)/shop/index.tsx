@@ -105,11 +105,12 @@ export default function ShopScreen() {
     else setLoadingMore(true);
     setError(null);
 
-    const params = new URLSearchParams({ page: String(pageNum), limit: "20" });
-    if (q.trim()) params.set("search", q.trim());
+    const searchParams = new URLSearchParams({ page: String(pageNum), limit: "20" });
+    if (q.trim()) searchParams.set("search", q.trim());
+    if (params.category?.trim()) searchParams.set("category", params.category.trim());
 
     try {
-      const res = await api.get<ProductsResponse>(`/api/public/products?${params}`);
+      const res = await api.get<ProductsResponse>(`/api/public/products?${searchParams}`);
       if (res.error) {
         setError("Could not load products. Pull to refresh.");
         if (pageNum === 1) setProducts([]);
@@ -184,16 +185,20 @@ export default function ShopScreen() {
           "/api/me/wishlists/toggle",
           { item_type: "product", item_id: p.id },
         );
-        const action = (res.data as { action?: string; data?: { action?: string } })?.action
-          ?? (res.data as { data?: { action?: string } })?.data?.action;
-        if (action === "added" || action === "removed") {
-          setWishlistProductIds((prev) => {
-            const next = new Set(prev);
-            if (action === "added") next.add(p.id);
-            else next.delete(p.id);
-            return next;
-          });
-          haptic.success();
+        if (res.error) {
+          Alert.alert("Error", "Could not update wishlist. Please try again.");
+        } else {
+          const action = (res.data as { action?: string; data?: { action?: string } })?.action
+            ?? (res.data as { data?: { action?: string } })?.data?.action;
+          if (action === "added" || action === "removed") {
+            setWishlistProductIds((prev) => {
+              const next = new Set(prev);
+              if (action === "added") next.add(p.id);
+              else next.delete(p.id);
+              return next;
+            });
+            haptic.success();
+          }
         }
       } finally {
         setWishlistBusyId(null);

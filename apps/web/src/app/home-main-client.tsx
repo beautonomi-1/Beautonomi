@@ -3,18 +3,39 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import dynamic from "next/dynamic";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_HOME_VIEW } from "@/lib/analytics/amplitude/types";
 import TopRatedSection from "./home/components/top-rated-section";
-import NearestProvidersSection from "./home/components/nearest-providers-section";
-import HottestPicksSection from "./home/components/hottest-picks-section";
-import SponsoredSection from "./home/components/sponsored-section";
-import UpcomingTalentSection from "./home/components/upcoming-talent-section";
-import Footer from "@/components/layout/footer";
-import BottomNav from "@/components/layout/bottom-nav";
 import HomeLoginHandler from "./home-login-handler";
+
+const Footer = dynamic(
+  () => import("@/components/layout/footer"),
+  { ssr: false }
+);
+const BottomNav = dynamic(
+  () => import("@/components/layout/bottom-nav"),
+  { ssr: false }
+);
 import type { HomePageInitialData } from "@/app/home/home-initial-types";
 import type { PublicFooterInitial } from "@/types/public-footer-initial";
+
+const NearestProvidersSection = dynamic(
+  () => import("./home/components/nearest-providers-section"),
+  { ssr: false }
+);
+const HottestPicksSection = dynamic(
+  () => import("./home/components/hottest-picks-section"),
+  { ssr: false }
+);
+const SponsoredSection = dynamic(
+  () => import("./home/components/sponsored-section"),
+  { ssr: false }
+);
+const UpcomingTalentSection = dynamic(
+  () => import("./home/components/upcoming-talent-section"),
+  { ssr: false }
+);
 
 /**
  * Home body that depends on `useSearchParams` — keep under `<Suspense>` in `page.tsx`

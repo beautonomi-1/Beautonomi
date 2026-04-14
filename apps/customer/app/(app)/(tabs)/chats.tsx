@@ -102,8 +102,8 @@ export default function ChatsScreen() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (user) load();
+  }, [load, user]);
 
   useFocusEffect(
     useCallback(() => {

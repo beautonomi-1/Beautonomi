@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
     const excludeBookingId = sp.get("exclude_booking_id");
 
     if (!scheduledAt) {
-      return handleApiError(new Error("scheduled_at is required"), "VALIDATION_ERROR", 400);
+      return handleApiError(new Error("scheduled_at is required"), "scheduled_at is required", "VALIDATION_ERROR", 400);
     }
 
     const startTime = new Date(scheduledAt);

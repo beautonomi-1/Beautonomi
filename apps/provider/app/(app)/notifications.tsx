@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from "react";
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, Alert } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -196,7 +196,9 @@ export default function NotificationsScreen() {
 
   const handleMarkAllRead = useCallback(async () => {
     const res = await markAllRead("/api/provider/notifications/mark-all-read", {});
-    if (!res.error) {
+    if (res.error) {
+      Alert.alert("Error", "Could not mark notifications as read.");
+    } else {
       await refresh();
       await refreshCount();
     }
@@ -204,9 +206,12 @@ export default function NotificationsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    await refreshCount();
-    setRefreshing(false);
+    try {
+      await refresh();
+      await refreshCount();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshCount]);
 
   const handleNotificationPress = useCallback(

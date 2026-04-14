@@ -174,7 +174,7 @@ function formatCurrency(amount: number, currency = getTenantDefaultCurrency()) {
 
 function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
   const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return { minutes: 0, seconds: 0, expired: true };
+  if (!Number.isFinite(diff) || diff <= 0) return { minutes: 0, seconds: 0, expired: true };
   const totalSeconds = Math.floor(diff / 1000);
   return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, expired: false };
 }
@@ -607,6 +607,10 @@ export default function BookCheckoutScreen() {
         const res = await api.get<HoldData>(`/api/public/booking-holds/${hold_id}`, { timeout: 120_000 });
         if (cancelled) return;
 
+        if (res.error) {
+          throw new Error((res.error as any)?.message || t("checkout.invalidOrExpiredHold"));
+        }
+
         const data = (res.data ?? {}) as Record<string, unknown>;
         if (!data.hold_id && !data.booking_services_snapshot) {
           throw new Error(t("checkout.invalidOrExpiredHold"));
@@ -768,12 +772,17 @@ export default function BookCheckoutScreen() {
     if (!user) return;
     api.get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>("/api/me/wallet")
       .then((res) => {
-        if (res.error) return;
+        if (res.error) {
+          console.warn("[Checkout] Failed to fetch wallet balance:", res.error);
+          return;
+        }
         const raw = res.data as any;
         const wallet = raw?.data?.wallet ?? raw?.wallet;
         if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn("[Checkout] Wallet fetch error:", e);
+      });
   }, [user]);
 
   // Fetch addons for every service in the hold and merge (dedupe by id) for multi-service bookings
@@ -1052,7 +1061,8 @@ export default function BookCheckoutScreen() {
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
-  const subtotalAfterPromo = Math.max(0, prePromoTotal - appliedPromoDiscount);
+  const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
+  const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
 
   // Tax: only when provider has set a non-zero tax rate
   const taxRatePercent = hold?.tax_rate_percent ?? 0;
@@ -1273,12 +1283,16 @@ export default function BookCheckoutScreen() {
               style: "destructive",
               onPress: async () => {
                 try {
-                  await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
+                  const res = await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
                     reason: "Reschedule - previous appointment replaced",
                   });
-                  haptic.success();
+                  if (res.error) {
+                    Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
+                  } else {
+                    haptic.success();
+                  }
                 } catch {
-                  // Still navigate to new booking
+                  Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
                 }
                 router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
               },
@@ -1480,16 +1494,23 @@ export default function BookCheckoutScreen() {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
         const errCode = (res.error as { code?: string }).code;
-        // If the server rejects with 401 or 403, the session has expired mid-checkout.
-        // Redirect to login so the user can re-authenticate and return to complete the booking.
-        if (errStatus === 401 || errStatus === 403) {
+        if (errStatus === 401) {
           router.replace({
             pathname: "/(auth)/login",
             params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
           });
           return;
         }
-        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED") {
+        if (errStatus === 403) {
+          const msg403 = errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
+            ? "You've reached your booking limit. Please upgrade your plan."
+            : errCode === "MARKET_SWITCH_REQUIRED"
+            ? "This provider is in a different market. Please update your location."
+            : "You don't have permission to complete this booking. Please sign in again.";
+          setError(msg403);
+          return;
+        }
+        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED" || errCode === "HOLD_INACTIVE") {
           setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
           return;
         }
@@ -1528,12 +1549,11 @@ export default function BookCheckoutScreen() {
         });
         if (saveCard) refreshCards();
 
-        // Poll booking status to confirm payment went through (mirrors web /checkout/success verify logic).
-        // The Paystack webhook may fire before or shortly after the browser closes.
         let confirmedBookingId = bookingId;
         let confirmedBookingStatus: string | undefined;
+        let paymentConfirmed = false;
         if (bookingId) {
-          const MAX_ATTEMPTS = 8;
+          const MAX_ATTEMPTS = 10;
           const POLL_INTERVAL_MS = 2000;
           for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
@@ -1544,6 +1564,7 @@ export default function BookCheckoutScreen() {
               if (statusVal && statusVal !== "pending_payment") {
                 confirmedBookingId = bookingId;
                 confirmedBookingStatus = statusVal;
+                paymentConfirmed = true;
                 break;
               }
             } catch {
@@ -1553,6 +1574,18 @@ export default function BookCheckoutScreen() {
               await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
             }
           }
+        }
+
+        if (!paymentConfirmed) {
+          Alert.alert(
+            "Payment pending",
+            "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process. Check your bookings shortly.",
+            [
+              { text: "View bookings", onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
+              { text: "OK", style: "cancel" },
+            ],
+          );
+          return;
         }
 
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
@@ -1648,6 +1681,8 @@ export default function BookCheckoutScreen() {
         ...(hold.location_id ? { location_id: hold.location_id } : {}),
         ...(hold.location_type ? { location_type: hold.location_type } : {}),
         ...(selectedPackageId ? { package: selectedPackageId } : {}),
+        ...(routeRescheduleBookingId ? { reschedule_booking_id: routeRescheduleBookingId } : {}),
+        hold_id: hold_id,
       },
     });
   };
@@ -2286,10 +2321,10 @@ export default function BookCheckoutScreen() {
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
                     </View>
                   )}
-                  {appliedPromoDiscount > 0 && (
+                  {effectivePromoDiscount > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(appliedPromoDiscount, currency)}</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
                     </View>
                   )}
                   {taxAmount > 0 && (
@@ -2323,8 +2358,9 @@ export default function BookCheckoutScreen() {
 
               {/* Wallet credit breakdown — shown when wallet covers part/all of total */}
               {(paymentMethod === "card" && useWallet && walletBalance > 0) && (() => {
-                const walletApplied = Math.min(walletBalance, total);
-                const paystackRemainder = Math.max(0, total - walletApplied);
+                const chargeableAmount = (paymentOption === "deposit" && hasDeposit) ? depositAmount : total;
+                const walletApplied = Math.min(walletBalance, chargeableAmount);
+                const paystackRemainder = Math.max(0, chargeableAmount - walletApplied);
                 return (
                   <>
                     <View style={{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 10, borderStyle: "dashed" }} />
@@ -2480,9 +2516,9 @@ export default function BookCheckoutScreen() {
               </View>
               {promoError ? (
                 <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{promoError}</Text>
-              ) : appliedPromoDiscount > 0 ? (
+              ) : effectivePromoDiscount > 0 ? (
                 <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
-                  Promo applied — {formatCurrency(appliedPromoDiscount, currency)} off
+                  Promo applied — {formatCurrency(effectivePromoDiscount, currency)} off
                 </Text>
               ) : null}
             </View>

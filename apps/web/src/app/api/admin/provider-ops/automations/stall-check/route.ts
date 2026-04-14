@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     const { data: tenantUsers } = await supabase
       .from("users")
       .select("id")
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .eq("role", "provider_owner");
     const tenantUserIds = (tenantUsers || []).map((u: { id: string }) => u.id);
 

@@ -57,6 +57,7 @@ export default function ReviewsScreen() {
             {list.map((r: any, index: number) => {
               const provider = r.providers ?? r.provider;
               const booking = r.bookings ?? r.booking;
+              const resolvedBookingId = r.booking_id ?? booking?.id;
               return (
                 <View key={r.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginTop: index === 0 ? 0 : 12 }}>
                   <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -96,22 +97,24 @@ export default function ReviewsScreen() {
                         </View>
                       ) : null}
                     </View>
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(app)/review-write",
-                          params: {
-                            bookingId: r.booking_id,
-                            reviewId: r.id,
-                            rating: String(r.rating),
-                            comment: r.comment || "",
-                          },
-                        })
-                      }
-                      style={{ marginLeft: 8 }}
-                    >
-                      <Text style={{ color: Colors.primary, fontWeight: "500" }}>Edit</Text>
-                    </TouchableOpacity>
+                    {resolvedBookingId ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(app)/review-write",
+                            params: {
+                              bookingId: resolvedBookingId,
+                              reviewId: r.id,
+                              rating: String(r.rating),
+                              comment: r.comment || "",
+                            },
+                          })
+                        }
+                        style={{ marginLeft: 8 }}
+                      >
+                        <Text style={{ color: Colors.primary, fontWeight: "500" }}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
               );

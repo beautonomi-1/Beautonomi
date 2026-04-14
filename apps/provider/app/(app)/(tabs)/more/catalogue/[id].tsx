@@ -23,6 +23,7 @@ import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { formatCurrency, formatDuration } from "@/lib/format";
 import { APP_URL, withWebApiTenantHeaders } from "@/config/public-env";
 import { supabase } from "@/lib/supabase/client";
@@ -106,6 +107,7 @@ export default function ServiceDetailScreen() {
   const {
     data: service,
     loading,
+    error: serviceError,
     refresh,
   } = useApi<ServiceDetail>(`/api/provider/services/${id}`);
   const { data: addOns, refresh: refreshAddOns } = useApi<AddOn[]>(
@@ -204,9 +206,14 @@ export default function ServiceDetailScreen() {
 
       if (!imageUrl) throw new Error("No URL returned from upload");
 
-      await updateService(`/api/provider/services/${id}`, {
+      const { error: patchErr } = await updateService(`/api/provider/services/${id}`, {
         image_url: imageUrl,
       });
+
+      if (patchErr) {
+        Alert.alert("Error", "Image uploaded but could not update service. Please try again.");
+        return;
+      }
 
       refresh();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -236,7 +243,11 @@ export default function ServiceDetailScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Service" showBack />
-        <EmptyState title="Service not found" />
+        {serviceError ? (
+          <ErrorState message="Could not load service. Please try again." onRetry={refresh} />
+        ) : (
+          <EmptyState title="Service not found" />
+        )}
       </ScreenContainer>
     );
   }
@@ -318,7 +329,14 @@ export default function ServiceDetailScreen() {
   }
 
   async function handleSaveAddOn() {
-    if (!addOnForm.name.trim() || !addOnForm.price) return;
+    if (!addOnForm.name.trim()) {
+      Alert.alert("Required", "Please enter an add-on name.");
+      return;
+    }
+    if (!addOnForm.price || Number(addOnForm.price) <= 0) {
+      Alert.alert("Required", "Please enter a valid price.");
+      return;
+    }
     const payload = {
       name: addOnForm.name.trim(),
       price: Number(addOnForm.price),

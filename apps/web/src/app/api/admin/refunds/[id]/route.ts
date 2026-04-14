@@ -119,12 +119,12 @@ export async function POST(
       return notFoundResponse("Transaction not found");
     }
 
-    if (transaction.status === "refunded" || transaction.status === "partially_refunded") {
-      return errorResponse(
-        "Transaction already refunded",
-        "ALREADY_REFUNDED",
-        400
-      );
+    // Only allow refunding successfully charged transactions
+    if (transaction.status !== "success") {
+      const statusMsg = transaction.status === "refunded" || transaction.status === "partially_refunded"
+        ? "Transaction already refunded"
+        : `Cannot refund a transaction with status "${transaction.status}"`;
+      return errorResponse(statusMsg, "INVALID_STATUS", 400);
     }
 
     const { refund_amount, refund_reason, notes } = validationResult.data;
@@ -221,15 +221,15 @@ export async function POST(
       created_by: user.id,
     });
 
-    // Sign convention (matches Paystack webhook refund-events handler):
-    //   amount = positive gross refund value (how much was refunded)
-    //   net    = negative impact on platform earnings (reduces platform take)
+    // Negative amounts for refunds — consistent with refund-processing.ts,
+    // admin/bookings/[id]/refund, and provider/bookings/[id]/refund.
+    // getAvailablePayoutBalance reads net for refund rows; negative net claws back earnings.
     await supabase.from("finance_transactions").insert({
       tenant_id: financeTenantId,
       booking_id: transaction.booking_id,
       provider_id: providerId,
       transaction_type: "refund",
-      amount: refund_amount,
+      amount: -refund_amount,
       fees: 0,
       commission: 0,
       net: -refund_amount,

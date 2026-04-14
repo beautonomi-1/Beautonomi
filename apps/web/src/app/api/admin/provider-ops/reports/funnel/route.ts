@@ -7,6 +7,8 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchAllPaged } from "@/lib/provider-ops/postgrest-unbounded";
+import { PROVIDER_LEAD_PIPELINE_STAGES } from "@/lib/provider-ops/lead-pipeline-stages";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,28 +19,19 @@ export async function GET(request: NextRequest) {
     const { count: totalSignups } = await supabase
       .from("users")
       .select("id", { count: "exact", head: true })
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .eq("role", "provider_owner");
-
-    const { data: tenantUsers } = await supabase
-      .from("users")
-      .select("id")
-      .eq("tenant_id", tenantId)
-      .eq("role", "provider_owner");
-    const tenantUserIds = (tenantUsers || []).map((u: { id: string }) => u.id);
 
     const { count: startedWizard } = await supabase
       .from("provider_onboarding_drafts")
-      .select("id", { count: "exact", head: true })
-      .in("user_id", tenantUserIds.length > 0 ? tenantUserIds : ["__none__"]);
+      .select("id, users!inner(preferred_home_tenant_id)", { count: "exact", head: true })
+      .eq("users.preferred_home_tenant_id", tenantId);
 
-    // Completed wizard / submitted (has provider record)
     const { count: submitted } = await supabase
       .from("providers")
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId);
 
-    // Approved / active
     const { count: active } = await supabase
       .from("providers")
       .select("id", { count: "exact", head: true })
@@ -51,25 +44,41 @@ export async function GET(request: NextRequest) {
       .eq("tenant_id", tenantId)
       .eq("admin_assisted", true);
 
-    // Lead funnel
-    const { data: leads } = await supabase
+    // Lead funnel - use exact counts instead of fetching all rows
+    const { count: totalLeads } = await supabase
       .from("provider_leads")
-      .select("commercial_stage, source")
+      .select("id", { count: "exact", head: true })
       .eq("tenant_id", tenantId);
 
     const leadsByStage: Record<string, number> = {};
+    for (const stage of PROVIDER_LEAD_PIPELINE_STAGES) {
+      const { count } = await supabase
+        .from("provider_leads")
+        .select("id", { count: "exact", head: true })
+        .eq("tenant_id", tenantId)
+        .eq("commercial_stage", stage);
+      leadsByStage[stage] = count ?? 0;
+    }
+
+    // Source breakdown - fetch all with pagination to avoid 1000-row cap
+    const allLeads = await fetchAllPaged<{ source: string }>(async (from, to) => {
+      const r = await supabase
+        .from("provider_leads")
+        .select("source")
+        .eq("tenant_id", tenantId)
+        .range(from, to);
+      return { data: r.data as { source: string }[] | null, error: r.error };
+    });
     const leadsBySource: Record<string, number> = {};
-    for (const lead of leads || []) {
-      const stage = (lead as { commercial_stage: string }).commercial_stage;
-      const source = (lead as { source: string }).source;
-      leadsByStage[stage] = (leadsByStage[stage] || 0) + 1;
-      leadsBySource[source] = (leadsBySource[source] || 0) + 1;
+    for (const lead of allLeads) {
+      leadsBySource[lead.source] = (leadsBySource[lead.source] || 0) + 1;
     }
 
     const signupCount = totalSignups || 0;
     const wizardCount = startedWizard || 0;
     const submittedCount = submitted || 0;
     const activeCount = active || 0;
+    const leadsTotal = totalLeads || 0;
 
     return successResponse({
       onboarding_funnel: {
@@ -83,15 +92,13 @@ export async function GET(request: NextRequest) {
         overall_conversion_rate: signupCount > 0 ? Math.round((activeCount / signupCount) * 100) : 0,
       },
       lead_funnel: {
-        total_leads: leads?.length || 0,
+        total_leads: leadsTotal,
         by_stage: leadsByStage,
         by_source: leadsBySource,
         matched: leadsByStage.matched || 0,
         conversion_rate:
-          (leads?.length || 0) > 0
-            ? Math.round(
-                ((leadsByStage.matched || 0) / (leads?.length || 1)) * 100
-              )
+          leadsTotal > 0
+            ? Math.round(((leadsByStage.matched || 0) / leadsTotal) * 100)
             : 0,
       },
       admin_productivity: {

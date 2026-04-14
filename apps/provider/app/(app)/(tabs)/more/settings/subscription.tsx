@@ -13,6 +13,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -133,7 +134,7 @@ export default function SubscriptionScreen() {
     error,
     refresh,
   } = useApi<Subscription | null>("/api/provider/subscription");
-  const { data: plans } = useApi<Plan[]>("/api/provider/subscription/plans");
+  const { data: plans, error: plansError } = useApi<Plan[]>("/api/provider/subscription/plans");
   const { execute: postAction } = useApiMutation("post");
 
   const monthlyPlans = useMemo(
@@ -157,8 +158,11 @@ export default function SubscriptionScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   async function handleCancel() {
@@ -255,6 +259,15 @@ export default function SubscriptionScreen() {
     return (
       <ScreenContainer scrollable={false}>
         <LoadingState message="Loading subscription..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (error && !subscription) {
+    return (
+      <ScreenContainer refreshing={refreshing} onRefresh={handleRefresh}>
+        <ScreenHeader title="Subscription" showBack subtitle="Plan & billing" />
+        <ErrorState message={error} onRetry={refresh} />
       </ScreenContainer>
     );
   }
@@ -419,6 +432,8 @@ export default function SubscriptionScreen() {
             />
           ))}
         </View>
+      ) : plansError ? (
+        <ErrorState message="Could not load plans. Pull down to retry." onRetry={refresh} />
       ) : (
         <EmptyState icon="pricetag-outline" title="No plans" description="Subscription plans will appear here." />
       )}

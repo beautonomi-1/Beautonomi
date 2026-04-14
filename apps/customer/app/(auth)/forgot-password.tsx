@@ -34,6 +34,10 @@ export default function ForgotPasswordScreen() {
       Alert.alert("Email required", "Please enter your email address.");
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return;
+    }
 
     const base = (APP_URL ?? "").replace(/\/$/, "");
     if (!base) {

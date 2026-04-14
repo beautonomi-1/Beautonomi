@@ -596,7 +596,8 @@ export async function loadTimeBlocks(
 export async function loadExistingBookings(
   supabase: SupabaseClient,
   staffId: string | null,
-  date: string
+  date: string,
+  excludeBookingId?: string
 ): Promise<BookingService[]> {
   if (!staffId) {
     return [];
@@ -612,7 +613,7 @@ export async function loadExistingBookings(
   // Query booking_services for the date
   // Join with bookings to filter by status
   // Join with offerings to get buffer_minutes
-  const { data: bookingServices, error } = await supabase
+  let query = supabase
     .from('booking_services')
     .select(`
       id,
@@ -636,6 +637,12 @@ export async function loadExistingBookings(
     .gt('scheduled_end_at', `${date}T00:00:00`)
     .lt('scheduled_start_at', `${date}T23:59:59`)
     .neq('bookings.status', 'cancelled');
+
+  if (excludeBookingId) {
+    query = query.neq('booking_id', excludeBookingId);
+  }
+
+  const { data: bookingServices, error } = await query;
 
   if (error) {
     console.error('Error loading existing bookings:', error);
@@ -679,9 +686,10 @@ export async function loadExistingBookings(
 async function loadExistingBookingsForProviderOnDate(
   supabase: SupabaseClient,
   providerId: string,
-  date: string
+  date: string,
+  excludeBookingId?: string
 ): Promise<BookingService[]> {
-  const { data: bookingServices, error } = await supabase
+  let query = supabase
     .from('booking_services')
     .select(`
       id,
@@ -706,6 +714,12 @@ async function loadExistingBookingsForProviderOnDate(
     .gt('scheduled_end_at', `${date}T00:00:00`)
     .lt('scheduled_start_at', `${date}T23:59:59`)
     .neq('bookings.status', 'cancelled');
+
+  if (excludeBookingId) {
+    query = query.neq('booking_id', excludeBookingId);
+  }
+
+  const { data: bookingServices, error } = await query;
 
   if (error) {
     console.error('Error loading existing bookings for provider:', error);
@@ -891,6 +905,11 @@ export type LoadAvailabilityConstraintsOptions = {
    */
   excludeHoldId?: string;
   /**
+   * When set, booking_services belonging to this booking are excluded from conflict checks.
+   * Used by reschedule flows so the booking being rescheduled doesn't block itself.
+   */
+  excludeBookingId?: string;
+  /**
    * Merge availability_blocks + staff time off / day off (same rules as public slug availability).
    */
   publicCalendarParity?: {
@@ -953,12 +972,14 @@ export async function loadAvailabilityConstraints(
     syntheticProviderId ??
     (effectiveStaffId ? await resolveProviderIdFromStaff(db, effectiveStaffId) : undefined);
 
+  const excludeBookingId = options?.excludeBookingId;
+
   const [shiftsRaw, timeBlocks, existingBookings, providerSettings, holdBlocks, closedPeriodBlocks] = await Promise.all([
     loadStaffShifts(db, effectiveStaffId, date),
     loadTimeBlocks(db, effectiveStaffId, date, resolvedProviderId),
     syntheticProviderId
-      ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date)
-      : loadExistingBookings(db, effectiveStaffId, date),
+      ? loadExistingBookingsForProviderOnDate(db, syntheticProviderId, date, excludeBookingId)
+      : loadExistingBookings(db, effectiveStaffId, date, excludeBookingId),
     resolvedProviderId ? loadProviderSettings(db, resolvedProviderId) : Promise.resolve(undefined),
     loadActiveBookingHoldsAsSyntheticBookings(db, {
       resolvedProviderId,

@@ -107,6 +107,7 @@ export async function GET(request: NextRequest) {
     const locationId = (booking as { location_id?: string | null }).location_id ?? null;
 
     const constraints = await loadAvailabilityConstraints(supabase, staffId, date, providerId, {
+      excludeBookingId: validation.bookingId,
       publicCalendarParity:
         providerId && staffId
           ? {
@@ -122,7 +123,7 @@ export async function GET(request: NextRequest) {
       booking.location_type === "at_home"
         ? Number.isFinite(travelBufferParam) && travelBufferParam >= 0
           ? Math.min(360, travelBufferParam)
-          : 0
+          : 30
         : 0;
 
     const slots = calculateAvailableSlots(constraints, totalDuration, date, {

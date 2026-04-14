@@ -6,7 +6,7 @@ import {
   ScrollView,
   RefreshControl,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useNavigation, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -43,6 +43,8 @@ function formatDateTimeSafe(value: unknown): string {
 
 export default function MessagingListScreen() {
   const router = useRouter();
+  const navigation = useNavigation();
+  const canGoBack = navigation.canGoBack();
   const { screenPadding } = useResponsive();
   const params = useLocalSearchParams<{ customerId?: string }>();
   const customerId = typeof params.customerId === "string" ? params.customerId : undefined;
@@ -64,16 +66,25 @@ export default function MessagingListScreen() {
     }
   }, [customerId, loading, conversations, router]);
 
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Messages" showBack />
+        <ScreenHeader title="Messages" showBack={canGoBack} />
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48 }}>
           <LoadingState />
         </View>
@@ -84,7 +95,7 @@ export default function MessagingListScreen() {
   if (error && !data) {
     return (
       <ScreenContainer scrollable={false}>
-        <ScreenHeader title="Messages" showBack />
+        <ScreenHeader title="Messages" showBack={canGoBack} />
         <View style={{ flex: 1, justifyContent: "center", paddingHorizontal: 16 }}>
           <ErrorState message={error} onRetry={refresh} />
         </View>
@@ -96,7 +107,7 @@ export default function MessagingListScreen() {
     <ScreenContainer scrollable={false}>
       <ScreenHeader
         title="Messages"
-        showBack
+        showBack={canGoBack}
         subtitle={`${conversations.length} conversation${conversations.length === 1 ? "" : "s"}`}
       />
       <ScrollView

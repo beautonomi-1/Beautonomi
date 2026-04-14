@@ -252,4 +252,14 @@ export const adminQueryKeys = {
     categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,
     providerLifecycle: (id: string) => [...adminQueryKeys.providerOps.all(), "provider", id, "lifecycle"] as const,
   },
+  whatsapp: {
+    all: () => [...adminQueryKeys.root, "whatsapp"] as const,
+    sessions: () => [...adminQueryKeys.whatsapp.all(), "sessions"] as const,
+    sessionDetail: (id: string) => [...adminQueryKeys.whatsapp.all(), "sessions", id] as const,
+    templates: () => [...adminQueryKeys.whatsapp.all(), "templates"] as const,
+    config: (env: string) => [...adminQueryKeys.whatsapp.all(), "config", env] as const,
+    batches: () => [...adminQueryKeys.whatsapp.all(), "batches"] as const,
+    batchDetail: (id: string) => [...adminQueryKeys.whatsapp.all(), "batches", id] as const,
+    leadComms: (leadId: string) => [...adminQueryKeys.whatsapp.all(), "lead-comms", leadId] as const,
+  },
 } as const;

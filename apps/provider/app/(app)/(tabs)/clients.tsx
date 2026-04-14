@@ -93,7 +93,7 @@ interface ClientCardProps {
 
 const ClientCard = React.memo(function ClientCard({ client, onPress, onBook, onMessage }: ClientCardProps) {
   const isVip =
-    client.tags?.includes("vip") ||
+    client.tags?.some((t) => t.toLowerCase() === "vip") ||
     (client.total_bookings != null && client.total_bookings >= 10) ||
     (client.total_spent != null && client.total_spent >= 5000);
 
@@ -244,8 +244,11 @@ export default function ClientsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshServiced(), refreshConversations()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshServiced(), refreshConversations()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshServiced, refreshConversations]);
 
   // Filter chips
@@ -268,14 +271,14 @@ export default function ClientsScreen() {
     if (clientFilter === "vip") {
       result = result.filter(
         (c) =>
-          c.tags?.includes("vip") ||
+          c.tags?.some((t) => t.toLowerCase() === "vip") ||
           (c.total_bookings != null && c.total_bookings >= 10) ||
           (c.total_spent != null && c.total_spent >= 5000)
       );
     } else if (clientFilter === "regular") {
       result = result.filter(
         (c) =>
-          !c.tags?.includes("vip") &&
+          !c.tags?.some((t) => t.toLowerCase() === "vip") &&
           c.total_bookings != null &&
           c.total_bookings >= 2
       );
@@ -306,13 +309,13 @@ export default function ClientsScreen() {
       all: clients.length,
       vip: clients.filter(
         (c) =>
-          c.tags?.includes("vip") ||
+          c.tags?.some((t) => t.toLowerCase() === "vip") ||
           (c.total_bookings != null && c.total_bookings >= 10) ||
           (c.total_spent != null && c.total_spent >= 5000)
       ).length,
       regular: clients.filter(
         (c) =>
-          !c.tags?.includes("vip") &&
+          !c.tags?.some((t) => t.toLowerCase() === "vip") &&
           c.total_bookings != null &&
           c.total_bookings >= 2
       ).length,

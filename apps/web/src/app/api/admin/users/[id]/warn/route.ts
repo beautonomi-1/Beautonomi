@@ -36,7 +36,7 @@ export async function POST(
 
     const { data: targetUser, error: userError } = await supabase
       .from("users")
-      .select("id, full_name, email, role, tenant_id")
+      .select("id, full_name, email, role, preferred_home_tenant_id")
       .eq("id", userId)
       .single();
 
@@ -44,7 +44,7 @@ export async function POST(
       return errorResponse("User not found", "NOT_FOUND", 404);
     }
 
-    if ((targetUser as { tenant_id?: string }).tenant_id !== tenantId) {
+    if ((targetUser as { preferred_home_tenant_id?: string }).preferred_home_tenant_id !== tenantId) {
       return errorResponse("User not found", "NOT_FOUND", 404);
     }
 

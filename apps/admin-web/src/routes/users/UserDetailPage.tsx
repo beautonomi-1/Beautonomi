@@ -66,6 +66,12 @@ type WalletTxRow = {
   created_at?: string;
 };
 
+type WalletTxResponse = {
+  wallet?: { balance: number; currency: string } | null;
+  data?: WalletTxRow[];
+  meta?: { page: number; limit: number; total: number; has_more: boolean };
+};
+
 type UserDetail = Record<string, unknown> & {
   stats?: Record<string, unknown>;
   addresses?: Record<string, unknown>[];
@@ -129,7 +135,7 @@ export function UserDetailPage() {
   const walletTxQ = useQuery({
     queryKey: adminQueryKeys.userWalletTransactions(id),
     queryFn: () =>
-      adminApi.getJson<WalletTxRow[]>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
+      adminApi.getJson<WalletTxResponse>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
         timeoutMs: 60_000,
       }),
     enabled: allowed && !!id,
@@ -627,7 +633,7 @@ export function UserDetailPage() {
               <h3 className="mt-6 text-sm font-semibold text-gray-900">Recent transactions</h3>
               {walletTxQ.isLoading ? (
                 <p className="mt-2 text-sm text-gray-500">Loading ledger…</p>
-              ) : (walletTxQ.data ?? []).length === 0 ? (
+              ) : (walletTxQ.data?.data ?? []).length === 0 ? (
                 <p className="mt-2 text-sm text-gray-500">No wallet movements yet.</p>
               ) : (
                 <AdminDataTable className="mt-3">
@@ -641,7 +647,7 @@ export function UserDetailPage() {
                     </tr>
                   </AdminTableHead>
                   <AdminTableBody>
-                    {(walletTxQ.data ?? []).map((tx) => (
+                    {(walletTxQ.data?.data ?? []).map((tx) => (
                       <tr key={str(tx.id)}>
                         <AdminTd>
                           {tx.created_at ? new Date(String(tx.created_at)).toLocaleString() : "—"}

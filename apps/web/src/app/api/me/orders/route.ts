@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (status) {
-      query = query.eq("status", status);
+      const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
+      query = statuses.length === 1 ? query.eq("status", statuses[0]) : query.in("status", statuses);
     }
 
     const { data: orders, error, count } = await query;

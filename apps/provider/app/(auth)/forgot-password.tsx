@@ -48,6 +48,10 @@ export default function ForgotPasswordScreen() {
       Alert.alert("Required", "Enter your email address.");
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return;
+    }
     const redirectTo = getRedirectUrl();
     if (!redirectTo) {
       Alert.alert(
@@ -58,15 +62,21 @@ export default function ForgotPasswordScreen() {
     }
     setLoading(true);
     setSent(false);
-    const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo,
-    });
-    setLoading(false);
-    if (error) {
-      Alert.alert("Error", error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo,
+      });
+      if (error) {
+        Alert.alert("Error", error.message);
+        return;
+      }
+      setSent(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Something went wrong. Please try again.";
+      Alert.alert("Error", msg);
+    } finally {
+      setLoading(false);
     }
-    setSent(true);
   }, [email]);
 
   return (

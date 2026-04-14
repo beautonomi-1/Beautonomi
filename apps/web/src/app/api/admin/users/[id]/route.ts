@@ -29,11 +29,11 @@ export async function GET(
     const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: userData, error } = await supabase
+    const { data: userData, error } = await admin
       .from("users")
       .select("*")
       .eq("id", id)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .single();
 
     if (error || !userData) {

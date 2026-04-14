@@ -19,10 +19,12 @@ import { adminToast } from "@/lib/adminToast";
 import {
   Search, Upload, Download, Plus, LayoutGrid, LayoutList,
   Phone, Mail, MapPin, Calendar, Tag, User, ChevronDown,
-  Clock, MessageSquare, ArrowUpDown, CheckSquare, Square,
+  Clock, MessageSquare, MessageCircle, ArrowUpDown, CheckSquare, Square,
   Trash2, UserPlus, X, ChevronUp, Filter, MoreHorizontal,
-  StickyNote, TrendingUp, ArrowRight, ExternalLink,
+  StickyNote, TrendingUp, ArrowRight, ExternalLink, Pencil,
 } from "lucide-react";
+import { WhatsAppSendModal } from "@/components/whatsapp/WhatsAppSendModal";
+import { BulkWhatsAppModal } from "@/components/whatsapp/BulkWhatsAppModal";
 
 const PAGE_SIZE = 50;
 const STAGES = ["all", "new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
@@ -116,6 +118,8 @@ export function ProviderOpsLeadsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [detailPanelWidth, setDetailPanelWidth] = useState(480);
   const resizingRef = useRef(false);
+  const [whatsAppLead, setWhatsAppLead] = useState<Lead | null>(null);
+  const [showBulkWhatsApp, setShowBulkWhatsApp] = useState(false);
 
   const categoriesQ = useQuery({
     queryKey: adminQueryKeys.globalCategories(),
@@ -195,6 +199,17 @@ export function ProviderOpsLeadsPage() {
       adminToast.success("Note added");
     },
     onError: (e: Error) => adminToast.error(`Failed: ${e.message}`),
+  });
+
+  const updateLeadMut = useMutation({
+    mutationFn: (fields: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${selectedLeadId}`, fields),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.all() });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(selectedLeadId!) });
+      adminToast.success("Lead updated");
+    },
+    onError: (e: Error) => adminToast.error(`Update failed: ${e.message}`),
   });
 
   // ── Helpers ──
@@ -481,6 +496,7 @@ export function ProviderOpsLeadsPage() {
               onToggleSelectAll={toggleSelectAll}
               onSort={toggleSort}
               onStageChange={(id, s) => stageChangeMut.mutate({ id, newStage: s })}
+              onWhatsAppClick={(lead) => setWhatsAppLead(lead)}
             />
           ) : (
             <LeadCardGrid
@@ -525,6 +541,8 @@ export function ProviderOpsLeadsPage() {
               onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
               onClose={() => setSelectedLeadId(null)}
               isDeleting={deleteMut.isPending}
+              onSave={(fields) => updateLeadMut.mutate(fields)}
+              isSaving={updateLeadMut.isPending}
             />
           </div>
         )}
@@ -532,12 +550,19 @@ export function ProviderOpsLeadsPage() {
 
       {selectedLeadId && (
         <div
-          className="fixed inset-0 z-40 flex items-stretch justify-center bg-black/40 px-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] lg:hidden"
+          className="fixed inset-0 z-40 flex flex-col items-center justify-end bg-black/40 lg:hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Lead details"
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedLeadId(null); }}
         >
-          <div className="mx-auto flex h-[min(100dvh,100svh)] max-h-[100dvh] w-full max-w-xl min-h-0 flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+          <div
+            className="flex w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
+            style={{
+              maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 1rem)",
+              paddingBottom: "env(safe-area-inset-bottom, 0px)",
+            }}
+          >
             <DetailPanel
               lead={detail}
               activities={activities}
@@ -550,10 +575,47 @@ export function ProviderOpsLeadsPage() {
               onDelete={() => { if (confirm("Delete this lead?")) deleteMut.mutate(selectedLeadId); }}
               onClose={() => setSelectedLeadId(null)}
               isDeleting={deleteMut.isPending}
+              onSave={(fields) => updateLeadMut.mutate(fields)}
+              isSaving={updateLeadMut.isPending}
             />
           </div>
         </div>
       )}
+
+      {/* Floating action bar for bulk selection */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-2xl bg-gray-900 px-6 py-3 text-white shadow-2xl transition-all">
+          <span className="text-sm font-medium">{selectedIds.size} leads selected</span>
+          <button
+            className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+            onClick={() => setShowBulkWhatsApp(true)}
+          >
+            <MessageCircle className="h-4 w-4" /> Send WhatsApp
+          </button>
+          <button
+            className="text-sm text-gray-400 hover:text-white"
+            onClick={() => setSelectedIds(new Set())}
+          >
+            Clear
+          </button>
+        </div>
+      )}
+
+      {/* WhatsApp send modal */}
+      {whatsAppLead && (
+        <WhatsAppSendModal
+          open={Boolean(whatsAppLead)}
+          onClose={() => setWhatsAppLead(null)}
+          lead={whatsAppLead}
+        />
+      )}
+
+      {/* Bulk WhatsApp modal */}
+      <BulkWhatsAppModal
+        open={showBulkWhatsApp}
+        onClose={() => setShowBulkWhatsApp(false)}
+        leads={rows.filter((r) => selectedIds.has(r.id))}
+      />
     </div>
   );
 }
@@ -579,7 +641,7 @@ function SortHeader({ label, column, sortBy, sortDir, onSort }: { label: string;
   );
 }
 
-function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange }: {
+function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelectLead, onToggleSelect, onToggleSelectAll, onSort, onStageChange, onWhatsAppClick }: {
   rows: Lead[];
   selectedLeadId: string | null;
   selectedIds: Set<string>;
@@ -590,6 +652,7 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
   onToggleSelectAll: () => void;
   onSort: (col: string) => void;
   onStageChange: (id: string, stage: string) => void;
+  onWhatsAppClick?: (lead: Lead) => void;
 }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
@@ -705,6 +768,16 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                           <Phone className="h-3.5 w-3.5" />
                         </a>
                       )}
+                      {lead.phone_e164 && (
+                        <button
+                          type="button"
+                          className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-green-500 hover:bg-green-50 hover:text-green-700"
+                          title="WhatsApp"
+                          onClick={() => onWhatsAppClick?.(lead)}
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       {lead.email && (
                         <a href={`mailto:${lead.email}`} className="min-h-9 min-w-9 touch-manipulation rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Email">
                           <Mail className="h-3.5 w-3.5" />
@@ -786,7 +859,7 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; se
 
 // ─── Detail panel (right side) ────────────────────────────────────────────────
 
-function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAddNote, addingNote, onStageChange, onDelete, onClose, isDeleting }: {
+function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAddNote, addingNote, onStageChange, onDelete, onClose, isDeleting, onSave, isSaving }: {
   lead: Lead | null;
   activities: Activity[];
   isLoading: boolean;
@@ -798,7 +871,20 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
   onDelete: () => void;
   onClose: () => void;
   isDeleting: boolean;
+  onSave?: (fields: Record<string, unknown>) => void;
+  isSaving?: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [editFields, setEditFields] = useState({
+    business_name: "",
+    contact_person_name: "",
+    email: "",
+    phone_e164: "",
+    suggested_location_text: "",
+    description: "",
+    notes: "",
+  });
+
   if (isLoading || !lead) {
     return (
       <div className="flex h-full items-center justify-center p-8">
@@ -810,11 +896,47 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
     );
   }
 
-  const name = lead.business_name || lead.contact_person_name || "Unnamed Lead";
-  const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories).filter(Boolean);
+  const l = lead;
+
+  const name = l.business_name || l.contact_person_name || "Unnamed Lead";
+  const cats = (l.provider_lead_categories ?? []).map((c) => c.global_service_categories).filter(Boolean);
+
+  function startEditing() {
+    setEditFields({
+      business_name: l.business_name || "",
+      contact_person_name: l.contact_person_name || "",
+      email: l.email || "",
+      phone_e164: l.phone_e164 || "",
+      suggested_location_text: l.suggested_location_text || "",
+      description: l.description || "",
+      notes: l.notes || "",
+    });
+    setEditing(true);
+  }
+
+  function handleSave() {
+    if (!onSave) return;
+    const updates: Record<string, unknown> = {};
+    if (editFields.business_name !== (l.business_name || "")) updates.business_name = editFields.business_name || null;
+    if (editFields.contact_person_name !== (l.contact_person_name || "")) updates.contact_person_name = editFields.contact_person_name || null;
+    if (editFields.email !== (l.email || "")) updates.email = editFields.email || null;
+    if (editFields.phone_e164 !== (l.phone_e164 || "")) updates.phone_e164 = editFields.phone_e164 || null;
+    if (editFields.suggested_location_text !== (l.suggested_location_text || "")) updates.suggested_location_text = editFields.suggested_location_text || null;
+    if (editFields.description !== (l.description || "")) updates.description = editFields.description || null;
+    if (editFields.notes !== (l.notes || "")) updates.notes = editFields.notes || null;
+    if (Object.keys(updates).length === 0) {
+      setEditing(false);
+      return;
+    }
+    onSave(updates);
+    setEditing(false);
+  }
 
   return (
     <div className="flex h-full flex-col">
+      <div className="flex justify-center py-1.5 lg:hidden">
+        <div className="h-1 w-10 rounded-full bg-gray-300" />
+      </div>
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-3 sm:px-5 sm:py-4">
         <div className="flex items-start justify-between gap-2">
@@ -849,6 +971,11 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
               <Mail className="h-3 w-3" />Email
             </a>
           )}
+          {!editing && onSave && (
+            <button type="button" onClick={startEditing} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-medium text-blue-700 touch-manipulation hover:bg-blue-50">
+              <Pencil className="h-3 w-3" />Edit
+            </button>
+          )}
           <Link to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)} className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 touch-manipulation hover:bg-gray-50">
             <ExternalLink className="h-3 w-3" />Full Page
           </Link>
@@ -859,7 +986,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
         {/* Stage selector */}
         <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
           <label className="mb-1.5 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Stage</label>
@@ -883,16 +1010,59 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           </div>
         </div>
 
+        {/* Inline edit form */}
+        {editing ? (
+          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
+            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Edit Lead</label>
+            <div className="space-y-3">
+              <EditField label="Business Name" value={editFields.business_name} onChange={(v) => setEditFields((p) => ({ ...p, business_name: v }))} />
+              <EditField label="Contact Person" value={editFields.contact_person_name} onChange={(v) => setEditFields((p) => ({ ...p, contact_person_name: v }))} />
+              <EditField label="Email" value={editFields.email} onChange={(v) => setEditFields((p) => ({ ...p, email: v }))} type="email" />
+              <EditField label="Phone" value={editFields.phone_e164} onChange={(v) => setEditFields((p) => ({ ...p, phone_e164: v }))} type="tel" />
+              <EditField label="Location" value={editFields.suggested_location_text} onChange={(v) => setEditFields((p) => ({ ...p, suggested_location_text: v }))} />
+              <div>
+                <span className="mb-1 block text-[10px] text-gray-500">Description</span>
+                <textarea
+                  value={editFields.description}
+                  onChange={(e) => setEditFields((p) => ({ ...p, description: e.target.value }))}
+                  rows={3}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-[10px] text-gray-500">Notes</span>
+                <textarea
+                  value={editFields.notes}
+                  onChange={(e) => setEditFields((p) => ({ ...p, notes: e.target.value }))}
+                  rows={2}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+                />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" disabled={isSaving} onClick={handleSave} className="flex-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                  {isSaving ? "Saving…" : "Save Changes"}
+                </button>
+                <button type="button" onClick={() => setEditing(false)} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Contact info */}
         <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
           <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Contact</label>
           <div className="space-y-2">
-            <InfoRow icon={User} label="Name" value={lead.contact_person_name ?? lead.business_name} />
+            {lead.contact_person_name && <InfoRow icon={User} label="Contact Person" value={lead.contact_person_name} />}
+            {lead.business_name && <InfoRow icon={User} label="Business Name" value={lead.business_name} />}
             <InfoRow icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} />
             <InfoRow icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${lead.phone_e164}` : undefined} />
             <InfoRow icon={MapPin} label="Location" value={lead.suggested_location_text} />
             <InfoRow icon={Calendar} label="Created" value={new Date(lead.created_at).toLocaleString()} />
             {lead.assigned_to && <InfoRow icon={UserPlus} label="Assigned to" value={lead.assigned_to} />}
+            <InfoRow icon={ExternalLink} label="Source" value={lead.source} />
+            {lead.country && <InfoRow icon={MapPin} label="Country" value={lead.country} />}
           </div>
         </div>
 
@@ -924,13 +1094,19 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           </div>
         )}
 
-        {/* Description */}
-        {(lead.description || lead.notes) && (
-          <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
-            <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Notes</label>
-            {lead.description && <p className="text-sm text-gray-700 leading-relaxed">{lead.description}</p>}
-            {lead.notes && <p className="mt-1 text-sm italic text-gray-500">{lead.notes}</p>}
-          </div>
+        {/* Description & Notes */}
+        <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
+          <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Description & Notes</label>
+          {lead.description ? (
+            <p className="text-sm text-gray-700 leading-relaxed">{lead.description}</p>
+          ) : (
+            <p className="text-sm italic text-gray-400">No description</p>
+          )}
+          {lead.notes ? (
+            <p className="mt-2 rounded-lg bg-amber-50 p-2 text-sm italic text-amber-800">{lead.notes}</p>
+          ) : null}
+        </div>
+          </>
         )}
 
         {/* Matched provider */}
@@ -1006,6 +1182,20 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange, type = "text" }: { label: string; value: string; onChange: (v: string) => void; type?: string }) {
+  return (
+    <div>
+      <span className="mb-1 block text-[10px] text-gray-500">{label}</span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:border-gray-400 focus:outline-none"
+      />
     </div>
   );
 }

@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
     const rawDrafts = await fetchAllPaged<Record<string, unknown>>(async (from, to) => {
       const r = await supabase
         .from("provider_onboarding_drafts")
-        .select("user_id, current_step, updated_at, created_at, users!inner(tenant_id, role)")
-        .eq("users.tenant_id", tenantId)
+        .select("user_id, current_step, updated_at, created_at, users!inner(preferred_home_tenant_id, role)")
+        .eq("users.preferred_home_tenant_id", tenantId)
         .range(from, to);
       return { data: r.data as Record<string, unknown>[] | null, error: r.error };
     });

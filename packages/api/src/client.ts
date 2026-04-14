@@ -103,6 +103,17 @@ export async function apiFetch<T>(
 ): Promise<ApiResponse<T>> {
   const { body, baseUrl = "", getAccessToken, timeout = 30000, ...init } = options;
 
+  if (!path.startsWith("http") && !baseUrl?.trim()) {
+    return {
+      data: null,
+      error: {
+        message:
+          "API base URL is not configured (EXPO_PUBLIC_APP_URL). Set it in your app environment.",
+        code: "MISSING_API_BASE_URL",
+      },
+    };
+  }
+
   const url = path.startsWith("http")
     ? path
     : `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
@@ -224,6 +235,11 @@ export async function apiFetch<T>(
 
 export interface ApiClientConfig {
   baseUrl: string;
+  /**
+   * When set, called on each request to resolve the API origin. Use for Expo dev (e.g. localhost:3000
+   * when EXPO_PUBLIC_APP_URL is empty) so baseUrl matches config-bundle / WebView URLs.
+   */
+  getBaseUrl?: () => string;
   getAccessToken?: () => Promise<string | null>;
   /** Default headers sent with every request (e.g. X-App: provider for provider app). */
   headers?: Record<string, string>;
@@ -236,16 +252,17 @@ export interface ApiClientConfig {
  * Use in Expo apps to call apps/web APIs with Bearer token.
  */
 export function createApiClient(config: ApiClientConfig) {
-  const { baseUrl, getAccessToken, headers: defaultHeaders, getDefaultHeaders } = config;
+  const { baseUrl, getBaseUrl, getAccessToken, headers: defaultHeaders, getDefaultHeaders } = config;
 
   const request = <T>(
     path: string,
     options: Omit<RequestOptions, "baseUrl" | "getAccessToken"> = {}
   ) => {
     const dynamic = getDefaultHeaders?.() ?? {};
+    const resolvedBase = getBaseUrl ? getBaseUrl() : baseUrl;
     return apiFetch<T>(path, {
       ...options,
-      baseUrl,
+      baseUrl: resolvedBase,
       getAccessToken,
       headers: {
         ...defaultHeaders,

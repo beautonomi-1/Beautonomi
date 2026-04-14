@@ -33,7 +33,7 @@ export async function GET(
       .from("users")
       .select("id")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .maybeSingle();
     if (targetErr) throw targetErr;
     if (!targetUser) return notFoundResponse("User not found");
@@ -97,7 +97,7 @@ export async function POST(
       .from("users")
       .select("id")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .maybeSingle();
     if (postTargetErr) throw postTargetErr;
     if (!postTarget) return notFoundResponse("User not found");
@@ -120,6 +120,7 @@ export async function POST(
       p_description: description,
       p_reference_id: null,
       p_reference_type: "admin_topup",
+      p_tenant_id: tenantId,
     });
 
     if (error) throw error;

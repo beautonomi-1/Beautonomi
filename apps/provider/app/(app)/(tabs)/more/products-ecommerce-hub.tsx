@@ -84,8 +84,11 @@ export default function ProductsEcommerceHubScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshMetrics(), refreshPendingOrders()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshMetrics(), refreshPendingOrders()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshMetrics, refreshPendingOrders]);
 
   if (loading && !data) {

@@ -236,6 +236,17 @@ export async function processBookingRefund(
         "processBookingRefund: finance ledger insert failed after wallet credit:",
         financeErr,
       );
+      // Wallet was credited but ledger is missing — flag the refund for manual reconciliation
+      await supabaseAdmin
+        .from("booking_refunds")
+        .update({ notes: `Wallet credited but finance ledger write failed: ${financeErr.message}. Requires reconciliation.` })
+        .eq("id", (refundRecord as { id: string }).id);
+      return {
+        success: false,
+        refundId: (refundRecord as { id: string })?.id,
+        amount: refundAmount,
+        error: "Refund credited to wallet but finance ledger write failed. Flagged for reconciliation.",
+      };
     }
 
     return {

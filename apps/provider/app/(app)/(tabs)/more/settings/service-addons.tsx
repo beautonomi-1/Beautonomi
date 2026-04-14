@@ -19,6 +19,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -91,15 +92,18 @@ export default function ServiceAddonsScreen() {
   const [editingAddon, setEditingAddon] = useState<ServiceAddon | null>(null);
   const [form, setForm] = useState<AddonForm>(EMPTY_FORM);
 
-  const { data: addons, loading, refresh } = useApi<ServiceAddon[]>("/api/provider/addons");
+  const { data: addons, loading, error: loadError, refresh } = useApi<ServiceAddon[]>("/api/provider/addons");
   const { execute: createAddon, loading: creating } = useApiPost<object, ServiceAddon>("/api/provider/addons");
   const { execute: updateAddon, loading: updating } = useApiMutation<ServiceAddon>("put");
   const { execute: deleteAddon } = useApiMutation<void>("delete");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -207,8 +211,10 @@ export default function ServiceAddonsScreen() {
         <FilterChipGroup options={TYPE_FILTERS} selected={typeFilter} onSelect={setTypeFilter} />
       </View>
 
-      {loading && !addons ? (
+      {loading && !addons && !loadError ? (
         <SkeletonList rows={5} />
+      ) : loadError && !addons ? (
+        <ErrorState message={loadError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="add-circle-outline"

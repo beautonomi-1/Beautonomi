@@ -45,7 +45,7 @@ export async function POST(
       .from("users")
       .select("id, email, full_name, phone, role")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .single();
     if (userErr) throw userErr;
     if (!targetUser) {

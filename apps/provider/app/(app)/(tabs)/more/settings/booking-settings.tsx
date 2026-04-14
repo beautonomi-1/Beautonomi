@@ -266,6 +266,14 @@ export default function BookingSettingsScreen() {
     <ScreenContainer>
       <ScreenHeader title="Booking Settings" showBack />
 
+      {(apptError || onlineError) && (apptSettings || onlineSettings) && (
+        <View style={twStyle("mb-3 rounded-xl bg-amber-50 border border-amber-200 p-3")}>
+          <Text style={twStyle("text-xs text-amber-800")}>
+            Some settings could not be loaded. The values shown may be defaults. Pull down to retry.
+          </Text>
+        </View>
+      )}
+
       {/* ─── Online Booking ─── */}
       <SectionHeader title="Online Booking" />
       <View style={twStyle("rounded-2xl border border-gray-100 bg-white px-4")}>

@@ -132,8 +132,11 @@ export default function CatalogueScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshCategories()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshCategories()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshCategories]);
 
   // --- Category CRUD ---
@@ -289,14 +292,19 @@ export default function CatalogueScreen() {
         {
           text: "Confirm",
           onPress: async () => {
+            const failures: string[] = [];
             for (const id of ids) {
-              await toggleService(`/api/provider/services/${id}`, {
+              const { error: err } = await toggleService(`/api/provider/services/${id}`, {
                 is_active: activate,
               });
+              if (err) failures.push(id);
             }
             setSelectedIds(new Set());
             setBulkMode(false);
             refresh();
+            if (failures.length > 0) {
+              Alert.alert("Partial failure", `${failures.length} service(s) could not be updated. Please try again.`);
+            }
           },
         },
       ],

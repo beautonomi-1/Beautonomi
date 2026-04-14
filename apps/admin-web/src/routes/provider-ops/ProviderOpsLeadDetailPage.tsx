@@ -19,8 +19,9 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Calendar, Tag, User,
   Trash2, UserPlus, ExternalLink, StickyNote, TrendingUp,
   MessageSquare, Globe, Building2, FileText, Clock,
-  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check,
+  ChevronRight, ArrowRightCircle, Send, Link2, Copy, Check, MessageCircle,
 } from "lucide-react";
+import { LeadWhatsAppPanel } from "@/components/whatsapp/LeadWhatsAppPanel";
 
 const STAGES = ["new", "contacted", "qualified", "proposal_sent", "negotiating", "won", "lost", "nurture", "matched"] as const;
 const STAGE_LABELS: Record<string, string> = {
@@ -79,6 +80,11 @@ export function ProviderOpsLeadDetailPage() {
   const [inviteChannel, setInviteChannel] = useState<"email" | "sms">("email");
   const [inviteResult, setInviteResult] = useState<{ invite_link: string; sent_to: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editDraft, setEditDraft] = useState({
+    business_name: "", contact_person_name: "", email: "", phone_e164: "",
+    suggested_location_text: "", country: "", description: "", notes: "",
+  });
 
   const q = useQuery({
     queryKey: adminQueryKeys.providerOps.leadDetail(id!),
@@ -180,6 +186,48 @@ export function ProviderOpsLeadDetailPage() {
     onError: (e: Error) => adminToast.error(`Failed to send invite: ${e.message}`),
   });
 
+  const updateLeadMut = useMutation({
+    mutationFn: (fields: Record<string, unknown>) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}`, fields),
+    onSuccess: () => {
+      setIsEditing(false);
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadDetail(id!) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.providerOps.leadActivities(id!) });
+      adminToast.success("Lead updated");
+    },
+    onError: (e: Error) => adminToast.error(`Update failed: ${e.message}`),
+  });
+
+  function startEditing() {
+    const d = q.data as Record<string, unknown> | undefined;
+    if (!d) return;
+    setEditDraft({
+      business_name: String(d.business_name ?? ""),
+      contact_person_name: String(d.contact_person_name ?? ""),
+      email: String(d.email ?? ""),
+      phone_e164: String(d.phone_e164 ?? ""),
+      suggested_location_text: String(d.suggested_location_text ?? ""),
+      country: String(d.country ?? ""),
+      description: String(d.description ?? ""),
+      notes: String(d.notes ?? ""),
+    });
+    setIsEditing(true);
+  }
+
+  function saveEdits() {
+    const d = q.data as Record<string, unknown> | undefined;
+    if (!d) return;
+    const updates: Record<string, unknown> = {};
+    const fields = ["business_name", "contact_person_name", "email", "phone_e164", "suggested_location_text", "country", "description", "notes"] as const;
+    for (const f of fields) {
+      if (editDraft[f] !== String(d[f] ?? "")) {
+        updates[f] = editDraft[f] || null;
+      }
+    }
+    if (Object.keys(updates).length === 0) { setIsEditing(false); return; }
+    updateLeadMut.mutate(updates);
+  }
+
   const handleCopyLink = async (link: string) => {
     try {
       await navigator.clipboard.writeText(link);
@@ -236,6 +284,15 @@ export function ProviderOpsLeadDetailPage() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={startEditing}
+              className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-blue-300 bg-white px-4 py-2.5 text-sm font-medium text-blue-700 touch-manipulation hover:bg-blue-50 transition-colors"
+            >
+              <FileText className="h-4 w-4" />Edit
+            </button>
+          )}
           {Boolean(lead.phone_e164) ? (
             <a href={`tel:${String(lead.phone_e164)}`} className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 touch-manipulation hover:bg-gray-50 transition-colors">
               <Phone className="h-4 w-4" />Call
@@ -246,6 +303,19 @@ export function ProviderOpsLeadDetailPage() {
               <Mail className="h-4 w-4" />Email
             </a>
           ) : null}
+          <button
+            type="button"
+            onClick={() => document.getElementById("whatsapp-panel")?.scrollIntoView({ behavior: "smooth" })}
+            className={cn(
+              "inline-flex min-h-11 items-center gap-1.5 rounded-xl border px-4 py-2.5 text-sm font-medium touch-manipulation transition-colors",
+              lead.phone_e164
+                ? "border-green-300 bg-white text-green-700 hover:bg-green-50"
+                : "opacity-40 pointer-events-none border-gray-200 bg-white text-gray-400",
+            )}
+            title={lead.phone_e164 ? "Send WhatsApp" : "No phone number"}
+          >
+            <MessageCircle className="h-4 w-4" />WhatsApp
+          </button>
           <button
             type="button"
             onClick={() => setShowAssignForm(!showAssignForm)}
@@ -350,17 +420,64 @@ export function ProviderOpsLeadDetailPage() {
             <h3 className="mb-4 flex items-center gap-2 text-sm font-semibold text-gray-800">
               <User className="h-4 w-4 text-gray-500" />Contact Information
             </h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <DetailField icon={User} label="Contact Person" value={lead.contact_person_name} />
-              <DetailField icon={Building2} label="Business Name" value={lead.business_name} />
-              <DetailField icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${String(lead.email)}` : undefined} />
-              <DetailField icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${String(lead.phone_e164)}` : undefined} />
-              <DetailField icon={MapPin} label="Location" value={lead.suggested_location_text} />
-              <DetailField icon={Globe} label="Country" value={lead.country} />
-              <DetailField icon={ExternalLink} label="Source" value={lead.source} />
-              <DetailField icon={Calendar} label="Created" value={lead.created_at ? new Date(String(lead.created_at)).toLocaleString() : null} />
-              {Boolean(lead.assigned_to) ? <DetailField icon={UserPlus} label="Assigned To" value={lead.assigned_to} /> : null}
-            </div>
+            {isEditing ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Contact Person</span>
+                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.contact_person_name} onChange={(e) => setEditDraft((d) => ({ ...d, contact_person_name: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Business Name</span>
+                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.business_name} onChange={(e) => setEditDraft((d) => ({ ...d, business_name: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Email</span>
+                    <input type="email" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.email} onChange={(e) => setEditDraft((d) => ({ ...d, email: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Phone</span>
+                    <input type="tel" className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.phone_e164} onChange={(e) => setEditDraft((d) => ({ ...d, phone_e164: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Location</span>
+                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.suggested_location_text} onChange={(e) => setEditDraft((d) => ({ ...d, suggested_location_text: e.target.value }))} />
+                  </label>
+                  <label className="block text-sm">
+                    <span className="text-xs font-medium text-gray-500">Country</span>
+                    <input className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.country} onChange={(e) => setEditDraft((d) => ({ ...d, country: e.target.value }))} />
+                  </label>
+                </div>
+                <label className="block text-sm">
+                  <span className="text-xs font-medium text-gray-500">Description</span>
+                  <textarea rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.description} onChange={(e) => setEditDraft((d) => ({ ...d, description: e.target.value }))} />
+                </label>
+                <label className="block text-sm">
+                  <span className="text-xs font-medium text-gray-500">Notes</span>
+                  <textarea rows={2} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-gray-500 focus:outline-none" value={editDraft.notes} onChange={(e) => setEditDraft((d) => ({ ...d, notes: e.target.value }))} />
+                </label>
+                <div className="flex gap-2 pt-1">
+                  <button type="button" disabled={updateLeadMut.isPending} onClick={saveEdits} className="rounded-xl bg-gray-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50 transition-colors">
+                    {updateLeadMut.isPending ? "Saving…" : "Save Changes"}
+                  </button>
+                  <button type="button" onClick={() => setIsEditing(false)} className="rounded-xl border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <DetailField icon={User} label="Contact Person" value={lead.contact_person_name} />
+                <DetailField icon={Building2} label="Business Name" value={lead.business_name} />
+                <DetailField icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${String(lead.email)}` : undefined} />
+                <DetailField icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${String(lead.phone_e164)}` : undefined} />
+                <DetailField icon={MapPin} label="Location" value={lead.suggested_location_text} />
+                <DetailField icon={Globe} label="Country" value={lead.country} />
+                <DetailField icon={ExternalLink} label="Source" value={lead.source} />
+                <DetailField icon={Calendar} label="Created" value={lead.created_at ? new Date(String(lead.created_at)).toLocaleString() : null} />
+                {Boolean(lead.assigned_to) ? <DetailField icon={UserPlus} label="Assigned To" value={lead.assigned_to} /> : null}
+              </div>
+            )}
           </AdminPanel>
 
           {/* Onboarding data preview */}
@@ -526,6 +643,9 @@ export function ProviderOpsLeadDetailPage() {
               </div>
             </AdminPanel>
           )}
+
+          {/* WhatsApp */}
+          <LeadWhatsAppPanel lead={lead as any} />
 
           {/* Stage change */}
           <AdminPanel>

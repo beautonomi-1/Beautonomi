@@ -30,8 +30,11 @@ export function SettingsBusinessContent() {
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && !data) {

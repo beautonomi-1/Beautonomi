@@ -17,6 +17,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { StatCard } from "@/components/ui/StatCard";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { twStyle } from "@/lib/twStyle";
@@ -101,7 +102,7 @@ export default function InvoicesScreen() {
   const [selected, setSelected] = useState<Invoice | null>(null);
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
-  const { data: invData, loading, refresh } = useApi<InvoicesResponse>(
+  const { data: invData, loading, error: loadError, refresh } = useApi<InvoicesResponse>(
     `/api/provider/invoices?page=${page}&limit=25${statusParam}`
   );
   const invoices = useMemo(() => invData?.invoices ?? [], [invData?.invoices]);
@@ -110,8 +111,11 @@ export default function InvoicesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -166,13 +170,25 @@ export default function InvoicesScreen() {
     ]);
   }
 
-  async function handleSendInvoice(inv: Invoice) {
-    const { error } = await sendInvoice(`/api/provider/invoices/${inv.id}/send`, {});
-    if (error) Alert.alert("Error", error);
-    else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Sent", `Invoice ${inv.invoice_number} sent`);
-    }
+  function handleSendInvoice(inv: Invoice) {
+    Alert.alert(
+      "Send invoice?",
+      `Send invoice ${inv.invoice_number} to the client via email?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Send",
+          onPress: async () => {
+            const { error } = await sendInvoice(`/api/provider/invoices/${inv.id}/send`, {});
+            if (error) Alert.alert("Error", error);
+            else {
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              Alert.alert("Sent", `Invoice ${inv.invoice_number} sent`);
+            }
+          },
+        },
+      ]
+    );
   }
 
   async function handleExport() {
@@ -245,7 +261,9 @@ export default function InvoicesScreen() {
         <FilterChipGroup options={PERIOD_FILTERS} selected={period} onSelect={setPeriod} />
       </View>
 
-      {loading && !invoices.length ? (
+      {loadError && !invData ? (
+        <ErrorState message={loadError} onRetry={refresh} />
+      ) : loading && !invData && !loadError ? (
         <SkeletonList rows={5} />
       ) : filtered.length === 0 ? (
         <EmptyState

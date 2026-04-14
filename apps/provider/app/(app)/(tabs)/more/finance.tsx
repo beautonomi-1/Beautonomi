@@ -93,8 +93,22 @@ function formatType(type: string): string {
     membership_sale: "Membership",
     gift_card_sale: "Gift card",
     walk_in_additional_charge: "Walk-in add-on",
+    payout: "Payout",
+    service_fee: "Service fee",
+    platform_fee: "Platform fee",
+    tax: "Tax",
+    additional_charge: "Additional charge",
+    additional_charge_payment: "Add. charge payment",
+    cancellation_fee: "Cancellation fee",
+    deposit: "Deposit",
+    booking_payment: "Booking payment",
+    wallet_topup: "Wallet top-up",
+    wallet_debit: "Wallet debit",
+    commission: "Commission",
+    product_sale: "Product sale",
+    product_refund: "Product refund",
   };
-  return map[type] || type;
+  return map[type] || type.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 const RANGE_OPTIONS: { value: "week" | "month" | "year"; label: string }[] = [
@@ -115,8 +129,11 @@ export function FinanceOverviewContent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && !data) {
@@ -217,7 +234,7 @@ export function FinanceOverviewContent() {
                   <Text style={twStyle("mt-0.5 text-base font-semibold text-indigo-900")}>
                     {formatCurrency(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0, currency)}
                   </Text>
-                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Incl. tax &amp; shipping</Text>
+                  <Text style={twStyle("mt-0.5 text-[10px] text-indigo-500")}>Incl. tax & shipping</Text>
                 </View>
               )}
               {(earnings.tips_this_period ?? earnings.tips_total ?? 0) > 0 && (
@@ -312,7 +329,7 @@ export function FinanceOverviewContent() {
                   style={twStyle(`text-sm font-semibold ${tx.net >= 0 ? "text-green-600" : "text-red-600"}`)}
                 >
                   {tx.net >= 0 ? "" : "−"}
-                  {formatCurrency(Math.abs(tx.net), currency)}
+                  {formatCurrency(Math.abs(tx.net), tx.currency || currency)}
                 </Text>
               </View>
             ))}

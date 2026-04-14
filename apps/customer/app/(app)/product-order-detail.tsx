@@ -29,13 +29,16 @@ function isWithinReturnWindow(order: ProductOrder): boolean {
   return days <= RETURN_WINDOW_DAYS;
 }
 
-const STATUS_TIMELINE = [
-  { key: "pending", label: "Order Placed", icon: "receipt-outline" },
-  { key: "confirmed", label: "Confirmed", icon: "checkmark-circle-outline" },
-  { key: "processing", label: "Processing", icon: "construct-outline" },
-  { key: "shipped", label: "Shipped / Ready", icon: "airplane-outline" },
-  { key: "delivered", label: "Delivered / Collected", icon: "checkmark-done-circle-outline" },
-];
+function getStatusTimeline(fulfillmentType?: string) {
+  const isCollection = fulfillmentType === "collection" || fulfillmentType === "pickup";
+  return [
+    { key: "pending", label: "Order Placed", icon: "receipt-outline" },
+    { key: "confirmed", label: "Confirmed", icon: "checkmark-circle-outline" },
+    { key: "processing", label: "Processing", icon: "construct-outline" },
+    { key: isCollection ? "ready_for_collection" : "shipped", label: isCollection ? "Ready for Collection" : "Shipped", icon: isCollection ? "storefront-outline" : "airplane-outline" },
+    { key: "delivered", label: isCollection ? "Collected" : "Delivered", icon: "checkmark-done-circle-outline" },
+  ];
+}
 
 function formatDate(date: string | null) {
   if (!date) return null;
@@ -50,9 +53,10 @@ function formatDate(date: string | null) {
   });
 }
 
-function getTimelineIndex(status: string): number {
+function getTimelineIndex(status: string, fulfillmentType?: string): number {
   if (status === "cancelled" || status === "refunded") return -1;
-  const idx = STATUS_TIMELINE.findIndex((s) => s.key === status);
+  const timeline = getStatusTimeline(fulfillmentType);
+  const idx = timeline.findIndex((s) => s.key === status);
   if (status === "ready_for_collection") return 3;
   return idx;
 }
@@ -68,7 +72,11 @@ export default function ProductOrderDetailScreen() {
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      setErrorMsg("Order ID is missing");
+      return;
+    }
     (async () => {
       setLoading(true);
       setErrorMsg(null);
@@ -107,7 +115,8 @@ export default function ProductOrderDetailScreen() {
   }
 
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
-  const currentIdx = getTimelineIndex(order.status);
+  const statusTimeline = getStatusTimeline((order as { fulfillment_type?: string }).fulfillment_type);
+  const currentIdx = getTimelineIndex(order.status, (order as { fulfillment_type?: string }).fulfillment_type);
   const fb = getTenantDefaultCurrency();
   const cur = order.currency;
   const fmt = (amount: number) => formatMoney(amount, cur ?? fb);
@@ -170,11 +179,11 @@ export default function ProductOrderDetailScreen() {
               </View>
             </View>
           ) : (
-            STATUS_TIMELINE.map((step, i) => {
+            statusTimeline.map((step, i) => {
               const completed = i <= currentIdx;
               const isActive = i === currentIdx;
               return (
-                <View key={step.key} style={{ flexDirection: "row", marginBottom: i < STATUS_TIMELINE.length - 1 ? 0 : 0 }}>
+                <View key={step.key} style={{ flexDirection: "row", marginBottom: i < statusTimeline.length - 1 ? 0 : 0 }}>
                   <View style={{ alignItems: "center", width: 32 }}>
                     <View
                       style={{
@@ -192,7 +201,7 @@ export default function ProductOrderDetailScreen() {
                         color={completed ? "#fff" : "#9CA3AF"}
                       />
                     </View>
-                    {i < STATUS_TIMELINE.length - 1 && (
+                    {i < statusTimeline.length - 1 && (
                       <View
                         style={{
                           width: 2,
@@ -337,18 +346,18 @@ export default function ProductOrderDetailScreen() {
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal))}</Text>
+            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal ?? 0))}</Text>
           </View>
-          {Number(order.delivery_fee) > 0 && (
+          {Number(order.delivery_fee ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee))}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee ?? 0))}</Text>
             </View>
           )}
-          {Number(order.tax_amount) > 0 && (
+          {Number(order.tax_amount ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount))}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount ?? 0))}</Text>
             </View>
           )}
           <View
@@ -363,7 +372,7 @@ export default function ProductOrderDetailScreen() {
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
-              {fmt(Number(order.total_amount))}
+              {fmt(Number(order.total_amount ?? 0))}
             </Text>
           </View>
         </View>

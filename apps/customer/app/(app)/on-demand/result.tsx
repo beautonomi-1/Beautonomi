@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -21,7 +21,7 @@ export default function OnDemandResultScreen() {
   const onDemandConfig = useModuleConfig("on_demand");
   const uiCopy = (onDemandConfig.ui_copy ?? {}) as Record<string, string>;
 
-  const { data: request } = useApi<OnDemandRequest>(
+  const { data: request, loading: requestLoading, error: requestError } = useApi<OnDemandRequest>(
     requestId ? `/api/me/on-demand/requests/${requestId}` : "",
     { enabled: !!requestId }
   );
@@ -70,6 +70,14 @@ export default function OnDemandResultScreen() {
         </View>
 
         <View>
+          {isAccepted && requestLoading && !bookingId && (
+            <ActivityIndicator size="small" color={Colors.primary} style={{ marginBottom: 16 }} />
+          )}
+          {isAccepted && requestError && !bookingId && (
+            <Text style={{ color: Colors.gray[500], textAlign: "center", marginBottom: 16, fontSize: 13 }}>
+              Could not load booking details. Check your bookings list.
+            </Text>
+          )}
           {isAccepted && bookingId && (
             <TouchableOpacity
               onPress={() => router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } } as never)}

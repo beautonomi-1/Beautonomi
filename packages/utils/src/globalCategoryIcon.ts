@@ -2,7 +2,7 @@
  * Bump when global category image assets change so browsers / native Image caches refetch.
  * Web can override per deploy via `NEXT_PUBLIC_CATEGORY_ICON_CACHE_REVISION` (pass into `withGlobalCategoryIconCacheBust`).
  */
-export const GLOBAL_CATEGORY_ICON_CACHE_REVISION = "20260329";
+export const GLOBAL_CATEGORY_ICON_CACHE_REVISION = "20260414b";
 
 /** Append cache-bust query param (`cic_rev`) for category artwork URLs. */
 export function withGlobalCategoryIconCacheBust(href: string, revision?: string): string {

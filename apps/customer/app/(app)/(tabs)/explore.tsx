@@ -10,6 +10,7 @@ import {
   Animated,
   Keyboard,
   Platform,
+  Alert,
 } from "react-native";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -382,11 +383,7 @@ function ExploreSearchBar({
         <TouchableOpacity onPress={onClear} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="close-circle" size={18} color="#9CA3AF" />
         </TouchableOpacity>
-      ) : (
-        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="camera-outline" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -537,14 +534,15 @@ export default function ExploreScreen() {
       const wasLiked = Boolean(post.is_liked);
       setPostLiked(post.id, !wasLiked, wasLiked ? -1 : 1);
       try {
-        if (wasLiked) {
-          await api.delete(`/api/explore/events?post_id=${post.id}&event_type=like`);
-        } else {
-          await api.post("/api/explore/events", {
-            post_id: post.id,
-            event_type: "like",
-            idempotency_key: `like-${post.id}-${user.id}-${Date.now()}`,
-          });
+        const res = wasLiked
+          ? await api.delete(`/api/explore/events?post_id=${post.id}&event_type=like`)
+          : await api.post("/api/explore/events", {
+              post_id: post.id,
+              event_type: "like",
+              idempotency_key: `like-${post.id}-${user.id}-${Date.now()}`,
+            });
+        if (res.error) {
+          setPostLiked(post.id, wasLiked, wasLiked ? 1 : -1);
         }
       } catch {
         setPostLiked(post.id, wasLiked, wasLiked ? 1 : -1);
@@ -560,10 +558,11 @@ export default function ExploreScreen() {
       const previous = post.is_saved;
       setPostSaved(post.id, !previous);
       try {
-        if (previous) {
-          await api.delete(`/api/explore/saved?post_id=${post.id}`);
-        } else {
-          await api.post("/api/explore/saved", { post_id: post.id });
+        const res = previous
+          ? await api.delete(`/api/explore/saved?post_id=${post.id}`)
+          : await api.post("/api/explore/saved", { post_id: post.id });
+        if (res.error) {
+          setPostSaved(post.id, !!previous);
         }
       } catch {
         setPostSaved(post.id, !!previous);
@@ -590,10 +589,16 @@ export default function ExploreScreen() {
           const { status } = await requestForegroundPermissionsAsync();
           if (status !== "granted") {
             const res = await api.get<{ data?: { latitude?: number; longitude?: number } }>("/api/public/ip-geolocation");
+            if (res.error) {
+              Alert.alert("Location unavailable", "Could not determine your location. Please enable location services or try again.");
+              return;
+            }
             const d = (res as any)?.data ?? res?.data;
             if (d?.latitude != null && d?.longitude != null) {
               setActiveCategory("nearby");
               triggerFilterUpdate("nearby", searchQuery, { lat: Number(d.latitude), lng: Number(d.longitude) });
+            } else {
+              Alert.alert("Location unavailable", "Could not determine your location. Please enable location services in your device settings.");
             }
           } else {
             const loc = await getCurrentPositionAsync({});

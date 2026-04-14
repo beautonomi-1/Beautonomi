@@ -1,15 +1,17 @@
+import { useState } from "react";
 import { View, ActivityIndicator, StyleSheet, TouchableOpacity, Text } from "react-native";
 import { WebView } from "react-native-webview";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
-import { APP_URL } from "@/config/public-env";
+import { getBackendUrl } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function HelpScreen() {
   useScreenTracking("Help");
   const router = useRouter();
-  const base = APP_URL.replace(/\/$/, "");
+  const base = getBackendUrl().replace(/\/$/, "");
+  const [webError, setWebError] = useState<string | null>(null);
 
   const openInAppBrowser = (path: string, title: string) => {
     router.push({
@@ -60,16 +62,33 @@ export default function HelpScreen() {
           <Text style={styles.quickLinkText}>Terms</Text>
         </TouchableOpacity>
       </View>
-      <WebView
-        source={{ uri: `${APP_URL}/help` }}
-        style={styles.webview}
-        startInLoadingState
-        renderLoading={() => (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+      {base ? (
+        webError ? (
+          <View style={styles.webviewError}>
+            <Text style={styles.webviewErrorText}>{webError}</Text>
+            <TouchableOpacity onPress={() => setWebError(null)} accessibilityRole="button">
+              <Text style={styles.webviewRetry}>Retry</Text>
+            </TouchableOpacity>
           </View>
-        )}
-      />
+        ) : (
+          <WebView
+            source={{ uri: `${base}/help` }}
+            style={styles.webview}
+            startInLoadingState
+            onError={(e) => setWebError(e.nativeEvent.description || "Could not load help")}
+            onHttpError={(e) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
+            renderLoading={() => (
+              <View style={styles.loading}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            )}
+          />
+        )
+      ) : (
+        <View style={styles.webviewError}>
+          <Text style={styles.webviewErrorText}>App URL is not configured.</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -120,4 +139,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
+  webviewError: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  webviewErrorText: { color: Colors.gray[600], textAlign: "center" },
+  webviewRetry: { marginTop: 16, color: Colors.primary, fontWeight: "600", fontSize: 16 },
 });

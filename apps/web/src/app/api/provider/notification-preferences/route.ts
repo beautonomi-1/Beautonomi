@@ -84,6 +84,7 @@ export async function GET(request: NextRequest) {
       waitlist_notifications: { email: true, sms: false, push: true },
       system_updates: { email: true, sms: false, push: false },
       marketing: { email: true, sms: false, push: false },
+      booking_alert_sound: true,
       unsubscribe_marketing: false,
     };
 
@@ -175,6 +176,7 @@ export async function PATCH(request: NextRequest) {
       waitlist_notifications: { email: true, sms: false, push: true },
       system_updates: { email: true, sms: false, push: false },
       marketing: { email: true, sms: false, push: false },
+      booking_alert_sound: true,
       unsubscribe_marketing: false,
     };
 

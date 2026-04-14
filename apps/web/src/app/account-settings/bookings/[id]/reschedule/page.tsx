@@ -20,6 +20,7 @@ export default function RescheduleBookingPage() {
   const bookingId = params.id as string;
 
   const [booking, setBooking] = useState<Booking | null>(null);
+  const [providerSlug, setProviderSlug] = useState<string | undefined>();
   const [selectedDateTime, setSelectedDateTime] = useState<Date | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -32,11 +33,14 @@ export default function RescheduleBookingPage() {
         setError(null);
 
         const response = await fetcher.get<{
-          data: Booking;
+          data: Booking & { provider?: { slug?: string } };
           error: null;
         }>(`/api/me/bookings/${bookingId}`, { cache: "no-store" });
 
         setBooking(response.data);
+        if (response.data.provider?.slug) {
+          setProviderSlug(response.data.provider.slug);
+        }
         if (response.data.scheduled_at) {
           setSelectedDateTime(new Date(response.data.scheduled_at));
         }
@@ -167,6 +171,29 @@ export default function RescheduleBookingPage() {
         <h2 className="text-lg md:text-xl font-semibold mb-4 text-gray-900">Select New Date & Time</h2>
         <AvailabilityCalendar
           selectedProfessional={booking.services?.[0]?.staff_id || undefined}
+          providerSlug={providerSlug}
+          serviceId={booking.services?.[0]?.offering_id || undefined}
+          serviceIds={
+            booking.services && booking.services.length > 0
+              ? booking.services.map((s: any) => s.offering_id).filter(Boolean).join(",")
+              : undefined
+          }
+          staffId={booking.services?.[0]?.staff_id || undefined}
+          locationId={(booking as any).location_id || undefined}
+          durationMinutes={
+            booking.services?.reduce(
+              (sum: number, s: any) => sum + (s.duration_minutes || 60),
+              0
+            ) || 60
+          }
+          bufferMinutes={
+            booking.services?.reduce(
+              (max: number, s: any) => Math.max(max, s.buffer_minutes || 0),
+              0
+            ) || 0
+          }
+          locationType={(booking as any).location_type || undefined}
+          excludeBookingId={bookingId}
           onDateTimeSelection={(dateTime) => {
             setSelectedDateTime(dateTime);
           }}

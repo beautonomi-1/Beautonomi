@@ -77,6 +77,16 @@ export async function POST(
       );
     }
 
+    const nonReschedulableStatuses = ["completed", "cancelled", "no_show"];
+    if (nonReschedulableStatuses.includes(booking.status)) {
+      return handleApiError(
+        new Error("Cannot reschedule a booking that is " + booking.status),
+        `Cannot reschedule a ${booking.status} booking`,
+        "INVALID_STATUS",
+        400
+      );
+    }
+
     // Check if booking is part of a group booking
     const { data: participant } = await supabase
       .from('booking_participants')
@@ -144,8 +154,8 @@ export async function POST(
       );
     }
 
-    const firstService = bookingServices[0];
-    const staffId = firstService.staff_id;
+    const allStaffIds = [...new Set(bookingServices.map((bs: { staff_id?: string }) => bs.staff_id).filter((sid): sid is string => !!sid))];
+    const staffId = allStaffIds[0];
 
     if (!staffId) {
       return handleApiError(
@@ -175,17 +185,17 @@ export async function POST(
       newDate,
       booking.provider_id,
       {
+        excludeBookingId: bookingId,
         publicCalendarParity: {
           providerId: booking.provider_id,
           date: newDate,
           locationId: undefined,
           slotStaffId: staffId,
-          staffIdsForTimeOff: [staffId],
+          staffIdsForTimeOff: allStaffIds,
         },
       }
     );
 
-    // Check if new slot is available
     const slots = calculateAvailableSlots(
       constraints,
       totalDuration,
@@ -196,8 +206,12 @@ export async function POST(
       }
     );
 
-    const requestedTime = newDatetime.toTimeString().substring(0, 5); // HH:MM
-    const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const requestedTime = `${pad2(newDatetime.getUTCHours())}:${pad2(newDatetime.getUTCMinutes())}`;
+    const offsetMs = newDatetime.getTimezoneOffset() * 60000;
+    const localDt = new Date(newDatetime.getTime() - offsetMs);
+    const requestedTimeLocal = `${pad2(localDt.getUTCHours())}:${pad2(localDt.getUTCMinutes())}`;
+    const isAvailable = slots.some((slot) => (slot.time === requestedTime || slot.time === requestedTimeLocal) && slot.available);
 
     if (!isAvailable) {
       return handleApiError(

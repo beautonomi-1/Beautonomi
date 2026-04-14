@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
+import { GET as getReceiptJson } from "../route";
 
 type ReceiptPayload = {
   receipt?: {
@@ -48,16 +49,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = await params;
-    const upstreamUrl = new URL(`/api/bookings/${id}/receipt`, request.url);
-    const upstream = await fetch(upstreamUrl.toString(), {
-      method: "GET",
-      headers: {
-        cookie: request.headers.get("cookie") ?? "",
-        authorization: request.headers.get("authorization") ?? "",
-      },
-      cache: "no-store",
-    });
+    const resolvedParams = await params;
+    const id = resolvedParams.id;
+
+    // Call the JSON receipt handler directly (same process) to avoid
+    // internal HTTP fetch issues with auth/cookie forwarding in production.
+    const upstream = await getReceiptJson(request, { params: Promise.resolve(resolvedParams) });
 
     if (!upstream.ok) {
       const text = await upstream.text();

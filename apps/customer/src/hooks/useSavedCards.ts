@@ -26,6 +26,10 @@ export function useSavedCards(enabled = true): UseSavedCardsReturn {
     setError(null);
     try {
       const res = await api.get<SavedPaymentMethod[] | { data: SavedPaymentMethod[] }>("/api/me/payment-methods");
+      if (res.error) {
+        setError((res.error as any)?.message || "Failed to load payment methods");
+        return;
+      }
       const raw = res.data;
       const list: SavedPaymentMethod[] = Array.isArray(raw)
         ? raw

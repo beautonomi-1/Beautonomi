@@ -36,6 +36,7 @@ export default function OnDemandWaitingScreen() {
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hasNavigatedRef = useRef(false);
 
   const load = async () => {
     if (!requestId) return;
@@ -108,7 +109,12 @@ export default function OnDemandWaitingScreen() {
     const tick = () => {
       const now = new Date();
       const exp = new Date(request.expires_at);
-      setSecondsLeft(Math.max(0, Math.ceil((exp.getTime() - now.getTime()) / 1000)));
+      const ms = exp.getTime() - now.getTime();
+      if (!Number.isFinite(ms)) {
+        setSecondsLeft(0);
+        return;
+      }
+      setSecondsLeft(Math.max(0, Math.ceil(ms / 1000)));
     };
     tick();
     const interval = setInterval(tick, 1000);
@@ -116,13 +122,14 @@ export default function OnDemandWaitingScreen() {
   }, [request?.expires_at, request?.status]);
 
   useEffect(() => {
-    if (!request) return;
-    // Optimistic expiry: when timer hits 0, treat as expired (no dependency on cron)
+    if (!request || hasNavigatedRef.current) return;
     if (request.status === "requested" && secondsLeft !== null && secondsLeft <= 0) {
+      hasNavigatedRef.current = true;
       router.replace({ pathname: "/(app)/on-demand/result", params: { status: "expired", requestId } });
       return;
     }
     if (request.status === "accepted") {
+      hasNavigatedRef.current = true;
       playRingtone(onDemandConfig).catch(() => {});
       if (request.booking_id) {
         router.replace({ pathname: "/(app)/booking-detail", params: { id: request.booking_id } });
@@ -132,6 +139,7 @@ export default function OnDemandWaitingScreen() {
       return;
     }
     if (["declined", "cancelled", "expired"].includes(request.status)) {
+      hasNavigatedRef.current = true;
       router.replace({ pathname: "/(app)/on-demand/result", params: { status: request.status, requestId } });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- router/request for redirect only
@@ -158,6 +166,8 @@ export default function OnDemandWaitingScreen() {
                 if (updated) setRequest(updated);
                 else load();
               }
+            } catch {
+              Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
             } finally {
               setCancelling(false);
             }

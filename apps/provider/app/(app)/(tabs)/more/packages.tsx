@@ -19,6 +19,7 @@ import { FilterChipGroup } from "@/components/ui/FilterChip";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { formatCurrency } from "@/lib/format";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -75,9 +76,9 @@ export default function PackagesScreen() {
   const [editingPkg, setEditingPkg] = useState<ServicePackage | null>(null);
   const [showItemPicker, setShowItemPicker] = useState(false);
 
-  const { data: rawPackages, loading, refresh } = useApi<unknown>("/api/provider/packages");
-  const { data: services } = useApi<ServiceOption[]>("/api/provider/services");
-  const { data: rawProducts } = useApi<unknown>("/api/provider/products?limit=500");
+  const { data: rawPackages, loading, error: packagesLoadError, refresh: refreshPackages } = useApi<unknown>("/api/provider/packages");
+  const { data: services, error: servicesLoadError, refresh: refreshServices } = useApi<ServiceOption[]>("/api/provider/services");
+  const { data: rawProducts, error: productsLoadError, refresh: refreshProducts } = useApi<unknown>("/api/provider/products?limit=500");
   const { execute: createPackage, loading: creating } = useApiPost<any, any>("/api/provider/packages");
   const { execute: updatePkg, loading: updating } = useApiMutation("patch");
   const { execute: deletePkg } = useApiMutation("delete");
@@ -103,9 +104,12 @@ export default function PackagesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
-  }, [refresh]);
+    try {
+      await Promise.all([refreshPackages(), refreshServices(), refreshProducts()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshPackages, refreshServices, refreshProducts]);
 
   const filtered = useMemo(() => {
     let list = packages;
@@ -220,7 +224,7 @@ export default function PackagesScreen() {
     setShowForm(false);
     setEditingPkg(null);
     resetForm();
-    refresh();
+    refreshPackages();
   }
 
   function handleDelete(pkg: ServicePackage) {
@@ -232,7 +236,7 @@ export default function PackagesScreen() {
         onPress: async () => {
           const { error } = await deletePkg(`/api/provider/packages/${pkg.id}`);
           if (error) Alert.alert("Error", error);
-          else refresh();
+          else refreshPackages();
         },
       },
     ]);
@@ -269,7 +273,9 @@ export default function PackagesScreen() {
         />
       </View>
 
-      {loading && !packages.length ? (
+      {packagesLoadError && !rawPackages ? (
+        <ErrorState message={packagesLoadError} onRetry={refreshPackages} />
+      ) : loading && !rawPackages && !packagesLoadError ? (
         <SkeletonList rows={4} />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -468,42 +474,50 @@ export default function PackagesScreen() {
       <BottomSheet visible={showItemPicker} onClose={() => setShowItemPicker(false)} title="Add Item">
         <View>
           <Text style={{ marginBottom: 8, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Services</Text>
-          {(services ?? []).map((svc) => (
-            <TouchableOpacity
-              key={svc.id}
-              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
-              onPress={() => addServiceItem(svc)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                <Ionicons name="cut-outline" size={18} color="#6366f1" />
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{svc.title}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${svc.duration_minutes}min · ${getTenantDefaultCurrency()} ${svc.price}`}</Text>
+          {servicesLoadError && !services ? (
+            <ErrorState message={servicesLoadError} onRetry={refreshServices} />
+          ) : (
+            (services ?? []).map((svc) => (
+              <TouchableOpacity
+                key={svc.id}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
+                onPress={() => addServiceItem(svc)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <Ionicons name="cut-outline" size={18} color="#6366f1" />
+                  <View style={{ marginLeft: 10 }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{svc.title}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${svc.duration_minutes}min · ${getTenantDefaultCurrency()} ${svc.price}`}</Text>
+                  </View>
                 </View>
-              </View>
-              <Ionicons name="add-circle-outline" size={22} color="#6366f1" />
-            </TouchableOpacity>
-          ))}
+                <Ionicons name="add-circle-outline" size={22} color="#6366f1" />
+              </TouchableOpacity>
+            ))
+          )}
 
           <Text style={{ marginBottom: 8, marginTop: 16, fontSize: 12, fontWeight: "600", textTransform: "uppercase", color: Colors.gray[400] }}>Products</Text>
-          {products.map((prod) => (
-            <TouchableOpacity
-              key={prod.id}
-              style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
-              onPress={() => addProductItem(prod)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
-                <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
-                <View style={{ marginLeft: 10 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
-                  <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${getTenantDefaultCurrency()} ${prod.retail_price}`}</Text>
+          {productsLoadError && !rawProducts ? (
+            <ErrorState message={productsLoadError} onRetry={refreshProducts} />
+          ) : (
+            products.map((prod) => (
+              <TouchableOpacity
+                key={prod.id}
+                style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12 }}
+                onPress={() => addProductItem(prod)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
+                  <Ionicons name="cube-outline" size={18} color="#8b5cf6" />
+                  <View style={{ marginLeft: 10 }}>
+                    <Text style={{ fontSize: 14, color: Colors.gray[900] }}>{prod.name}</Text>
+                    <Text style={{ fontSize: 12, color: Colors.gray[500] }}>{`${getTenantDefaultCurrency()} ${prod.retail_price}`}</Text>
+                  </View>
                 </View>
-              </View>
-              <Ionicons name="add-circle-outline" size={22} color="#8b5cf6" />
-            </TouchableOpacity>
-          ))}
+                <Ionicons name="add-circle-outline" size={22} color="#8b5cf6" />
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </BottomSheet>
     </ScreenContainer>

@@ -32,7 +32,7 @@ export async function POST(
       .from("users")
       .select("id")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .maybeSingle();
     if (!targetUser) {
       const { notFoundResponse } = await import("@/lib/supabase/api-helpers");

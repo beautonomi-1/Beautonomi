@@ -72,6 +72,12 @@ export default function ReviewWriteScreen() {
         ]);
         if (cancelled) return;
 
+        if (bookingRes.error) {
+          Alert.alert("Error", "Could not load booking details for review.");
+          setLoadingContext(false);
+          return;
+        }
+
         const bookingRaw = bookingRes.data as Record<string, unknown> | null | undefined;
         const bookingRow =
           bookingRaw && typeof bookingRaw === "object" && "booking" in bookingRaw
@@ -139,7 +145,10 @@ export default function ReviewWriteScreen() {
       Alert.alert("Booking required", "Open this screen from a completed booking to leave a review.");
       return;
     }
-    if (rating < 1 || rating > 5) return;
+    if (rating < 1 || rating > 5) {
+      Alert.alert("Rating required", "Please select a star rating before submitting.");
+      return;
+    }
     setLoading(true);
     try {
       const normalizedServiceRatings = services.map((svc) => ({
@@ -202,6 +211,10 @@ export default function ReviewWriteScreen() {
         type: "image/jpeg",
       } as any);
       const res = await api.post<any>("/api/me/custom-requests/upload", formData as any);
+      if (res.error) {
+        Alert.alert("Error", "Failed to upload photo");
+        return;
+      }
       const urls = (res.data as any)?.urls ?? [];
       if (urls.length > 0) {
         setPhotos((p) => [...p, ...urls].slice(0, 4));

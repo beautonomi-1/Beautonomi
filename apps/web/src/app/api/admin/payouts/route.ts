@@ -71,7 +71,10 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching payouts:", error);
       return NextResponse.json({
         data: [],
-        error: null,
+        error: {
+          message: error.message || "Failed to fetch payouts",
+          code: "QUERY_ERROR",
+        },
         meta: {
           page,
           limit,
@@ -79,7 +82,7 @@ export async function GET(request: NextRequest) {
           has_more: false,
           negative_balance_providers: negativeBalanceProviders,
         },
-      });
+      }, { status: 500 });
     }
 
     if (!payouts || payouts.length === 0) {

@@ -77,7 +77,7 @@ export default function WalkInSaleScreen() {
   const [customerPhoneE164, setCustomerPhoneE164] = useState("");
   const [showYocoPayment, setShowYocoPayment] = useState(false);
 
-  const { data: productsData, loading: loadingProducts, refresh: refreshProducts } = useApi<ProductsResponse>(
+  const { data: productsData, loading: loadingProducts, error: productsError, refresh: refreshProducts } = useApi<ProductsResponse>(
     "/api/provider/products?limit=200"
   );
   const { data: salesData, loading: loadingSales, error, refresh } = useApi<SalesResponse>(
@@ -92,8 +92,11 @@ export default function WalkInSaleScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshProducts()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshProducts()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshProducts]);
 
   const addToCart = useCallback((p: Product) => {
@@ -120,11 +123,14 @@ export default function WalkInSaleScreen() {
       if (!item) return prev;
       const newQty = item.quantity + delta;
       if (newQty <= 0) return prev.filter((c) => c.product_id !== productId);
+      const product = products.find((p) => p.id === productId);
+      const stock = Number(product?.quantity ?? Infinity);
+      if (newQty > stock) return prev;
       return prev.map((c) =>
         c.product_id === productId ? { ...c, quantity: newQty } : c
       );
     });
-  }, []);
+  }, [products]);
 
   const cartTotal = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
 
@@ -148,6 +154,7 @@ export default function WalkInSaleScreen() {
         return;
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Sale complete", "The sale has been recorded.");
       setCreateOpen(false);
       setShowYocoPayment(false);
       setCart([]);
@@ -155,8 +162,9 @@ export default function WalkInSaleScreen() {
       setCustomerPhoneE164("");
       setPaymentMethod("cash");
       refresh();
+      refreshProducts();
     },
-    [cart, paymentMethod, customerName, customerPhoneE164, postSale, refresh]
+    [cart, paymentMethod, customerName, customerPhoneE164, postSale, refresh, refreshProducts]
   );
 
   const handleCompleteSale = useCallback(async () => {
@@ -274,6 +282,11 @@ export default function WalkInSaleScreen() {
         ) : (
           <>
             <Text style={{ marginBottom: 8, fontSize: 14, fontWeight: "500", color: Colors.gray[700] }}>Products</Text>
+            {productsError && !productsData && (
+              <View style={{ marginBottom: 12, backgroundColor: "#FEF2F2", borderRadius: 10, padding: 12 }}>
+                <Text style={{ fontSize: 13, color: "#B91C1C" }}>Could not load products. Pull down to retry.</Text>
+              </View>
+            )}
             <ScrollView style={{ marginBottom: 16, maxHeight: 192, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50] }} nestedScrollEnabled>
               {activeProducts.length === 0 ? (
                 <Text style={{ padding: 16, fontSize: 14, color: Colors.gray[500] }}>No active products. Add products first.</Text>

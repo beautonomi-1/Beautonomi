@@ -8,6 +8,7 @@ import {
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import { insertNotification } from "@/lib/notifications/insert-notification";
 
 export async function PATCH(
   request: NextRequest,
@@ -29,7 +30,7 @@ export async function PATCH(
       .from("users")
       .select("id")
       .eq("id", userId)
-      .eq("tenant_id", tenantId)
+      .eq("preferred_home_tenant_id", tenantId)
       .maybeSingle();
     if (!targetUser) {
       const { notFoundResponse } = await import("@/lib/supabase/api-helpers");
@@ -61,6 +62,17 @@ export async function PATCH(
       metadata: { assigned_to: assignedTo },
       ...extractRequestMeta(request),
     });
+
+    if (assignedTo) {
+      void insertNotification({
+        user_id: assignedTo,
+        type: "staff_assignment",
+        title: "Onboarding assignment",
+        message: `You have been assigned to assist a provider through onboarding.`,
+        action_url: `/admin/provider-ops/tracker/${userId}`,
+        data: { provider_user_id: userId, assigned_by: user.id },
+      });
+    }
 
     return successResponse({
       user_id: userId,

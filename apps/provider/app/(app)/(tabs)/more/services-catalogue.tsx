@@ -71,8 +71,11 @@ export default function ServicesCatalogueScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshCat(), refreshSvc()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshCat(), refreshSvc()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshCat, refreshSvc]);
 
   const handleAddService = useCallback(() => {

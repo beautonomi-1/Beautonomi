@@ -493,6 +493,59 @@ export function ProviderDetailPage() {
       </div>
 
       <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Signup &amp; onboarding details</h2>
+        <p className="mt-1 text-sm text-gray-600">
+          Information captured during provider sign-up — booking platform, team structure, and business model.
+        </p>
+        <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Team size</dt>
+            <dd className="mt-1 text-sm capitalize text-gray-900">{str(row.team_size) || "—"}</dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Business type</dt>
+            <dd className="mt-1 text-sm capitalize text-gray-900">{str(row.business_type) || "—"}</dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Previous software</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {str(row.previous_software) === "other"
+                ? str(row.previous_software_other) || "Other (unspecified)"
+                : str(row.previous_software) || "—"}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Yoco machine</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {str(row.yoco_machine) === "other"
+                ? str(row.yoco_machine_other) || "Other"
+                : str(row.yoco_machine) || "—"}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Payroll type</dt>
+            <dd className="mt-1 text-sm capitalize text-gray-900">{str(row.payroll_type) || "—"}</dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Locations</dt>
+            <dd className="mt-1 text-sm text-gray-900">
+              {locations.length > 0
+                ? `${locations.length} registered`
+                : "No locations"}
+            </dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Staff count</dt>
+            <dd className="mt-1 text-sm text-gray-900">{staffCount > 0 ? staffCount : "Solo / none"}</dd>
+          </div>
+          <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
+            <dt className="text-xs font-medium uppercase tracking-wide text-gray-500">Services listed</dt>
+            <dd className="mt-1 text-sm text-gray-900">{offeringsCount}</dd>
+          </div>
+        </dl>
+      </AdminPanel>
+
+      <AdminPanel>
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Payout accounts</h2>

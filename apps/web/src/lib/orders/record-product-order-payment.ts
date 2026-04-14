@@ -30,6 +30,11 @@ export async function recordProductOrderPayment(
     throw orderErr || new Error("Product order not found");
   }
 
+  // Order-level idempotency: if the order is already paid, don't create duplicate ledger entries
+  if ((order as any).payment_status === "paid") {
+    return { ok: true, duplicate: true };
+  }
+
   const financeTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: (order as any).tenant_id ?? null,
     provider_id: (order as any).provider_id ?? null,

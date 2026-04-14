@@ -4625,63 +4625,19 @@ export class ProviderApiClient implements ProviderApi {
 
   async printReceipt(appointmentId: string): Promise<Blob> {
     try {
-      const printData = await this.getAppointmentPrintData(appointmentId);
-      
-      // Create a simple PDF-like HTML receipt
-      const receiptHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Receipt - ${printData.appointment.ref_number}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-              .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-              .section { margin-bottom: 15px; }
-              .label { font-weight: bold; color: #666; font-size: 12px; }
-              .value { margin-top: 5px; font-size: 14px; }
-              .total { font-size: 18px; font-weight: bold; margin-top: 20px; padding-top: 10px; border-top: 2px solid #000; }
-              .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 12px; color: #666; text-align: center; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>${printData.business_name || "Business"}</h1>
-              <p>Receipt</p>
-            </div>
-            <div class="section">
-              <div class="label">Reference Number</div>
-              <div class="value">${printData.appointment.ref_number}</div>
-            </div>
-            <div class="section">
-              <div class="label">Date</div>
-              <div class="value">${new Date(printData.appointment.scheduled_date).toLocaleDateString()} at ${printData.appointment.scheduled_time}</div>
-            </div>
-            <div class="section">
-              <div class="label">Client</div>
-              <div class="value">${printData.appointment.client_name}</div>
-            </div>
-            <div class="section">
-              <div class="label">Service</div>
-              <div class="value">${printData.appointment.service_name}</div>
-            </div>
-            <div class="section">
-              <div class="label">Team Member</div>
-              <div class="value">${printData.appointment.team_member_name}</div>
-            </div>
-            <div class="total">
-              Total: R ${printData.appointment.price.toFixed(2)}
-            </div>
-            <div class="footer">
-              <p>Thank you for your business!</p>
-              <p>Printed on ${new Date().toLocaleString()}</p>
-            </div>
-          </body>
-        </html>
-      `;
-      
-      // Convert HTML to Blob
-      const blob = new Blob([receiptHtml], { type: "text/html" });
-      return blob;
+      const bookingId = appointmentId.includes("-svc-")
+        ? appointmentId.split("-svc-")[0]!
+        : appointmentId;
+
+      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch receipt PDF: ${response.status}`);
+      }
+
+      return await response.blob();
     } catch (error) {
       console.error("Failed to print receipt:", error);
       throw error;

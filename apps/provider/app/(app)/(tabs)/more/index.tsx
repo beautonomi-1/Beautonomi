@@ -134,8 +134,11 @@ export default function MoreScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refreshCompletion();
-    setRefreshing(false);
+    try {
+      await refreshCompletion();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshCompletion]);
 
   const toggleSection = useCallback((title: string) => {

@@ -379,3 +379,15 @@ export const ProviderOpsSettingsPage = lazy(() =>
 export const ProviderOpsLifecyclePage = lazy(() =>
   import("@/routes/provider-ops/ProviderOpsLifecyclePage").then((m) => ({ default: m.ProviderOpsLifecyclePage }))
 );
+export const WhatsAppSessionsPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppSessionsPage").then((m) => ({ default: m.WhatsAppSessionsPage }))
+);
+export const WhatsAppTemplatesPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppTemplatesPage").then((m) => ({ default: m.WhatsAppTemplatesPage }))
+);
+export const WhatsAppBatchDetailPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppBatchDetailPage").then((m) => ({ default: m.WhatsAppBatchDetailPage }))
+);
+export const CpIntegrationWasenderPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationWasenderPage").then((m) => ({ default: m.CpIntegrationWasenderPage }))
+);

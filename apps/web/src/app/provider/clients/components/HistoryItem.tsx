@@ -19,8 +19,6 @@ import {
 import { toast } from "sonner";
 import { Money } from "@/components/provider-portal/Money";
 import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
-import { generateInvoiceHTMLFromData as sharedGenerateInvoiceHTML } from "@/components/appointments/invoice-generator";
-
 interface ClientHistory {
   id: string;
   type: "appointment" | "sale" | "note";
@@ -85,10 +83,6 @@ export interface HistoryItemProps {
   clientEmail?: string;
 }
 
-function generateInvoiceHTMLFromData(invoiceData: any, portalCurrency?: string) {
-  return sharedGenerateInvoiceHTML(invoiceData, portalCurrency);
-}
-
 function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
   const { provider: portalProvider } = useProviderPortal();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -108,27 +102,35 @@ function HistoryItemInner({ item, clientEmail }: HistoryItemProps) {
       }
 
       const cleanBookingId = String(bookingId).trim();
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const result = await fetcher.get<{ data: any }>(`/api/provider/bookings/${cleanBookingId}/receipt`);
-      const invoiceData = result.data;
+      const response = await fetch(`/api/provider/bookings/${cleanBookingId}/receipt/pdf`, {
+        credentials: "include",
+      });
 
-      if (!invoiceData) {
-        throw new Error("Invoice data is missing");
+      if (!response.ok) {
+        let errorMessage = "Failed to generate invoice";
+        try {
+          const result = await response.json();
+          if (result.error) {
+            errorMessage = typeof result.error === "string" ? result.error : result.error.message || errorMessage;
+          }
+        } catch {
+          errorMessage = `Failed to generate invoice (${response.status})`;
+        }
+        throw new Error(errorMessage);
       }
-      
-      const invoiceWindow = window.open('', '_blank');
-      if (!invoiceWindow) {
-        toast.error("Please allow popups to print invoice");
-        return;
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const pdfWindow = window.open(url, "_blank");
+      if (!pdfWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `invoice-${cleanBookingId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       }
-      
-      const invoiceHTML = generateInvoiceHTMLFromData(invoiceData, portalProvider?.currency);
-      invoiceWindow.document.write(invoiceHTML);
-      invoiceWindow.document.close();
-      invoiceWindow.focus();
-      setTimeout(() => {
-        invoiceWindow.print();
-      }, 250);
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (error) {
       console.error("Failed to generate invoice:", error);
       toast.error(error instanceof Error ? error.message : "Failed to generate invoice");

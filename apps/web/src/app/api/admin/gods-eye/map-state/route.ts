@@ -65,7 +65,15 @@ export async function GET(request: NextRequest) {
     if (pingsErr) console.warn("gods-eye map-state: provider_location_events query:", pingsErr.message);
     const fromPings = [...new Set((recentProviderIds || []).map((r: PingRow) => r.provider_id))];
     const fromBookings = [...new Set(bookingList.map((b: BookingRow) => b.provider_id))];
-    const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
+
+    const { data: allActiveProviders } = await admin
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active");
+    const fromActive = (allActiveProviders || []).map((p: { id: string }) => p.id);
+
+    const allProviderIds = [...new Set([...fromBookings, ...fromPings, ...fromActive])];
 
     let customer_markers: Awaited<ReturnType<typeof fetchGodsEyeCustomerMarkers>> = [];
     if (customerMarkersMax > 0) {
@@ -163,13 +171,37 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Fetch registered locations as fallback for providers without live pings
+    const { data: registeredLocations } = await admin
+      .from("provider_locations")
+      .select("id, provider_id, latitude, longitude, name")
+      .in("provider_id", providerIdsFilter)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null);
+    const registeredByProvider: Record<string, { lat: number; lng: number; name?: string }> = {};
+    (registeredLocations || []).forEach((loc: { provider_id: string; latitude?: number | null; longitude?: number | null; name?: string }) => {
+      if (!registeredByProvider[loc.provider_id] && loc.latitude != null && loc.longitude != null) {
+        registeredByProvider[loc.provider_id] = { lat: Number(loc.latitude), lng: Number(loc.longitude), name: loc.name };
+      }
+    });
+
     type LastLocation = { provider_last_lat?: number; provider_last_lng?: number; provider_last_at?: string; lat?: number; lng?: number; recorded_at?: string };
     const providerMarkers = providerList.map((p: ProviderRow) => {
       const last = latestByProvider[p.id] || trackingByBooking[bookingList.find((b: BookingRow) => b.provider_id === p.id)?.id ?? ""] as LastLocation | undefined;
       const L = last as LastLocation | undefined;
-      const lastLat = L?.provider_last_lat ?? L?.lat;
-      const lastLng = L?.provider_last_lng ?? L?.lng;
+      let lastLat = L?.provider_last_lat ?? L?.lat;
+      let lastLng = L?.provider_last_lng ?? L?.lng;
       const lastAt = L?.provider_last_at ?? L?.recorded_at;
+
+      // Fallback to registered salon location
+      if (lastLat == null || lastLng == null) {
+        const reg = registeredByProvider[p.id];
+        if (reg) {
+          lastLat = reg.lat;
+          lastLng = reg.lng;
+        }
+      }
+
       const activeBooking = bookingList.find((b: BookingRow) => b.provider_id === p.id);
       const ts = activeBooking ? trackingByBooking[activeBooking.id] : null;
       let status: "idle" | "en_route" | "in_service" = "idle";

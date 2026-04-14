@@ -83,8 +83,11 @@ export function SubscriptionContent() {
   const { data, loading, error, refresh } = useApi<Subscription | null>("/api/provider/subscription");
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && data === undefined) {

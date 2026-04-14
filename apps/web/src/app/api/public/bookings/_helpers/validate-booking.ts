@@ -1573,18 +1573,26 @@ export async function validateBooking(
 
   // ── Provider calendar blocks (time blocks, availability, staff off) ─────
   // Same sources as GET /api/public/providers/[slug]/availability; prevents bypass when draft skipped staff conflict paths.
+  // For at_home bookings, extend the blocked window by travel buffer to match availability engine behavior.
+  const travelBufferMinutes =
+    draft.location_type === "at_home"
+      ? Number(validatedDraft.availability_travel_buffer_minutes ?? 30)
+      : 0;
   const locationIdForCalendar =
     draft.location_type === "at_salon" ? draft.location_id ?? null : null;
   {
     const { isProviderCalendarWindowBlocked } = await import(
       "@/lib/public-booking/provider-calendar-block-overlap"
     );
-    for (const line of bookingServicesData) {
+    for (let i = 0; i < bookingServicesData.length; i++) {
+      const line = bookingServicesData[i];
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
       const off = offeringById.get(line.offering_id);
       const buf = Number(off?.buffer_minutes ?? 15);
-      const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
+      const isLastSegment = i === bookingServicesData.length - 1;
+      const travelTail = isLastSegment ? travelBufferMinutes : 0;
+      const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
       const cal = await isProviderCalendarWindowBlocked(supabaseAdmin, {
         providerId: draft.provider_id,
         locationId: locationIdForCalendar,
@@ -1604,17 +1612,23 @@ export async function validateBooking(
   }
 
   // ── Working hours guard (defense in depth) ────────────────────────────────
-  // Verify each service segment falls within the staff/location working hours.
-  // If slot APIs served a bad slot, this is the last line of defense.
+  // Verify each service segment (+ travel buffer for the last at_home segment) fits within working hours.
   {
     const DAY_KEYS_GUARD = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
     const { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } = await import(
       "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic"
     );
 
-    for (const line of bookingServicesData) {
+    for (let i = 0; i < bookingServicesData.length; i++) {
+      const line = bookingServicesData[i];
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
+      const off = offeringById.get(line.offering_id);
+      const buf = Number(off?.buffer_minutes ?? 15);
+      const isLastSegment = i === bookingServicesData.length - 1;
+      const travelTail = isLastSegment ? travelBufferMinutes : 0;
+      const effectiveSegEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
+
       const staffIdForGuard = line.staff_id ?? `provider-${draft.provider_id}`;
       const dateStr = segStart.toISOString().slice(0, 10);
       const dayIdx = new Date(`${dateStr}T12:00:00`).getDay();
@@ -1635,11 +1649,11 @@ export async function validateBooking(
         const openMin = parseHHMM(wh.open_time);
         const closeMin = parseHHMM(wh.close_time);
         const segStartMin = segStart.getHours() * 60 + segStart.getMinutes();
-        const segEndMin = segEnd.getHours() * 60 + segEnd.getMinutes();
+        const segEndMin = effectiveSegEnd.getHours() * 60 + effectiveSegEnd.getMinutes();
 
         if (closeMin > openMin && (segStartMin < openMin || segEndMin > closeMin)) {
           console.warn(
-            `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${segEnd.toISOString()} ` +
+            `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${effectiveSegEnd.toISOString()} ` +
             `outside working hours ${wh.open_time}–${wh.close_time} for staff ${staffIdForGuard}`
           );
           return handleApiError(

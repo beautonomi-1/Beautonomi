@@ -132,8 +132,11 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   function openAddForm() {

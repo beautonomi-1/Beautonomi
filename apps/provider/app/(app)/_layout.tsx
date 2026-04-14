@@ -16,6 +16,7 @@ import { RoleGate } from "@/components/RoleGate";
 import { ProviderProvider } from "@/providers/ProviderContext";
 import { NotificationsCountProvider } from "@/providers/NotificationsCountContext";
 import { OnDemandIncomingListener } from "@/components/OnDemandIncomingListener";
+import { BookingAlertListener } from "@/components/BookingAlertListener";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
@@ -95,6 +96,7 @@ export default function AppLayout() {
         <Fragment>
         <NativePermissionsOnboarding />
         <OnDemandIncomingListener />
+        <BookingAlertListener />
         <SingularLinkHandler />
         <View style={{ flex: 1 }}>
           <EmailVerificationBanner />

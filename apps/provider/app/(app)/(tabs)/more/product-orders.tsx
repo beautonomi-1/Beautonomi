@@ -126,8 +126,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const allOrders = data?.orders ?? [];
@@ -212,20 +215,6 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         Alert.alert("Error", err);
       } else {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        // Optimistic update: patch the order in-place so UI reflects instantly
-        const updatedOrder = (responseData as { order?: Order })?.order;
-        if (data?.orders) {
-          const idx = data.orders.findIndex((o) => o.id === orderId);
-          if (idx >= 0) {
-            data.orders[idx] = {
-              ...data.orders[idx],
-              status,
-              ...(extra?.tracking_number ? { tracking_number: extra.tracking_number } : {}),
-              ...(extra?.carrier ? { carrier: extra.carrier } : {}),
-              ...(updatedOrder ? updatedOrder : {}),
-            };
-          }
-        }
         setViewOrder(null);
         setOrderDetail(null);
         setTrackingSheetOpen(false);

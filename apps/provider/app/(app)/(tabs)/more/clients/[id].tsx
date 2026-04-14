@@ -256,7 +256,16 @@ export default function ClientDetailScreen() {
     );
   }
 
-  if (!client) return null;
+  if (!client) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Client" showBack onBack={goBackToClients} />
+        <View style={twStyle("flex-1 items-center justify-center px-4")}>
+          <Text style={twStyle("text-base text-gray-500")}>Client not found</Text>
+        </View>
+      </ScreenContainer>
+    );
+  }
 
   const customer = client.customer ?? {};
   const name = customer.full_name ?? "Client";

@@ -65,8 +65,11 @@ export default function WaitlistSettingsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   function set<K extends keyof WaitlistSettings>(key: K, value: WaitlistSettings[K]) {

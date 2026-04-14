@@ -14,8 +14,10 @@ import { Colors } from "@/constants/colors";
 export default function InAppBrowserScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ url?: string; title?: string }>();
-  const rawUrl = params.url ? decodeURIComponent(params.url) : "";
-  const displayTitle = params.title ? decodeURIComponent(params.title) : "Link";
+  let rawUrl = "";
+  let displayTitle = "Link";
+  try { rawUrl = params.url ? decodeURIComponent(params.url) : ""; } catch { rawUrl = params.url ?? ""; }
+  try { displayTitle = params.title ? decodeURIComponent(params.title) : "Link"; } catch { displayTitle = params.title ?? "Link"; }
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const isValid =

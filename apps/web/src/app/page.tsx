@@ -65,8 +65,8 @@ export async function generateMetadata({
   };
 }
 
-/** Tenant + category from URL; home API is cached internally. */
-export const dynamic = "force-dynamic";
+/** ISR: revalidate every 60s; home API has its own unstable_cache layer internally. */
+export const revalidate = 60;
 
 export default async function Page({
   searchParams,

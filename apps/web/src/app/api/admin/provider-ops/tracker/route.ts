@@ -111,10 +111,10 @@ export async function GET(request: NextRequest) {
         current_step,
         created_at,
         updated_at,
-        users!inner(id, email, full_name, phone, role, created_at, tenant_id)
+        users!inner(id, email, full_name, phone, role, created_at, preferred_home_tenant_id)
       `
         )
-        .eq("users.tenant_id", tenantId)
+        .eq("users.preferred_home_tenant_id", tenantId)
         .order("updated_at", { ascending: false })
         .range(from, to);
       return { data: r.data as Record<string, unknown>[] | null, error: r.error };

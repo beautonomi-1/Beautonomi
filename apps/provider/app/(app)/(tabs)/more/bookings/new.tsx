@@ -204,11 +204,11 @@ export default function NewBookingScreen() {
       : "ZA";
 
   // --- API data ---
-  const { data: services, loading: servicesLoading } = useApi<Service[]>("/api/provider/services?include_variants=true");
+  const { data: services, loading: servicesLoading, error: servicesError } = useApi<Service[]>("/api/provider/services?include_variants=true");
   const teamUrl = selectedLocationId
     ? `/api/provider/team?location_id=${encodeURIComponent(selectedLocationId)}`
     : "/api/provider/team";
-  const { data: staffList } = useApi<StaffMember[]>(teamUrl);
+  const { data: staffList, error: staffError } = useApi<StaffMember[]>(teamUrl);
   const { data: paymentSettings } = useApi<PaymentSettings>("/api/provider/settings/payments");
   const { data: referralSourcesRaw } = useApi<{ id: string; name: string; is_active?: boolean }[]>("/api/provider/referral-sources");
   const referralSources = useMemo(
@@ -595,8 +595,10 @@ export default function NewBookingScreen() {
         return { ok: false, warning: msg };
       }
       return { ok: true };
-    } catch {
-      return { ok: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not verify availability. You may proceed, but double-check the calendar.";
+      setConflictWarning(msg);
+      return { ok: true, warning: msg };
     } finally {
       setCheckingAvailability(false);
     }
@@ -755,6 +757,14 @@ export default function NewBookingScreen() {
     >
       <ScreenContainer>
         <ScreenHeader title={isWalkIn ? "Walk-in Booking" : "New Booking"} showBack />
+
+        {staffError && !staffList ? (
+          <View style={twStyle("mx-4 mb-2 rounded-xl border border-amber-200 bg-amber-50 p-3")}>
+            <Text style={twStyle("text-sm text-amber-900")}>
+              Could not load team list. Pull to refresh the screen or try again — staff assignment may be unavailable.
+            </Text>
+          </View>
+        ) : null}
 
         {showConfirmation ? (
           <ConfirmationView
@@ -1182,6 +1192,10 @@ export default function NewBookingScreen() {
               <SectionLabel label="Services" required />
               {servicesLoading ? (
                 <LoadingState fullScreen={false} message="Loading services..." />
+              ) : servicesError && !services ? (
+                <View style={twStyle("mb-4 rounded-xl bg-red-50 p-4")}>
+                  <Text style={twStyle("text-sm text-red-600")}>Failed to load services. Pull down to refresh and try again.</Text>
+                </View>
               ) : (
                 <View style={twStyle("mb-4")}>
                   {(() => {

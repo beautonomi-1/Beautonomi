@@ -141,8 +141,11 @@ export default function CartScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchCart();
-    setRefreshing(false);
+    try {
+      await fetchCart();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchCart]);
 
   const updateQuantity = useCallback(
@@ -165,12 +168,21 @@ export default function CartScreen() {
   );
 
   const removeItem = useCallback(
-    async (itemId: string) => {
-      setRemovingId(itemId);
-      haptic.light();
-      const { error: err } = await removeCartLine(itemId);
-      if (err) Alert.alert("Error", err);
-      setRemovingId(null);
+    (itemId: string) => {
+      Alert.alert("Remove item", "Remove this item from your cart?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            setRemovingId(itemId);
+            haptic.light();
+            const { error: err } = await removeCartLine(itemId);
+            if (err) Alert.alert("Error", err);
+            setRemovingId(null);
+          },
+        },
+      ]);
     },
     [removeCartLine],
   );
@@ -300,7 +312,7 @@ export default function CartScreen() {
           </View>
         ) : (
           <View style={{ padding: contentPadding }}>
-            {Object.values(groups).map((g) => {
+            {Object.values(groups).filter((g) => g.provider?.id).map((g) => {
               const sc = shippingConfigs[g.provider.id];
               const isPickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;
               return (

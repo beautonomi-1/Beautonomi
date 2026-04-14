@@ -16,6 +16,7 @@ export default function WalletScreen() {
   const [error, setError] = useState<string | null>(null);
   const [topupAmount, setTopupAmount] = useState("");
   const [toppingUp, setToppingUp] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -35,8 +36,16 @@ export default function WalletScreen() {
     }
   };
 
-  // useFocusEffect covers both initial mount and re-focus — no need for a separate useEffect
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await load();
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   const balance = wallet?.balance ?? 0;
   const currency = wallet?.currency ?? getTenantDefaultCurrency();
@@ -83,7 +92,7 @@ export default function WalletScreen() {
   };
 
   return (
-    <ScreenFrame loading={loading} error={error} onRetry={load}>
+    <ScreenFrame loading={loading} error={error} onRetry={load} refreshing={refreshing} onRefresh={handleRefresh}>
       <View>
         <View style={{ backgroundColor: "#FDF2F8", borderRadius: 16, padding: 24, alignItems: "center" }}>
           <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Wallet balance</Text>

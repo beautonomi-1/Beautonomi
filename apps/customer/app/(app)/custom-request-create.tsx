@@ -53,9 +53,15 @@ export default function CustomRequestCreateScreen() {
         type: "image/jpeg",
       } as any);
       const res = await api.post<any>("/api/me/custom-requests/upload", formData as any);
+      if (res.error) {
+        Alert.alert("Upload failed", "Could not upload image. Please try again.");
+        return;
+      }
       const urls = (res.data as any)?.urls ?? [];
       if (urls.length > 0) {
         setImageUrls((prev) => [...prev, ...urls].slice(0, 6));
+      } else {
+        Alert.alert("Upload issue", "Image uploaded but could not be processed. Please try again.");
       }
     } catch {
       Alert.alert("Error", "Failed to upload image");
@@ -69,7 +75,11 @@ export default function CustomRequestCreateScreen() {
   };
 
   const submit = async () => {
-    if (!provider_id || !user) return;
+    if (!provider_id) {
+      Alert.alert("Error", "Provider not specified. Please go back and try again.");
+      return;
+    }
+    if (!user) return;
     const desc = description.trim();
     if (desc.length < 10) {
       Alert.alert("Description required", "Please describe your request (at least 10 characters)");
@@ -82,7 +92,7 @@ export default function CustomRequestCreateScreen() {
         description: desc,
         budget_min: budgetMin ? parseFloat(budgetMin) : null,
         budget_max: budgetMax ? parseFloat(budgetMax) : null,
-        duration_minutes: parseInt(duration || "60", 10),
+        duration_minutes: parseInt(duration, 10) || 60,
         location_type: locationType,
         image_urls: imageUrls,
       });

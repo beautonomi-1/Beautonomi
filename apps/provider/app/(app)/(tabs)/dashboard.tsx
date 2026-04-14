@@ -162,8 +162,14 @@ function getActivityIcon(type: string): {
 function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
   const totalRevenue = data.reduce((s, d) => s + d.revenue, 0);
-  const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  const todayIdx = (new Date().getDay() + 6) % 7;
+  const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  const dayLabels = data.map((d) => {
+    if (!d.day) return "?";
+    const dt = new Date(d.day + "T12:00:00");
+    return Number.isFinite(dt.getTime()) ? SHORT_DAYS[dt.getDay()] : d.day.slice(5);
+  });
 
   return (
     <Card variant="default" padding="md">
@@ -185,7 +191,7 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
             (day.revenue / maxRevenue) * 100,
             day.revenue > 0 ? 6 : 2,
           );
-          const isToday = index === todayIdx;
+          const isToday = day.day === todayStr || index === data.length - 1;
           return (
             <View key={day.day} style={{ flex: 1, alignItems: "center", paddingHorizontal: 2 }}>
               {day.revenue > 0 && (
@@ -208,13 +214,16 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
       </View>
 
       <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
-        {DAY_LABELS.map((label, i) => (
-          <View key={label} style={{ flex: 1, alignItems: "center" }}>
-            <Text style={{ fontSize: 10, fontWeight: i === todayIdx ? "700" : "400", color: i === todayIdx ? Colors.gray[900] : Colors.gray[400] }}>
-              {label}
-            </Text>
-          </View>
-        ))}
+        {dayLabels.map((label, i) => {
+          const isToday = data[i]?.day === todayStr || i === data.length - 1;
+          return (
+            <View key={`${label}-${i}`} style={{ flex: 1, alignItems: "center" }}>
+              <Text style={{ fontSize: 10, fontWeight: isToday ? "700" : "400", color: isToday ? Colors.gray[900] : Colors.gray[400] }}>
+                {label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
     </Card>
   );
@@ -383,18 +392,21 @@ export default function DashboardScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    const tasks = [refreshMetrics()];
-    if (!hasBundledInsights) {
-      tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
-      if (secondaryEnabled) {
-        tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+    try {
+      const tasks = [refreshMetrics()];
+      if (!hasBundledInsights) {
+        tasks.push(refreshFallbackTodayBookings(), refreshFallbackUpcoming());
+        if (secondaryEnabled) {
+          tasks.push(refreshFallbackWeekly(), refreshFallbackTopServices(), refreshFallbackActivity());
+        }
       }
+      if (!hasBundledBookingEligibility) {
+        tasks.push(refreshFallbackBookingEligibility());
+      }
+      await Promise.all(tasks);
+    } finally {
+      setRefreshing(false);
     }
-    if (!hasBundledBookingEligibility) {
-      tasks.push(refreshFallbackBookingEligibility());
-    }
-    await Promise.all(tasks);
-    setRefreshing(false);
   }, [
     refreshMetrics,
     hasBundledInsights,
@@ -821,10 +833,10 @@ export default function DashboardScreen() {
           <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing top services…</Text>
         </View>
       ) : topServicesError && !topServices ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+        <TouchableOpacity onPress={refreshFallbackTopServices} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
-        </View>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
+        </TouchableOpacity>
       ) : !topServices || topServices.length === 0 ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
           <Ionicons name="bar-chart-outline" size={28} color="#d1d5db" />
@@ -962,10 +974,10 @@ export default function DashboardScreen() {
         onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
       />
       {upcomingError && !upcomingBookings ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+        <TouchableOpacity onPress={refreshFallbackUpcoming} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
-        </View>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
+        </TouchableOpacity>
       ) : !upcomingBookings || upcomingBookings.length === 0 ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
           <Ionicons name="calendar-outline" size={32} color="#d1d5db" />
@@ -1050,10 +1062,10 @@ export default function DashboardScreen() {
           <Text style={{ marginTop: 8, fontSize: 13, color: Colors.gray[500] }}>Preparing recent activity…</Text>
         </View>
       ) : activityError && !recentActivity ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+        <TouchableOpacity onPress={refreshFallbackActivity} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load</Text>
-        </View>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load · Tap to retry</Text>
+        </TouchableOpacity>
       ) : !recentActivity || recentActivity.length === 0 ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 24 }}>
           <Ionicons name="pulse-outline" size={28} color="#d1d5db" />
@@ -1114,10 +1126,10 @@ export default function DashboardScreen() {
         onAction={() => router.push("/(app)/(tabs)/calendar" as any)}
       />
       {todayBookingsError && !todayBookings ? (
-        <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
+        <TouchableOpacity onPress={refreshFallbackTodayBookings} activeOpacity={0.7} style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: "#fecaca", backgroundColor: "#fef2f2", paddingVertical: 16 }}>
           <Ionicons name="alert-circle-outline" size={22} color="#ef4444" />
-          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load appointments</Text>
-        </View>
+          <Text style={{ marginTop: 4, fontSize: 12, color: "#ef4444" }}>Failed to load appointments · Tap to retry</Text>
+        </TouchableOpacity>
       ) : !todayBookings || todayBookings.length === 0 ? (
         <View style={{ alignItems: "center", borderRadius: 12, borderWidth: 1, borderStyle: "dashed", borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingVertical: 32 }}>
           <Ionicons name="calendar-outline" size={32} color="#d1d5db" />

@@ -28,7 +28,7 @@ import { Colors } from "@/constants/colors";
 import { RADIUS_CARD, RADIUS_INPUT, RADIUS_BUTTON } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
-import { APP_URL } from "@/config/public-env";
+import { getBackendUrl } from "@/config/public-env";
 
 const DOC_TYPES = [
   { value: "license", label: "Driver's license" },
@@ -65,7 +65,7 @@ export default function IdentityVerificationScreen() {
   const [uploading, setUploading] = useState(false);
   const [documentType, setDocumentType] = useState<string>("license");
   const [country, setCountry] = useState("");
-  const [selectedFile, setSelectedFile] = useState<{ uri: string; fileName: string } | null>(null);
+  const [selectedFile, setSelectedFile] = useState<{ uri: string; fileName: string; mimeType?: string } | null>(null);
 
   // SumSub launch state
   const [launching, setLaunching] = useState(false);
@@ -110,6 +110,10 @@ export default function IdentityVerificationScreen() {
       const res = await api.get<{ access_token: string; refresh_token?: string }>(
         `/api/me/verification/sumsub/token?environment=${encodeURIComponent(env)}`
       );
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Could not start verification.");
+        return;
+      }
       const access_token = res.data?.access_token;
       const refresh_token = (res.data as any)?.refresh_token;
       if (!access_token) {
@@ -119,7 +123,11 @@ export default function IdentityVerificationScreen() {
         );
         return;
       }
-      const base = (APP_URL || "http://localhost:3000").replace(/\/$/, "");
+      const base = getBackendUrl().replace(/\/$/, "");
+      if (!base) {
+        Alert.alert("Configuration", "App URL is not configured.");
+        return;
+      }
       const hash = `token=${encodeURIComponent(access_token)}${
         refresh_token ? `&refresh_token=${encodeURIComponent(refresh_token)}` : ""
       }`;
@@ -149,6 +157,7 @@ export default function IdentityVerificationScreen() {
       setSelectedFile({
         uri: asset.uri,
         fileName: asset.fileName ?? `verification-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? undefined,
       });
       haptic.light();
     } catch {
@@ -167,7 +176,7 @@ export default function IdentityVerificationScreen() {
       formData.append("file", {
         uri: selectedFile.uri,
         name: selectedFile.fileName,
-        type: "image/jpeg",
+        type: selectedFile.mimeType || "image/jpeg",
       } as any);
       formData.append("document_type", documentType);
       formData.append("country", country.trim());

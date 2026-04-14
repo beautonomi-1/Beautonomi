@@ -56,16 +56,30 @@ export function PayoutsContent() {
 
   const { data: payoutsList, loading, error, refresh } = useApi<Payout[]>("/api/provider/payouts");
   const { data: accountsList } = useApi<PayoutAccount[]>("/api/provider/payout-accounts");
+  const { data: financeData, refresh: refreshFinance } = useApi<{
+    earnings?: {
+      available_balance?: number;
+      pending_payouts?: number;
+      minimum_payout_amount?: number;
+    };
+  }>("/api/provider/finance");
   const { execute: postPayout, loading: requesting } = useApiMutation<Payout>("post");
 
   const payouts: Payout[] = Array.isArray(payoutsList) ? payoutsList : [];
   const accounts: PayoutAccount[] = Array.isArray(accountsList) ? accountsList : [];
+  const availableBalance = financeData?.earnings?.available_balance ?? 0;
+  const pendingPayouts = financeData?.earnings?.pending_payouts ?? 0;
+  const minimumPayout = financeData?.earnings?.minimum_payout_amount ?? 100;
+  const defaultCurrency = getTenantDefaultCurrency();
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
-  }, [refresh]);
+    try {
+      await Promise.all([refresh(), refreshFinance()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refresh, refreshFinance]);
 
   const handleRequestPayout = useCallback(async () => {
     const num = parseFloat(amount.replace(/,/g, "."));
@@ -90,7 +104,8 @@ export function PayoutsContent() {
     setNotes("");
     setBankAccountId(null);
     refresh();
-  }, [amount, notes, bankAccountId, postPayout, refresh]);
+    refreshFinance();
+  }, [amount, notes, bankAccountId, postPayout, refresh, refreshFinance]);
 
   if (loading && !payoutsList) {
     return (
@@ -117,6 +132,22 @@ export function PayoutsContent() {
         }
         showsVerticalScrollIndicator={false}
       >
+
+        <View style={twStyle("mb-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-4")}>
+          <Text style={twStyle("text-sm text-emerald-700 mb-1")}>Available balance</Text>
+          <Text style={twStyle("text-2xl font-bold text-emerald-900")}>
+            {defaultCurrency} {Number(availableBalance).toFixed(2)}
+          </Text>
+          {pendingPayouts > 0 && (
+            <Text style={twStyle("text-xs text-amber-700 mt-1")}>
+              {defaultCurrency} {Number(pendingPayouts).toFixed(2)} pending payout
+            </Text>
+          )}
+          <Text style={twStyle("text-xs text-gray-500 mt-1")}>
+            Minimum payout: {defaultCurrency} {Number(minimumPayout).toFixed(2)}
+          </Text>
+        </View>
+
         {payouts.length === 0 ? (
           <View style={twStyle("items-center py-16")}>
             <View style={twStyle("mb-4 h-16 w-16 items-center justify-center rounded-full bg-emerald-100")}>
@@ -190,8 +221,11 @@ export function PayoutsContent() {
         title="Request payout"
         subtitle="Withdraw to your bank account"
       >
+        <Text style={twStyle("mb-1 text-sm text-emerald-700")}>
+          Available: {defaultCurrency} {Number(availableBalance).toFixed(2)}
+        </Text>
         <Text style={twStyle("mb-2 text-sm font-medium text-gray-700")}>
-          Amount ({getTenantDefaultCurrency()}) *
+          Amount ({defaultCurrency}) *
         </Text>
         <TextInput
           style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}

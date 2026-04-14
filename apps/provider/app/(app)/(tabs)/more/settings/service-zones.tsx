@@ -16,6 +16,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { StatCard } from "@/components/ui/StatCard";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -64,7 +65,7 @@ export default function ServiceZonesScreen() {
     description: "",
   });
 
-  const { data: zones, loading, refresh } = useApi<ZoneWithSelection[]>(
+  const { data: zones, loading, error: loadError, refresh } = useApi<ZoneWithSelection[]>(
     "/api/provider/zone-selections"
   );
   const { execute: addZone, loading: adding } = useApiPost<any, any>(
@@ -75,8 +76,11 @@ export default function ServiceZonesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -285,8 +289,10 @@ export default function ServiceZonesScreen() {
         </View>
       )}
 
-      {loading && !zones ? (
+      {loading && !zones && !loadError ? (
         <SkeletonList rows={5} />
+      ) : loadError && !zones ? (
+        <ErrorState message={loadError} onRetry={refresh} />
       ) : !filtered.length ? (
         <EmptyState
           icon="map-outline"
