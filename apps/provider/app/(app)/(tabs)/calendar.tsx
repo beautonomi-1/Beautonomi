@@ -820,15 +820,6 @@ export default function CalendarScreen() {
     [selectedDate, viewMode],
   );
 
-  const scrollToCurrentTime = useCallback(() => {
-    if (!preferences.scrollToNow || hasScrolledToNow.current) return;
-    const now = new Date();
-    const h = getHours(now);
-    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
-    scrollRef.current?.scrollTo({ y: offset, animated: false });
-    hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
@@ -926,6 +917,15 @@ export default function CalendarScreen() {
     return { startHour: minH, endHour: maxH };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, selectedDate, todayHours.startHour, todayHours.endHour, todayHours.isOpen, operatingHours, preferences.workdayStartHour, preferences.workdayEndHour]);
+
+  const scrollToCurrentTime = useCallback(() => {
+    if (!preferences.scrollToNow || hasScrolledToNow.current) return;
+    const now = new Date();
+    const h = getHours(now);
+    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
+    scrollRef.current?.scrollTo({ y: offset, animated: false });
+    hasScrolledToNow.current = true;
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT]);
 
   const gridRows = useMemo(() => {
     const rows: { hour: number; minute: number; label: string }[] = [];
