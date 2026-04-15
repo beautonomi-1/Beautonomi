@@ -212,7 +212,7 @@ The fallback path (no timezone provided) still uses server-local `new Date(dateS
 - `packages/utils/src/__tests__/money.test.ts` — 7 test suites covering `toCents`, `fromCents`, `addMoney`, `subtractMoney`, `multiplyMoney`, `roundCurrency`, `formatMoney`. Correct and passing.
 - `packages/phone/src/__tests__/phone.test.ts` — 5 test suites covering E164 normalization and parsing. Correct.
 - Mobile Jest configs updated to `testMatch: ["<rootDir>/__tests__/**/*.test.{ts,tsx}"]` — now picks up all test files.
-- CI security job added: `pnpm audit --audit-level=high` runs dependency vulnerability scanning.
+- CI security job added: `pnpm run audit:deps` runs dependency vulnerability scanning (npm bulk advisory API; `pnpm audit` is broken with 410 until pnpm ships a fix — [pnpm#11265](https://github.com/pnpm/pnpm/issues/11265)).
 
 **Gaps:**
 - No unit tests for `csrf.ts` (the critical bypass would be caught by a test)
@@ -407,7 +407,7 @@ The deprecation comment was added to `api/webhooks/paystack/route.ts`, but the c
 | 11 | Missing health endpoint | Created `/api/health` | **Verified** | None |
 | 12 | Duplicate migrations directory | Added deprecation notice | **Verified** | None |
 | 13 | Jest config limited to smoke tests | Expanded `testMatch` | **Verified** | None |
-| 14 | Missing CI security audit | Added `pnpm audit` job | **Verified** | None |
+| 14 | Missing CI security audit | Added `pnpm run audit:deps` job | **Verified** | None |
 | 15 | Audit log silently fails | Added Sentry capture | **Verified** | None |
 | 16 | N+1 resource fetching | Refactored to `Promise.all` | **Verified** | None |
 | 17 | Provider Sentry PII | Removed email | **Verified** | Customer app not fixed (F-06) |

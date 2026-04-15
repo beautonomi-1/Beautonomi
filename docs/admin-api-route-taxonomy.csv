@@ -185,6 +185,7 @@ path,class,note
 /api/admin/promotions/[id]/redemptions,T,"uses resolveAdminApiTenantId"
 /api/admin/promotions/[id],T,"uses resolveAdminApiTenantId"
 /api/admin/promotions,T,"uses resolveAdminApiTenantId"
+/api/admin/provider-client-ratings,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/activation-queue,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/assist/create-account,T,"uses resolveAdminApiTenantId"
 /api/admin/provider-ops/automations/auto-assign,T,"uses resolveAdminApiTenantId"

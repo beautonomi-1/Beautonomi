@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **329** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **330** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -94,7 +94,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 12 | `/admin/staff` | W1 | providers_operations | Y | `GET /api/admin/staff`, `PATCH .../:id`, `POST .../:id/reset-password` | |
 | 13 | `/admin/bookings` | W1 | providers_operations | Y | `GET /api/admin/bookings`, `POST .../bulk`, export | **SPA (pattern wave):** cards + tabs + bulk + CSV via **`adminApi.downloadBlob`** / `downloadAdminBlob`; RBAC via `ADMIN_SECTION_PROVIDERS_OPERATIONS` (legacy Next page used `superadmin`-only guard — SPA aligns with API). |
 | 14 | `/admin/bookings/[id]` | W1 | providers_operations | N | `GET/PATCH /api/admin/bookings/:id`, `POST .../cancel`, `.../refund` | **SPA:** detail + PATCH + cancel/refund modals; customer/provider deep links → legacy until rows 9–10 / 36–37 migrate. |
-| 15 | `/admin/reviews` | W1 | providers_operations | Y | `GET/PATCH/DELETE /api/admin/reviews`, export | |
+| 15 | `/admin/reviews` | W1 | providers_operations | Y | `GET/PATCH/DELETE /api/admin/reviews`, `GET /api/admin/provider-client-ratings`, export | Provider→customer star ratings (`provider_client_ratings`); SPA Reviews tab uses both. |
 | 16 | `/admin/disputes` | W1 | providers_operations | Y | `GET /api/admin/disputes`, `PATCH .../:id` | **SPA (pattern wave):** list + client search + resolve modal; same RBAC note as bookings vs legacy `superadmin` guard. |
 | 17 | `/admin/user-reports` | W1 | providers_operations | Y | `GET /api/admin/user-reports`, `PATCH .../:id` | |
 | 18 | `/admin/refunds` | W1 | providers_operations | Y | `GET /api/admin/refunds`, `POST .../:id` | |
@@ -282,3 +282,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-11 | **Provider Ops Hub:** New `ADMIN_SECTION_PROVIDER_OPS` section (`admin_operations`, `admin_support`). **27 new API routes** under `/api/admin/provider-ops/*` (leads CRUD, pipeline, tracker, assisted onboarding, activation queue, reports, comms, dedup, settings, automations). **12 new UI pages** under `/admin/provider-ops/*`. Migration `460_provider_ops_hub.sql` adds `provider_leads`, `provider_lead_categories`, `provider_lead_activities`, `provider_lead_communications`, `provider_lead_tasks`, `provider_onboarding_tracking` tables + admin RLS on `provider_onboarding_drafts`. `providers` table gains `onboarding_state` + `lead_id`. Self-serve onboarding hooks (`POST /api/provider/onboarding`, `PUT /api/provider/onboarding/draft`) updated with tracking + lead matching. All routes use `resolveAdminApiTenantId` for tenant scoping. Taxonomy regen: **294** rows. §4 rows 97–108. |
 | 2026-04-13 | Taxonomy: `+2` routes (`/api/admin/notifications/test`, `/api/admin/service-zones/areas/resolve-point`); §4 rows 53 & 65 API notes (SPA already calls both). Root **pnpm** override `jsdom@24.1.3` so `isomorphic-dompurify` does not pull `jsdom@29` against pinned `undici@6.24.0` (fixes `undici/lib/handler/wrap-handler.js` missing during Next collect page data). |
 | 2026-04-13 | Taxonomy: `+15` routes for WhatsApp WASender integration (`/api/admin/integrations/wasender`, `/api/admin/whatsapp/bulk`, `bulk/[batchId]`, `bulk/[batchId]/cancel|pause|resume`, `send`, `sessions`, `sessions/[id]`, `sessions/[id]/connect|disconnect|qr`, `templates`, `templates/[id]`, `verify-number`). §1.1 inventory **329**. |
+| 2026-04-15 | Taxonomy: `+1` route (`GET /api/admin/provider-client-ratings`); §4 row 15 reviews API note. §1.1 inventory **330**. |

@@ -66,6 +66,7 @@
     "audit:tenant-admin": "node docs/scripts/check-admin-tenant-scope.mjs",
     "audit:tenant-api-hints": "node docs/scripts/check-non-admin-api-tenant-hints.mjs",
     "audit:tenant-api-hints:strict": "node docs/scripts/run-tenant-api-hints-strict.mjs",
+    "audit:deps": "node tooling/audit/npm-audit-lockfile.mjs high",
     "audit:multi-tenant": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints",
     "audit:multi-tenant:strict": "pnpm audit:tenant-admin && pnpm audit:tenant-api-hints:strict",
     "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md}\"",

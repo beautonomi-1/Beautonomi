@@ -237,8 +237,9 @@ jobs:
             tooling/*/node_modules
           key: modules-${{ hashFiles('pnpm-lock.yaml') }}
 
+      # pnpm audit uses retired npm audit endpoints (410); use npm audit via lockfile until pnpm v11+ supports bulk API (pnpm#11265)
       - name: Audit dependencies (high + critical)
-        run: pnpm audit --audit-level=high
+        run: pnpm run audit:deps
 
   test:
     name: Test
