@@ -2,18 +2,15 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Heart, Search, User, Calendar, MessageSquare, Home } from "lucide-react";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 
 export default function BottomNav() {
   const pathname = usePathname();
   const { user, isLoading } = useAuth();
-  const [isVisible, setIsVisible] = useState(true);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
-  const lastScrollY = useRef(0);
-  const isScrollingUp = useRef(false);
 
   useEffect(() => {
     setHasMounted(true);
@@ -24,7 +21,7 @@ export default function BottomNav() {
     { name: "Search", icon: Search, link: "/search", isLink: true },
     { name: "Bookings", icon: Calendar, link: "/bookings", isLink: true },
     { name: "Chats", icon: MessageSquare, link: "/inbox", isLink: true },
-    { name: "Profile", icon: User, link: "/account-settings", isLink: true },
+    { name: "Wishlists", icon: Heart, link: "/account-settings/wishlists", isLink: true },
   ] as const;
 
   const guestTabs = [
@@ -49,17 +46,8 @@ export default function BottomNav() {
     if (pathname?.startsWith("/bookings") || pathname?.startsWith("/account-settings/bookings")) return "Bookings";
     // Chats: check both /inbox and /account-settings/messages
     if (pathname?.startsWith("/inbox") || pathname?.startsWith("/account-settings/messages")) return "Chats";
-    if (showSignedInNav && pathname?.startsWith("/profile")) return "Profile";
-    // Don't show Profile as active for all account settings, only for specific pages
-    if (
-      showSignedInNav &&
-      pathname?.startsWith("/account-settings") &&
-      !pathname?.startsWith("/account-settings/bookings") &&
-      !pathname?.startsWith("/account-settings/messages") &&
-      !pathname?.startsWith("/account-settings/wishlists")
-    ) {
-      return "Profile";
-    }
+    // Profile / account hub is reachable from the top bar; bottom nav has no tab for it.
+    if (showSignedInNav && pathname?.startsWith("/account-settings")) return "";
     if (!showSignedInNav && pathname?.startsWith("/account-settings")) return "Log in";
     return "";
   };
@@ -73,42 +61,8 @@ export default function BottomNav() {
     }
   };
 
-  useEffect(() => {
-    let rafId = 0;
-    const handleScroll = () => {
-      if (rafId) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = 0;
-        const currentScrollY = window.scrollY;
-
-        if (lastScrollY.current > currentScrollY && !isScrollingUp.current) {
-          setIsVisible(true);
-          isScrollingUp.current = true;
-        }
-
-        if (lastScrollY.current < currentScrollY && isScrollingUp.current) {
-          setIsVisible(false);
-          isScrollingUp.current = false;
-        }
-
-        lastScrollY.current = currentScrollY;
-      });
-    };
-
-    window.addEventListener("scroll", handleScroll, { passive: true });
-
-    return () => {
-      window.removeEventListener("scroll", handleScroll);
-      if (rafId) cancelAnimationFrame(rafId);
-    };
-  }, []);
-
   return (
-    <div
-      className={`block md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 transition-transform duration-300 ease-in-out shadow-lg pb-safe w-full overflow-x-hidden ${
-        isVisible ? "translate-y-0" : "translate-y-full"
-      }`}
-    >
+    <div className="block md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-50 shadow-lg pb-safe w-full overflow-x-hidden">
       <nav className="flex items-stretch justify-between py-2 px-1 sm:px-2 pb-1 w-full max-w-full overflow-x-hidden gap-0.5">
         {tabs.map((tab) => {
           const active = activeTab === tab.name;

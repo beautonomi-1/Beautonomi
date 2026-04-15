@@ -18,3 +18,16 @@ export function useAdminSectionPage(section: AdminSection, permissionMessage: st
 
   return { allowed, denied };
 }
+
+/** Gate a page when the user may access any of the listed sections (OR). */
+export function useAdminSectionPageAny(sections: AdminSection[], permissionMessage: string) {
+  const { canAccess } = useAdminSession();
+  const allowed = sections.some((s) => canAccess(s));
+
+  const denied = useMemo(
+    () => (!allowed ? <PermissionDenied message={permissionMessage} /> : null),
+    [allowed, permissionMessage]
+  );
+
+  return { allowed, denied };
+}

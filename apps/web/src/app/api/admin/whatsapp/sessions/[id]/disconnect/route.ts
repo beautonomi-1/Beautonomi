@@ -31,7 +31,11 @@ export async function POST(
 
     await supabase
       .from("whatsapp_sessions")
-      .update({ status: "disconnected", last_status_check_at: new Date().toISOString() })
+      .update({
+        status: "disconnected",
+        wasender_session_api_key: null,
+        last_status_check_at: new Date().toISOString(),
+      })
       .eq("id", id);
 
     return successResponse({ disconnected: true });

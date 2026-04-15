@@ -3,7 +3,6 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
   Accordion,
   AccordionContent,
@@ -17,7 +16,7 @@ import AuthGuard from "@/components/auth/auth-guard";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
-import { Copy, Share2, Gift, Users, TrendingUp, Loader2, Check } from "lucide-react";
+import { Copy, Share2, Gift, Users, TrendingUp, Check } from "lucide-react";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
@@ -232,10 +231,7 @@ const ReferralsPage = () => {
           />
           <BackButton href="/account-settings" />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+          <div
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
@@ -244,28 +240,23 @@ const ReferralsPage = () => {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* When referrals disabled by admin, show message and hide copy/share */}
                 {settings?.is_enabled === false && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
+                  <div
                     className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 md:p-6"
                   >
                     <p className="text-sm font-medium text-amber-800">
                       Referrals are currently disabled. You can still see your code; rewards will apply when the program is enabled again.
                     </p>
-                  </motion.div>
+                  </div>
                 )}
 
                 {/* Referral Code Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <div className="flex items-center gap-3 mb-6">
@@ -298,10 +289,8 @@ const ReferralsPage = () => {
                     </div>
 
                     <div className="flex gap-3">
-                      <motion.button
+                      <button type="button"
                         onClick={handleCopy}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                         className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
                       >
                         {copied ? (
@@ -315,27 +304,22 @@ const ReferralsPage = () => {
                             <span>Copy Link</span>
                           </>
                         )}
-                      </motion.button>
-                      <motion.button
+                      </button>
+                      <button type="button"
                         onClick={handleShare}
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
                         className="flex-1 flex items-center justify-center gap-2 backdrop-blur-sm bg-white/60 border border-white/40 hover:bg-white/80 text-gray-700 px-6 py-3 rounded-xl font-semibold transition-all"
                       >
                         <Share2 className="w-5 h-5" />
                         <span>Share</span>
-                      </motion.button>
+                      </button>
                     </div>
                   </div>
-                </motion.div>
+                </div>
 
                 {/* Stats Cards */}
                 {stats && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.2 }}
+                    <div
                       className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6"
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -343,12 +327,9 @@ const ReferralsPage = () => {
                         <p className="text-sm font-medium text-gray-600">Total Referrals</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">{stats.total_referrals}</p>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.3 }}
+                    <div
                       className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6"
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -356,12 +337,9 @@ const ReferralsPage = () => {
                         <p className="text-sm font-medium text-gray-600">Successful</p>
                       </div>
                       <p className="text-3xl font-bold text-gray-900">{stats.successful_referrals}</p>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.4 }}
+                    <div
                       className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6"
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -371,12 +349,9 @@ const ReferralsPage = () => {
                       <p className="text-3xl font-bold text-gray-900">
                         {format(stats.total_earnings)}
                       </p>
-                    </motion.div>
+                    </div>
 
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.5 }}
+                    <div
                       className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6"
                     >
                       <div className="flex items-center gap-3 mb-2">
@@ -386,15 +361,12 @@ const ReferralsPage = () => {
                       <p className="text-3xl font-bold text-gray-900">
                         {format(stats.pending_earnings)}
                       </p>
-                    </motion.div>
+                    </div>
                   </div>
                 )}
 
                 {/* FAQ Section */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-2xl font-semibold tracking-tighter text-gray-900 mb-2">
@@ -428,10 +400,10 @@ const ReferralsPage = () => {
                       </AccordionItem>
                     ))}
                   </Accordion>
-                </motion.div>
+                </div>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

@@ -69,6 +69,7 @@ The Learning Center is a Mangomint-style help hub for customers and providers, f
 - **306_learning_center_search_rpc.sql** — `search_learning_articles` RPC.
 - **307_learning_center_tree_and_content_type.sql** — `parent_id` on categories; `content_type` (article|video_guide) on articles.
 - **308_learning_center_search_content_type.sql** — Search RPC returns `content_type`.
+- **483_learning_center_mobile_guides.sql** — Customer + provider mobile app guides (`customer-mobile-app`, `provider-mobile-app`), featured list update, cross-links from Getting Started.
 
 ## Content authoring
 

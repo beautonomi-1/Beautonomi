@@ -52,6 +52,8 @@ import {
   GitMerge,
   CheckCircle2,
   Columns3,
+  Plug,
+  Sparkles,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -202,9 +204,34 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
+      {
+        title: "Integrations hub",
+        href: "/admin/control-plane/integrations",
+        icon: Plug,
+        superadminOnly: true,
+      },
+      {
+        title: "Sumsub",
+        href: "/admin/control-plane/integrations/sumsub",
+        icon: ShieldCheck,
+        superadminOnly: true,
+      },
+      {
+        title: "Gemini",
+        href: "/admin/control-plane/integrations/gemini",
+        icon: Sparkles,
+        superadminOnly: true,
+      },
+      {
+        title: "Aura",
+        href: "/admin/control-plane/integrations/aura",
+        icon: Zap,
+        superadminOnly: true,
+      },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
       { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
+      { title: "OneSignal (push)", href: "/admin/notifications", icon: Radio },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
       { title: "WhatsApp Sessions", href: "/admin/whatsapp/sessions", icon: MessageCircle },
       { title: "WhatsApp Templates", href: "/admin/whatsapp/templates", icon: MessageCircle },

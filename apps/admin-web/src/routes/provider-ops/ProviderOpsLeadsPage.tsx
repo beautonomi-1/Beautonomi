@@ -70,12 +70,39 @@ interface Lead {
   suggested_location_text: string | null;
   country: string | null;
   created_at: string;
-  tags: string[];
+  /** API may return string[], a JSON string, or legacy shapes — normalize with `asLeadTagList`. */
+  tags?: unknown;
   description?: string | null;
   notes?: string | null;
   assigned_to?: string | null;
   matched_provider_id?: string | null;
-  provider_lead_categories?: LeadCategory[];
+  provider_lead_categories?: LeadCategory[] | unknown;
+}
+
+function asLeadTagList(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String);
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return [];
+    try {
+      const p = JSON.parse(t) as unknown;
+      if (Array.isArray(p)) return p.map(String);
+    } catch {
+      return t
+        .split(/[,\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+    return [t];
+  }
+  return [];
+}
+
+function asLeadCategoryList(raw: unknown): LeadCategory[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw as LeadCategory[];
+  return [];
 }
 
 interface LeadsPayload {
@@ -305,8 +332,9 @@ export function ProviderOpsLeadsPage() {
     resizingRef.current = true;
     const onMouseMove = (e: MouseEvent) => {
       if (!resizingRef.current) return;
-      const newWidth = window.innerWidth - e.clientX;
-      setDetailPanelWidth(Math.max(360, Math.min(800, newWidth)));
+      const fromRight = window.innerWidth - e.clientX;
+      const maxUsable = Math.min(800, window.innerWidth - 280);
+      setDetailPanelWidth(Math.max(360, Math.min(maxUsable, fromRight)));
     };
     const onMouseUp = () => {
       resizingRef.current = false;
@@ -329,12 +357,13 @@ export function ProviderOpsLeadsPage() {
   }
 
   const detail = (detailQ.data ?? selectedLead ?? null) as Lead | null;
-  const activities = activitiesQ.data?.data ?? [];
+  const activitiesRaw = activitiesQ.data?.data;
+  const activities = Array.isArray(activitiesRaw) ? activitiesRaw : [];
 
   return (
     <div
       className={cn(
-        "flex min-h-[calc(100dvh-4rem)] flex-col overflow-x-hidden overflow-y-hidden pb-[env(safe-area-inset-bottom,0px)]",
+        "flex min-h-0 flex-1 flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]",
         dragOver && "ring-2 ring-inset ring-blue-300 bg-blue-50/30 rounded-xl",
       )}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -476,10 +505,15 @@ export function ProviderOpsLeadsPage() {
         )}
       </div>
 
-      {/* Main split-panel area */}
-      <div className="flex flex-1 overflow-hidden">
+      {/* Main split-panel area — min-h-0 so flex children can shrink and the drawer gets a real height */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Left panel: lead list */}
-        <div className={cn("flex flex-col overflow-hidden border-r border-gray-200", selectedLeadId ? "flex-1" : "w-full")}>
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col overflow-hidden border-gray-200 lg:border-r",
+            selectedLeadId ? "flex-1" : "w-full",
+          )}
+        >
           {rows.length === 0 ? (
             <div className="flex flex-1 items-center justify-center p-8">
               <EmptyState title="No leads found" description="Try adjusting your filters or create a new lead." />
@@ -523,12 +557,16 @@ export function ProviderOpsLeadsPage() {
           <div
             className="hidden w-1 flex-shrink-0 cursor-col-resize bg-gray-200 transition-colors hover:bg-gray-400 active:bg-gray-500 lg:block"
             onMouseDown={handleResizeMouseDown}
+            aria-hidden
           />
         )}
 
-        {/* Right panel: lead detail preview */}
+        {/* Right panel: lead detail preview (desktop) */}
         {selectedLeadId && (
-          <div className="hidden flex-shrink-0 overflow-y-auto bg-white lg:block" style={{ width: detailPanelWidth }}>
+          <div
+            className="hidden min-h-0 max-w-[min(800px,calc(100vw-14rem))] shrink-0 overflow-hidden bg-white lg:flex lg:flex-col lg:self-stretch"
+            style={{ width: detailPanelWidth }}
+          >
             <DetailPanel
               lead={detail}
               activities={activities}
@@ -550,16 +588,16 @@ export function ProviderOpsLeadsPage() {
 
       {selectedLeadId && (
         <div
-          className="fixed inset-0 z-40 flex flex-col items-center justify-end bg-black/40 lg:hidden"
+          className="fixed inset-0 z-50 flex flex-col justify-end bg-black/40 pt-[env(safe-area-inset-top,0px)] lg:hidden"
           role="dialog"
           aria-modal="true"
           aria-label="Lead details"
           onClick={(e) => { if (e.target === e.currentTarget) setSelectedLeadId(null); }}
         >
           <div
-            className="flex w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
+            className="mx-auto flex min-h-0 w-full max-w-xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl"
             style={{
-              maxHeight: "calc(100dvh - env(safe-area-inset-top, 0px) - 1rem)",
+              maxHeight: "min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 0.5rem))",
               paddingBottom: "env(safe-area-inset-bottom, 0px)",
             }}
           >
@@ -584,7 +622,7 @@ export function ProviderOpsLeadsPage() {
 
       {/* Floating action bar for bulk selection */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-40 flex -translate-x-1/2 items-center gap-4 rounded-2xl bg-gray-900 px-6 py-3 text-white shadow-2xl transition-all">
+        <div className="fixed bottom-4 left-1/2 z-30 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 rounded-2xl bg-gray-900 px-4 py-3 text-white shadow-2xl transition-all sm:gap-4 sm:px-6">
           <span className="text-sm font-medium">{selectedIds.size} leads selected</span>
           <button
             className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
@@ -679,7 +717,9 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
           {rows.map((lead) => {
             const name = lead.business_name || lead.contact_person_name || "Unnamed Lead";
             const badge = STAGE_BADGE[lead.commercial_stage] || "bg-gray-100 text-gray-600 ring-gray-600/20";
-            const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories?.name).filter(Boolean);
+            const cats = asLeadCategoryList(lead.provider_lead_categories)
+              .map((c) => c.global_service_categories?.name)
+              .filter(Boolean);
             const isSelected = lead.id === selectedLeadId;
             const isChecked = selectedIds.has(lead.id);
             const isHovered = hoveredId === lead.id;
@@ -806,7 +846,10 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; se
         {rows.map((lead) => {
           const name = lead.business_name || lead.contact_person_name || "Unnamed Lead";
           const badge = STAGE_BADGE[lead.commercial_stage] || "bg-gray-100 text-gray-600 ring-gray-600/20";
-          const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories?.name).filter(Boolean);
+          const cats = asLeadCategoryList(lead.provider_lead_categories)
+            .map((c) => c.global_service_categories?.name)
+            .filter(Boolean);
+          const tagCount = asLeadTagList(lead.tags).length;
           const isSelected = lead.id === selectedLeadId;
 
           return (
@@ -845,8 +888,8 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; se
               )}
               <div className="mt-2.5 flex items-center justify-between text-[10px] text-gray-400">
                 <span>{new Date(lead.created_at).toLocaleDateString()}</span>
-                {lead.tags?.length > 0 && (
-                  <span className="flex items-center gap-0.5"><Tag className="h-2.5 w-2.5" />{lead.tags.length}</span>
+                {tagCount > 0 && (
+                  <span className="flex items-center gap-0.5"><Tag className="h-2.5 w-2.5" />{tagCount}</span>
                 )}
               </div>
             </button>
@@ -887,7 +930,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
 
   if (isLoading || !lead) {
     return (
-      <div className="flex h-full items-center justify-center p-8">
+      <div className="flex min-h-[min(50vh,20rem)] flex-1 items-center justify-center p-8">
         <div className="text-center">
           <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-600" />
           <p className="text-sm text-gray-500">Loading lead details…</p>
@@ -899,7 +942,8 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
   const l = lead;
 
   const name = l.business_name || l.contact_person_name || "Unnamed Lead";
-  const cats = (l.provider_lead_categories ?? []).map((c) => c.global_service_categories).filter(Boolean);
+  const tagList = asLeadTagList(l.tags);
+  const cats = asLeadCategoryList(l.provider_lead_categories).map((c) => c.global_service_categories).filter(Boolean);
 
   function startEditing() {
     setEditFields({
@@ -933,7 +977,7 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 max-h-full flex-col">
       <div className="flex justify-center py-1.5 lg:hidden">
         <div className="h-1 w-10 rounded-full bg-gray-300" />
       </div>
@@ -1081,11 +1125,11 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
         )}
 
         {/* Tags */}
-        {lead.tags?.length > 0 && (
+        {tagList.length > 0 && (
           <div className="border-b border-gray-100 px-4 py-3 sm:px-5">
             <label className="mb-2 block text-[10px] font-semibold uppercase tracking-wider text-gray-400">Tags</label>
             <div className="flex flex-wrap gap-1.5">
-              {lead.tags.map((tag) => (
+              {tagList.map((tag) => (
                 <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
                   <Tag className="h-2.5 w-2.5" />{tag}
                 </span>

@@ -3,7 +3,11 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_INTEGRATIONS_DEV } from "@/lib/admin-sections";
 import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
-import { getWasenderConfig, deleteSession as wasenderDeleteSession } from "@/lib/whatsapp/wasender-client";
+import {
+  fetchAndPersistSessionApiKey,
+  getWasenderConfig,
+  deleteSession as wasenderDeleteSession,
+} from "@/lib/whatsapp/wasender-client";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
 export async function GET(
@@ -14,15 +18,32 @@ export async function GET(
     await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
     const { id } = await params;
     const supabase = getSupabaseAdmin();
+    const tenantId = await resolveAdminApiTenantId(request);
 
     const { data, error } = await supabase
       .from("whatsapp_sessions")
       .select("*")
       .eq("id", id)
+      .eq("tenant_id", tenantId)
       .maybeSingle();
 
     if (error) throw error;
     if (!data) return notFoundResponse("Session not found");
+
+    const row = data as Record<string, unknown>;
+    if (
+      row.status === "connected" &&
+      !(typeof row.wasender_session_api_key === "string" && row.wasender_session_api_key.trim())
+    ) {
+      await fetchAndPersistSessionApiKey(tenantId, id, String(row.wasender_session_id ?? ""));
+      const { data: refreshed } = await supabase
+        .from("whatsapp_sessions")
+        .select("*")
+        .eq("id", id)
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+      return successResponse(refreshed ?? data);
+    }
 
     return successResponse(data);
   } catch (error) {

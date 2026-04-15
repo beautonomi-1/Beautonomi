@@ -236,6 +236,17 @@ export function UserDetailPage() {
     }
   }, [data?.role]);
 
+  const customerRatingRows = useMemo(() => {
+    if (!data || str(data.role) !== "customer") return [];
+    const keys: [string, string][] = [
+      ["customer_review_rating_avg", "Avg from written reviews (providers rating customer)"],
+      ["customer_review_rating_count", "Written review count"],
+      ["customer_booking_rating_avg", "Avg from booking ratings"],
+      ["customer_booking_rating_count", "Booking rating count"],
+    ];
+    return keys.map(([k, label]) => ({ k, label, v: data[k] }));
+  }, [data]);
+
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing user id" onRetry={() => {}} />;
 
@@ -268,17 +279,6 @@ export function UserDetailPage() {
 
   const displayName = str(data.full_name) || str(data.email) || id;
   const role = str(data.role);
-
-  const customerRatingRows = useMemo(() => {
-    if (role !== "customer") return [];
-    const keys: [string, string][] = [
-      ["customer_review_rating_avg", "Avg from written reviews (providers rating customer)"],
-      ["customer_review_rating_count", "Written review count"],
-      ["customer_booking_rating_avg", "Avg from booking ratings"],
-      ["customer_booking_rating_count", "Booking rating count"],
-    ];
-    return keys.map(([k, label]) => ({ k, label, v: data[k] }));
-  }, [role, data]);
 
   return (
     <div className="space-y-6">

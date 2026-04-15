@@ -67,8 +67,10 @@ You can create and edit content for any **page slug**. The dropdown in the admin
 ## Content types
 
 - **text** – Plain text  
-- **html** – Rich text (WYSIWYG in admin for supported pages)  
+- **html** – Rich text: in **Admin → Content → Pages** (Vite admin app), the **HTML** type uses a **TipTap** editor (headings H2/H3, bold, italic, underline, lists, blockquote, horizontal rule, links with `target=_blank`, undo/redo). Stored as HTML in `page_content.content`. The legacy Next.js **Content** screen may still use plain textareas; prefer the Vite admin for full WYSIWYG.  
 - **json** – Structured data (e.g. feature lists)  
 - **image** / **video** – Media URLs  
 
-Use the **Section Key** field to identify each block (e.g. `hero_title`, `hero_description`). The frontend uses these keys when it’s wired to CMS.
+Public routes sanitize HTML with the same allowlist as marketing/pricing bullets (`sanitize-html`) via `sanitizeCmsPageHtml` / `<CmsHtml />` on key pages (e.g. Become a Partner sections).
+
+Use the **Section Key** field to identify each block (e.g. `hero_title`, `hero_description`). The **Content → Pages** form includes **quick picks** for known slugs (`become-a-partner`, `gift-card`, etc.). The frontend uses these keys when it’s wired to CMS.

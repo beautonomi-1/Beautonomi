@@ -9,6 +9,7 @@ import {
   sendTextMessage,
   resolveTemplatePlaceholders,
   normalizePhoneForWasender,
+  resolveSessionMessagingBearer,
 } from "@/lib/whatsapp/wasender-client";
 
 export async function POST(request: NextRequest) {
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
 
     const { data: session } = await supabase
       .from("whatsapp_sessions")
-      .select("id, wasender_session_id, status, is_paused, daily_send_count, hourly_send_count")
+      .select("id, wasender_session_id, wasender_session_api_key, status, is_paused, daily_send_count, hourly_send_count, phone_number")
       .eq("id", session_id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
@@ -78,15 +79,27 @@ export async function POST(request: NextRequest) {
 
     const toNumber = normalizePhoneForWasender(leadRow.phone_e164);
 
-    // WasenderAPI per-session calls use the session's API key; for PAT-based sending
-    // we route through the session's own token. Here we use the PAT with session context.
-    const result = await sendTextMessage(config.baseUrl, config.pat, toNumber, messageBody);
+    const bearer = await resolveSessionMessagingBearer(tenantId, {
+      id: sessionRow.id,
+      wasender_session_id: String(sessionRow.wasender_session_id),
+      wasender_session_api_key: sessionRow.wasender_session_api_key as string | null | undefined,
+    });
+    if (!bearer) {
+      return errorResponse(
+        "Could not resolve session API key. Ensure the session is connected, then retry (we sync the key from Wasender).",
+        "SESSION_API_KEY_MISSING",
+        502,
+      );
+    }
+
+    const result = await sendTextMessage(config.baseUrl, bearer, toNumber, messageBody);
 
     if (!result.success) {
       return errorResponse(result.message || "Failed to send message", "SEND_FAILED", 502);
     }
 
-    const externalMsgId = result.data?.msgId || result.data?.id || null;
+    const externalMsgId =
+      result.data?.msgId != null ? String(result.data.msgId) : result.data?.id != null ? String(result.data.id) : null;
 
     await supabase.from("provider_lead_communications").insert({
       tenant_id: tenantId,

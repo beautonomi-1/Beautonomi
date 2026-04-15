@@ -24,7 +24,7 @@ const DEFAULTS: WasenderForm = {
   enabled: false,
   personal_access_token_secret: "",
   webhook_secret: "",
-  base_url: "https://app.wasenderapi.com",
+  base_url: "https://www.wasenderapi.com",
   bulk_pacing_ms: 5000,
   bulk_batch_size_limit: 50,
   daily_send_limit_per_session: 200,
@@ -124,7 +124,7 @@ export function CpIntegrationWasenderPage() {
       <CpBack to=".." label="Integrations" />
       <AdminPageHeader
         title="WhatsApp (Wasender)"
-        description="WhatsApp messaging for lead outreach via WasenderAPI. Secrets are not shown after save."
+        description="WhatsApp messaging via WasenderAPI. Use your Personal Access Token from wasenderapi.com/settings/tokens. API base URL should match the docs (default https://www.wasenderapi.com). Secrets are not shown after save."
       />
       <EnvSelect value={env} onChange={setEnv} />
 
@@ -169,10 +169,23 @@ export function CpIntegrationWasenderPage() {
             </CpField>
             <CpField label="Base URL">
               <input
-                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                className="w-full rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs"
+                placeholder="https://www.wasenderapi.com"
                 value={form.base_url}
                 onChange={f("base_url")}
               />
+              <p className="text-xs text-gray-400">
+                Must be the API origin (no trailing slash). See{" "}
+                <a
+                  href="https://wasenderapi.com/api-docs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-600 underline"
+                >
+                  wasenderapi.com/api-docs
+                </a>
+                .
+              </p>
             </CpField>
           </AdminPanel>
 

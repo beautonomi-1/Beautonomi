@@ -74,11 +74,23 @@ These slugs are used by the Help Centre "Top articles" and must exist. Each has 
 | payments-customer | Save card and Paystack | save-card-paystack | How we save your card securely; small verification charge. |
 | managing-bookings | Verify arrival | verify-arrival | How to verify your arrival for the appointment. |
 
+## Mobile apps (iOS & Android)
+
+Migration `483_learning_center_mobile_guides.sql` adds:
+
+| category_slug | title | slug | summary |
+|---------------|-------|------|--------|
+| getting-started | Using the customer app (iOS & Android) | customer-mobile-app | Tabs, Help & Learning Center WebView, Paystack in-app browser, push settings. |
+| provider-onboarding | Using the provider app (iOS & Android) | provider-mobile-app | Native provider workflows, finance/Yoco, support vs web Learning Center. |
+
+It also appends mobile links to `getting-started-overview` and `introduction-to-beautonomi`, and refreshes featured IDs to include `customer-mobile-app` after `getting-started-overview`.
+
 ## Recommended featured articles (for Learning Center homepage)
 
-Migration `313_learning_center_featured_articles.sql` sets the homepage featured list to these slugs (in order):
+Migration `313_learning_center_featured_articles.sql` originally set the homepage featured list. Migration `483_learning_center_mobile_guides.sql` updates featured order to:
 
 - getting-started-overview
+- customer-mobile-app
 - canceling-your-booking
 - when-you-pay-booking
 - request-payout

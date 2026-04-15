@@ -3,7 +3,12 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDER_OPS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { getWasenderConfig, checkNumberOnWhatsApp, normalizePhoneForWasender } from "@/lib/whatsapp/wasender-client";
+import {
+  getWasenderConfig,
+  checkNumberOnWhatsApp,
+  normalizePhoneForWasender,
+  resolveSessionMessagingBearer,
+} from "@/lib/whatsapp/wasender-client";
 import { checkRateLimit } from "@/lib/rate-limit";
 
 const CACHE_TTL_DAYS = 7;
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
     // Need a connected session for number verification
     const { data: sessions } = await supabase
       .from("whatsapp_sessions")
-      .select("wasender_session_id")
+      .select("id, wasender_session_id, wasender_session_api_key")
       .eq("tenant_id", tenantId)
       .eq("status", "connected")
       .eq("is_active", true)
@@ -68,13 +73,26 @@ export async function POST(request: NextRequest) {
       return errorResponse("No connected WhatsApp session available", "NO_SESSION", 400);
     }
 
+    const bearer = await resolveSessionMessagingBearer(tenantId, {
+      id: firstSession.id,
+      wasender_session_id: String(firstSession.wasender_session_id),
+      wasender_session_api_key: firstSession.wasender_session_api_key,
+    });
+    if (!bearer) {
+      return errorResponse(
+        "Session API key not available. Open WhatsApp Sessions in admin once after connecting so we can sync the key.",
+        "SESSION_API_KEY_MISSING",
+        502,
+      );
+    }
+
     let checkStatus: string;
     let isOnWhatsApp: boolean | null = null;
 
     try {
       const result = await checkNumberOnWhatsApp(
         config.baseUrl,
-        config.pat,
+        bearer,
         normalizePhoneForWasender(phoneE164),
       );
       isOnWhatsApp = result.exists;

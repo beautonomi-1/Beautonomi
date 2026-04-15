@@ -11,7 +11,6 @@ import { useAuth } from "@/providers/AuthProvider";
 import { fetcher } from "@/lib/http/fetcher";
 import { resetPassword } from "@/lib/supabase/auth";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
 import {
   Dialog,
   DialogContent,
@@ -318,17 +317,14 @@ const LoginAccount = () => {
         />
         
         {/* Page Header - Glass Card Style */}
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        <div
           className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
         >
           <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Login & security</h1>
           <p className="text-sm md:text-base text-gray-600 font-light">
             Manage your password, email, phone, and login preferences
           </p>
-        </motion.div>
+        </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <div className="overflow-x-auto whitespace-nowrap mb-8" style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}>
@@ -353,10 +349,7 @@ const LoginAccount = () => {
           <div className="flex flex-col md:flex-row justify-between gap-6">
             <div className="w-full md:w-2/3">
               {/* Password Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <div className="flex justify-between items-start mb-4">
@@ -377,11 +370,7 @@ const LoginAccount = () => {
 
                 {/* Password Update Section */}
                 {showPasswordUpdate && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
+                  <div
                     className="mt-6 pt-6 border-t border-white/40"
                   >
                     <form onSubmit={handlePasswordUpdate} className="flex flex-col space-y-4">
@@ -440,26 +429,21 @@ const LoginAccount = () => {
                         />
                       </div>
                       <div className="flex justify-start">
-                        <motion.button
+                        <button
                           type="submit"
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
                           disabled={isUpdatingPassword}
                           className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-6 py-2.5 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {isUpdatingPassword ? "Updating..." : "Update Password"}
-                        </motion.button>
+                        </button>
                       </div>
                     </form>
-                  </motion.div>
+                  </div>
                 )}
-              </motion.div>
+              </div>
 
               {/* Email Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <div className="flex justify-between items-start mb-2">
@@ -481,13 +465,10 @@ const LoginAccount = () => {
                 <p className="text-sm text-gray-600 font-light">
                   {profileEmail || "Not set"}
                 </p>
-              </motion.div>
+              </div>
 
               {/* Phone Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <div className="flex justify-between items-start mb-2">
@@ -511,26 +492,20 @@ const LoginAccount = () => {
                 <p className="text-sm text-gray-600 font-light">
                   {profilePhone || "Not set"}
                 </p>
-              </motion.div>
+              </div>
 
               {/* Social Accounts Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.25 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <h2 className="text-xl font-semibold tracking-tighter mb-4 text-gray-900">Social accounts</h2>
                 <p className="text-sm text-gray-600 font-light">
                   Connect your social accounts for easier login. Coming soon.
                 </p>
-              </motion.div>
+              </div>
 
               {/* Account Deactivation Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <div className="flex justify-between items-center">
@@ -548,15 +523,12 @@ const LoginAccount = () => {
                     Deactivate
                   </Button>
                 </div>
-              </motion.div>
+              </div>
             </div>
 
             {/* Sidebar - Info Card */}
             <div className="w-full md:w-1/3">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6"
               >
                 <div className="flex items-center gap-3 mb-4">
@@ -584,16 +556,14 @@ const LoginAccount = () => {
                     <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                   </Link>
                 </div>
-              </motion.div>
+              </div>
             </div>
           </div>
         </TabsContent>
 
         {/* Login Requests Tab */}
         <TabsContent value="step2">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+          <div
             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
           >
             <div className="flex items-center gap-3 mb-4">
@@ -607,14 +577,12 @@ const LoginAccount = () => {
                 View and manage login requests from new devices and locations.
               </p>
             </div>
-          </motion.div>
+          </div>
         </TabsContent>
 
         {/* Shared Access Tab */}
         <TabsContent value="step3">
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+          <div
             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 md:p-8"
           >
             <div className="flex items-center gap-3 mb-4">
@@ -628,7 +596,7 @@ const LoginAccount = () => {
                 Manage shared access to your account with trusted family members or assistants.
               </p>
             </div>
-          </motion.div>
+          </div>
         </TabsContent>
       </Tabs>
 
@@ -820,16 +788,14 @@ const LoginAccount = () => {
             >
               Cancel
             </Button>
-            <motion.button
+            <button
               type="button"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
               onClick={handleDeactivate}
               disabled={isDeactivating || !deactivateData.password}
               className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isDeactivating ? "Deactivating..." : "Deactivate Account"}
-            </motion.button>
+            </button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

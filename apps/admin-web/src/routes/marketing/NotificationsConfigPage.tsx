@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
+import { ADMIN_SECTION_INTEGRATIONS_DEV, ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
-import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminSectionPageAny } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -94,7 +94,10 @@ function ChannelCard({
 }
 
 export function NotificationsConfigPage() {
-  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
+  const { allowed, denied } = useAdminSectionPageAny(
+    [ADMIN_SECTION_MARKETING_COMMS, ADMIN_SECTION_INTEGRATIONS_DEV],
+    "Marketing or Integrations access is required."
+  );
   const qc = useQueryClient();
   const [showRaw, setShowRaw] = useState(false);
 

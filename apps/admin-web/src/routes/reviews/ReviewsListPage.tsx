@@ -64,7 +64,20 @@ export function ReviewsListPage() {
     enabled: allowed,
   });
 
+  const pcrQ = useQuery({
+    queryKey: adminQueryKeys.providerClientRatings(page, 25),
+    queryFn: () =>
+      adminApi.getJson<{
+        reviews?: unknown;
+        ratings: Record<string, unknown>[];
+        pagination: { page: number; limit: number; total: number; total_pages: number };
+      }>(`/api/admin/provider-client-ratings?page=${page}&limit=25`, { timeoutMs: 60_000 }),
+    enabled: allowed,
+  });
+
   const rows = q.data?.reviews ?? [];
+  const pcrRows = pcrQ.data?.ratings ?? [];
+  const pcrPag = pcrQ.data?.pagination;
   const pag = q.data?.pagination;
   const stats = q.data?.statistics;
 
@@ -136,7 +149,7 @@ export function ReviewsListPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Reviews & ratings"
-        description="Customer→provider stars (`rating`), provider→customer (`customer_rating`), and staff rating per review. Superadmin has access via Providers & operations."
+        description="Written reviews (`reviews`): customer→provider (`rating`), optional provider→customer text ratings (`customer_rating`), staff stars. Booking-only provider→customer stars live in Provider→customer (booking ratings) below (`provider_client_ratings`)."
       />
       {stats ? (
         <AdminPanel>
@@ -352,6 +365,85 @@ export function ReviewsListPage() {
           </button>
         </div>
       ) : null}
+
+      <AdminPanel>
+        <h2 className="text-sm font-semibold text-gray-900">Provider→customer (booking ratings)</h2>
+        <p className="mt-1 text-xs text-gray-500">
+          Stored in <span className="font-mono">provider_client_ratings</span> when a provider rates a customer after a completed booking — separate from the written-review row in{" "}
+          <span className="font-mono">reviews</span>.
+        </p>
+        {pcrQ.isLoading ? (
+          <p className="mt-3 text-sm text-gray-500">Loading booking ratings…</p>
+        ) : pcrQ.error ? (
+          <p className="mt-3 text-sm text-red-600">{pcrQ.error instanceof Error ? pcrQ.error.message : "Failed to load"}</p>
+        ) : pcrRows.length === 0 ? (
+          <p className="mt-3 text-sm text-gray-500">No provider→customer booking ratings in this tenant.</p>
+        ) : (
+          <>
+            {pcrPag ? (
+              <p className="mt-3 text-sm text-gray-600">
+                Page {pcrPag.page} of {Math.max(1, pcrPag.total_pages)} · {pcrPag.total} total
+              </p>
+            ) : null}
+            <AdminDataTable className="mt-3">
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Rating</AdminTh>
+                  <AdminTh>Comment</AdminTh>
+                  <AdminTh>Provider</AdminTh>
+                  <AdminTh>Customer</AdminTh>
+                  <AdminTh>Booking</AdminTh>
+                  <AdminTh>Created</AdminTh>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {pcrRows.map((raw) => {
+                  const row = raw as Record<string, unknown>;
+                  const prov = row.provider as { id?: string; business_name?: string } | undefined;
+                  const cust = row.customer as { id?: string; full_name?: string; email?: string } | undefined;
+                  const book = row.booking as { id?: string; booking_number?: string } | undefined;
+                  return (
+                    <tr key={String(row.id ?? "")}>
+                      <AdminTd className="tabular-nums font-medium">{String(row.rating ?? "—")}</AdminTd>
+                      <AdminTd className="max-w-xs truncate text-xs">{String(row.comment ?? "")}</AdminTd>
+                      <AdminTd className="text-xs">
+                        {prov?.id ? (
+                          <Link className="text-primary underline" to={adminSpaTo(`/admin/providers/${prov.id}`)}>
+                            {String(prov.business_name ?? prov.id)}
+                          </Link>
+                        ) : (
+                          String(prov?.business_name ?? "")
+                        )}
+                      </AdminTd>
+                      <AdminTd className="text-xs">
+                        {cust?.id ? (
+                          <Link className="text-primary underline" to={adminSpaTo(`/admin/users/${cust.id}`)}>
+                            {String(cust.full_name ?? cust.email ?? cust.id)}
+                          </Link>
+                        ) : (
+                          String(cust?.full_name ?? cust?.email ?? "")
+                        )}
+                      </AdminTd>
+                      <AdminTd className="text-xs font-mono">
+                        {book?.id ? (
+                          <Link className="text-primary underline" to={adminSpaTo(`/admin/bookings/${book.id}`)}>
+                            {String(book.booking_number ?? book.id)}
+                          </Link>
+                        ) : (
+                          "—"
+                        )}
+                      </AdminTd>
+                      <AdminTd className="text-xs text-gray-600">
+                        {row.created_at ? new Date(String(row.created_at)).toLocaleString() : "—"}
+                      </AdminTd>
+                    </tr>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminDataTable>
+          </>
+        )}
+      </AdminPanel>
 
       {/* Flag review modal — replaces native prompt() */}
       {flagModal && (

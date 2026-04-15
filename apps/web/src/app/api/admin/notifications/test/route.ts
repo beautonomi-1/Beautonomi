@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { sendToUser, type NotificationChannel } from "@/lib/notifications/onesignal";
-import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { requireAdminSectionAny, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import {
+  ADMIN_SECTION_INTEGRATIONS_DEV,
+  ADMIN_SECTION_MARKETING_COMMS,
+} from "@/lib/admin-sections";
 
 const bodySchema = z.object({
   channel: z.enum(["push", "email", "sms"]),
@@ -15,7 +18,10 @@ const bodySchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSectionAny(
+      [ADMIN_SECTION_MARKETING_COMMS, ADMIN_SECTION_INTEGRATIONS_DEV],
+      request
+    );
 
     let raw: unknown;
     try {

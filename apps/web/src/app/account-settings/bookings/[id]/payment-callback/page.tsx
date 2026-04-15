@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { CheckCircle, XCircle } from "lucide-react";
 import Link from "next/link";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 
@@ -122,7 +122,6 @@ export default function BookingPaymentCallbackPage() {
       <div className="bg-white rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         {status === "loading" && (
           <>
-            <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto mb-4" />
             <h2 className="text-xl font-bold text-gray-900 mb-2">
               Confirming payment
             </h2>

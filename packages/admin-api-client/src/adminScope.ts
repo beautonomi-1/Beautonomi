@@ -14,14 +14,21 @@ export const SCOPED_ADMIN_PATH_PREFIXES: readonly string[] = [
   "/api/admin/sms-templates",
   "/api/admin/notification-templates",
   "/api/admin/mapbox/config",
+  "/api/admin/maintenance",
   "/api/admin/control-plane/integrations/gemini",
   "/api/admin/control-plane/integrations/aura",
   "/api/admin/control-plane/integrations/sumsub",
   "/api/admin/subscription-plans",
 ];
 
+/** True for `prefix` or `prefix/...`, but not `prefix-suffix` (e.g. maintenance vs maintenance-notify). */
+export function matchesScopedPathPrefix(pathname: string, prefix: string): boolean {
+  if (pathname === prefix) return true;
+  return pathname.startsWith(`${prefix}/`);
+}
+
 export function isScopedAdminCustomizationPath(pathname: string): boolean {
-  return SCOPED_ADMIN_PATH_PREFIXES.some((p) => pathname.startsWith(p));
+  return SCOPED_ADMIN_PATH_PREFIXES.some((p) => matchesScopedPathPrefix(pathname, p));
 }
 
 /**

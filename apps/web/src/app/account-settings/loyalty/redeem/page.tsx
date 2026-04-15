@@ -9,8 +9,7 @@ import BackButton from "../../components/back-button";
 import Breadcrumb from "../../components/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { Gift, Sparkles, Loader2 } from "lucide-react";
+import { Gift, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -124,10 +123,7 @@ export default function LoyaltyRedeemPage() {
             ]}
           />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+          <div
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
@@ -136,7 +132,7 @@ export default function LoyaltyRedeemPage() {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-primary animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : (
               <div className="space-y-6">
@@ -222,10 +218,7 @@ export default function LoyaltyRedeemPage() {
                         className="flex-1 bg-primary hover:bg-primary-hover"
                       >
                         {isRedeeming ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Redeeming...
-                          </>
+                          "Redeeming…"
                         ) : (
                           <>
                             <Gift className="w-4 h-4 mr-2" />
@@ -238,7 +231,7 @@ export default function LoyaltyRedeemPage() {
                 </Card>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

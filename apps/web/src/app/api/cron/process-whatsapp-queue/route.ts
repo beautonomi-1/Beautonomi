@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyCronRequest } from "@/lib/cron-auth";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeAuditLog } from "@/lib/audit/audit";
-import { sendTextMessage } from "@/lib/whatsapp/wasender-client";
+import { resolveSessionMessagingBearer, sendTextMessage } from "@/lib/whatsapp/wasender-client";
 import { incrementBulkBatchCount } from "@/lib/whatsapp/increment-bulk-batch-count";
 
 const MAX_PER_INVOCATION = 10;
@@ -50,7 +50,9 @@ export async function GET(request: NextRequest) {
     const sessionIds = [...new Set((messages as any[]).map((m) => m.session_id))];
     const { data: sessions } = await supabase
       .from("whatsapp_sessions")
-      .select("id, wasender_session_id, status, is_paused, daily_send_count, hourly_send_count, phone_number")
+      .select(
+        "id, tenant_id, wasender_session_id, wasender_session_api_key, status, is_paused, daily_send_count, hourly_send_count, phone_number",
+      )
       .in("id", sessionIds);
 
     const sessionMap = new Map((sessions as any[] || []).map((s: any) => [s.id, s]));
@@ -69,13 +71,7 @@ export async function GET(request: NextRequest) {
     const dailyLimit = cfg?.daily_send_limit_per_session ?? 200;
     const hourlyLimit = cfg?.hourly_send_limit_per_session ?? 30;
     const failureThreshold = cfg?.auto_pause_on_failure_count ?? 3;
-    const pat = cfg?.personal_access_token_secret;
-    const baseUrl = (cfg?.base_url || "https://app.wasenderapi.com").replace(/\/+$/, "");
-
-    if (!pat) {
-      console.error("process-whatsapp-queue: No PAT configured");
-      return NextResponse.json({ ok: false, error: "No PAT configured" }, { status: 500 });
-    }
+    const baseUrl = (cfg?.base_url || "https://www.wasenderapi.com").replace(/\/+$/, "");
 
     const consecutiveFailures = new Map<string, number>();
 
@@ -110,10 +106,20 @@ export async function GET(request: NextRequest) {
         .eq("status", msg.status);
 
       try {
-        const result = await sendTextMessage(baseUrl, pat, msg.to_number, msg.message_body);
+        const bearer = await resolveSessionMessagingBearer(String(session.tenant_id), {
+          id: session.id,
+          wasender_session_id: String(session.wasender_session_id),
+          wasender_session_api_key: session.wasender_session_api_key,
+        });
+        if (!bearer) {
+          throw new Error("Session API key missing — sync from Wasender (open WhatsApp Sessions in admin)");
+        }
+
+        const result = await sendTextMessage(baseUrl, bearer, msg.to_number, msg.message_body);
 
         if (result.success) {
-          const externalId = result.data?.msgId || result.data?.id || null;
+          const externalId =
+            result.data?.msgId != null ? String(result.data.msgId) : result.data?.id != null ? String(result.data.id) : null;
 
           await supabase
             .from("whatsapp_message_queue")

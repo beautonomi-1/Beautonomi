@@ -4,12 +4,28 @@ import {
   requireAdminSection,
   successResponse,
   handleApiError,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 
+/** Parse YYYY-MM-DD; optional start/end of day in UTC for inclusive range filters. */
+function parseDateParam(raw: string | null, endOfDay: boolean): Date | null {
+  if (!raw?.trim()) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (endOfDay) return new Date(Date.UTC(y, mo - 1, d, 23, 59, 59, 999));
+  return new Date(Date.UTC(y, mo - 1, d, 0, 0, 0, 0));
+}
+
 /**
  * GET /api/admin/ecommerce/overview — orders, catalog, returns snapshot for the tenant
+ *
+ * Query: `start_date` / `end_date` (YYYY-MM-DD, optional). When set, order stats, returns stats,
+ * and recent orders are filtered by `created_at` (inclusive). Catalog counts are always current.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -17,13 +33,28 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
 
+    const url = new URL(request.url);
+    const startRaw = url.searchParams.get("start_date");
+    const endRaw = url.searchParams.get("end_date");
+    const startAt = parseDateParam(startRaw, false);
+    const endAt = parseDateParam(endRaw, true);
+    if ((startRaw && !startAt) || (endRaw && !endAt)) {
+      return errorResponse("start_date and end_date must be YYYY-MM-DD when provided", "VALIDATION_ERROR", 400);
+    }
+    if (startAt && endAt && endAt < startAt) {
+      return errorResponse("end_date must be on or after start_date", "VALIDATION_ERROR", 400);
+    }
+
     const { data: providerRows } = await supabase.from("providers").select("id").eq("tenant_id", tenantId);
     const providerIds = (providerRows ?? []).map((p: { id: string }) => p.id);
 
-    const { data: orderStatRows } = await supabase
+    let orderStatQuery = supabase
       .from("product_orders")
       .select("status, payment_status, total_amount, provider:providers!inner(tenant_id)")
       .eq("provider.tenant_id", tenantId);
+    if (startAt) orderStatQuery = orderStatQuery.gte("created_at", startAt.toISOString());
+    if (endAt) orderStatQuery = orderStatQuery.lte("created_at", endAt.toISOString());
+    const { data: orderStatRows } = await orderStatQuery;
 
     type O = { status?: string; payment_status?: string; total_amount?: number | string };
     const orders = (orderStatRows ?? []) as O[];
@@ -85,10 +116,10 @@ export async function GET(request: NextRequest) {
 
     let returns_summary = { total: 0, pending: 0, escalated: 0 };
     if (providerIds.length > 0) {
-      const { data: retRows } = await supabase
-        .from("product_return_requests")
-        .select("status")
-        .in("provider_id", providerIds);
+      let retQuery = supabase.from("product_return_requests").select("status").in("provider_id", providerIds);
+      if (startAt) retQuery = retQuery.gte("created_at", startAt.toISOString());
+      if (endAt) retQuery = retQuery.lte("created_at", endAt.toISOString());
+      const { data: retRows } = await retQuery;
       const rlist = retRows ?? [];
       returns_summary = {
         total: rlist.length,
@@ -97,22 +128,30 @@ export async function GET(request: NextRequest) {
       };
     }
 
-    const { data: recentOrders } = await supabase
+    let recentQuery = supabase
       .from("product_orders")
       .select(
         `id, order_number, status, payment_status, total_amount, currency, fulfillment_type, created_at,
          customer:users!product_orders_customer_id_fkey(id, full_name, email),
          provider:providers!inner(id, business_name, tenant_id)`,
       )
-      .eq("provider.tenant_id", tenantId)
-      .order("created_at", { ascending: false })
-      .limit(8);
+      .eq("provider.tenant_id", tenantId);
+    if (startAt) recentQuery = recentQuery.gte("created_at", startAt.toISOString());
+    if (endAt) recentQuery = recentQuery.lte("created_at", endAt.toISOString());
+    const { data: recentOrders } = await recentQuery.order("created_at", { ascending: false }).limit(8);
 
     return successResponse({
       order_summary,
       products_summary,
       returns_summary,
       recent_orders: recentOrders ?? [],
+      period:
+        startAt || endAt
+          ? {
+              start_date: startRaw?.trim() ?? null,
+              end_date: endRaw?.trim() ?? null,
+            }
+          : null,
     });
   } catch (err) {
     return handleApiError(err, "Failed to load e-commerce overview");

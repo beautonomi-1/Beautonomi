@@ -19,8 +19,8 @@ export default function AccountSettingsPageWrapper() {
     <Suspense
       fallback={
         <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-10">
-          <div className="h-8 w-40 bg-gray-100 rounded animate-pulse mb-6" />
-          <div className="h-40 rounded-2xl bg-gray-50 animate-pulse" />
+          <div className="h-8 w-40 bg-gray-100 rounded mb-6" />
+          <div className="h-40 rounded-2xl bg-gray-50 border border-gray-100" />
         </div>
       }
     >

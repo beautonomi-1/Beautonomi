@@ -311,7 +311,7 @@ export function AdminChrome() {
         />
       ) : null}
 
-      <div className="flex flex-1 flex-col md:pl-0">
+      <div className="flex min-h-0 flex-1 flex-col md:pl-0">
         <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur-sm md:min-h-14 md:flex-nowrap md:gap-3 md:px-4 md:py-0">
           <button
             type="button"
@@ -561,8 +561,8 @@ export function AdminChrome() {
           </div>
         ) : null}
 
-        <main className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-[1600px]">
+        <main className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
+          <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
             {isSectionPermissionsPending ? (
               <div className="space-y-4" aria-busy="true" aria-label="Loading permissions">
                 <AdminPageSkeleton rows={8} />

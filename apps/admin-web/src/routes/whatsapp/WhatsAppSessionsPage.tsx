@@ -65,6 +65,7 @@ export function WhatsAppSessionsPage() {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newPhoneE164, setNewPhoneE164] = useState("");
   const [createStep, setCreateStep] = useState<"name" | "qr" | "done">("name");
   const [createdSessionId, setCreatedSessionId] = useState<string | null>(null);
   const [qrData, setQrData] = useState<string | null>(null);
@@ -77,9 +78,11 @@ export function WhatsAppSessionsPage() {
     queryFn: () => adminApi.getJson<Session[]>("/api/admin/whatsapp/sessions"),
   });
 
+  const phoneValid = /^\+[1-9]\d{7,14}$/.test(newPhoneE164.replace(/\s/g, ""));
+
   const createMutation = useMutation({
-    mutationFn: (name: string) =>
-      adminApi.postJson<Session>("/api/admin/whatsapp/sessions", { name }),
+    mutationFn: ({ name, phone_number }: { name: string; phone_number: string }) =>
+      adminApi.postJson<Session>("/api/admin/whatsapp/sessions", { name, phone_number }),
     onSuccess: (session) => {
       setCreatedSessionId(session.id);
       setCreateStep("qr");
@@ -159,6 +162,7 @@ export function WhatsAppSessionsPage() {
     setShowCreate(false);
     setCreateStep("name");
     setNewName("");
+    setNewPhoneE164("");
     setQrData(null);
     setCreatedSessionId(null);
   };
@@ -289,8 +293,13 @@ export function WhatsAppSessionsPage() {
               </button>
               <button
                 className="rounded-xl bg-gray-900 px-6 py-2.5 text-sm font-medium text-white disabled:opacity-50"
-                disabled={!newName.trim() || createMutation.isPending}
-                onClick={() => createMutation.mutate(newName.trim())}
+                disabled={!newName.trim() || !phoneValid || createMutation.isPending}
+                onClick={() =>
+                  createMutation.mutate({
+                    name: newName.trim(),
+                    phone_number: newPhoneE164.replace(/\s/g, ""),
+                  })
+                }
               >
                 {createMutation.isPending ? "Creating…" : "Create"}
               </button>
@@ -299,15 +308,40 @@ export function WhatsAppSessionsPage() {
         }
       >
         {createStep === "name" && (
-          <div className="space-y-3">
-            <label className="block text-sm font-medium text-gray-700">Session name</label>
-            <input
-              className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400/30"
-              placeholder='e.g. "Main Line" or "Support"'
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              autoFocus
-            />
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">Session name</label>
+              <input
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-sm focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400/30"
+                placeholder='e.g. "Main Line" or "Support"'
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-gray-700">WhatsApp number (E.164)</label>
+              <input
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 font-mono text-sm focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400/30"
+                placeholder="+27123456789"
+                value={newPhoneE164}
+                onChange={(e) => setNewPhoneE164(e.target.value)}
+                inputMode="tel"
+                autoComplete="tel"
+              />
+              <p className="text-xs text-gray-500">
+                Required by{" "}
+                <a
+                  href="https://wasenderapi.com/api-docs/sessions/create-whatsapp-session"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-indigo-600 underline"
+                >
+                  WasenderAPI
+                </a>{" "}
+                when creating a session — use the number you will link via QR.
+              </p>
+            </div>
           </div>
         )}
 

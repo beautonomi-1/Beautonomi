@@ -69,7 +69,11 @@ export async function POST(request: NextRequest) {
         },
       },
       ["email"],
-      appType ? { appType } : undefined
+      {
+        ...(appType ? { appType } : {}),
+        supabaseClient: supabase,
+        tenantId,
+      }
     );
 
     if (!result.success) {

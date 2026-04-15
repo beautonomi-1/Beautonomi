@@ -19,3 +19,12 @@ body {
   outline: 2px solid rgb(17 24 39 / 0.35);
   outline-offset: 2px;
 }
+
+/* TipTap placeholder (@tiptap/extension-placeholder) */
+.tiptap-root .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #9ca3af;
+  pointer-events: none;
+  height: 0;
+}

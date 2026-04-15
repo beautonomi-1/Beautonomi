@@ -4,7 +4,7 @@ import React, { memo, useCallback, useEffect, useRef, useState, useTransition } 
 import dynamic from "next/dynamic";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProfileHeaderNew from "@/components/profile/ProfileHeaderNew";
-import FloatingProgressOrbit from "@/components/profile/FloatingProgressOrbit";
+import ProfileCompletionSimple from "@/components/profile/ProfileCompletionSimple";
 import PersonalInfoCard from "@/components/profile/PersonalInfoCard";
 import AboutSection from "@/components/profile/AboutSection";
 import BeautyPreferencesCard from "@/components/profile/BeautyPreferencesCard";
@@ -22,8 +22,8 @@ const CustomFieldsForm = dynamic(
     })),
   {
     loading: () => (
-      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-5 animate-pulse" aria-hidden>
-        <div className="h-4 w-36 bg-gray-200/80 rounded mb-3" />
+      <div className="rounded-xl border border-gray-100 bg-gray-50 p-5" aria-hidden>
+        <div className="h-4 w-36 bg-gray-200 rounded mb-3" />
         <div className="h-9 w-full bg-gray-100 rounded" />
       </div>
     ),
@@ -229,7 +229,7 @@ export default function AccountProfileSections() {
       requestAnimationFrame(() => {
         const el = document.getElementById(id);
         if (el) {
-          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          el.scrollIntoView({ behavior: "auto", block: "start" });
           openCollapsibleNearSection(el);
         }
       });
@@ -256,8 +256,8 @@ export default function AccountProfileSections() {
   if (loading) {
     return (
       <div className="space-y-4" aria-busy="true">
-        <div className="rounded-2xl border border-gray-100 bg-gray-50/90 p-6 md:p-8 animate-pulse min-h-[10rem]" />
-        <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-5 h-20 animate-pulse" />
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-6 md:p-8 min-h-[10rem]" />
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-5 h-20" />
       </div>
     );
   }
@@ -281,7 +281,7 @@ export default function AccountProfileSections() {
       </div>
 
       {completionData && completionData.percentage < 100 && (
-        <FloatingProgressOrbit
+        <ProfileCompletionSimple
           completionData={completionData}
           onCompleteClick={handleCompleteClick}
           onItemClick={handleItemClick}

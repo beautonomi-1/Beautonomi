@@ -392,7 +392,7 @@ export async function GET(request: NextRequest) {
             title: 'Refund Request',
             message: `Refund request for ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)}`,
             timestamp: refund.created_at,
-            link: `/admin/finance`,
+            link: `/admin/refunds`,
             priority: 'high',
           });
         });

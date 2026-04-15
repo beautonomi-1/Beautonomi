@@ -337,7 +337,7 @@ const Page = () => {
               {savedPostsLoading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-gray-100 rounded-2xl animate-pulse aspect-[4/5]" />
+                    <div key={i} className="bg-gray-100 rounded-2xl aspect-[4/5]" />
                   ))}
                 </div>
               ) : (

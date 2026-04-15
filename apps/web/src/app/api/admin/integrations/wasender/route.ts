@@ -90,7 +90,7 @@ export async function PUT(request: NextRequest) {
       tenant_id: scopeTenantId,
       environment,
       enabled: body.enabled ?? false,
-      base_url: body.base_url || "https://app.wasenderapi.com",
+      base_url: body.base_url || "https://www.wasenderapi.com",
       bulk_pacing_ms: Math.max(3000, Number(body.bulk_pacing_ms) || 5000),
       bulk_batch_size_limit: Math.min(100, Math.max(1, Number(body.bulk_batch_size_limit) || 50)),
       daily_send_limit_per_session: Math.min(500, Math.max(50, Number(body.daily_send_limit_per_session) || 200)),

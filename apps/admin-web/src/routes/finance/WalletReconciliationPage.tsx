@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -21,6 +22,8 @@ import {
   AdminTd,
 } from "@/components/admin/AdminDataTable";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { cn } from "@/lib/cn";
 
 interface WalletMismatch {
   user_id: string;
@@ -29,11 +32,18 @@ interface WalletMismatch {
   transaction_sum: number;
   difference: number;
   currency: string;
+  user_email: string | null;
+  user_full_name: string | null;
+  user_phone: string | null;
+  user_role: string | null;
+  account_kind: "customer" | "provider" | "provider_staff" | "admin" | "other";
+  account_kind_label: string;
+  provider_id: string | null;
+  provider_business_name: string | null;
 }
 
 interface ReconciliationPayload {
   mismatches: WalletMismatch[];
-  /** Full list of wallets examined (healthy + mismatch); prefer this for the table */
   checked_wallets?: WalletMismatch[];
   total_mismatches: number;
   checked: number;
@@ -41,6 +51,21 @@ interface ReconciliationPayload {
 }
 
 const QK = adminQueryKeys.finance.walletReconciliation();
+
+function accountKindBadgeClass(kind: WalletMismatch["account_kind"]): string {
+  switch (kind) {
+    case "customer":
+      return "bg-sky-100 text-sky-900";
+    case "provider":
+      return "bg-violet-100 text-violet-900";
+    case "provider_staff":
+      return "bg-indigo-100 text-indigo-900";
+    case "admin":
+      return "bg-slate-200 text-slate-800";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+}
 
 export function WalletReconciliationPage() {
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
@@ -70,7 +95,9 @@ export function WalletReconciliationPage() {
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Wallet Reconciliation" />
-        <AdminPanel><AdminPageSkeleton rows={4} /></AdminPanel>
+        <AdminPanel>
+          <AdminPageSkeleton rows={4} />
+        </AdminPanel>
       </div>
     );
   if (q.error) {
@@ -78,7 +105,9 @@ export function WalletReconciliationPage() {
     return (
       <div className="space-y-6">
         <AdminPageHeader title="Wallet Reconciliation" />
-        <AdminPanel><AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} /></AdminPanel>
+        <AdminPanel>
+          <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
+        </AdminPanel>
       </div>
     );
   }
@@ -92,7 +121,7 @@ export function WalletReconciliationPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Wallet Reconciliation"
-        description="Verify that stored wallet balances match the sum of wallet transactions. Fix any drifted balances."
+        description="Stored wallet balances vs ledger sums. Identify the account, then fix drift or open the user to post an admin credit."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -161,72 +190,143 @@ export function WalletReconciliationPage() {
             }
           />
         ) : (
-          <AdminDataTable>
-            <AdminTableHead>
-              <tr>
-                <AdminTh>User ID</AdminTh>
-                <AdminTh>Wallet ID</AdminTh>
-                <AdminTh>Stored balance</AdminTh>
-                <AdminTh>Calculated</AdminTh>
-                <AdminTh>Difference</AdminTh>
-                <AdminTh>Currency</AdminTh>
-                <AdminTh>Actions</AdminTh>
-              </tr>
-            </AdminTableHead>
-            <AdminTableBody>
-              {rows.map((row) => (
-                <tr key={row.wallet_id}>
-                  <AdminTd className="font-mono text-xs">{row.user_id.slice(0, 8)}…</AdminTd>
-                  <AdminTd className="font-mono text-xs">{row.wallet_id.slice(0, 8)}…</AdminTd>
-                  <AdminTd>{row.wallet_balance.toFixed(2)}</AdminTd>
-                  <AdminTd>{row.transaction_sum.toFixed(2)}</AdminTd>
-                  <AdminTd>
-                    <span
-                      className={
-                        Math.abs(row.difference) < 0.011
-                          ? "text-emerald-700"
-                          : "font-medium text-red-600"
-                      }
-                    >
-                      {row.difference > 0 ? "+" : ""}
-                      {row.difference.toFixed(2)}
-                    </span>
-                  </AdminTd>
-                  <AdminTd>{row.currency}</AdminTd>
-                  <AdminTd>
-                    {Math.abs(row.difference) > 0.011 && (
-                      <button
-                        type="button"
-                        disabled={fixMut.isPending}
-                        onClick={() => {
-                          if (
-                            confirm(
-                              `Set wallet ${row.wallet_id.slice(0, 8)}… balance from ${row.wallet_balance.toFixed(2)} to ${row.transaction_sum.toFixed(2)}?`,
-                            )
-                          )
-                            fixMut.mutate(row.wallet_id);
-                        }}
-                        className="rounded border border-blue-200 px-2 py-1 text-xs text-blue-600 hover:bg-blue-50 disabled:opacity-50"
-                      >
-                        Fix balance
-                      </button>
-                    )}
-                  </AdminTd>
+          <div className="overflow-x-auto">
+            <AdminDataTable>
+              <AdminTableHead>
+                <tr>
+                  <AdminTh>Person</AdminTh>
+                  <AdminTh>Account</AdminTh>
+                  <AdminTh>Provider / org</AdminTh>
+                  <AdminTh>Contact</AdminTh>
+                  <AdminTh>Stored</AdminTh>
+                  <AdminTh>From ledger</AdminTh>
+                  <AdminTh>Diff</AdminTh>
+                  <AdminTh>CCY</AdminTh>
+                  <AdminTh>Actions</AdminTh>
                 </tr>
-              ))}
-            </AdminTableBody>
-          </AdminDataTable>
+              </AdminTableHead>
+              <AdminTableBody>
+                {rows.map((row) => {
+                  const displayName = row.user_full_name?.trim() || "—";
+                  const email = row.user_email?.trim() || "";
+                  const userHref = adminSpaTo(`/admin/users/${encodeURIComponent(row.user_id)}`);
+                  const providerHref = row.provider_id
+                    ? adminSpaTo(`/admin/providers/${encodeURIComponent(row.provider_id)}`)
+                    : null;
+                  return (
+                    <tr key={row.wallet_id}>
+                      <AdminTd className="min-w-[10rem]">
+                        <div className="font-medium text-gray-900">{displayName}</div>
+                        {email ? (
+                          <div className="text-xs text-gray-600">{email}</div>
+                        ) : (
+                          <div className="text-xs text-gray-400">No email on file</div>
+                        )}
+                        <div className="mt-1 font-mono text-[10px] text-gray-400" title={row.user_id}>
+                          user {row.user_id}
+                        </div>
+                      </AdminTd>
+                      <AdminTd>
+                        <span
+                          className={cn(
+                            "inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium",
+                            accountKindBadgeClass(row.account_kind)
+                          )}
+                        >
+                          {row.account_kind_label}
+                        </span>
+                        {row.user_role ? (
+                          <div className="mt-1 text-[10px] text-gray-500">role: {row.user_role}</div>
+                        ) : null}
+                      </AdminTd>
+                      <AdminTd className="max-w-[12rem]">
+                        {row.provider_business_name ? (
+                          <>
+                            <span className="text-sm text-gray-900">{row.provider_business_name}</span>
+                            {providerHref ? (
+                              <Link className="mt-1 block text-xs font-medium text-primary underline" to={providerHref}>
+                                Open provider
+                              </Link>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </AdminTd>
+                      <AdminTd className="text-xs text-gray-700">
+                        {row.user_phone ? <span className="tabular-nums">{row.user_phone}</span> : "—"}
+                      </AdminTd>
+                      <AdminTd className="tabular-nums">{row.wallet_balance.toFixed(2)}</AdminTd>
+                      <AdminTd className="tabular-nums">{row.transaction_sum.toFixed(2)}</AdminTd>
+                      <AdminTd>
+                        <span
+                          className={
+                            Math.abs(row.difference) < 0.011 ? "text-emerald-700" : "font-medium text-red-600"
+                          }
+                        >
+                          {row.difference > 0 ? "+" : ""}
+                          {row.difference.toFixed(2)}
+                        </span>
+                      </AdminTd>
+                      <AdminTd>{row.currency}</AdminTd>
+                      <AdminTd>
+                        <div className="flex flex-col gap-1.5">
+                          <Link
+                            className="text-xs font-medium text-primary underline"
+                            to={userHref}
+                            title="Open user — wallet top-up lives on this page (Users & trust permission)"
+                          >
+                            User profile → credit
+                          </Link>
+                          {Math.abs(row.difference) > 0.011 ? (
+                            <button
+                              type="button"
+                              disabled={fixMut.isPending}
+                              onClick={() => {
+                                if (
+                                  confirm(
+                                    `Set stored balance from ${row.wallet_balance.toFixed(2)} to ${row.transaction_sum.toFixed(2)} (${row.currency})?\n\nThis only fixes the stored number to match the sum of ledger rows — it does not add a new transaction.`,
+                                  )
+                                )
+                                  fixMut.mutate(row.wallet_id);
+                              }}
+                              className="rounded border border-blue-200 px-2 py-1 text-left text-xs text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                            >
+                              Fix balance
+                            </button>
+                          ) : null}
+                        </div>
+                      </AdminTd>
+                    </tr>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminDataTable>
+          </div>
         )}
       </AdminPanel>
 
-      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs text-gray-600">
-        <strong>How wallet reconciliation works:</strong>
-        <ul className="mt-2 list-inside list-disc space-y-1">
-          <li>Each wallet&apos;s stored <code className="rounded bg-gray-100 px-1">balance</code> is compared against <code className="rounded bg-gray-100 px-1">SUM(credits) - SUM(debits)</code> from <code className="rounded bg-gray-100 px-1">wallet_transactions</code>.</li>
-          <li>Differences greater than 0.01 are flagged as mismatches.</li>
-          <li>&ldquo;Fix balance&rdquo; sets the stored balance to the calculated value. This does <em>not</em> create a correcting transaction.</li>
-          <li>Up to 1 000 wallets are checked per request (ordered by most recently updated).</li>
-          <li>The table lists every wallet checked (not only mismatches). Turn on &ldquo;Mismatches only&rdquo; to hide healthy rows.</li>
+      <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4 text-xs text-gray-700">
+        <p>
+          <strong>Credit (add funds):</strong> Open <strong>User profile → Credit</strong> (same as{" "}
+          <strong>Wallet top-up</strong> on the user screen). That calls the ledger and increases balance with a{" "}
+          <code className="rounded bg-gray-100 px-1">credit</code> line. Requires{" "}
+          <strong>Users &amp; trust</strong> permission in addition to finance visibility for refunds—if you only see
+          Finance, ask a trust admin to run the top-up or extend your role.
+        </p>
+        <p>
+          <strong>Debit (remove funds):</strong> Customer wallets are normally debited by checkout and bookings. There is
+          no separate &ldquo;admin debit&rdquo; button here; use booking/refund flows or support for edge cases.
+        </p>
+        <p>
+          <strong>Fix balance:</strong> Use when the stored balance drifted but the{" "}
+          <strong>ledger sum is correct</strong>. It sets <code className="rounded bg-gray-100 px-1">user_wallets.balance</code> to
+          match the sum of <code className="rounded bg-gray-100 px-1">wallet_transactions</code> — it does{" "}
+          <em>not</em> insert a correcting transaction.
+        </p>
+        <ul className="list-inside list-disc space-y-1 text-gray-600">
+          <li>Compared: stored balance vs sum of credits minus debits in <code className="rounded bg-gray-100 px-1">wallet_transactions</code>.</li>
+          <li>Up to 1 000 wallets per run (most recently updated).</li>
         </ul>
       </div>
     </div>

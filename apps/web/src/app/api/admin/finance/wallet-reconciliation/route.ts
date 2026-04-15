@@ -11,6 +11,16 @@ interface WalletReconciliationRow {
   transaction_sum: number;
   difference: number;
   currency: string;
+  /** Joined from `users` for admin context */
+  user_email: string | null;
+  user_full_name: string | null;
+  user_phone: string | null;
+  user_role: string | null;
+  /** `provider` if a providers row exists for this user; else derived from `user_role` */
+  account_kind: "customer" | "provider" | "provider_staff" | "admin" | "other";
+  account_kind_label: string;
+  provider_id: string | null;
+  provider_business_name: string | null;
 }
 
 function isMissingColumnError(error: unknown, column: string): boolean {
@@ -19,6 +29,112 @@ function isMissingColumnError(error: unknown, column: string): boolean {
   const code = typeof record.code === "string" ? record.code : "";
   const message = typeof record.message === "string" ? record.message : "";
   return code === "42703" && message.includes(column);
+}
+
+type UserRow = {
+  id: string;
+  email?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  role?: string | null;
+};
+
+type ProviderRow = { id: string; user_id: string; business_name?: string | null };
+
+function classifyWalletAccount(user: UserRow | undefined, provider: ProviderRow | undefined): {
+  account_kind: WalletReconciliationRow["account_kind"];
+  account_kind_label: string;
+} {
+  if (provider) {
+    return { account_kind: "provider", account_kind_label: "Provider (business)" };
+  }
+  const role = (user?.role ?? "").toLowerCase();
+  if (role === "customer") {
+    return { account_kind: "customer", account_kind_label: "Customer" };
+  }
+  if (role === "provider_owner") {
+    return { account_kind: "provider", account_kind_label: "Provider owner" };
+  }
+  if (role === "provider_staff") {
+    return { account_kind: "provider_staff", account_kind_label: "Provider staff" };
+  }
+  if (role === "provider_onboarding") {
+    return { account_kind: "provider_staff", account_kind_label: "Provider onboarding" };
+  }
+  if (role.startsWith("admin_") || role === "superadmin" || role === "support_agent") {
+    return { account_kind: "admin", account_kind_label: "Admin / operations" };
+  }
+  if (role) {
+    return { account_kind: "other", account_kind_label: role };
+  }
+  return { account_kind: "other", account_kind_label: "Unknown" };
+}
+
+function buildReconciliationRow(
+  w: { id: string; user_id: string; balance?: number; currency?: string },
+  computedSum: number,
+  storedBalance: number,
+  signedDiff: number,
+  userMap: Map<string, UserRow>,
+  providerMap: Map<string, ProviderRow>
+): WalletReconciliationRow {
+  const u = userMap.get(w.user_id);
+  const p = providerMap.get(w.user_id);
+  const { account_kind, account_kind_label } = classifyWalletAccount(u, p);
+  return {
+    user_id: w.user_id,
+    wallet_id: w.id,
+    wallet_balance: storedBalance,
+    transaction_sum: Number(computedSum.toFixed(2)),
+    difference: Number(signedDiff.toFixed(2)),
+    currency: w.currency ?? "ZAR",
+    user_email: u?.email ?? null,
+    user_full_name: u?.full_name ?? null,
+    user_phone: u?.phone ?? null,
+    user_role: u?.role ?? null,
+    account_kind,
+    account_kind_label,
+    provider_id: p?.id ?? null,
+    provider_business_name: p?.business_name ?? null,
+  };
+}
+
+async function loadUserAndProviderMaps(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  userIds: string[]
+): Promise<{ userMap: Map<string, UserRow>; providerMap: Map<string, ProviderRow> }> {
+  const userMap = new Map<string, UserRow>();
+  const providerMap = new Map<string, ProviderRow>();
+  const uniq = Array.from(new Set(userIds)).filter(Boolean);
+  const chunkSize = 200;
+  for (let i = 0; i < uniq.length; i += chunkSize) {
+    const chunk = uniq.slice(i, i + chunkSize);
+    const { data: users, error: uErr } = await supabase
+      .from("users")
+      .select("id, email, full_name, phone, role")
+      .in("id", chunk);
+    if (uErr) throw uErr;
+    for (const row of (users ?? []) as UserRow[]) {
+      if (row?.id) userMap.set(row.id, row);
+    }
+  }
+  for (let i = 0; i < uniq.length; i += chunkSize) {
+    const chunk = uniq.slice(i, i + chunkSize);
+    const { data: provs, error: pErr } = await supabase
+      .from("providers")
+      .select("id, user_id, business_name")
+      .in("user_id", chunk);
+    if (pErr) {
+      console.warn("[wallet-reconciliation] providers select failed:", pErr.message);
+      break;
+    }
+    for (const row of (provs ?? []) as ProviderRow[]) {
+      if (row.user_id && !providerMap.has(row.user_id)) {
+        providerMap.set(row.user_id, row);
+      }
+    }
+  }
+  return { userMap, providerMap };
 }
 
 /**
@@ -92,6 +208,11 @@ export async function GET(request: NextRequest) {
     const walletRows = wallets as WalletRow[];
     const walletIds = walletRows.map((w) => w.id);
 
+    const { userMap, providerMap } = await loadUserAndProviderMaps(
+      supabase,
+      walletRows.map((w) => w.user_id)
+    );
+
     // Sum wallet_transactions per wallet_id in chunks.
     // wallet_transactions uses `type` ('credit'|'debit') with positive `amount`.
     const chunkSize = 200;
@@ -119,14 +240,7 @@ export async function GET(request: NextRequest) {
       const storedBalance = Number(w.balance ?? 0);
       const computedSum = txSumMap.get(w.id) ?? 0;
       const signedDiff = storedBalance - computedSum;
-      const row: WalletReconciliationRow = {
-        user_id: w.user_id,
-        wallet_id: w.id,
-        wallet_balance: storedBalance,
-        transaction_sum: Number(computedSum.toFixed(2)),
-        difference: Number(signedDiff.toFixed(2)),
-        currency: w.currency ?? "ZAR",
-      };
+      const row = buildReconciliationRow(w, computedSum, storedBalance, signedDiff, userMap, providerMap);
       checked_wallets.push(row);
       if (Math.abs(signedDiff) > TOLERANCE) {
         mismatches.push(row);

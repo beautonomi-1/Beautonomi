@@ -49,7 +49,11 @@ export function ProviderOpsDuplicatesPage() {
         description: `Confirmed match to provider ${matchId}`,
         metadata: { matched_provider_id: matchId, match_type: "manual" },
       });
-      await adminApi.patchJson(`/api/admin/provider-ops/leads/${leadId}/stage`, { stage: "matched" });
+      await adminApi.patchJson(`/api/admin/provider-ops/leads/${leadId}/stage`, {
+        stage: "matched",
+        matched_provider_id: matchId,
+        match_confidence: 0.95,
+      });
     },
     onSuccess: () => {
       adminToast.success("Match confirmed — lead moved to Matched stage");

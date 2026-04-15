@@ -3,6 +3,8 @@
 import React from "react";
 import { Calendar, CreditCard, Users, MessageSquare, Megaphone, BarChart3 } from "lucide-react";
 import { usePageContent } from "@/hooks/usePageContent";
+import { CmsHtml } from "@/components/cms/CmsHtml";
+import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 
 const defaultFeatures = [
   {
@@ -68,15 +70,15 @@ export default function FeaturesSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-8 sm:mb-10 md:mb-12">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-4">
-            {featuresTitle.includes('<') ? (
-              <span dangerouslySetInnerHTML={{ __html: featuresTitle }} />
+            {cmsContentLooksLikeHtml(featuresTitle) ? (
+              <CmsHtml html={featuresTitle} className="block" as="span" />
             ) : (
               featuresTitle
             )}
           </h2>
           <p className="text-base sm:text-lg text-gray-600 max-w-2xl mx-auto px-4">
-            {featuresDescription.includes('<') ? (
-              <span dangerouslySetInnerHTML={{ __html: featuresDescription }} />
+            {cmsContentLooksLikeHtml(featuresDescription) ? (
+              <CmsHtml html={featuresDescription} className="block" as="span" />
             ) : (
               featuresDescription
             )}

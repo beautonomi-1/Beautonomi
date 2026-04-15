@@ -58,7 +58,7 @@ export function getPaystackSecrets(): {
 export async function getOneSignalRestApiKey(): Promise<string | null> {
   const fromEnv = process.env.ONESIGNAL_REST_API_KEY?.trim();
   if (fromEnv) return fromEnv;
-  const db = await loadGlobalOneSignalFromDb();
+  const db = await loadOneSignalFromDb(null);
   return db.restKeyCustomer || db.restKeyProvider || null;
 }
 
@@ -67,7 +67,7 @@ export async function getOneSignalRestApiKeyForApp(
 ): Promise<string | null> {
   const fromEnv = getOneSignalConfig(appType).restApiKey?.trim();
   if (fromEnv) return fromEnv;
-  const db = await loadGlobalOneSignalFromDb();
+  const db = await loadOneSignalFromDb(null);
   if (appType === "provider") {
     return db.restKeyProvider || db.restKeyCustomer || null;
   }
@@ -81,47 +81,77 @@ type GlobalOneSignalDb = {
   restKeyProvider: string | null;
 };
 
-async function loadGlobalOneSignalFromDb(): Promise<GlobalOneSignalDb> {
+function parseOneSignalRows(
+  settingsRow: { settings?: { onesignal?: Record<string, unknown> } } | null,
+  secretRow: {
+    onesignal_rest_api_key?: string | null;
+    onesignal_rest_api_key_provider?: string | null;
+  } | null
+): GlobalOneSignalDb {
+  const os = settingsRow?.settings?.onesignal as
+    | {
+        app_id?: string;
+        app_id_provider?: string;
+      }
+    | undefined;
+  const appIdCustomer = (os?.app_id && String(os.app_id).trim()) || null;
+  const appIdProvider = (os?.app_id_provider && String(os.app_id_provider).trim()) || null;
+  const restKeyCustomer = secretRow?.onesignal_rest_api_key?.trim() || null;
+  const restKeyProvider = secretRow?.onesignal_rest_api_key_provider?.trim() || null;
+  return { appIdCustomer, appIdProvider, restKeyCustomer, restKeyProvider };
+}
+
+/**
+ * Load OneSignal app IDs + REST keys from platform_settings / platform_secrets.
+ * When `tenantId` is set, merges tenant row over global (`tenant_id IS NULL`) so market-scoped
+ * Superadmin settings apply to broadcast and notifications (same as GET /api/admin/settings).
+ */
+async function loadOneSignalFromDb(tenantId?: string | null): Promise<GlobalOneSignalDb> {
   try {
     const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
     const admin = getSupabaseAdmin();
 
-    const [{ data: settingsRow }, { data: secretRow }] = await Promise.all([
-      admin
+    const loadScope = async (tid: string | null): Promise<GlobalOneSignalDb> => {
+      const settingsBase = admin
         .from("platform_settings")
         .select("settings")
         .eq("is_active", true)
-        .is("tenant_id", null)
         .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      admin
+        .limit(1);
+      const settingsQ = tid ? settingsBase.eq("tenant_id", tid) : settingsBase.is("tenant_id", null);
+
+      const secretsBase = admin
         .from("platform_secrets")
         .select("onesignal_rest_api_key, onesignal_rest_api_key_provider")
-        .is("tenant_id", null)
         .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-    ]);
+        .limit(1);
+      const secretsQ = tid ? secretsBase.eq("tenant_id", tid) : secretsBase.is("tenant_id", null);
 
-    const os = (settingsRow as { settings?: { onesignal?: Record<string, unknown> } } | null)?.settings
-      ?.onesignal as
-      | {
-          app_id?: string;
-          app_id_provider?: string;
-        }
-      | undefined;
+      const [{ data: settingsRow }, { data: secretRow }] = await Promise.all([
+        settingsQ.maybeSingle(),
+        secretsQ.maybeSingle(),
+      ]);
 
-    const appIdCustomer = (os?.app_id && String(os.app_id).trim()) || null;
-    const appIdProvider = (os?.app_id_provider && String(os.app_id_provider).trim()) || null;
-    const sr = secretRow as {
-      onesignal_rest_api_key?: string;
-      onesignal_rest_api_key_provider?: string;
-    } | null;
-    const restKeyCustomer = sr?.onesignal_rest_api_key?.trim() || null;
-    const restKeyProvider = sr?.onesignal_rest_api_key_provider?.trim() || null;
+      return parseOneSignalRows(
+        settingsRow as { settings?: { onesignal?: Record<string, unknown> } } | null,
+        secretRow as {
+          onesignal_rest_api_key?: string | null;
+          onesignal_rest_api_key_provider?: string | null;
+        } | null
+      );
+    };
 
-    return { appIdCustomer, appIdProvider, restKeyCustomer, restKeyProvider };
+    const global = await loadScope(null);
+    const tid = typeof tenantId === "string" && tenantId.trim() ? tenantId.trim() : null;
+    if (!tid) return global;
+
+    const tenant = await loadScope(tid);
+    return {
+      appIdCustomer: tenant.appIdCustomer || global.appIdCustomer,
+      appIdProvider: tenant.appIdProvider || global.appIdProvider,
+      restKeyCustomer: tenant.restKeyCustomer || global.restKeyCustomer,
+      restKeyProvider: tenant.restKeyProvider || global.restKeyProvider,
+    };
   } catch {
     return {
       appIdCustomer: null,
@@ -132,13 +162,16 @@ async function loadGlobalOneSignalFromDb(): Promise<GlobalOneSignalDb> {
   }
 }
 
+export type ResolveOneSignalOptions = { tenantId?: string | null };
+
 /**
- * Resolve App ID + REST key: env first, then global platform_settings + platform_secrets (superadmin).
+ * Resolve App ID + REST key: env first, then platform_settings + platform_secrets (tenant row merged over global).
  */
 export async function resolveOneSignalCredentials(
-  appType?: OneSignalAppType
+  appType?: OneSignalAppType,
+  options?: ResolveOneSignalOptions
 ): Promise<{ appId: string | null; restKey: string | null }> {
-  const db = await loadGlobalOneSignalFromDb();
+  const db = await loadOneSignalFromDb(options?.tenantId);
 
   if (appType === "provider") {
     const env = getOneSignalConfig("provider");

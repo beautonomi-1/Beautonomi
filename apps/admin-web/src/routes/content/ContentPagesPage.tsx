@@ -22,6 +22,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { CMS_PAGE_SECTION_PRESETS } from "@/lib/cmsPageSectionPresets";
 import { Plus, Search } from "lucide-react";
 
 type PageContent = {
@@ -81,6 +82,7 @@ function PageContentForm({
 
   const metadataPreview = useMemo(() => tryParseJson(metadataText), [metadataText]);
   const displayTitle = String(metadataPreview.title ?? `${pageSlug || "page"} / ${sectionKey || "section"}`);
+  const sectionPresets = CMS_PAGE_SECTION_PRESETS[pageSlug.trim()] ?? [];
 
   return (
     <div className="space-y-5 text-sm">
@@ -111,6 +113,26 @@ function PageContentForm({
           />
           {initial.id ? (
             <p className="mt-1 text-xs text-gray-500">Section key cannot be changed after creation.</p>
+          ) : sectionPresets.length > 0 ? (
+            <div className="mt-2">
+              <label className="text-xs text-gray-600">Quick pick (sets section key)</label>
+              <select
+                className="mt-1 min-h-9 w-full rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-800"
+                value=""
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v) setSectionKey(v);
+                  e.target.value = "";
+                }}
+              >
+                <option value="">Choose a section for this page…</option>
+                {sectionPresets.map((p) => (
+                  <option key={p.value} value={p.value}>
+                    {p.label} ({p.value})
+                  </option>
+                ))}
+              </select>
+            </div>
           ) : null}
         </div>
         <div>
@@ -126,6 +148,11 @@ function PageContentForm({
             <option value="image">Image URL</option>
             <option value="video">Video URL</option>
           </select>
+          {contentType === "html" ? (
+            <p className="mt-1 text-xs text-gray-500">
+              Full toolbar: headings, bold, lists, links, quotes, undo. Output is stored as HTML and sanitized on the public site.
+            </p>
+          ) : null}
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-700">Display order</label>
@@ -143,7 +170,7 @@ function PageContentForm({
           </label>
           <div className="mt-1.5">
             {contentType === "html" ? (
-              <RichTextEditor value={content} onChange={setContent} />
+              <RichTextEditor value={content} onChange={setContent} placeholder={`Content for ${sectionKey || "section"}…`} />
             ) : (
               <textarea
                 rows={8}

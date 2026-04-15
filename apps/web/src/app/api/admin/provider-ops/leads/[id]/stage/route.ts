@@ -56,6 +56,13 @@ export async function PATCH(
     const oldStage = lead.commercial_stage;
     const updates: Record<string, unknown> = { commercial_stage: newStage };
 
+    if (newStage === "matched" && body.matched_provider_id) {
+      updates.matched_provider_id = body.matched_provider_id;
+      updates.match_confidence =
+        typeof body.match_confidence === "number" ? body.match_confidence : 0.95;
+      updates.matched_at = new Date().toISOString();
+    }
+
     if (newStage === "lost") {
       updates.lost_reason = body.lost_reason || null;
     }

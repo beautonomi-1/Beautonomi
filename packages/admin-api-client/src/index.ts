@@ -5,6 +5,7 @@ export {
   adminScopeGetAppliesToPathname,
   adminScopePathname,
   isScopedAdminCustomizationPath,
+  matchesScopedPathPrefix,
   mergeAdminScopeIntoJsonBody,
   readAdminScopeFromStorage,
   withAdminScopeUrl,

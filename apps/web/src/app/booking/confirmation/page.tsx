@@ -125,10 +125,10 @@ export default function BookingConfirmationPage() {
   }, [bookingId, booking]);
 
   const handleDownloadReceipt = () => {
-    // Open receipt page in new tab for printing/saving as PDF
+    // Same-tab navigation keeps session cookies reliable (new tabs can race auth on some setups).
     const id = searchParams.get("bookingId") || searchParams.get("booking_id");
     if (id) {
-      window.open(`/account-settings/bookings/${id}/receipt`, "_blank");
+      router.push(`/account-settings/bookings/${id}/receipt`);
     } else {
       window.print();
     }

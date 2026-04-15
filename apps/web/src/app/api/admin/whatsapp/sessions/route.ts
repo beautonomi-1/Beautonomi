@@ -35,13 +35,23 @@ export async function POST(request: NextRequest) {
     if (!body.name?.trim()) {
       return errorResponse("Session name is required", "VALIDATION_ERROR", 400);
     }
+    const phoneRaw = typeof body.phone_number === "string" ? body.phone_number.trim() : "";
+    if (!phoneRaw || !/^\+[1-9]\d{7,14}$/.test(phoneRaw.replace(/\s/g, ""))) {
+      return errorResponse(
+        "phone_number is required (E.164, e.g. +27123456789). WasenderAPI requires this to create a session.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
 
     const config = await getWasenderConfig(tenantId);
     if (!config) {
       return errorResponse("WasenderAPI not configured. Add your API key in Integrations first.", "NOT_CONFIGURED", 400);
     }
 
-    const wasenderSession = await wasenderCreateSession(config, body.name.trim());
+    const wasenderSession = await wasenderCreateSession(config, body.name.trim(), {
+      phone_number: phoneRaw.replace(/\s/g, ""),
+    });
     const wasenderSessionId = String(
       (wasenderSession as any).id ?? (wasenderSession as any).session_id ?? (wasenderSession as any).data?.id ?? "",
     );
@@ -56,6 +66,7 @@ export async function POST(request: NextRequest) {
         tenant_id: tenantId,
         wasender_session_id: wasenderSessionId,
         name: body.name.trim(),
+        phone_number: phoneRaw.replace(/\s/g, ""),
         status: "disconnected",
         created_by: user.id,
       })

@@ -70,6 +70,8 @@ import {
   CheckCircle2,
   Copy,
   Settings2,
+  Plug,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -235,6 +237,30 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
+      {
+        title: "Integrations hub",
+        href: "/admin/control-plane/integrations",
+        icon: Plug,
+        superadminOnly: true,
+      },
+      {
+        title: "Sumsub",
+        href: "/admin/control-plane/integrations/sumsub",
+        icon: ShieldCheck,
+        superadminOnly: true,
+      },
+      {
+        title: "Gemini",
+        href: "/admin/control-plane/integrations/gemini",
+        icon: Sparkles,
+        superadminOnly: true,
+      },
+      {
+        title: "Aura",
+        href: "/admin/control-plane/integrations/aura",
+        icon: Zap,
+        superadminOnly: true,
+      },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },

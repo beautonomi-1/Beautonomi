@@ -3,6 +3,8 @@
 import React from "react";
 import { Star } from "lucide-react";
 import { usePageContent } from "@/hooks/usePageContent";
+import { CmsHtml } from "@/components/cms/CmsHtml";
+import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 
 export default function RatingSection() {
   const { getSectionContent } = usePageContent("become-a-partner");
@@ -19,8 +21,8 @@ export default function RatingSection() {
           </div>
         </div>
         <p className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-900 mb-1">
-          {ratingText.includes('<') ? (
-            <span dangerouslySetInnerHTML={{ __html: ratingText }} />
+          {cmsContentLooksLikeHtml(ratingText) ? (
+            <CmsHtml html={ratingText} className="block" as="span" />
           ) : (
             ratingText
           )}

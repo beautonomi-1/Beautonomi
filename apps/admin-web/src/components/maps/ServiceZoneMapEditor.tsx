@@ -70,6 +70,8 @@ export function ServiceZoneMapEditor({
   const mapHandleRef = useRef<AdminMapHandle>(null);
   const drawRef = useRef<InstanceType<typeof MapboxDraw> | null>(null);
   const drawIntentRef = useRef<DrawIntent>("none");
+  /** Bumps on unmount / stale map so async Draw attach never runs after the map was removed (React Strict Mode + GL v3). */
+  const drawAttachTokenRef = useRef(0);
 
   const [mapReady, setMapReady] = useState(false);
   const [drawIntent, setDrawIntent] = useState<DrawIntent>("none");
@@ -141,43 +143,107 @@ export function ServiceZoneMapEditor({
 
   const handleMapReady = useCallback((map: mapboxgl.Map) => {
     setMapReady(true);
+    const token = ++drawAttachTokenRef.current;
 
     (async () => {
       const [drawModule] = await Promise.all([
         import("@mapbox/mapbox-gl-draw"),
         import("@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css"),
       ]);
+      if (token !== drawAttachTokenRef.current) return;
       const DrawClass = drawModule.default;
-      const draw = new DrawClass({
-        displayControlsDefault: false,
-        defaultMode: "simple_select",
-      });
-      map.addControl(draw as unknown as mapboxgl.IControl, "top-left");
-      drawRef.current = draw;
 
-      map.on("draw.create", (e: { features: GeoJSON.Feature[] }) => {
-        const feature = e.features[0];
-        const geom = feature?.geometry;
-        let poly: GeoJSON.Polygon | null = null;
-        if (geom?.type === "Polygon") {
-          poly = geom as GeoJSON.Polygon;
-        } else if (geom?.type === "MultiPolygon" && geom.coordinates[0]?.length) {
-          poly = { type: "Polygon", coordinates: geom.coordinates[0] };
-        }
-        if (!poly) {
-          adminToast.error("Draw one closed polygon area (double-click to finish).");
-          try {
-            draw.deleteAll();
-          } catch {
-            /* ignore */
-          }
-          setDrawIntent("none");
+      const attachDraw = () => {
+        if (token !== drawAttachTokenRef.current) return;
+        if ((map as mapboxgl.Map & { _removed?: boolean })._removed) return;
+        if (drawRef.current) return;
+        try {
+          if (!map.isStyleLoaded() || !map.getStyle()) return;
+        } catch {
           return;
         }
-        setPendingGeom(poly);
-        setConfirmOpen(true);
-      });
+        const draw = new DrawClass({
+          displayControlsDefault: false,
+          defaultMode: "simple_select",
+        });
+        map.addControl(draw as unknown as mapboxgl.IControl, "top-left");
+        drawRef.current = draw;
+
+        map.on("draw.create", (e: { features: GeoJSON.Feature[] }) => {
+          const feature = e.features[0];
+          const geom = feature?.geometry;
+          let poly: GeoJSON.Polygon | null = null;
+          if (geom?.type === "Polygon") {
+            poly = geom as GeoJSON.Polygon;
+          } else if (geom?.type === "MultiPolygon" && geom.coordinates[0]?.length) {
+            poly = { type: "Polygon", coordinates: geom.coordinates[0] };
+          }
+          if (!poly) {
+            adminToast.error("Draw one closed polygon area (double-click to finish).");
+            try {
+              draw.deleteAll();
+            } catch {
+              /* ignore */
+            }
+            setDrawIntent("none");
+            return;
+          }
+          setPendingGeom(poly);
+          setConfirmOpen(true);
+        });
+      };
+
+      /**
+       * Mapbox GL v3 + Draw: addControl must run after the style graph is stable.
+       * `load` alone is not enough; `idle` + double rAF matches Draw + style internal timing.
+       */
+      const scheduleAttach = () => {
+        if (token !== drawAttachTokenRef.current) return;
+        if ((map as mapboxgl.Map & { _removed?: boolean })._removed) return;
+
+        const runAfterIdle = () => {
+          if (token !== drawAttachTokenRef.current) return;
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              attachDraw();
+            });
+          });
+        };
+
+        const waitStyle = () => {
+          if (token !== drawAttachTokenRef.current) return;
+          try {
+            if (!map.isStyleLoaded()) {
+              map.once("styledata", waitStyle);
+              return;
+            }
+          } catch {
+            return;
+          }
+          map.once("idle", runAfterIdle);
+        };
+
+        waitStyle();
+      };
+
+      scheduleAttach();
     })();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      drawAttachTokenRef.current += 1;
+      try {
+        const map = mapHandleRef.current?.getMap();
+        const draw = drawRef.current;
+        drawRef.current = null;
+        if (map && draw) {
+          map.removeControl(draw as unknown as mapboxgl.IControl);
+        }
+      } catch {
+        /* ignore */
+      }
+    };
   }, []);
 
   // Render preview layers + fit camera after render (parity with Next.js MarketMap)
@@ -355,7 +421,13 @@ export function ServiceZoneMapEditor({
   // Sync draw mode
   useEffect(() => {
     const draw = drawRef.current;
-    if (!draw || !mapReady) return;
+    const map = mapHandleRef.current?.getMap();
+    if (!draw || !mapReady || !map) return;
+    try {
+      if (!map.isStyleLoaded()) return;
+    } catch {
+      return;
+    }
     try {
       if (drawIntent === "none") {
         draw.changeMode("simple_select");

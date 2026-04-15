@@ -13,8 +13,8 @@ const AccountProfileSections = dynamic(
   {
     loading: () => (
       <div className="space-y-4" aria-busy="true">
-        <div className="rounded-2xl border border-gray-100 bg-gray-50/90 p-6 md:p-8 animate-pulse min-h-[10rem]" />
-        <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-5 h-20 animate-pulse" />
+        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-6 md:p-8 min-h-[10rem]" />
+        <div className="rounded-xl border border-gray-100 bg-gray-50 p-5 h-20" />
       </div>
     ),
   }
@@ -48,12 +48,13 @@ const AccountSettingsPage: React.FC = () => {
         <p className="text-sm text-gray-500 mt-1 font-light">Profile, bookings, and preferences</p>
       </div>
 
-      <EmailVerificationBanner />
+      <AccountHubGrid embeddedInProfile />
 
-      {/* Start rendering (and data-fetching) immediately — don't gate on auth.
-          AccountProfileSections calls /api/me/profile-bundle which validates the
-          session server-side, so it will return 401 if the user isn't signed in
-          and the component will show its own empty/error state gracefully. */}
+      <div className="mb-6 md:mb-8">
+        <EmailVerificationBanner />
+      </div>
+
+      {/* AccountProfileSections fetches /api/me/profile-bundle; hub above paints first. */}
       <div className="mb-8 md:mb-10">
         <AccountProfileSections />
       </div>
@@ -63,8 +64,6 @@ const AccountSettingsPage: React.FC = () => {
           <UpcomingBookingPreview />
         </div>
       )}
-
-      <AccountHubGrid embeddedInProfile />
 
       {user ? (
         <div className="mt-10 md:mt-12 border-t border-gray-100 pt-8 md:pt-10 flex flex-col items-stretch max-w-md mx-auto gap-3">

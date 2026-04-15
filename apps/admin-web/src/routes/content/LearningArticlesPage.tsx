@@ -23,6 +23,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { RichTextEditor } from "@/components/admin/RichTextEditor";
+import { marked } from "marked";
 import { Plus, Search } from "lucide-react";
 
 type Article = {
@@ -47,6 +48,7 @@ const EMPTY_ARTICLE_INITIAL: Partial<Article> = {
   status: "draft",
   audience: "general",
   content_type: "article",
+  content_format: "html",
 };
 
 function ArticleForm({
@@ -74,8 +76,13 @@ function ArticleForm({
   const [summary, setSummary] = useState(initial.summary ?? "");
   const [body, setBody] = useState(initial.body ?? "");
   const [contentType, setContentType] = useState(initial.content_type ?? "article");
+  const [contentFormat, setContentFormat] = useState<"html" | "markdown">(
+    initial.content_format === "markdown" ? "markdown" : "html",
+  );
   const [imageUrl, setImageUrl] = useState(initial.image_url ?? "");
   const [isInternal, setIsInternal] = useState(initial.is_internal ?? false);
+
+  const useVisualBodyEditor = contentFormat === "html";
 
   return (
     <div className="space-y-5 text-sm">
@@ -182,17 +189,50 @@ function ArticleForm({
           />
         </div>
         <div className="sm:col-span-2">
-          <label className="block text-xs font-medium text-gray-700">Body (HTML / Markdown)</label>
-          <div className="mt-1.5">
-            {contentType === "article" ? (
-              <RichTextEditor value={body} onChange={setBody} />
+          <label className="block text-xs font-medium text-gray-700">Body</label>
+          <div className="mt-1.5 space-y-2">
+            {useVisualBodyEditor ? (
+              <>
+                <RichTextEditor
+                  variant="learning"
+                  minHeightClassName="min-h-[280px]"
+                  value={body}
+                  onChange={setBody}
+                  placeholder="Write the article… Use the toolbar for images and YouTube, or paste a YouTube link."
+                />
+                <p className="text-xs text-gray-500">
+                  Stored as <span className="font-medium">HTML</span>. Images and YouTube use the toolbar; other embeds can be pasted as HTML. Hero
+                  image above is separate from inline images.
+                </p>
+              </>
             ) : (
-              <textarea
-                rows={8}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-              />
+              <>
+                <textarea
+                  rows={12}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 font-mono text-xs"
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  spellCheck={false}
+                />
+                <p className="text-xs text-amber-800">
+                  This article is stored as <span className="font-medium">Markdown</span>. Switch to HTML in the database or{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-indigo-700 underline hover:text-indigo-900"
+                    onClick={() => {
+                      try {
+                        setBody(marked.parse(body) as string);
+                      } catch {
+                        /* keep raw body */
+                      }
+                      setContentFormat("html");
+                    }}
+                  >
+                    convert to HTML (visual editor)
+                  </button>{" "}
+                  — body is run through the same Markdown renderer as the public site; review in the editor after converting.
+                </p>
+              </>
             )}
           </div>
         </div>
@@ -226,6 +266,7 @@ function ArticleForm({
               audience,
               summary: summary || undefined,
               body,
+              content_format: contentFormat,
               content_type: contentType,
               image_url: imageUrl || null,
               is_internal: isInternal,
@@ -501,7 +542,7 @@ export function LearningArticlesPage() {
           setMutError(null);
         }}
         title={modal === "edit" ? "Edit article" : "New article"}
-        description="Rich body for standard articles; video guides use the body field for notes or embed snippets."
+        description="Rich HTML body with images and YouTube embeds (learning tools); video guides use the same editor for intro text plus embedded video."
         size="xl"
         footer={null}
       >

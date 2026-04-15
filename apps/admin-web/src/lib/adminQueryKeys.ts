@@ -49,6 +49,10 @@ export const adminQueryKeys = {
 
   reviews: (q: string) => [...adminQueryKeys.root, "reviews", q] as const,
 
+  /** Provider→customer stars from `provider_client_ratings` (booking flow). */
+  providerClientRatings: (page: number, limit: number) =>
+    [...adminQueryKeys.root, "provider-client-ratings", page, limit] as const,
+
   userReports: (q: string) => [...adminQueryKeys.root, "user-reports", q] as const,
 
   refunds: (filters: { page: number; status: string }) => [...adminQueryKeys.root, "refunds", "list", filters] as const,
@@ -169,7 +173,8 @@ export const adminQueryKeys = {
 
   productOrderDetail: (id: string) => [...adminQueryKeys.root, "product-orders", "detail", id] as const,
 
-  ecommerceOverview: () => [...adminQueryKeys.root, "ecommerce", "overview"] as const,
+  /** `periodKey` e.g. `all` or `2024-01-01|2024-01-31` for start/end query params */
+  ecommerceOverview: (periodKey: string) => [...adminQueryKeys.root, "ecommerce", "overview", periodKey] as const,
 
   productReturns: (q: string) => [...adminQueryKeys.root, "product-returns", q] as const,
 

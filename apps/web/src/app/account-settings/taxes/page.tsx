@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { FileText, Receipt, Plus, Edit, Download, HelpCircle, Info } from "lucide-react";
@@ -137,10 +136,7 @@ const TaxesPage = () => {
     <AuthGuard>
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mt-8 mb-12"
           >
             <BackButton href="/account-settings" />
@@ -151,14 +147,11 @@ const TaxesPage = () => {
               ]}
             />
 
-            <motion.h1
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+            <h1
               className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 border-b border-gray-200 mb-6 pb-4 mt-4 md:mt-6"
             >
               Taxes
-            </motion.h1>
+            </h1>
 
             <div
               className="mb-6 flex gap-3 rounded-xl border border-sky-200/80 bg-sky-50/90 px-4 py-3 text-sm text-sky-950 backdrop-blur-sm"
@@ -188,10 +181,7 @@ const TaxesPage = () => {
               </TabsList>
 
               <TabsContent value="taxpayers">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8"
                 >
                   <div className="space-y-8">
@@ -205,9 +195,7 @@ const TaxesPage = () => {
                       </p>
 
                       {taxInfo ? (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
+                        <div
                           className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                         >
                           <div className="flex items-start justify-between">
@@ -253,11 +241,9 @@ const TaxesPage = () => {
                               Edit
                             </Button>
                           </div>
-                        </motion.div>
+                        </div>
                       ) : (
-                        <motion.div
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
+                        <div
                         >
                           <Button
                             onClick={() => setTaxInfoModalOpen(true)}
@@ -266,7 +252,7 @@ const TaxesPage = () => {
                             <Plus className="w-4 h-4 mr-2" />
                             Add tax info
                           </Button>
-                        </motion.div>
+                        </div>
                       )}
                     </div>
 
@@ -280,9 +266,7 @@ const TaxesPage = () => {
                       </p>
 
                       {vatId ? (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
+                        <div
                           className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                         >
                           <div className="flex items-center justify-between">
@@ -304,11 +288,9 @@ const TaxesPage = () => {
                               Edit
                             </Button>
                           </div>
-                        </motion.div>
+                        </div>
                       ) : (
-                        <motion.div
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.98 }}
+                        <div
                         >
                           <Button
                             onClick={() => setVatModalOpen(true)}
@@ -317,16 +299,13 @@ const TaxesPage = () => {
                             <Plus className="w-4 h-4 mr-2" />
                             Add VAT ID Number
                           </Button>
-                        </motion.div>
+                        </div>
                       )}
                     </div>
                   </div>
 
                   {/* Help Section */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.5, ease: "easeOut" }}
+                  <div
                     className="mt-8 pt-6 border-t border-gray-200"
                   >
                     <div className="flex items-start gap-3">
@@ -346,15 +325,12 @@ const TaxesPage = () => {
                         </a>
                       </div>
                     </div>
-                  </motion.div>
-                </motion.div>
+                  </div>
+                </div>
               </TabsContent>
 
               <TabsContent value="taxDocuments">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-xl font-semibold tracking-tight text-gray-900 mb-2">
@@ -368,12 +344,9 @@ const TaxesPage = () => {
                   </p>
 
                   <div className="space-y-6">
-                    {taxDocuments.map((doc, index) => (
-                      <motion.div
+                    {taxDocuments.map((doc) => (
+                      <div
                         key={doc.year}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
                         className="border-b border-gray-200 pb-6 last:border-0"
                       >
                         <div className="flex items-center justify-between">
@@ -397,7 +370,7 @@ const TaxesPage = () => {
                             </Button>
                           )}
                         </div>
-                      </motion.div>
+                      </div>
                     ))}
                   </div>
 
@@ -406,10 +379,7 @@ const TaxesPage = () => {
                   </p>
 
                   {/* Help Section */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.5, ease: "easeOut" }}
+                  <div
                     className="mt-8 pt-6 border-t border-gray-200"
                   >
                     <div className="flex items-start gap-3">
@@ -429,11 +399,11 @@ const TaxesPage = () => {
                         </a>
                       </div>
                     </div>
-                  </motion.div>
-                </motion.div>
+                  </div>
+                </div>
               </TabsContent>
             </Tabs>
-          </motion.div>
+          </div>
         </div>
 
         {/* Modals */}

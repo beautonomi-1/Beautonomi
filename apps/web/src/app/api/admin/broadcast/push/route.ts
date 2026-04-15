@@ -96,10 +96,10 @@ export async function POST(request: NextRequest) {
           ? "provider"
           : undefined;
 
-    const osCreds = await resolveOneSignalCredentials(oneSignalAppType);
+    const osCreds = await resolveOneSignalCredentials(oneSignalAppType, { tenantId });
     if (!osCreds.appId || !osCreds.restKey) {
       return errorResponse(
-        "Push is not configured for this deployment. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY (or ONESIGNAL_APP_ID_CUSTOMER / _PROVIDER and matching REST keys), or configure OneSignal under Superadmin → platform settings.",
+        "Push is not configured for this deployment. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY (or ONESIGNAL_APP_ID_CUSTOMER / _PROVIDER and matching REST keys), or save OneSignal under Platform settings / Superadmin (global or per-market tenant). Expo / NEXT_PUBLIC_* only configure client apps; the API needs REST keys in env or platform_secrets.",
         "ONESIGNAL_NOT_CONFIGURED",
         503
       );
@@ -122,6 +122,7 @@ export async function POST(request: NextRequest) {
       {
         appType: oneSignalAppType,
         supabaseClient: supabase,
+        tenantId,
       }
     );
 

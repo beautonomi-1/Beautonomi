@@ -8,7 +8,6 @@ import MasterCard from "./../../../../../public/images/logo_mastercard.f18379cf1
 import Discover from "./../../../../../public/images/logo_discover.7f05c82f07d62a0f8a69d54dbcd7c8be.svg";
 import Amex from "./../../../../../public/images/logo_amex.84088b520ca1b3384cb71398095627da.svg";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 
@@ -44,15 +43,8 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
   if (!isOpen) return null;
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-          className="backdrop-blur-2xl bg-white/90 border border-white/40 shadow-2xl rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto"
-        >
+    <div className="fixed inset-0 flex items-center justify-center bg-black/50 backdrop-blur-sm z-50 p-4">
+      <div className="backdrop-blur-2xl bg-white/90 border border-white/40 shadow-2xl rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-semibold tracking-tighter text-gray-900">
@@ -68,12 +60,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
             </div>
 
             {/* Info Banner */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl"
-            >
+            <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
               <div className="flex items-start gap-3">
                 <CreditCard className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
                 <div>
@@ -88,7 +75,7 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                   </p>
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* How it works */}
             <div className="mb-6">
@@ -103,18 +90,15 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                   "Select 'Save this card for future payments'",
                   "Your card will be saved for future bookings"
                 ].map((step, index) => (
-                  <motion.li
+                  <li
                     key={index}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.1 + index * 0.1 }}
                     className="flex items-start gap-3 text-sm text-gray-700"
                   >
                     <span className="flex-shrink-0 w-6 h-6 rounded-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] text-white flex items-center justify-center text-xs font-semibold">
                       {index + 1}
                     </span>
                     <span className="pt-0.5">{step}</span>
-                  </motion.li>
+                  </li>
                 ))}
               </ol>
             </div>
@@ -143,12 +127,10 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
 
             {/* CTA Buttons */}
             <div className="flex flex-col gap-3">
-              <motion.button
+              <button
                 type="button"
                 onClick={handleAddCardNow}
                 disabled={addingCard}
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.99 }}
                 className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 disabled:opacity-60"
               >
                 {addingCard ? (
@@ -159,17 +141,14 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
                     Add card now
                   </>
                 )}
-              </motion.button>
+              </button>
               <div className="flex flex-col sm:flex-row gap-3">
-                <Link href="/" className="flex-1">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="w-full border-2 border-[#FF0077] text-[#FF0077] hover:bg-pink-50 px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
-                  >
-                    Browse Services
-                    <ArrowRight className="w-4 h-4" />
-                  </motion.button>
+                <Link
+                  href="/"
+                  className="flex-1 w-full border-2 border-[#FF0077] text-[#FF0077] hover:bg-pink-50 px-6 py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-center"
+                >
+                  Browse Services
+                  <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Button
                   variant="outline"
@@ -181,9 +160,8 @@ const AddPaymentModal = ({ isOpen, onClose, onCardAdded }: { isOpen: boolean; on
               </div>
             </div>
           </div>
-        </motion.div>
       </div>
-    </AnimatePresence>
+    </div>
   );
 };
 

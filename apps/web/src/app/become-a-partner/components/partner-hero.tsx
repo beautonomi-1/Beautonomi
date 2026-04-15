@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
+import { CmsHtml } from "@/components/cms/CmsHtml";
+import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 import { getVideoEmbedUrl } from "../lib/video-embed";
 import { VideoTourModal } from "./video-tour-modal";
 
@@ -65,8 +67,8 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-4xl mx-auto">
             <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 mb-4 md:mb-6 leading-tight px-4">
-              {heroTitle.includes("<") ? (
-                <span dangerouslySetInnerHTML={{ __html: heroTitle }} />
+              {cmsContentLooksLikeHtml(heroTitle) ? (
+                <CmsHtml html={heroTitle} className="block" as="span" />
               ) : heroTitle.toLowerCase().includes("salon and spa") ? (
                 <>
                   {heroTitle.replace(/salon and spa/gi, "").trim()}{" "}
@@ -78,8 +80,8 @@ export default function PartnerHero({ activeTab, setActiveTab }: PartnerHeroProp
             </h1>
 
             <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-6 md:mb-8 max-w-2xl mx-auto leading-relaxed px-4">
-              {heroDescription.includes("<") ? (
-                <span dangerouslySetInnerHTML={{ __html: heroDescription }} />
+              {cmsContentLooksLikeHtml(heroDescription) ? (
+                <CmsHtml html={heroDescription} className="block" as="span" />
               ) : (
                 heroDescription
               )}

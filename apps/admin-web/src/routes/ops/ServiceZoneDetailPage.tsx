@@ -352,6 +352,7 @@ export function ServiceZoneDetailPage() {
           Zone coverage map
         </h3>
         <ServiceZoneMapEditor
+          key={id}
           zoneId={id!}
           zoneVersion={zone.version}
           geometryGeojson={zone.geometry_geojson}

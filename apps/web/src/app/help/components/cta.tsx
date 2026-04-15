@@ -34,8 +34,8 @@ export default function CTA({ content = null }: CTAProps) {
     "Log in to submit or view your support tickets.";
 
   return (
-    <div className="max-w-6xl mx-auto mb-7">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-32 items-center justify-between p-0 lg:p-6 border-none lg:border rounded-lg  mx-auto">
+    <div className="max-w-6xl mx-auto mb-7 px-0 sm:px-1">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-32 items-center justify-between p-0 lg:p-6 border-none lg:border rounded-lg mx-auto">
         <div className={user ? "hidden lg:block" : ""}>
           <h2 className="text-[26px] font-normal ">{heading}</h2>
           <p className="text-base font-normal ">

@@ -1,9 +1,14 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyOneSignalConfig } from "@/lib/notifications/onesignal";
 import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import {
+  ADMIN_SECTION_INTEGRATIONS_DEV,
+  ADMIN_SECTION_MARKETING_COMMS,
+} from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/admin/notifications/config
@@ -13,10 +18,14 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    await requireAdminSectionAny(
+      [ADMIN_SECTION_MARKETING_COMMS, ADMIN_SECTION_INTEGRATIONS_DEV],
+      request
+    );
 
-    const osVerify = await verifyOneSignalConfig();
-    const osResolved = await resolveOneSignalCredentials(undefined);
+    const tenantId = await resolveAdminApiTenantId(request);
+    const osVerify = await verifyOneSignalConfig({ tenantId });
+    const osResolved = await resolveOneSignalCredentials(undefined, { tenantId });
     const appIdSet = !!osResolved.appId?.trim();
     const apiKeySet = !!osResolved.restKey?.trim();
 
@@ -28,16 +37,17 @@ export async function GET(request: NextRequest) {
     let twilioSectionEnabled = false;
 
     try {
-      const { data: settingsRow } = await supabase
-        .from("platform_settings")
-        .select("settings")
-        .eq("is_active", true)
-        .is("tenant_id", null)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const scoped = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+        supabase,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const settingsRow = scoped.data;
 
-      const s = (settingsRow as { settings?: Record<string, unknown> } | null)?.settings;
+      const s = settingsRow?.settings;
       if (s?.notifications && typeof s.notifications === "object") {
         const n = s.notifications as Record<string, unknown>;
         emailEnabled = n.email_enabled !== false;

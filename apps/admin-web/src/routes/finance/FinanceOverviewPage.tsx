@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Download, TrendingDown, TrendingUp } from "lucide-react";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
@@ -186,7 +186,17 @@ export function FinanceOverviewPage() {
     ADMIN_SECTION_FINANCE,
     "Finance access is required."
   );
-  const [sp, setSp] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  /** Avoid `useSearchParams()` here — it can suspend and cause hooks after it to skip on the first render (React #310). */
+  const sp = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const setSp = useCallback(
+    (next: URLSearchParams, opts?: { replace?: boolean }) => {
+      const q = next.toString();
+      navigate({ pathname: location.pathname, search: q ? `?${q}` : "" }, { replace: opts?.replace ?? false });
+    },
+    [location.pathname, navigate]
+  );
   const start = sp.get("start_date") ?? "";
   const end = sp.get("end_date") ?? "";
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
@@ -215,7 +225,7 @@ export function FinanceOverviewPage() {
       if (resetPage) next.delete("page");
       setSp(next, { replace: true });
     },
-    [sp, setSp]
+    [setSp, sp]
   );
 
   const summaryQ = useQuery({
@@ -265,6 +275,41 @@ export function FinanceOverviewPage() {
       bookingSideNet,
       platformRefundImpact: summary.platform_refund_impact,
     };
+  }, [summary]);
+
+  const platformRevenueDrivers = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Booking commission (net)", value: summary.platform_revenue?.booking_commission ?? summary.platform_take_net },
+      { label: "Customer service/platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
+      { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
+      { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
+      { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
+    ];
+  }, [summary]);
+
+  const platformDeductions = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Platform refund contra", value: Math.abs(summary.platform_refund_impact ?? 0) },
+      { label: "Referral payouts", value: Math.abs(summary.referral_payouts ?? 0) },
+    ];
+  }, [summary]);
+
+  const providerRevenueDrivers = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Provider earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings ?? 0 },
+      { label: "Cancellation fees retained", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0 },
+      { label: "Tips collected", value: summary.provider_revenue?.tips ?? summary.tips_gross ?? 0 },
+    ];
+  }, [summary]);
+
+  const providerDeductions = useMemo(() => {
+    if (!summary) return [];
+    return [
+      { label: "Refund impact (provider side)", value: Math.abs(summary.provider_revenue?.refund_impact_net ?? 0) },
+    ];
   }, [summary]);
 
   const runExport = async () => {
@@ -323,41 +368,6 @@ export function FinanceOverviewPage() {
     summary?.period?.start_date && summary?.period?.end_date
       ? `Custom range: ${summary.period.start_date} → ${summary.period.end_date}`
       : "Rolling month (default) — set dates below for a fixed range";
-
-  const platformRevenueDrivers = useMemo(() => {
-    if (!summary) return [];
-    return [
-      { label: "Booking commission (net)", value: summary.platform_revenue?.booking_commission ?? summary.platform_take_net },
-      { label: "Customer service/platform fees", value: summary.platform_revenue?.customer_paid_platform_fees ?? summary.service_fee_revenue ?? 0 },
-      { label: "Subscriptions (net)", value: summary.platform_revenue?.subscriptions ?? summary.subscription_net ?? 0 },
-      { label: "Ads (net)", value: summary.platform_revenue?.ads ?? summary.ads_net ?? 0 },
-      { label: "Ecommerce fees detail", value: summary.platform_revenue?.ecommerce_fees_detail ?? 0 },
-    ];
-  }, [summary]);
-
-  const platformDeductions = useMemo(() => {
-    if (!summary) return [];
-    return [
-      { label: "Platform refund contra", value: Math.abs(summary.platform_refund_impact ?? 0) },
-      { label: "Referral payouts", value: Math.abs(summary.referral_payouts ?? 0) },
-    ];
-  }, [summary]);
-
-  const providerRevenueDrivers = useMemo(() => {
-    if (!summary) return [];
-    return [
-      { label: "Provider earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings ?? 0 },
-      { label: "Cancellation fees retained", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0 },
-      { label: "Tips collected", value: summary.provider_revenue?.tips ?? summary.tips_gross ?? 0 },
-    ];
-  }, [summary]);
-
-  const providerDeductions = useMemo(() => {
-    if (!summary) return [];
-    return [
-      { label: "Refund impact (provider side)", value: Math.abs(summary.provider_revenue?.refund_impact_net ?? 0) },
-    ];
-  }, [summary]);
 
   return (
     <div className="space-y-6">

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { incrementBulkBatchCount } from "@/lib/whatsapp/increment-bulk-batch-count";
+import { fetchAndPersistSessionApiKey } from "@/lib/whatsapp/wasender-client";
 import crypto from "crypto";
 
 /**
@@ -147,6 +148,18 @@ export async function POST(request: NextRequest) {
             last_status_check_at: new Date().toISOString(),
           })
           .eq("wasender_session_id", String(sessionIdOrPhone));
+
+        if (newSessionStatus === "connected") {
+          const { data: row } = await supabase
+            .from("whatsapp_sessions")
+            .select("id, tenant_id, wasender_session_id")
+            .eq("wasender_session_id", String(sessionIdOrPhone))
+            .maybeSingle();
+          const r = row as { id?: string; tenant_id?: string; wasender_session_id?: string } | null;
+          if (r?.tenant_id && r?.id && r?.wasender_session_id) {
+            void fetchAndPersistSessionApiKey(r.tenant_id, r.id, String(r.wasender_session_id));
+          }
+        }
       }
     }
 

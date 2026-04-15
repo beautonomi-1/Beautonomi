@@ -40,7 +40,7 @@ const Page = async () => {
   return (
     <div className="min-h-screen bg-white pb-20 md:pb-0 w-full max-w-full">
       <BeautonomiHeader />
-      <div className="w-full max-w-full overflow-x-hidden">
+      <div className="w-full max-w-full overflow-x-hidden px-4 sm:px-6">
         <div className="text-center pt-4 pb-0">
           <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Help centre</p>
         </div>
