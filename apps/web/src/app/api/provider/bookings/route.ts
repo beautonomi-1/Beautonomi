@@ -756,21 +756,22 @@ async function handleCreateProviderBooking(request: NextRequest) {
       null;
     let startAt: Date;
     let endAt: Date;
-    const bufferMinutes = 15;
+    const defaultBuffer = 15;
     if (body.services && Array.isArray(body.services) && body.services.length > 0) {
       const firstStart = body.services[0].scheduled_start_at || bookingData.scheduled_at;
       startAt = new Date(firstStart);
       let cursor = new Date(firstStart);
       for (const s of body.services) {
         const duration = s.duration ?? s.duration_minutes ?? 60;
-        cursor = new Date(cursor.getTime() + duration * 60 * 1000);
+        const svcBuffer = s.buffer_minutes ?? 0;
+        cursor = new Date(cursor.getTime() + (duration + svcBuffer) * 60 * 1000);
       }
-      endAt = new Date(cursor.getTime() + bufferMinutes * 60 * 1000);
+      endAt = cursor;
     } else {
       const start = new Date(bookingData.scheduled_at);
       const duration = body.duration_minutes ?? 60;
       startAt = start;
-      endAt = new Date(start.getTime() + (duration + bufferMinutes) * 60 * 1000);
+      endAt = new Date(start.getTime() + (duration + defaultBuffer) * 60 * 1000);
     }
 
     const allowOverride = await canOverrideDoubleBooking(supabaseAdmin, providerId);
@@ -889,11 +890,12 @@ async function handleCreateProviderBooking(request: NextRequest) {
               let c = new Date(body.services[0].scheduled_start_at || bookingData.scheduled_at);
               for (const s of body.services) {
                 const dur = s.duration ?? s.duration_minutes ?? 60;
-                c = new Date(c.getTime() + dur * 60 * 1000);
+                const buf = s.buffer_minutes ?? 0;
+                c = new Date(c.getTime() + (dur + buf) * 60 * 1000);
               }
-              return new Date(c.getTime() + bufferMinutes * 60 * 1000).toISOString();
+              return c.toISOString();
             })()
-          : new Date(endAt.getTime()).toISOString();
+          : endAt.toISOString();
 
       const { data: bookingId, error: rpcError } = await supabaseAdmin.rpc("create_booking_with_locking", {
         p_booking_data: bookingData,

@@ -208,6 +208,7 @@ export async function createBookingRecord(
           offering_id: off.id,
           staff_id: primaryService?.staff_id ?? null,
           duration_minutes: Number(off.duration_minutes),
+          buffer_minutes: Number(off.buffer_minutes || 0),
           price: Number(off.price),
           currency: v.currency,
         });

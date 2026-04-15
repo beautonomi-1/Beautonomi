@@ -125,6 +125,8 @@ interface DragDropProviderProps {
   availabilityBlocks?: AvailabilityBlockDisplay[];
   /** Whether to enable conflict validation (Mangomint mode) */
   enableConflictValidation?: boolean;
+  /** Location operating hours for boundary validation on drag-drop */
+  locationOperatingHours?: Record<string, { open: string; close: string; closed?: boolean }> | null;
   onReschedule: (
     appointmentId: string,
     newDate: string,
@@ -140,6 +142,7 @@ export function DragDropProvider({
   timeBlocks = [],
   availabilityBlocks = [],
   enableConflictValidation = isMangomintModeEnabled(),
+  locationOperatingHours,
   onReschedule,
 }: DragDropProviderProps) {
   const [isDragging, setIsDragging] = useState(false);
@@ -200,7 +203,10 @@ export function DragDropProvider({
       .map((b) => availabilityDisplayToMangomintBlock(b));
     const mangomintBlocks: MangomintBlock[] = [...fromTimeBlocks, ...fromAvailability];
 
-    // Check if the new slot is valid
+    // Resolve staff working hours for the drop target
+    const targetMember = teamMembers.find((m) => m.id === target.staffId);
+    const staffWh = targetMember?.working_hours ?? null;
+
     const result = canPlace(
       {
         startTime: target.time,
@@ -213,11 +219,15 @@ export function DragDropProvider({
         staffId: target.staffId,
       },
       mangomintAppointments,
-      mangomintBlocks
+      mangomintBlocks,
+      {
+        locationOperatingHours: locationOperatingHours ?? undefined,
+        staffWorkingHours: staffWh ?? undefined,
+      }
     );
 
     return result;
-  }, [enableConflictValidation, allAppointments, timeBlocks, availabilityBlocks]);
+  }, [enableConflictValidation, allAppointments, timeBlocks, availabilityBlocks, teamMembers, locationOperatingHours]);
 
   const updateDropTarget = useCallback((target: DropTarget | null) => {
     dropTargetRef.current = target;
@@ -231,8 +241,12 @@ export function DragDropProvider({
       const snappedTime = snapToIncrement(target.time, timeIncrement);
       setSnapTime(snappedTime);
 
+      const resolvedStaffId = target.staffId === "__date_column__"
+        ? currentDrag.originalStaffId
+        : target.staffId;
       const result = validatePlacement(currentDrag.appointment, {
         ...target,
+        staffId: resolvedStaffId,
         time: snappedTime,
       });
       setValidationState(result);
@@ -256,7 +270,11 @@ export function DragDropProvider({
 
       if (hasChanged) {
         const snappedTime = snapToIncrement(currentDrop.time, timeIncrement);
-        const effectiveTarget: DropTarget = { ...currentDrop, time: snappedTime };
+        // In week/3-day date columns the staffId is a sentinel; preserve original staff.
+        const resolvedStaffId = currentDrop.staffId === "__date_column__"
+          ? currentDrag.originalStaffId
+          : currentDrop.staffId;
+        const effectiveTarget: DropTarget = { ...currentDrop, staffId: resolvedStaffId, time: snappedTime };
         const validation = validatePlacement(currentDrag.appointment, effectiveTarget);
 
         if (!validation.valid) {
@@ -269,7 +287,7 @@ export function DragDropProvider({
             newDate: effectiveTarget.date,
             newTime: snappedTime,
             newStaffId: effectiveTarget.staffId,
-            newStaffName: newStaff?.name || "Unknown",
+            newStaffName: newStaff?.name || currentDrag.appointment.team_member_name || "Same staff",
           };
         }
       }

@@ -45,6 +45,7 @@ export async function checkBookingConflict(
     .from('booking_services')
     .select(`
       booking_id,
+      staff_id,
       scheduled_start_at,
       scheduled_end_at,
       bookings!inner (
@@ -78,15 +79,28 @@ export async function checkBookingConflict(
     return { hasConflict: false };
   }
 
-  // Check if conflicts account for their own buffers
-  // For each conflicting booking, add its buffer to the end time
+  // Resolve staff buffer override once (if any) so existing booking buffers
+  // match what the availability engine uses for this staff member.
+  let staffBufferOverride: number | null = null;
+  try {
+    const { data: staffRow } = await supabase
+      .from('provider_staff')
+      .select('buffer_minutes_override')
+      .eq('id', staffId)
+      .maybeSingle();
+    if (staffRow?.buffer_minutes_override != null) {
+      staffBufferOverride = Number(staffRow.buffer_minutes_override);
+    }
+  } catch {
+    // Non-fatal; fall through to offering-level buffer
+  }
+
   const actualConflicts = conflictingServices.filter((cs: any) => {
     const conflictStart = new Date(cs.scheduled_start_at);
     const conflictEnd = new Date(cs.scheduled_end_at);
-    const conflictBuffer = cs.offerings?.buffer_minutes || 15;
+    const conflictBuffer = staffBufferOverride ?? cs.offerings?.buffer_minutes ?? 15;
     const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
 
-    // Check if there's actual overlap
     return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;
   });
 

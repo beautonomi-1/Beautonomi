@@ -796,9 +796,39 @@ export async function PATCH(
       updateData.cancellation_reason = cancellation_reason;
     }
     
-    // Update cancellation fee if provided
+    // Auto-compute cancellation fee when cancelling without explicit fee
+    // (supports mobile clients that don't send a fee).
     if (cancellation_fee !== undefined) {
       updateData.cancellation_fee = cancellation_fee;
+    } else if (requestedDbStatus === "cancelled" && (currentBooking as any)?.cancellation_fee == null) {
+      try {
+        const { getCancellationPolicy, canCancelBooking, computeCancellationRefundAmount } = await import("@/lib/bookings/cancellation-policy");
+        const locType = ((currentBooking as any)?.location_type as "at_salon" | "at_home") || "at_salon";
+        const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
+        if (policy) {
+          const checkResult = canCancelBooking(
+            {
+              id,
+              created_at: (currentBooking as any).created_at,
+              scheduled_at: (currentBooking as any).scheduled_at,
+              location_type: locType,
+            },
+            policy,
+            new Date(),
+            { forbidLateSelfService: false }
+          );
+          if (checkResult.isLateCancellation) {
+            const bookingTotal = Number((currentBooking as any).total_amount ?? 0);
+            const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, true);
+            const autoFee = Math.round(Math.max(0, bookingTotal - policyRefundAmount) * 100) / 100;
+            if (autoFee > 0) {
+              updateData.cancellation_fee = autoFee;
+            }
+          }
+        }
+      } catch (autoFeeErr) {
+        console.error("[provider PATCH] auto cancellation_fee computation failed:", autoFeeErr);
+      }
     }
 
     // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
@@ -1256,6 +1286,18 @@ export async function PATCH(
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
             refundInfo: 'Please contact provider for refund details',
+          });
+
+          try {
+            const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+            await matchWaitlistOnCancellation(supabaseAdmin, id);
+          } catch (waitlistErr) {
+            console.error("[provider PATCH cancel] waitlist matching failed:", waitlistErr);
+          }
+        } else if (dbStatus === "no_show") {
+          await sendCancellationNotification(id, {
+            cancelledBy: 'provider',
+            refundInfo: 'Marked as no-show by provider',
           });
         } else if (dbStatus === "confirmed" && previousStatus === "pending") {
           // Send confirmation notification

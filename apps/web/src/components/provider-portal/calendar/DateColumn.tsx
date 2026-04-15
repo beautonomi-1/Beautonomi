@@ -51,7 +51,38 @@ function DateColumnComponent({
   onTimeBlockClick,
 }: DateColumnProps) {
   const dateStr = format(date, "yyyy-MM-dd");
-  const staffId = teamMembers[0]?.id || "";
+  // In week/3-day view each column is a date, not a staff member.
+  // Use a sentinel so the DnD layer can detect "date column" drops
+  // and preserve the booking's original staff rather than reassigning.
+  const staffId = teamMembers.length === 1 ? teamMembers[0].id : "__date_column__";
+
+  // Merge all team members' working hours for this day so the GestureLayer
+  // can tell whether ANY staff member is available — prevents marking a
+  // weekend day as "Closed" when at least one staff member has a shift.
+  const mergedStaffHours = useMemo(() => {
+    const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
+    for (const dayName of DAY_NAMES) {
+      let earliest: string | null = null;
+      let latest: string | null = null;
+      let anyOpen = false;
+      for (const m of teamMembers) {
+        const wh = m.working_hours?.[dayName];
+        if (!wh || wh.closed) continue;
+        anyOpen = true;
+        const open = (wh as any).open ?? (wh as any).open_time;
+        const close = (wh as any).close ?? (wh as any).close_time;
+        if (typeof open === "string" && (!earliest || open < earliest)) earliest = open;
+        if (typeof close === "string" && (!latest || close > latest)) latest = close;
+      }
+      if (anyOpen && earliest && latest) {
+        merged[dayName] = { open: earliest, close: latest };
+      } else {
+        merged[dayName] = { open: "00:00", close: "00:00", closed: true };
+      }
+    }
+    return Object.values(merged).some(v => !v.closed) ? merged : undefined;
+  }, [teamMembers]);
 
   const dateAppointments = useMemo(
     () => appointments.filter((a) => toDateStr(a.scheduled_date || "") === dateStr),
@@ -96,6 +127,7 @@ function DateColumnComponent({
         workStart={workStart}
         workEnd={workEnd}
         locationOperatingHours={locationOperatingHours}
+        staffWorkingHours={mergedStaffHours}
         onTimeSlotClick={onTimeSlotClick}
       />
 
@@ -146,6 +178,7 @@ export const DateColumn = memo(DateColumnComponent, (prev, next) => {
   if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
   if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
   if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+  if (prev.teamMembers !== next.teamMembers) return false;
 
   return true;
 });

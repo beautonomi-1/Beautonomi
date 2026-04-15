@@ -449,8 +449,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const selectedDateSafe = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
   const [locationOperatingHours, setLocationOperatingHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null);
   
-  // Calculate optimal startHour and endHour based on operating hours and actual appointment times
+  // Calculate optimal startHour and endHour based on operating hours,
+  // staff working hours, and actual appointment / block times.
   const { startHour, endHour } = React.useMemo(() => {
+    const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const getDayKey = (date: Date) => DAY_NAMES[date.getDay()];
+
     const getDatesForView = () => {
       const dates: Date[] = [];
       const start = new Date(selectedDateSafe);
@@ -464,37 +468,52 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       }
       return dates;
     };
-    const visibleDateStrs = new Set(getDatesForView().map(d => format(d, "yyyy-MM-dd")));
+    const visibleDates = getDatesForView();
+    const visibleDateStrs = new Set(visibleDates.map(d => format(d, "yyyy-MM-dd")));
 
-    // Base range from operating hours (or defaults)
     let calculatedStartHour = 8;
     let calculatedEndHour = 20;
 
-    if (locationOperatingHours) {
-      const getDayKey = (date: Date) => {
-        const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        return DAY_NAMES[date.getDay()];
-      };
-      let minHour = 23;
-      let maxHour = 0;
-      let hasOpenDays = false;
-      getDatesForView().forEach((date) => {
-        const dayHours = locationOperatingHours[getDayKey(date)];
-        if (dayHours && !isClosedDay(dayHours)) {
-          const openHour = parseHourFromUnknown(readHoursField(dayHours, "open"));
-          const closeHour = parseHourFromUnknown(readHoursField(dayHours, "close"));
-          if (openHour == null || closeHour == null) return;
-          hasOpenDays = true;
-          minHour = Math.min(minHour, openHour);
-          maxHour = Math.max(maxHour, closeHour);
-        }
-      });
-      if (hasOpenDays) {
-        const padding = 1;
-        calculatedStartHour = Math.max(0, minHour - padding);
-        calculatedEndHour = Math.min(23, maxHour + padding);
+    // Collect the widest hour range from BOTH location operating hours
+    // AND individual staff working hours so the calendar covers all
+    // shifts — including staff who work outside location hours or on
+    // weekends when the location is nominally "closed".
+    let minHour = 23;
+    let maxHour = 0;
+    let hasAnyOpenSlot = false;
+
+    const expandFromDayHours = (dayHours: unknown) => {
+      if (!dayHours || isClosedDay(dayHours)) return;
+      const openHour = parseHourFromUnknown(readHoursField(dayHours, "open"));
+      const closeHour = parseHourFromUnknown(readHoursField(dayHours, "close"));
+      if (openHour == null || closeHour == null) return;
+      hasAnyOpenSlot = true;
+      minHour = Math.min(minHour, openHour);
+      maxHour = Math.max(maxHour, closeHour);
+    };
+
+    visibleDates.forEach((date) => {
+      const dayKey = getDayKey(date);
+
+      // Location operating hours
+      if (locationOperatingHours) {
+        expandFromDayHours(locationOperatingHours[dayKey]);
       }
-    } else {
+
+      // Staff working hours — expand the range for every team member
+      // whose shift falls on a visible day, even if the location itself
+      // is marked "closed" for that day.
+      for (const member of teamMembers) {
+        if (!member.working_hours) continue;
+        expandFromDayHours(member.working_hours[dayKey]);
+      }
+    });
+
+    if (hasAnyOpenSlot) {
+      const padding = 1;
+      calculatedStartHour = Math.max(0, minHour - padding);
+      calculatedEndHour = Math.min(23, maxHour + padding);
+    } else if (!locationOperatingHours) {
       calculatedStartHour = 0;
       calculatedEndHour = 23;
     }
@@ -512,7 +531,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
     });
 
-    // Include time blocks in the visible hour range (mobile + desktop); avoids clipping blocks above the grid.
+    // Include time blocks in the visible hour range
     timeBlocks.forEach((block) => {
       const blockDateStr =
         typeof block.date === "string" && block.date.length >= 10 ? block.date.slice(0, 10) : "";
@@ -526,7 +545,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     });
 
     return { startHour: calculatedStartHour, endHour: calculatedEndHour };
-  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks]);
+  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks, teamMembers]);
   
   const _timeBlockSidebarState = useTimeBlockSidebar();
   

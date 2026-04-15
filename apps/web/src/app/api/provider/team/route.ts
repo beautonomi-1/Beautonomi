@@ -78,7 +78,8 @@ export async function GET(request: NextRequest) {
         is_active,
         commission_percentage,
         bio,
-        mobile_ready
+        mobile_ready,
+        working_hours
       `
       )
       .eq("provider_id", providerId);

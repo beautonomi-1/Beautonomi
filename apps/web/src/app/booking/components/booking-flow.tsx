@@ -19,6 +19,7 @@ import { ChevronLeft, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -622,13 +623,20 @@ export default function BookingFlow() {
     }
 
     try {
-      const bookingDateTime = new Date(bookingState.selectedDate);
-      const [h, m] = bookingState.selectedTimeSlot.split(":").map(Number);
-      bookingDateTime.setHours(h, m, 0, 0);
+      // Slot times from /api/availability are bare HH:MM strings in the
+      // server's timezone (UTC). Construct the ISO timestamp using the same
+      // local-date string that was sent to the availability query + the slot
+      // time with an explicit "Z" suffix so the hold request matches the slot
+      // the server validated as available.
+      const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+      const bookingDateTime = new Date(`${dateStr}T${bookingState.selectedTimeSlot}:00Z`);
 
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {
         totalMs += (svc.duration + (svc.bufferMinutes ?? 0)) * 60000;
+      }
+      for (const addon of bookingState.selectedAddons) {
+        totalMs += (addon.duration ?? 0) * 60000;
       }
       const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
 

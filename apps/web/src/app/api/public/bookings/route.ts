@@ -206,6 +206,14 @@ export async function POST(request: NextRequest) {
               500
             );
           }
+
+          // Notify waitlist entries about the freed slot
+          try {
+            const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+            await matchWaitlistOnCancellation(supabaseAdmin, rescheduleBookingId);
+          } catch (waitlistErr) {
+            console.error("[reschedule] waitlist matching for old booking failed:", waitlistErr);
+          }
         }
 
         // 2.7. Cancel any stale pending/pending_payment bookings by this user for the

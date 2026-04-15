@@ -113,13 +113,19 @@ export async function POST(request: NextRequest) {
           const currentVersion = row.version ?? 0;
           updateData.version = currentVersion + 1;
 
-          const { error: updateError } = await supabaseAdmin
+          const { data: updatedRows, error: updateError } = await supabaseAdmin
             .from("bookings")
             .update(updateData)
-            .eq("id", booking.id);
+            .eq("id", booking.id)
+            .eq("version", currentVersion)
+            .select("id");
 
           if (updateError) {
             results.failed.push({ id: booking.id, reason: updateError.message });
+            continue;
+          }
+          if (!updatedRows || updatedRows.length === 0) {
+            results.failed.push({ id: booking.id, reason: "Booking was modified concurrently" });
             continue;
           }
 
@@ -234,6 +240,17 @@ export async function POST(request: NextRequest) {
         } catch (auditError) {
           // Log but don't fail the operation
           console.error("Failed to create audit log entry:", auditError);
+        }
+
+        // Notify waitlist when a slot is freed by cancellation
+        const effectiveStatus = action.toLowerCase() === "delete" ? "cancelled" : newStatus;
+        if (effectiveStatus === "cancelled") {
+          try {
+            const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+            await matchWaitlistOnCancellation(supabaseAdmin, booking.id);
+          } catch (waitlistErr) {
+            console.error(`[provider bulk cancel] waitlist matching failed for ${booking.id}:`, waitlistErr);
+          }
         }
 
         results.success.push(booking.id);

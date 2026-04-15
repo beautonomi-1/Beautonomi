@@ -53,7 +53,11 @@ function GestureLayerComponent({
         const outsideStaff = staffWorkingHours
           ? isOutsideStaffHours(date, hour, staffWorkingHours)
           : false;
-        const businessClosed = outsideLocation;
+        // If staff has working hours on this day, don't mark the slot as
+        // "Closed" just because the location is nominally closed — the
+        // staff member is still available to work.
+        const staffIsWorking = staffWorkingHours ? !outsideStaff : false;
+        const businessClosed = outsideLocation && !staffIsWorking;
         const staffOff = !businessClosed && outsideStaff;
         const isNonWorking = businessClosed;
         const isHighContrast = useMangomintMode && highContrast;

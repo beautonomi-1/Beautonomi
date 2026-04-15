@@ -276,6 +276,7 @@ function CalendarGridComponent({
     appointments,
     selectedDate,
     startHour,
+    endHour,
     showCurrentTime,
     currentTimeTop,
     firstAvailableTop,

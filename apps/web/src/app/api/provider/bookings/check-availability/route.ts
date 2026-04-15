@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
     // 1) Existing bookings overlap
     let query = supabaseAdmin
       .from("bookings")
-      .select("id, booking_number, scheduled_at, booking_services(duration_minutes, staff_id)")
+      .select("id, booking_number, scheduled_at, booking_services(duration_minutes, staff_id, scheduled_start_at, scheduled_end_at)")
       .eq("provider_id", providerId)
       .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", new Date(startTime.getTime() - durationMinutes * 60000).toISOString())
@@ -91,14 +91,17 @@ export async function GET(request: NextRequest) {
     const { data: overlapping } = await query;
 
     (overlapping || []).forEach((b: any) => {
+      const services = b.booking_services || [];
       const bStart = new Date(b.scheduled_at);
-      const bDuration = (b.booking_services || []).reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0);
-      const bEnd = addMinutes(bStart, bDuration);
+      const hasScheduledTimes = services.length > 0 && services.every((bs: any) => bs.scheduled_start_at && bs.scheduled_end_at);
+      const bEnd = hasScheduledTimes
+        ? new Date(Math.max(...services.map((bs: any) => new Date(bs.scheduled_end_at).getTime())))
+        : addMinutes(bStart, services.reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0));
 
       if (startTime < bEnd && endTime > bStart) {
         if (staffIds.length > 0) {
-          const bookingStaffIds = (b.booking_services || []).map((bs: any) => bs.staff_id).filter(Boolean);
-          const hasConflict = bookingStaffIds.length === 0 || staffIds.some((sid) => bookingStaffIds.includes(sid));
+          const bookingStaffIds = services.map((bs: any) => bs.staff_id).filter(Boolean);
+          const hasConflict = bookingStaffIds.length === 0 || staffIds.some((sid: string) => bookingStaffIds.includes(sid));
           if (hasConflict) conflicts.push(`Conflict with booking #${b.booking_number}`);
         } else {
           conflicts.push(`Conflict with booking #${b.booking_number}`);

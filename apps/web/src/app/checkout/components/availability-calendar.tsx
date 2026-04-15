@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Clock, X, Loader2 } from "lucide-react";
 import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 import { fetcher } from "@/lib/http/fetcher";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 
 interface TimeSlot {
   id: string;
@@ -99,7 +100,7 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
     }
     if (excludeBookingId) params.append("exclude_booking_id", excludeBookingId);
     if (locationType === "at_home") {
-      params.append("travel_buffer_minutes", "30");
+      params.append("travel_buffer_minutes", String(HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES));
     }
 
     try {

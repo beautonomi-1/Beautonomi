@@ -87,7 +87,7 @@ export async function createBookingFromRecurringSeries(
   const offeringIds = [...new Set(lines.map((l) => l.offering_id))];
   const { data: offerings, error: offErr } = await admin
     .from("offerings")
-    .select("id, price, duration_minutes, currency")
+    .select("id, price, duration_minutes, buffer_minutes, currency")
     .in("id", offeringIds)
     .eq("provider_id", row.provider_id);
 
@@ -162,10 +162,12 @@ export async function createBookingFromRecurringSeries(
   for (const line of lines) {
     const o = offeringMap.get(line.offering_id) as {
       duration_minutes?: number;
+      buffer_minutes?: number;
       price?: number;
       currency?: string;
     };
     const duration = Number(o.duration_minutes || 60);
+    const buffer = Number(o.buffer_minutes || 0);
     const price = Number(o.price || 0);
     const cur = o.currency || currency;
     const start = new Date(cursor);
@@ -180,15 +182,14 @@ export async function createBookingFromRecurringSeries(
       scheduled_start_at: start.toISOString(),
       scheduled_end_at: end.toISOString(),
     });
-    cursor = end;
+    cursor = new Date(end.getTime() + buffer * 60 * 1000);
   }
 
   const primaryStaffId =
     (pBookingServices[0]?.staff_id as string | null | undefined) ?? row.staff_id ?? null;
 
   const startAt = new Date(pBookingServices[0]!.scheduled_start_at as string);
-  const lastEnd = new Date(pBookingServices[pBookingServices.length - 1]!.scheduled_end_at as string);
-  const endAt = new Date(lastEnd.getTime() + BUFFER_MINUTES * 60 * 1000);
+  const endAt = cursor;
 
   const allowOverride = await canOverrideDoubleBooking(admin, row.provider_id);
   if (primaryStaffId && !allowOverride) {

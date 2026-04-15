@@ -56,6 +56,7 @@ export function UpcomingBookingPreview() {
   return (
     <Link
       href={`/account-settings/bookings/${booking.id}`}
+      prefetch={false}
       className="block bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 rounded-xl p-4 hover:border-pink-200 hover:shadow-sm transition-all"
     >
       <div className="flex items-start justify-between gap-3">

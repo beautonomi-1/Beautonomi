@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { formatTime } from "@/lib/utils";
 import { fetcher } from "@/lib/http/fetcher";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import {
   Calendar as CalendarIcon,
   Clock,
@@ -119,7 +120,7 @@ export function AvailabilitySlotPicker({
         date: selectedDate,
         mode,
         duration: String(duration),
-        travelBuffer: mode === "mobile" ? "30" : "0",
+        travelBuffer: mode === "mobile" ? String(HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES) : "0",
       });
       if (providerId) params.set("providerId", providerId);
       if (locationId) params.set("locationId", locationId);

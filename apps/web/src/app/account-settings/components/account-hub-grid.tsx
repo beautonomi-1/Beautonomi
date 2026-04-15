@@ -98,6 +98,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
           </div>
         ) : null}
 
+        {/* Default Link prefetch would load ~25 routes as cards scroll into view; fetch on click/hover instead. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
           {ACCOUNT_HUB_CARDS.map((card, index) => (
             <div key={index} onClick={(e) => handleCardClick(card, e)}>
@@ -108,7 +109,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
                   <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
                 </div>
               ) : (
-                <Link href={card.link} className="block">
+                <Link href={card.link} prefetch={false} className="block">
                   <div
                     className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-shadow duration-200 h-full ${
                       card.link === "/account-settings/loyalty"
@@ -125,7 +126,7 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
             </div>
           ))}
           {user && user.role === "customer" && (
-            <Link href="/provider/onboarding" className="block">
+            <Link href="/provider/onboarding" prefetch={false} className="block">
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">
                 <Store className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>

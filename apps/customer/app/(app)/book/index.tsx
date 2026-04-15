@@ -1126,7 +1126,11 @@ export default function BookScreen() {
         params.set("excludeHoldId", excludeHoldIdForSlots);
       }
       if (locationType === "at_home") {
-        params.set("travel_buffer_minutes", "30");
+        const dynamicTravel =
+          travelFeePreview.status === "success"
+            ? (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes
+            : undefined;
+        params.set("travel_buffer_minutes", String(dynamicTravel ? Math.ceil(dynamicTravel) : 30));
       }
       if (reschedule_booking_id) {
         params.set("exclude_booking_id", reschedule_booking_id);
@@ -1163,6 +1167,7 @@ export default function BookScreen() {
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
+    travelFeePreview,
   ]);
 
   // Restore snapshot and reload stale data when screen regains focus (handles tab switching)

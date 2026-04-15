@@ -22,6 +22,7 @@ import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -418,9 +419,10 @@ export default function StepPayment({
     // Note: Minimum booking amount validation will be done server-side
     // We can add client-side validation here if provider info is available
 
-    const bookingDateTime = new Date(bookingState.selectedDate);
-    const [hours, minutes] = bookingState.selectedTimeSlot.split(":").map(Number);
-    bookingDateTime.setHours(hours, minutes, 0, 0);
+    // Slot times from /api/availability are in the server's timezone (UTC).
+    // Use the same local-date string + slot HH:MM + "Z" to build a correct UTC timestamp.
+    const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+    const bookingDateTime = new Date(`${dateStr}T${bookingState.selectedTimeSlot}:00Z`);
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services

@@ -157,6 +157,13 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
+
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await matchWaitlistOnCancellation(supabase, id);
+      } catch (waitlistErr) {
+        console.error("[admin refund cancel] waitlist matching failed:", waitlistErr);
+      }
     }
 
     try {

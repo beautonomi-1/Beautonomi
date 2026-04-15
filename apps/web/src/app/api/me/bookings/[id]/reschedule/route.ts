@@ -5,6 +5,7 @@ import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabas
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { z } from "zod";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_BOOKING_RESCHEDULED } from "@/lib/analytics/amplitude/types";
@@ -202,7 +203,7 @@ export async function POST(
       newDate,
       {
         slotInterval: 15,
-        travelBuffer: booking.location_type === 'at_home' ? 30 : 0,
+        travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
       }
     );
 
@@ -222,18 +223,37 @@ export async function POST(
       );
     }
 
-    // Update booking scheduled_at
+    // Optimistic lock: prevent concurrent reschedules from overwriting each other.
+    const { data: currentRow } = await adminSupabase
+      .from('bookings')
+      .select('version')
+      .eq('id', bookingId)
+      .single();
+    const currentVersion = (currentRow as any)?.version ?? 0;
+
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from('bookings')
       .update({
         scheduled_at: newDatetime.toISOString(),
+        version: currentVersion + 1,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
+      .eq('version', currentVersion)
       .select()
       .single();
 
     if (updateError) {
       throw updateError;
+    }
+
+    if (!updatedBooking) {
+      return handleApiError(
+        new Error("Booking was modified concurrently"),
+        "This booking was updated by someone else. Please try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // Update all booking_services with new times

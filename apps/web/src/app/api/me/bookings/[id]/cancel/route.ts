@@ -178,7 +178,7 @@ export async function POST(
     );
 
     const currentVersion = (booking as BookingRow).version ?? 0;
-    const { data: updatedBooking, error: updateError } = await adminSupabase
+    const { data: updatedRows, error: updateError } = await adminSupabase
       .from('bookings')
       .update({
         status: 'cancelled',
@@ -187,16 +187,27 @@ export async function POST(
         cancellation_reason: body.reason || 'Customer cancellation',
         cancellation_fee: cancellationFeeApplied,
         total_amount: newTotalAmount,
-        version: currentVersion + 1, // Increment version
+        version: currentVersion + 1,
         updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
-      .select()
-      .single();
+      .eq('version', currentVersion)
+      .select();
 
     if (updateError) {
       throw updateError;
     }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return handleApiError(
+        new Error("Booking was modified concurrently"),
+        "This booking was updated by someone else. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
+    }
+
+    const updatedBooking = updatedRows[0];
 
     const entitlementId = (booking as { customer_package_entitlement_id?: string | null })
       .customer_package_entitlement_id;

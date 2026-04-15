@@ -33,6 +33,7 @@ export async function createGroupBookingServices(
     offering_id: string;
     staff_id: string | null;
     duration_minutes: number;
+    buffer_minutes?: number;
     price: number;
     currency: string;
   }>
@@ -74,7 +75,8 @@ export async function createGroupBookingServices(
         guest_name: participant.name || null,
       });
 
-      participantCursor = new Date(end);
+      const bufferMs = (service.buffer_minutes ?? 0) * 60000;
+      participantCursor = new Date(end.getTime() + bufferMs);
     }
   }
 

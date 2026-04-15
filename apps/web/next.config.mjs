@@ -229,8 +229,8 @@ const nextConfig = {
               "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com",
               // XHR/fetch/WebSocket
               "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com",
-              // Iframes (Paystack popup uses an iframe)
-              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co",
+              // Iframes: Paystack popup; Vercel preview toolbar (vercel.live)
+              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://vercel.live",
               // Workers (Next.js, service workers)
               "worker-src 'self' blob:",
               "object-src 'none'",

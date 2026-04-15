@@ -109,12 +109,32 @@ export async function POST(
       }
     }
 
-    // Create booking datetime
-    const [hours, minutes] = time.split(':').map(Number);
-    const bookingDatetime = new Date(date);
-    bookingDatetime.setHours(hours, minutes, 0, 0);
+    // `date` is "YYYY-MM-DD" and `time` is "HH:MM" — both in UTC.
+    // Construct the timestamp explicitly to avoid timezone drift.
+    const bookingDatetime = new Date(`${date}T${time}:00Z`);
 
     const bookingEnd = new Date(bookingDatetime.getTime() + serviceDuration * 60000);
+
+    // Validate conflicts before creating the booking
+    const effectiveStaffId = staff_id || entry.staff_id;
+    if (effectiveStaffId) {
+      const { checkBookingConflict } = await import("@/lib/bookings/conflict-check");
+      const conflictResult = await checkBookingConflict(
+        adminSupabase,
+        effectiveStaffId,
+        bookingDatetime,
+        bookingEnd,
+        0
+      );
+      if (conflictResult.hasConflict) {
+        return handleApiError(
+          new Error("Time slot conflict"),
+          "This time slot conflicts with an existing booking. Please choose a different time.",
+          "BOOKING_CONFLICT",
+          409
+        );
+      }
+    }
 
     // Create booking
     const { data: booking, error: bookingError } = await adminSupabase

@@ -60,13 +60,21 @@ export default function TimeBlocksPage() {
   const handleDeleteBlock = async (id: string) => {
     if (!confirm("Are you sure you want to delete this time block?")) return;
 
+    // Optimistic removal so the row disappears immediately
+    const prev = timeBlocks;
+    setTimeBlocks((blocks) => blocks.filter((b) => b.id !== id));
+
     try {
       await providerApi.deleteTimeBlock(id);
       toast.success("Time block deleted");
+      // Bust the GET cache so the background refresh returns fresh data
+      const { clearFetcherCache } = await import("@/lib/http/fetcher");
+      clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete time block:", error);
       toast.error("Failed to delete time block");
+      setTimeBlocks(prev);
     }
   };
 
@@ -83,13 +91,19 @@ export default function TimeBlocksPage() {
   const handleDeleteType = async (id: string) => {
     if (!confirm("Are you sure you want to delete this blocked time type?")) return;
 
+    const prev = blockedTimeTypes;
+    setBlockedTimeTypes((types) => types.filter((t) => t.id !== id));
+
     try {
       await providerApi.deleteBlockedTimeType(id);
       toast.success("Blocked time type deleted");
+      const { clearFetcherCache } = await import("@/lib/http/fetcher");
+      clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete blocked time type:", error);
       toast.error("Failed to delete blocked time type");
+      setBlockedTimeTypes(prev);
     }
   };
 

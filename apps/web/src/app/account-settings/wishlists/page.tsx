@@ -108,69 +108,77 @@ const Page = () => {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
+      const stale = { staleTimeMs: 30_000 };
+      setDataLoading(true);
+      setDataError(null);
+      setSavedPostsLoading(true);
+
       try {
-        setDataLoading(true);
-        setDataError(null);
-        
-        // Load wishlists
-        try {
-          const wl = await fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", { staleTimeMs: 30_000 });
-          setWishlists(wl.data || []);
-        } catch (wlErr) {
+        const [
+          wlRes,
+          provRes,
+          prodRes,
+          savedRes,
+          collRes,
+        ] = await Promise.allSettled([
+          fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", stale),
+          fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", stale),
+          fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", stale),
+          fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
+            "/api/explore/saved?limit=50",
+            stale
+          ),
+          fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", stale),
+        ]);
+
+        if (wlRes.status === "fulfilled") {
+          setWishlists(wlRes.value.data || []);
+        } else {
+          const wlErr = wlRes.reason;
           console.error("Error loading wishlists:", wlErr);
           const wlErrorMessage =
             wlErr instanceof FetchTimeoutError
               ? "Request timed out. Please try again."
               : wlErr instanceof FetchError
-              ? wlErr.message
-              : "Failed to load wishlists";
+                ? wlErr.message
+                : "Failed to load wishlists";
           setDataError(wlErrorMessage);
           setWishlists([]);
         }
 
-        // Load saved providers from all wishlists
-        try {
-          const providers = await fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { staleTimeMs: 30_000 });
-          setSavedProviders(providers.data || []);
-        } catch (providersErr) {
-          console.error("Error loading saved providers:", providersErr);
+        if (provRes.status === "fulfilled") {
+          setSavedProviders(provRes.value.data || []);
+        } else {
+          console.error("Error loading saved providers:", provRes.reason);
           setSavedProviders([]);
         }
 
-        // Load saved products from all wishlists
-        try {
-          const products = await fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", { staleTimeMs: 30_000 });
-          setSavedProducts(products.data || []);
-        } catch (productsErr) {
-          console.error("Error loading saved products:", productsErr);
+        if (prodRes.status === "fulfilled") {
+          setSavedProducts(prodRes.value.data || []);
+        } else {
+          console.error("Error loading saved products:", prodRes.reason);
           setSavedProducts([]);
         }
 
-        // Load saved posts for unified Saved experience
-        try {
-          setSavedPostsLoading(true);
-          const savedRes = await fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
-            "/api/explore/saved?limit=50",
-            { staleTimeMs: 30_000 }
-          );
-          const body = (savedRes as any)?.data ?? savedRes;
-          const list = Array.isArray(body) ? body : body?.data ?? [];
+        if (savedRes.status === "fulfilled") {
+          const savedResValue = savedRes.value as { data?: ExplorePost[] | { data?: ExplorePost[] } };
+          const body = savedResValue?.data ?? savedResValue;
+          const list = Array.isArray(body) ? body : (body as { data?: ExplorePost[] })?.data ?? [];
           setSavedPosts(list);
-        } catch (savedErr) {
-          console.error("Error loading saved posts:", savedErr);
+        } else {
+          console.error("Error loading saved posts:", savedRes.reason);
           setSavedPosts([]);
-        } finally {
-          setSavedPostsLoading(false);
         }
 
-        // Load explore boards (collections)
-        try {
-          const collRes = await fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", { staleTimeMs: 30_000 });
-          const collBody = (collRes as any)?.data ?? collRes;
-          const collList = Array.isArray(collBody) ? collBody : collBody?.data ?? [];
+        if (collRes.status === "fulfilled") {
+          const collRaw = collRes.value as {
+            data?: ExploreCollectionSummary[] | { data?: ExploreCollectionSummary[] };
+          };
+          const collBody = collRaw?.data ?? collRaw;
+          const collList = Array.isArray(collBody) ? collBody : (collBody as { data?: ExploreCollectionSummary[] })?.data ?? [];
           setCollections(collList);
-        } catch (collErr) {
-          console.error("Error loading boards:", collErr);
+        } else {
+          console.error("Error loading boards:", collRes.reason);
           setCollections([]);
         }
       } catch (err) {
@@ -179,10 +187,11 @@ const Page = () => {
           err instanceof FetchTimeoutError
             ? "Request timed out. Please try again."
             : err instanceof FetchError
-            ? err.message
-            : "Failed to load data";
+              ? err.message
+              : "Failed to load data";
         setDataError(errorMessage);
       } finally {
+        setSavedPostsLoading(false);
         setDataLoading(false);
       }
     };
@@ -263,7 +272,7 @@ const Page = () => {
 
       {dataLoading ? (
         <div className="py-12">
-          <LoadingTimeout loadingMessage="Loading your saved providers..." />
+          <LoadingTimeout loadingMessage="Loading your saved items…" />
         </div>
       ) : dataError ? (
         <EmptyState

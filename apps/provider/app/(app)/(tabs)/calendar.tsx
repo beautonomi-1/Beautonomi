@@ -95,6 +95,7 @@ interface Booking {
 interface StaffMember {
   id: string;
   name: string;
+  working_hours?: Record<string, { open?: string; close?: string; open_time?: string; close_time?: string; closed?: boolean; is_open?: boolean }> | null;
 }
 
 interface TimeBlock {
@@ -672,6 +673,11 @@ export default function CalendarScreen() {
   const fabAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const hasScrolledToNow = useRef(false);
+  const prevViewModeRef = useRef(viewMode);
+  if (prevViewModeRef.current !== viewMode) {
+    prevViewModeRef.current = viewMode;
+    hasScrolledToNow.current = false;
+  }
   const scrollOffsetRef = useRef({ x: 0, y: 0 });
   const gridContainerRef = useRef<View>(null);
   const draggingRef = useRef(false);
@@ -818,11 +824,10 @@ export default function CalendarScreen() {
     if (!preferences.scrollToNow || hasScrolledToNow.current) return;
     const now = new Date();
     const h = getHours(now);
-    const effectiveStart = preferences.workdayStartHour;
-    const offset = Math.max(0, (h - effectiveStart - 1) * SLOT_HEIGHT);
+    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
     scrollRef.current?.scrollTo({ y: offset, animated: false });
     hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, preferences.workdayStartHour, SLOT_HEIGHT]);
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -851,23 +856,44 @@ export default function CalendarScreen() {
   }, [locations, locationFilter]);
 
   function getHoursForDay(day: Date): { startHour: number; endHour: number; isOpen: boolean } {
-    // Always show at least 1 hour before start and 1 hour after end (closed/blocked time visible)
-    if (!operatingHours) {
-      const start = Math.max(0, preferences.workdayStartHour - 1);
-      const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: true };
-    }
     const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
-    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
+    let minH = 23;
+    let maxH = 0;
+    let anyOpen = false;
+
+    // Location operating hours
+    if (operatingHours) {
+      const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
+      if (schedule?.isOpen && schedule.openTime != null && schedule.closeTime != null) {
+        anyOpen = true;
+        minH = Math.min(minH, Math.floor(timeStringToMinutes(schedule.openTime) / 60));
+        maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(schedule.closeTime) / 60));
+      }
+    }
+
+    // Staff working hours — expand range for any staff member who works this day,
+    // even if the location itself is nominally closed (e.g. weekends).
+    for (const member of staffList) {
+      if (!member.working_hours) continue;
+      const dayWh = member.working_hours[dayName];
+      if (!dayWh) continue;
+      if (dayWh.closed === true || dayWh.is_open === false) continue;
+      const openStr = dayWh.open ?? dayWh.open_time;
+      const closeStr = dayWh.close ?? dayWh.close_time;
+      if (typeof openStr !== "string" || typeof closeStr !== "string") continue;
+      anyOpen = true;
+      minH = Math.min(minH, Math.floor(timeStringToMinutes(openStr) / 60));
+      maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(closeStr) / 60));
+    }
+
+    if (!anyOpen) {
       const start = Math.max(0, preferences.workdayStartHour - 1);
       const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: !!schedule?.isOpen };
+      return { startHour: start, endHour: end, isOpen: false };
     }
-    const openMin = timeStringToMinutes(schedule.openTime);
-    const closeMin = timeStringToMinutes(schedule.closeTime);
-    const sh = Math.max(0, Math.floor(openMin / 60) - 1);
-    const eh = Math.min(23, Math.ceil(closeMin / 60) + 1);
+
+    const sh = Math.max(0, minH - 1);
+    const eh = Math.min(23, maxH + 1);
     return { startHour: sh, endHour: eh, isOpen: true };
   }
 
@@ -1256,13 +1282,17 @@ export default function CalendarScreen() {
       const minute = Math.round((frac * 60) / inc) * inc;
       const clampedMinute = Math.min(59, Math.max(0, minute));
       const hourClamp = Math.min(23, Math.max(0, hour));
-      const newScheduledAt =
-        format(targetDay, "yyyy-MM-dd") +
-        "T" +
-        String(hourClamp).padStart(2, "0") +
-        ":" +
-        String(clampedMinute).padStart(2, "0") +
-        ":00";
+      // Build a timezone-aware ISO string so the server stores the
+      // correct UTC instant matching the provider's local wall clock.
+      const naiveDateStr = format(targetDay, "yyyy-MM-dd");
+      const naiveTimeStr = `${String(hourClamp).padStart(2, "0")}:${String(clampedMinute).padStart(2, "0")}`;
+      const naive = new Date(`${naiveDateStr}T${naiveTimeStr}:00`);
+      const offsetMin = naive.getTimezoneOffset();
+      const sign = offsetMin <= 0 ? "+" : "-";
+      const absMin = Math.abs(offsetMin);
+      const ohh = String(Math.floor(absMin / 60)).padStart(2, "0");
+      const omm = String(absMin % 60).padStart(2, "0");
+      const newScheduledAt = `${naiveDateStr}T${naiveTimeStr}:00${sign}${ohh}:${omm}`;
 
       let newStaffId: string | undefined = booking.services?.[0]?.staff_id ?? undefined;
       if (targetStaffColumns && targetStaffColumns.length > 0 && targetDayColumnWidth > 0) {
@@ -2136,7 +2166,15 @@ export default function CalendarScreen() {
                                 if (!operatingHours) return null;
                                 const dn = DAY_NAMES[day.getDay()] ?? "monday";
                                 const sc = normalizeOperatingSchedule(operatingHours[dn]);
-                                if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700" }}>CLOSED</Text>;
+                                if (!sc?.isOpen) {
+                                  // Check if any staff member works this day before labelling "CLOSED"
+                                  const anyStaffWorks = staffList.some((m) => {
+                                    const wh = m.working_hours?.[dn];
+                                    if (!wh) return false;
+                                    return wh.closed !== true && wh.is_open !== false;
+                                  });
+                                  if (!anyStaffWorks) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700" }}>CLOSED</Text>;
+                                }
                                 return <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>;
                               })()}
                             </TouchableOpacity>
@@ -2267,7 +2305,14 @@ export default function CalendarScreen() {
                               if (!operatingHours) return null;
                               const dn = DAY_NAMES[day.getDay()] ?? "monday";
                               const sc = normalizeOperatingSchedule(operatingHours[dn]);
-                              if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700", marginTop: 1 }}>CLOSED</Text>;
+                              if (!sc?.isOpen) {
+                                const anyStaffWorks = staffList.some((m) => {
+                                  const wh = m.working_hours?.[dn];
+                                  if (!wh) return false;
+                                  return wh.closed !== true && wh.is_open !== false;
+                                });
+                                if (!anyStaffWorks) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700", marginTop: 1 }}>CLOSED</Text>;
+                              }
                               return null;
                             })()}
                           </View>

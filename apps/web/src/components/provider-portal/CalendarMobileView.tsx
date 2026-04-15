@@ -1175,8 +1175,14 @@ export function CalendarMobileView({
                         return aptHour === slotHour;
                       });
                       const { hour } = parseTimeParts(time);
+                      // Check if any team member is working this hour — if so,
+                      // don't mark the slot as "Closed" even if the location is
+                      // nominally outside operating hours for this day.
+                      const anyStaffWorking = teamMembers.some(
+                        (m) => m.working_hours && !isOutsideStaffHours(day, hour, m.working_hours),
+                      );
                       const isOutside =
-                        isOutsideOperatingHours(day, hour, locationOperatingHours);
+                        isOutsideOperatingHours(day, hour, locationOperatingHours) && !anyStaffWorking;
                       const slotHcStyle: React.CSSProperties | undefined =
                         isOutside && highContrast
                           ? {
@@ -1564,7 +1570,8 @@ export function CalendarMobileView({
                       const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
                       const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
-                      const businessClosed = isOutsideLocationHours;
+                      const staffIsWorking = !outsideStaffHours;
+                      const businessClosed = isOutsideLocationHours && !staffIsWorking;
                       const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
                       const isNonWorking = businessClosed;
                       const slotHcStyle: React.CSSProperties | undefined =
@@ -1907,7 +1914,8 @@ export function CalendarMobileView({
                       availabilityBlocks,
                     )
                   : false;
-                const businessClosed = isOutsideLocationHours;
+                const staffIsWorking = selectedStaff ? !outsideStaffHours : false;
+                const businessClosed = isOutsideLocationHours && !staffIsWorking;
                 const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
                 const isNonWorking = businessClosed;
                 const dateStr = selectedDateStr;

@@ -43,12 +43,14 @@ function slotTimePeriod(timeStr: string): "morning" | "afternoon" | "evening" {
 }
 
 function slotTimeOnSelectedDay(timeStr: string, day: Date): Date {
-  const parts = timeStr.trim().split(":");
-  const h = parseInt(parts[0] || "0", 10);
-  const min = parseInt(parts[1] || "0", 10);
-  const d = new Date(day);
-  d.setHours(h, min, 0, 0);
-  return d;
+  // Slot HH:MM strings from /api/availability are in the server's timezone
+  // (UTC). Combine the user's local calendar date with the UTC time so the
+  // selectability check (comparison against Date.now()) is correct regardless
+  // of the browser's timezone.
+  const y = day.getFullYear();
+  const m = String(day.getMonth() + 1).padStart(2, "0");
+  const d = String(day.getDate()).padStart(2, "0");
+  return new Date(`${y}-${m}-${d}T${timeStr.trim()}:00Z`);
 }
 
 function isSlotTimeStillSelectable(timeStr: string, day: Date): boolean {
@@ -177,7 +179,6 @@ export default function StepCalendar({
     if (!day) return;
     try {
       setIsLoading(true);
-      const staffId = bookingState.selectedServices[0]?.staffId;
       const dateStr = formatLocalDateYYYYMMDD(day);
       const mode = bookingState.mode || "salon";
       const effectiveHoldId = bookingState.holdId || excludeHoldId;
@@ -189,11 +190,47 @@ export default function StepCalendar({
         bookingState.selectedLocationId
           ? `&locationId=${encodeURIComponent(bookingState.selectedLocationId)}`
           : "";
-      const response = await fetcher.get<{ data: AvailabilityData }>(
-        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}`,
-        { staleTimeMs: 0 }
-      );
-      setAvailability(response.data);
+
+      const uniqueStaffIds = [
+        ...new Set(
+          bookingState.selectedServices
+            .map((s) => s.staffId)
+            .filter((id): id is string => !!id)
+        ),
+      ];
+
+      const buildUrl = (sid: string | null) =>
+        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}`;
+
+      if (uniqueStaffIds.length <= 1) {
+        const response = await fetcher.get<{ data: AvailabilityData }>(
+          buildUrl(uniqueStaffIds[0] ?? null),
+          { staleTimeMs: 0 }
+        );
+        setAvailability(response.data);
+      } else {
+        // Multiple different staff: fetch each staff's availability in parallel
+        // and intersect — a slot is available only if ALL assigned staff are free.
+        const results = await Promise.all(
+          uniqueStaffIds.map((sid) =>
+            fetcher.get<{ data: AvailabilityData }>(buildUrl(sid), { staleTimeMs: 0 })
+          )
+        );
+        const allSlotMaps = results.map((r) => {
+          const map = new Map<string, boolean>();
+          for (const s of r.data?.slots ?? []) map.set(s.time, s.available);
+          return map;
+        });
+        const baseSlots = results[0]?.data?.slots ?? [];
+        const intersected: TimeSlot[] = baseSlots.map((slot) => ({
+          ...slot,
+          available: allSlotMaps.every((m) => m.get(slot.time) === true),
+          ...(!allSlotMaps.every((m) => m.get(slot.time) === true) && slot.available
+            ? { reason: "Not all staff are available at this time" }
+            : {}),
+        }));
+        setAvailability({ date: dateStr, slots: intersected });
+      }
     } catch (error) {
       toast.error(error instanceof FetchError ? error.message : "Failed to load availability");
     } finally {

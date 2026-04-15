@@ -35,6 +35,7 @@ export function CalendarMobileWithDnd({
       timeBlocks={timeBlocks}
       availabilityBlocks={availabilityBlocks}
       enableConflictValidation={enableConflictValidation}
+      locationOperatingHours={mobileProps.locationOperatingHours}
       onReschedule={onReschedule}
     >
       <CalendarMobileView

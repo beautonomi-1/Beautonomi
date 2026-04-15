@@ -32,15 +32,16 @@ export async function notifyWaitlistMatch(
     : `/booking`;
 
   // Format available slots for display
-  const slotsText = availableSlots
-    .slice(0, 5) // Show top 5 slots
+  const safeSlots = Array.isArray(availableSlots) ? availableSlots : [];
+  const slotsText = safeSlots
+    .slice(0, 5)
     .map(slot => {
       const date = new Date(slot.date);
       return `${format(date, 'MMM d')} at ${formatTime(slot.time)}`;
     })
     .join(', ');
 
-  const moreSlots = availableSlots.length > 5 ? ` and ${availableSlots.length - 5} more` : '';
+  const moreSlots = safeSlots.length > 5 ? ` and ${safeSlots.length - 5} more` : '';
 
   // Store notification in database (if notifications table exists)
   try {

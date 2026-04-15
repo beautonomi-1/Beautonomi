@@ -21,8 +21,9 @@ export async function cancelGroupBooking(
   }
 
   // Cancel all bookings in the group
+  const cancelledBookingIds: string[] = [];
   for (const booking of groupBooking.bookings) {
-    await supabase
+    const { error } = await supabase
       .from('bookings')
       .update({
         status: 'cancelled',
@@ -31,6 +32,17 @@ export async function cancelGroupBooking(
         cancellation_reason: reason || 'Group booking cancelled',
       })
       .eq('id', booking.id);
+    if (!error) cancelledBookingIds.push(booking.id);
+  }
+
+  // Notify waitlist for freed slots
+  try {
+    const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+    await Promise.allSettled(
+      cancelledBookingIds.map((bid) => matchWaitlistOnCancellation(supabase, bid))
+    );
+  } catch (waitlistErr) {
+    console.error("[group cancel] waitlist matching failed:", waitlistErr);
   }
 
   // Update group booking status
@@ -102,6 +114,13 @@ export async function cancelGroupBookingParticipant(
           cancellation_reason: reason || 'All participants removed',
         })
         .eq('id', bookingId);
+
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await matchWaitlistOnCancellation(supabase, bookingId);
+      } catch (waitlistErr) {
+        console.error("[group participant cancel] waitlist matching failed:", waitlistErr);
+      }
     }
   }
 }

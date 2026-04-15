@@ -76,9 +76,10 @@ export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: 
     return new Date(utcGuess.getTime() - diffMs);
   }
 
-  const date = new Date(dateStr);
-  date.setHours(hours, minutes, seconds, 0);
-  return date;
+  // No timezone provided — treat date + time as UTC to stay consistent
+  // with the rest of the availability engine.
+  const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`;
+  return new Date(iso);
 }
 
 /**

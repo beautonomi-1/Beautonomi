@@ -245,6 +245,13 @@ export async function POST(request: NextRequest) {
       refundInfo,
     });
 
+    try {
+      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+      await matchWaitlistOnCancellation(supabase, validation.bookingId);
+    } catch (waitlistErr) {
+      console.error("[portal cancel] waitlist matching failed:", waitlistErr);
+    }
+
     return successResponse({
       booking: updatedBooking,
       message: "Booking cancelled successfully",

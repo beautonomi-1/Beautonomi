@@ -98,6 +98,14 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
+    // Fetch booking IDs before cancelling so we can trigger waitlist
+    const { data: groupBookings } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("group_booking_id", id)
+      .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)");
+
     // Cancel all associated bookings first
     await supabase
       .from("bookings")
@@ -114,6 +122,18 @@ export async function DELETE(
 
     if (error) {
       throw error;
+    }
+
+    // Notify waitlist for freed slots
+    if (groupBookings?.length) {
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await Promise.allSettled(
+          groupBookings.map((b: { id: string }) => matchWaitlistOnCancellation(supabase, b.id))
+        );
+      } catch (waitlistErr) {
+        console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
+      }
     }
 
     return successResponse({ success: true, message: "Group booking cancelled" });

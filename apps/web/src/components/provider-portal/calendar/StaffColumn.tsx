@@ -140,6 +140,7 @@ export const StaffColumn = memo(StaffColumnComponent, (prev, next) => {
   if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
   if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
   if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+  if (prev.member.working_hours !== next.member.working_hours) return false;
 
   return true;
 });

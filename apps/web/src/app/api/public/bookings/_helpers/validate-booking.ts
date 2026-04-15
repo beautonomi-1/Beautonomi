@@ -1258,12 +1258,12 @@ export async function validateBooking(
 
   if (allResourceIds.length > 0) {
     const selectedDatetime = new Date(draft.selected_datetime);
-    let resDuration = 0;
+    let resMinutes = 0;
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
-      resDuration += Number(off.duration_minutes || 0);
+      resMinutes += Number(off.duration_minutes || 0) + Number(off.buffer_minutes || 0);
     }
-    const resEnd = new Date(selectedDatetime.getTime() + resDuration * 60000);
+    const resEnd = new Date(selectedDatetime.getTime() + resMinutes * 60000);
 
     const resourceCheck = await checkResourceAvailability(
       supabase,

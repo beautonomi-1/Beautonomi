@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, X } from "lucide-react";
@@ -89,7 +90,7 @@ export default function PortalReschedulePage() {
       const dateStr = selectedDate.toISOString().split('T')[0];
       const travelQ =
         booking.location_type === "at_home"
-          ? `&travelBuffer=${encodeURIComponent(String(30))}`
+          ? `&travelBuffer=${HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES}`
           : "";
       const response = await fetcher.get<{ data: { date: string; slots: TimeSlot[] } }>(
         `/api/portal/availability?token=${token}&date=${dateStr}${travelQ}`
@@ -106,9 +107,11 @@ export default function PortalReschedulePage() {
       return;
     }
 
-    const [hours, minutes] = selectedTime.split(':').map(Number);
-    const newDatetime = new Date(selectedDate);
-    newDatetime.setHours(hours, minutes, 0, 0);
+    // Slot times from the portal availability API are in the server's timezone
+    // (UTC). Build the ISO timestamp using the same date string + slot HH:MM
+    // with an explicit "Z" suffix so the reschedule lands on the correct UTC time.
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const newDatetime = new Date(`${dateStr}T${selectedTime}:00Z`);
 
     setSubmitting(true);
     try {
