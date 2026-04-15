@@ -802,7 +802,8 @@ export async function PATCH(
       updateData.cancellation_fee = cancellation_fee;
     } else if (requestedDbStatus === "cancelled" && (currentBooking as any)?.cancellation_fee == null) {
       try {
-        const { getCancellationPolicy, canCancelBooking, computeCancellationRefundAmount } = await import("@/lib/bookings/cancellation-policy");
+        const { getCancellationPolicy, canCancelBooking } = await import("@/lib/bookings/cancellation-policy");
+        const { computeCancellationRefundAmount } = await import("@/lib/bookings/refund-processing");
         const locType = ((currentBooking as any)?.location_type as "at_salon" | "at_home") || "at_salon";
         const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
         if (policy) {
