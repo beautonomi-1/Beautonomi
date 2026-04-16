@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     const { data: completedBookings } = await supabase
       .from("bookings")
       .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
       )
       .eq("tenant_id", tenantId)
       .eq("status", "completed")
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     const { data: confirmedBookings } = await supabase
       .from("bookings")
       .select(
-        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
       )
       .eq("tenant_id", tenantId)
       .eq("status", "confirmed")
@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
       created_at?: string;
       total_amount?: number;
       total_paid?: number;
+      total_refunded?: number;
       wallet_amount?: number;
       gift_card_amount?: number;
       provider_id?: string;
@@ -101,6 +102,7 @@ export async function GET(request: NextRequest) {
 
     let totalRevenue = 0;
     let totalActualCollected = 0;
+    let totalRefunded = 0;
     let totalWalletRevenue = 0;
     let totalGatewayRevenue = 0;
     let totalGiftCardRevenue = 0;
@@ -121,6 +123,7 @@ export async function GET(request: NextRequest) {
       if (!date) return;
       const gmvAmount = Number(booking.total_amount ?? 0);
       const gatewayAmount = Number(booking.total_paid ?? 0);
+      const refundedAmount = Number(booking.total_refunded ?? 0);
       const walletAmount = Number(booking.wallet_amount ?? 0);
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
       const collectedAmount = gatewayAmount + walletAmount + giftCardAmount;
@@ -153,6 +156,7 @@ export async function GET(request: NextRequest) {
 
       totalRevenue += gmvAmount;
       totalActualCollected += collectedAmount;
+      totalRefunded += refundedAmount;
       totalWalletRevenue += walletAmount;
       totalGatewayRevenue += gatewayAmount;
       totalGiftCardRevenue += giftCardAmount;
@@ -312,8 +316,12 @@ export async function GET(request: NextRequest) {
       period,
       // GMV: total booking value at time of booking (what was charged)
       totalRevenue,
-      // Actual collected: gateway + wallet + gift card (real money/credit received)
+      // Gross collected: gateway + wallet + gift card (before refunds)
       totalActualCollected,
+      // Total refunded back to customers
+      totalRefunded,
+      // Net collected: gross collected minus refunds
+      netCollected: totalActualCollected - totalRefunded,
       // Breakdown of how actual_collected is composed
       collectionBreakdown: {
         gateway: totalGatewayRevenue,

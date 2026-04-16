@@ -63,18 +63,39 @@ function extractIsoTimePart(value: unknown): string {
   return /^\d{2}:\d{2}$/.test(timePart) ? timePart : "";
 }
 
-function formatDateTimeSafe(value: unknown): string {
+const DEFAULT_TZ = "Africa/Johannesburg";
+
+function formatDateTimeSafe(value: unknown, tz?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleString();
+  try {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleString();
+  }
 }
 
-function formatTimeSafe(value: unknown): string {
+function formatTimeSafe(value: unknown, tz?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString();
+  try {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleTimeString();
+  }
 }
 
 function formatProductVariantLabel(variant: unknown): string | null {
@@ -714,7 +735,10 @@ export default function BookingDetailScreen() {
   const totalRefunded = b.total_refunded ?? 0;
   const walletAmountApplied = Number((b as any).wallet_amount ?? 0);
   const giftCardAmountApplied = Number((b as any).gift_card_amount ?? 0);
-  const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;
+  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+  const outstandingRaw = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
+  const ps = ((b as any).payment_status || "").toLowerCase();
+  const outstanding = ps === "refunded" ? 0 : Math.max(0, outstandingRaw);
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
@@ -1455,7 +1479,7 @@ export default function BookingDetailScreen() {
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
-            {formatDateTimeSafe(b.scheduled_at)}
+            {formatDateTimeSafe(b.scheduled_at, (b as any).display_time_zone)}
           </Text>
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
@@ -1871,7 +1895,7 @@ export default function BookingDetailScreen() {
               <View style={twStyle("mb-2 border-b border-gray-100 pb-2")}>
                 {typeof b.subtotal === "number" && b.subtotal > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600")}>
-                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {b.subtotal.toLocaleString()}
+                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {Math.max(0, b.subtotal - (b.travel_fee_amount ?? 0)).toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.discount_amount === "number" && b.discount_amount > 0 ? (
@@ -2096,7 +2120,7 @@ export default function BookingDetailScreen() {
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {formatTimeSafe(s.scheduled_start_at)}
+                    {formatTimeSafe(s.scheduled_start_at, (b as any).display_time_zone)}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}

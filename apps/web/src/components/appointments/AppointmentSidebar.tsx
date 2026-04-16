@@ -4361,12 +4361,7 @@ export function AppointmentSidebar({
                     <div className="flex items-center justify-between">
                       <span className="text-xs text-gray-500">Status</span>
                       {(() => {
-                        // Determine actual payment status: if total_paid < total_amount, it's partially_paid
-                        const totalPaid = (selectedAppointment as any).total_paid || 0;
-                        const totalAmount = selectedAppointment.total_amount || 0;
-                        const actualPaymentStatus = totalPaid > 0 && totalPaid < totalAmount 
-                          ? 'partially_paid' 
-                          : selectedAppointment.payment_status || 'pending';
+                        const actualPaymentStatus = selectedAppointment.payment_status || 'pending';
                         
                         return (
                           <Badge 
@@ -4438,9 +4433,13 @@ export function AppointmentSidebar({
                       <div className="space-y-2">
                         {(() => {
                           const totalPaid = (selectedAppointment as any).total_paid || 0;
+                          const totalRefunded = (selectedAppointment as any).total_refunded || 0;
                           const totalAmount = selectedAppointment.total_amount || 0;
-                          const remainingBalance = totalAmount - totalPaid;
-                          const isPartiallyPaid = totalPaid > 0 && totalPaid < totalAmount;
+                          const walletAmt = Number((selectedAppointment as any).wallet_amount || 0);
+                          const giftAmt = Number((selectedAppointment as any).gift_card_amount || 0);
+                          const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+                          const remainingBalance = Math.max(0, totalAmount - effectivePaid - walletAmt - giftAmt);
+                          const isPartiallyPaid = effectivePaid > 0 && remainingBalance > 0;
                           
                           return (
                             <>
@@ -4455,8 +4454,12 @@ export function AppointmentSidebar({
                                 onClick={async () => {
                                   try {
                                     const totalPaid = (selectedAppointment as any).total_paid || 0;
+                                    const totalRefundedInner = (selectedAppointment as any).total_refunded || 0;
                                     const totalAmount = selectedAppointment.total_amount || 0;
-                                    const remainingBalance = totalAmount - totalPaid;
+                                    const walletInner = Number((selectedAppointment as any).wallet_amount || 0);
+                                    const giftInner = Number((selectedAppointment as any).gift_card_amount || 0);
+                                    const effectivePaidInner = Math.max(0, totalPaid - totalRefundedInner);
+                                    const remainingBalance = Math.max(0, totalAmount - effectivePaidInner - walletInner - giftInner);
                                     const paymentAmount = remainingBalance > 0 ? remainingBalance : totalAmount;
                                     
                                     const response = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
@@ -4511,9 +4514,13 @@ export function AppointmentSidebar({
                           onClick={async () => {
                             try {
                               // Calculate payment amount for card payment
-                              const totalPaidCard = (selectedAppointment as any).total_paid || 0;
+                              const totalPaidCard = Number((selectedAppointment as any).total_paid || 0);
+                              const totalRefundedCard = Number((selectedAppointment as any).total_refunded || 0);
+                              const walletAmtCard = Number((selectedAppointment as any).wallet_amount || 0);
+                              const giftAmtCard = Number((selectedAppointment as any).gift_card_amount || 0);
                               const totalAmountCard = selectedAppointment.total_amount || 0;
-                              const remainingBalanceCard = totalAmountCard - totalPaidCard;
+                              const effectivePaidCard = Math.max(0, totalPaidCard - totalRefundedCard);
+                              const remainingBalanceCard = Math.max(0, totalAmountCard - effectivePaidCard - walletAmtCard - giftAmtCard);
                               const paymentAmountCard = remainingBalanceCard > 0 ? remainingBalanceCard : totalAmountCard;
                               
                               // Fetch Yoco terminals/devices first
@@ -4535,11 +4542,15 @@ export function AppointmentSidebar({
                               }
 
                               if (terminals.length === 0) {
-                                const totalPaidLocal = (selectedAppointment as any).total_paid || 0;
+                                const totalPaidLocal = Number((selectedAppointment as any).total_paid || 0);
+                                const totalRefundedLocal = Number((selectedAppointment as any).total_refunded || 0);
+                                const walletAmtLocal = Number((selectedAppointment as any).wallet_amount || 0);
+                                const giftAmtLocal = Number((selectedAppointment as any).gift_card_amount || 0);
                                 const totalAmountLocal = selectedAppointment.total_amount || 0;
-                                const remainingBalanceLocal = totalAmountLocal - totalPaidLocal;
+                                const effectivePaidLocal = Math.max(0, totalPaidLocal - totalRefundedLocal);
+                                const remainingBalanceLocal = Math.max(0, totalAmountLocal - effectivePaidLocal - walletAmtLocal - giftAmtLocal);
                                 const paymentAmountLocal = remainingBalanceLocal > 0 ? remainingBalanceLocal : totalAmountLocal;
-                                const isPartiallyPaidLocal = totalPaidLocal > 0 && totalPaidLocal < totalAmountLocal;
+                                const isPartiallyPaidLocal = effectivePaidLocal > 0 && remainingBalanceLocal > 0;
                                 
                                 const manualConfirm = confirm(
                                   `No Yoco devices found. Do you want to manually record this card payment${isPartiallyPaidLocal ? ` of R${remainingBalanceLocal.toFixed(2)} (remaining balance)` : ''}?`
@@ -4615,11 +4626,15 @@ export function AppointmentSidebar({
                               const paymentData = await paymentResponse.json();
                               
                               // Mark booking as paid - calculate payment amount
-                              const totalPaidYoco = (selectedAppointment as any).total_paid || 0;
+                              const totalPaidYoco = Number((selectedAppointment as any).total_paid || 0);
+                              const totalRefundedYoco = Number((selectedAppointment as any).total_refunded || 0);
+                              const walletAmtYoco = Number((selectedAppointment as any).wallet_amount || 0);
+                              const giftAmtYoco = Number((selectedAppointment as any).gift_card_amount || 0);
                               const totalAmountYoco = selectedAppointment.total_amount || 0;
-                              const remainingBalanceYoco = totalAmountYoco - totalPaidYoco;
+                              const effectivePaidYoco = Math.max(0, totalPaidYoco - totalRefundedYoco);
+                              const remainingBalanceYoco = Math.max(0, totalAmountYoco - effectivePaidYoco - walletAmtYoco - giftAmtYoco);
                               const paymentAmountYoco = remainingBalanceYoco > 0 ? remainingBalanceYoco : totalAmountYoco;
-                              const isPartiallyPaidYoco = totalPaidYoco > 0 && totalPaidYoco < totalAmountYoco;
+                              const isPartiallyPaidYoco = effectivePaidYoco > 0 && remainingBalanceYoco > 0;
                               
                               const markPaidResponse = await fetch(`/api/provider/bookings/${activeBookingId}/mark-paid`, {
                                 method: 'POST',

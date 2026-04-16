@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       }
 
       if (search) {
-        query = query.or(`ref_number.ilike.%${search}%,title.ilike.%${search}%`);
+        query = query.or(`ref_number.ilike.%${search}%`);
       }
 
       query = query.range(offset, offset + limit - 1);
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       const { data, error, count } = await query;
 
       if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        if (error.code === '42P01' || error.code === '42703' || error.message?.includes('does not exist')) {
           return successResponse({
             data: [],
             total: 0,
@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
       });
       total = count || 0;
     } catch (error: any) {
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      if (error.code === '42P01' || error.code === '42703' || error.message?.includes('does not exist')) {
         return successResponse({
           data: [],
           total: 0,

@@ -18,6 +18,10 @@ interface PaymentActionsProps {
   bookingId: string;
   totalAmount: number;
   totalPaid: number;
+  totalRefunded?: number;
+  walletAmount?: number;
+  giftCardAmount?: number;
+  paymentStatus?: string;
   currency: string;
   onComplete: () => void;
   /** "footer" = large interactive tiles for Concierge Panel */
@@ -28,16 +32,21 @@ export function PaymentActions({
   bookingId,
   totalAmount,
   totalPaid,
+  totalRefunded = 0,
+  walletAmount = 0,
+  giftCardAmount = 0,
+  paymentStatus,
   currency,
   onComplete,
   variant = "default",
 }: PaymentActionsProps) {
+  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+  const remaining = paymentStatus === "refunded" ? 0 : Math.max(0, totalAmount - effectivePaid - walletAmount - giftCardAmount);
   const [yocoOpen, setYocoOpen] = useState(false);
-  const [yocoAmount, setYocoAmount] = useState(String(Math.max(0, totalAmount - totalPaid)));
+  const [yocoAmount, setYocoAmount] = useState(String(remaining));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const remaining = Math.max(0, totalAmount - totalPaid);
-  const isPaid = totalPaid >= totalAmount;
+  const isPaid = remaining <= 0;
 
   const handleSendPaystack = async () => {
     const ok = await sendPaystackLink(bookingId, "both");

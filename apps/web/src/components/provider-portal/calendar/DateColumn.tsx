@@ -7,7 +7,7 @@ import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } fro
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
 import { TimeBlockElement } from "./TimeBlockElement";
-import { toDateStr, type CalendarBlock } from "./utils";
+import { toDateStr, timeToMinutes, resolveDayHours, type CalendarBlock } from "./utils";
 
 interface DateColumnProps {
   date: Date;
@@ -63,20 +63,21 @@ function DateColumnComponent({
     const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
     for (const dayName of DAY_NAMES) {
-      let earliest: string | null = null;
-      let latest: string | null = null;
+      let earliestMin = Infinity;
+      let latestMin = -1;
       let anyOpen = false;
       for (const m of teamMembers) {
-        const wh = m.working_hours?.[dayName];
-        if (!wh || wh.closed) continue;
+        const resolved = resolveDayHours(m.working_hours?.[dayName]);
+        if (!resolved || resolved.closed) continue;
         anyOpen = true;
-        const open = (wh as any).open ?? (wh as any).open_time;
-        const close = (wh as any).close ?? (wh as any).close_time;
-        if (typeof open === "string" && (!earliest || open < earliest)) earliest = open;
-        if (typeof close === "string" && (!latest || close > latest)) latest = close;
+        const openMin = timeToMinutes(resolved.open);
+        const closeMin = timeToMinutes(resolved.close);
+        if (openMin < earliestMin) earliestMin = openMin;
+        if (closeMin > latestMin) latestMin = closeMin;
       }
-      if (anyOpen && earliest && latest) {
-        merged[dayName] = { open: earliest, close: latest };
+      if (anyOpen && earliestMin < Infinity && latestMin > -1) {
+        const padH = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+        merged[dayName] = { open: padH(earliestMin), close: padH(latestMin) };
       } else {
         merged[dayName] = { open: "00:00", close: "00:00", closed: true };
       }

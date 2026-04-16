@@ -368,7 +368,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // Calculate pending payments (unpaid bookings)
     let unpaidBookingsQuery = supabaseAdmin
       .from("bookings")
-      .select("total_amount, total_paid, total_refunded, payment_status")
+      .select("total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
       .eq("provider_id", providerId)
       .in("payment_status", ["pending", "partially_paid"])
       .not("status", "in", "(cancelled,no_show)");
@@ -379,13 +379,15 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     
     const { data: unpaidBookings } = await unpaidBookingsQuery;
 
-    /** Sum outstanding per booking (not full total_amount — fixes partial payments). */
     const pendingPaymentsAmount =
       unpaidBookings?.reduce((sum, b) => {
         const total = Number((b as { total_amount?: number }).total_amount ?? 0);
         const paid = Number((b as { total_paid?: number }).total_paid ?? 0);
         const refunded = Number((b as { total_refunded?: number }).total_refunded ?? 0);
-        const outstanding = Math.max(0, total - paid + refunded);
+        const wallet = Number((b as { wallet_amount?: number }).wallet_amount ?? 0);
+        const gift = Number((b as { gift_card_amount?: number }).gift_card_amount ?? 0);
+        const effectivePaid = Math.max(0, paid - refunded);
+        const outstanding = Math.max(0, total - effectivePaid - wallet - gift);
         return sum + outstanding;
       }, 0) || 0;
     const pendingPaymentsCount = unpaidBookings?.length || 0;

@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +47,7 @@ type ProviderBookingDetail = Booking & {
   qr_code_verified?: boolean;
   arrival_otp_pending?: boolean;
   qr_arrival_pending?: boolean;
+  display_time_zone?: string | null;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -454,8 +457,11 @@ export default function ProviderBookingDetail() {
     const ta = booking.total_amount ?? 0;
     const walletAmt = Number((booking as unknown as Record<string, unknown>).wallet_amount ?? 0);
     const giftCardAmt = Number((booking as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-    // Subtract wallet and gift card credits already applied so we don't ask provider to collect what's already been paid
-    const outstandingAmt = ta - tp - walletAmt - giftCardAmt + tr;
+    const outstandingAmt = computeBookingOutstandingDisplay({
+      totalAmount: ta, totalPaid: tp, totalRefunded: tr,
+      walletAmount: walletAmt, giftCardAmount: giftCardAmt,
+      unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: booking.payment_status,
+    });
     const paymentAmount = Number(outstandingAmt.toFixed(2));
     if (paymentAmount <= 0) {
       toast.error(
@@ -580,19 +586,19 @@ export default function ProviderBookingDetail() {
     const totalPaidLocal = b.total_paid ?? 0;
     const totalRefundedLocal = b.total_refunded ?? 0;
     const totalAmountLocal = b.total_amount ?? 0;
-      const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
-      const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-    const outstandingLocal = totalAmountLocal - totalPaidLocal - walletLocal - giftLocal + totalRefundedLocal;
+    const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+    const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+    const outstandingLocal = computeBookingOutstandingDisplay({
+      totalAmount: totalAmountLocal, totalPaid: totalPaidLocal, totalRefunded: totalRefundedLocal,
+      walletAmount: walletLocal, giftCardAmount: giftLocal,
+      unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+    });
     const chargeAmount = Number(outstandingLocal.toFixed(2));
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
     const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
 
     if (chargeAmount <= 0) {
-      toast.error(
-        outstandingLocal < 0
-          ? "This booking has no remaining balance to collect (it may be overpaid). Refresh if you just recorded a payment elsewhere."
-          : "There is no remaining balance on this booking."
-      );
+      toast.error("There is no remaining balance on this booking.");
       return;
     }
     if (!canMarkPaidLocal) {
@@ -713,7 +719,11 @@ export default function ProviderBookingDetail() {
       const ta = b.total_amount ?? 0;
       const walletCalc = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
       const giftCalc = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-      const outstandingCalc = ta - tp - walletCalc - giftCalc + tr;
+      const outstandingCalc = computeBookingOutstandingDisplay({
+        totalAmount: ta, totalPaid: tp, totalRefunded: tr,
+        walletAmount: walletCalc, giftCardAmount: giftCalc,
+        unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+      });
 
       try {
         await providerApi.updateSale(saleId, {
@@ -920,6 +930,13 @@ export default function ProviderBookingDetail() {
 
   const b = booking;
 
+  const unpaidChargesTotal = useMemo(
+    () => additionalCharges
+      .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+      .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0),
+    [additionalCharges],
+  );
+
   const isActive = ["pending", "booked", "confirmed"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
   const isAtHome = b.location_type === "at_home";
@@ -939,9 +956,15 @@ export default function ProviderBookingDetail() {
   const totalAmount = b.total_amount ?? 0;
   const walletAmountApplied = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
   const giftCardAmountApplied = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-  // Outstanding balance correctly subtracts wallet and gift card credits so providers
-  // don't see a phantom balance after split-payment bookings.
-  const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;
+  const outstanding = computeBookingOutstandingDisplay({
+    totalAmount,
+    totalPaid,
+    totalRefunded,
+    walletAmount: walletAmountApplied,
+    giftCardAmount: giftCardAmountApplied,
+    unpaidAdditionalCharges: unpaidChargesTotal,
+    paymentStatus: b.payment_status,
+  });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
@@ -1100,12 +1123,7 @@ export default function ProviderBookingDetail() {
                 <div>
                   <p className="text-sm text-gray-600">Date</p>
                   <p className="font-medium">
-                    {new Date(booking.scheduled_at).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                    {formatBookingDateInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
                 </div>
               </div>
@@ -1114,10 +1132,7 @@ export default function ProviderBookingDetail() {
                 <div>
                   <p className="text-sm text-gray-600">Time</p>
                   <p className="font-medium">
-                    {new Date(booking.scheduled_at).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatBookingTimeInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
                 </div>
               </div>
@@ -1564,7 +1579,7 @@ export default function ProviderBookingDetail() {
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
               <span className="font-medium">
-                {booking.currency} {(booking.subtotal?.toFixed(2)) ?? "0.00"}
+                {booking.currency} {Math.max(0, (booking.subtotal ?? 0) - (booking.travel_fee ?? 0)).toFixed(2)}
               </span>
             </div>
             {booking.travel_fee != null && booking.travel_fee > 0 && (

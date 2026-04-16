@@ -43,24 +43,45 @@ import {
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 
-function formatDate(s: string) {
+const DEFAULT_TZ = "Africa/Johannesburg";
+
+function formatDate(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  try {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
 }
-function formatTime(s: string) {
+function formatTime(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  try {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
 }
 
 function formatDateForCalendar(d: Date): string {
@@ -641,7 +662,7 @@ export default function BookingDetailScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
-                  {booking.status === "pending" ? "Booking pending" : booking.status === "waiting" ? "Checked in — waiting" : booking.status === "checked_in" ? "You're checked in" : booking.status === "in_progress" || booking.status === "started" ? "Service in progress" : "Booking confirmed"} {formatTime(booking.selected_datetime)}
+                  {booking.status === "pending" ? "Booking pending" : booking.status === "waiting" ? "Checked in — waiting" : booking.status === "checked_in" ? "You're checked in" : booking.status === "in_progress" || booking.status === "started" ? "Service in progress" : "Booking confirmed"} {formatTime(booking.selected_datetime, booking.display_time_zone)}
                 </Text>
                 <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
                   {booking.status === "pending" ? `Awaiting confirmation from ${provider?.business_name || "your provider"}.` : booking.status === "waiting" ? "The provider will be with you shortly." : booking.status === "checked_in" ? "You've arrived. The provider knows you're here." : `Your booking with ${provider?.business_name || "your provider"} is confirmed.`}
@@ -919,8 +940,8 @@ export default function BookingDetailScreen() {
             {/* Scheduled time */}
             <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Scheduled for</Text>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime)}</Text>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime)}</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
               {provider?.business_name ? (
                 <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>at {provider.business_name}</Text>
               ) : null}
@@ -935,7 +956,7 @@ export default function BookingDetailScreen() {
               {booking.subtotal != null && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.subtotal).toFixed(2)}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Math.max(0, Number(booking.subtotal) - Number((booking as any).travel_fee || 0)).toFixed(2)}</Text>
                 </View>
               )}
               {booking.tax_amount > 0 && (
@@ -1086,8 +1107,8 @@ export default function BookingDetailScreen() {
                     `Booking #${booking.booking_number || booking.id?.slice(0, 8) || ""}`,
                     ``,
                     `Provider: ${provider?.business_name || "N/A"}`,
-                    `Date: ${formatDate(booking.selected_datetime)}`,
-                    `Time: ${formatTime(booking.selected_datetime)}`,
+                    `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
+                    `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                     `Status: ${booking.status}`,
                     ``,
                     ...(services || []).map((svc: any) => `• ${svc.offering_name || svc.service_name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`),
@@ -1130,8 +1151,8 @@ export default function BookingDetailScreen() {
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || "Provider"}</Text>
-              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime)}</Text>
-              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime)}</Text>
+              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
+              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
             </View>
             <View
               style={{
@@ -1468,8 +1489,8 @@ export default function BookingDetailScreen() {
                 `Booking #${booking.booking_number || booking.id.slice(0, 8)}`,
                 ``,
                 `Provider: ${provider?.business_name || "N/A"}`,
-                `Date: ${formatDate(booking.selected_datetime)}`,
-                `Time: ${formatTime(booking.selected_datetime)}`,
+                `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
+                `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                 `Status: ${booking.status}`,
                 ``,
                 ...services.map(

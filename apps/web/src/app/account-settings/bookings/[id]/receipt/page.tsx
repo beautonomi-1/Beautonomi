@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, Printer, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
@@ -86,6 +86,7 @@ export default function ReceiptPage() {
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadReceipt();
@@ -94,14 +95,31 @@ export default function ReceiptPage() {
   const loadReceipt = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ receipt: Receipt }>(
+      setErrorMessage(null);
+      const response = await fetcher.get<{ receipt: Receipt } | Receipt>(
         `/api/bookings/${bookingId}/receipt`,
         { cache: "no-store" }
       );
-      setReceipt(response.receipt);
+      // Handle both `{ receipt: {...} }` and flat receipt shapes
+      const receiptData = (response as { receipt?: Receipt }).receipt ?? (response as Receipt);
+      setReceipt(receiptData?.booking_number ? receiptData : null);
     } catch (error) {
       console.error("Failed to load receipt:", error);
-      toast.error("Failed to load receipt");
+      if (error instanceof FetchError) {
+        if (error.status === 403) {
+          setErrorMessage("You don't have permission to view this receipt.");
+          toast.error("Access denied");
+        } else if (error.status === 404) {
+          setErrorMessage("Receipt not found. The booking may not exist or has been removed.");
+          toast.error("Receipt not found");
+        } else {
+          setErrorMessage(error.message || "Something went wrong loading the receipt.");
+          toast.error("Failed to load receipt");
+        }
+      } else {
+        setErrorMessage("An unexpected error occurred. Please try again.");
+        toast.error("Failed to load receipt");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -161,7 +179,7 @@ export default function ReceiptPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <p className="text-gray-500">Receipt not found</p>
+          <p className="text-gray-500">{errorMessage || "Receipt not found"}</p>
           <Link href={`/account-settings/bookings/${bookingId}`}>
             <Button variant="outline" className="mt-4">
               Back to Booking

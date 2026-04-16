@@ -104,6 +104,12 @@ export const parseHourRange = (
   return { openHour: o.hour, closeHour: c.hour };
 };
 
+/** Convert "HH:MM" or "H:MM" to total minutes for reliable comparison. */
+export const timeToMinutes = (t: string | undefined): number => {
+  const { hour, minute } = parseScheduledTime(t);
+  return hour * 60 + minute;
+};
+
 export const resolveDayHours = (
   dayHours: unknown,
 ): { open?: string; close?: string; closed: boolean } | null => {
@@ -125,9 +131,11 @@ export const isOutsideOperatingHours = (
   const resolved = resolveDayHours(locationOperatingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutes(resolved.open);
+  const closeMin = timeToMinutes(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
 export const isOutsideStaffHours = (
@@ -140,9 +148,11 @@ export const isOutsideStaffHours = (
   const resolved = resolveDayHours(staffWorkingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutes(resolved.open);
+  const closeMin = timeToMinutes(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
 /** First grid hour where the location is open and at least one team member can work (falls back to startHour). */

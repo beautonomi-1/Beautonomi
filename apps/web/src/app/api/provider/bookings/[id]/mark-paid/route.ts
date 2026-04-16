@@ -59,7 +59,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, status, tenant_id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -131,14 +131,13 @@ export async function POST(
       }
     }
 
-    // Check if already fully paid.
-    // Remaining balance must account for wallet credit already applied at booking time
-    // (wallet_amount reduces what the customer still owes via card/cash/other).
     const currentTotalPaid = booking.total_paid || 0;
+    const totalRefunded = Number((booking as any).total_refunded || 0);
     const walletAlreadyApplied = Number((booking as any).wallet_amount || 0);
     const giftCardAlreadyApplied = Number((booking as any).gift_card_amount || 0);
     const bookingTotal = booking.total_amount || 0;
-    const remainingBalance = bookingTotal - currentTotalPaid - walletAlreadyApplied - giftCardAlreadyApplied;
+    const effectivePaid = Math.max(0, currentTotalPaid - totalRefunded);
+    const remainingBalance = bookingTotal - effectivePaid - walletAlreadyApplied - giftCardAlreadyApplied;
     
     if (remainingBalance <= 0) {
       return errorResponse(

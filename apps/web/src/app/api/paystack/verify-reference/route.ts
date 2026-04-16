@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
     const supabase = await getSupabaseServer();
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, tenant_id, customer_id, total_amount, total_paid")
+      .select("id, tenant_id, customer_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
       .eq("id", bookingIdParam)
       .single();
 
@@ -135,7 +135,11 @@ export async function GET(request: NextRequest) {
     if (paymentType === "booking_remaining") {
       const total = Number(booking.total_amount ?? 0);
       const paid = Number(booking.total_paid ?? 0);
-      const remaining = Math.max(0, total - paid);
+      const refunded = Number((booking as any).total_refunded ?? 0);
+      const wallet = Number((booking as any).wallet_amount ?? 0);
+      const gift = Number((booking as any).gift_card_amount ?? 0);
+      const effectivePaid = Math.max(0, paid - refunded);
+      const remaining = Math.max(0, total - effectivePaid - wallet - gift);
 
       if (remaining > 0.02) {
         if (Math.abs(amountInCurrency - remaining) > 0.02) {

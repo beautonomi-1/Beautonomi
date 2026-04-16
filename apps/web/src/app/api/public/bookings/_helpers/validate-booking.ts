@@ -1134,30 +1134,45 @@ export async function validateBooking(
       );
     }
 
+    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
+    const maxPointsByCap = Math.floor(maxDiscount * redemptionRate);
+    const pointsToRedeem = Math.min(loyaltyPointsRequested, maxPointsByCap);
+
+    if (loyaltyPointsRequested > 0 && maxPointsByCap < minPoints) {
+      return handleApiError(
+        new Error("Loyalty redemption capped below minimum"),
+        `This booking only allows up to ${maxPointsByCap} loyalty points (${maxPct}% max), which is below the minimum redemption of ${minPoints} points.`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    if (pointsToRedeem < minPoints) {
+      return handleApiError(
+        new Error(`Minimum ${minPoints} loyalty points required for this booking`),
+        `You need at least ${minPoints} points to redeem, but only ${pointsToRedeem} points can be applied on this booking (${maxPct}% maximum).`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
     const { data: balanceData } = await supabase.rpc(
       "get_customer_available_points" as any,
       { customer_uuid: customerId },
     );
     const availableBalance = Number(balanceData) || 0;
 
-    if (loyaltyPointsRequested > availableBalance) {
+    if (pointsToRedeem > availableBalance) {
       return handleApiError(
         new Error("Insufficient loyalty points"),
-        "You don't have enough loyalty points for this redemption.",
+        `You have ${availableBalance} loyalty points available. This redemption needs up to ${pointsToRedeem} points (${maxPct}% max on this booking).`,
         "VALIDATION_ERROR",
         400,
       );
     }
 
-    let discount = loyaltyPointsRequested / redemptionRate;
-    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
-    if (discount > maxDiscount) {
-      discount = maxDiscount;
-      loyaltyPointsRedeemed = Math.floor(maxDiscount * redemptionRate);
-    } else {
-      loyaltyPointsRedeemed = loyaltyPointsRequested;
-    }
-
+    const discount = pointsToRedeem / redemptionRate;
+    loyaltyPointsRedeemed = pointsToRedeem;
     loyaltyDiscountAmount = Math.round(discount * 100) / 100;
   }
 

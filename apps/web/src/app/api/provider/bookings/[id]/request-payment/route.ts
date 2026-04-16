@@ -93,7 +93,11 @@ export async function POST(
 
     const totalAmount = Number(bookingData.total_amount ?? 0);
     const totalPaidStored = Number(bookingData.total_paid ?? 0);
-    const remainingBalance = Math.max(0, totalAmount - totalPaidStored);
+    const totalRefundedStored = Number(bookingData.total_refunded ?? 0);
+    const walletApplied = Number(bookingData.wallet_amount ?? 0);
+    const giftApplied = Number(bookingData.gift_card_amount ?? 0);
+    const effPaid = Math.max(0, totalPaidStored - totalRefundedStored);
+    const remainingBalance = Math.max(0, totalAmount - effPaid - walletApplied - giftApplied);
 
     // Check if booking is in progress or completed
     if (!["in_progress", "completed"].includes(bookingData.status)) {

@@ -4,6 +4,7 @@ import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpe
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 type BookingServiceRow = {
   price?: number | null;
@@ -230,8 +231,20 @@ export async function GET(
       .reduce((sum, p) => sum + Number(p.amount || 0), 0);
     const walletCredit = Number(bRaw.wallet_amount ?? 0);
     const giftCardCredit = Number(bRaw.gift_card_amount ?? 0);
+    const totalPaidRow = Number(bRaw.total_paid ?? 0);
+    const totalRefundedRow = Number(bRaw.total_refunded ?? 0);
     const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
-    const balanceDue = Math.max(0, totalFromRow - amountPaid);
+    const balanceDue = computeBookingOutstandingDisplay({
+      totalAmount: totalFromRow,
+      totalPaid: totalPaidRow,
+      totalRefunded: totalRefundedRow,
+      walletAmount: walletCredit,
+      giftCardAmount: giftCardCredit,
+      unpaidAdditionalCharges: additionalCharges
+        .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+        .reduce((sum, ac) => sum + Number(ac.amount || 0), 0),
+      paymentStatus: booking.payment_status,
+    });
     const depositRequired = Boolean(bRaw.deposit_required);
     const depositAmount = Number(bRaw.deposit_amount || 0);
     const depositPercentage = Number(bRaw.deposit_percentage || 0);
@@ -271,7 +284,7 @@ export async function GET(
             (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
         };
       }) || [],
-      subtotal,
+      subtotal: Math.max(0, subtotal - travelFee),
       tax,
       tax_rate: Number(bRaw.tax_rate || 0),
       fees: serviceFee,

@@ -277,42 +277,43 @@ const parseTimeParts = (time?: string): { hour: number; minute: number } => {
   };
 };
 
-// Check if a time is outside operating hours for a given date (location)
+const timeToMinutesMobile = (t?: string): number => {
+  const { hour, minute } = parseTimeParts(t);
+  return hour * 60 + minute;
+};
+
 const isOutsideOperatingHours = (
   date: Date,
   hour: number,
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null
 ): boolean => {
   if (!locationOperatingHours) return false;
-
-  const dayOfWeek = getDay(date);
-  const dayKey = DAY_NAMES[dayOfWeek];
+  const dayKey = DAY_NAMES[getDay(date)];
   const resolved = resolveDayHours(locationOperatingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutesMobile(resolved.open);
+  const closeMin = timeToMinutesMobile(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
-// Check if a time is outside staff working hours (staff-specific)
 const isOutsideStaffHours = (
   date: Date,
   hour: number,
   staffWorkingHours?: Record<string, { open: string; close: string; closed?: boolean }> | null
 ): boolean => {
   if (!staffWorkingHours || Object.keys(staffWorkingHours).length === 0) return false;
-
-  const dayOfWeek = getDay(date);
-  const dayKey = DAY_NAMES[dayOfWeek];
+  const dayKey = DAY_NAMES[getDay(date)];
   const resolved = resolveDayHours(staffWorkingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutesMobile(resolved.open);
+  const closeMin = timeToMinutesMobile(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
 // Check if slot (date + hour) falls inside any availability block for this staff

@@ -1238,8 +1238,8 @@ export function AppointmentDialog({
           </div>
 
           {/* ── Sticky footer ── */}
-          <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 space-y-3 bg-white">
-            <div className="flex gap-2">
+          <div className="flex-shrink-0 border-t border-gray-100 px-5 py-3 sm:py-4 space-y-3 bg-white">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 type="button"
                 variant="outline"

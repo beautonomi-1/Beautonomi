@@ -1732,6 +1732,14 @@ export default function CalendarScreen() {
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
     if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
+      const dayName2 = DAY_NAMES[day.getDay()] ?? "monday";
+      const anyStaffWorks = staffList.some((s) => {
+        const wh = s.working_hours?.[dayName2];
+        if (!wh) return false;
+        const norm = normalizeOperatingSchedule(wh);
+        return norm?.isOpen === true;
+      });
+      if (anyStaffWorks) return null;
       return (
         <View style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: totalGridHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />
       );

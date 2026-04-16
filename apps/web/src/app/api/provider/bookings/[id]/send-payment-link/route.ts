@@ -56,7 +56,11 @@ export async function POST(
         tenant_id,
         booking_number, 
         ref_number,
-        total_amount, 
+        total_amount,
+        total_paid,
+        total_refunded,
+        wallet_amount,
+        gift_card_amount,
         payment_status,
         provider_id, 
         customer_id,
@@ -134,10 +138,15 @@ export async function POST(
       );
     }
 
-    // Customer lands on web app → Paystack via POST /api/me/bookings/[id]/pay-remaining
     const appBase = (process.env.NEXT_PUBLIC_APP_URL || "").replace(/\/$/, "");
     const paymentLink = `${appBase}/bookings/${bookingId}/pay`;
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();
+    const _tp = Number(booking.total_paid ?? 0);
+    const _tr = Number(booking.total_refunded ?? 0);
+    const _wa = Number(booking.wallet_amount ?? 0);
+    const _ga = Number(booking.gift_card_amount ?? 0);
+    const _ep = Math.max(0, _tp - _tr);
+    const amountDue = Math.max(0, Number(booking.total_amount ?? 0) - _ep - _wa - _ga);
 
     // Create notification for customer (will be sent via OneSignal)
     try {
@@ -146,7 +155,7 @@ export async function POST(
         user_id: booking.customer_id,
         type: "payment_link_sent",
         title: "Payment Link Ready",
-        message: `Pay ${formatMoney(Number(booking.total_amount ?? 0))} for booking ${bookingRef}. Open: ${paymentLink}`,
+        message: `Pay ${formatMoney(amountDue)} for booking ${bookingRef}. Open: ${paymentLink}`,
         data: {
           booking_id: bookingId,
           booking_ref: bookingRef,
@@ -172,7 +181,7 @@ export async function POST(
           "payment_pending",
           [booking.customer_id],
           {
-            amount: formatMoney(Number(booking.total_amount ?? 0)),
+            amount: formatMoney(amountDue),
             booking_number: String(bookingRef),
             payment_method: "Paystack",
             booking_id: bookingId,

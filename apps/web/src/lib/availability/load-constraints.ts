@@ -149,21 +149,29 @@ function constrainShiftsToLocationHours(
     return [];
   }
 
-  const normalize = (t: string) => {
-    if (t.length >= 8) return t;
-    return t.length === 5 ? `${t}:00` : `${t}:00`;
+  const toMin = (t: string): number => {
+    const parts = t.split(":").map(Number);
+    return (parts[0] || 0) * 60 + (parts[1] || 0);
   };
+  const fromMin = (m: number): string =>
+    `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}:00`;
 
-  const locOpen = normalize(resolved.openTime);
-  const locClose = normalize(resolved.closeTime);
+  const locOpenMin = toMin(resolved.openTime);
+  const locCloseMin = toMin(resolved.closeTime);
 
   return staffShifts
-    .map((s) => ({
-      ...s,
-      start_time: s.start_time < locOpen ? locOpen : s.start_time,
-      end_time: s.end_time > locClose ? locClose : s.end_time,
-    }))
-    .filter((s) => s.start_time < s.end_time);
+    .map((s) => {
+      const sStart = toMin(s.start_time);
+      const sEnd = toMin(s.end_time);
+      const clampedStart = Math.max(sStart, locOpenMin);
+      const clampedEnd = Math.min(sEnd, locCloseMin);
+      return {
+        ...s,
+        start_time: fromMin(clampedStart),
+        end_time: fromMin(clampedEnd),
+      };
+    })
+    .filter((s) => toMin(s.start_time) < toMin(s.end_time));
 }
 
 /**

@@ -29,6 +29,10 @@ function formatDateLocal(d: Date): string {
  * effective schedule.
  *
  * Query params: week_start (YYYY-MM-DD), staff_id (optional)
+ *
+ * Response rows: `source` is `shift` for real `staff_shifts` rows (UUID `id`, PATCHable).
+ * Rows with `source` `schedule` or `location` use synthetic string ids (`schedule-…`, `location-…`);
+ * those ids must not be sent to PATCH/DELETE — use POST to create a real override first.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -99,6 +103,7 @@ export async function GET(request: NextRequest) {
       is_recurring: shift.is_recurring,
       recurring_pattern: shift.recurring_pattern,
       source: "shift" as const,
+      is_synthetic: false,
     }));
 
     const shiftDateKeys = new Set(
@@ -171,6 +176,7 @@ export async function GET(request: NextRequest) {
               is_recurring: false,
               recurring_pattern: null,
               source: "schedule" as const,
+              is_synthetic: true,
             });
           } else if (locationHours) {
             // Fallback: generate shift from location operating hours
@@ -191,6 +197,7 @@ export async function GET(request: NextRequest) {
                   is_recurring: false,
                   recurring_pattern: null,
                   source: "location" as const,
+                  is_synthetic: true,
                 });
               }
             }

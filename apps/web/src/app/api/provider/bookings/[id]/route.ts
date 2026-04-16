@@ -23,6 +23,8 @@ import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { isOTPExpired } from "@/lib/otp/generator";
 import { isQRCodeExpired } from "@/lib/qr/generator";
 import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -218,6 +220,7 @@ export async function GET(
         version,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone, rating_average, review_count),
         locations:provider_locations(id, name, address_line1, city),
+        providers:providers!bookings_provider_id_fkey(timezone),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
         service_packages!bookings_package_id_fkey(id, name),
         booking_services(
@@ -241,7 +244,8 @@ export async function GET(
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
-        )
+        ),
+        additional_charges(id, amount, status)
       `
       )
       .eq("id", id)
@@ -348,18 +352,40 @@ export async function GET(
       service_fee_percentage: bookingData.service_fee_percentage || 0,
       service_fee_amount: bookingData.service_fee_amount || 0,
       tip_amount: bookingData.tip_amount || 0,
+      travel_fee: bookingData.travel_fee || 0,
       travel_fee_amount: bookingData.travel_fee || 0,
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
       wallet_amount: Number((bookingData as Record<string, unknown>).wallet_amount ?? 0),
       gift_card_amount: Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0),
+      display_time_zone: resolveBookingDisplayTimeZone(
+        (() => {
+          const p = bookingData as { providers?: { timezone?: string | null } | { timezone?: string | null }[] };
+          const row = p.providers;
+          const one = Array.isArray(row) ? row[0] : row;
+          return one?.timezone ?? null;
+        })(),
+      ),
       outstanding_balance: (() => {
         const tot = Number(bookingData.total_amount ?? 0);
         const paid = Number(bookingData.total_paid ?? 0);
+        const refunded = Number(bookingData.total_refunded ?? 0);
         const wallet = Number((bookingData as Record<string, unknown>).wallet_amount ?? 0);
         const gift = Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0);
-        return Math.max(0, tot - paid - wallet - gift);
+        type AcRow = { status?: string; amount?: number };
+        const unpaidCharges = ((bookingData as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
+          .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+          .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+        return computeBookingOutstandingDisplay({
+          totalAmount: tot,
+          totalPaid: paid,
+          totalRefunded: refunded,
+          walletAmount: wallet,
+          giftCardAmount: gift,
+          unpaidAdditionalCharges: unpaidCharges,
+          paymentStatus: bookingData.payment_status,
+        });
       })(),
       currency: bookingData.currency || lastResortCurrency,
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],

@@ -7,7 +7,9 @@ import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Pl
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/calendar/ics";
-import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -33,7 +35,15 @@ interface BookingDetails {
   }>;
   addons?: Array<{
     title: string;
+    offering_name?: string;
     price: number;
+    quantity?: number;
+  }>;
+  products?: Array<{
+    product_name?: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
   }>;
   address?: {
     line1: string;
@@ -54,6 +64,7 @@ interface BookingDetails {
   special_requests?: string;
   payment_status?: string;
   payment_provider?: string;
+  display_time_zone?: string | null;
   provider?: {
     business_name: string;
     phone?: string;
@@ -224,7 +235,9 @@ export default function BookingConfirmationPage() {
     );
   }
 
-  const bookingDate = new Date(booking.selected_datetime);
+  const bookingDateRaw = booking.selected_datetime;
+  const bookingTz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const bookingDate = new Date(bookingDateRaw);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -285,8 +298,8 @@ export default function BookingConfirmationPage() {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">Date & Time</h3>
-                <p className="text-gray-600">{formatDate(bookingDate)}</p>
-                <p className="text-gray-600">{formatTime(bookingDate.toISOString())}</p>
+                <p className="text-gray-600">{formatBookingDateInTimeZone(bookingDateRaw, bookingTz)}</p>
+                <p className="text-gray-600">{formatBookingTimeInTimeZone(bookingDateRaw, bookingTz)}</p>
               </div>
             </div>
 
@@ -346,10 +359,24 @@ export default function BookingConfirmationPage() {
                     {booking.addons.map((addon, index) => (
                       <div key={`addon-${index}`} className="flex justify-between items-start pl-4">
                         <div className="flex-1">
-                          <p className="text-gray-600">+ {addon.title}</p>
+                          <p className="text-gray-600">+ {addon.title || addon.offering_name || "Add-on"}{(addon.quantity ?? 1) > 1 ? ` ×${addon.quantity}` : ""}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
-                          {formatCurrency(addon.price, booking.currency)}
+                          {formatCurrency(addon.price * (addon.quantity ?? 1), booking.currency)}
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {booking.products && booking.products.length > 0 && (
+                  <>
+                    {booking.products.map((product, index) => (
+                      <div key={`product-${index}`} className="flex justify-between items-start pl-4">
+                        <div className="flex-1">
+                          <p className="text-gray-600">{product.product_name || "Product"}{product.quantity > 1 ? ` ×${product.quantity}` : ""}</p>
+                        </div>
+                        <p className="font-semibold text-gray-900">
+                          {formatCurrency(product.total_price, booking.currency)}
                         </p>
                       </div>
                     ))}

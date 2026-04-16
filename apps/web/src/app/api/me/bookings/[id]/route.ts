@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi } from "@/lib/supabase/api-helpers";
 import { isQRCodeExpired } from "@/lib/qr/generator";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 /**
  * GET /api/me/bookings/[id]
  *
@@ -29,7 +31,8 @@ export async function GET(
           business_name,
           slug,
           phone,
-          email
+          email,
+          timezone
         ),
         group_bookings!bookings_group_booking_id_fkey(ref_number),
         location:provider_locations(
@@ -68,6 +71,7 @@ export async function GET(
         booking_products:booking_products(
           id,
           product_id,
+          product_variant_id,
           quantity,
           unit_price,
           total_price,
@@ -75,7 +79,8 @@ export async function GET(
             id,
             name,
             retail_price
-          )
+          ),
+          product_variant:product_variants(id, option_values)
         ),
         additional_charges:additional_charges(
           id,
@@ -222,8 +227,28 @@ export async function GET(
         return { id: a.id, offering_id: a.addon_id, offering_name: a.addon_name || "Add-on", quantity: a.quantity ?? 1, price: a.price ?? 0 };
       }),
       products: (bookingData.booking_products ?? []).map((bp: unknown) => {
-        const p = bp as { id: string; product_id?: string; quantity?: number; unit_price?: number; total_price?: number; products?: { name?: string; retail_price?: number } };
-        return { id: p.id, product_id: p.product_id, product_name: p.products?.name ?? "Product", quantity: p.quantity ?? 1, unit_price: p.unit_price ?? p.products?.retail_price ?? 0, total_price: p.total_price ?? (p.unit_price ?? p.products?.retail_price ?? 0) * (p.quantity ?? 1) };
+        const p = bp as {
+          id: string;
+          product_id?: string;
+          quantity?: number;
+          unit_price?: number;
+          total_price?: number;
+          products?: { name?: string; retail_price?: number };
+          product_variant?: { option_values?: Record<string, unknown> | null };
+        };
+        const ov = p.product_variant?.option_values;
+        const variantLabel =
+          ov && typeof ov === "object"
+            ? ` · ${Object.values(ov).join(" / ")}`
+            : "";
+        return {
+          id: p.id,
+          product_id: p.product_id,
+          product_name: `${p.products?.name ?? "Product"}${variantLabel}`,
+          quantity: p.quantity ?? 1,
+          unit_price: p.unit_price ?? p.products?.retail_price ?? 0,
+          total_price: p.total_price ?? (p.unit_price ?? p.products?.retail_price ?? 0) * (p.quantity ?? 1),
+        };
       }),
       address: bookingData.location_type === "at_home" && bookingData.address_line1 ? {
         line1: bookingData.address_line1 || "",
@@ -259,7 +284,12 @@ export async function GET(
         slug: bookingData.provider.slug,
         phone: bookingData.provider.phone,
         email: bookingData.provider.email,
+        timezone: (bookingData.provider as { timezone?: string | null }).timezone ?? null,
       } : undefined,
+      /** IANA zone for formatting `scheduled_at` (provider default). */
+      display_time_zone: resolveBookingDisplayTimeZone(
+        (bookingData.provider as { timezone?: string | null } | undefined)?.timezone,
+      ),
       additional_charges: (bookingData.additional_charges ?? []).map((ac: unknown) => {
         const a = ac as { id: string; description?: string; amount?: number; currency?: string; status?: string; requested_at?: string; paid_at?: string };
         return {
@@ -274,6 +304,7 @@ export async function GET(
       outstanding_balance: (() => {
         const bookingTotal = Number(bookingData.total_amount ?? 0);
         const totalPaid = Number(bookingData.total_paid ?? 0);
+        const totalRefunded = Number((bookingData as Record<string, unknown>).total_refunded ?? 0);
         // wallet_amount was debited from the customer's wallet balance at booking time and is
         // NOT recorded in booking_payments (which only tracks gateway transactions). We must
         // subtract it here so wallet-covered amounts don't show as outstanding balance.
@@ -283,7 +314,15 @@ export async function GET(
         const unpaidCharges = (bookingData.additional_charges ?? [])
           .filter((ac: AcRow) => ac.status !== "paid" && ac.status !== "rejected")
           .reduce((sum: number, ac: AcRow) => sum + Number(ac.amount ?? 0), 0);
-        return Math.max(0, bookingTotal + unpaidCharges - totalPaid - walletAmount - giftCardAmount);
+        return computeBookingOutstandingDisplay({
+          totalAmount: bookingTotal,
+          totalPaid,
+          totalRefunded,
+          walletAmount,
+          giftCardAmount,
+          unpaidAdditionalCharges: unpaidCharges,
+          paymentStatus: bookingData.payment_status as string | undefined,
+        });
       })(),
       // Arrival verification (customer-holds-PIN: customer needs these to show PIN and countdown)
       arrival_otp_verified: bookingData.arrival_otp_verified ?? false,

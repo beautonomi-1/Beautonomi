@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -139,7 +139,14 @@ export async function POST(request: NextRequest) {
     const totalPaid = roundCurrency2(
       Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0))
     );
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    const walletCollected = roundCurrency2(
+      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
+    );
+    const giftCardCollected = roundCurrency2(
+      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
+    );
+    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(
       Number(bFin.subtotal ?? 0) -
@@ -189,7 +196,7 @@ export async function POST(request: NextRequest) {
           bookingTotal,
           cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: totalPaid }
+          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
         );
       } catch (refundErr) {
         console.error("Error processing refund during portal cancellation:", refundErr);

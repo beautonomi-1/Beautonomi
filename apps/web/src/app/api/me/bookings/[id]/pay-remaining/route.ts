@@ -36,7 +36,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, customer_id, total_amount, total_paid, wallet_amount, gift_card_amount, payment_status, currency, booking_number, ref_number, status, tenant_id, additional_charges:additional_charges(id, amount, status)"
+        "id, customer_id, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status, currency, booking_number, ref_number, status, tenant_id, additional_charges:additional_charges(id, amount, status)"
       )
       .eq("id", bookingId)
       .eq("customer_id", user.id)
@@ -66,13 +66,15 @@ export async function POST(
 
     const totalAmount = Number(booking.total_amount ?? 0);
     const totalPaid = Number(booking.total_paid ?? 0);
+    const totalRefunded = Number((booking as Record<string, unknown>).total_refunded ?? 0);
     const walletAmount = Number((booking as Record<string, unknown>).wallet_amount ?? 0);
     const giftCardAmount = Number((booking as Record<string, unknown>).gift_card_amount ?? 0);
     type AcRow = { id: string; amount: number; status: string };
     const unpaidAdditionalCharges = ((booking as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
       .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
       .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
-    const remaining = totalAmount + unpaidAdditionalCharges - totalPaid - walletAmount - giftCardAmount;
+    const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+    const remaining = totalAmount + unpaidAdditionalCharges - effectivePaid - walletAmount - giftCardAmount;
 
     if (remaining <= 0) {
       return errorResponse(

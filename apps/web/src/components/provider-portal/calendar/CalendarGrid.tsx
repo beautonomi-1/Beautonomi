@@ -478,6 +478,13 @@ export const CalendarGrid = memo(CalendarGridComponent, (prev, next) => {
   if (prev.view !== next.view) return false;
   if (prev.startHour !== next.startHour) return false;
   if (prev.endHour !== next.endHour) return false;
+  if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+
+  if (prev.teamMembers !== next.teamMembers) {
+    const prevWh = prev.teamMembers.map((m) => JSON.stringify(m.working_hours ?? {})).join("|");
+    const nextWh = next.teamMembers.map((m) => JSON.stringify(m.working_hours ?? {})).join("|");
+    if (prevWh !== nextWh) return false;
+  }
 
   const prevTb = (prev.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
   const nextTb = (next.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");

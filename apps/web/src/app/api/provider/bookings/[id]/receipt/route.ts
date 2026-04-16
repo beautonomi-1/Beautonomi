@@ -1,4 +1,5 @@
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -169,7 +170,19 @@ export async function GET(
     const walletCredit = Number((b as any).wallet_amount || 0);
     const giftCardCredit = Number((b as any).gift_card_amount || 0);
     const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
-    const balanceDue = Math.max(0, totalAmount - amountPaid);
+    const totalRefunded = Number(b.total_refunded || 0);
+    const unpaidAdditionalCharges = (b.additional_charges || [])
+      .filter((ac: any) => ac.status !== "paid" && ac.status !== "rejected")
+      .reduce((s: number, ac: any) => s + Number(ac.amount || 0), 0);
+    const balanceDue = computeBookingOutstandingDisplay({
+      totalAmount,
+      totalPaid: Number(b.total_paid || 0),
+      totalRefunded,
+      walletAmount: walletCredit,
+      giftCardAmount: giftCardCredit,
+      unpaidAdditionalCharges,
+      paymentStatus: b.payment_status,
+    });
 
     const additionalCharges = (b.additional_charges || []).map((ac: any) => ({
       id: ac.id,
@@ -216,7 +229,7 @@ export async function GET(
         phone: customer.phone || "",
       },
       items,
-      subtotal,
+      subtotal: Math.max(0, subtotal - travelFee),
       discount_amount: discountAmount,
       discount_reason: b.discount_reason || null,
       travel_fee: travelFee,

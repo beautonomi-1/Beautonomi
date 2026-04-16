@@ -180,9 +180,12 @@ export async function GET(request: NextRequest) {
     const transformedBookings = (bookings as BookingFull[]).map((booking) => {
       const totalAmount = Number(booking.total_amount ?? 0);
       const totalPaid = Number(booking.total_paid ?? 0);
+      const totalRefunded = Number(booking.total_refunded ?? 0);
       const walletAmount = Number(booking.wallet_amount ?? 0);
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
-      const outstandingBalance = Math.max(0, totalAmount - totalPaid - walletAmount - giftCardAmount);
+      const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+      const ps = ((booking.payment_status || "") as string).toLowerCase();
+      const outstandingBalance = ps === "refunded" ? 0 : Math.max(0, totalAmount - effectivePaid - walletAmount - giftCardAmount);
       const customer = customersMap.get(booking.customer_id ?? "");
       const provider = providersMap.get(booking.provider_id ?? "");
       const location = locationsMap.get(booking.location_id ?? "");
