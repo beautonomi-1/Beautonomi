@@ -100,9 +100,8 @@ const isValidPhone = (phone: string): boolean => {
 
 function generateTimeOptions(): string[] {
   const opts: string[] = [];
-  for (let h = 6; h <= 22; h++) {
+  for (let h = 0; h <= 23; h++) {
     for (let m = 0; m < 60; m += 15) {
-      if (h === 22 && m > 0) break;
       opts.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
@@ -167,7 +166,7 @@ export function AppointmentDialog({
     client_phone: "",
     team_member_id: defaultTeamMemberId || "",
     scheduled_date: defaultDate || new Date(),
-    scheduled_time: defaultTime || "10:00",
+    scheduled_time: defaultTime || "",
     notes: "",
     is_recurring: false,
     recurrence_pattern: "weekly" as "daily" | "weekly" | "biweekly" | "monthly",
@@ -218,7 +217,7 @@ export function AppointmentDialog({
         client_phone: "",
         team_member_id: defaultTeamMemberId || "",
         scheduled_date: defaultDate || new Date(),
-        scheduled_time: defaultTime || "10:00",
+        scheduled_time: defaultTime || "",
         notes: "",
         is_recurring: false,
         recurrence_pattern: "weekly",

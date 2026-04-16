@@ -49,17 +49,21 @@ export async function GET(request: NextRequest) {
       throw error;
     }
 
-    const enabledLocations = provider?.group_booking_locations
-      ? typeof provider.group_booking_locations === "string"
-        ? JSON.parse(provider.group_booking_locations)
-        : provider.group_booking_locations
-      : [];
+    let enabledLocations: unknown[] = [];
+    try {
+      const raw = provider?.group_booking_locations;
+      enabledLocations = raw
+        ? typeof raw === "string" ? JSON.parse(raw) : raw
+        : [];
+    } catch { enabledLocations = []; }
 
-    const excludedServices = provider?.group_booking_excluded_services
-      ? typeof provider.group_booking_excluded_services === "string"
-        ? JSON.parse(provider.group_booking_excluded_services)
-        : provider.group_booking_excluded_services
-      : [];
+    let excludedServices: unknown[] = [];
+    try {
+      const raw = provider?.group_booking_excluded_services;
+      excludedServices = raw
+        ? typeof raw === "string" ? JSON.parse(raw) : raw
+        : [];
+    } catch { excludedServices = []; }
 
     return successResponse({
       enableGroupBooking: provider?.group_booking_enabled ?? false,
@@ -135,17 +139,21 @@ export async function PATCH(request: NextRequest) {
       throw error;
     }
 
-    const enabledLocations = data?.group_booking_locations
-      ? typeof data.group_booking_locations === "string"
-        ? JSON.parse(data.group_booking_locations)
-        : data.group_booking_locations
-      : [];
+    let enabledLocations: unknown[] = [];
+    try {
+      const raw = data?.group_booking_locations;
+      enabledLocations = raw
+        ? typeof raw === "string" ? JSON.parse(raw) : raw
+        : [];
+    } catch { enabledLocations = []; }
 
-    const excludedServices = data?.group_booking_excluded_services
-      ? typeof data.group_booking_excluded_services === "string"
-        ? JSON.parse(data.group_booking_excluded_services)
-        : data.group_booking_excluded_services
-      : [];
+    let excludedServices: unknown[] = [];
+    try {
+      const raw = data?.group_booking_excluded_services;
+      excludedServices = raw
+        ? typeof raw === "string" ? JSON.parse(raw) : raw
+        : [];
+    } catch { excludedServices = []; }
 
     return successResponse({
       enableGroupBooking: data?.group_booking_enabled ?? false,

@@ -1,24 +1,13 @@
 "use client";
-import React from "react";
+import React, { useEffect } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import EmailVerificationBanner from "@/components/global/email-verification-banner";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
-import AccountHubGrid from "./account-hub-grid";
-
-const AccountProfileSections = dynamic(
-  () => import("./account-profile-sections"),
-  {
-    loading: () => (
-      <div className="space-y-4" aria-busy="true">
-        <div className="rounded-2xl border border-gray-100 bg-gray-50 p-6 md:p-8 min-h-[10rem]" />
-        <div className="rounded-xl border border-gray-100 bg-gray-50 p-5 h-20" />
-      </div>
-    ),
-  }
-);
+import AccountProfileSections from "./account-profile-sections";
+import DeferredAccountHub from "./deferred-account-hub";
 
 const UpcomingBookingPreview = dynamic(
   () => import("./upcoming-booking-preview").then((m) => ({ default: m.UpcomingBookingPreview })),
@@ -29,6 +18,19 @@ const AccountSettingsPage: React.FC = () => {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    const warmFooterRoutes = () => {
+      router.prefetch("/account-settings/login-and-security");
+      router.prefetch("/account-settings/privacy-and-sharing");
+    };
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(warmFooterRoutes, { timeout: 3000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(warmFooterRoutes, 400);
+    return () => window.clearTimeout(t);
+  }, [router]);
 
   const handleSignOut = async () => {
     try {
@@ -48,16 +50,15 @@ const AccountSettingsPage: React.FC = () => {
         <p className="text-sm text-gray-500 mt-1 font-light">Profile, bookings, and preferences</p>
       </div>
 
-      <AccountHubGrid embeddedInProfile />
+      <div className="mb-8 md:mb-10">
+        <AccountProfileSections />
+      </div>
 
       <div className="mb-6 md:mb-8">
         <EmailVerificationBanner />
       </div>
 
-      {/* AccountProfileSections fetches /api/me/profile-bundle; hub above paints first. */}
-      <div className="mb-8 md:mb-10">
-        <AccountProfileSections />
-      </div>
+      <DeferredAccountHub embeddedInProfile />
 
       {user && (
         <div className="mb-6">

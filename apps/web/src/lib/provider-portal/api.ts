@@ -284,6 +284,11 @@ export interface ProviderApi {
   deleteTimeBlock(id: string): Promise<void>;
   listBlockedTimeTypes(): Promise<BlockedTimeType[]>;
 
+  // Days Off
+  setDayOff(staffId: string, data: { date: string; reason?: string; type?: string }): Promise<any>;
+  removeDayOff(staffId: string, dayOffId: string): Promise<void>;
+  listDaysOff(staffId: string, params?: { date_from?: string; date_to?: string }): Promise<any[]>;
+
   // Availability blocks (closed periods, breaks – date-specific non-bookable time)
   listAvailabilityBlocks(params: { from: string; to: string }): Promise<AvailabilityBlockDisplay[]>;
   /** staff_time_off + staff_days_off as calendar segments (matches public booking blockers). */
@@ -2351,6 +2356,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: data.end_time,
         notes: data.notes,
         is_recurring: data.is_recurring,
+        recurring_pattern: (data as any).recurring_pattern,
       });
       
       const s = response.data;
@@ -2386,6 +2392,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: data.end_time,
         notes: data.notes,
         is_recurring: data.is_recurring,
+        recurring_pattern: (data as any).recurring_pattern,
       });
       
       const s = response.data;
@@ -4110,6 +4117,27 @@ export class ProviderApiClient implements ProviderApi {
     await fetcher.delete(`/api/provider/time-blocks/${id}`);
   }
 
+  async setDayOff(staffId: string, data: { date: string; reason?: string; type?: string }): Promise<any> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: any }>(`/api/provider/staff/${staffId}/days-off`, data);
+    return response.data;
+  }
+
+  async removeDayOff(staffId: string, dayOffId: string): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/staff/${staffId}/days-off/${dayOffId}`);
+  }
+
+  async listDaysOff(staffId: string, params?: { date_from?: string; date_to?: string }): Promise<any[]> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const searchParams = new URLSearchParams();
+    if (params?.date_from) searchParams.set("date_from", params.date_from);
+    if (params?.date_to) searchParams.set("date_to", params.date_to);
+    const q = searchParams.toString();
+    const response = await fetcher.get<{ data: any[] }>(`/api/provider/staff/${staffId}/days-off${q ? `?${q}` : ""}`);
+    return response.data || [];
+  }
+
   async listBlockedTimeTypes(): Promise<BlockedTimeType[]> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
@@ -4237,10 +4265,11 @@ export class ProviderApiClient implements ProviderApi {
     return this.addToWaitingRoom({ ...data, checked_in_method: "self" });
   }
 
-  async moveWaitingRoomToService(entryId: string, _appointmentId?: string): Promise<Appointment> {
+  async moveWaitingRoomToService(entryId: string, appointmentId?: string): Promise<Appointment> {
     const { fetcher } = await import("@/lib/http/fetcher");
-    await fetcher.patch(`/api/provider/waiting-room/${entryId}`, { status: "in_service" });
-    return this.getAppointment(entryId);
+    const patchRes = await fetcher.patch<{ data: any }>(`/api/provider/waiting-room/${entryId}`, { status: "in_service" });
+    const bookingId = appointmentId || patchRes?.data?.booking_id || entryId;
+    return this.getAppointment(bookingId);
   }
 
   private mapColorSchemeRow(row: any): CalendarColorScheme {
@@ -4712,10 +4741,14 @@ export class ProviderApiClient implements ProviderApi {
       if (filters?.status) params.append("status", filters.status);
       if (filters?.type) params.append("type", filters.type);
       
-      const response = await fetcher.get<{ data: { data: any[] } | unknown[] }>(
+      const response = await fetcher.get<{ data: any }>(
         `/api/provider/campaigns${params.toString() ? `?${params.toString()}` : ""}`
       );
-      return Array.isArray(response.data) ? response.data : (response.data as any)?.data || [];
+      const d = response.data;
+      if (Array.isArray(d)) return d;
+      if (d?.items && Array.isArray(d.items)) return d.items;
+      if (d?.data && Array.isArray(d.data)) return d.data;
+      return [];
     } catch (error) {
       console.error("Failed to fetch campaigns:", error);
       return [];

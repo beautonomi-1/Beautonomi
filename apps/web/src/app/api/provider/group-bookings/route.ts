@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     try {
       let query = supabase
         .from('group_bookings')
-        .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)', { count: 'exact' })
+        .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)', { count: 'exact' })
         .eq('provider_id', providerId)
         .order('scheduled_at', { ascending: false });
 
@@ -82,10 +82,15 @@ export async function GET(request: NextRequest) {
             client_name: p.participant_name || '—',
             client_email: p.participant_email,
             client_phone: p.participant_phone,
-            service_name: '—',
-            price: 0,
-            checked_in: false,
-            checked_out: false,
+            service_id: p.service_id || '',
+            service_name: p.service_name || '—',
+            price: p.price || 0,
+            duration_minutes: p.duration_minutes,
+            addons: p.addons || [],
+            checked_in: !!p.checked_in_at,
+            checked_in_time: p.checked_in_at,
+            checked_out: !!p.checked_out_at,
+            checked_out_time: p.checked_out_at,
           })),
         };
       });
@@ -181,14 +186,20 @@ export async function POST(request: NextRequest) {
       throw gbError;
     }
 
-    // Add participants if provided
+    // Add participants if provided (booking_id is nullable after migration 485)
     if (Array.isArray(participants) && participants.length > 0) {
       const participantRows = participants.map((p: any, idx: number) => ({
         group_booking_id: groupBooking.id,
-        participant_name: p.name || p.participant_name || '—',
-        participant_email: p.email || p.participant_email || null,
-        participant_phone: p.phone || p.participant_phone || null,
-        is_primary_contact: idx === 0,
+        booking_id: p.booking_id || null,
+        participant_name: p.name || p.participant_name || p.client_name || '—',
+        participant_email: p.email || p.participant_email || p.client_email || null,
+        participant_phone: p.phone || p.participant_phone || p.client_phone || null,
+        is_primary_contact: p.is_primary_contact ?? idx === 0,
+        service_id: p.service_id || service_id || null,
+        service_name: p.service_name || null,
+        price: typeof p.price === 'number' ? p.price : 0,
+        duration_minutes: typeof p.duration_minutes === 'number' ? p.duration_minutes : (duration_minutes || null),
+        addons: Array.isArray(p.addons) ? p.addons : [],
       }));
 
       const { error: pError } = await admin
@@ -200,10 +211,10 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Refetch with participants joined
+    // Refetch with participants joined (include new service/pricing columns)
     const { data: fullBooking } = await admin
       .from('group_bookings')
-      .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)')
+      .select('*, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact, service_id, service_name, price, duration_minutes, addons, checked_in_at, checked_out_at)')
       .eq('id', groupBooking.id)
       .single();
 
@@ -220,10 +231,15 @@ export async function POST(request: NextRequest) {
         client_name: p.participant_name || '—',
         client_email: p.participant_email,
         client_phone: p.participant_phone,
-        service_name: '—',
-        price: 0,
-        checked_in: false,
-        checked_out: false,
+        service_id: p.service_id || '',
+        service_name: p.service_name || '—',
+        price: p.price || 0,
+        duration_minutes: p.duration_minutes,
+        addons: p.addons || [],
+        checked_in: !!p.checked_in_at,
+        checked_in_time: p.checked_in_at,
+        checked_out: !!p.checked_out_at,
+        checked_out_time: p.checked_out_at,
       })),
     });
   } catch (error) {

@@ -26,6 +26,8 @@ interface BookingBlockProps {
   onClick: (apt: Appointment) => void;
   /** "day" renders full detail; "week" renders compact */
   variant: "day" | "week";
+  /** Locale-aware currency formatter; falls back to `R` prefix when not provided. */
+  formatPrice?: (amount: number) => string;
 }
 
 function BookingBlockComponent({
@@ -37,7 +39,10 @@ function BookingBlockComponent({
   showPrices,
   onClick,
   variant,
+  formatPrice,
 }: BookingBlockProps) {
+  const fmtPrice = formatPrice ?? ((n: number) => `R${n.toFixed(0)}`);
+  const isGroupBooking = !!(apt as any).is_group_booking;
   const { hour, minute: min } = parseScheduledTime(apt.scheduled_time);
   const top = (hour - startHour) * HOUR_HEIGHT + (min / 60) * HOUR_HEIGHT;
   const minH = variant === "day" ? 36 : 24;
@@ -48,7 +53,7 @@ function BookingBlockComponent({
 
   const isCanceled = apt.status === "cancelled";
   const isNew = variant === "day" && isNewBooking(apt.created_date, apt.status);
-  const endTime = variant === "day" ? getEndTime(apt.scheduled_time || "09:00", apt.duration_minutes) : null;
+  const endTime = variant === "day" ? getEndTime(apt.scheduled_time || "00:00", apt.duration_minutes) : null;
   const showNonBookedBadge = apt.status !== "booked" || apt.db_status === "pending";
 
   if (variant === "week") {
@@ -80,6 +85,11 @@ function BookingBlockComponent({
               </span>
             );
           })()}
+          {isGroupBooking && (
+            <span className="absolute top-0.5 left-0.5 text-[7px] font-bold px-0.5 rounded bg-purple-600 text-white leading-tight">
+              GRP
+            </span>
+          )}
           <p
             className={cn("text-[10px] font-bold truncate", isCanceled && useMangomintMode && "line-through")}
             style={{ color: colors.text }}
@@ -115,6 +125,11 @@ function BookingBlockComponent({
       >
         <div className="px-2 py-1 h-full flex flex-col">
           <div className="absolute top-1 right-1 flex items-center gap-1 flex-wrap justify-end max-w-full">
+            {isGroupBooking && (
+              <span className="text-[8px] font-bold px-1 py-0 rounded shrink-0 bg-purple-600 text-white">
+                GROUP
+              </span>
+            )}
             {isNew && (
               <span
                 className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
@@ -145,7 +160,7 @@ function BookingBlockComponent({
                 {formatTime12h(apt.scheduled_time)} - {formatTime12h(endTime!)}
                 {showPrices && (apt.price != null || (apt as any).total_amount != null) && (
                   <span className="ml-1 font-semibold">
-                    · R{((apt as any).total_amount ?? apt.price ?? 0).toFixed(0)}
+                    · {fmtPrice((apt as any).total_amount ?? apt.price ?? 0)}
                   </span>
                 )}
               </p>
@@ -176,7 +191,8 @@ export const BookingBlock = memo(BookingBlockComponent, (prev, next) =>
   prev.colorBy === next.colorBy &&
   prev.showCanceled === next.showCanceled &&
   prev.showPrices === next.showPrices &&
-  prev.variant === next.variant,
+  prev.variant === next.variant &&
+  prev.formatPrice === next.formatPrice,
 );
 
 BookingBlock.displayName = "BookingBlock";

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { Calendar, MapPin, ArrowRight } from "lucide-react";
 
@@ -16,6 +17,7 @@ interface BookingPreview {
 }
 
 export function UpcomingBookingPreview() {
+  const router = useRouter();
   const [booking, setBooking] = useState<BookingPreview | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -36,8 +38,26 @@ export function UpcomingBookingPreview() {
         setLoading(false);
       }
     };
-    load();
+    const run = () => void load();
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(run, { timeout: 2200 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(run, 0);
+    return () => window.clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    if (!booking?.id) return;
+    const href = `/account-settings/bookings/${booking.id}`;
+    const warm = () => router.prefetch(href);
+    if (typeof requestIdleCallback !== "undefined") {
+      const id = requestIdleCallback(warm, { timeout: 1200 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = window.setTimeout(warm, 0);
+    return () => window.clearTimeout(t);
+  }, [booking, router]);
 
   if (loading) return null;
   if (!booking) return null;
@@ -57,7 +77,7 @@ export function UpcomingBookingPreview() {
     <Link
       href={`/account-settings/bookings/${booking.id}`}
       prefetch={false}
-      className="block bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 rounded-xl p-4 hover:border-pink-200 hover:shadow-sm transition-all"
+      className="block bg-gradient-to-br from-pink-50 to-rose-50 border border-pink-100 rounded-xl p-4 hover:border-pink-200 hover:shadow-sm transition-[border-color,box-shadow] duration-200"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">

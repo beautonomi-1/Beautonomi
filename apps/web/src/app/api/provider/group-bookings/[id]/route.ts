@@ -60,12 +60,18 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
+    const allowedFields = [
+      "title", "scheduled_at", "service_id", "staff_id", "location_id",
+      "max_participants", "duration_minutes", "notes", "status",
+    ];
+    const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const key of allowedFields) {
+      if (key in body) sanitized[key] = body[key];
+    }
+
     const { data, error } = await supabase
       .from("group_bookings")
-      .update({
-        ...body,
-        updated_at: new Date().toISOString(),
-      })
+      .update(sanitized)
       .eq("id", id)
       .eq("provider_id", providerId)
       .select()

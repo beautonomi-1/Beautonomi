@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import React, { useState, lazy, Suspense } from "react";
+import { useRouter } from "next/navigation";
+import React, { useState, lazy, Suspense, useCallback, useRef, memo } from "react";
 import {
   User,
   ShieldCheck,
@@ -70,24 +71,91 @@ type AccountHubGridProps = {
   embeddedInProfile?: boolean;
 };
 
+type HubLinkCardProps = {
+  card: AccountHubCard;
+  warmRoute: (href: string) => void;
+};
+
+const HubLinkCard = memo(function HubLinkCard({ card, warmRoute }: HubLinkCardProps) {
+  const Icon = card.icon;
+  return (
+    <Link
+      href={card.link}
+      prefetch={false}
+      onPointerEnter={() => warmRoute(card.link)}
+      onFocus={() => warmRoute(card.link)}
+      className="block"
+    >
+      <div
+        className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-[box-shadow,border-color] duration-200 h-full ${
+          card.link === "/account-settings/loyalty"
+            ? "bg-gradient-to-br from-white to-primary/5 border-primary/30 hover:border-primary/50"
+            : "bg-white border-gray-100 hover:border-[#FF0077]/20"
+        }`}
+      >
+        <Icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
+        <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
+        <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
+      </div>
+    </Link>
+  );
+});
+HubLinkCard.displayName = "HubLinkCard";
+
+type HubActionCardProps = {
+  card: AccountHubCard;
+  onOpen: (card: AccountHubCard) => void;
+};
+
+const HubActionCard = memo(function HubActionCard({ card, onOpen }: HubActionCardProps) {
+  const Icon = card.icon;
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(card)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen(card);
+        }
+      }}
+      className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-[box-shadow,border-color] duration-200 h-full cursor-pointer"
+    >
+      <Icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
+      <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
+      <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
+    </div>
+  );
+});
+HubActionCard.displayName = "HubActionCard";
+
 export default function AccountHubGrid({ embeddedInProfile = false }: AccountHubGridProps) {
   const [showAboutUs, setShowAboutUs] = useState(false);
   const [showShareApp, setShowShareApp] = useState(false);
   const { user } = useAuth();
+  const router = useRouter();
+  const prefetchedHrefs = useRef(new Set<string>());
 
-  const handleCardClick = (card: AccountHubCard, e: React.MouseEvent) => {
-    if (card.isAction) {
-      e.preventDefault();
-      if (card.link === "#about-us") setShowAboutUs(true);
-      else if (card.link === "#share-app") setShowShareApp(true);
-    }
-  };
+  /** With prefetch={false} on links, warm the route once on hover/focus so clicks feel instant. */
+  const warmRoute = useCallback(
+    (href: string) => {
+      if (prefetchedHrefs.current.has(href)) return;
+      prefetchedHrefs.current.add(href);
+      router.prefetch(href);
+    },
+    [router]
+  );
+
+  const openActionCard = useCallback((card: AccountHubCard) => {
+    if (card.link === "#about-us") setShowAboutUs(true);
+    else if (card.link === "#share-app") setShowShareApp(true);
+  }, []);
 
   return (
     <>
       <div
-        id={embeddedInProfile ? "account-management" : undefined}
-        className={embeddedInProfile ? "rounded-xl border border-gray-100 bg-white p-4 md:p-6 scroll-mt-24 shadow-sm" : ""}
+        className={embeddedInProfile ? "rounded-xl border border-gray-100 bg-white p-4 md:p-6 shadow-sm" : ""}
       >
         {embeddedInProfile ? (
           <div className="mb-4">
@@ -100,33 +168,21 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
 
         {/* Default Link prefetch would load ~25 routes as cards scroll into view; fetch on click/hover instead. */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-          {ACCOUNT_HUB_CARDS.map((card, index) => (
-            <div key={index} onClick={(e) => handleCardClick(card, e)}>
-              {card.isAction ? (
-                <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full cursor-pointer">
-                  <card.icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
-                  <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
-                  <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
-                </div>
-              ) : (
-                <Link href={card.link} prefetch={false} className="block">
-                  <div
-                    className={`p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border transition-shadow duration-200 h-full ${
-                      card.link === "/account-settings/loyalty"
-                        ? "bg-gradient-to-br from-white to-primary/5 border-primary/30 hover:border-primary/50"
-                        : "bg-white border-gray-100 hover:border-[#FF0077]/20"
-                    }`}
-                  >
-                    <card.icon className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
-                    <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">{card.title}</h2>
-                    <p className="text-sm md:text-base text-gray-600 font-light leading-relaxed">{card.description}</p>
-                  </div>
-                </Link>
-              )}
-            </div>
-          ))}
+          {ACCOUNT_HUB_CARDS.map((card, index) =>
+            card.isAction ? (
+              <HubActionCard key={`${card.link}-${index}`} card={card} onOpen={openActionCard} />
+            ) : (
+              <HubLinkCard key={`${card.link}-${index}`} card={card} warmRoute={warmRoute} />
+            )
+          )}
           {user && user.role === "customer" && (
-            <Link href="/provider/onboarding" prefetch={false} className="block">
+            <Link
+              href="/provider/onboarding"
+              prefetch={false}
+              onPointerEnter={() => warmRoute("/provider/onboarding")}
+              onFocus={() => warmRoute("/provider/onboarding")}
+              className="block"
+            >
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">
                 <Store className="h-6 w-6 md:h-7 md:w-7 mb-3 md:mb-4 text-primary" />
                 <h2 className="text-lg md:text-xl font-medium mb-2 text-gray-900">Become a Provider</h2>

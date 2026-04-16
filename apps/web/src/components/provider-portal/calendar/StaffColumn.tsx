@@ -28,6 +28,7 @@ interface StaffColumnProps {
   onAppointmentClick: (apt: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
   onTimeBlockClick?: (block: TimeBlock) => void;
+  formatPrice?: (amount: number) => string;
 }
 
 function StaffColumnComponent({
@@ -48,6 +49,7 @@ function StaffColumnComponent({
   onAppointmentClick,
   onTimeSlotClick,
   onTimeBlockClick,
+  formatPrice,
 }: StaffColumnProps) {
   const dateStr = format(date, "yyyy-MM-dd");
 
@@ -101,6 +103,7 @@ function StaffColumnComponent({
           showPrices={showPrices}
           onClick={onAppointmentClick}
           variant="day"
+          formatPrice={formatPrice}
         />
       ))}
     </div>

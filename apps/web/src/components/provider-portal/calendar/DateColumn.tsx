@@ -28,6 +28,7 @@ interface DateColumnProps {
   onAppointmentClick: (apt: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
   onTimeBlockClick?: (block: TimeBlock) => void;
+  formatPrice?: (amount: number) => string;
 }
 
 function DateColumnComponent({
@@ -49,6 +50,7 @@ function DateColumnComponent({
   onAppointmentClick,
   onTimeSlotClick,
   onTimeBlockClick,
+  formatPrice,
 }: DateColumnProps) {
   const dateStr = format(date, "yyyy-MM-dd");
   // In week/3-day view each column is a date, not a staff member.
@@ -59,15 +61,28 @@ function DateColumnComponent({
   // Merge all team members' working hours for this day so the GestureLayer
   // can tell whether ANY staff member is available — prevents marking a
   // weekend day as "Closed" when at least one staff member has a shift.
+  // When no staff has explicit working hours, return undefined so GestureLayer
+  // falls back to location hours (staff without hours follow location schedule).
   const mergedStaffHours = useMemo(() => {
     const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const anyStaffHasHours = teamMembers.some(m => m.working_hours && Object.keys(m.working_hours).length > 0);
+    if (!anyStaffHasHours) return undefined;
+
     const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
     for (const dayName of DAY_NAMES) {
       let earliestMin = Infinity;
       let latestMin = -1;
       let anyOpen = false;
       for (const m of teamMembers) {
-        const resolved = resolveDayHours(m.working_hours?.[dayName]);
+        if (!m.working_hours || Object.keys(m.working_hours).length === 0) {
+          // Staff without explicit hours follows location schedule — treat as open all day
+          // so they don't cause the merged hours to be closed
+          anyOpen = true;
+          earliestMin = Math.min(earliestMin, 0);
+          latestMin = Math.max(latestMin, 24 * 60);
+          continue;
+        }
+        const resolved = resolveDayHours(m.working_hours[dayName]);
         if (!resolved || resolved.closed) continue;
         anyOpen = true;
         const openMin = timeToMinutes(resolved.open);
@@ -154,6 +169,7 @@ function DateColumnComponent({
           showPrices={showPrices}
           onClick={onAppointmentClick}
           variant="week"
+          formatPrice={formatPrice}
         />
       ))}
     </div>

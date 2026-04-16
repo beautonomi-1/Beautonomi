@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Calendar } from "@/components/ui/calendar";
 import { format, startOfDay } from "date-fns";
 import { toast } from "sonner";
-import { fetcher } from "@/lib/http/fetcher";
+import { providerApi } from "@/lib/provider-portal/api";
 import type { TeamMember } from "@/lib/provider-portal/types";
 
 interface SetDayOffDialogProps {
@@ -69,7 +69,7 @@ export function SetDayOffDialog({
       const dateStr = format(selectedDate, "yyyy-MM-dd");
       
       const trimmed = reason.trim();
-      await fetcher.post(`/api/provider/staff/${staffMember.id}/days-off`, {
+      await providerApi.setDayOff(staffMember.id, {
         date: dateStr,
         ...(trimmed ? { reason: trimmed } : {}),
       });

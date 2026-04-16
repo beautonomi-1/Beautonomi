@@ -301,8 +301,8 @@ const parseHourFromUnknown = (value: unknown): number | null => {
 const readHoursField = (dayHours: unknown, key: "open" | "close"): unknown => {
   if (!dayHours || typeof dayHours !== "object") return undefined;
   const raw = dayHours as Record<string, unknown>;
-  if (key === "open") return raw.open ?? raw.open_time;
-  return raw.close ?? raw.close_time;
+  if (key === "open") return raw.open ?? raw.open_time ?? raw.start_time ?? raw.start;
+  return raw.close ?? raw.close_time ?? raw.end_time ?? raw.end;
 };
 
 const isClosedDay = (dayHours: unknown): boolean => {
@@ -513,9 +513,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       const padding = 1;
       calculatedStartHour = Math.max(0, minHour - padding);
       calculatedEndHour = Math.min(23, maxHour + padding);
-    } else if (!locationOperatingHours) {
-      calculatedStartHour = 0;
-      calculatedEndHour = 23;
+    } else {
+      // No open slots detected — either location hours aren't set,
+      // all visible days are closed, or the data format wasn't parsed.
+      // Use sensible business-hour defaults so the grid isn't empty.
+      calculatedStartHour = 8;
+      calculatedEndHour = 20;
     }
 
     // Expand range to include all appointments on visible dates (prevents clipping)
@@ -582,8 +585,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [isSetDayOffDialogOpen, setIsSetDayOffDialogOpen] = useState(false);
   const [isEditWorkHoursDialogOpen, setIsEditWorkHoursDialogOpen] = useState(false);
   const [selectedStaffForDialog, setSelectedStaffForDialog] = useState<TeamMember | null>(null);
-  const [defaultTimeSlot, _setDefaultTimeSlot] = useState<string>("");
-  const [defaultTeamMemberId, _setDefaultTeamMemberId] = useState<string>("");
+  const [defaultTimeSlot, setDefaultTimeSlot] = useState<string>("");
+  const [defaultTeamMemberId, setDefaultTeamMemberId] = useState<string>("");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [selectedAppointmentsForGroup, setSelectedAppointmentsForGroup] = useState<Appointment[]>([]);
   const touchStartX = useRef<number | null>(null);
@@ -624,8 +627,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     touchEndX.current = null;
   };
 
-  // Cache for calendar data
-  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timestamp: number }>>(new Map());
+  // Cache for calendar data (appointments + blocks)
+  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timeBlocks: TimeBlock[]; availabilityBlocks: AvailabilityBlockDisplay[]; timestamp: number }>>(new Map());
   const CALENDAR_CACHE_DURATION = 60 * 1000; // 60 seconds (increased from 10s for better perf)
   const pendingCalendarRequests = useRef<Map<string, Promise<any>>>(new Map());
 
@@ -638,6 +641,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     if (!initialCalendar.cacheKey || initialCalendar.error) return;
     calendarCacheRef.current.set(initialCalendar.cacheKey, {
       data: initialCalendar.appointments,
+      timeBlocks: initialCalendar.timeBlocks ?? [],
+      availabilityBlocks: initialCalendar.availabilityBlocks ?? [],
       timestamp: Date.now(),
     });
     if (initialCalendar.teamMembers.length > 0) {
@@ -688,7 +693,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
       // Always read fresh from salons array (invalidated on operating hours save)
       const location = salons.find(s => s.id === currentLocationId) as any;
-      const hours = location?.operating_hours || location?.working_hours;
+      const rawHours = location?.operating_hours || location?.working_hours;
+      const hours = rawHours && typeof rawHours === "object" && Object.keys(rawHours).length > 0
+        ? rawHours
+        : null;
       
       if (hours) {
         locationHoursCacheRef.current.set(currentLocationId, hours);
@@ -700,9 +708,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           const allLocations = response.data || [];
           const foundLocation = allLocations.find((loc: any) => loc.id === currentLocationId);
           
-          if (foundLocation?.operating_hours) {
-            locationHoursCacheRef.current.set(currentLocationId, foundLocation.operating_hours);
-            setLocationOperatingHours(foundLocation.operating_hours);
+          const foundHours = foundLocation?.operating_hours || foundLocation?.working_hours;
+          const validHours = foundHours && typeof foundHours === "object" && Object.keys(foundHours).length > 0
+            ? foundHours
+            : null;
+          if (validHours) {
+            locationHoursCacheRef.current.set(currentLocationId, validHours);
+            setLocationOperatingHours(validHours);
           } else {
             // No operating hours found, set to null (will use default 24-hour view)
             locationHoursCacheRef.current.set(currentLocationId, null);
@@ -821,14 +833,18 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             : staffUnavail;
         const mergedAvailOverlay = [...filteredStaffUnavail, ...sanitizedAvailBlocks];
 
-        // Update cache
+        const expandedBlocks = expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo);
+
+        // Update cache (include blocks so cached restores don't leave them stale)
         calendarCacheRef.current.set(cacheKey, {
           data: apptsResponse.data,
+          timeBlocks: expandedBlocks,
+          availabilityBlocks: mergedAvailOverlay,
           timestamp: Date.now(),
         });
 
         setAppointments(apptsResponse.data);
-        setTimeBlocks(expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo));
+        setTimeBlocks(expandedBlocks);
         setAvailabilityBlocks(mergedAvailOverlay);
         setTeamMembers((prevMembers) => {
           // Initialize selectedTeamMemberIds when members are loaded
@@ -942,6 +958,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const cached = calendarCacheRef.current.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CALENDAR_CACHE_DURATION) {
       setAppointments(cached.data);
+      if (cached.timeBlocks) setTimeBlocks(cached.timeBlocks);
+      if (cached.availabilityBlocks) setAvailabilityBlocks(cached.availabilityBlocks);
       // Load team members if needed (using cached version if available)
       if (teamMembers.length === 0) {
         loadTeamMembers(selectedLocationId || undefined)
@@ -1796,7 +1814,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsGroupBookingDialogOpen(true)}
+                onClick={() => {
+                  const now = new Date();
+                  const h = now.getHours();
+                  const m = Math.ceil(now.getMinutes() / 15) * 15;
+                  setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+                  if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
+                  setIsGroupBookingDialogOpen(true);
+                }}
                 className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-white/10 hidden md:flex"
                 title="Group Booking"
                 aria-label="Create group booking"
@@ -2241,6 +2266,11 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   className="w-full justify-start gap-2"
                   onClick={() => {
                     setIsFilterSheetOpen(false);
+                    const now = new Date();
+                    const h = now.getHours();
+                    const m = Math.ceil(now.getMinutes() / 15) * 15;
+                    setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+                    if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
                     setIsGroupBookingDialogOpen(true);
                   }}
                 >

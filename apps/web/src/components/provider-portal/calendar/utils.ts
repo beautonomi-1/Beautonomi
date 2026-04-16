@@ -76,7 +76,7 @@ export const generateTimeSlots = (startHour: number, endHour: number): string[] 
 };
 
 export const parseScheduledTime = (time: string | undefined): { hour: number; minute: number } => {
-  const fallback = { hour: 9, minute: 0 };
+  const fallback = { hour: 0, minute: 0 };
   if (!time || typeof time !== "string") return fallback;
   const parts = time.trim().split(":").map((p) => parseInt(p, 10));
   const hour = Number.isFinite(parts[0]) ? Math.max(0, Math.min(23, parts[0])) : fallback.hour;
@@ -115,9 +115,23 @@ export const resolveDayHours = (
 ): { open?: string; close?: string; closed: boolean } | null => {
   if (!dayHours || typeof dayHours !== "object") return null;
   const raw = dayHours as Record<string, unknown>;
-  const closedFlag = raw.closed === true || raw.is_open === false;
-  const open = typeof raw.open === "string" ? raw.open : typeof raw.open_time === "string" ? raw.open_time : undefined;
-  const close = typeof raw.close === "string" ? raw.close : typeof raw.close_time === "string" ? raw.close_time : undefined;
+  const hasClosed = raw.closed !== undefined;
+  const hasIsOpen = raw.is_open !== undefined;
+  const closedFlag = hasClosed
+    ? raw.closed === true
+    : hasIsOpen
+      ? raw.is_open === false
+      : false;
+  const open = typeof raw.open === "string" ? raw.open
+    : typeof raw.open_time === "string" ? raw.open_time
+    : typeof raw.start_time === "string" ? raw.start_time
+    : typeof raw.start === "string" ? raw.start
+    : undefined;
+  const close = typeof raw.close === "string" ? raw.close
+    : typeof raw.close_time === "string" ? raw.close_time
+    : typeof raw.end_time === "string" ? raw.end_time
+    : typeof raw.end === "string" ? raw.end
+    : undefined;
   return { open, close, closed: closedFlag };
 };
 

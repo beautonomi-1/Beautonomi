@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,17 +20,60 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Plus, X, User, Home, Building2, Users } from "lucide-react";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
+import {
+  CalendarIcon, Plus, X, User, Home, Building2, Users, Clock, Tag,
+  StickyNote, MapPin, Search, Package, ShoppingBag, Loader2, ChevronDown,
+} from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import type { GroupBooking, GroupBookingParticipant, TeamMember, ServiceItem, Appointment } from "@/lib/provider-portal/types";
+import type {
+  GroupBooking, GroupBookingParticipant, TeamMember,
+  ServiceItem, ProductItem, Appointment,
+} from "@/lib/provider-portal/types";
+import type { AppointmentService, AppointmentProduct } from "@/components/appointments/types";
+import { calculateBookingPricing } from "@/components/appointments/pricing";
 import { providerApi } from "@/lib/provider-portal/api";
+import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
+import { AvailabilitySlotPicker } from "@/components/appointments/AvailabilitySlotPicker";
 
+// ─── Participant addon shape ────────────────────────────────────────────────
+interface ParticipantAddon {
+  id: string;
+  addonId: string;
+  name: string;
+  price: number;
+  duration: number;
+}
+
+interface ParticipantData {
+  client_name: string;
+  client_email: string;
+  client_phone: string;
+  service_id: string;
+  service_name: string;
+  price: number;
+  duration_minutes: number;
+  variant_id?: string;
+  variant_name?: string;
+  addons: ParticipantAddon[];
+}
+
+// ─── Props ──────────────────────────────────────────────────────────────────
 interface GroupBookingDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -40,7 +82,15 @@ interface GroupBookingDialogProps {
   defaultDate?: Date;
   defaultTime?: string;
   defaultTeamMemberId?: string;
-  existingAppointments?: Appointment[]; // For creating from existing appointments
+  existingAppointments?: Appointment[];
+  providerId?: string;
+}
+
+function nextQuarterHour(): string {
+  const now = new Date();
+  const h = now.getHours();
+  const m = Math.ceil(now.getMinutes() / 15) * 15;
+  return `${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
 }
 
 export function GroupBookingDialog({
@@ -52,23 +102,61 @@ export function GroupBookingDialog({
   defaultTime,
   defaultTeamMemberId,
   existingAppointments = [],
+  providerId: externalProviderId,
 }: GroupBookingDialogProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
   const [isLoading, setIsLoading] = useState(false);
+
+  // ─── Core data ──────────────────────────────────────────────────────────
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [services, setServices] = useState<ServiceItem[]>([]);
-  const [participants, setParticipants] = useState<Partial<GroupBookingParticipant>[]>([]);
+  const [products, setProducts] = useState<ProductItem[]>([]);
   const [providerLocations, setProviderLocations] = useState<any[]>([]);
+  const [providerId, setProviderId] = useState<string | undefined>(externalProviderId);
 
+  // ─── Packages ──────────────────────────────────────────────────────────
+  const [packages, setPackages] = useState<Array<{
+    id: string; name: string; description?: string; price?: number;
+    discount_percentage?: number;
+    items?: Array<{ id: string; title: string; type: "service" | "product"; quantity: number; offering_id?: string; offering?: any; product_id?: string; product?: any }>;
+  }>>([]);
+  const [isLoadingPackages, setIsLoadingPackages] = useState(false);
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+
+  // ─── Variant / addon state ─────────────────────────────────────────────
+  const [serviceVariants, setServiceVariants] = useState<Record<string, any[]>>({});
+  const [serviceAddons, setServiceAddons] = useState<Record<string, any[]>>({});
+  const [loadingVariants, setLoadingVariants] = useState<Record<string, boolean>>({});
+  const [loadingAddons, setLoadingAddons] = useState<Record<string, boolean>>({});
+  const variantsFetchedRef = useRef<Set<string>>(new Set());
+  const addonsFetchedRef = useRef<Set<string>>(new Set());
+  const productsLoadedRef = useRef(false);
+
+  // ─── Dialog sub-states ─────────────────────────────────────────────────
+  const [variantPickerFor, setVariantPickerFor] = useState<{ participantIdx: number; serviceId: string } | null>(null);
+  const [addonPickerFor, setAddonPickerFor] = useState<{ participantIdx: number; catalogServiceId: string } | null>(null);
+
+  // ─── Search ────────────────────────────────────────────────────────────
+  const [serviceSearchQuery, setServiceSearchQuery] = useState("");
+  const [productSearchQuery, setProductSearchQuery] = useState("");
+
+  // ─── Group-level products ──────────────────────────────────────────────
+  const [groupProducts, setGroupProducts] = useState<AppointmentProduct[]>([]);
+
+  // ─── Participants ──────────────────────────────────────────────────────
+  const [participants, setParticipants] = useState<ParticipantData[]>([]);
+
+  // ─── Form ──────────────────────────────────────────────────────────────
   const [formData, setFormData] = useState({
-    scheduled_date: booking?.scheduled_date || (defaultDate ? format(defaultDate, "yyyy-MM-dd") : new Date().toISOString().split("T")[0]),
-    scheduled_time: booking?.scheduled_time || defaultTime || "10:00",
-    duration_minutes: booking?.duration_minutes || 60,
-    team_member_id: booking?.team_member_id || defaultTeamMemberId || "",
-    service_id: booking?.service_id || "",
-    service_name: booking?.service_name || "",
-    notes: booking?.notes || "",
-    // Location support
+    title: "",
+    scheduled_date: "",
+    scheduled_time: "",
+    duration_minutes: 60,
+    team_member_id: "",
+    service_id: "",
+    service_name: "",
+    max_participants: 10,
+    notes: "",
     location_type: "at_salon" as "at_salon" | "at_home",
     location_id: "",
     address_line1: "",
@@ -77,84 +165,65 @@ export function GroupBookingDialog({
     travel_fee: 0,
   });
 
-  useEffect(() => {
-    if (open) {
-      loadData();
-      
-      // If creating from existing appointments, populate participants
-      if (existingAppointments.length > 0 && !booking) {
-        const firstAppt = existingAppointments[0];
-        setFormData({
-          scheduled_date: firstAppt.scheduled_date,
-          scheduled_time: firstAppt.scheduled_time,
-          duration_minutes: firstAppt.duration_minutes,
-          team_member_id: firstAppt.team_member_id,
-          service_id: firstAppt.service_id,
-          service_name: firstAppt.service_name,
-          notes: "",
-          location_type: firstAppt.location_type || "at_salon",
-          location_id: firstAppt.location_id || "",
-          address_line1: firstAppt.address_line1 || "",
-          address_city: firstAppt.address_city || "",
-          address_postal_code: firstAppt.address_postal_code || "",
-          travel_fee: firstAppt.travel_fee || 0,
-        });
-        
-        // Convert appointments to participants
-        setParticipants(existingAppointments.map((apt) => ({
-          client_name: apt.client_name,
-          client_email: apt.client_email,
-          client_phone: apt.client_phone,
-          service_id: apt.service_id,
-          service_name: apt.service_name,
-          price: apt.price,
-        })));
-      } else if (booking) {
-        setFormData({
-          scheduled_date: booking.scheduled_date,
-          scheduled_time: booking.scheduled_time,
-          duration_minutes: booking.duration_minutes,
-          team_member_id: booking.team_member_id,
-          service_id: booking.service_id,
-          service_name: booking.service_name,
-          notes: booking.notes || "",
-          location_type: booking.location_type || "at_salon",
-          location_id: booking.location_id || "",
-          address_line1: booking.address_line1 || "",
-          address_city: booking.address_city || "",
-          address_postal_code: booking.address_postal_code || "",
-          travel_fee: booking.travel_fee || 0,
-        });
-        setParticipants(booking.participants.map((p) => ({
-          client_name: p.client_name,
-          client_email: p.client_email,
-          client_phone: p.client_phone,
-          service_id: p.service_id,
-          service_name: p.service_name,
-          price: p.price,
-        })));
-      } else {
-        setFormData({
-          scheduled_date: new Date().toISOString().split("T")[0],
-          scheduled_time: "10:00",
-          duration_minutes: 60,
-          team_member_id: "",
-          service_id: "",
-          service_name: "",
-          notes: "",
-          location_type: "at_salon",
-          location_id: "",
-          address_line1: "",
-          address_city: "",
-          address_postal_code: "",
-          travel_fee: 0,
-        });
-        setParticipants([]);
-      }
-    }
-  }, [open, booking]);
+  // ─── Availability toggle ──────────────────────────────────────────────
+  const [showAvailability, setShowAvailability] = useState(false);
 
-  const loadData = async () => {
+  // ─── Data loaders ──────────────────────────────────────────────────────
+  const loadServiceVariants = useCallback(async (serviceId: string) => {
+    if (variantsFetchedRef.current.has(serviceId)) return;
+    variantsFetchedRef.current.add(serviceId);
+    try {
+      setLoadingVariants(p => ({ ...p, [serviceId]: true }));
+      const res = await fetcher.get<{ data: { variants: any[] } }>(`/api/provider/services/${serviceId}/variants`);
+      setServiceVariants(p => ({ ...p, [serviceId]: res.data?.variants ?? [] }));
+    } catch {
+      variantsFetchedRef.current.delete(serviceId);
+      setServiceVariants(p => ({ ...p, [serviceId]: [] }));
+    } finally {
+      setLoadingVariants(p => ({ ...p, [serviceId]: false }));
+    }
+  }, []);
+
+  const loadServiceAddons = useCallback(async (serviceId: string) => {
+    if (addonsFetchedRef.current.has(serviceId)) return;
+    addonsFetchedRef.current.add(serviceId);
+    try {
+      setLoadingAddons(p => ({ ...p, [serviceId]: true }));
+      const res = await fetcher.get<{ data: { addons: any[] } }>(`/api/provider/services/${serviceId}/addons`);
+      setServiceAddons(p => ({ ...p, [serviceId]: res.data?.addons ?? [] }));
+    } catch {
+      addonsFetchedRef.current.delete(serviceId);
+    } finally {
+      setLoadingAddons(p => ({ ...p, [serviceId]: false }));
+    }
+  }, []);
+
+  const loadProducts = useCallback(async (search?: string) => {
+    try {
+      const q = search ? `?search=${encodeURIComponent(search)}&limit=50` : "?limit=50";
+      const res = await fetcher.get<{ data: ProductItem[] }>(`/api/provider/products${q}`);
+      const list = res.data ?? (res as any).products ?? [];
+      setProducts(Array.isArray(list) ? list : []);
+      if (!search) productsLoadedRef.current = true;
+    } catch {
+      setProducts([]);
+    }
+  }, []);
+
+  const loadPackages = useCallback(async () => {
+    try {
+      setIsLoadingPackages(true);
+      const res = await fetcher.get<{ data?: { packages?: any[] }; packages?: any[] }>("/api/provider/packages");
+      const list = res.data?.packages ?? (res as any).packages ?? res.data ?? [];
+      setPackages(Array.isArray(list) ? list : []);
+    } catch {
+      setPackages([]);
+    } finally {
+      setIsLoadingPackages(false);
+    }
+  }, []);
+
+  const loadData = useCallback(async () => {
     try {
       const [categories, members] = await Promise.all([
         providerApi.listServiceCategories(),
@@ -162,51 +231,320 @@ export function GroupBookingDialog({
       ]);
       setServices(categories.flatMap((cat) => cat.services));
       setTeamMembers(members);
-      
-      // Load provider locations
+
       try {
-        const locResponse = await fetch("/api/provider/locations");
-        if (locResponse.ok) {
-          const locData = await locResponse.json();
+        const locRes = await fetch("/api/provider/locations");
+        if (locRes.ok) {
+          const locData = await locRes.json();
           setProviderLocations(locData.data || []);
         }
-      } catch (locError) {
-        console.error("Failed to load provider locations:", locError);
+      } catch {}
+
+      if (!externalProviderId) {
+        try {
+          const provRes = await fetch("/api/provider/me");
+          if (provRes.ok) {
+            const provData = await provRes.json();
+            setProviderId(provData.data?.id ?? provData.id);
+          }
+        } catch {}
       }
     } catch (error) {
       console.error("Failed to load data:", error);
     }
-  };
+  }, [externalProviderId]);
 
+  // ─── Init on open ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!open) return;
+
+    variantsFetchedRef.current.clear();
+    addonsFetchedRef.current.clear();
+    productsLoadedRef.current = false;
+    setServiceVariants({});
+    setServiceAddons({});
+    setGroupProducts([]);
+    setSelectedPackageId(null);
+
+    loadData();
+    loadPackages();
+    loadProducts();
+
+    if (existingAppointments.length > 0 && !booking) {
+      const first = existingAppointments[0];
+      setFormData({
+        title: first.service_name || "Group Session",
+        scheduled_date: first.scheduled_date,
+        scheduled_time: first.scheduled_time,
+        duration_minutes: first.duration_minutes,
+        team_member_id: first.team_member_id,
+        service_id: first.service_id,
+        service_name: first.service_name,
+        max_participants: existingAppointments.length + 5,
+        notes: "",
+        location_type: first.location_type || "at_salon",
+        location_id: first.location_id || "",
+        address_line1: first.address_line1 || "",
+        address_city: first.address_city || "",
+        address_postal_code: first.address_postal_code || "",
+        travel_fee: first.travel_fee || 0,
+      });
+      setParticipants(existingAppointments.map((apt) => ({
+        client_name: apt.client_name,
+        client_email: apt.client_email || "",
+        client_phone: apt.client_phone || "",
+        service_id: apt.service_id,
+        service_name: apt.service_name,
+        price: apt.price,
+        duration_minutes: apt.duration_minutes,
+        addons: [],
+      })));
+    } else if (booking) {
+      setFormData({
+        title: (booking as any).title || booking.service_name || "",
+        scheduled_date: booking.scheduled_date,
+        scheduled_time: booking.scheduled_time,
+        duration_minutes: booking.duration_minutes,
+        team_member_id: booking.team_member_id,
+        service_id: booking.service_id,
+        service_name: booking.service_name,
+        max_participants: (booking as any).max_participants || booking.participants.length + 5,
+        notes: booking.notes || "",
+        location_type: booking.location_type || "at_salon",
+        location_id: booking.location_id || "",
+        address_line1: booking.address_line1 || "",
+        address_city: booking.address_city || "",
+        address_postal_code: booking.address_postal_code || "",
+        travel_fee: booking.travel_fee || 0,
+      });
+      setParticipants(booking.participants.map((p) => ({
+        client_name: p.client_name,
+        client_email: p.client_email || "",
+        client_phone: p.client_phone || "",
+        service_id: p.service_id,
+        service_name: p.service_name,
+        price: p.price,
+        duration_minutes: (p as any).duration_minutes || booking.duration_minutes,
+        addons: Array.isArray((p as any).addons) ? (p as any).addons : [],
+      })));
+    } else {
+      setFormData({
+        title: "",
+        scheduled_date: defaultDate ? format(defaultDate, "yyyy-MM-dd") : new Date().toISOString().split("T")[0],
+        scheduled_time: defaultTime || nextQuarterHour(),
+        duration_minutes: 60,
+        team_member_id: defaultTeamMemberId || "",
+        service_id: "",
+        service_name: "",
+        max_participants: 10,
+        notes: "",
+        location_type: "at_salon",
+        location_id: "",
+        address_line1: "",
+        address_city: "",
+        address_postal_code: "",
+        travel_fee: 0,
+      });
+      setParticipants([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // ─── Participant helpers ───────────────────────────────────────────────
   const handleAddParticipant = () => {
-    setParticipants([
-      ...participants,
-      {
-        client_name: "",
-        client_email: "",
-        client_phone: "",
-        service_id: formData.service_id,
-        service_name: formData.service_name,
-        price: 0,
-      },
-    ]);
+    const svc = services.find(s => s.id === formData.service_id);
+    setParticipants(prev => [...prev, {
+      client_name: "",
+      client_email: "",
+      client_phone: "",
+      service_id: formData.service_id,
+      service_name: formData.service_name,
+      price: svc?.price || 0,
+      duration_minutes: svc?.duration_minutes || formData.duration_minutes,
+      addons: [],
+    }]);
   };
 
   const handleRemoveParticipant = (index: number) => {
-    setParticipants(participants.filter((_, i) => i !== index));
+    setParticipants(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleParticipantChange = (index: number, field: string, value: any) => {
-    const updated = [...participants];
-    updated[index] = { ...updated[index], [field]: value };
-    if (field === "service_id") {
-      const service = services.find((s) => s.id === value);
-      updated[index].service_name = service?.name || "";
-      updated[index].price = service?.price || 0;
-    }
-    setParticipants(updated);
+    setParticipants(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      if (field === "service_id") {
+        const svc = services.find(s => s.id === value);
+        if (svc) {
+          updated[index].service_name = svc.name;
+          updated[index].price = svc.price;
+          updated[index].duration_minutes = svc.duration_minutes;
+          updated[index].variant_id = undefined;
+          updated[index].variant_name = undefined;
+          updated[index].addons = [];
+        }
+      }
+      return updated;
+    });
   };
 
+  const setParticipantService = useCallback((
+    idx: number, service: ServiceItem, variantId?: string, variantName?: string,
+  ) => {
+    setParticipants(prev => {
+      const updated = [...prev];
+      updated[idx] = {
+        ...updated[idx],
+        service_id: variantId || service.id,
+        service_name: variantName || service.name,
+        price: service.price,
+        duration_minutes: service.duration_minutes,
+        variant_id: variantId,
+        variant_name: variantName,
+        addons: [],
+      };
+      return updated;
+    });
+    loadServiceAddons(service.id);
+  }, [loadServiceAddons]);
+
+  const addAddonToParticipant = useCallback((participantIdx: number, addon: any) => {
+    setParticipants(prev => {
+      const updated = [...prev];
+      const p = updated[participantIdx];
+      if (p.addons.some(a => a.addonId === addon.id)) return prev;
+      updated[participantIdx] = {
+        ...p,
+        addons: [...p.addons, {
+          id: `addon-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          addonId: addon.id,
+          name: addon.title || addon.name,
+          price: addon.price || 0,
+          duration: addon.duration_minutes || addon.duration || 0,
+        }],
+      };
+      return updated;
+    });
+  }, []);
+
+  const removeAddonFromParticipant = useCallback((participantIdx: number, addonLineId: string) => {
+    setParticipants(prev => {
+      const updated = [...prev];
+      updated[participantIdx] = {
+        ...updated[participantIdx],
+        addons: updated[participantIdx].addons.filter(a => a.id !== addonLineId),
+      };
+      return updated;
+    });
+  }, []);
+
+  // ─── Product helpers ───────────────────────────────────────────────────
+  const addProduct = useCallback((product: ProductItem, quantity = 1, variant?: any) => {
+    const unitPrice = variant ? variant.retail_price : (product.retail_price ?? 0);
+    const variantLabel = variant?.option_values ? Object.values(variant.option_values).join(" / ") : undefined;
+    setGroupProducts(prev => [...prev, {
+      id: `product-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+      productId: product.id,
+      productName: product.name,
+      productVariantId: variant?.id ?? null,
+      productVariantName: variantLabel as string | undefined,
+      quantity,
+      unitPrice,
+      totalPrice: unitPrice * quantity,
+    }]);
+  }, []);
+
+  const removeProduct = useCallback((lineId: string) => {
+    setGroupProducts(prev => prev.filter(p => p.id !== lineId));
+  }, []);
+
+  const updateProductQuantity = useCallback((lineId: string, qty: number) => {
+    if (qty < 1) { removeProduct(lineId); return; }
+    setGroupProducts(prev => prev.map(p =>
+      p.id === lineId ? { ...p, quantity: qty, totalPrice: p.unitPrice * qty } : p,
+    ));
+  }, [removeProduct]);
+
+  // ─── Package handler ──────────────────────────────────────────────────
+  const handleAddPackage = useCallback((pkg: typeof packages[0]) => {
+    if (!pkg.items?.length) { toast.error("Package has no items"); return; }
+    pkg.items.forEach((item: any) => {
+      if (item.offering_id && item.offering) {
+        const offering = item.offering;
+        const svc = services.find(s => s.id === item.offering_id);
+        if (svc) {
+          participants.forEach((_, idx) => {
+            setParticipantService(idx, svc);
+          });
+        } else {
+          const pseudo: ServiceItem = {
+            id: offering.id,
+            name: offering.variant_name || offering.title || offering.name || "Service",
+            category_id: "",
+            duration_minutes: offering.duration_minutes ?? 60,
+            price: offering.price ?? 0,
+            is_active: true,
+            order: 0,
+          };
+          participants.forEach((_, idx) => {
+            setParticipantService(idx, pseudo);
+          });
+        }
+      } else if (item.product_id && item.product) {
+        const prod = products.find(p => p.id === item.product_id);
+        if (prod) addProduct(prod, item.quantity || 1);
+      }
+    });
+    setSelectedPackageId(pkg.id);
+    toast.success(`Package "${pkg.name}" applied`);
+  }, [services, products, participants, setParticipantService, addProduct]);
+
+  // ─── Pricing ──────────────────────────────────────────────────────────
+  const participantServices = useMemo((): AppointmentService[] =>
+    participants.map((p, i) => ({
+      id: `p-${i}`,
+      serviceId: p.service_id,
+      serviceName: p.service_name,
+      duration: p.duration_minutes,
+      price: p.price,
+      addons: p.addons.map(a => ({
+        id: a.id,
+        addonId: a.addonId,
+        addonName: a.name,
+        price: a.price,
+        duration: a.duration,
+      })),
+    })),
+  [participants]);
+
+  const pricing = useMemo(() =>
+    calculateBookingPricing(participantServices, groupProducts, formData.travel_fee, 0, 0, 0, 0),
+  [participantServices, groupProducts, formData.travel_fee]);
+
+  const totalDuration = useMemo(() =>
+    Math.max(formData.duration_minutes, ...participants.map(p =>
+      p.duration_minutes + p.addons.reduce((s, a) => s + a.duration, 0)
+    ), 0),
+  [formData.duration_minutes, participants]);
+
+  // ─── Filtered services/products ────────────────────────────────────────
+  const filteredServices = useMemo(() => {
+    return services.filter(s => {
+      const typeOk = !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package";
+      if (!typeOk) return false;
+      if (!serviceSearchQuery.trim()) return true;
+      const q = serviceSearchQuery.toLowerCase();
+      return s.name.toLowerCase().includes(q) || (s.description || "").toLowerCase().includes(q);
+    });
+  }, [services, serviceSearchQuery]);
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearchQuery.trim()) return products;
+    const q = productSearchQuery.toLowerCase();
+    return products.filter(p => p.name.toLowerCase().includes(q));
+  }, [products, productSearchQuery]);
+
+  // ─── Submit ────────────────────────────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -221,42 +559,50 @@ export function GroupBookingDialog({
         }
       }
 
-      const bookingData: Partial<GroupBooking> = {
+      const scheduledAt = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
+
+      const participantPayload = participants.map((p) => ({
+        name: p.client_name || "",
+        participant_name: p.client_name || "",
+        email: p.client_email || undefined,
+        participant_email: p.client_email || undefined,
+        phone: p.client_phone || undefined,
+        participant_phone: p.client_phone || undefined,
+        service_id: p.service_id || formData.service_id,
+        service_name: p.service_name || formData.service_name,
+        price: p.price + p.addons.reduce((s, a) => s + a.price, 0),
+        duration_minutes: p.duration_minutes + p.addons.reduce((s, a) => s + a.duration, 0),
+        addons: p.addons.map(a => ({ id: a.addonId, name: a.name, price: a.price, duration: a.duration })),
+      }));
+
+      const apiPayload: Record<string, unknown> = {
+        title: formData.title || formData.service_name || "Group Session",
+        scheduled_at: scheduledAt,
+        service_id: formData.service_id || undefined,
+        staff_id: formData.team_member_id || undefined,
+        location_id: formData.location_type === "at_salon" ? (formData.location_id || undefined) : undefined,
+        max_participants: formData.max_participants || participants.length + 5,
+        duration_minutes: totalDuration,
+        notes: formData.notes || undefined,
+        participants: participantPayload,
         scheduled_date: formData.scheduled_date,
         scheduled_time: formData.scheduled_time,
-        duration_minutes: formData.duration_minutes,
         team_member_id: formData.team_member_id,
-        team_member_name: teamMembers.find((m) => m.id === formData.team_member_id)?.name,
-        service_id: formData.service_id,
+        team_member_name: teamMembers.find(m => m.id === formData.team_member_id)?.name,
         service_name: formData.service_name,
-        total_price: participants.reduce((sum, p) => sum + (p.price || 0), 0) + (formData.travel_fee || 0),
-        notes: formData.notes,
-        // Location support
+        total_price: pricing.totalAmount,
         location_type: formData.location_type,
-        location_id: formData.location_type === "at_salon" ? formData.location_id : undefined,
         address_line1: formData.location_type === "at_home" ? formData.address_line1 : undefined,
         address_city: formData.location_type === "at_home" ? formData.address_city : undefined,
         address_postal_code: formData.location_type === "at_home" ? formData.address_postal_code : undefined,
         travel_fee: formData.location_type === "at_home" ? formData.travel_fee : 0,
-        participants: participants.map((p) => ({
-          id: `part-${Date.now()}-${Math.random()}`,
-          group_booking_id: "",
-          client_name: p.client_name || "",
-          client_email: p.client_email,
-          client_phone: p.client_phone,
-          service_id: p.service_id || formData.service_id,
-          service_name: p.service_name || formData.service_name,
-          price: p.price || 0,
-          checked_in: false,
-          checked_out: false,
-        })) as GroupBookingParticipant[],
       };
 
       if (booking) {
-        await providerApi.updateGroupBooking(booking.id, bookingData);
+        await providerApi.updateGroupBooking(booking.id, apiPayload as Partial<GroupBooking>);
         toast.success("Group booking updated");
       } else {
-        await providerApi.createGroupBooking(bookingData);
+        await providerApi.createGroupBooking(apiPayload as Partial<GroupBooking>);
         toast.success("Group booking created");
       }
       onSuccess?.();
@@ -269,436 +615,654 @@ export function GroupBookingDialog({
     }
   };
 
-  const generateTimeOptions = () => {
-    const options = [];
-    for (let hour = 8; hour <= 20; hour++) {
-      for (let minute = 0; minute < 60; minute += 15) {
-        const time = `${hour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-        options.push(time);
+  // ─── Derived ──────────────────────────────────────────────────────────
+  const selectedTeamMember = teamMembers.find(m => m.id === formData.team_member_id);
+  const selectedService = services.find(s => s.id === formData.service_id);
+  const isEditing = !!booking;
+  const title = isEditing
+    ? "Edit Group Booking"
+    : existingAppointments.length > 0
+      ? "Create Group from Appointments"
+      : "New Group Booking";
+
+  // ─── Service selection handler for participant ─────────────────────────
+  const handleParticipantServiceSelect = (participantIdx: number, serviceId: string) => {
+    const svc = services.find(s => s.id === serviceId);
+    if (!svc) return;
+
+    if (svc.service_type === "variant") {
+      const parentId = (svc as any).parent_service_id;
+      const parent = parentId ? services.find(s => s.id === parentId) : null;
+      if (parent) {
+        setParticipantService(participantIdx, parent, svc.id, (svc as any).variant_name || svc.name);
+      } else {
+        setParticipantService(participantIdx, svc);
       }
+    } else if ((svc as any).has_variants || ((svc as any).variants?.length ?? 0) > 0) {
+      setVariantPickerFor({ participantIdx, serviceId: svc.id });
+      loadServiceVariants(svc.id);
+    } else {
+      setParticipantService(participantIdx, svc);
     }
-    return options;
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="text-base sm:text-lg font-semibold">
-            {booking ? "Edit Group Booking" : existingAppointments.length > 0 ? "Create Group Booking from Appointments" : "New Group Booking"}
-          </DialogTitle>
-          <p className="text-xs sm:text-sm text-gray-500 mt-1">
-            {existingAppointments.length > 0 
-              ? `${existingAppointments.length} appointment(s) selected. Add more participants or create the group booking.`
-              : "Schedule multiple clients together in one appointment"}
-          </p>
-        </DialogHeader>
+      <DialogContent className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border">
+        <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-purple-500 to-violet-600 flex-shrink-0" />
 
-        <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-          {/* Date and Time - Mobile First */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div>
-              <Label htmlFor="scheduled_date" className="text-sm sm:text-base">Date *</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal min-h-[44px] touch-manipulation mt-1.5",
-                      !formData.scheduled_date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {formData.scheduled_date ? format(new Date(formData.scheduled_date), "MMM d, yyyy") : "Pick a date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar
-                    mode="single"
-                    selected={formData.scheduled_date ? new Date(formData.scheduled_date) : undefined}
-                    onSelect={(date) =>
-                      date && setFormData({ ...formData, scheduled_date: format(date, "yyyy-MM-dd") })
-                    }
-                    initialFocus
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            <div>
-              <Label htmlFor="scheduled_time" className="text-sm sm:text-base">Time *</Label>
-              <Select
-                value={formData.scheduled_time}
-                onValueChange={(value) => setFormData({ ...formData, scheduled_time: value })}
-                required
-              >
-                <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {generateTimeOptions().map((time) => (
-                    <SelectItem key={time} value={time}>
-                      {time}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b bg-white flex-shrink-0">
+          <div className="min-w-0 flex-1">
+            <DialogHeader className="space-y-0">
+              <DialogTitle className="text-lg font-semibold text-gray-900 truncate">{title}</DialogTitle>
+            </DialogHeader>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {participants.length > 0
+                ? `${participants.length} participant${participants.length !== 1 ? "s" : ""} · ${totalDuration} min · ${formatMoney(pricing.totalAmount)}`
+                : "Schedule multiple clients together"}
+            </p>
           </div>
+          <div className="flex items-center gap-2 ml-3">
+            <Badge variant="outline" className="text-xs border-purple-200 text-purple-700 bg-purple-50">
+              <Users className="w-3 h-3 mr-1" />Group
+            </Badge>
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)}>
+              <X className="w-4 h-4 text-gray-500" />
+            </Button>
+          </div>
+        </div>
 
-          {/* Team Member, Service, Duration - Mobile First */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-            <div>
-              <Label htmlFor="team_member_id" className="text-sm sm:text-base">Team Member *</Label>
-              <Select
-                value={formData.team_member_id}
-                onValueChange={(value) => setFormData({ ...formData, team_member_id: value })}
-                required
-              >
-                <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
-                  <SelectValue placeholder="Select team member" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teamMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="service_id" className="text-sm sm:text-base">Service *</Label>
-              <Select
-                value={formData.service_id}
-                onValueChange={(value) => {
-                  const service = services.find((s) => s.id === value);
-                  setFormData({
-                    ...formData,
-                    service_id: value,
-                    service_name: service?.name || "",
-                  });
-                }}
-                required
-              >
-                <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
-                  <SelectValue placeholder="Select service" />
-                </SelectTrigger>
-                <SelectContent>
-                  {services.map((service) => (
-                    <SelectItem key={service.id} value={service.id}>
-                      {service.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label htmlFor="duration_minutes" className="text-sm sm:text-base">Duration (min) *</Label>
+        {/* Scrollable Content */}
+        <ScrollArea className="flex-1 min-h-0">
+          <form id="group-booking-form" onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 box-border w-full max-w-full overflow-x-hidden min-w-0">
+
+            {/* Title */}
+            <div className="space-y-2">
+              <Label className="text-xs text-gray-500">Title / Group Name</Label>
               <Input
-                id="duration_minutes"
-                type="number"
-                value={formData.duration_minutes}
-                onChange={(e) =>
-                  setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })
-                }
-                min={15}
-                step={15}
-                className="mt-1.5 min-h-[44px] touch-manipulation"
-                required
+                value={formData.title}
+                onChange={e => setFormData({ ...formData, title: e.target.value })}
+                placeholder="e.g. Bridal Party, Team Workshop..."
+                className="h-10"
               />
             </div>
-          </div>
 
-          <Separator />
+            <Separator />
 
-          {/* Location Support */}
-          <div className="space-y-3 sm:space-y-4">
-            <div>
-              <h3 className="text-sm sm:text-base font-semibold mb-1">Location</h3>
-              <p className="text-xs text-gray-500">Choose where this group booking will take place</p>
+            {/* ─── Schedule ─────────────────────────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <CalendarIcon className="w-4 h-4 text-gray-400" />Schedule
+              </div>
+
+              {/* Availability Slot Picker toggle */}
+              {formData.team_member_id && (
+                <div>
+                  <button
+                    type="button"
+                    className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
+                    onClick={() => setShowAvailability(!showAvailability)}
+                  >
+                    <Clock className="w-3 h-3" />
+                    {showAvailability ? "Hide availability" : "Check availability"}
+                    <ChevronDown className={cn("w-3 h-3 transition-transform", showAvailability && "rotate-180")} />
+                  </button>
+                </div>
+              )}
+
+              {showAvailability && formData.team_member_id && (
+                <div className="bg-purple-50/50 rounded-xl border border-purple-100 p-3">
+                  <AvailabilitySlotPicker
+                    staffId={formData.team_member_id}
+                    locationId={formData.location_id}
+                    providerId={providerId}
+                    duration={totalDuration}
+                    selectedDate={formData.scheduled_date}
+                    selectedTime={formData.scheduled_time}
+                    onDateChange={date => setFormData(prev => ({ ...prev, scheduled_date: date }))}
+                    onTimeChange={time => setFormData(prev => ({ ...prev, scheduled_time: time }))}
+                    mode={formData.location_type === "at_home" ? "mobile" : "salon"}
+                  />
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <Label className="text-xs text-gray-500">Date *</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={cn("w-full justify-start text-left font-normal h-10 mt-1", !formData.scheduled_date && "text-muted-foreground")}
+                      >
+                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-gray-400" />
+                        {formData.scheduled_date ? format(new Date(formData.scheduled_date + "T12:00:00"), "MMM d, yyyy") : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={formData.scheduled_date ? new Date(formData.scheduled_date + "T12:00:00") : undefined}
+                        onSelect={date => date && setFormData({ ...formData, scheduled_date: format(date, "yyyy-MM-dd") })}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Time *</Label>
+                  <Input
+                    type="time"
+                    value={formData.scheduled_time}
+                    onChange={e => setFormData({ ...formData, scheduled_time: e.target.value })}
+                    className="mt-1 h-10"
+                    required
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Duration (min) *</Label>
+                  <Input
+                    type="number"
+                    value={formData.duration_minutes}
+                    onChange={e => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })}
+                    min={15}
+                    step={15}
+                    className="mt-1 h-10"
+                    required
+                  />
+                </div>
+              </div>
             </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, location_type: "at_salon" })}
-                className={cn(
-                  "p-4 border-2 rounded-lg text-left transition-all",
-                  formData.location_type === "at_salon"
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-gray-300"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Building2 className={cn(
-                    "w-5 h-5",
-                    formData.location_type === "at_salon" ? "text-primary" : "text-gray-400"
-                  )} />
-                  <div>
-                    <div className="font-medium text-sm sm:text-base">At Salon</div>
-                    <div className="text-xs text-gray-500">Service at your location</div>
+
+            <Separator />
+
+            {/* ─── Team Member & Default Service ──────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <Tag className="w-4 h-4 text-gray-400" />Service Details
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs text-gray-500">Team Member *</Label>
+                  <Select value={formData.team_member_id} onValueChange={v => setFormData({ ...formData, team_member_id: v })} required>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select team member" /></SelectTrigger>
+                    <SelectContent>
+                      {teamMembers.map(m => <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs text-gray-500">Default Service</Label>
+                  <div className="relative mt-1">
+                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400 z-10" />
+                    <Select
+                      value={formData.service_id}
+                      onValueChange={v => {
+                        const svc = services.find(s => s.id === v);
+                        setFormData({
+                          ...formData,
+                          service_id: v,
+                          service_name: svc?.name || "",
+                          duration_minutes: svc?.duration_minutes || formData.duration_minutes,
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="h-10 pl-8"><SelectValue placeholder="Select service" /></SelectTrigger>
+                      <SelectContent>
+                        {services.filter(s => !s.service_type || s.service_type === "basic" || s.service_type === "variant" || s.service_type === "package").map(svc => (
+                          <SelectItem key={svc.id} value={svc.id}>
+                            <span className="truncate">{svc.name}</span>
+                            {svc.price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(svc.price)}</span>}
+                            {svc.service_type === "variant" && <Badge variant="outline" className="ml-1 text-[9px] h-4 px-1">Variant</Badge>}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
-              </button>
-              
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, location_type: "at_home" })}
-                className={cn(
-                  "p-4 border-2 rounded-lg text-left transition-all",
-                  formData.location_type === "at_home"
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-gray-300"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <Home className={cn(
-                    "w-5 h-5",
-                    formData.location_type === "at_home" ? "text-primary" : "text-gray-400"
-                  )} />
-                  <div>
-                    <div className="font-medium text-sm sm:text-base">At Home</div>
-                    <div className="text-xs text-gray-500">Service at client location</div>
-                  </div>
-                </div>
-              </button>
-            </div>
-
-            {formData.location_type === "at_salon" && (
+              </div>
               <div>
-                <Label htmlFor="location_id" className="text-sm sm:text-base">Salon Location</Label>
-                <Select
-                  value={formData.location_id}
-                  onValueChange={(value) => setFormData({ ...formData, location_id: value })}
+                <Label className="text-xs text-gray-500">Max Participants</Label>
+                <Input
+                  type="number"
+                  value={formData.max_participants}
+                  onChange={e => setFormData({ ...formData, max_participants: parseInt(e.target.value) || 10 })}
+                  min={2} max={100}
+                  className="mt-1 h-10 w-full sm:w-32"
+                />
+              </div>
+              {(selectedTeamMember || selectedService) && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedTeamMember && <Badge variant="secondary" className="text-xs"><User className="w-3 h-3 mr-1" />{selectedTeamMember.name}</Badge>}
+                  {selectedService && <Badge variant="secondary" className="text-xs">{selectedService.name}{selectedService.price > 0 && ` · ${formatMoney(selectedService.price)}`}</Badge>}
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* ─── Location ──────────────────────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <MapPin className="w-4 h-4 text-gray-400" />Location
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon" })}
+                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  <div className="flex items-center gap-2">
+                    <Building2 className={cn("w-4 h-4", formData.location_type === "at_salon" ? "text-primary" : "text-gray-400")} />
+                    <div><div className="font-medium text-sm">At Salon</div><div className="text-[10px] text-gray-500">Your location</div></div>
+                  </div>
+                </button>
+                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_home" })}
+                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_home" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  <div className="flex items-center gap-2">
+                    <Home className={cn("w-4 h-4", formData.location_type === "at_home" ? "text-primary" : "text-gray-400")} />
+                    <div><div className="font-medium text-sm">At Home</div><div className="text-[10px] text-gray-500">Client location</div></div>
+                  </div>
+                </button>
+              </div>
+              {formData.location_type === "at_salon" && (
+                <div>
+                  <Label className="text-xs text-gray-500">Salon Location</Label>
+                  <Select value={formData.location_id} onValueChange={v => setFormData({ ...formData, location_id: v })}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select location" /></SelectTrigger>
+                    <SelectContent>
+                      {providerLocations.length > 0
+                        ? providerLocations.map((loc: any) => <SelectItem key={loc.id} value={loc.id}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</SelectItem>)
+                        : <SelectItem value="main">Main Location</SelectItem>}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {formData.location_type === "at_home" && (
+                <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                  <div>
+                    <Label className="text-xs text-gray-500">Address *</Label>
+                    <Input value={formData.address_line1} onChange={e => setFormData({ ...formData, address_line1: e.target.value })} placeholder="Street address" className="mt-1 h-10" required={formData.location_type === "at_home"} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs text-gray-500">City</Label>
+                      <Input value={formData.address_city} onChange={e => setFormData({ ...formData, address_city: e.target.value })} placeholder="City" className="mt-1 h-10" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Postal Code</Label>
+                      <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder="Postal code" className="mt-1 h-10" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Travel Fee</Label>
+                    <Input type="number" value={formData.travel_fee} onChange={e => setFormData({ ...formData, travel_fee: parseFloat(e.target.value) || 0 })} min={0} step={10} className="mt-1 h-10" />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            {/* ─── Participants ───────────────────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Users className="w-4 h-4 text-gray-400" />Participants
+                  <Badge variant="outline" className="text-[10px] h-5 px-1.5">{participants.length}</Badge>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddParticipant} className="h-8 text-xs">
+                  <Plus className="w-3.5 h-3.5 mr-1" />Add
+                </Button>
+              </div>
+
+              <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                {participants.length === 0 ? (
+                  <div className="text-center py-8 border-2 border-dashed rounded-xl">
+                    <Users className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                    <p className="text-sm text-gray-500 mb-1">No participants yet</p>
+                    <p className="text-xs text-gray-400 mb-3">Add clients to this group booking</p>
+                    <Button type="button" variant="outline" size="sm" onClick={handleAddParticipant} className="h-8 text-xs">
+                      <Plus className="w-3.5 h-3.5 mr-1" />Add Participant
+                    </Button>
+                  </div>
+                ) : (
+                  participants.map((participant, index) => {
+                    const pTotal = participant.price + participant.addons.reduce((s, a) => s + a.price, 0);
+                    const pDur = participant.duration_minutes + participant.addons.reduce((s, a) => s + a.duration, 0);
+                    const catalogServiceId = participant.variant_id
+                      ? services.find(s => s.id === participant.variant_id || (s as any).parent_service_id)?.id || participant.service_id
+                      : participant.service_id;
+
+                    return (
+                      <div key={index} className="p-3 bg-gray-50 rounded-xl border space-y-2.5">
+                        {/* Header */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center flex-shrink-0">
+                              <span className="text-xs font-semibold text-purple-700">{index + 1}</span>
+                            </div>
+                            <span className="text-sm font-medium text-gray-700 truncate">
+                              {participant.client_name || `Participant ${index + 1}`}
+                            </span>
+                            {participant.variant_name && <Badge variant="outline" className="text-[9px] h-4">{participant.variant_name}</Badge>}
+                          </div>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => handleRemoveParticipant(index)} className="text-gray-400 hover:text-red-500 h-7 w-7">
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+
+                        {/* Contact fields */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Name *</Label>
+                            <Input value={participant.client_name} onChange={e => handleParticipantChange(index, "client_name", e.target.value)} placeholder="Client name" required className="mt-0.5 h-9 text-sm" />
+                          </div>
+                          <div>
+                            <PhoneInput label="Phone" inputId={`group-booking-participant-phone-${index}`} value={participant.client_phone} onChange={e164 => handleParticipantChange(index, "client_phone", e164)} className="mt-0 space-y-0.5" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Email</Label>
+                            <Input type="email" value={participant.client_email} onChange={e => handleParticipantChange(index, "client_email", e.target.value)} placeholder="email@example.com" className="mt-0.5 h-9 text-sm" />
+                          </div>
+                          <div>
+                            <Label className="text-[10px] text-gray-400 uppercase tracking-wider">Service</Label>
+                            <Select
+                              value={participant.service_id || formData.service_id}
+                              onValueChange={v => handleParticipantServiceSelect(index, v)}
+                            >
+                              <SelectTrigger className="mt-0.5 h-9 text-sm"><SelectValue placeholder="Service" /></SelectTrigger>
+                              <SelectContent>
+                                {filteredServices.map(svc => (
+                                  <SelectItem key={svc.id} value={svc.id}>
+                                    {svc.name}
+                                    {svc.service_type === "variant" && <span className="text-[10px] text-purple-500 ml-1">[Variant]</span>}
+                                    {svc.price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(svc.price)}</span>}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        {/* Addons */}
+                        {participant.addons.length > 0 && (
+                          <div className="pl-9 space-y-1 border-l-2 border-purple-200 ml-3">
+                            {participant.addons.map(addon => (
+                              <div key={addon.id} className="flex items-center justify-between text-xs group/addon">
+                                <span className="text-gray-600">{addon.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-gray-500">{formatMoney(addon.price)}</span>
+                                  <button type="button" onClick={() => removeAddonFromParticipant(index, addon.id)}
+                                    className="opacity-0 group-hover/addon:opacity-100 text-red-400 hover:text-red-600 transition-opacity">
+                                    <X className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Add addon button */}
+                        <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+                          <div className="flex items-center gap-2">
+                            <button type="button"
+                              className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                              onClick={() => {
+                                setAddonPickerFor({ participantIdx: index, catalogServiceId });
+                                loadServiceAddons(catalogServiceId);
+                              }}>
+                              <Plus className="w-3 h-3" />Add extra
+                            </button>
+                            <span className="text-[10px] text-gray-400">{pDur} min</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400">R</span>
+                            <Input type="number" value={participant.price} onChange={e => handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)} min={0} step={0.01} className="h-8 w-24 text-sm text-right" />
+                            {participant.addons.length > 0 && (
+                              <span className="text-[10px] text-gray-400 ml-1">(+{formatMoney(participant.addons.reduce((s, a) => s + a.price, 0))})</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* ─── Products ──────────────────────────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <ShoppingBag className="w-4 h-4 text-gray-400" />Products
+              </div>
+
+              {groupProducts.length > 0 && (
+                <div className="space-y-1">
+                  {groupProducts.map(prod => (
+                    <div key={prod.id} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg border text-sm group">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ShoppingBag className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="truncate">{prod.productName}</span>
+                        {prod.productVariantName && <Badge variant="outline" className="text-[9px] h-4">{prod.productVariantName}</Badge>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center border rounded">
+                          <button type="button" className="px-1.5 py-0.5 text-xs hover:bg-gray-100" onClick={() => updateProductQuantity(prod.id, prod.quantity - 1)}>-</button>
+                          <span className="px-1.5 text-xs min-w-[20px] text-center">{prod.quantity}</span>
+                          <button type="button" className="px-1.5 py-0.5 text-xs hover:bg-gray-100" onClick={() => updateProductQuantity(prod.id, prod.quantity + 1)}>+</button>
+                        </div>
+                        <span className="text-xs text-gray-600 w-16 text-right">{formatMoney(prod.totalPrice)}</span>
+                        <button type="button" onClick={() => removeProduct(prod.id)} className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Product picker */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-gray-400" />
+                  <Input placeholder="Search products..." value={productSearchQuery}
+                    onChange={e => {
+                      setProductSearchQuery(e.target.value);
+                      if (e.target.value.trim().length >= 2) loadProducts(e.target.value.trim());
+                      else if (!e.target.value.trim() && products.length === 0) loadProducts();
+                    }}
+                    onFocus={() => { if (!productsLoadedRef.current && products.length === 0) loadProducts(); }}
+                    className="pl-8 h-9 text-sm" />
+                </div>
+                <Select value="" onValueChange={v => {
+                  const [pid, vid] = v.includes("::") ? v.split("::") : [v, null];
+                  const prod = filteredProducts.find(p => p.id === pid);
+                  if (!prod) return;
+                  const variant = vid && (prod as any).variants?.length ? (prod as any).variants.find((vr: any) => vr.id === vid) : null;
+                  addProduct(prod, 1, variant ?? undefined);
+                  setProductSearchQuery("");
+                }}
+                  onOpenChange={o => { if (o && !productsLoadedRef.current && products.length === 0) loadProducts(); }}
                 >
-                  <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation">
-                    <SelectValue placeholder="Select location" />
-                  </SelectTrigger>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Add a product..." /></SelectTrigger>
                   <SelectContent>
-                    {providerLocations.length > 0 ? (
-                      providerLocations.map((loc: any) => (
-                        <SelectItem key={loc.id} value={loc.id}>
-                          {loc.name}{loc.address ? ` - ${loc.address}` : ""}
+                    {filteredProducts.flatMap(p => {
+                      if (p.has_variants && p.variants?.length) {
+                        return p.variants.map(v => (
+                          <SelectItem key={`${p.id}::${v.id}`} value={`${p.id}::${v.id}`}>
+                            {p.name} — {Object.values(v.option_values || {}).join(" / ")}
+                            <span className="text-gray-400 ml-1">· {formatMoney(v.retail_price)}</span>
+                          </SelectItem>
+                        ));
+                      }
+                      return [(
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {p.retail_price > 0 && <span className="text-gray-400 ml-1">· {formatMoney(p.retail_price)}</span>}
                         </SelectItem>
-                      ))
-                    ) : (
-                      <SelectItem value="main">Main Location</SelectItem>
-                    )}
+                      )];
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* ─── Packages ──────────────────────────────────────── */}
+            {packages.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                  <Package className="w-4 h-4 text-gray-400" />Packages
+                </div>
+                <Select value={selectedPackageId || ""} onValueChange={v => {
+                  const pkg = packages.find(p => p.id === v);
+                  if (pkg) handleAddPackage(pkg);
+                }}>
+                  <SelectTrigger className="h-9 text-sm"><SelectValue placeholder="Apply a package..." /></SelectTrigger>
+                  <SelectContent>
+                    {isLoadingPackages && <div className="flex items-center gap-2 p-2 text-xs text-gray-500"><Loader2 className="w-3 h-3 animate-spin" />Loading...</div>}
+                    {packages.map(pkg => (
+                      <SelectItem key={pkg.id} value={pkg.id}>
+                        {pkg.name}
+                        {pkg.price != null && <span className="text-gray-400 ml-1">· {formatMoney(pkg.price)}</span>}
+                        {pkg.items?.length ? <span className="text-gray-400 ml-1">({pkg.items.length} items)</span> : null}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
             )}
 
-            {formData.location_type === "at_home" && (
-              <div className="space-y-3 p-3 sm:p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <div>
-                  <Label htmlFor="address_line1" className="text-sm sm:text-base">Address Line 1 *</Label>
-                  <Input
-                    id="address_line1"
-                    value={formData.address_line1}
-                    onChange={(e) => setFormData({ ...formData, address_line1: e.target.value })}
-                    placeholder="Street address"
-                    className="mt-1.5 min-h-[44px] touch-manipulation"
-                    required={formData.location_type === "at_home"}
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <Label htmlFor="address_city" className="text-sm sm:text-base">City</Label>
-                    <Input
-                      id="address_city"
-                      value={formData.address_city}
-                      onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
-                      placeholder="City"
-                      className="mt-1.5 min-h-[44px] touch-manipulation"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="address_postal_code" className="text-sm sm:text-base">Postal Code</Label>
-                    <Input
-                      id="address_postal_code"
-                      value={formData.address_postal_code}
-                      onChange={(e) => setFormData({ ...formData, address_postal_code: e.target.value })}
-                      placeholder="Postal code"
-                      className="mt-1.5 min-h-[44px] touch-manipulation"
-                    />
-                  </div>
-                </div>
-                {formData.travel_fee > 0 && (
-                  <div className="p-2 bg-white rounded border">
-                    <div className="text-xs text-gray-600">Travel Fee: {formatMoney(formData.travel_fee)}</div>
+            {packages.length > 0 && <Separator />}
+
+            {/* ─── Notes ──────────────────────────────────────────── */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                <StickyNote className="w-4 h-4 text-gray-400" />Notes
+              </div>
+              <Textarea value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} rows={2} placeholder="Add any notes about this group booking..." className="resize-none text-sm" />
+            </div>
+
+            {/* ─── Total Summary ──────────────────────────────────── */}
+            {(participants.length > 0 || groupProducts.length > 0) && (
+              <div className="bg-gray-50 rounded-xl p-3 border space-y-1.5">
+                {pricing.subtotal > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Subtotal ({participants.length} participant{participants.length !== 1 ? "s" : ""}{groupProducts.length > 0 ? ` + ${groupProducts.length} product${groupProducts.length !== 1 ? "s" : ""}` : ""})</span>
+                    <span>{formatMoney(pricing.subtotal)}</span>
                   </div>
                 )}
+                {formData.travel_fee > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Travel fee</span>
+                    <span>{formatMoney(formData.travel_fee)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between pt-1 border-t border-gray-200">
+                  <div className="text-xs text-gray-600 font-medium">Total</div>
+                  <div className="text-lg font-semibold text-gray-900">{formatMoney(pricing.totalAmount)}</div>
+                </div>
               </div>
             )}
-          </div>
+          </form>
+        </ScrollArea>
 
-          <Separator />
-
-          {/* Participants Section - Mobile First */}
-          <div className="space-y-3 sm:space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <Label className="text-sm sm:text-base font-semibold">Participants</Label>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {participants.length} participant{participants.length !== 1 ? "s" : ""} added
-                </p>
-              </div>
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm" 
-                onClick={handleAddParticipant}
-                className="min-h-[44px] touch-manipulation"
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Add Participant</span>
-                <span className="sm:hidden">Add</span>
-              </Button>
-            </div>
-            
-            <div className="space-y-2 sm:space-y-3 max-h-[400px] overflow-y-auto border rounded-lg p-3 sm:p-4">
-              {participants.length === 0 ? (
-                <div className="text-center py-8">
-                  <Users className="w-12 h-12 mx-auto text-gray-300 mb-3" />
-                  <p className="text-sm text-gray-500 mb-2">
-                    No participants added yet
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    Click "Add Participant" to add clients to this group booking
-                  </p>
-                </div>
-              ) : (
-                participants.map((participant, index) => (
-                  <div key={index} className="p-3 sm:p-4 bg-gray-50 rounded-lg border space-y-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <User className="w-4 h-4 text-primary" />
-                        </div>
-                        <div>
-                          <div className="font-medium text-sm sm:text-base">
-                            Participant {index + 1}
-                          </div>
-                          {participant.client_name && (
-                            <div className="text-xs text-gray-500">{participant.client_name}</div>
-                          )}
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRemoveParticipant(index)}
-                        className="text-red-600 hover:text-red-700 h-8 w-8 p-0 touch-manipulation"
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <Label className="text-xs sm:text-sm">Client Name *</Label>
-                        <Input
-                          value={participant.client_name || ""}
-                          onChange={(e) =>
-                            handleParticipantChange(index, "client_name", e.target.value)
-                          }
-                          placeholder="Enter client name"
-                          required
-                          className="mt-1.5 min-h-[44px] touch-manipulation text-sm sm:text-base"
-                        />
-                      </div>
-                      <div>
-                        <PhoneInput
-                          label="Phone"
-                          inputId={`group-booking-participant-phone-${index}`}
-                          value={participant.client_phone || ""}
-                          onChange={(e164) => handleParticipantChange(index, "client_phone", e164)}
-                          className="mt-1.5 space-y-1"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs sm:text-sm">Email</Label>
-                        <Input
-                          type="email"
-                          value={participant.client_email || ""}
-                          onChange={(e) =>
-                            handleParticipantChange(index, "client_email", e.target.value)
-                          }
-                          placeholder="email@example.com"
-                          className="mt-1.5 min-h-[44px] touch-manipulation text-sm sm:text-base"
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs sm:text-sm">Service</Label>
-                        <Select
-                          value={participant.service_id || formData.service_id}
-                          onValueChange={(value) => handleParticipantChange(index, "service_id", value)}
-                        >
-                          <SelectTrigger className="mt-1.5 min-h-[44px] touch-manipulation text-sm sm:text-base">
-                            <SelectValue placeholder="Select service" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {services.map((service) => (
-                              <SelectItem key={service.id} value={service.id}>
-                                {service.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div>
-                        <Label className="text-xs sm:text-sm">Price (R) *</Label>
-                        <Input
-                          type="number"
-                          value={participant.price || 0}
-                          onChange={(e) =>
-                            handleParticipantChange(index, "price", parseFloat(e.target.value) || 0)
-                          }
-                          min={0}
-                          step={0.01}
-                          className="mt-1.5 min-h-[44px] touch-manipulation text-sm sm:text-base"
-                          required
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              rows={3}
-            />
-          </div>
-
-          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-2 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-4 border-t">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isLoading}
-              className="w-full sm:w-auto min-h-[44px] touch-manipulation"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isLoading || participants.length === 0}
-              className="w-full sm:w-auto bg-primary hover:bg-primary-hover min-h-[44px] touch-manipulation"
-            >
-              {isLoading ? "Saving..." : booking ? "Update Group Booking" : "Create Group Booking"}
-            </Button>
-          </DialogFooter>
-        </form>
+        {/* Footer */}
+        <div className="flex flex-col-reverse sm:flex-row gap-2 px-4 sm:px-6 py-3 sm:py-4 border-t bg-white flex-shrink-0">
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading} className="w-full sm:w-auto h-10">
+            Cancel
+          </Button>
+          <Button type="submit" form="group-booking-form" disabled={isLoading || participants.length === 0}
+            className="w-full sm:w-auto bg-primary hover:bg-primary/90 h-10">
+            {isLoading ? "Saving..." : booking ? "Update Group Booking" : "Create Group Booking"}
+          </Button>
+        </div>
       </DialogContent>
+
+      {/* ─── Variant Picker Dialog ────────────────────────────────── */}
+      <AlertDialog open={variantPickerFor !== null} onOpenChange={o => !o && setVariantPickerFor(null)}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Choose a Variant</AlertDialogTitle>
+            <AlertDialogDescription>Select a variant for this service.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {variantPickerFor && loadingVariants[variantPickerFor.serviceId] && (
+              <div className="flex items-center justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+            )}
+            {variantPickerFor && (serviceVariants[variantPickerFor.serviceId] || []).map((v: any) => (
+              <button key={v.id} type="button"
+                className="w-full text-left p-3 rounded-lg border hover:border-purple-300 hover:bg-purple-50 transition-colors"
+                onClick={() => {
+                  const base = services.find(s => s.id === variantPickerFor!.serviceId);
+                  if (base) {
+                    setParticipantService(
+                      variantPickerFor!.participantIdx,
+                      { ...base, price: v.price ?? base.price, duration_minutes: v.duration_minutes ?? base.duration_minutes },
+                      v.id,
+                      v.variant_name || v.name || v.title,
+                    );
+                  }
+                  setVariantPickerFor(null);
+                }}>
+                <div className="font-medium text-sm">{v.variant_name || v.name || v.title}</div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {formatMoney(v.price ?? 0)} · {v.duration_minutes ?? 0} min
+                </div>
+              </button>
+            ))}
+            {variantPickerFor && !loadingVariants[variantPickerFor.serviceId] && (serviceVariants[variantPickerFor.serviceId] || []).length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No variants found</p>
+            )}
+          </div>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ─── Addon Picker Dialog ──────────────────────────────────── */}
+      <AlertDialog open={addonPickerFor !== null} onOpenChange={o => !o && setAddonPickerFor(null)}>
+        <AlertDialogContent className="max-w-sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add Extras</AlertDialogTitle>
+            <AlertDialogDescription>Select add-ons for this participant.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-2 max-h-60 overflow-y-auto">
+            {addonPickerFor && loadingAddons[addonPickerFor.catalogServiceId] && (
+              <div className="flex items-center justify-center py-4"><Loader2 className="w-5 h-5 animate-spin text-gray-400" /></div>
+            )}
+            {addonPickerFor && (serviceAddons[addonPickerFor.catalogServiceId] || []).map((addon: any) => {
+              const pIdx = addonPickerFor!.participantIdx;
+              const alreadyAdded = participants[pIdx]?.addons.some(a => a.addonId === addon.id);
+              return (
+                <button key={addon.id} type="button" disabled={alreadyAdded}
+                  className={cn(
+                    "w-full text-left p-3 rounded-lg border transition-colors",
+                    alreadyAdded ? "opacity-50 cursor-not-allowed bg-gray-50" : "hover:border-purple-300 hover:bg-purple-50",
+                  )}
+                  onClick={() => {
+                    if (!alreadyAdded) {
+                      addAddonToParticipant(pIdx, addon);
+                      setAddonPickerFor(null);
+                    }
+                  }}>
+                  <div className="font-medium text-sm">{addon.title || addon.name}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {formatMoney(addon.price ?? 0)}
+                    {(addon.duration_minutes || addon.duration) ? ` · ${addon.duration_minutes || addon.duration} min` : ""}
+                  </div>
+                  {alreadyAdded && <div className="text-[10px] text-purple-500 mt-1">Already added</div>}
+                </button>
+              );
+            })}
+            {addonPickerFor && !loadingAddons[addonPickerFor.catalogServiceId] && (serviceAddons[addonPickerFor.catalogServiceId] || []).length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No add-ons available for this service</p>
+            )}
+          </div>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

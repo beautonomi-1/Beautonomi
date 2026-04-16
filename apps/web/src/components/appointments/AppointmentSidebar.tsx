@@ -2334,18 +2334,17 @@ export function AppointmentSidebar({
       
       {/* Centered modal */}
       <div className={cn(
-        "fixed z-[101] bg-white rounded-2xl shadow-2xl overflow-hidden",
+        "fixed z-[101] bg-white shadow-2xl overflow-hidden box-border",
         "transition-all duration-300 ease-out",
-        // Desktop: centered modal
-        "hidden sm:flex sm:flex-col",
-        "sm:w-[90vw] sm:max-w-[600px] sm:h-[90vh] sm:max-h-[800px]",
-        "sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
-        // Mobile: bottom sheet
         "flex flex-col",
-        "w-full max-w-full h-[95vh] max-h-[95vh]",
+        // Mobile: bottom sheet
+        "w-[100vw] max-w-[100vw] h-[95vh] max-h-[95vh]",
         "bottom-0 left-0 right-0 rounded-t-3xl",
+        // Desktop: centered modal with safe padding from viewport edges
+        "sm:w-[min(90vw,600px)] sm:max-w-[600px] sm:h-[min(90vh,800px)] sm:max-h-[800px]",
+        "sm:top-1/2 sm:left-1/2 sm:-translate-x-1/2 sm:-translate-y-1/2",
+        "sm:bottom-auto sm:right-auto sm:rounded-2xl",
         isOpen ? "translate-y-0 opacity-100" : "translate-y-full opacity-0 pointer-events-none",
-        // Animation
         isOpen && "animate-in slide-in-from-bottom-10 sm:slide-in-from-bottom-0 sm:fade-in-0 sm:zoom-in-95 duration-300"
       )}>
         {/* Header */}
@@ -2546,9 +2545,9 @@ export function AppointmentSidebar({
         </div>
 
         {/* Content - Scrollable Area */}
-        <div className="flex-1 min-h-0 overflow-hidden box-border relative">
+        <div className="flex-1 min-h-0 overflow-hidden box-border relative min-w-0">
           <ScrollArea className="absolute inset-0 w-full h-full box-border">
-            <div className="p-2 sm:p-2.5 md:p-3 lg:p-4 pr-2 sm:pr-3 md:pr-4 lg:pr-6 pb-6 sm:pb-5 md:pb-4 space-y-2.5 sm:space-y-3 md:space-y-4 box-border w-full max-w-full overflow-x-hidden min-w-0">
+            <div className="p-3 sm:p-4 pb-6 sm:pb-5 space-y-3 sm:space-y-4 box-border w-full max-w-full overflow-x-hidden min-w-0">
             {/* Status Actions — Workflow Progression (VIEW mode only) */}
             {mode === "view" && selectedAppointment && !isCanceled && (
               <div className="space-y-3 min-w-0">

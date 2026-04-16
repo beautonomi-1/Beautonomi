@@ -48,6 +48,7 @@ import {
 import { mapStatus, extractIconFlags, isMangomintModeEnabled } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors, getActiveIcons } from "@/lib/scheduling/visualMapping";
 import { nowInTz, isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Building2, PersonStanding, Home, Sparkles, StickyNote, Repeat, Crown,
@@ -252,19 +253,23 @@ const resolveDayHours = (
 ): { open?: string; close?: string; closed: boolean } | null => {
   if (!dayHours || typeof dayHours !== "object") return null;
   const raw = dayHours as Record<string, unknown>;
-  const closedFlag = raw.closed === true || raw.is_open === false;
-  const open =
-    typeof raw.open === "string"
-      ? raw.open
-      : typeof raw.open_time === "string"
-        ? raw.open_time
-        : undefined;
-  const close =
-    typeof raw.close === "string"
-      ? raw.close
-      : typeof raw.close_time === "string"
-        ? raw.close_time
-        : undefined;
+  const hasClosed = raw.closed !== undefined;
+  const hasIsOpen = raw.is_open !== undefined;
+  const closedFlag = hasClosed
+    ? raw.closed === true
+    : hasIsOpen
+      ? raw.is_open === false
+      : false;
+  const open = typeof raw.open === "string" ? raw.open
+    : typeof raw.open_time === "string" ? raw.open_time
+    : typeof raw.start_time === "string" ? raw.start_time
+    : typeof raw.start === "string" ? raw.start
+    : undefined;
+  const close = typeof raw.close === "string" ? raw.close
+    : typeof raw.close_time === "string" ? raw.close_time
+    : typeof raw.end_time === "string" ? raw.end_time
+    : typeof raw.end === "string" ? raw.end
+    : undefined;
   return { open, close, closed: closedFlag };
 };
 
@@ -372,6 +377,7 @@ export function CalendarMobileView({
   businessTimezone,
   onRefresh,
 }: CalendarMobileViewProps) {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<MobileLayoutMode>("columns"); // Default to columns view like Mangomint
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -1179,11 +1185,14 @@ export function CalendarMobileView({
                       // Check if any team member is working this hour — if so,
                       // don't mark the slot as "Closed" even if the location is
                       // nominally outside operating hours for this day.
-                      const anyStaffWorking = teamMembers.some(
-                        (m) => m.working_hours && !isOutsideStaffHours(day, hour, m.working_hours),
-                      );
-                      const isOutside =
-                        isOutsideOperatingHours(day, hour, locationOperatingHours) && !anyStaffWorking;
+                      const outsideLocationThisHour = isOutsideOperatingHours(day, hour, locationOperatingHours);
+                      const anyStaffHasHours = teamMembers.some((m) => m.working_hours && Object.keys(m.working_hours).length > 0);
+                      const anyStaffWorking = anyStaffHasHours
+                        ? teamMembers.some(
+                            (m) => !m.working_hours || Object.keys(m.working_hours).length === 0 || !isOutsideStaffHours(day, hour, m.working_hours),
+                          )
+                        : !outsideLocationThisHour;
+                      const isOutside = outsideLocationThisHour && !anyStaffWorking;
                       const slotHcStyle: React.CSSProperties | undefined =
                         isOutside && highContrast
                           ? {
@@ -1314,12 +1323,11 @@ export function CalendarMobileView({
                                     {preferences.showPrices &&
                                       (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                         <span className="ml-0.5 font-semibold">
-                                          · R
-                                          {(
+                                          · {formatMoney(
                                             (apt as { total_amount?: number }).total_amount ??
                                             apt.price ??
                                             0
-                                          ).toFixed(0)}
+                                          )}
                                         </span>
                                       )}
                                   </p>
@@ -1569,9 +1577,11 @@ export function CalendarMobileView({
                       });
                       const { hour } = parseTimeParts(time);
                       const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
-                      const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
+                      const outsideStaffHours = member.working_hours
+                        ? isOutsideStaffHours(selectedDate, hour, member.working_hours)
+                        : false;
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
-                      const staffIsWorking = !outsideStaffHours;
+                      const staffIsWorking = member.working_hours ? !outsideStaffHours : !isOutsideLocationHours;
                       const businessClosed = isOutsideLocationHours && !staffIsWorking;
                       const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
                       const isNonWorking = businessClosed;
@@ -1703,12 +1713,11 @@ export function CalendarMobileView({
                                       {preferences.showPrices &&
                                         (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                           <span className="ml-0.5 font-semibold">
-                                            · R
-                                            {(
+                                            · {formatMoney(
                                               (apt as { total_amount?: number }).total_amount ??
                                               apt.price ??
                                               0
-                                            ).toFixed(0)}
+                                            )}
                                           </span>
                                         )}
                                     </p>
@@ -1915,7 +1924,8 @@ export function CalendarMobileView({
                       availabilityBlocks,
                     )
                   : false;
-                const staffIsWorking = selectedStaff ? !outsideStaffHours : false;
+                const hasExplicitHours = selectedStaff?.working_hours && Object.keys(selectedStaff.working_hours).length > 0;
+                const staffIsWorking = hasExplicitHours ? !outsideStaffHours : !isOutsideLocationHours;
                 const businessClosed = isOutsideLocationHours && !staffIsWorking;
                 const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
                 const isNonWorking = businessClosed;
@@ -2010,7 +2020,7 @@ export function CalendarMobileView({
                           ? getActiveIcons(rawFlagsSingle)
                           : [];
                         const endTimeStr = getEndTime(
-                          apt.scheduled_time || "09:00",
+                          apt.scheduled_time || "00:00",
                           apt.duration_minutes || 0,
                         );
                         const singleCardContent = (
@@ -2067,12 +2077,11 @@ export function CalendarMobileView({
                                 {preferences.showPrices &&
                                   (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                     <span className="ml-1 font-semibold">
-                                      · R
-                                      {(
+                                      · {formatMoney(
                                         (apt as { total_amount?: number }).total_amount ??
                                         apt.price ??
                                         0
-                                      ).toFixed(0)}
+                                      )}
                                     </span>
                                   )}
                               </p>
