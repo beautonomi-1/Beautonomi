@@ -1,6 +1,6 @@
 import slide1 from "../../../../public/images/pexels-alipazani-2878375 - Copy (1).jpg";
 import slide2 from "../../../../public/images/pexels-steinportraits-1898555.jpg";
-import slide3 from "../../../../public/images/pexels-cottonbro-3998404 (1).jpg";
+import slide3 from "../../../../public/images/pexels-olly-774909 (1).jpg";
 import slide4 from "../../../../public/images/pexels-john-diez-7389075.jpg";
 
 export const cardsData = [

@@ -176,7 +176,7 @@ export async function GET(request: NextRequest) {
     }
     const locationsMap = new Map(locationsData.map((l) => [l.id, l]));
 
-    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
+    type BookingFull = BookingRow & { id: string; booking_number?: string; status?: string; location_type?: string; location_id?: string; address?: string; scheduled_at?: string; completed_at?: string | null; cancelled_at?: string | null; cancellation_reason?: string | null; services?: unknown[]; addons?: unknown[]; package_id?: string | null; subtotal?: number; tip_amount?: number; total_amount?: number; total_paid?: number; total_refunded?: number; wallet_amount?: number; gift_card_amount?: number; currency?: string; payment_status?: string; payment_method?: string | null; special_requests?: string | null; loyalty_points_earned?: number; created_at?: string; updated_at?: string };
     const transformedBookings = (bookings as BookingFull[]).map((booking) => {
       const totalAmount = Number(booking.total_amount ?? 0);
       const totalPaid = Number(booking.total_paid ?? 0);

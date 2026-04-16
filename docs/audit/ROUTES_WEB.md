@@ -108,7 +108,6 @@
 | `/admin/webhooks` | `admin/webhooks/page.tsx` | page |
 | `/advocate` | `advocate/page.tsx` | page |
 | `/advocate/joinclass` | `advocate/joinclass/page.tsx` | page |
-| `/against-discrimination` | `against-discrimination/page.tsx` | page |
 | `/api/admin/activity` | `api/admin/activity/route.ts` | api |
 | `/api/admin/addons` | `api/admin/addons/route.ts` | api |
 | `/api/admin/addons/[id]` | `api/admin/addons/[id]/route.ts` | api |

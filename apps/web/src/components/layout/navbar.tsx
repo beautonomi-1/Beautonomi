@@ -637,7 +637,6 @@ const Navbar: React.FC = () => {
       {pathname !== "/search" &&
         pathname !== "/rooms" &&
         pathname !== "/accessibility" &&
-        pathname !== "/against-discrimination" &&
         pathname !== "/beautonomi-friendly" &&
         pathname !== "/beautonomi-your-home" &&
         pathname !== "/aircover-for-host" &&

@@ -130,7 +130,6 @@ export async function proxy(request: NextRequest) {
       '/privacy-policy',
       '/terms-and-condition',
       '/accessibility',
-      '/against-discrimination',
       '/BCover-for-partners',
       '/beautonomi-friendly',
       '/admin/login', // Admin login page – auth and role check happen client-side

@@ -16,7 +16,6 @@ const PREFIXES = [
   "/privacy-policy",
   "/terms-and-condition",
   "/accessibility",
-  "/against-discrimination",
   "/BCover-for-partners",
   "/beautonomi-friendly",
   "/career",

@@ -33,7 +33,7 @@ You can create and edit content for any **page slug**. The dropdown in the admin
 - **about** – About
 - **become-a-partner**, **gift-card**, **why-beautonomi**, **pricing**, **signup**
 - **privacy-policy**, **terms-and-condition**, **terms-of-service** (footer)
-- **resources**, **beautonomi-friendly**, **against-discrimination**
+- **resources**, **beautonomi-friendly**
 
 ## How much is actually driven by CMS?
 

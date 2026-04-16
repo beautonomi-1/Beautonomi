@@ -577,7 +577,6 @@ export default function AdminContent() {
                       <option value="help">📄 help</option>
                       <option value="why-beautonomi">📄 why-beautonomi</option>
                       <option value="beautonomi-friendly">📄 beautonomi-friendly</option>
-                      <option value="against-discrimination">📄 against-discrimination</option>
                       <option value="release">📄 release</option>
                       <option value="pricing">📄 pricing</option>
                       <option value="signup">📄 signup</option>
@@ -2032,7 +2031,6 @@ function PageContentModal({
           formData.page_slug === "career" ||
           formData.page_slug === "why-beautonomi" ||
           formData.page_slug === "beautonomi-friendly" ||
-          formData.page_slug === "against-discrimination" ||
           formData.page_slug === "release" ||
           formData.page_slug === "pricing" ||
           formData.page_slug === "signup" ||
@@ -2275,7 +2273,6 @@ function PageContentModal({
                   <SelectItem value="career">career (Careers)</SelectItem>
                   <SelectItem value="why-beautonomi">why-beautonomi (Why Beautonomi)</SelectItem>
                   <SelectItem value="beautonomi-friendly">beautonomi-friendly (Beautonomi Friendly)</SelectItem>
-                  <SelectItem value="against-discrimination">against-discrimination (Against Discrimination)</SelectItem>
                   <SelectItem value="release">release (Release Notes)</SelectItem>
                   <SelectItem value="pricing">pricing (Pricing)</SelectItem>
                   <SelectItem value="signup">signup (Signup Page)</SelectItem>
