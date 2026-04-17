@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **330** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **332** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -177,6 +177,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 94 | `/admin/control-plane/maintenance` | W5 | platform_config | Y | `GET/PATCH /api/admin/maintenance` | Per-scope config + enable/disable + countdown |
 | 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | Y | `GET /api/admin/maintenance-notify` | Read-only list + CSV export, filtered by scope |
 | 96 | `/admin/control-plane/audit-log` | W5 | platform_config | Y | `GET /api/admin/control-plane/config-change-log` | Paginated, filtered by area + record key |
+| 96.1 | `/admin/control-plane/tenant-reset` | W5 | superadmin | Y | `GET /api/admin/tenants`, `POST /api/admin/compliance/reset-tenant` | Superadmin-only tenant "clean slate": wipes transactional data (bookings, payments, ledger, orders, reviews, conversations, notifications) while preserving structural spine. Multi-field confirmation (phrase, slug, reason ≥ 20 chars, irreversible ack); supports `dry_run` + `allow_default_tenant` guards. Writes immutable `compliance_purge_audit_log` row on live runs. |
 | 97 | `/admin/provider-ops` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/dashboard` | Ops dashboard: stalled/dropped signups, KPIs, lead pipeline, recent activity |
 | 98 | `/admin/provider-ops/tracker` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/tracker`, `GET .../tracker/stats` | Onboarding tracker: real-time signup progress, stall detection, filters by status/step |
 | 99 | `/admin/provider-ops/tracker/[userId]` | W5 | provider_ops | N | `GET .../tracker/:userId`, `PATCH .../draft`, `POST .../note`, `PATCH .../assign`, `POST .../submit` | Detail + admin-assisted onboarding: view/edit draft, add notes, submit on behalf |
@@ -283,3 +284,4 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-13 | Taxonomy: `+2` routes (`/api/admin/notifications/test`, `/api/admin/service-zones/areas/resolve-point`); §4 rows 53 & 65 API notes (SPA already calls both). Root **pnpm** override `jsdom@24.1.3` so `isomorphic-dompurify` does not pull `jsdom@29` against pinned `undici@6.24.0` (fixes `undici/lib/handler/wrap-handler.js` missing during Next collect page data). |
 | 2026-04-13 | Taxonomy: `+15` routes for WhatsApp WASender integration (`/api/admin/integrations/wasender`, `/api/admin/whatsapp/bulk`, `bulk/[batchId]`, `bulk/[batchId]/cancel|pause|resume`, `send`, `sessions`, `sessions/[id]`, `sessions/[id]/connect|disconnect|qr`, `templates`, `templates/[id]`, `verify-number`). §1.1 inventory **329**. |
 | 2026-04-15 | Taxonomy: `+1` route (`GET /api/admin/provider-client-ratings`); §4 row 15 reviews API note. §1.1 inventory **330**. |
+| 2026-04-16 | Taxonomy: `+2` routes (`GET /api/admin/analytics/fx-rate`, `POST /api/admin/compliance/reset-tenant`); §4 row 96.1 tenant-reset page. §1.1 inventory **332**. |
