@@ -2,16 +2,27 @@
 -- Application reads: region_secrets.paystack_secret_key (getPaystackSecretKey) and
 -- region_settings.settings.paystack_public_key (config bundle → clients).
 --
--- Replace with live keys before production; do not rely on this migration in prod without review.
--- Callback/webhook URLs are configured in the Paystack dashboard (e.g. point to your Next.js host).
+-- IMPORTANT: This migration reads keys from session-level settings rather than embedding
+-- literals in source. Provide them via psql `\set`, `SET LOCAL`, or `PGOPTIONS`, e.g.:
+--
+--   PGOPTIONS='-c app.paystack_test_secret=sk_test_... -c app.paystack_test_public=pk_test_...' \
+--   supabase db push
+--
+-- If neither setting is provided, the migration is a no-op. Never commit live keys.
+-- Callback/webhook URLs are configured in the Paystack dashboard.
 
 DO $$
 DECLARE
   v_region_id UUID;
-  v_secret TEXT := 'sk_test_04da914ae5a19f51dd7e23f96686a6cd7da1b024';
-  v_public TEXT := 'pk_test_69dc6b286a888b3dfe62765229a5d43b7b0c75df';
+  v_secret TEXT := COALESCE(NULLIF(current_setting('app.paystack_test_secret', true), ''), '');
+  v_public TEXT := COALESCE(NULLIF(current_setting('app.paystack_test_public', true), ''), '');
   v_updated int;
 BEGIN
+  IF v_secret = '' OR v_public = '' THEN
+    RAISE NOTICE '403_seed_za_paystack_test_keys: app.paystack_test_secret / app.paystack_test_public not set; skipping seed.';
+    RETURN;
+  END IF;
+
   SELECT id INTO v_region_id FROM public.regions WHERE code = 'ZA' AND is_active = true LIMIT 1;
 
   IF v_region_id IS NULL THEN

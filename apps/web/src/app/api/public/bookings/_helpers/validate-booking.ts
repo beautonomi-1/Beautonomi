@@ -1437,6 +1437,21 @@ export async function validateBooking(
   }
 
   // ── Time-slot conflict: per scheduled segment (multi-service + multi-staff; solo null staff = provider-wide) ──
+  // F17: stamp immutable tax_snapshot on every booking_services line so historical
+  // reports are not affected by later VAT-rate changes.
+  const taxSnapshotValue = {
+    code: "RESOLVED",
+    rate: taxRate,
+    inclusive: taxIncluded,
+    jurisdiction: (provider as any)?.country_code ?? null,
+    source: rawProviderTaxRate != null ? "provider_override" : "platform_default",
+    resolved_at: new Date().toISOString(),
+  };
+  bookingServicesData = bookingServicesData.map((line: any) => ({
+    ...line,
+    tax_snapshot: line.tax_snapshot ?? taxSnapshotValue,
+  }));
+
   {
     const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
     const {

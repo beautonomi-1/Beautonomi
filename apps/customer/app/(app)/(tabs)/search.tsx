@@ -44,10 +44,9 @@ export default function SearchScreen() {
   const [searched, setSearched] = useState(false);
   const searchRef = useRef<((isRefresh?: boolean, queryOverride?: string, categoryOverride?: string) => Promise<void>) | null>(null);
   const { selectedAddress } = useSelectedAddress();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Sync from nav params when they change (e.g. coming from InlineSearch)
@@ -147,19 +146,19 @@ export default function SearchScreen() {
     }
   }, []);
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: will replace inline onChangeText
   const onQueryChange = useCallback(
     (text: string) => {
       setQuery(text);
+      setShowSuggestions(true);
       if (suggestionDebounceRef.current) clearTimeout(suggestionDebounceRef.current);
       suggestionDebounceRef.current = setTimeout(() => fetchSuggestions(text), 220);
     },
     [fetchSuggestions]
   );
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- WIP: suggestions UI not yet wired
   const onSuggestionPress = useCallback((s: Suggestion) => {
     setSuggestions([]);
+    setShowSuggestions(false);
     if (s.type === "category" && s.slug) {
       setCategory(s.slug);
       setQuery("");
@@ -207,12 +206,80 @@ export default function SearchScreen() {
             placeholder="Search providers..."
             placeholderTextColor={Colors.gray[400]}
             value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={() => search()}
+            onChangeText={onQueryChange}
+            onFocus={() => {
+              if (query.trim().length >= 2) setShowSuggestions(true);
+            }}
+            onSubmitEditing={() => {
+              setShowSuggestions(false);
+              search();
+            }}
             returnKeyType="search"
             accessibilityLabel="Search providers"
             accessibilityHint="Type a provider name or service to search"
           />
+          {/*
+            §Customer-launch (audit 2026-04): the /api/public/search/suggestions
+            endpoint and state were already wired, but the dropdown UI had never
+            been rendered. Show typeahead suggestions when the user has typed 2+
+            chars; tapping a suggestion runs the search via onSuggestionPress.
+          */}
+          {showSuggestions && query.trim().length >= 2 && (suggestionsLoading || suggestions.length > 0) && (
+            <View
+              style={{
+                marginTop: 8,
+                borderRadius: 12,
+                borderWidth: 1,
+                borderColor: Colors.gray[200],
+                backgroundColor: Colors.white,
+                overflow: "hidden",
+              }}
+              accessibilityRole="list"
+              accessibilityLabel="Search suggestions"
+            >
+              {suggestionsLoading ? (
+                <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={Colors.primary} />
+                </View>
+              ) : (
+                suggestions.map((s, idx) => (
+                  <TouchableOpacity
+                    key={`${s.type}-${s.id}-${idx}`}
+                    onPress={() => onSuggestionPress(s)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      borderBottomWidth: idx === suggestions.length - 1 ? 0 : 1,
+                      borderBottomColor: Colors.gray[100],
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${s.name}, ${s.type}`}
+                  >
+                    <Ionicons
+                      name={
+                        s.type === "provider"
+                          ? "storefront-outline"
+                          : s.type === "category"
+                          ? "pricetag-outline"
+                          : "cut-outline"
+                      }
+                      size={18}
+                      color={Colors.gray[500]}
+                      style={{ marginRight: 10 }}
+                    />
+                    <Text style={{ flex: 1, color: Colors.gray[800], fontSize: 14 }} numberOfLines={1}>
+                      {s.name}
+                    </Text>
+                    <Text style={{ color: Colors.gray[400], fontSize: 12, textTransform: "capitalize" }}>
+                      {s.type}
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -246,7 +313,10 @@ export default function SearchScreen() {
           ))}
         </ScrollView>
         <TouchableOpacity
-          onPress={() => search()}
+          onPress={() => {
+            setShowSuggestions(false);
+            search();
+          }}
           style={{ marginTop: 16, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.primary, alignItems: "center" }}
           disabled={loading}
           accessibilityRole="button"

@@ -68,11 +68,18 @@ export async function checkBookingConflict(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('[conflict-check] checkBookingConflict DB error — treating as no conflict to avoid false 409:', error);
-    // Return no conflict on transient DB errors: a false positive blocks legitimate
-    // bookings permanently while a false negative is caught by the DB-level unique
-    // constraint in create_booking_with_locking.
-    return { hasConflict: false };
+    // B6: previously swallowed errors and returned `{ hasConflict: false }`,
+    // which let every booking past conflict detection whenever the DB hiccuped.
+    // Throw so the caller can surface a 5xx and retry rather than silently
+    // issuing a confirmation on top of an existing booking.
+    console.error(
+      '[conflict-check] checkBookingConflict DB error:',
+      error,
+      { staffId, startAt, endAt, excludeBookingId },
+    );
+    throw new Error(
+      `checkBookingConflict DB error for staff ${staffId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
@@ -202,8 +209,14 @@ export async function checkBookingConflictForProvider(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('[conflict-check] checkBookingConflictForProvider DB error — treating as no conflict to avoid false 409:', error);
-    return { hasConflict: false };
+    console.error(
+      '[conflict-check] checkBookingConflictForProvider DB error:',
+      error,
+      { providerId, startAt, endAt, excludeBookingId },
+    );
+    throw new Error(
+      `checkBookingConflictForProvider DB error for provider ${providerId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
@@ -272,8 +285,17 @@ export async function checkActiveHoldOverlap(
   const { data, error } = await q.limit(1);
 
   if (error) {
-    console.error('[conflict-check] checkActiveHoldOverlap DB error — treating as no conflict to avoid false 409:', error);
-    return false;
+    console.error(
+      '[conflict-check] checkActiveHoldOverlap DB error:',
+      error,
+      { providerId, startAt, endAt, options },
+    );
+    // B6: throw rather than silently returning "no overlap" — swallowing here
+    // let parallel guest holds into the DB even though another hold already
+    // covered the slot.
+    throw new Error(
+      `checkActiveHoldOverlap DB error for provider ${providerId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   return (data?.length ?? 0) > 0;

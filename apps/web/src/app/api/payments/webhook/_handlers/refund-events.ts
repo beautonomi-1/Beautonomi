@@ -83,19 +83,10 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
   });
 
   if (txn?.booking_id) {
-    // Booking-linked refund: update booking payment status and create ledger entry
-    const { data: bookingRow } = await supabase
-      .from("bookings")
-      .select("provider_id, tenant_id")
-      .eq("id", txn.booking_id)
-      .maybeSingle();
-    const providerId =
-      (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? null;
-    const refundLedgerTenantId = await resolveTenantIdForFinanceLedger(supabase, {
-      tenant_id: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
-      provider_id: providerId,
-    });
-
+    // Booking-linked refund: mark booking refunded + insert booking_refunds row.
+    // The create_finance_ledger_from_booking_refund trigger (migration 490) is the
+    // SOLE writer of the finance_transactions refund entry; app-side inserts have
+    // been removed to prevent duplicate ledger rows.
     await supabase.from("bookings")
       .update({
         payment_status: "refunded",
@@ -103,18 +94,36 @@ async function handleRefundProcessed(data: Record<string, unknown>, supabase: Su
       })
       .eq("id", txn.booking_id);
 
-    await supabase.from("finance_transactions").insert({
-      booking_id: txn.booking_id,
-      provider_id: providerId,
-      tenant_id: refundLedgerTenantId,
-      transaction_type: "refund",
-      amount: refundAmount,
-      fees: 0,
-      commission: 0,
-      net: -refundAmount,
-      description: `Refund processed (${reference})`,
-      created_at: new Date().toISOString(),
-    });
+    // Resolve the originating booking_payments row so booking_refunds.payment_id is set.
+    // Without it the DB trigger still fires but the ledger entry won't carry source_payment_id.
+    const { data: bookingPayment } = await supabase
+      .from("booking_payments")
+      .select("id")
+      .eq("booking_id", txn.booking_id)
+      .eq("status", "completed")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // Idempotency: do not insert a duplicate booking_refunds row for the same refund reference.
+    const { data: existingBookingRefund } = await supabase
+      .from("booking_refunds")
+      .select("id")
+      .eq("refund_provider_id", String(refundReference || reference))
+      .maybeSingle();
+
+    if (!existingBookingRefund) {
+      await (supabase.from("booking_refunds") as any).insert({
+        booking_id: txn.booking_id,
+        payment_id: (bookingPayment as { id?: string | null } | null)?.id ?? null,
+        amount: refundAmount,
+        reason: `Paystack webhook: ${reference}`,
+        refund_method: "original",
+        refund_provider_id: String(refundReference || reference),
+        status: "completed",
+        notes: `Auto-created by refund webhook handler`,
+      });
+    }
   } else {
     // Non-booking refund: check if this is a product order refund via metadata
     const metadata = (txn as any)?.metadata ?? {};

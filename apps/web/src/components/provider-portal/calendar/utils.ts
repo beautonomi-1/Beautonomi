@@ -249,17 +249,77 @@ export const getBlockColors = (
   const isBreak = lower.includes("break") || lower.includes("lunch");
   const isUnavailable = isAvailability && (block as AvailabilityBlockDisplay).block_type === "unavailable";
   const isMaintenance = isAvailability && (block as AvailabilityBlockDisplay).block_type === "maintenance";
+  const isHold =
+    isAvailability && (block as AvailabilityBlockDisplay).block_type === "hold";
   const isMeeting = lower.includes("meeting");
 
   if (!useMangomintMode) {
+    // B8: hold overlays still render in non-Mangomint mode so staff see
+    // in-flight booking holds as greyed-out ghost slots.
+    if (isHold) return { bg: "#F3F4F6", border: "#9CA3AF", text: "#6B7280" };
     return { bg: "#f0f0f0", border: "#9ca3af", text: "#6b7280" };
   }
 
+  // B8: booking_hold ghost slot — amber dashed border to signal "pending /
+  // reserved but not yet confirmed". The dashed border is applied in the
+  // renderer based on `_source === "booking_hold"`.
+  if (isHold) return { bg: "#FFFBEB", border: "#F59E0B", text: "#92400E" };
   if (isUnavailable) return { bg: "#E5E7EB", border: "#9CA3AF", text: "#4B5563" };
   if (isBreak) return { bg: "#FEF3C7", border: "#F59E0B", text: "#92400E" };
   if (isMaintenance || isMeeting) return { bg: "#DBEAFE", border: "#3B82F6", text: "#1E40AF" };
   return { bg: "#E5E7EB", border: "#9CA3AF", text: "#4B5563" };
 };
+
+/** B8: Booking-hold ghost slot check. Used by the renderer to apply a dashed
+ * outline so hold blocks are visually distinct from staff time off / breaks.
+ */
+export const isBookingHoldOverlay = (block: CalendarBlock): boolean =>
+  "_source" in block && block._source === "booking_hold";
+
+/**
+ * Union of all team members' weekly hours (same semantics as week-view `DateColumn`).
+ * Used in day view when a staff row has no personal `working_hours` so weekend shifts
+ * match week view instead of falling back to location-only hours.
+ */
+export function mergeTeamWorkingHoursForCalendar(
+  teamMembers: Array<{
+    working_hours?: Record<string, { open: string; close: string; closed?: boolean }> | null;
+  }>,
+): Record<string, { open: string; close: string; closed?: boolean }> | undefined {
+  const anyStaffHasHours = teamMembers.some((m) => m.working_hours && Object.keys(m.working_hours).length > 0);
+  if (!anyStaffHasHours) return undefined;
+
+  const padH = (mins: number) =>
+    `${String(Math.floor(mins / 60)).padStart(2, "0")}:${String(mins % 60).padStart(2, "0")}`;
+
+  const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
+  for (const dayName of DAY_NAMES) {
+    let earliestMin = Infinity;
+    let latestMin = -1;
+    let anyOpen = false;
+    for (const m of teamMembers) {
+      if (!m.working_hours || Object.keys(m.working_hours).length === 0) {
+        anyOpen = true;
+        earliestMin = Math.min(earliestMin, 0);
+        latestMin = Math.max(latestMin, 24 * 60);
+        continue;
+      }
+      const resolved = resolveDayHours(m.working_hours[dayName]);
+      if (!resolved || resolved.closed) continue;
+      anyOpen = true;
+      const openMin = timeToMinutes(resolved.open);
+      const closeMin = timeToMinutes(resolved.close);
+      if (openMin < earliestMin) earliestMin = openMin;
+      if (closeMin > latestMin) latestMin = closeMin;
+    }
+    if (anyOpen && earliestMin < Infinity && latestMin > -1) {
+      merged[dayName] = { open: padH(earliestMin), close: padH(latestMin) };
+    } else {
+      merged[dayName] = { open: "00:00", close: "00:00", closed: true };
+    }
+  }
+  return Object.values(merged).some((v) => !v.closed) ? merged : undefined;
+}
 
 export const getBlockLabel = (block: CalendarBlock): string => {
   const isAvailability = isAvailabilityOverlay(block);

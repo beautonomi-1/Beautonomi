@@ -3,7 +3,9 @@ import { ACCOUNT_HUB_CARDS } from "../account-hub-grid";
 
 describe("ACCOUNT_HUB_CARDS", () => {
   it("includes core account-settings routes and modal actions", () => {
-    expect(ACCOUNT_HUB_CARDS.length).toBeGreaterThanOrEqual(24);
+    // §Release-audit 2026-04: removed broken `/account-settings/membership`
+    // card (route did not exist, slow 404). New baseline is 23.
+    expect(ACCOUNT_HUB_CARDS.length).toBeGreaterThanOrEqual(23);
     const links = ACCOUNT_HUB_CARDS.map((c) => c.link);
     expect(links.filter((l) => l.startsWith("/account-settings")).length).toBeGreaterThan(15);
     expect(links).toContain("/account-settings/personal-info");

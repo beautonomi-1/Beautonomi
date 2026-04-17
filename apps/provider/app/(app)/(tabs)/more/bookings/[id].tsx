@@ -13,6 +13,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
@@ -391,6 +392,12 @@ export default function BookingDetailScreen() {
   const [chargeMarkPaidId, setChargeMarkPaidId] = useState<string | null>(null);
   const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<"cash" | "card" | "mobile" | "bank_transfer" | "other">("card");
   const [markingChargePaid, setMarkingChargePaid] = useState(false);
+
+  // §Provider-launch (audit 2026-04): customer notification actions (P8 parity).
+  const [isNotifying, setIsNotifying] = useState(false);
+
+  // §Provider-launch (audit 2026-04): pull-to-refresh on booking detail.
+  const [refreshing, setRefreshing] = useState(false);
 
   // Arrival verification (provider enters code from customer)
   const [arrivalPinInput, setArrivalPinInput] = useState("");
@@ -1211,6 +1218,65 @@ export default function BookingDetailScreen() {
     }
   };
 
+  /**
+   * §Provider-launch (audit 2026-04): manually fire provider→customer
+   * notifications (re-send confirmation, send reminder, send cancellation
+   * notice). Matches the web booking detail "Customer Notifications"
+   * panel so operations running from a phone have the same tools.
+   */
+  const handleResendBookingNotification = async (
+    type: "confirmation" | "reminder",
+  ) => {
+    if (!id) return;
+    setIsNotifying(true);
+    try {
+      const res = await postMutation(`/api/provider/bookings/${id}/notify-resend`, { type });
+      if (res.error) {
+        Alert.alert("Notification", res.error);
+        return;
+      }
+      const sent = (res.data as { sent?: boolean } | undefined)?.sent;
+      if (sent === false) {
+        Alert.alert("Notification", "Customer could not be notified.");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "Notification",
+        type === "confirmation"
+          ? "Confirmation re-sent to customer."
+          : "Reminder sent to customer.",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const handleSendCancellationNotice = async () => {
+    if (!id) return;
+    setIsNotifying(true);
+    try {
+      const isNoShow = b?.status === "no_show";
+      const res = await postMutation(
+        `/api/provider/bookings/${id}/notify-cancellation`,
+        { cancellation_type: isNoShow ? "no_show" : "normal" },
+      );
+      if (res.error) {
+        Alert.alert("Notification", res.error);
+        return;
+      }
+      const sent = (res.data as { sent?: boolean } | undefined)?.sent;
+      if (sent === false) {
+        Alert.alert("Notification", "Cancellation notice could not be sent.");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Notification", "Cancellation notice sent to customer.");
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const submitVerifyQrBody = async (body: { verification_code?: string; qr_data?: string }) => {
     if (!id) return false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1406,6 +1472,21 @@ export default function BookingDetailScreen() {
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              // §Provider-launch (audit 2026-04): pull-to-refresh on booking detail.
+              setRefreshing(true);
+              try {
+                await refresh();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            tintColor="#6B7280"
+          />
+        }
       >
         {isAtHome ? (
           <View style={twStyle("rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 mb-3")}>
@@ -1464,6 +1545,54 @@ export default function BookingDetailScreen() {
                   accessibilityRole="button"
                 >
                   <Ionicons name="person-circle-outline" size={24} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
+              {/*
+                §Provider-launch (audit 2026-04): quick contact actions on
+                the booking detail header. Previously a provider had to
+                open the customer profile sheet and then jump to the
+                Clients tab to message — this puts call / SMS-message
+                / text-message one tap away.
+              */}
+              {b.customers?.phone ? (
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(`tel:${b.customers!.phone}`).catch(() => {})}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call ${customerName}`}
+                >
+                  <Ionicons name="call-outline" size={20} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
+              {customerId ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      const result = await api.post<{ id: string }>(
+                        "/api/provider/conversations/create",
+                        { customer_id: customerId },
+                      );
+                      if (result.error) {
+                        Alert.alert(
+                          "Message",
+                          (result.error as { message?: string }).message ?? "Could not start conversation.",
+                        );
+                        return;
+                      }
+                      const convId = result.data?.id;
+                      if (convId) {
+                        router.push(`/(app)/(tabs)/more/messaging/${convId}` as never);
+                      }
+                    } catch {
+                      Alert.alert("Message", "Failed to start conversation.");
+                    }
+                  }}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${customerName}`}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#4b5563" />
                 </TouchableOpacity>
               ) : null}
             </View>
@@ -2057,9 +2186,34 @@ export default function BookingDetailScreen() {
                 </TouchableOpacity>
               )}
               <TouchableOpacity
-                onPress={() => {
-                  const receiptUrl = `${APP_URL}/api/provider/bookings/${id}/receipt/pdf`;
-                  Linking.openURL(receiptUrl).catch(() => {});
+                onPress={async () => {
+                  // §Provider-launch (audit 2026-04): mint a short-lived
+                  // HMAC-signed URL via authenticated API call, then open
+                  // in the system viewer. Never expose the raw
+                  // /receipt/pdf route to an unauthenticated browser
+                  // window — it would fail auth and show a blank page /
+                  // JSON error.
+                  try {
+                    const res = await api.post<{
+                      url: string;
+                      expires_at: string;
+                    }>(`/api/provider/bookings/${id}/receipt/signed-url`);
+                    const signedUrl = res.data?.url;
+                    if (!signedUrl) {
+                      Alert.alert("Receipt", "Could not open the receipt right now. Please try again.");
+                      return;
+                    }
+                    const can = await Linking.canOpenURL(signedUrl);
+                    if (!can) {
+                      Alert.alert("Receipt", "This device cannot open the receipt link.");
+                      return;
+                    }
+                    await Linking.openURL(signedUrl);
+                  } catch (err) {
+                    const msg =
+                      err instanceof Error ? err.message : "Please try again.";
+                    Alert.alert("Receipt", msg);
+                  }
                 }}
                 style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
                 accessibilityRole="button"
@@ -2067,6 +2221,67 @@ export default function BookingDetailScreen() {
               >
                 <Text style={twStyle("font-medium text-gray-700")}>View receipt</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/*
+          §Provider-launch (audit 2026-04): "Customer Notifications" block,
+          mirroring the web detail's P8 panel. Lets the provider manually
+          re-send confirmation / reminder emails + SMS, or send a cancellation
+          notice when a cancel is being handled out-of-band.
+        */}
+        {id && b?.customer_id && b.status !== "completed" && (
+          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>
+              Customer notifications
+            </Text>
+            <View style={twStyle("flex-row flex-wrap gap-2")}>
+              <TouchableOpacity
+                onPress={() => handleResendBookingNotification("confirmation")}
+                disabled={isNotifying}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Resend booking confirmation to customer"
+              >
+                {isNotifying ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Text style={twStyle("font-medium text-gray-800")}>
+                    Re-send confirmation
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleResendBookingNotification("reminder")}
+                disabled={isNotifying}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Send reminder to customer"
+              >
+                {isNotifying ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Text style={twStyle("font-medium text-gray-800")}>Send reminder</Text>
+                )}
+              </TouchableOpacity>
+              {(b.status === "cancelled" || b.status === "no_show") && (
+                <TouchableOpacity
+                  onPress={handleSendCancellationNotice}
+                  disabled={isNotifying}
+                  style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send cancellation notice to customer"
+                >
+                  {isNotifying ? (
+                    <ActivityIndicator size="small" color="#b91c1c" />
+                  ) : (
+                    <Text style={twStyle("font-medium text-red-700")}>
+                      Send cancellation notice
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}

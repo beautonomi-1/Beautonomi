@@ -51,6 +51,7 @@ export async function GET(
           duration_minutes,
           price,
           guest_name,
+          tax_snapshot,
           offerings:offerings!booking_services_offering_id_fkey(id, title),
           staff:provider_staff(id, name)
         ),
@@ -123,6 +124,10 @@ export async function GET(
       quantity: 1,
       unit_price: bs.price || 0,
       total: bs.price || 0,
+      // B14: forward the immutable tax snapshot stamped at booking creation
+      // so the provider invoice renders the real VAT context applied to the
+      // sale, even if the provider/platform tax rate has since changed.
+      tax_snapshot: bs.tax_snapshot ?? null,
     }));
 
     const productItems = (b.booking_products || []).map((bp: any) => {
@@ -258,6 +263,10 @@ export async function GET(
         : null,
       amount_paid: amountPaid,
       balance_due: balanceDue,
+      // B14: expose aggregated refund total so the invoice can render a
+      // "Refunded" line and compute net paid. `bookings.total_refunded` is
+      // maintained by the finance ledger trigger (migration 490).
+      total_refunded: totalRefunded,
       additional_charges: additionalCharges,
       transactions: b.booking_payments || [],
       notes: b.special_requests || null,

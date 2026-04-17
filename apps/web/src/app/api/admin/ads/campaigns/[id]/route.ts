@@ -60,18 +60,38 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       else if (e.event_type === "book") eventCounts.books++;
     }
 
-    const { data: budgetOrders } = await admin
+    /**
+     * §Release-audit 2026-04: previously selected `payment_status`, but the
+     * `ads_budget_orders` schema (migration 262) defines the column as
+     * `status` with values `pending|paid|failed|refunded`. The mismatch
+     * meant Postgres would error and the entire admin campaign detail
+     * payload could fail or silently return without budget orders. We
+     * select `status` and alias it to `payment_status` to keep the existing
+     * UI contract intact.
+     */
+    const { data: budgetOrdersRaw } = await admin
       .from("ads_budget_orders")
-      .select("id, amount, payment_status, paystack_reference, created_at")
+      .select("id, amount, currency, status, paystack_reference, paid_at, created_at")
       .eq("campaign_id", id)
       .order("created_at", { ascending: false })
       .limit(20);
+
+    const budgetOrders = (budgetOrdersRaw ?? []).map((o) => ({
+      id: (o as { id?: string }).id,
+      amount: (o as { amount?: number }).amount,
+      currency: (o as { currency?: string }).currency,
+      status: (o as { status?: string }).status,
+      payment_status: (o as { status?: string }).status,
+      paystack_reference: (o as { paystack_reference?: string }).paystack_reference,
+      paid_at: (o as { paid_at?: string | null }).paid_at,
+      created_at: (o as { created_at?: string }).created_at,
+    }));
 
     return successResponse({
       ...c,
       provider: provider ?? null,
       events_30d: eventCounts,
-      budget_orders: budgetOrders ?? [],
+      budget_orders: budgetOrders,
     });
   } catch (error) {
     return handleApiError(error as Error, "Failed to fetch campaign");

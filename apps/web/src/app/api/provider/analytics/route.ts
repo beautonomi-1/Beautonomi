@@ -105,20 +105,13 @@ export async function GET(request: NextRequest) {
       ]),
       // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-      // Service popularity (simplified query)
-      supabaseAdmin
-        .from("booking_services")
-        .select(`
-          booking_id,
-          offering_id,
-          price,
-          offerings:offering_id (
-            id,
-            title
-          )
-        `)
-        .eq("offerings.provider_id", providerId)
-        .limit(1000),
+      // Service popularity via RPC (F8) — DB-side aggregate, no app-level row cap.
+      supabaseAdmin.rpc("provider_analytics_by_service", {
+        p_provider_id: providerId,
+        p_from: new Date(0).toISOString(),
+        p_to: now.toISOString(),
+        p_location_id: locationId,
+      }),
       // Customer analytics
       (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
     ]);
@@ -136,26 +129,11 @@ export async function GET(request: NextRequest) {
     const lastMonthBookings = lastMonthBookingsCount.count || 0;
     const upcomingBookings = upcomingBookingsResult.count || 0;
 
-    // Process service stats (distinct bookings per offering, not raw line rows)
-    const serviceStats = new Map<string, { name: string; bookingIds: Set<string>; revenue: number }>();
-    if (serviceDataResult.data) {
-      for (const service of serviceDataResult.data) {
-        const offering = service.offerings as any;
-        if (!offering) continue;
-        const key = offering.id;
-        if (!serviceStats.has(key)) {
-          serviceStats.set(key, {
-            name: offering.title || "Service",
-            bookingIds: new Set<string>(),
-            revenue: 0,
-          });
-        }
-        const stat = serviceStats.get(key)!;
-        const bid = (service as { booking_id?: string }).booking_id;
-        if (bid) stat.bookingIds.add(bid);
-        stat.revenue += Number(service.price || 0);
-      }
-    }
+    // provider_analytics_by_service returns { offering_id, offering_title, booking_count, revenue }
+    type ServiceRow = { offering_id: string; offering_title: string; booking_count: number; revenue: number };
+    const serviceRows: ServiceRow[] = Array.isArray(serviceDataResult.data)
+      ? (serviceDataResult.data as ServiceRow[])
+      : [];
 
     // Revenue trends - 12 data points (months for month/year periods; weeks for week period)
     const trendPromises: Promise<{ month: string; revenue: number; bookings: number }>[] = [];
@@ -284,8 +262,8 @@ export async function GET(request: NextRequest) {
         repeat: repeatCustomers,
         new: uniqueCustomers.size - repeatCustomers,
       },
-      services: Array.from(serviceStats.values())
-        .map((s) => ({ name: s.name, count: s.bookingIds.size, revenue: s.revenue }))
+      services: serviceRows
+        .map((s) => ({ name: s.offering_title, count: Number(s.booking_count || 0), revenue: Number(s.revenue || 0) }))
         .sort((a, b) => b.revenue - a.revenue)
         .slice(0, 10),
       trends: trendsData,

@@ -137,6 +137,7 @@ export default function BookingDetailScreen() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const hasLoadedOnce = useRef(false);
+  const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -175,6 +176,18 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     load();
   }, [id, load]);
+
+  // Referral conversion (same as web confirmation): once per booking id per session; ignore expected 400/404.
+  useEffect(() => {
+    if (!id || !booking) return;
+    if (referralPostedBookingIds.current.has(id)) return;
+    referralPostedBookingIds.current.add(id);
+    void api.post("/api/me/referrals/track", { booking_id: id }).then((res) => {
+      if (!res.error) return;
+      const st = (res.error as { status?: number }).status;
+      if (st === 400 || st === 404) return;
+    });
+  }, [id, booking]);
 
   // Refetch when screen gains focus after initial load (e.g. return from in-app browser after paying additional charge)
   useFocusEffect(
@@ -961,7 +974,9 @@ export default function BookingDetailScreen() {
               )}
               {booking.tax_amount > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                    Tax{Number((booking as any).tax_rate || 0) > 0 ? ` (${Number((booking as any).tax_rate)}%)` : ""}
+                  </Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
                 </View>
               )}
@@ -969,6 +984,29 @@ export default function BookingDetailScreen() {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
                   <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).loyalty_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                    Loyalty
+                    {Number((booking as any).loyalty_points_used || 0) > 0
+                      ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
+                      : ""}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).membership_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).promotion_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
                 </View>
               )}
               {Number((booking as any).service_fee_amount) > 0 && (
@@ -981,6 +1019,12 @@ export default function BookingDetailScreen() {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).gift_card_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
                 </View>
               )}
               {Number((booking as any).tip_amount) > 0 && (
@@ -1015,6 +1059,12 @@ export default function BookingDetailScreen() {
                 <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).wallet_amount || 0) > 0 && Number((booking as any).total_paid || 0) > 0 && (
+                <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid via card</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
                 </View>
               )}
               {booking.payment_status && (
@@ -1064,36 +1114,82 @@ export default function BookingDetailScreen() {
             )}
             {(() => {
               const charges = booking?.additional_charges ?? [];
-              const unpaidCharges = charges.filter((c: any) => c.status === "pending" || c.status === "approved");
-              if (unpaidCharges.length === 0) return null;
+              if (charges.length === 0) return null;
               return (
                 <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
-                  {unpaidCharges.map((c: any) => (
-                    <View key={c.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: unpaidCharges.length > 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
-                        <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{booking.currency} {Number(c.amount || 0).toFixed(2)}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptic.light();
-                          router.push({
-                            pathname: "/(app)/in-app-browser",
-                            params: {
-                              url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
-                              title: "Pay additional charge",
-                            },
-                          } as never);
+                  {charges.map((c: any, idx: number) => {
+                    const unpaid = c.status === "pending" || c.status === "approved";
+                    const cur = (c.currency as string | undefined) || booking.currency;
+                    const statusRaw = typeof c.status === "string" ? c.status : "";
+                    const statusLabel = statusRaw.replace(/_/g, " ");
+                    return (
+                      <View
+                        key={String(c.id ?? idx)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 8,
+                          borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
+                          borderBottomColor: Colors.gray[100],
                         }}
-                        style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Pay additional charge"
                       >
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                          <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
+                            {cur} {Number(c.amount || 0).toFixed(2)}
+                          </Text>
+                          {c.paid_at ? (
+                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>
+                              Paid on {new Date(c.paid_at).toLocaleDateString()}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {unpaid ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              haptic.light();
+                              router.push({
+                                pathname: "/(app)/in-app-browser",
+                                params: {
+                                  url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
+                                  title: "Pay additional charge",
+                                },
+                              } as never);
+                            }}
+                            style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Pay additional charge"
+                          >
+                            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              backgroundColor:
+                                c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: "600",
+                                textTransform: "capitalize",
+                                color:
+                                  c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
+                              }}
+                            >
+                              {statusLabel || "—"}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               );
             })()}
@@ -1102,6 +1198,29 @@ export default function BookingDetailScreen() {
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
                 onPress={() => {
                   haptic.light();
+                  const cur = booking.currency || "ZAR";
+                  const paymentExtras: string[] = [];
+                  if (booking.is_group_booking && booking.group_booking_ref) {
+                    paymentExtras.push(`Group reference: ${booking.group_booking_ref}`);
+                  }
+                  if (Number(booking.tax_amount) > 0) {
+                    paymentExtras.push(`Tax: ${cur} ${Number(booking.tax_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).tip_amount) > 0) {
+                    paymentExtras.push(`Tip: ${cur} ${Number((booking as any).tip_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).gift_card_amount) > 0) {
+                    paymentExtras.push(`Gift card: -${cur} ${Number((booking as any).gift_card_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).loyalty_discount_amount) > 0) {
+                    paymentExtras.push(`Loyalty: -${cur} ${Number((booking as any).loyalty_discount_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).wallet_amount) > 0) {
+                    paymentExtras.push(`Wallet: -${cur} ${Number((booking as any).wallet_amount).toFixed(2)}`);
+                  }
+                  if (typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0) {
+                    paymentExtras.push(`Outstanding: ${cur} ${Number(booking.outstanding_balance).toFixed(2)}`);
+                  }
                   const lines = [
                     `Beautonomi Booking`,
                     `Booking #${booking.booking_number || booking.id?.slice(0, 8) || ""}`,
@@ -1111,9 +1230,14 @@ export default function BookingDetailScreen() {
                     `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                     `Status: ${booking.status}`,
                     ``,
-                    ...(services || []).map((svc: any) => `• ${svc.offering_name || svc.service_name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`),
+                    ...(services || []).map((svc: any) => {
+                      const title = svc.offering_name || svc.service_name || "Service";
+                      const guest = svc.guest_name ? ` (${String(svc.guest_name)})` : "";
+                      return `• ${title}${guest} – ${cur} ${Number(svc.price || 0).toFixed(2)}`;
+                    }),
+                    ...(paymentExtras.length > 0 ? ["", ...paymentExtras] : []),
                     ``,
-                    `Total: ${booking.currency} ${Number(booking.total_amount || 0).toFixed(2)}`,
+                    `Total: ${cur} ${Number(booking.total_amount || 0).toFixed(2)}`,
                     ``,
                     `View: ${APP_URL}/account-settings/bookings/${booking.id}`,
                   ];
@@ -1126,7 +1250,35 @@ export default function BookingDetailScreen() {
                 <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { haptic.light(); Linking.openURL(`${APP_URL}/account-settings/bookings/${booking.id}?print=1`); }}
+                onPress={async () => {
+                  // §Customer-launch (audit 2026-04): receipt downloads used
+                  // to just deep-link to the web app's print page, which is
+                  // not logged in outside the Expo app. Mint a short-lived
+                  // HMAC-signed URL against the authenticated API and open
+                  // the PDF directly in the system viewer.
+                  haptic.light();
+                  try {
+                    const res = await api.post<{ url?: string }>(
+                      `/api/bookings/${booking.id}/receipt/signed-url`,
+                      {},
+                    );
+                    const url = res.data?.url;
+                    if (res.error || !url) {
+                      Alert.alert(
+                        "Download receipt",
+                        (res.error as { message?: string })?.message ??
+                          "Could not generate receipt. Please try again.",
+                      );
+                      return;
+                    }
+                    await Linking.openURL(url);
+                  } catch {
+                    Alert.alert(
+                      "Download receipt",
+                      "Something went wrong while preparing the receipt.",
+                    );
+                  }
+                }}
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                 accessibilityRole="button"
                 accessibilityLabel="Download"
@@ -1476,6 +1628,54 @@ export default function BookingDetailScreen() {
             accessibilityLabel="Book again with this provider"
           >
             <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Book Again</Text>
+          </TouchableOpacity>
+        )}
+
+        {/*
+          §Customer-launch (audit 2026-04): previously the only way to
+          contact a provider from a booking was to back out to the
+          partner profile or open the web site. Add a native CTA so
+          customers can ask about confirmation, arrival, follow-up, etc.
+          directly from the booking context (mirrors the "Message
+          Provider" button we added on the web confirmation page).
+        */}
+        {provider?.id && booking.status !== "cancelled" && (
+          <TouchableOpacity
+            onPress={() => {
+              haptic.light();
+              router.push({
+                pathname: "/(app)/chat",
+                params: {
+                  provider_id: provider.id,
+                  provider_name: provider.business_name || "Provider",
+                  booking_id: booking.id,
+                },
+              });
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingVertical: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.primary,
+              backgroundColor: `${Colors.primary}0D`,
+              marginBottom: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Message ${provider.business_name || "provider"}`}
+            accessibilityHint="Start a chat with the provider about this booking"
+          >
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={18}
+              color={Colors.primary}
+              style={{ marginRight: 8 }}
+            />
+            <Text style={{ fontWeight: "600", color: Colors.primary }}>
+              Message Provider
+            </Text>
           </TouchableOpacity>
         )}
 

@@ -17,7 +17,7 @@ interface WhatsAppSendModalProps {
     business_name?: string | null;
     phone_e164?: string | null;
     email?: string | null;
-    whatsapp_status?: string;
+    whatsapp_status?: string | null;
   };
 }
 

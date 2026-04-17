@@ -20,7 +20,6 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -31,7 +30,7 @@ import {
   AlertDialogCancel,
 } from "@/components/ui/alert-dialog";
 import {
-  CalendarIcon, Plus, X, User, Home, Building2, Users, Clock, Tag,
+  CalendarIcon, Plus, X, User, Home, Building2, Users, Tag,
   StickyNote, MapPin, Search, Package, ShoppingBag, Loader2, ChevronDown,
 } from "lucide-react";
 import { format } from "date-fns";
@@ -50,6 +49,8 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { isCompleteE164 } from "@/lib/phone";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { AvailabilitySlotPicker } from "@/components/appointments/AvailabilitySlotPicker";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 
 // ─── Participant addon shape ────────────────────────────────────────────────
 interface ParticipantAddon {
@@ -105,6 +106,7 @@ export function GroupBookingDialog({
   providerId: externalProviderId,
 }: GroupBookingDialogProps) {
   const { format: formatMoney } = useProviderMoneyFormat();
+  const { provider: portalProvider } = useProviderPortal();
   const [isLoading, setIsLoading] = useState(false);
 
   // ─── Core data ──────────────────────────────────────────────────────────
@@ -166,7 +168,8 @@ export function GroupBookingDialog({
   });
 
   // ─── Availability toggle ──────────────────────────────────────────────
-  const [showAvailability, setShowAvailability] = useState(false);
+  /** When team is selected, real slots are primary; manual date/time is fallback. */
+  const [manualScheduleOpen, setManualScheduleOpen] = useState(false);
 
   // ─── Data loaders ──────────────────────────────────────────────────────
   const loadServiceVariants = useCallback(async (serviceId: string) => {
@@ -559,7 +562,22 @@ export function GroupBookingDialog({
         }
       }
 
-      const scheduledAt = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
+      if (!formData.scheduled_date?.trim() || !formData.scheduled_time?.trim()) {
+        toast.error('Choose a date and time (use available slots or open "Manual date and time").');
+        setIsLoading(false);
+        return;
+      }
+      const parsedStart = parseSelectedDatetimeInProviderTz(
+        formData.scheduled_date,
+        formData.scheduled_time,
+        portalProvider?.timezone,
+      );
+      if (Number.isNaN(parsedStart.getTime())) {
+        toast.error("Invalid date or time.");
+        setIsLoading(false);
+        return;
+      }
+      const scheduledAt = parsedStart.toISOString();
 
       const participantPayload = participants.map((p) => ({
         name: p.client_name || "",
@@ -648,7 +666,11 @@ export function GroupBookingDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border">
+      <DialogContent
+        hideClose
+        suppressFallbackTitle
+        className="p-0 gap-0 border-0 max-w-[100vw] sm:max-w-[min(90vw,680px)] max-h-[95vh] sm:max-h-[min(90vh,850px)] overflow-hidden rounded-t-3xl sm:rounded-2xl box-border flex flex-col"
+      >
         <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-purple-500 to-violet-600 flex-shrink-0" />
 
         {/* Header */}
@@ -673,8 +695,8 @@ export function GroupBookingDialog({
           </div>
         </div>
 
-        {/* Scrollable Content */}
-        <ScrollArea className="flex-1 min-h-0">
+        {/* Scrollable body: flex-1 + min-h-0 so the form scrolls inside max-h dialog */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           <form id="group-booking-form" onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 box-border w-full max-w-full overflow-x-hidden min-w-0">
 
             {/* Title */}
@@ -690,89 +712,62 @@ export function GroupBookingDialog({
 
             <Separator />
 
-            {/* ─── Schedule ─────────────────────────────────────────── */}
+            {/* ─── Location ──────────────────────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <CalendarIcon className="w-4 h-4 text-gray-400" />Schedule
+                <MapPin className="w-4 h-4 text-gray-400" />Location
               </div>
-
-              {/* Availability Slot Picker toggle */}
-              {formData.team_member_id && (
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon" })}
+                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  <div className="flex items-center gap-2">
+                    <Building2 className={cn("w-4 h-4", formData.location_type === "at_salon" ? "text-primary" : "text-gray-400")} />
+                    <div><div className="font-medium text-sm">At Salon</div><div className="text-[10px] text-gray-500">Your location</div></div>
+                  </div>
+                </button>
+                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_home" })}
+                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_home" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
+                  <div className="flex items-center gap-2">
+                    <Home className={cn("w-4 h-4", formData.location_type === "at_home" ? "text-primary" : "text-gray-400")} />
+                    <div><div className="font-medium text-sm">At Home</div><div className="text-[10px] text-gray-500">Client location</div></div>
+                  </div>
+                </button>
+              </div>
+              {formData.location_type === "at_salon" && (
                 <div>
-                  <button
-                    type="button"
-                    className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-1"
-                    onClick={() => setShowAvailability(!showAvailability)}
-                  >
-                    <Clock className="w-3 h-3" />
-                    {showAvailability ? "Hide availability" : "Check availability"}
-                    <ChevronDown className={cn("w-3 h-3 transition-transform", showAvailability && "rotate-180")} />
-                  </button>
+                  <Label className="text-xs text-gray-500">Salon Location</Label>
+                  <Select value={formData.location_id} onValueChange={v => setFormData({ ...formData, location_id: v })}>
+                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select location" /></SelectTrigger>
+                    <SelectContent>
+                      {providerLocations.length > 0
+                        ? providerLocations.map((loc: any) => <SelectItem key={loc.id} value={loc.id}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</SelectItem>)
+                        : <SelectItem value="main">Main Location</SelectItem>}
+                    </SelectContent>
+                  </Select>
                 </div>
               )}
-
-              {showAvailability && formData.team_member_id && (
-                <div className="bg-purple-50/50 rounded-xl border border-purple-100 p-3">
-                  <AvailabilitySlotPicker
-                    staffId={formData.team_member_id}
-                    locationId={formData.location_id}
-                    providerId={providerId}
-                    duration={totalDuration}
-                    selectedDate={formData.scheduled_date}
-                    selectedTime={formData.scheduled_time}
-                    onDateChange={date => setFormData(prev => ({ ...prev, scheduled_date: date }))}
-                    onTimeChange={time => setFormData(prev => ({ ...prev, scheduled_time: time }))}
-                    mode={formData.location_type === "at_home" ? "mobile" : "salon"}
-                  />
+              {formData.location_type === "at_home" && (
+                <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+                  <div>
+                    <Label className="text-xs text-gray-500">Address *</Label>
+                    <Input value={formData.address_line1} onChange={e => setFormData({ ...formData, address_line1: e.target.value })} placeholder="Street address" className="mt-1 h-10" required={formData.location_type === "at_home"} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs text-gray-500">City</Label>
+                      <Input value={formData.address_city} onChange={e => setFormData({ ...formData, address_city: e.target.value })} placeholder="City" className="mt-1 h-10" />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-500">Postal Code</Label>
+                      <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder="Postal code" className="mt-1 h-10" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Travel Fee</Label>
+                    <Input type="number" value={formData.travel_fee} onChange={e => setFormData({ ...formData, travel_fee: parseFloat(e.target.value) || 0 })} min={0} step={10} className="mt-1 h-10" />
+                  </div>
                 </div>
               )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <Label className="text-xs text-gray-500">Date *</Label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        className={cn("w-full justify-start text-left font-normal h-10 mt-1", !formData.scheduled_date && "text-muted-foreground")}
-                      >
-                        <CalendarIcon className="mr-2 h-3.5 w-3.5 text-gray-400" />
-                        {formData.scheduled_date ? format(new Date(formData.scheduled_date + "T12:00:00"), "MMM d, yyyy") : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={formData.scheduled_date ? new Date(formData.scheduled_date + "T12:00:00") : undefined}
-                        onSelect={date => date && setFormData({ ...formData, scheduled_date: format(date, "yyyy-MM-dd") })}
-                        initialFocus
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">Time *</Label>
-                  <Input
-                    type="time"
-                    value={formData.scheduled_time}
-                    onChange={e => setFormData({ ...formData, scheduled_time: e.target.value })}
-                    className="mt-1 h-10"
-                    required
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-gray-500">Duration (min) *</Label>
-                  <Input
-                    type="number"
-                    value={formData.duration_minutes}
-                    onChange={e => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })}
-                    min={15}
-                    step={15}
-                    className="mt-1 h-10"
-                    required
-                  />
-                </div>
-              </div>
             </div>
 
             <Separator />
@@ -842,59 +837,108 @@ export function GroupBookingDialog({
 
             <Separator />
 
-            {/* ─── Location ──────────────────────────────────────── */}
+            {/* ─── Schedule ─────────────────────────────────────────── */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700">
-                <MapPin className="w-4 h-4 text-gray-400" />Location
+                <CalendarIcon className="w-4 h-4 text-gray-400" />Schedule
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_salon" })}
-                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_salon" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
-                  <div className="flex items-center gap-2">
-                    <Building2 className={cn("w-4 h-4", formData.location_type === "at_salon" ? "text-primary" : "text-gray-400")} />
-                    <div><div className="font-medium text-sm">At Salon</div><div className="text-[10px] text-gray-500">Your location</div></div>
-                  </div>
-                </button>
-                <button type="button" onClick={() => setFormData({ ...formData, location_type: "at_home" })}
-                  className={cn("p-3 border-2 rounded-xl text-left transition-all", formData.location_type === "at_home" ? "border-primary bg-primary/5" : "border-gray-200 hover:border-gray-300")}>
-                  <div className="flex items-center gap-2">
-                    <Home className={cn("w-4 h-4", formData.location_type === "at_home" ? "text-primary" : "text-gray-400")} />
-                    <div><div className="font-medium text-sm">At Home</div><div className="text-[10px] text-gray-500">Client location</div></div>
-                  </div>
-                </button>
-              </div>
-              {formData.location_type === "at_salon" && (
-                <div>
-                  <Label className="text-xs text-gray-500">Salon Location</Label>
-                  <Select value={formData.location_id} onValueChange={v => setFormData({ ...formData, location_id: v })}>
-                    <SelectTrigger className="mt-1 h-10"><SelectValue placeholder="Select location" /></SelectTrigger>
-                    <SelectContent>
-                      {providerLocations.length > 0
-                        ? providerLocations.map((loc: any) => <SelectItem key={loc.id} value={loc.id}>{loc.name}{loc.address ? ` — ${loc.address}` : ""}</SelectItem>)
-                        : <SelectItem value="main">Main Location</SelectItem>}
-                    </SelectContent>
-                  </Select>
+
+              {!formData.team_member_id && (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Select a team member to load real availability slots for this location.
+                </p>
+              )}
+
+              {formData.team_member_id && (
+                <div className="bg-purple-50/50 rounded-xl border border-purple-100 p-3">
+                  <p className="text-xs font-medium text-purple-900 mb-2">Available slots</p>
+                  <AvailabilitySlotPicker
+                    staffId={formData.team_member_id}
+                    locationId={formData.location_id}
+                    providerId={providerId}
+                    duration={totalDuration}
+                    selectedDate={formData.scheduled_date}
+                    selectedTime={formData.scheduled_time}
+                    onDateChange={date => setFormData(prev => ({ ...prev, scheduled_date: date }))}
+                    onTimeChange={time => setFormData(prev => ({ ...prev, scheduled_time: time }))}
+                    mode={formData.location_type === "at_home" ? "mobile" : "salon"}
+                  />
                 </div>
               )}
-              {formData.location_type === "at_home" && (
-                <div className="space-y-2 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
+
+              <div>
+                <button
+                  type="button"
+                  className="text-xs text-gray-600 hover:text-gray-900 font-medium flex items-center gap-1"
+                  onClick={() => setManualScheduleOpen(o => !o)}
+                >
+                  <ChevronDown className={cn("w-3 h-3 transition-transform", manualScheduleOpen && "rotate-180")} />
+                  Manual date and time
+                </button>
+              </div>
+
+              {manualScheduleOpen && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1 border-t border-dashed border-gray-200">
                   <div>
-                    <Label className="text-xs text-gray-500">Address *</Label>
-                    <Input value={formData.address_line1} onChange={e => setFormData({ ...formData, address_line1: e.target.value })} placeholder="Street address" className="mt-1 h-10" required={formData.location_type === "at_home"} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <Label className="text-xs text-gray-500">City</Label>
-                      <Input value={formData.address_city} onChange={e => setFormData({ ...formData, address_city: e.target.value })} placeholder="City" className="mt-1 h-10" />
-                    </div>
-                    <div>
-                      <Label className="text-xs text-gray-500">Postal Code</Label>
-                      <Input value={formData.address_postal_code} onChange={e => setFormData({ ...formData, address_postal_code: e.target.value })} placeholder="Postal code" className="mt-1 h-10" />
-                    </div>
+                    <Label className="text-xs text-gray-500">Date *</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className={cn("w-full justify-start text-left font-normal h-10 mt-1", !formData.scheduled_date && "text-muted-foreground")}
+                        >
+                          <CalendarIcon className="mr-2 h-3.5 w-3.5 text-gray-400" />
+                          {formData.scheduled_date ? format(new Date(formData.scheduled_date + "T12:00:00"), "MMM d, yyyy") : "Pick a date"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={formData.scheduled_date ? new Date(formData.scheduled_date + "T12:00:00") : undefined}
+                          onSelect={date => date && setFormData({ ...formData, scheduled_date: format(date, "yyyy-MM-dd") })}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
                   <div>
-                    <Label className="text-xs text-gray-500">Travel Fee</Label>
-                    <Input type="number" value={formData.travel_fee} onChange={e => setFormData({ ...formData, travel_fee: parseFloat(e.target.value) || 0 })} min={0} step={10} className="mt-1 h-10" />
+                    <Label className="text-xs text-gray-500">Time *</Label>
+                    <Input
+                      type="time"
+                      value={formData.scheduled_time}
+                      onChange={e => setFormData({ ...formData, scheduled_time: e.target.value })}
+                      className="mt-1 h-10"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-500">Duration (min) *</Label>
+                    <Input
+                      type="number"
+                      value={formData.duration_minutes}
+                      onChange={e => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })}
+                      min={15}
+                      step={15}
+                      className="mt-1 h-10"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!manualScheduleOpen && (
+                <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-500">Duration (min) *</Label>
+                    <Input
+                      type="number"
+                      value={formData.duration_minutes}
+                      onChange={e => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) || 60 })}
+                      min={15}
+                      step={15}
+                      className="mt-1 h-10"
+                      required
+                    />
                   </div>
                 </div>
               )}
@@ -1167,7 +1211,7 @@ export function GroupBookingDialog({
               </div>
             )}
           </form>
-        </ScrollArea>
+        </div>
 
         {/* Footer */}
         <div className="flex flex-col-reverse sm:flex-row gap-2 px-4 sm:px-6 py-3 sm:py-4 border-t bg-white flex-shrink-0">

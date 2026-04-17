@@ -2528,11 +2528,11 @@ export function AppointmentSidebar({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handlePrintInvoice}>
                     <Printer className="w-4 h-4 mr-2" />
-                    Print Invoice
+                    Print Receipt
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleEmailInvoice}>
                     <Mail className="w-4 h-4 mr-2" />
-                    Email Invoice
+                    Email Receipt
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -4067,17 +4067,17 @@ export function AppointmentSidebar({
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" className="h-7 sm:h-7.5 md:h-8 text-xs px-2 rounded-lg">
                         <FileText className="w-3 h-3 mr-1" />
-                        <span className="hidden xs:inline">Invoice</span>
+                        <span className="hidden xs:inline">Receipt</span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="z-[110]">
                       <DropdownMenuItem onClick={() => handlePrintInvoice()}>
                         <Printer className="w-4 h-4 mr-2" />
-                        Print Invoice
+                        Print Receipt
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleEmailInvoice()}>
                         <Mail className="w-4 h-4 mr-2" />
-                        Email Invoice
+                        Email Receipt
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

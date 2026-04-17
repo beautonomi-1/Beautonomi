@@ -22,6 +22,10 @@ import {
   Plus,
   LayoutGrid,
   List,
+  CalendarCheck,
+  CalendarClock,
+  PlayCircle,
+  Banknote,
 } from "lucide-react";
 import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import { providerApi } from "@/lib/provider-portal/api";
@@ -302,12 +306,45 @@ export function BookingsClient({
       pending: [], confirmed: [], in_progress: [], completed: [], cancelled: [], no_show: [],
     };
     for (const b of filteredBookings) {
-      const s = b.status as string;
-      if (s === "started" || s === "in_progress") g.in_progress.push(b);
-      else if (s in g) g[s].push(b);
+      const s = (b.status as string) || "";
+      // API maps DB statuses via mapStatusToProvider → e.g. confirmed → "booked", waiting/checked_in → "booked"
+      const bucket =
+        s === "started" || s === "in_progress"
+          ? "in_progress"
+          : s === "booked" || s === "waiting" || s === "checked_in"
+            ? "confirmed"
+            : s;
+      if (bucket === "in_progress") g.in_progress.push(b);
+      else if (bucket in g) g[bucket as keyof typeof g].push(b);
     }
     return g;
   }, [filteredBookings]);
+
+  // Top-of-page snapshot: today's bookings, pending, in-progress, today's booked revenue.
+  // Computed over the full (unfiltered) bookings set so the strip stays useful even while a
+  // provider is filtering below.
+  const statsSnapshot = useMemo(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const endOfToday = startOfToday + 24 * 60 * 60 * 1000;
+    let todaysCount = 0;
+    let todaysRevenue = 0;
+    let pendingCount = 0;
+    let inProgressCount = 0;
+    for (const b of bookings) {
+      const s = (b.status || "").toLowerCase();
+      if (s === "pending") pendingCount += 1;
+      if (s === "started" || s === "in_progress") inProgressCount += 1;
+      const ts = b.scheduled_at ? new Date(b.scheduled_at).getTime() : 0;
+      if (ts >= startOfToday && ts < endOfToday) {
+        todaysCount += 1;
+        if (s !== "cancelled" && s !== "canceled" && s !== "no_show") {
+          todaysRevenue += Number(b.total_amount || 0);
+        }
+      }
+    }
+    return { todaysCount, todaysRevenue, pendingCount, inProgressCount };
+  }, [bookings]);
 
   // Paginated slice for current tab
   const getPagedItems = useCallback((items: ProviderBookingListItem[]) => {
@@ -694,6 +731,35 @@ export function BookingsClient({
           </Button>
         </div>
 
+        {/* Snapshot stats strip — always visible, not affected by filters so it stays useful.
+            Mobile: 2 cols; ≥sm: 4 cols. Revenue card inherits brand accent. */}
+        <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
+          <StatTile
+            icon={<CalendarCheck className="w-4 h-4" />}
+            label="Today"
+            value={statsSnapshot.todaysCount.toLocaleString()}
+            tone="slate"
+          />
+          <StatTile
+            icon={<CalendarClock className="w-4 h-4" />}
+            label="Pending"
+            value={statsSnapshot.pendingCount.toLocaleString()}
+            tone={statsSnapshot.pendingCount > 0 ? "amber" : "slate"}
+          />
+          <StatTile
+            icon={<PlayCircle className="w-4 h-4" />}
+            label="In progress"
+            value={statsSnapshot.inProgressCount.toLocaleString()}
+            tone={statsSnapshot.inProgressCount > 0 ? "violet" : "slate"}
+          />
+          <StatTile
+            icon={<Banknote className="w-4 h-4" />}
+            label="Today's revenue"
+            value={<Money amount={statsSnapshot.todaysRevenue} />}
+            tone="brand"
+          />
+        </div>
+
         {/* Sync + View toggle */}
         <div className="mb-4 flex items-center justify-between">
           <SyncIndicator isSyncing={isRefreshing} lastSynced={lastSynced} size="sm" />
@@ -702,6 +768,8 @@ export function BookingsClient({
               onClick={() => handleViewChange("table")}
               className={`p-2 ${viewMode === "table" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
               title="Table view"
+              aria-label="Table view"
+              aria-pressed={viewMode === "table"}
             >
               <List className="w-4 h-4" />
             </button>
@@ -709,6 +777,8 @@ export function BookingsClient({
               onClick={() => handleViewChange("cards")}
               className={`p-2 ${viewMode === "cards" ? "bg-gray-100 text-gray-900" : "text-gray-400 hover:text-gray-600"}`}
               title="Card view"
+              aria-label="Card view"
+              aria-pressed={viewMode === "cards"}
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
@@ -730,6 +800,7 @@ export function BookingsClient({
           onSelectionChange={setSelectedBookings}
           onBulkAction={handleBulkAction}
           totalCount={filteredBookings.length}
+          visibleIds={filteredBookings.map((b) => b.id)}
         />
 
         {/* Filters bar */}
@@ -810,9 +881,16 @@ export function BookingsClient({
                     <TabsTrigger
                       key={value}
                       value={value}
-                      className="flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
+                      className="group flex-shrink-0 px-4 sm:px-3 py-3 sm:py-1.5 text-sm font-medium rounded-none sm:rounded-sm border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent sm:data-[state=active]:bg-primary data-[state=active]:text-primary sm:data-[state=active]:text-white transition-all duration-200 hover:text-primary sm:hover:text-white whitespace-nowrap"
                     >
-                      {label} ({count})
+                      <span className="inline-flex items-center gap-1.5">
+                        {label}
+                        <span
+                          className="inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-gray-100 px-1.5 text-[11px] font-semibold text-gray-600 group-data-[state=active]:bg-primary/10 group-data-[state=active]:text-primary sm:group-data-[state=active]:bg-white/20 sm:group-data-[state=active]:text-white"
+                        >
+                          {count}
+                        </span>
+                      </span>
                     </TabsTrigger>
                   ))}
                 </TabsList>
@@ -883,5 +961,58 @@ export function BookingsClient({
         />
       </div>
     </RoleGuard>
+  );
+}
+
+/** Compact snapshot tile for the bookings page header strip. Mobile-first; brand accent for the
+ *  revenue tile so the money metric stands out. */
+type StatTileTone = "slate" | "amber" | "violet" | "brand";
+
+function StatTile({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  tone: StatTileTone;
+}) {
+  const palette: Record<StatTileTone, { wrap: string; iconWrap: string; label: string }> = {
+    slate: {
+      wrap: "border-gray-200 bg-white",
+      iconWrap: "bg-gray-100 text-gray-600",
+      label: "text-gray-500",
+    },
+    amber: {
+      wrap: "border-amber-200 bg-amber-50/70",
+      iconWrap: "bg-amber-100 text-amber-700",
+      label: "text-amber-700",
+    },
+    violet: {
+      wrap: "border-violet-200 bg-violet-50/70",
+      iconWrap: "bg-violet-100 text-violet-700",
+      label: "text-violet-700",
+    },
+    brand: {
+      wrap: "border-[#FF0077]/20 bg-gradient-to-br from-[#FF0077]/5 to-[#FF0077]/[0.02]",
+      iconWrap: "bg-[#FF0077]/10 text-[#FF0077]",
+      label: "text-[#FF0077]",
+    },
+  };
+  const c = palette[tone];
+  return (
+    <div className={`rounded-xl border ${c.wrap} p-3 sm:p-4 shadow-sm`}>
+      <div className="flex items-center gap-2 sm:gap-3">
+        <div className={`flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-lg ${c.iconWrap}`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className={`text-[11px] sm:text-xs font-medium uppercase tracking-wide ${c.label}`}>{label}</div>
+          <div className="text-base sm:text-lg font-semibold text-gray-900 truncate">{value}</div>
+        </div>
+      </div>
+    </div>
   );
 }

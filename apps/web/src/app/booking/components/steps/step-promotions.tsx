@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Ticket, Gift, Star, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +33,8 @@ export default function StepPromotions({
   const [isValidating, setIsValidating] = useState(false);
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
   const [redemptionRate, setRedemptionRate] = useState(10);
+  const [minRedemptionPoints, setMinRedemptionPoints] = useState(0);
+  const [maxRedemptionPercentage, setMaxRedemptionPercentage] = useState(100);
   // NOTE: Platform fee settings are intentionally NOT fetched here.
   // booking-flow.tsx is the single authoritative place that calculates taxAmount,
   // serviceFeeAmount, and serviceFeePercentage and stores them in bookingState.
@@ -54,6 +56,30 @@ export default function StepPromotions({
       (bookingState.promotions.membershipDiscount || 0)
   );
 
+  /** Subtotal before loyalty — must match server `validate-booking` / `calculate-redemption` cap basis (after coupon, gift, membership). */
+  const bookingSubtotalForLoyalty = useMemo(
+    () =>
+      Math.max(
+        0,
+        cartTotal -
+          (bookingState.promotions.couponDiscount || 0) -
+          (bookingState.promotions.giftCardAmount || 0) -
+          (bookingState.promotions.membershipDiscount || 0),
+      ),
+    [
+      cartTotal,
+      bookingState.promotions.couponDiscount,
+      bookingState.promotions.giftCardAmount,
+      bookingState.promotions.membershipDiscount,
+    ],
+  );
+
+  const maxRedeemablePointsOnBooking = useMemo(() => {
+    if (bookingSubtotalForLoyalty <= 0) return 0;
+    const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
+    return Math.floor(maxDiscount * redemptionRate);
+  }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate]);
+
 
 
   // Load loyalty balance
@@ -65,12 +91,23 @@ export default function StepPromotions({
 
   const loadLoyaltyBalance = async () => {
     try {
-      const response = await fetcher.get<{ data: { balance: number; redemption_rate?: number } }>(
-        "/api/me/loyalty/balance"
-      );
+      const response = await fetcher.get<{
+        data: {
+          balance: number;
+          redemption_rate?: number;
+          min_redemption_points?: number;
+          max_redemption_percentage?: number;
+        };
+      }>("/api/me/loyalty/balance");
       setLoyaltyBalance(response.data?.balance || 0);
       if (response.data?.redemption_rate) {
         setRedemptionRate(response.data.redemption_rate);
+      }
+      if (response.data?.min_redemption_points != null) {
+        setMinRedemptionPoints(Number(response.data.min_redemption_points) || 0);
+      }
+      if (response.data?.max_redemption_percentage != null) {
+        setMaxRedemptionPercentage(Number(response.data.max_redemption_percentage) ?? 100);
       }
     } catch (error) {
       // Silently handle 404 - loyalty balance endpoint may not exist yet
@@ -159,16 +196,60 @@ export default function StepPromotions({
     }
   };
 
-  const handleLoyaltyUse = (points: number) => {
-    const discount = Math.round((points / redemptionRate) * 100) / 100;
-    updateBookingState({
-      promotions: {
-        ...bookingState.promotions,
-        loyaltyPointsUsed: points,
-        loyaltyDiscount: discount,
-      },
-    });
-    setLoyaltyPoints(points);
+  const handleLoyaltyApply = async () => {
+    if (loyaltyPoints <= 0) return;
+    setIsValidating(true);
+    try {
+      const res = await fetcher.post<{
+        data: {
+          valid: boolean;
+          errors?: string[];
+          calculation: {
+            points_requested: number;
+            points_to_redeem: number;
+            discount_amount: number;
+            max_redeemable_points: number;
+          };
+          config?: { min_redemption_points: number; redemption_rate: number };
+        };
+      }>("/api/me/loyalty-points/calculate-redemption", {
+        points_to_redeem: loyaltyPoints,
+        booking_subtotal: bookingSubtotalForLoyalty,
+      });
+      const payload = res.data;
+      if (!payload?.calculation) {
+        toast.error("Could not calculate loyalty redemption");
+        return;
+      }
+      const { points_to_redeem, discount_amount } = payload.calculation;
+      const minPts = payload.config?.min_redemption_points ?? minRedemptionPoints;
+      if (points_to_redeem < minPts) {
+        toast.error(
+          payload.errors?.filter(Boolean).join(" ") ||
+            `You need at least ${minPts} redeemable points on this booking (after % cap).`,
+        );
+        return;
+      }
+      updateBookingState({
+        promotions: {
+          ...bookingState.promotions,
+          loyaltyPointsUsed: points_to_redeem,
+          loyaltyDiscount: Math.round(discount_amount * 100) / 100,
+        },
+      });
+      setLoyaltyPoints(points_to_redeem);
+      if (!payload.valid && payload.errors?.length) {
+        toast.info(payload.errors.join(" "));
+      } else {
+        toast.success("Loyalty points applied");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof FetchError ? error.message : "Failed to apply loyalty points",
+      );
+    } finally {
+      setIsValidating(false);
+    }
   };
 
   const removePromotion = (type: "coupon" | "giftCard" | "loyalty") => {
@@ -303,20 +384,44 @@ export default function StepPromotions({
       </div>
 
       {/* Loyalty Points */}
-      {user && loyaltyBalance > 0 && (
+      {/* §Release-audit 2026-04: previously hidden when loyaltyBalance === 0,
+       * which meant signed-in users with no points never saw the loyalty
+       * section — including the educational copy explaining that bookings
+       * earn points. Always render for logged-in users; show an empty-state
+       * card when balance is 0. */}
+      {user && (
         <div className="space-y-3">
           <Label className="text-sm font-semibold text-gray-900 flex items-center gap-2">
             <Star className="w-4 h-4" />
             Loyalty Points
           </Label>
+          {loyaltyBalance <= 0 ? (
+            <div className="p-4 bg-blue-50/60 border border-blue-200/70 rounded-lg">
+              <p className="text-sm font-medium text-blue-900 mb-1">
+                You don&apos;t have any loyalty points yet
+              </p>
+              <p className="text-xs text-blue-800/90">
+                You&apos;ll earn points every time you complete a booking. Use them
+                on a future booking to get money off.
+              </p>
+            </div>
+          ) : (
           <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm font-medium text-blue-900 mb-2">
               You have {loyaltyBalance.toLocaleString()} points
             </p>
-            <p className="text-xs text-blue-700 mb-3">
+            <p className="text-xs text-blue-700 mb-1">
               Value: {formatCurrency(loyaltyBalance / redemptionRate, tenantCurrency)} ({redemptionRate} points = 1{" "}
               {bookingState.selectedServices[0]?.currency || tenantCurrency})
             </p>
+            {bookingSubtotalForLoyalty > 0 && (
+              <p className="text-xs text-blue-800/90 mb-3">
+                Max redeemable on this booking: {Math.min(maxRedeemablePointsOnBooking, loyaltyBalance).toLocaleString()}{" "}
+                points
+                {maxRedemptionPercentage < 100 ? ` (up to ${maxRedemptionPercentage}% of order subtotal)` : ""}
+                {minRedemptionPoints > 0 ? ` · Min ${minRedemptionPoints} points to redeem` : ""}
+              </p>
+            )}
             {bookingState.promotions.loyaltyPointsUsed ? (
               <div className="flex items-center justify-between">
                 <span className="text-sm text-blue-900">
@@ -334,22 +439,28 @@ export default function StepPromotions({
                 <Input
                   type="number"
                   value={loyaltyPoints || ""}
-                  onChange={(e) => setLoyaltyPoints(parseInt(e.target.value) || 0)}
+                  onChange={(e) => setLoyaltyPoints(parseInt(e.target.value, 10) || 0)}
                   placeholder="Enter points to use"
-                  max={loyaltyBalance}
+                  max={Math.min(loyaltyBalance, maxRedeemablePointsOnBooking || loyaltyBalance)}
                   min={0}
                   className="flex-1 touch-target"
                 />
                 <Button
-                  onClick={() => handleLoyaltyUse(loyaltyPoints)}
-                  disabled={loyaltyPoints <= 0 || loyaltyPoints > loyaltyBalance}
+                  onClick={() => void handleLoyaltyApply()}
+                  disabled={
+                    isValidating ||
+                    loyaltyPoints <= 0 ||
+                    loyaltyPoints > loyaltyBalance ||
+                    (maxRedeemablePointsOnBooking > 0 && loyaltyPoints > maxRedeemablePointsOnBooking)
+                  }
                   className="bg-primary hover:bg-primary-hover touch-target"
                 >
-                  Use
+                  {isValidating ? "..." : "Use"}
                 </Button>
               </div>
             )}
           </div>
+          )}
         </div>
       )}
 

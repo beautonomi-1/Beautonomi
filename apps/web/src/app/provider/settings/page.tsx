@@ -110,9 +110,21 @@ const settingsCategories: { id: string; title: string; description: string; item
   {
     id: "account",
     title: "Account",
-    description: "Account settings and preferences",
+    description: "Account settings, security, and privacy",
+    // §Provider-launch (audit 2026-04): the Account tab previously only
+    // surfaced Notification Preferences, which meant providers couldn't
+    // change their password, enable 2FA, review active sessions, or
+    // request a data export from inside the business portal. These links
+    // all point at the shared /account-settings routes that already exist
+    // for customers — they're user-scoped, not provider-scoped, so
+    // linking is the correct level of reuse.
     items: [
       { title: "Notification Preferences", description: "Manage how you receive notifications", href: "/provider/settings/notifications" },
+      { title: "Login & Security", description: "Change password, enable two-factor authentication, and review active sessions", href: "/account-settings/login-and-security" },
+      { title: "Personal Info", description: "Update your name, email, phone number, and profile photo", href: "/account-settings/personal-info" },
+      { title: "Privacy & Sharing", description: "Control what you share, cookies, marketing consent, and targeted advertising", href: "/account-settings/privacy-and-sharing" },
+      { title: "Data Rights & Export", description: "Request a copy of your data or delete your account (GDPR/POPIA)", href: "/account-settings/privacy-and-sharing#data-rights" },
+      { title: "Preferences", description: "Language, region, currency, and accessibility preferences", href: "/account-settings/preferences" },
     ],
   },
 ];

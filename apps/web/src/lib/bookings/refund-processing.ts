@@ -219,35 +219,12 @@ export async function processBookingRefund(
       console.warn("Failed to create refund booking event:", eventErr);
     }
 
-    const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
-      tenant_id: walletTenantId,
-      booking_id: bookingId,
-      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
-      transaction_type: "refund",
-      amount: -refundAmount,
-      fees: 0,
-      commission: 0,
-      net: -refundAmount,
-      description,
-      created_at: new Date().toISOString(),
-    });
-    if (financeErr) {
-      console.error(
-        "processBookingRefund: finance ledger insert failed after wallet credit:",
-        financeErr,
-      );
-      // Wallet was credited but ledger is missing — flag the refund for manual reconciliation
-      await supabaseAdmin
-        .from("booking_refunds")
-        .update({ notes: `Wallet credited but finance ledger write failed: ${financeErr.message}. Requires reconciliation.` })
-        .eq("id", (refundRecord as { id: string }).id);
-      return {
-        success: false,
-        refundId: (refundRecord as { id: string })?.id,
-        amount: refundAmount,
-        error: "Refund credited to wallet but finance ledger write failed. Flagged for reconciliation.",
-      };
-    }
+    // NOTE: finance_transactions ledger row is written by the AFTER INSERT/UPDATE
+    // trigger `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. Do NOT write a second row here — that was the B1
+    // double-count bug. If the trigger ever fails, the refund row itself will be
+    // missing the paired ledger entry, which is detectable via
+    // `v_ledger_reconciliation`.
 
     return {
       success: true,

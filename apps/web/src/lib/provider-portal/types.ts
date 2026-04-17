@@ -795,10 +795,14 @@ export interface AvailabilityBlockDisplay {
   end_time: string;
   team_member_id: string | null; // null = applies to all staff
   location_id: string | null; // null = all locations
-  block_type: "unavailable" | "break" | "maintenance";
+  block_type: "unavailable" | "break" | "maintenance" | "hold";
   reason?: string | null;
   /** Table `availability_blocks` vs synthesized staff time off / day off (matches public booking rules). */
-  _source: "availability_block" | "staff_unavailability";
+  _source: "availability_block" | "staff_unavailability" | "booking_hold";
+  /** Only set for `_source === "booking_hold"` — actual row id on booking_holds for refresh / cleanup. */
+  hold_id?: string | null;
+  /** Only set for booking holds — IANA timestamp when the hold expires (UTC ISO). */
+  hold_expires_at?: string | null;
 }
 
 export interface BlockedTimeType {

@@ -223,7 +223,7 @@ export function PayoutsPage() {
                   </button>
                 </>
               ) : null}
-              {st === "processing" || st === "approved" ? (
+              {st === "processing" ? (
                 <>
                   <button
                     type="button"
@@ -254,7 +254,7 @@ export function PayoutsPage() {
                   </button>
                 </>
               ) : null}
-              {!["pending", "processing", "approved"].includes(st) ? <span className="text-gray-400">—</span> : null}
+              {!["pending", "processing"].includes(st) ? <span className="text-gray-400">—</span> : null}
             </div>
           );
         },

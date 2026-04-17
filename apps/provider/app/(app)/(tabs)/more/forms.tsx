@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useApi, useApiPost, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -116,6 +117,7 @@ function getTypeIcon(type: FormType): keyof typeof Ionicons.glyphMap {
 
 export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
   useResponsive();
+  const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
   const [showFormModal, setShowFormModal] = useState(false);
   const [showFieldModal, setShowFieldModal] = useState(false);
@@ -525,6 +527,29 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
                         </Text>
                       </TouchableOpacity>
                     </View>
+                    {/*
+                      §Provider-launch (audit 2026-04): there is no
+                      aggregate form_responses endpoint today — submitted
+                      values are stored on each booking as
+                      provider_form_responses and surface in the booking
+                      detail screen. This CTA gives providers a direct
+                      path to find them without promising UI that doesn't
+                      exist yet.
+                    */}
+                    <TouchableOpacity
+                      style={{ marginTop: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: Colors.gray[50], paddingVertical: 10 }}
+                      onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        router.push("/(app)/(tabs)/more/bookings" as never);
+                      }}
+                      accessibilityLabel="View responses on bookings"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="reader-outline" size={14} color="#6b7280" />
+                      <Text style={{ marginLeft: 4, fontSize: 13, color: Colors.gray[600] }}>
+                        Responses appear on each booking
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 )}
               </View>
@@ -595,8 +620,19 @@ export default function FormsScreen({ embedded }: { embedded?: boolean } = {}) {
             </View>
           </View>
 
+          {/*
+            §Provider-launch (audit 2026-04): the is_required flag is how
+            a form template is "assigned" to every new booking — web uses
+            the same field.  Rename the label so providers understand
+            this is the assignment control rather than a per-field thing.
+          */}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], paddingHorizontal: 16, paddingVertical: 12 }}>
-            <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Required for all clients</Text>
+            <View style={{ flex: 1, paddingRight: 12 }}>
+              <Text style={{ fontSize: 16, color: Colors.gray[700] }}>Attach to every booking</Text>
+              <Text style={{ marginTop: 2, fontSize: 12, color: Colors.gray[500] }}>
+                Clients complete this form when booking any service.
+              </Text>
+            </View>
             <Switch
               value={form.is_required}
               onValueChange={(v) => updateForm("is_required", v)}

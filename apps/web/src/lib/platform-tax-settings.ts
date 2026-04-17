@@ -77,7 +77,25 @@ export async function getEffectiveTaxRate(
 export async function getPlatformDefaultTaxRate(): Promise<number> {
   try {
     const supabaseAdmin = await getSupabaseAdmin();
-    
+
+    // F17: tax_rates is the new source of truth. Fall back to platform_settings
+    // for environments where the migration hasn't been applied yet.
+    try {
+      const { data: tr } = await supabaseAdmin
+        .from("tax_rates")
+        .select("rate")
+        .eq("is_platform_default", true)
+        .is("effective_to", null)
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (tr && tr.rate !== null && tr.rate !== undefined) {
+        return Number(tr.rate);
+      }
+    } catch {
+      // table may not exist in older environments
+    }
+
     const { data: platformSettings } = await supabaseAdmin
       .from("platform_settings")
       .select("settings")
@@ -85,15 +103,14 @@ export async function getPlatformDefaultTaxRate(): Promise<number> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    
+
     if (platformSettings?.settings) {
       const defaultTaxRate = (platformSettings.settings as { taxes?: { default_tax_rate?: number } })?.taxes?.default_tax_rate;
-      // Return platform default if explicitly set (including 0%)
       if (defaultTaxRate !== undefined && defaultTaxRate !== null) {
         return Number(defaultTaxRate);
       }
     }
-    
+
     return DEFAULT_TAX_RATE;
   } catch (error) {
     console.warn("Failed to get platform default tax rate, using fallback:", error);

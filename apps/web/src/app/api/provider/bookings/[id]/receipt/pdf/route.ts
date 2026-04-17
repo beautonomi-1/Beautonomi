@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getProviderReceiptJson } from "../route";
+import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
 
 /**
  * GET /api/provider/bookings/[id]/receipt/pdf
@@ -8,6 +9,14 @@ import { GET as getProviderReceiptJson } from "../route";
  * Generate a real PDF receipt for a provider booking.
  * Calls the sibling receipt handler directly (same process) to avoid
  * internal HTTP fetch issues with auth/cookie forwarding in production.
+ *
+ * Two auth modes:
+ *   1. Normal `Authorization: Bearer` / cookie session (web).
+ *   2. Short-lived `?token=<hmac>` minted by
+ *      POST /api/provider/bookings/[id]/receipt/signed-url (native app).
+ *      When a valid token is present we synthesize a Bearer header from the
+ *      service role so the sibling JSON route's auth check passes, since the
+ *      token itself already binds the booking id + minting user.
  */
 export async function GET(
   request: NextRequest,
@@ -17,7 +26,44 @@ export async function GET(
     const resolvedParams = await params;
     const id = resolvedParams.id;
 
-    const upstream = await getProviderReceiptJson(request, { params: Promise.resolve(resolvedParams) });
+    // Check for a signed download token in the query string. When present
+    // and valid, rebuild the incoming request with a service-role Bearer
+    // header so `requireRoleInApi` inside the sibling route accepts the
+    // call. The token has already proven the caller is an authorized
+    // provider for this booking (mint route enforces that).
+    const token = new URL(request.url).searchParams.get("token");
+    let effectiveRequest: NextRequest = request;
+    if (token) {
+      const parsed = parseReceiptDownloadToken(token, {
+        kind: "provider_booking_receipt",
+        subjectId: id,
+      });
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "Signed download token is invalid or expired" },
+          { status: 401 },
+        );
+      }
+      const serviceKey =
+        process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ||
+        process.env.SERVICE_ROLE_KEY?.trim() ||
+        "";
+      if (!serviceKey) {
+        return NextResponse.json(
+          { error: "Server misconfigured: service role key missing" },
+          { status: 500 },
+        );
+      }
+      const rebuiltHeaders = new Headers(request.headers);
+      rebuiltHeaders.set("authorization", `Bearer ${serviceKey}`);
+      rebuiltHeaders.set("x-receipt-download-user-id", parsed.userId);
+      effectiveRequest = new NextRequest(request.url, {
+        method: request.method,
+        headers: rebuiltHeaders,
+      });
+    }
+
+    const upstream = await getProviderReceiptJson(effectiveRequest, { params: Promise.resolve(resolvedParams) });
 
     if (!upstream.ok) {
       const text = await upstream.text();

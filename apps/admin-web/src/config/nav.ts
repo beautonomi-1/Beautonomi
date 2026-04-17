@@ -261,6 +261,12 @@ export const NAV_GROUPS: NavGroupConfig[] = [
         icon: ShieldAlert,
         superadminOnly: true,
       },
+      {
+        title: "Tenant reset",
+        href: "/admin/control-plane/tenant-reset",
+        icon: ShieldAlert,
+        superadminOnly: true,
+      },
       { title: "Feature Flags", href: "/admin/settings/feature-flags", icon: ToggleLeft },
       { title: "Custom Fields", href: "/admin/custom-fields", icon: FileText },
       { title: "App Version", href: "/admin/settings/app-version", icon: Smartphone },

@@ -98,7 +98,12 @@ export async function POST(request: NextRequest) {
       isOnWhatsApp = result.exists;
       checkStatus = result.exists ? "verified" : "not_found";
     } catch {
-      checkStatus = "failed";
+      // §Release-audit 2026-04: previously wrote `"failed"`, but the
+      // `provider_leads.whatsapp_status` CHECK constraint (migration 480)
+      // only allows `unknown | verified | not_found | check_failed`. The
+      // mismatch caused the lead UPDATE below to fail with a CHECK
+      // violation and the verified-on-WhatsApp signal would never persist.
+      checkStatus = "check_failed";
     }
 
     await supabase.from("whatsapp_number_checks").upsert(

@@ -109,20 +109,30 @@ const PersonalInfo: React.FC = () => {
       try {
         setIsLoading(true);
         
-        // Load countries, platform settings, and verification status in parallel
-        const [countriesResponse, settingsResponse, verificationResponse] = await Promise.all([
-          fetch("/api/public/countries"),
-          fetch("/api/public/platform-settings"),
-          fetch("/api/me/verification"),
-        ]);
-        
+        /**
+         * §Release-audit 2026-04: previously this awaited 3 public requests
+         * BEFORE issuing the `/api/me/profile` request (a blocking
+         * sequential phase). On a cold load that's ~2× the round-trip
+         * before the first profile bytes appear. Run all four in parallel —
+         * profile parsing only depends on itself, and country lookup only
+         * needs the `countries` array which we resolve from its own
+         * promise.
+         */
+        const [countriesResponse, settingsResponse, verificationResponse, response] =
+          await Promise.all([
+            fetch("/api/public/countries"),
+            fetch("/api/public/platform-settings"),
+            fetch("/api/me/verification"),
+            fetch("/api/me/profile", { cache: "no-store" }),
+          ]);
+
         let loadedCountries: Country[] = [];
         if (countriesResponse.ok) {
           const countriesData = await countriesResponse.json();
           loadedCountries = countriesData.data || [];
           setCountries(loadedCountries);
         }
-        
+
         if (verificationResponse.ok) {
           const verData = await verificationResponse.json();
           setSumsubAvailable(verData?.data?.sumsub_available ?? false);
@@ -134,7 +144,7 @@ const PersonalInfo: React.FC = () => {
           const defaultCountryCodeFromSettings =
             settingsData.data?.default_country_code || getCachedDefaultPhoneDial() || "+27";
           setDefaultCountryCode(defaultCountryCodeFromSettings);
-          
+
           // Find country name from code
           const country = loadedCountries.find(c => c.phone_country_code === defaultCountryCodeFromSettings);
           if (country) {
@@ -147,9 +157,7 @@ const PersonalInfo: React.FC = () => {
             }
           }
         }
-        
-        // Load profile data (no-store to avoid stale cache)
-        const response = await fetch("/api/me/profile", { cache: "no-store" });
+
         if (response.ok) {
           const data = await response.json();
           const profile = data.data;

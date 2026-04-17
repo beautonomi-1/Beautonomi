@@ -7,7 +7,7 @@ import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } fro
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
 import { TimeBlockElement } from "./TimeBlockElement";
-import { toDateStr, timeToMinutes, resolveDayHours, type CalendarBlock } from "./utils";
+import { toDateStr, mergeTeamWorkingHoursForCalendar, type CalendarBlock } from "./utils";
 
 interface DateColumnProps {
   date: Date;
@@ -63,42 +63,10 @@ function DateColumnComponent({
   // weekend day as "Closed" when at least one staff member has a shift.
   // When no staff has explicit working hours, return undefined so GestureLayer
   // falls back to location hours (staff without hours follow location schedule).
-  const mergedStaffHours = useMemo(() => {
-    const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const anyStaffHasHours = teamMembers.some(m => m.working_hours && Object.keys(m.working_hours).length > 0);
-    if (!anyStaffHasHours) return undefined;
-
-    const merged: Record<string, { open: string; close: string; closed?: boolean }> = {};
-    for (const dayName of DAY_NAMES) {
-      let earliestMin = Infinity;
-      let latestMin = -1;
-      let anyOpen = false;
-      for (const m of teamMembers) {
-        if (!m.working_hours || Object.keys(m.working_hours).length === 0) {
-          // Staff without explicit hours follows location schedule — treat as open all day
-          // so they don't cause the merged hours to be closed
-          anyOpen = true;
-          earliestMin = Math.min(earliestMin, 0);
-          latestMin = Math.max(latestMin, 24 * 60);
-          continue;
-        }
-        const resolved = resolveDayHours(m.working_hours[dayName]);
-        if (!resolved || resolved.closed) continue;
-        anyOpen = true;
-        const openMin = timeToMinutes(resolved.open);
-        const closeMin = timeToMinutes(resolved.close);
-        if (openMin < earliestMin) earliestMin = openMin;
-        if (closeMin > latestMin) latestMin = closeMin;
-      }
-      if (anyOpen && earliestMin < Infinity && latestMin > -1) {
-        const padH = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-        merged[dayName] = { open: padH(earliestMin), close: padH(latestMin) };
-      } else {
-        merged[dayName] = { open: "00:00", close: "00:00", closed: true };
-      }
-    }
-    return Object.values(merged).some(v => !v.closed) ? merged : undefined;
-  }, [teamMembers]);
+  const mergedStaffHours = useMemo(
+    () => mergeTeamWorkingHoursForCalendar(teamMembers),
+    [teamMembers],
+  );
 
   const dateAppointments = useMemo(
     () => appointments.filter((a) => toDateStr(a.scheduled_date || "") === dateStr),

@@ -185,6 +185,10 @@ export default function ProviderBookingDetail() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  // P8 (audit 2026-04): tracks in-flight manual notification sends from
+  // the provider detail page (see `handleResendNotification` /
+  // `handleSendCancellationNotice`).
+  const [isNotifying, setIsNotifying] = useState(false);
   const [backupArrivalQr, setBackupArrivalQr] = useState<QRCodeData | null>(null);
   const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
   const [qrPasteJson, setQrPasteJson] = useState("");
@@ -868,6 +872,70 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  /**
+   * P8 (audit 2026-04): manually fire provider → customer notifications
+   * via the existing REST routes. These were previously only callable from
+   * the WaitingRoom server actions; the detail page had no UI.
+   */
+  const handleResendNotification = async (
+    type: "confirmation" | "reminder",
+  ) => {
+    setIsNotifying(true);
+    try {
+      const res = await fetcher.post(
+        `/api/provider/bookings/${bookingId}/notify-resend`,
+        { type },
+      );
+      const r = (res ?? {}) as { sent?: boolean; error?: string };
+      if (r.sent) {
+        toast.success(
+          type === "confirmation"
+            ? "Confirmation re-sent to customer."
+            : "Reminder sent to customer.",
+        );
+      } else {
+        toast.error(r.error || "Notification could not be sent.");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof FetchError
+          ? err.message
+          : "Failed to send notification",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const handleSendCancellationNotice = async () => {
+    setIsNotifying(true);
+    try {
+      // Infer the cancellation_type the server expects. `no_show` and
+      // `late_cancel` are meaningful for refund/fee accounting — we route
+      // the detail page's generic button to `normal` unless the booking is
+      // already marked `no_show`, matching the validator contract.
+      const cancellation_type = isNoShow ? "no_show" : "normal";
+      const res = await fetcher.post(
+        `/api/provider/bookings/${bookingId}/notify-cancellation`,
+        { cancellation_type },
+      );
+      const r = (res ?? {}) as { sent?: boolean; error?: string };
+      if (r.sent) {
+        toast.success("Cancellation notice sent to customer.");
+      } else {
+        toast.error(r.error || "Cancellation notice could not be sent.");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof FetchError
+          ? err.message
+          : "Failed to send cancellation notice",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const submitVerifyQrBody = async (body: {
     verification_code?: string;
     qr_data?: string;
@@ -939,6 +1007,8 @@ export default function ProviderBookingDetail() {
 
   const isActive = ["pending", "booked", "confirmed"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
+  const isCancelled = b.status === "cancelled";
+  const isNoShow = b.status === "no_show";
   const isAtHome = b.location_type === "at_home";
   const canStartJourney =
     isAtHome &&
@@ -1966,6 +2036,51 @@ export default function ProviderBookingDetail() {
               </Button>
             </>
           )}
+        </div>
+
+        {/* P8 (audit 2026-04): provider-initiated customer notifications.
+            These call the `/api/provider/bookings/[id]/notify-*` REST routes
+            directly so the detail page has UI parity with the WaitingRoom
+            server actions. */}
+        <div className="rounded-lg border p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">
+              Customer Notifications
+            </h3>
+            <p className="text-xs text-gray-600 mt-1">
+              Manually send confirmation, reminder or cancellation emails /
+              push to the customer.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              variant="outline"
+              disabled={isNotifying}
+              onClick={() => handleResendNotification("confirmation")}
+              className="flex-1 min-h-[44px]"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Resend Confirmation
+            </Button>
+            <Button
+              variant="outline"
+              disabled={isNotifying}
+              onClick={() => handleResendNotification("reminder")}
+              className="flex-1 min-h-[44px]"
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Send Reminder
+            </Button>
+            <Button
+              variant="outline"
+              disabled={isNotifying || !(isCancelled || isNoShow)}
+              onClick={() => handleSendCancellationNotice()}
+              className="flex-1 min-h-[44px]"
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Cancellation Notice
+            </Button>
+          </div>
         </div>
 
         {/* Notes */}

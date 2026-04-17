@@ -115,6 +115,28 @@ export const bookingDraftSchema = z.object({
       frequency: z.enum(["weekly", "biweekly", "monthly"]),
     })
     .optional(),
+  /**
+   * B11: booking-level custom field values keyed by `custom_field_definitions.name`
+   * (entity_type = 'booking'). Written to `custom_field_values` after the booking
+   * row exists, same shape as `/api/public/booking-holds/[id]/consume`.
+   */
+  custom_field_values: z
+    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .optional(),
+  /**
+   * B11: provider intake / consent / waiver responses keyed by
+   * `provider_forms.id` → `{ provider_form_fields.id: value }`. Persisted to
+   * `bookings.provider_form_responses` (JSONB) mirroring the consume flow.
+   */
+  provider_form_responses: z
+    .record(
+      z.string(),
+      z.record(
+        z.string(),
+        z.union([z.string(), z.number(), z.boolean(), z.null()]),
+      ),
+    )
+    .optional(),
 });
 
 export type PublicBookingValidatedBody = z.infer<typeof bookingDraftSchema>;

@@ -1309,6 +1309,36 @@ export async function PATCH(
             }
           }
 
+          // §Release-audit 2026-04: also refund any points the customer
+          // REDEEMED on this booking. Without this, points spent on a booking
+          // are lost when the provider cancels it (only earned points were
+          // being reversed before).
+          try {
+            const { data: redeemedRow } = await supabaseAdmin
+              .from("bookings")
+              .select("loyalty_points_used, loyalty_points_redeemed, customer_id")
+              .eq("id", id)
+              .maybeSingle();
+            const pointsToRefund = Number(
+              (redeemedRow as { loyalty_points_used?: number | null; loyalty_points_redeemed?: number | null } | null)?.loyalty_points_used ??
+                (redeemedRow as { loyalty_points_redeemed?: number | null } | null)?.loyalty_points_redeemed ??
+                0,
+            );
+            const refundCustomerId =
+              (redeemedRow as { customer_id?: string | null } | null)?.customer_id || customerId;
+            if (pointsToRefund > 0 && refundCustomerId) {
+              const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
+                bookingId: id,
+                customerId: refundCustomerId,
+                pointsRedeemed: pointsToRefund,
+                reason: "provider_cancel",
+              });
+            }
+          } catch (loyaltyRefundErr) {
+            console.error('[provider cancel] failed to refund redeemed loyalty points:', loyaltyRefundErr);
+          }
+
           // Send cancellation notification
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',

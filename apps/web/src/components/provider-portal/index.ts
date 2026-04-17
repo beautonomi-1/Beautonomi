@@ -3,7 +3,7 @@ export { CalendarMobileView } from "./CalendarMobileView";
 export { CalendarDesktopView } from "./CalendarDesktopView";
 export { CalendarDesktopWithDnd } from "./CalendarDesktopWithDnd";
 export { CalendarMobileWithDnd } from "./CalendarMobileWithDnd";
-export { CalendarGrid } from "./CalendarGrid";
+export { CalendarGrid } from "./calendar";
 export { CalendarList } from "./CalendarList";
 export { CalendarLegend } from "./CalendarLegend";
 export { CalendarColorSchemeDialog } from "./CalendarColorSchemeDialog";

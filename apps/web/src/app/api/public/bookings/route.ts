@@ -23,6 +23,14 @@ import { validateBooking } from "./_helpers/validate-booking";
 import { checkBookingCreationRateLimit, incrementBookingCreation } from "@/lib/rate-limit/booking-creation";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { NextResponse } from "next/server";
+import {
+  extractIdempotencyKey,
+  lookupIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/http/idempotency";
+import { verifyPublicBookingCaptcha } from "@/lib/security/captcha";
+
+const PUBLIC_BOOKINGS_ENDPOINT = "POST /api/public/bookings";
 
 /**
  * POST /api/public/bookings
@@ -54,6 +62,36 @@ export async function POST(request: NextRequest) {
           body = await request.json();
         } catch {
           return errorResponse("Invalid request body.", "VALIDATION_ERROR", 400);
+        }
+
+        // §15.4-24 (audit 2026-04): server-side idempotency. If the caller
+        // supplies a valid UUIDv4 `Idempotency-Key` header (or embeds one in
+        // the body), return the original response for repeat calls within
+        // 24h instead of double-creating a booking + charging the customer
+        // twice. Silent no-op when the caller omits the key.
+        const idempotencyKey = extractIdempotencyKey(request, body);
+        if (idempotencyKey) {
+          const cached = await lookupIdempotentResponse(
+            PUBLIC_BOOKINGS_ENDPOINT,
+            idempotencyKey,
+          );
+          if (cached) {
+            return cached.toResponse();
+          }
+        }
+
+        // §15.4-26 (audit 2026-04): CAPTCHA guard for anonymous POSTs. Only
+        // enforced when the TURNSTILE secret is configured AND the caller is
+        // not authenticated (logged-in customers have a separate abuse
+        // surface and rate limiting). Returns 400 when the token is missing
+        // or invalid.
+        const captchaResult = await verifyPublicBookingCaptcha(request, body);
+        if (captchaResult.ok === false) {
+          return errorResponse(
+            captchaResult.reason,
+            "CAPTCHA_REQUIRED",
+            captchaResult.status,
+          );
         }
 
         // 1. Parse & validate input (normalize synthetic staff ids for DB FKs)
@@ -273,6 +311,62 @@ export async function POST(request: NextRequest) {
 
         const { booking } = createResult;
 
+        // 4a.b. B11: persist provider intake/consent/waiver responses and
+        // booking-level custom field values now that the booking row exists.
+        // Mirrors the /api/public/booking-holds/[id]/consume flow so the
+        // canonical /booking flow and the /book/continue flow converge on the
+        // same persistence model. Best-effort: a failure here must not kill
+        // the booking (the row and its payment are already in motion).
+        try {
+          const providerFormResponses = validatedDraft.provider_form_responses;
+          if (
+            booking.id &&
+            providerFormResponses &&
+            Object.keys(providerFormResponses).length > 0
+          ) {
+            await supabaseAdmin
+              .from("bookings")
+              .update({ provider_form_responses: providerFormResponses })
+              .eq("id", booking.id);
+          }
+
+          const customFieldValues = validatedDraft.custom_field_values;
+          if (
+            booking.id &&
+            customFieldValues &&
+            Object.keys(customFieldValues).length > 0
+          ) {
+            const { data: fields } = await supabaseAdmin
+              .from("custom_fields")
+              .select("id, name")
+              .eq("entity_type", "booking")
+              .eq("is_active", true);
+            const nameToId = new Map(
+              ((fields as Array<{ id: string; name: string }> | null) ?? []).map(
+                (f) => [f.name, f.id],
+              ),
+            );
+            for (const [name, value] of Object.entries(customFieldValues)) {
+              const fieldId = nameToId.get(name);
+              if (!fieldId) continue;
+              await supabaseAdmin.from("custom_field_values").upsert(
+                {
+                  entity_type: "booking",
+                  entity_id: booking.id,
+                  custom_field_id: fieldId,
+                  value: value == null ? "" : String(value),
+                },
+                { onConflict: "entity_type,entity_id,custom_field_id" },
+              );
+            }
+          }
+        } catch (formsErr) {
+          console.error(
+            "[public/bookings] failed to persist forms/custom fields:",
+            formsErr,
+          );
+        }
+
         // 4b. Consume the hold so it no longer blocks availability
         if (validatedDraft.hold_id) {
           await supabaseAdmin
@@ -346,7 +440,7 @@ export async function POST(request: NextRequest) {
           }
 
           // 7. Return response — include price breakdown and display flags for confirmation screen
-          return successResponse({
+          const responseData = {
             booking_id: booking.id,
             booking_number: booking.booking_number,
             payment_url: paymentUrl,
@@ -359,7 +453,27 @@ export async function POST(request: NextRequest) {
               tax_rate: v.taxRate,
               tax_inclusive: v.taxIncluded,
             },
-          });
+          };
+
+          if (idempotencyKey) {
+            // §15.4-24: cache the successful response body so repeat calls
+            // with the same Idempotency-Key return the same booking_id +
+            // payment_url instead of creating duplicates. Match the shape
+            // used by successResponse({data, error:null}) so replay is
+            // transparent to clients.
+            await rememberIdempotentResponse(
+              PUBLIC_BOOKINGS_ENDPOINT,
+              idempotencyKey,
+              {
+                status: 200,
+                body: { data: responseData, error: null },
+                tenantId: (validatedDraft as { tenant_id?: string | null }).tenant_id ?? null,
+                userId: user?.id ?? null,
+              },
+            );
+          }
+
+          return successResponse(responseData);
         } catch (paymentOrPostError) {
           if (bookingIdPendingRelease) {
             await releaseBookingSlotAfterPaymentFailure(supabaseAdmin, bookingIdPendingRelease, user.id);

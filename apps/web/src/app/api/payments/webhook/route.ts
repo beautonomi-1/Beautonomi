@@ -14,6 +14,7 @@ import {
 } from "@/lib/payment/resolve-payment-webhook-tenant";
 import { withRouteMetrics } from "@/lib/monitoring/route-metrics";
 import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
+import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
 
 const MAX_WEBHOOK_BODY_BYTES = 1_000_000; // 1 MB safety cap
 
@@ -83,20 +84,94 @@ export async function POST(request: Request) {
     });
 
     if (eventId) {
-      const { error: insertError } = await supabase
-        .from("webhook_events")
-        .insert({
-          event_id: eventId,
-          source: "paystack",
-          event_type: eventType,
-          payload: event,
-          status: "processing",
-          processed_at: null,
-        })
-        .select("id, status")
-        .single();
+      const sanitizedPayload = sanitizeWebhookPayload(event);
+      // B3: use the try_acquire_webhook_event_lease RPC which (a) inserts the
+      // row if new, (b) reclaims a stale "processing" lease (>5 min) left
+      // behind by a dead worker, and (c) refuses when another live worker
+      // still holds the lease. This prevents money-movement events from
+      // being permanently stuck on `processing`.
+      const { data: leaseRow, error: leaseError } = await (supabase.rpc as any)(
+        "try_acquire_webhook_event_lease",
+        {
+          p_event_id: String(eventId),
+          p_source: "paystack",
+          p_event_type: eventType,
+          p_payload: sanitizedPayload,
+          p_lease_seconds: 300,
+        },
+      );
 
-      if (!insertError && paymentWebhookTenantId) {
+      if (leaseError) {
+        console.error("try_acquire_webhook_event_lease failed:", leaseError);
+        // Fall back to legacy insert so webhook processing still runs, but log
+        // loudly so operators notice the lease function is missing/broken.
+      }
+
+      type LeaseRow = {
+        acquired: boolean;
+        already_processed: boolean;
+        stale_lease_reclaimed: boolean;
+        status: string;
+      };
+      const lease: LeaseRow | null = Array.isArray(leaseRow)
+        ? ((leaseRow[0] ?? null) as LeaseRow | null)
+        : ((leaseRow as LeaseRow | null) ?? null);
+
+      if (lease) {
+        if (lease.already_processed) {
+          console.log(`Event ${eventId} already processed, skipping`);
+          return NextResponse.json({ received: true, duplicate: true });
+        }
+        if (!lease.acquired) {
+          console.log(
+            `Event ${eventId} is being processed by another live worker (lease held)`,
+          );
+          // Return 200 but flag so Paystack will retry later; the stale
+          // reclaim window (5 min) will let a future retry succeed if the
+          // holder dies.
+          return NextResponse.json({ received: true, processing: true });
+        }
+        if (lease.stale_lease_reclaimed) {
+          console.warn(
+            `Event ${eventId} lease was stale and has been reclaimed for re-processing`,
+          );
+        }
+      } else if (leaseError) {
+        // Legacy fallback path: best-effort insert, rely on unique violation.
+        const { error: insertError } = await supabase
+          .from("webhook_events")
+          .insert({
+            event_id: eventId,
+            source: "paystack",
+            event_type: eventType,
+            payload: sanitizedPayload,
+            status: "processing",
+            processed_at: null,
+          });
+        if (insertError) {
+          if (
+            insertError.code === "23505" ||
+            insertError.message?.includes("unique") ||
+            insertError.message?.includes("duplicate")
+          ) {
+            const { data: existingEvent } = await supabase
+              .from("webhook_events")
+              .select("id, status")
+              .eq("event_id", eventId)
+              .eq("source", "paystack")
+              .single();
+            if (existingEvent) {
+              if ((existingEvent as any).status === "processed") {
+                return NextResponse.json({ received: true, duplicate: true });
+              }
+              return NextResponse.json({ received: true, processing: true });
+            }
+          }
+          throw insertError;
+        }
+      }
+
+      if (paymentWebhookTenantId) {
         try {
           await tryRecordPaymentWebhookEvent(supabase, {
             tenantId: paymentWebhookTenantId,
@@ -106,33 +181,6 @@ export async function POST(request: Request) {
         } catch {
           /* payment_webhook_events optional until migration 334 applied */
         }
-      }
-
-      if (insertError) {
-        if (
-          insertError.code === "23505" ||
-          insertError.message?.includes("unique") ||
-          insertError.message?.includes("duplicate")
-        ) {
-          const { data: existingEvent } = await supabase
-            .from("webhook_events")
-            .select("id, status")
-            .eq("event_id", eventId)
-            .eq("source", "paystack")
-            .single();
-
-          if (existingEvent) {
-            if ((existingEvent as any).status === "processed") {
-              console.log(`Event ${eventId} already processed, skipping`);
-              return NextResponse.json({ received: true, duplicate: true });
-            } else if ((existingEvent as any).status === "processing") {
-              console.log(`Event ${eventId} is being processed by another instance`);
-              return NextResponse.json({ received: true, processing: true });
-            }
-          }
-        }
-
-        throw insertError;
       }
     }
 

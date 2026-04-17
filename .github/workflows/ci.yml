@@ -241,6 +241,49 @@ jobs:
       - name: Audit dependencies (high + critical)
         run: pnpm run audit:deps
 
+  secret-scan:
+    name: Secret Scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config: .gitleaks.toml
+
+  migration-hygiene:
+    name: Migration Hygiene
+    needs: install
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore node_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+            tooling/*/node_modules
+          key: modules-${{ hashFiles('pnpm-lock.yaml') }}
+
+      - name: Migration prefix + drift check
+        run: node tooling/audit/check-migrations.mjs
+
   test:
     name: Test
     needs: install

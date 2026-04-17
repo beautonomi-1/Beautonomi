@@ -31,10 +31,13 @@ import {
 } from "@/lib/supabase/auth-sms-otp";
 import { OtpDigitInput } from "@/components/ui/otp-digit-input";
 
+// §Customer-launch (audit 2026-04): "LOGIN REQUESTS" and "SHARED ACCESS" tabs
+// were placeholder-only ("This feature is coming soon.") and cluttered the
+// security page for launch. Hide them until the underlying features ship;
+// the TabsContent blocks are retained below so re-enabling is a one-line
+// change.
 const tabs = [
   { value: "step1", label: "LOGIN" },
-  { value: "step2", label: "LOGIN REQUESTS" },
-  { value: "step3", label: "SHARED ACCESS" },
 ];
 
 const LoginAccount = () => {
@@ -494,15 +497,11 @@ const LoginAccount = () => {
                 </p>
               </div>
 
-              {/* Social Accounts Section */}
-              <div
-                className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-              >
-                <h2 className="text-xl font-semibold tracking-tighter mb-4 text-gray-900">Social accounts</h2>
-                <p className="text-sm text-gray-600 font-light">
-                  Connect your social accounts for easier login. Coming soon.
-                </p>
-              </div>
+              {/*
+                §Customer-launch (audit 2026-04): "Social accounts" block was
+                a static "Coming soon" placeholder. Hidden until OAuth
+                linking is wired to /api/auth/identities (or similar).
+              */}
 
               {/* Account Deactivation Section */}
               <div

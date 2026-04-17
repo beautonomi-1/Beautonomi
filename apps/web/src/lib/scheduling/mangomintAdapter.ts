@@ -183,9 +183,23 @@ export function mapStatus(
   const currentStage = typeof statusOrAppointment === "string" ? undefined : (statusOrAppointment as any).current_stage;
   const locationType = typeof statusOrAppointment === "string" ? undefined : (statusOrAppointment as any).location_type;
 
+  // B7: explicit handling of the DB-side vocabulary the calendar previously
+  // fell through to CONFIRMED. These statuses are set by the checkout /
+  // waiting-room flows and must not be rendered as "Confirmed", otherwise
+  // provider staff cannot distinguish paid-and-arrived from
+  // pending-payment or checked-in-but-not-yet-in-service.
+  const statusStr = status as string;
+
+  if (statusStr === "pending_payment" || statusStr === "awaiting_payment") {
+    return AppointmentStatus.UNCONFIRMED;
+  }
+
+  if (statusStr === "waiting" || statusStr === "checked_in") {
+    return AppointmentStatus.WAITING;
+  }
+
   // In-salon: status is booked/confirmed and client has arrived → WAITING (client checked in, ready for service)
   // Note: API may return "confirmed" (database format) which maps to "booked"
-  const statusStr = status as string;
   if (
     (status === APPOINTMENT_STATUS.BOOKED || statusStr === "booked" || statusStr === "confirmed") &&
     currentStage === "client_arrived" &&
@@ -216,7 +230,12 @@ export function mapStatus(
     case "no_show":
       return AppointmentStatus.NO_SHOW;
     default:
-      return AppointmentStatus.CONFIRMED;
+      // B7: refuse to silently fall back to CONFIRMED. Log and treat unknown
+      // statuses as UNCONFIRMED so they are visually flagged for operators.
+      if (typeof window === "undefined") {
+        console.warn(`[mapStatus] unrecognised booking status "${statusStr}" — defaulting to UNCONFIRMED`);
+      }
+      return AppointmentStatus.UNCONFIRMED;
   }
 }
 

@@ -82,8 +82,11 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  let holdIdForRelease: string | null = null;
+  let adminSupabaseForRelease: Awaited<ReturnType<typeof getSupabaseAdmin>> | null = null;
   try {
     const { id: holdId } = await params;
+    holdIdForRelease = holdId;
 
     if (!holdId) {
       return handleApiError(
@@ -170,6 +173,7 @@ export async function POST(
     }
 
     const adminSupabase = getSupabaseAdmin();
+    adminSupabaseForRelease = adminSupabase;
 
     const { data: marketTenant } = await adminSupabase
       .from("tenants")
@@ -185,18 +189,73 @@ export async function POST(
       );
     }
 
-    const { data: hold, error: holdError } = await adminSupabase
-      .from("booking_holds")
-      .select("*")
-      .eq("id", holdId)
-      .single();
-
-    if (holdError || !hold) {
+    // B4: atomic claim. `claim_booking_hold_for_consume` flips hold_status
+    // from 'active' → 'consuming' in a single SQL round-trip, protecting
+    // against two parallel /consume calls both racing past the guard below.
+    const { data: claimedRow, error: claimError } = await (adminSupabase.rpc as any)(
+      "claim_booking_hold_for_consume",
+      { p_hold_id: holdId },
+    );
+    if (claimError) {
+      console.error("[booking-holds/consume] claim RPC failed", claimError);
       return handleApiError(
-        new Error("Hold not found"),
-        "Hold not found or expired",
-        "NOT_FOUND",
-        404
+        claimError,
+        "Unable to claim booking hold.",
+        "HOLD_CLAIM_ERROR",
+        500,
+      );
+    }
+
+    const hold = (claimedRow as any) || null;
+    if (!hold || !hold.id) {
+      // Could not claim — either the hold is missing, already consumed,
+      // expired, cancelled, or another worker is mid-consume.
+      const { data: currentHold } = await adminSupabase
+        .from("booking_holds")
+        .select("id, hold_status, expires_at")
+        .eq("id", holdId)
+        .maybeSingle();
+
+      if (!currentHold) {
+        return handleApiError(
+          new Error("Hold not found"),
+          "Hold not found or expired",
+          "NOT_FOUND",
+          404,
+        );
+      }
+
+      const status = (currentHold as { hold_status?: string }).hold_status;
+      const expiresAtRaw = (currentHold as { expires_at?: string }).expires_at;
+      if (status === "expired" || (expiresAtRaw && new Date(expiresAtRaw) < new Date())) {
+        return handleApiError(
+          new Error("Hold has expired"),
+          "Your hold has expired. Please select a new time.",
+          "HOLD_EXPIRED",
+          410,
+        );
+      }
+      if (status === "consumed") {
+        return handleApiError(
+          new Error("Hold already consumed"),
+          "This booking has already been completed.",
+          "HOLD_CONSUMED",
+          410,
+        );
+      }
+      if (status === "consuming") {
+        return handleApiError(
+          new Error("Hold is being consumed"),
+          "This booking is already being processed. Please wait a moment and retry.",
+          "HOLD_IN_FLIGHT",
+          409,
+        );
+      }
+      return handleApiError(
+        new Error("Hold is no longer active"),
+        "This slot is no longer available.",
+        "HOLD_INACTIVE",
+        410,
       );
     }
 
@@ -206,6 +265,8 @@ export async function POST(
       .eq("id", hold.provider_id)
       .maybeSingle();
     if (!holdProviderRow || (holdProviderRow as { tenant_id?: string }).tenant_id !== marketTenantId) {
+      // Release the consuming lease so the customer isn't stuck.
+      await (adminSupabase.rpc as any)("release_booking_hold_from_consume", { p_hold_id: holdId });
       return handleApiError(
         new Error("Hold not available on this site"),
         "This booking link is not valid here.",
@@ -214,31 +275,15 @@ export async function POST(
       );
     }
 
-    if (hold.hold_status !== "active") {
-      return handleApiError(
-        new Error("Hold is no longer active"),
-        hold.hold_status === "expired"
-          ? "Your hold has expired. Please select a new time."
-          : "This slot is no longer available.",
-        "HOLD_INACTIVE",
-        410
-      );
-    }
-
-    const expiresAt = new Date(hold.expires_at);
-    if (expiresAt < new Date()) {
-      await adminSupabase
-        .from("booking_holds")
-        .update({ hold_status: "expired" })
-        .eq("id", hold.id)
-        .eq("hold_status", "active");
-      return handleApiError(
-        new Error("Hold has expired"),
-        "Your hold has expired. Please select a new time.",
-        "HOLD_EXPIRED",
-        410
-      );
-    }
+    const releaseHold = async () => {
+      try {
+        await (adminSupabase.rpc as any)("release_booking_hold_from_consume", {
+          p_hold_id: holdId,
+        });
+      } catch (releaseErr) {
+        console.warn("[booking-holds/consume] failed to release hold", releaseErr);
+      }
+    };
 
     const bookingLimitCheck = await checkBookingLimit(hold.provider_id);
     if (!bookingLimitCheck.canProceed) {
@@ -247,6 +292,7 @@ export async function POST(
         internalReason: bookingLimitCheck.reason,
         planName: bookingLimitCheck.planName,
       });
+      await releaseHold();
       return handleApiError(
         new Error(`Booking limit: ${bookingLimitCheck.reason}`),
         publicMessage,
@@ -267,6 +313,7 @@ export async function POST(
     const fingerprintRequired = Boolean(storedFingerprint);
 
     if (!userOwnsHold && !(!fingerprintRequired && isGuestHold) && !fingerprintMatch) {
+      await releaseHold();
       return handleApiError(
         new Error("Hold does not belong to this session"),
         "This hold cannot be used. Please start a new booking.",
@@ -426,6 +473,10 @@ export async function POST(
         body: JSON.stringify(draft),
         signal: paymentForwardAbort.signal,
       });
+    } catch (fetchErr) {
+      clearTimeout(paymentForwardTimer);
+      await releaseHold();
+      throw fetchErr;
     } finally {
       clearTimeout(paymentForwardTimer);
     }
@@ -436,6 +487,7 @@ export async function POST(
       const errMsg =
         bookingData?.error?.message ||
         `Booking failed (${bookingRes.status})`;
+      await releaseHold();
       return handleApiError(
         new Error(errMsg),
         errMsg,
@@ -444,11 +496,12 @@ export async function POST(
       );
     }
 
-    // Mark hold as consumed
+    // Mark hold as consumed (transition from `consuming` → `consumed`).
     await adminSupabase
       .from("booking_holds")
       .update({
         hold_status: "consumed",
+        consuming_at: null,
         created_by_user_id: user.id,
         metadata: {
           ...((hold.metadata as Record<string, any>) || {}),
@@ -456,7 +509,8 @@ export async function POST(
           consumed_at: new Date().toISOString(),
         },
       })
-      .eq("id", holdId);
+      .eq("id", holdId)
+      .eq("hold_status", "consuming");
 
     // Save custom field values for the new booking (user session has access via RLS)
     const bookingId = bookingData?.data?.booking_id;
@@ -531,6 +585,18 @@ export async function POST(
       ...(recurring_subscription ? { recurring_subscription } : {}),
     });
   } catch (error) {
+    // Best-effort release of any `consuming` lease so the customer can retry
+    // without waiting for the expiry cron.
+    if (holdIdForRelease && adminSupabaseForRelease) {
+      try {
+        await (adminSupabaseForRelease.rpc as any)(
+          "release_booking_hold_from_consume",
+          { p_hold_id: holdIdForRelease },
+        );
+      } catch (releaseErr) {
+        console.warn("[booking-holds/consume] failed to release hold on error", releaseErr);
+      }
+    }
     return handleApiError(error, "Failed to complete booking");
   }
 }

@@ -22,6 +22,7 @@ import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import { BiometricGate } from "@/components/BiometricGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
 import {
   authFlowBreadcrumb,
@@ -89,6 +90,13 @@ export default function AppLayout() {
 
   return (
     <MaintenanceGate>
+    {/*
+      §Provider-launch (audit 2026-04): BiometricGate enforces the
+      "Require Face ID / fingerprint" toggle from Settings by actually
+      blocking the authenticated shell until the OS unlock flow
+      succeeds. See src/components/BiometricGate.tsx for details.
+    */}
+    <BiometricGate>
     <AccountStatusGuard>
       <ProviderProvider>
       <RoleGate>
@@ -117,6 +125,7 @@ export default function AppLayout() {
       </RoleGate>
       </ProviderProvider>
     </AccountStatusGuard>
+    </BiometricGate>
     </MaintenanceGate>
   );
 }

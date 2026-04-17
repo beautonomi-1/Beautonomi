@@ -346,7 +346,7 @@ export default function ReviewWriteScreen() {
                     {[1, 2, 3, 4, 5].map((r) => (
                       <TouchableOpacity
                         key={`${staff.id}-${r}`}
-                        onPress={() => setStaffRatings({ [staff.id]: r })}
+                        onPress={() => setStaffRatings((prev) => ({ ...prev, [staff.id]: r }))}
                         style={{ padding: 2 }}
                       >
                         <Ionicons name={selected >= r ? "star" : "star-outline"} size={24} color={selected >= r ? "#EAB308" : "#D1D5DB"} />

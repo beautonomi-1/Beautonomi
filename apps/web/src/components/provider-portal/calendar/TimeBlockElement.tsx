@@ -2,7 +2,7 @@
 
 import React, { memo } from "react";
 import { cn } from "@/lib/utils";
-import { Coffee, Ban, Calendar } from "lucide-react";
+import { Coffee, Ban, Calendar, Clock3 } from "lucide-react";
 import type { TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
 import { HOUR_HEIGHT } from "./constants";
 import {
@@ -11,6 +11,7 @@ import {
   getBlockLabel,
   isAvailabilityOverlay as checkIsAvailabilityOverlay,
   isStaffScheduleUnavailability,
+  isBookingHoldOverlay,
   type CalendarBlock,
 } from "./utils";
 
@@ -44,6 +45,7 @@ function TimeBlockElementComponent({
   const height = Math.max((durationMinutes / 60) * px, minH);
 
   const isAvailability = checkIsAvailabilityOverlay(block);
+  const isHold = isBookingHoldOverlay(block);
   const colors = getBlockColors(block, useMangomintMode);
   const label = getBlockLabel(block);
 
@@ -63,6 +65,11 @@ function TimeBlockElementComponent({
           minHeight: `${minH}px`,
           backgroundColor: colors.bg,
           borderLeft: `3px solid ${colors.border}`,
+          // B8: dashed outline for booking-hold ghost slots so they stand
+          // apart from staff time off / availability blocks.
+          ...(isHold
+            ? { outline: `1px dashed ${colors.border}`, outlineOffset: "-2px", opacity: 0.85 }
+            : null),
         }}
       >
         <span
@@ -86,15 +93,23 @@ function TimeBlockElementComponent({
         height: `${height}px`,
         minHeight: `${minH}px`,
         backgroundColor: colors.bg,
-        backgroundImage: useMangomintMode
-          ? undefined
-          : "repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 6px)",
+        backgroundImage: isHold
+          ? "repeating-linear-gradient(135deg, transparent, transparent 4px, rgba(245,158,11,0.18) 4px, rgba(245,158,11,0.18) 8px)"
+          : useMangomintMode
+            ? undefined
+            : "repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 6px)",
         borderLeft: `3px solid ${colors.border}`,
+        ...(isHold
+          ? { outline: `1px dashed ${colors.border}`, outlineOffset: "-2px", opacity: 0.9 }
+          : null),
       }}
       onClick={() => !isAvailability && onTimeBlockClick?.(block as TimeBlock)}
+      title={isHold ? "Active booking hold (client is checking out)" : undefined}
     >
       <div className="flex items-center gap-1">
-        {isStaffScheduleUnavailability(block) ? (
+        {isHold ? (
+          <Clock3 className="w-3 h-3 shrink-0" style={{ color: colors.text }} />
+        ) : isStaffScheduleUnavailability(block) ? (
           <Calendar className="w-3 h-3 shrink-0" style={{ color: colors.text }} />
         ) : isBreakOrLunch ? (
           <Coffee className="w-3 h-3 shrink-0" style={{ color: colors.text }} />

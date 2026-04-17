@@ -77,6 +77,60 @@ interface Lead {
   assigned_to?: string | null;
   matched_provider_id?: string | null;
   provider_lead_categories?: LeadCategory[] | unknown;
+  /** §Release-audit 2026-04: Wasender check status, surfaced as a badge. */
+  whatsapp_status?: "unknown" | "verified" | "not_found" | "check_failed" | null;
+  whatsapp_checked_at?: string | null;
+}
+
+/**
+ * §Release-audit 2026-04: tiny self-contained chip so the operator can see at
+ * a glance whether the lead's phone number has been verified to be on
+ * WhatsApp (Wasender reachability check). Previously this signal existed in
+ * the DB column `provider_leads.whatsapp_status` and the API already returned
+ * it, but the inbox UI never surfaced it.
+ */
+function WhatsAppStatusChip({ status, compact = false }: { status?: Lead["whatsapp_status"]; compact?: boolean }) {
+  const s = status || "unknown";
+  const config: Record<string, { label: string; bg: string; fg: string; dot: string; title: string }> = {
+    verified: {
+      label: compact ? "WA ✓" : "WhatsApp verified",
+      bg: "bg-emerald-100",
+      fg: "text-emerald-700",
+      dot: "bg-emerald-500",
+      title: "Verified active on WhatsApp",
+    },
+    not_found: {
+      label: compact ? "No WA" : "Not on WhatsApp",
+      bg: "bg-amber-50",
+      fg: "text-amber-700",
+      dot: "bg-amber-400",
+      title: "Number is not on WhatsApp",
+    },
+    check_failed: {
+      label: compact ? "WA ?" : "Check failed",
+      bg: "bg-rose-50",
+      fg: "text-rose-700",
+      dot: "bg-rose-400",
+      title: "WhatsApp check failed — try again",
+    },
+    unknown: {
+      label: compact ? "WA ·" : "Not checked",
+      bg: "bg-zinc-100",
+      fg: "text-zinc-600",
+      dot: "bg-zinc-400",
+      title: "WhatsApp reachability not checked yet",
+    },
+  };
+  const c = config[s] || config.unknown;
+  return (
+    <span
+      title={c.title}
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${c.bg} ${c.fg}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  );
 }
 
 function asLeadTagList(raw: unknown): string[] {
@@ -746,7 +800,12 @@ function LeadTable({ rows, selectedLeadId, selectedIds, sortBy, sortDir, onSelec
                       {name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-gray-900">{name}</p>
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <p className="truncate text-sm font-medium text-gray-900">{name}</p>
+                        {lead.phone_e164 && (
+                          <WhatsAppStatusChip status={lead.whatsapp_status} compact />
+                        )}
+                      </div>
                       {lead.email && <p className="truncate text-xs text-gray-400">{lead.email}</p>}
                     </div>
                   </div>
@@ -878,7 +937,13 @@ function LeadCardGrid({ rows, selectedLeadId, onSelectLead }: { rows: Lead[]; se
               </div>
               <div className="mt-3 space-y-1 text-xs text-gray-500">
                 {lead.email && <div className="flex items-center gap-1.5 truncate"><Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.email}</div>}
-                {lead.phone_e164 && <div className="flex items-center gap-1.5"><Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.phone_e164}</div>}
+                {lead.phone_e164 && (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />
+                    <span>{lead.phone_e164}</span>
+                    <WhatsAppStatusChip status={lead.whatsapp_status} compact />
+                  </div>
+                )}
                 {lead.suggested_location_text && <div className="flex items-center gap-1.5 truncate"><MapPin className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.suggested_location_text}</div>}
               </div>
               {cats.length > 0 && (
@@ -1102,6 +1167,16 @@ function DetailPanel({ lead, activities, isLoading, noteText, setNoteText, onAdd
             {lead.business_name && <InfoRow icon={User} label="Business Name" value={lead.business_name} />}
             <InfoRow icon={Mail} label="Email" value={lead.email} href={lead.email ? `mailto:${lead.email}` : undefined} />
             <InfoRow icon={Phone} label="Phone" value={lead.phone_e164} href={lead.phone_e164 ? `tel:${lead.phone_e164}` : undefined} />
+            {lead.phone_e164 && (
+              <div className="ml-7 -mt-1">
+                <WhatsAppStatusChip status={lead.whatsapp_status} />
+                {lead.whatsapp_checked_at && (
+                  <span className="ml-2 text-[11px] text-gray-400">
+                    checked {new Date(lead.whatsapp_checked_at).toLocaleDateString()}
+                  </span>
+                )}
+              </div>
+            )}
             <InfoRow icon={MapPin} label="Location" value={lead.suggested_location_text} />
             <InfoRow icon={Calendar} label="Created" value={new Date(lead.created_at).toLocaleString()} />
             {lead.assigned_to && <InfoRow icon={UserPlus} label="Assigned to" value={lead.assigned_to} />}

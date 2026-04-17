@@ -7,6 +7,8 @@ import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancella
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -155,10 +157,20 @@ export async function POST(request: NextRequest) {
       totalDuration += dur + buf;
     });
 
-    // Load availability constraints for new date.
-    // Pass publicCalendarParity so staff_days_off / staff_time_off / availability_blocks
-    // block the same windows here that customers see in the booking flow.
-    const newDate = newDatetime.toISOString().split('T')[0];
+    // Resolve provider timezone so the new slot is validated in the provider's
+    // business clock, not Node's local time or UTC.
+    const { data: portalProviderRow } = await supabase
+      .from('providers')
+      .select('timezone')
+      .eq('id', booking.provider_id)
+      .maybeSingle();
+    const portalProviderTz =
+      ((portalProviderRow as { timezone?: string | null } | null)?.timezone?.trim() ||
+        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+
+    const newDate = formatInTimeZone(newDatetime, portalProviderTz, "yyyy-MM-dd");
+    const requestedTime = formatInTimeZone(newDatetime, portalProviderTz, "HH:mm");
+
     const constraints = await loadAvailabilityConstraints(
       supabase,
       staffId,
@@ -176,7 +188,6 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    // Check if new slot is available
     const slots = calculateAvailableSlots(
       constraints,
       totalDuration,
@@ -187,12 +198,7 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    const pad2 = (n: number) => String(n).padStart(2, "0");
-    const requestedTime = `${pad2(newDatetime.getUTCHours())}:${pad2(newDatetime.getUTCMinutes())}`;
-    const offsetMs = newDatetime.getTimezoneOffset() * 60000;
-    const localDt = new Date(newDatetime.getTime() - offsetMs);
-    const requestedTimeLocal = `${pad2(localDt.getUTCHours())}:${pad2(localDt.getUTCMinutes())}`;
-    const isAvailable = slots.some((slot) => (slot.time === requestedTime || slot.time === requestedTimeLocal) && slot.available);
+    const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
 
     if (!isAvailable) {
       return handleApiError(
@@ -201,6 +207,32 @@ export async function POST(request: NextRequest) {
         "SLOT_UNAVAILABLE",
         409
       );
+    }
+
+    // B5: DB-level lock against cross-booking contention on (staff, slot).
+    try {
+      const { data: conflictRow, error: conflictErr } = await (
+        adminSupabase.rpc as any
+      )("check_reschedule_slot_conflict", {
+        p_booking_id: validation.bookingId,
+        p_staff_id: staffId,
+        p_provider_id: booking.provider_id,
+        p_new_start: newDatetime.toISOString(),
+        p_total_minutes: totalDuration,
+      });
+      if (!conflictErr) {
+        const c = Array.isArray(conflictRow) ? conflictRow[0] : conflictRow;
+        if (c && (c as { conflict?: boolean }).conflict) {
+          return handleApiError(
+            new Error("Slot locked by concurrent booking"),
+            "That time just became unavailable. Please pick another slot.",
+            "SLOT_CONTENDED",
+            409,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[portal reschedule] slot conflict RPC missing", err);
     }
 
     // Optimistic lock: read current version, then update with eq('version', ...) to

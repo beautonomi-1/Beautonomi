@@ -196,6 +196,9 @@ export const CpAuditLogPage = lazy(() =>
 export const CompliancePurgePage = lazy(() =>
   import("@/routes/control-plane/CompliancePurgePage").then((m) => ({ default: m.CompliancePurgePage }))
 );
+export const TenantResetPage = lazy(() =>
+  import("@/routes/control-plane/TenantResetPage").then((m) => ({ default: m.TenantResetPage }))
+);
 export const CpMaintenancePage = lazy(() =>
   import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpMaintenancePage }))
 );

@@ -146,7 +146,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Account and notifications",
     items: [
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
-      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/notification-preferences" },
+      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
       { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
       { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
       { title: "Change password", description: "Update your account password", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-change-password" },
@@ -192,6 +192,15 @@ export default function SettingsAccountHubScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (item.action === "signOut") {
         handleSignOut();
+        return;
+      }
+      // §Provider-launch (audit 2026-04): the dynamically-injected
+      // "Upgrade to Salon" row inside the `appointment-activity` category
+      // (isUpgrade=true) has no mobileRoute, which previously made the
+      // tap a no-op. Route upgrade rows to the native upgrade screen so
+      // freelancers can actually reach it from either entry point.
+      if (item.isUpgrade) {
+        router.push("/(app)/(tabs)/more/upgrade-info" as never);
         return;
       }
       if (item.mobileRoute) {

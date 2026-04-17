@@ -9,6 +9,7 @@ export const TERMINAL_BOOKING_STATUSES: readonly BookingStatus[] = [
 
 const ALL_BOOKING_STATUSES: readonly BookingStatus[] = [
   "pending",
+  "pending_payment",
   "confirmed",
   "in_progress",
   "completed",
@@ -21,12 +22,19 @@ const ALL_BOOKING_STATUSES: readonly BookingStatus[] = [
 /**
  * Allowed booking status transitions for provider PATCH (strict lifecycle).
  * Keys and values are database `bookings.status` values.
+ *
+ * `pending_payment` (P3 audit 2026-04) is a customer-payment lifecycle state:
+ * the payment webhook / cron is what flips it to `confirmed` or `cancelled`.
+ * A provider should NOT be able to manually force-advance a booking whose
+ * payment hasn't cleared — but cancelling a stuck-in-pending_payment booking
+ * is a legitimate cleanup path, so it remains allowed.
  */
 export const PROVIDER_BOOKING_STATUS_TRANSITIONS: Record<
   BookingStatus,
   readonly BookingStatus[]
 > = {
   pending: ["confirmed", "cancelled"],
+  pending_payment: ["cancelled"],
   confirmed: ["in_progress", "cancelled", "no_show"],
   in_progress: ["completed", "cancelled"],
   completed: [],

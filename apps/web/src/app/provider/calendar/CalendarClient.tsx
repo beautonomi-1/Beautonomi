@@ -796,7 +796,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         
         const { fromIso, toIso } = dateRangeBoundsUtc(dateFrom, dateTo, businessTz);
 
-        const [apptsResponse, membersResult, blocks, availBlocks, staffUnavail] = await Promise.all([
+        const [
+          apptsResponse,
+          membersResult,
+          blocks,
+          availBlocks,
+          staffUnavail,
+          bookingHolds,
+        ] = await Promise.all([
           providerApi.listAppointments(
             {
               date_from: dateFrom,
@@ -818,6 +825,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             date_from: dateFrom,
             date_to: dateTo,
           }),
+          providerApi.listProviderBookingHolds({
+            date_from: dateFrom,
+            date_to: dateTo,
+          }),
         ]);
 
         const members = membersResult;
@@ -831,7 +842,22 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           selectedTeamMember !== "all"
             ? staffUnavail.filter((b) => b.team_member_id === selectedTeamMember)
             : staffUnavail;
-        const mergedAvailOverlay = [...filteredStaffUnavail, ...sanitizedAvailBlocks];
+        // B8: filter active booking_holds the same way (team / location).
+        const filteredBookingHolds = bookingHolds.filter((b) => {
+          if (selectedTeamMember !== "all" && b.team_member_id && b.team_member_id !== selectedTeamMember) {
+            return false;
+          }
+          if (selectedLocationId && b.location_id && b.location_id !== selectedLocationId) {
+            return false;
+          }
+          return true;
+        });
+        const sanitizedBookingHolds = sanitizeAvailabilityBlocks(filteredBookingHolds);
+        const mergedAvailOverlay = [
+          ...filteredStaffUnavail,
+          ...sanitizedAvailBlocks,
+          ...sanitizedBookingHolds,
+        ];
 
         const expandedBlocks = expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo);
 
@@ -1064,10 +1090,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }, 500);
   }, [forceRefresh]);
 
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_created', debouncedRealtimeRefresh);
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_cancelled', debouncedRealtimeRefresh);
+  // §Provider-launch (audit 2026-04): each call to `useSupabaseRealtime`
+  // with a booking_* event subscribes to the SAME underlying `bookings`
+  // channel (see subscribeToBookings). Registering four of them created
+  // four duplicate channels that all fire the same handler, wasting
+  // Realtime quota and causing 4x debounced refreshes per change. One
+  // subscription is sufficient because the handler already refreshes the
+  // whole calendar when any booking row changes.
   useSupabaseRealtime(supabaseClient, provider?.id, 'booking_updated', debouncedRealtimeRefresh);
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_services_changed', debouncedRealtimeRefresh);
 
   // Initial load - wait for provider data (skip blocking spinner when RSC hydrated cache)
   useEffect(() => {
@@ -1582,6 +1612,33 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   return (
     <div className="bg-gray-50 sm:mx-0 sm:mt-0 max-w-full flex flex-col md:h-full md:overflow-x-hidden">
+      {/*
+        §Provider-launch (audit 2026-04): if a background refresh fails
+        while the calendar is already populated, previously `calendarError`
+        was set but never surfaced (the blocking error UI only fires when
+        teamMembers is empty). We now show a dismissible inline banner so
+        the provider knows the grid may be stale and can retry without
+        losing their place.
+      */}
+      {calendarError && teamMembers.length > 0 && (
+        <div
+          role="alert"
+          className="mx-3 mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex-1">
+            <span className="font-medium">Calendar couldn&apos;t refresh.</span>{" "}
+            <span className="text-amber-800">{calendarError}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => loadData(true)}>
+              Retry
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCalendarError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
       {calendarViewportMd === null && (
         <div
           className="flex flex-1 min-h-[50vh] md:min-h-[min(100vh,720px)] w-full items-center justify-center"
@@ -1592,7 +1649,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         </div>
       )}
       {calendarViewportMd === true && (
-      <div className="flex flex-col w-full max-w-full overflow-hidden flex-1 min-h-0">
+      <div className="flex flex-col w-full max-w-full overflow-hidden flex-1 min-h-0 relative">
+        {/*
+          §Provider-launch (audit 2026-04): the "Refreshing..." affordance
+          lived only inside the mobile layout, so desktop providers saw no
+          feedback during background revalidations. Mirror it here in the
+          top-right overlay so both surfaces communicate the stale state.
+        */}
+        {isRefreshing && (
+          <div className="absolute top-3 right-3 z-40 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-1.5 flex items-center gap-2 border border-gray-200 pointer-events-none">
+            <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin" />
+            <span className="text-xs text-gray-600">Refreshing…</span>
+          </div>
+        )}
         {/* Desktop Header - Mangomint Style */}
         <div className="bg-gradient-to-r from-[#1a1f3c] to-[#252a4a] sticky top-0 z-20 px-3 lg:px-6 py-3 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 lg:gap-4 min-w-max">

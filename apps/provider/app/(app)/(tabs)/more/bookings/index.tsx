@@ -80,22 +80,51 @@ const DATE_RANGE_OPTIONS: { label: string; value: DateRange }[] = [
 const STATUS_OPTIONS = [
   { label: "All", value: "" },
   { label: "Pending", value: "pending" },
+  { label: "Awaiting payment", value: "pending_payment" },
   { label: "Confirmed", value: "confirmed" },
+  { label: "Waiting", value: "waiting" },
+  { label: "Checked in", value: "checked_in" },
   { label: "In progress", value: "in_progress" },
   { label: "Completed", value: "completed" },
   { label: "Cancelled", value: "cancelled" },
   { label: "No show", value: "no_show" },
 ];
 
+// §Provider-launch (audit 2026-04): colour chips cover the full DB
+// lifecycle including pending_payment, waiting and checked_in so the
+// provider can distinguish them in the list at a glance.
 const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
-  confirmed:   { bg: "#dcfce7", text: "#166534" },
-  completed:   { bg: "#f3f4f6", text: "#374151" },
-  cancelled:   { bg: "#fee2e2", text: "#991b1b" },
-  no_show:     { bg: "#fee2e2", text: "#991b1b" },
-  pending:     { bg: "#fef3c7", text: "#92400e" },
-  in_progress: { bg: "#dbeafe", text: "#1e40af" },
-  booked:      { bg: "#ede9fe", text: "#5b21b6" },
+  confirmed:       { bg: "#dcfce7", text: "#166534" },
+  completed:       { bg: "#f3f4f6", text: "#374151" },
+  cancelled:       { bg: "#fee2e2", text: "#991b1b" },
+  no_show:         { bg: "#fee2e2", text: "#991b1b" },
+  pending:         { bg: "#fef3c7", text: "#92400e" },
+  pending_payment: { bg: "#fde68a", text: "#78350f" },
+  waiting:         { bg: "#e0f2fe", text: "#075985" },
+  checked_in:      { bg: "#ccfbf1", text: "#115e59" },
+  in_progress:     { bg: "#dbeafe", text: "#1e40af" },
+  booked:          { bg: "#ede9fe", text: "#5b21b6" },
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  pending_payment: "Awaiting payment",
+  confirmed: "Confirmed",
+  booked: "Booked",
+  waiting: "Waiting",
+  checked_in: "Checked in",
+  in_progress: "In progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  no_show: "No show",
+};
+
+function formatBookingStatusLabel(raw: string | null | undefined): string {
+  const s = (raw || "").trim().toLowerCase();
+  if (STATUS_LABEL[s]) return STATUS_LABEL[s];
+  if (!s) return "—";
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -272,11 +301,11 @@ export default function BookingsListScreen() {
               >
                 <Text
                   style={[
-                    twStyle("text-xs font-medium capitalize"),
+                    twStyle("text-xs font-medium"),
                     { color: st.text },
                   ]}
                 >
-                  {b.status.replace(/_/g, " ")}
+                  {formatBookingStatusLabel(b.status)}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={14} color="#d1d5db" />

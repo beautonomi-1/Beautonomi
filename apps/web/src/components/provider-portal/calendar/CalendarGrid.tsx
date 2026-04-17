@@ -403,6 +403,7 @@ function CalendarGridComponent({
                     <StaffColumn
                       key={member.id}
                       member={member}
+                      teamMembers={teamMembers}
                       date={selectedDate}
                       appointments={getAppointmentsForStaff(member.id, selectedDate)}
                       blocks={getBlocksForStaff(member.id, selectedDate)}

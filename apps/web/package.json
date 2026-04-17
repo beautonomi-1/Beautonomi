@@ -24,6 +24,8 @@
     "test:agent": "node scripts/test-agent.js",
     "test:health": "node scripts/health-check.js",
     "test:errors": "node scripts/test-runner.js --verbose",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "analyze": "ANALYZE=true next build",
@@ -39,6 +41,7 @@
     "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
+    "@beautonomi/shipping": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
@@ -60,6 +63,7 @@
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@sentry/core": "10.39.0",
     "@sentry/nextjs": "^10.39.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.47.10",
@@ -100,6 +104,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^15.0.0",
+    "@playwright/test": "^1.49.0",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
     "@types/node": "^22.10.5",
@@ -129,5 +134,11 @@
     "not dead",
     "iOS >= 12",
     "Safari >= 12"
-  ]
+  ],
+  "optionalDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.72.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
+    "@opentelemetry/sdk-node": "^0.215.0"
+  }
 }

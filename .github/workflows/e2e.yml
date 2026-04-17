@@ -1,0 +1,39 @@
+name: E2E (Preview)
+
+on:
+  deployment_status:
+
+jobs:
+  booking-happy-path:
+    # Only run against successful Vercel Preview deployments.
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      github.event.deployment_status.environment == 'Preview'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install deps
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Run booking happy-path
+        working-directory: apps/web
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ github.event.deployment_status.environment_url }}
+          E2E_PROVIDER_SLUG: ${{ secrets.E2E_PROVIDER_SLUG }}
+        run: pnpm exec playwright test e2e/booking-happy-path.spec.ts
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7

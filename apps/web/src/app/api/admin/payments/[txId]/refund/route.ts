@@ -235,21 +235,10 @@ export async function POST(
         created_at: new Date().toISOString(),
       });
 
-    // Create finance ledger entry for refund
-    await supabase
-      .from("finance_transactions")
-      .insert({
-        tenant_id: financeTenantId,
-        booking_id: txData.booking_id,
-        provider_id: bookingData.provider_id,
-        transaction_type: "refund",
-        amount: -refundAmount,
-        fees: 0,
-        commission: 0,
-        net: -refundAmount,
-        description: `Refund for booking ${bookingData.booking_number}: ${reason}`,
-        created_at: new Date().toISOString(),
-      });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) via the
+    // booking_refunds insert above. App-side insertion here would duplicate the
+    // ledger (B1).
 
     // Audit log
     await writeAuditLog({

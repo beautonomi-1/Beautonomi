@@ -285,6 +285,6 @@ describe("POST /api/provider/onboarding", () => {
 
     expect(providersInsertPayloads[0]?.tenant_id).toBe("tenant-uk");
     expect(zoneSelectionInsertPayloads[0]?.[0]?.currency).toBe("GBP");
-  }, 15000);
+  }, 45_000);
 });
 

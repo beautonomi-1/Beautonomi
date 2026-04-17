@@ -14,9 +14,12 @@ Optional follow-ups from the Provider Completeness and Expo Alignment audit. Add
 
 ## Deep links (App Links / Universal Links)
 
-- **Current:** Scheme `provider` and Android intentFilters for `https://beautonomi.com/provider`; iOS `associatedDomains`: `applinks:beautonomi.com`, `applinks:www.beautonomi.com`.
-- **Recommendation:** Confirm the backend (or static host) serves:
-  - **iOS:** `/.well-known/apple-app-site-association` (or `https://beautonomi.com/apple-app-site-association`) with an `applinks` entry for the provider app (e.g. `paths: ["/provider", "/provider/*"]`).
-  - **Android:** `/.well-known/assetlinks.json` in `apps/web/public/` (deployed on Vercel) lists both `com.beautonomi.partner` and `com.beautonomi` with Play App Signing SHA-256 fingerprints; apex hosts must not redirect this path (see `src/proxy.ts`).
+- **Current:** Scheme `provider` and Android intentFilters for `https://beautonomi.com/provider`; iOS `associatedDomains`: `applinks:beautonomi.com`, `applinks:www.beautonomi.com`, `applinks:beautonomi.co.za`, `applinks:www.beautonomi.co.za`.
+- **iOS file:** `apps/web/public/.well-known/apple-app-site-association` (no extension, JSON) declares the Provider app (`QW33CYPQX5.com.beautonomi.partner`, paths `/provider` + `/provider/*`) and the Customer app (`QW33CYPQX5.com.beautonomi`, everything else, with `/admin*`, `/api/*`, `/.well-known/*`, `/_next/*`, and `/provider*` excluded). `webcredentials` is declared for both bundles so Associated Domains unlocks password autofill. Served with `Content-Type: application/json` via `apps/web/next.config.mjs`; the legacy root `/apple-app-site-association` path is rewritten to the `.well-known` file so older clients still resolve.
+- **Android file:** `apps/web/public/.well-known/assetlinks.json` lists both `com.beautonomi.partner` and `com.beautonomi` with Play App Signing SHA-256 fingerprints; apex hosts must not redirect this path (see `src/proxy.ts`).
+- **Verify after deploy:**
+  - `curl -sI https://beautonomi.com/.well-known/apple-app-site-association` returns `200` + `application/json` (NO redirect — Apple will refuse the file after a 301/302).
+  - `curl -sI https://beautonomi.com/.well-known/assetlinks.json` same constraints.
+  - On-device: long-press a `https://beautonomi.com/provider/...` link in Notes on iOS; the "Open in Beautonomi Partner" option should appear.
 
-Without these, `https://beautonomi.com/provider/...` links may open in the browser instead of the app when the app is installed.
+Without both files, `https://beautonomi.com/provider/...` links open in the browser instead of the app even when the app is installed.

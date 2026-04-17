@@ -12,5 +12,6 @@ module.exports = {
     "no-heavy-barrel-import": require("./no-heavy-barrel-import"),
     "no-static-mapbox": require("./no-static-mapbox"),
     "no-framer-in-list": require("./no-framer-in-list"),
+    "require-auth-on-route": require("./require-auth-on-route"),
   },
 };

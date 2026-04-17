@@ -6,6 +6,8 @@ import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancella
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 import { trackServer } from "@/lib/analytics/amplitude/server";
 import { EVENT_BOOKING_RESCHEDULED } from "@/lib/analytics/amplitude/types";
@@ -176,10 +178,26 @@ export async function POST(
       totalDuration += dur + buf;
     });
 
-    // Load availability constraints for new date.
-    // Pass publicCalendarParity so staff_days_off / staff_time_off / availability_blocks
-    // block the same windows here that customers see in the booking flow.
-    const newDate = newDatetime.toISOString().split('T')[0];
+    // Resolve the provider's business timezone so the new slot is interpreted
+    // in the calendar the customer actually saw. Fallback to the default
+    // booking display timezone when a provider has not set one.
+    const { data: providerRow } = await supabase
+      .from('providers')
+      .select('timezone')
+      .eq('id', booking.provider_id)
+      .maybeSingle();
+    const providerTz =
+      ((providerRow as { timezone?: string | null } | null)?.timezone?.trim() ||
+        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+
+    // B5: derive the target calendar date and HH:mm in the provider's tz
+    // (not UTC, not the Node server's local tz). The previous code compared
+    // `newDatetime.getUTCHours()` against `slot.time` (provider-local), which
+    // silently shifted the valid slot by the UTC offset and let customers
+    // confirm an "available" slot that was actually outside business hours.
+    const newDate = formatInTimeZone(newDatetime, providerTz, "yyyy-MM-dd");
+    const requestedTime = formatInTimeZone(newDatetime, providerTz, "HH:mm");
+
     const constraints = await loadAvailabilityConstraints(
       supabase,
       staffId,
@@ -207,12 +225,9 @@ export async function POST(
       }
     );
 
-    const pad2 = (n: number) => String(n).padStart(2, "0");
-    const requestedTime = `${pad2(newDatetime.getUTCHours())}:${pad2(newDatetime.getUTCMinutes())}`;
-    const offsetMs = newDatetime.getTimezoneOffset() * 60000;
-    const localDt = new Date(newDatetime.getTime() - offsetMs);
-    const requestedTimeLocal = `${pad2(localDt.getUTCHours())}:${pad2(localDt.getUTCMinutes())}`;
-    const isAvailable = slots.some((slot) => (slot.time === requestedTime || slot.time === requestedTimeLocal) && slot.available);
+    const isAvailable = slots.some(
+      (slot) => slot.time === requestedTime && slot.available,
+    );
 
     if (!isAvailable) {
       return handleApiError(
@@ -220,6 +235,50 @@ export async function POST(
         "Selected time slot is not available. Please choose another time.",
         "SLOT_UNAVAILABLE",
         409
+      );
+    }
+
+    // B5: Re-check conflicts under a serializable advisory lock on the staff
+    // + slot to block the race where two customers reschedule onto the same
+    // minute between the availability check and the UPDATE. The existing
+    // version-based optimistic lock below only protects the booking *row* —
+    // it does nothing against a DIFFERENT booking landing on the same staff
+    // at the same time.
+    type ConflictCheckResult = { conflict: boolean };
+    let lockError: unknown = null;
+    let conflictCheck: ConflictCheckResult | null = null;
+    try {
+      const { data: conflictRow, error: conflictErr } = await (
+        adminSupabase.rpc as any
+      )("check_reschedule_slot_conflict", {
+        p_booking_id: bookingId,
+        p_staff_id: staffId,
+        p_provider_id: booking.provider_id,
+        p_new_start: newDatetime.toISOString(),
+        p_total_minutes: totalDuration,
+      });
+      if (conflictErr) {
+        lockError = conflictErr;
+      } else {
+        conflictCheck = Array.isArray(conflictRow)
+          ? (conflictRow[0] as ConflictCheckResult | null)
+          : ((conflictRow as ConflictCheckResult | null) ?? null);
+      }
+    } catch (err) {
+      lockError = err;
+    }
+
+    if (lockError) {
+      console.warn(
+        "[reschedule] check_reschedule_slot_conflict unavailable — falling back to optimistic lock only",
+        lockError,
+      );
+    } else if (conflictCheck?.conflict) {
+      return handleApiError(
+        new Error("Slot locked by concurrent booking"),
+        "That time just became unavailable. Please pick another slot.",
+        "SLOT_CONTENDED",
+        409,
       );
     }
 

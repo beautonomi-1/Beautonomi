@@ -35,3 +35,27 @@ Object.defineProperty(window, "matchMedia", {
     dispatchEvent: vi.fn(),
   })),
 });
+
+// jsdom lacks IntersectionObserver + ResizeObserver, which several Radix /
+// Framer Motion / virtualization components rely on. Provide minimal no-op
+// constructors so component tests don't crash at mount time.
+class MockIntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+  takeRecords() { return []; }
+  root = null;
+  rootMargin = "";
+  thresholds: readonly number[] = [];
+}
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as any).IntersectionObserver = MockIntersectionObserver;
+(globalThis as any).ResizeObserver = MockResizeObserver;
+if (typeof window !== "undefined") {
+  (window as any).IntersectionObserver = MockIntersectionObserver;
+  (window as any).ResizeObserver = MockResizeObserver;
+}

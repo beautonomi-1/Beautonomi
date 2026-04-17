@@ -13,6 +13,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import AddToWaitlistButton from "@/components/booking/AddToWaitlistButton";
 import { coerceSelectedDate } from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import {
   availabilityRouteDurationMinutes,
   slicesFromBookingCart,
@@ -42,24 +43,20 @@ function slotTimePeriod(timeStr: string): "morning" | "afternoon" | "evening" {
   return "evening";
 }
 
-function slotTimeOnSelectedDay(timeStr: string, day: Date): Date {
-  // Slot HH:MM strings from /api/availability are in the server's timezone
-  // (UTC). Combine the user's local calendar date with the UTC time so the
-  // selectability check (comparison against Date.now()) is correct regardless
-  // of the browser's timezone.
+function slotTimeOnSelectedDay(timeStr: string, day: Date, providerTz?: string | null): Date {
   const y = day.getFullYear();
   const m = String(day.getMonth() + 1).padStart(2, "0");
   const d = String(day.getDate()).padStart(2, "0");
-  return new Date(`${y}-${m}-${d}T${timeStr.trim()}:00Z`);
+  return parseSelectedDatetimeInProviderTz(`${y}-${m}-${d}`, timeStr, providerTz);
 }
 
-function isSlotTimeStillSelectable(timeStr: string, day: Date): boolean {
+function isSlotTimeStillSelectable(timeStr: string, day: Date, providerTz?: string | null): boolean {
   const now = new Date();
   const ds = startOfLocalDay(day).getTime();
   const ts = startOfLocalDay(now).getTime();
   if (ds < ts) return false;
   if (ds > ts) return true;
-  return slotTimeOnSelectedDay(timeStr, day).getTime() > now.getTime();
+  return slotTimeOnSelectedDay(timeStr, day, providerTz).getTime() > now.getTime();
 }
 
 function formatDuration(minutes: number): string {
@@ -147,8 +144,10 @@ export default function StepCalendar({
 
   const selectableSlots = useMemo(() => {
     if (!availability?.slots?.length || !selectedDay) return [];
-    return availability.slots.filter((s) => isSlotTimeStillSelectable(s.time, selectedDay));
-  }, [availability, selectedDay]);
+    return availability.slots.filter((s) =>
+      isSlotTimeStillSelectable(s.time, selectedDay, bookingState.providerTimezone),
+    );
+  }, [availability, selectedDay, bookingState.providerTimezone]);
 
   const availableCount = useMemo(
     () => selectableSlots.filter((s) => s.available).length,
@@ -159,7 +158,7 @@ export default function StepCalendar({
     if (!selectedDay || !bookingState.selectedTimeSlot || !availability?.slots) return;
     const row = availability.slots.find((s) => s.time === bookingState.selectedTimeSlot);
     if (!row) return;
-    if (isSlotTimeStillSelectable(row.time, selectedDay)) return;
+    if (isSlotTimeStillSelectable(row.time, selectedDay, bookingState.providerTimezone)) return;
     updateBookingState({ selectedTimeSlot: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);

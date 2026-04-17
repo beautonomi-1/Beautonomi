@@ -6,8 +6,10 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
 
 /**
- * Placeholder route: redirects to the full messaging screen.
- * Deep links or legacy links to (app)/chat/[id] go to more/messaging/[id] instead.
+ * Redirect route: forwards to the full messaging screen so deep links
+ * (push notifications, legacy URLs, shared links) pointing at
+ * `/(app)/chat/[id]` land in `/(app)/(tabs)/more/messaging/[id]` which
+ * hosts the real conversation UI.
  */
 export default function ChatRedirectScreen() {
   const router = useRouter();

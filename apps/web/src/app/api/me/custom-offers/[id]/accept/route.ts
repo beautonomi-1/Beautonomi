@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -92,9 +93,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: false });
     }
 
+    /**
+     * §Release-audit 2026-04: customers only have SELECT on custom_offers
+     * (RLS migration 036). Updating status here under the user-scoped
+     * client used to fail silently/explicitly. Use the admin client for
+     * status mutations the customer triggers, while still authorising via
+     * the request-owner check above.
+     */
+    const adminSupabase = getSupabaseAdmin();
+
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await supabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
+      await adminSupabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
       return handleApiError(new Error("Offer has expired"), "Offer expired");
     }
 
@@ -166,7 +176,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     const paymentUrl = init.data.authorization_url;
 
-    const { error: updateError } = await supabase.from("custom_offers")
+    const { error: updateError } = await adminSupabase.from("custom_offers")
       .update({
         status: "payment_pending",
         payment_reference: reference,

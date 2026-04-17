@@ -552,6 +552,16 @@ export default function BookCheckoutScreen() {
   const [appliedPromoDiscount, setAppliedPromoDiscount] = useState(0);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
+  /** Parity with web: POST /api/me/loyalty-points/calculate-redemption + consume `loyalty_points_used`. */
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [redemptionRate, setRedemptionRate] = useState(10);
+  const [minRedemptionPoints, setMinRedemptionPoints] = useState(0);
+  const [maxRedemptionPercentage, setMaxRedemptionPercentage] = useState(100);
+  const [loyaltyPointsApplied, setLoyaltyPointsApplied] = useState(0);
+  const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState(0);
+  const [loyaltyValidating, setLoyaltyValidating] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState(0);
   const [tipCustomInput, setTipCustomInput] = useState("");
   const [isSlotExpired, setIsSlotExpired] = useState(false);
@@ -1063,27 +1073,35 @@ export default function BookCheckoutScreen() {
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
   const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
   const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
+  const subtotalAfterLoyalty = Math.max(0, subtotalAfterPromo - loyaltyDiscountAmount);
 
-  // Tax: only when provider has set a non-zero tax rate
+  // Tax: only when provider has set a non-zero tax rate (applied after promo + loyalty discount)
   const taxRatePercent = hold?.tax_rate_percent ?? 0;
   const isTaxInclusive = hold?.tax_inclusive ?? false;
   const taxAmount = taxRatePercent > 0
     ? isTaxInclusive
-      ? subtotalAfterPromo - subtotalAfterPromo / (1 + taxRatePercent / 100)
-      : Math.round((subtotalAfterPromo * taxRatePercent) / 100 * 100) / 100
+      ? subtotalAfterLoyalty - subtotalAfterLoyalty / (1 + taxRatePercent / 100)
+      : Math.round((subtotalAfterLoyalty * taxRatePercent) / 100 * 100) / 100
     : 0;
 
   // Service fee: only when configured and visible to customer
   const sfConfig = hold?.service_fee_config;
   const serviceFeeAmount = sfConfig && sfConfig.show
     ? sfConfig.type === "percentage"
-      ? Math.round((subtotalAfterPromo * sfConfig.percentage) / 100 * 100) / 100
+      ? Math.round((subtotalAfterLoyalty * sfConfig.percentage) / 100 * 100) / 100
       : sfConfig.fixed
     : 0;
 
   const total = isTaxInclusive
-    ? Math.max(0, subtotalAfterPromo + tipAmount + serviceFeeAmount)
-    : Math.max(0, subtotalAfterPromo + taxAmount + tipAmount + serviceFeeAmount);
+    ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
+    : Math.max(0, subtotalAfterLoyalty + taxAmount + tipAmount + serviceFeeAmount);
+
+  const bookingSubtotalForLoyalty = subtotalAfterPromo;
+  const maxRedeemablePointsOnBooking = useMemo(() => {
+    if (bookingSubtotalForLoyalty <= 0) return 0;
+    const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
+    return Math.floor(maxDiscount * redemptionRate);
+  }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate]);
 
   useEffect(() => {
     if (hold && hold_id && total != null && !checkoutTrackedRef.current) {
@@ -1188,6 +1206,115 @@ export default function BookCheckoutScreen() {
     }, 900);
     return () => clearTimeout(timer);
   }, [promoNeedsAutoValidate, prePromoTotal, promotionCode, hold?.provider_id]);
+
+  useEffect(() => {
+    setLoyaltyPointsApplied(0);
+    setLoyaltyDiscountAmount(0);
+    setLoyaltyPointsInput("");
+    setLoyaltyError(null);
+  }, [subtotalAfterPromo]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoyaltyBalance(0);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{
+          data?: {
+            balance?: number;
+            redemption_rate?: number;
+            min_redemption_points?: number;
+            max_redemption_percentage?: number;
+          };
+        }>("/api/me/loyalty/balance");
+        if (cancelled || res.error) return;
+        const raw = res.data as { data?: Record<string, unknown> } | Record<string, unknown>;
+        const d = (raw as { data?: Record<string, unknown> }).data ?? raw;
+        if (d && typeof d === "object") {
+          if ("balance" in d && d.balance != null) setLoyaltyBalance(Number(d.balance) || 0);
+          if ("redemption_rate" in d && d.redemption_rate != null) setRedemptionRate(Number(d.redemption_rate) || 10);
+          if ("min_redemption_points" in d && d.min_redemption_points != null) {
+            setMinRedemptionPoints(Number(d.min_redemption_points) || 0);
+          }
+          if ("max_redemption_percentage" in d && d.max_redemption_percentage != null) {
+            setMaxRedemptionPercentage(Number(d.max_redemption_percentage) ?? 100);
+          }
+        }
+      } catch {
+        // Loyalty is optional
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const applyLoyaltyPoints = useCallback(async () => {
+    if (!user) return;
+    const raw = parseInt(loyaltyPointsInput.trim(), 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      setLoyaltyError("Enter how many points to use");
+      return;
+    }
+    setLoyaltyValidating(true);
+    setLoyaltyError(null);
+    try {
+      const res = await api.post<{
+        data?: {
+          valid?: boolean;
+          errors?: string[];
+          calculation?: { points_to_redeem: number; discount_amount: number };
+          config?: { min_redemption_points?: number };
+        };
+      }>("/api/me/loyalty-points/calculate-redemption", {
+        points_to_redeem: raw,
+        booking_subtotal: bookingSubtotalForLoyalty,
+      });
+      if (res.error) {
+        setLoyaltyPointsApplied(0);
+        setLoyaltyDiscountAmount(0);
+        setLoyaltyError(res.error.message || "Could not apply loyalty points");
+        return;
+      }
+      const top = res.data as { data?: Record<string, unknown> } | Record<string, unknown> | null;
+      const rawPayload = (top && typeof top === "object" && "data" in top && (top as { data?: unknown }).data)
+        ? (top as { data: Record<string, unknown> }).data
+        : (top as Record<string, unknown> | null);
+      const payload = rawPayload ?? {};
+      const calc = payload.calculation as { points_to_redeem: number; discount_amount: number } | undefined;
+      if (!calc) {
+        setLoyaltyError("Could not calculate loyalty");
+        return;
+      }
+      const { points_to_redeem, discount_amount } = calc;
+      const minPts =
+        (payload.config as { min_redemption_points?: number } | undefined)?.min_redemption_points ?? minRedemptionPoints;
+      if (points_to_redeem < minPts) {
+        setLoyaltyError(`At least ${minPts} redeemable points on this booking (after % cap).`);
+        setLoyaltyPointsApplied(0);
+        setLoyaltyDiscountAmount(0);
+        return;
+      }
+      setLoyaltyPointsApplied(points_to_redeem);
+      setLoyaltyDiscountAmount(Math.round(Number(discount_amount) * 100) / 100);
+      setLoyaltyPointsInput(String(points_to_redeem));
+      haptic.success();
+      const errs = payload.errors as string[] | undefined;
+      const valid = payload.valid as boolean | undefined;
+      if (errs?.length && !valid) {
+        Alert.alert("Loyalty", errs.join(" "));
+      }
+    } catch (e) {
+      setLoyaltyPointsApplied(0);
+      setLoyaltyDiscountAmount(0);
+      setLoyaltyError(getApiErrorMessage(e as Error, "Failed to apply loyalty points"));
+    } finally {
+      setLoyaltyValidating(false);
+    }
+  }, [user, loyaltyPointsInput, bookingSubtotalForLoyalty, minRedemptionPoints]);
 
   const applyGiftCard = useCallback(async () => {
     const code = giftCardCode.trim().toUpperCase();
@@ -1429,7 +1556,10 @@ export default function BookCheckoutScreen() {
       const payload: Record<string, unknown> = {
         payment_method: paymentMethod === "wallet" ? "card" : paymentMethod === "giftcard" ? "giftcard" : paymentMethod,
         payment_option: paymentOption,
-        use_wallet: paymentMethod === "wallet" || (paymentMethod === "card" && useWallet),
+        use_wallet:
+          paymentMethod === "wallet" ||
+          (paymentMethod === "card" && useWallet) ||
+          loyaltyPointsApplied > 0,
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
         guest_fingerprint_hash: fingerprint,
       };
@@ -1447,6 +1577,7 @@ export default function BookCheckoutScreen() {
       if (selectedAddonIds.length > 0) payload.addons = selectedAddonIds;
       if (routeRescheduleBookingId) payload.reschedule_booking_id = routeRescheduleBookingId;
       if (tipAmount > 0) payload.tip_amount = tipAmount;
+      if (loyaltyPointsApplied > 0) payload.loyalty_points_used = loyaltyPointsApplied;
       const validParticipants = isGroupBooking ? groupParticipants.filter((p) => p.name.trim()).map((p) => ({
         name: p.name.trim(),
         email: undefined,
@@ -1606,7 +1737,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -2297,7 +2428,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || loyaltyDiscountAmount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
@@ -2325,6 +2456,12 @@ export default function BookCheckoutScreen() {
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
                       <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
+                    </View>
+                  )}
+                  {loyaltyDiscountAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>Loyalty</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
                     </View>
                   )}
                   {taxAmount > 0 && (
@@ -2520,6 +2657,91 @@ export default function BookCheckoutScreen() {
                 <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
                   Promo applied — {formatCurrency(effectivePromoDiscount, currency)} off
                 </Text>
+              ) : null}
+              {user ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Loyalty points</Text>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+                    Balance {loyaltyBalance.toLocaleString()} pts
+                    {maxRedeemablePointsOnBooking > 0
+                      ? ` · Up to ${maxRedeemablePointsOnBooking.toLocaleString()} pts on this booking (after % cap)`
+                      : ""}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      value={loyaltyPointsInput}
+                      onChangeText={(v) => {
+                        setLoyaltyPointsInput(v.replace(/[^\d]/g, ""));
+                        setLoyaltyError(null);
+                      }}
+                      placeholder="Points to use"
+                      keyboardType="number-pad"
+                      editable={loyaltyBalance > 0 && bookingSubtotalForLoyalty > 0}
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9FAFB",
+                        borderWidth: 1,
+                        borderColor: loyaltyError ? "#DC2626" : "#E5E7EB",
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        fontSize: 15,
+                        color: "#111827",
+                      }}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (loyaltyDiscountAmount > 0) {
+                          setLoyaltyPointsApplied(0);
+                          setLoyaltyDiscountAmount(0);
+                          setLoyaltyPointsInput("");
+                          setLoyaltyError(null);
+                          haptic.light();
+                        } else {
+                          void applyLoyaltyPoints();
+                        }
+                      }}
+                      disabled={
+                        loyaltyValidating ||
+                        (loyaltyDiscountAmount <= 0 && (loyaltyBalance <= 0 || !loyaltyPointsInput.trim()))
+                      }
+                      style={{
+                        backgroundColor:
+                          loyaltyPointsInput.trim() || loyaltyDiscountAmount > 0 ? Colors.primary : "#E5E7EB",
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        justifyContent: "center",
+                        minWidth: 72,
+                        alignItems: "center",
+                      }}
+                    >
+                      {loyaltyValidating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                          {loyaltyDiscountAmount > 0 ? "Clear" : "Use"}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {loyaltyError ? (
+                    <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{loyaltyError}</Text>
+                  ) : loyaltyDiscountAmount > 0 ? (
+                    <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
+                      −{formatCurrency(loyaltyDiscountAmount, currency)} applied ({loyaltyPointsApplied.toLocaleString()} pts)
+                    </Text>
+                  ) : loyaltyBalance <= 0 ? (
+                    <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+                      You&apos;ll earn points after this booking — use them for money off next time.
+                    </Text>
+                  ) : minRedemptionPoints > 0 ? (
+                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
+                      Min. {minRedemptionPoints} pts per redemption when eligible
+                    </Text>
+                  ) : null}
+                </View>
               ) : null}
             </View>
 

@@ -221,21 +221,10 @@ export async function POST(
       created_by: user.id,
     });
 
-    // Negative amounts for refunds — consistent with refund-processing.ts,
-    // admin/bookings/[id]/refund, and provider/bookings/[id]/refund.
-    // getAvailablePayoutBalance reads net for refund rows; negative net claws back earnings.
-    await supabase.from("finance_transactions").insert({
-      tenant_id: financeTenantId,
-      booking_id: transaction.booking_id,
-      provider_id: providerId,
-      transaction_type: "refund",
-      amount: -refund_amount,
-      fees: 0,
-      commission: 0,
-      net: -refund_amount,
-      description: `Admin refund for booking ${bookingNumber}: ${refund_reason}`,
-      created_at: new Date().toISOString(),
-    });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) via the
+    // booking_refunds insert above. App-side insertion duplicated the ledger
+    // (B1); negative-amount bookkeeping is handled trigger-side.
 
     // Restore gift card balance if this is a full refund and the booking used a gift card
     let giftCardRestored = false;

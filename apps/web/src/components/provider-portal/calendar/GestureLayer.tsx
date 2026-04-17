@@ -50,13 +50,14 @@ function GestureLayerComponent({
       {timeSlots.map((time) => {
         const { hour } = parseScheduledTime(time);
         const outsideLocation = isOutsideOperatingHours(date, hour, locationOperatingHours);
-        const outsideStaff = staffWorkingHours
+        const hasStaffSchedule =
+          staffWorkingHours != null && Object.keys(staffWorkingHours).length > 0;
+        const outsideStaff = hasStaffSchedule
           ? isOutsideStaffHours(date, hour, staffWorkingHours)
           : false;
-        // When staff has explicit working hours, use them to determine
-        // availability. When staff has NO working hours, they follow
-        // location hours — they're available whenever the location is open.
-        const staffIsWorking = staffWorkingHours ? !outsideStaff : !outsideLocation;
+        // With an explicit weekly schedule, use staff hours; otherwise fall back to
+        // location hours (or merged team hours passed from StaffColumn / DateColumn).
+        const staffIsWorking = hasStaffSchedule ? !outsideStaff : !outsideLocation;
         const businessClosed = outsideLocation && !staffIsWorking;
         const staffOff = !businessClosed && outsideStaff;
         const isNonWorking = businessClosed;

@@ -11,6 +11,10 @@ import { PageHeader } from "@/components/provider/PageHeader";
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+// §Provider-launch (audit 2026-04): use the provider's tenant currency
+// (falls back to LAST_RESORT_CURRENCY) so ZAR providers don't see USD on
+// their revenue/trend cards.  Same pattern as travel-fees + billing pages.
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface AnalyticsData {
   revenue: {
@@ -45,6 +49,8 @@ interface AnalyticsData {
 
 export default function ProviderAnalyticsPage() {
   const locale = useTenantLocaleTag();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const { selectedLocationId } = useProviderPortal();
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,7 +83,7 @@ export default function ProviderAnalyticsPage() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: LAST_RESORT_CURRENCY,
+      currency: tenantCurrency,
     }).format(amount);
   };
 

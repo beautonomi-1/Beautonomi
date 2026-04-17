@@ -40,6 +40,7 @@ import {
   Monitor,
   Coins,
   PiggyBank,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -111,6 +112,12 @@ const navigationSections = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
+      // §Provider-launch (audit 2026-04): the /provider/payments list page
+      // already exists (transactions tied to bookings/orders), but had no
+      // sidebar entry — so providers had no way to reach it except by typing
+      // the URL. Group it with Finance/Payouts so the transaction history is
+      // discoverable alongside other money surfaces.
+      { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },

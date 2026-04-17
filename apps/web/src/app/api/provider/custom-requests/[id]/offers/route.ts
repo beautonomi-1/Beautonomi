@@ -193,28 +193,57 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     // Notify customer using template (best-effort)
     try {
-      const { sendTemplateNotification, getNotificationTemplate } = await import("@/lib/notifications/onesignal");
+      const { sendTemplateNotification, getNotificationTemplate, sendToUser } = await import(
+        "@/lib/notifications/onesignal"
+      );
       const template = await getNotificationTemplate("customer_custom_offer");
-      
+      const providerName = req?.providers?.business_name ?? "A provider";
+      const offerId = (offer as { id: string }).id;
+
       if (template && template.enabled) {
         await sendTemplateNotification(
           "customer_custom_offer",
           [customerId],
           {
-            provider_name: req?.providers?.business_name ?? "A provider",
+            provider_name: providerName,
             price: body.price.toString(),
             currency: body.currency,
             request_id: id,
-            offer_id: (offer as { id: string }).id,
+            offer_id: offerId,
           },
           template.channels || ["push", "email"],
           { appType: "customer" }
         );
       } else {
-        console.warn("Notification template 'customer_custom_offer' not found, skipping notification");
+        /**
+         * §Release-audit 2026-04: previously a missing/disabled template
+         * silently swallowed the notification — the customer never learned a
+         * provider had quoted them. Send a hardcoded fallback push so the
+         * core "you have a new offer" signal cannot disappear due to a
+         * Control Plane misconfiguration.
+         */
+        await sendToUser(
+          customerId,
+          {
+            title: "You have a new custom offer",
+            message: `${providerName} sent you an offer for ${body.currency} ${body.price}. Tap to review and accept.`,
+            type: "custom_offer",
+            data: {
+              request_id: id,
+              offer_id: offerId,
+              provider_name: providerName,
+              price: body.price,
+              currency: body.currency,
+              deeplink: `beautonomi://account-settings/custom-requests`,
+              url: `/account-settings/custom-requests`,
+            },
+          },
+          ["push", "email"],
+          { appType: "customer" },
+        );
       }
-    } catch {
-      // ignore notification errors
+    } catch (notifyErr) {
+      console.error("[provider/custom-requests/offers] notification failed:", notifyErr);
     }
 
     return successResponse(offer);

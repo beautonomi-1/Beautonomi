@@ -333,28 +333,13 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
     }
   };
 
-  const handlePhoneAuth = async () => {
-    if (!phone?.trim()) {
-      setError("Phone number is required");
-      return;
-    }
-    if (!isCompleteE164(phone)) {
-      setError("Enter a valid phone number with country code");
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      toast.info("Phone authentication coming soon. Please use email for now.");
-      setShowEmailForm(true);
-    } catch (error: any) {
-      setError(error.message || "Phone authentication failed");
-      toast.error(error.message || "Phone authentication failed");
-    } finally {
-      setIsLoading(false);
-    }
+  // §Customer-launch (audit 2026-04): phone sign-up was never actually
+  // wired on this form — the stub surfaced a "coming soon" toast then
+  // switched back to the email form, which confused new users.  The
+  // "Continue with Phone" button has been removed, and any lingering
+  // call-sites simply route the user to the email flow.
+  const handlePhoneAuth = () => {
+    setShowEmailForm(true);
   };
 
   const handleSocialLogin = async (provider: "google" | "facebook" | "apple") => {
@@ -512,20 +497,12 @@ export default function InlineSignupForm({ redirectContext, onAuthSuccess, redir
                 <span>Continue with Apple</span>
               </Button>
               
-              <Button
-                variant="outline"
-                className="w-full mb-3 flex items-center justify-start gap-3 px-4 h-12 hover:bg-gray-50 border-gray-300 text-base"
-                onClick={() => {
-                  setShowEmailForm(false);
-                  setError(null);
-                }}
-                disabled={isLoading}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                </svg>
-                <span>Continue with Phone</span>
-              </Button>
+              {/*
+                §Customer-launch (audit 2026-04): removed the "Continue with
+                Phone" CTA — the underlying handler (handlePhoneAuth) was a
+                toast-only stub that redirected back to the email form. The
+                phone-OTP login still lives on /login for existing accounts.
+              */}
               
               <Button
                 variant="outline"

@@ -212,6 +212,19 @@ export default function ProviderAutomations() {
     }
   };
 
+  const loadExecutionHistory = async (automationId: string) => {
+    try {
+      setIsLoadingHistory(true);
+      const response = await fetcher.get<{ data: any[] }>(`/api/provider/automations/${automationId}/executions`);
+      setExecutionHistory(response?.data ?? []);
+    } catch (error) {
+      console.error("Failed to load execution history:", error);
+      toast.error("Failed to load execution history");
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
+
   const filteredAutomations = automations.filter((auto) => {
     if (activeTab === "reminders") return auto.type === "reminder";
     if (activeTab === "updates") return auto.type === "update";
@@ -345,13 +358,38 @@ export default function ProviderAutomations() {
             </div>
           ) : filteredAutomations.length === 0 ? (
             <SectionCard className="p-12 text-center">
-              <p className="text-gray-600 mb-4">No {activeTab} automations yet</p>
-              <Button
-                variant="outline"
-                onClick={() => toast.info("Automation builder coming soon. Stay tuned!")}
-              >
-                Create Automation
-              </Button>
+              {/*
+                §Provider-launch (audit 2026-04): the previous empty-state
+                CTA was a toast-only stub ("Automation builder coming
+                soon…") even though this page already creates real
+                automations via the template-activation flow handled by
+                toggleAutomation() + POST /api/provider/automations. Empty
+                tabs here generally mean our server-side template
+                seed didn't return any templates for that category, so
+                we now expose two honest actions:
+                  1. Reload automations so providers can recover from a
+                     transient failure without reloading the whole app.
+                  2. Jump to Marketing Campaigns for a real one-off send.
+              */}
+              <p className="text-gray-600 mb-2">No {activeTab} automations yet</p>
+              <p className="text-sm text-gray-500 mb-6">
+                Templates normally appear here automatically. If this looks empty, reload the list
+                or start a one-off Marketing Campaign instead.
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => loadAutomations()}
+                  disabled={isLoading}
+                >
+                  Reload automations
+                </Button>
+                <NextLink href="/provider/marketing/campaigns">
+                  <Button className="bg-[#FF0077] hover:bg-[#D60565]">
+                    Create a campaign
+                  </Button>
+                </NextLink>
+              </div>
             </SectionCard>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -485,17 +523,4 @@ export default function ProviderAutomations() {
       </Dialog>
     </div>
   );
-
-  const loadExecutionHistory = async (automationId: string) => {
-    try {
-      setIsLoadingHistory(true);
-      const response = await fetcher.get<{ data: any[] }>(`/api/provider/automations/${automationId}/executions`);
-      setExecutionHistory(response?.data ?? []);
-    } catch (error) {
-      console.error("Failed to load execution history:", error);
-      toast.error("Failed to load execution history");
-    } finally {
-      setIsLoadingHistory(false);
-    }
-  };
 }

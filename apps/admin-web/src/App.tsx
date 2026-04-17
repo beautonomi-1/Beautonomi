@@ -214,6 +214,7 @@ export default function App() {
             <Route path="maintenance" element={<P.CpMaintenancePage />} />
             <Route path="audit-log" element={<P.CpAuditLogPage />} />
             <Route path="compliance" element={<P.CompliancePurgePage />} />
+            <Route path="tenant-reset" element={<P.TenantResetPage />} />
             <Route path="*" element={<P.AdminNotFoundPage />} />
           </Route>
           <Route path="sms-templates" element={<P.SmsTemplatesListPage />} />

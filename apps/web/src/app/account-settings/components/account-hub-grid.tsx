@@ -60,7 +60,10 @@ export const ACCOUNT_HUB_CARDS: AccountHubCard[] = [
   { icon: Heart, title: "Wishlists & Recently Viewed", description: "Manage your saved wishlists and view recently viewed items", link: "/account-settings/wishlists" },
   { icon: MessageCircle, title: "Messages", description: "View and manage your messages with beauty partners and clients", link: "/account-settings/messages" },
   { icon: Briefcase, title: "Custom Requests", description: "Request custom services and manage offers from providers", link: "/account-settings/custom-requests" },
-  { icon: Star, title: "Membership", description: "Manage your subscription plan and membership benefits", link: "/account-settings/membership" },
+  // §Release-audit 2026-04: removed broken "Membership" card — there is no
+  // /account-settings/membership route in the app, so taps resolved to a
+  // slow Next.js 404. Customer-facing memberships are surfaced under the
+  // partner profile and inside /account-settings/payments where applicable.
   { icon: ShieldCheck, title: "Identity Verification", description: "Verify your identity for a trusted experience", link: "/account-settings/verification/embed" },
   { icon: Info, title: "About Us", description: "Learn more about Beautonomi and our mission", link: "#about-us", isAction: true },
   { icon: Share2, title: "Share App", description: "Share Beautonomi with your friends and family", link: "#share-app", isAction: true },
@@ -84,6 +87,12 @@ const HubLinkCard = memo(function HubLinkCard({ card, warmRoute }: HubLinkCardPr
       prefetch={false}
       onPointerEnter={() => warmRoute(card.link)}
       onFocus={() => warmRoute(card.link)}
+      // §Release-audit 2026-04: touch devices never fire pointerEnter,
+      // so without this the route chunk only starts loading AFTER the tap.
+      // Warming on pointerDown gives the navigation a head start while the
+      // tap-up event still has to travel through the gesture layer.
+      onPointerDown={() => warmRoute(card.link)}
+      onTouchStart={() => warmRoute(card.link)}
       className="block"
     >
       <div
@@ -181,6 +190,8 @@ export default function AccountHubGrid({ embeddedInProfile = false }: AccountHub
               prefetch={false}
               onPointerEnter={() => warmRoute("/provider/onboarding")}
               onFocus={() => warmRoute("/provider/onboarding")}
+              onPointerDown={() => warmRoute("/provider/onboarding")}
+              onTouchStart={() => warmRoute("/provider/onboarding")}
               className="block"
             >
               <div className="bg-white p-4 md:p-6 rounded-lg shadow-sm hover:shadow-md border border-gray-100 hover:border-[#FF0077]/20 transition-shadow duration-200 h-full">

@@ -5,8 +5,6 @@ import crypto from "crypto";
 import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-
 /**
  * POST /api/provider/yoco/webhook
  *
@@ -441,33 +439,9 @@ async function handleRefundSuccess(
       console.error("Yoco webhook: failed to create booking_refund:", refundError);
     } else {
       console.log(`Yoco refund ${id} synced to booking ${bookingId} (booking_refund created).`);
-
-      const { data: bookingRow } = await supabaseAdmin
-        .from("bookings")
-        .select("tenant_id, provider_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-      const yocoRefundFinanceTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
-        tenant_id: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id,
-        provider_id:
-          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
-      });
-      const { error: yocoFinanceErr } = await supabaseAdmin.from("finance_transactions").insert({
-        tenant_id: yocoRefundFinanceTenantId,
-        booking_id: bookingId,
-        provider_id:
-          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
-        transaction_type: "refund",
-        amount: -amountInCurrency,
-        fees: 0,
-        commission: 0,
-        net: -amountInCurrency,
-        description: `Yoco card refund (${id})`,
-        created_at: new Date().toISOString(),
-      });
-      if (yocoFinanceErr) {
-        console.error("Yoco webhook: finance ledger insert after booking_refund:", yocoFinanceErr);
-      }
+      // finance_transactions row is written by trigger
+      // `create_finance_ledger_from_booking_refund` (migration 490) via the
+      // booking_refunds insert above — no app-side insert (B1).
     }
   }
 }

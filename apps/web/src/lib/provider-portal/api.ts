@@ -296,6 +296,11 @@ export interface ProviderApi {
     date_from: string;
     date_to: string;
   }): Promise<AvailabilityBlockDisplay[]>;
+  /** B8: active booking_holds rendered as calendar ghost slots. */
+  listProviderBookingHolds(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]>;
   createBlockedTimeType(data: Partial<BlockedTimeType>): Promise<BlockedTimeType>;
   updateBlockedTimeType(id: string, data: Partial<BlockedTimeType>): Promise<BlockedTimeType>;
   deleteBlockedTimeType(id: string): Promise<void>;
@@ -3971,6 +3976,31 @@ export class ProviderApiClient implements ProviderApi {
       return response.data || [];
     } catch (error) {
       console.warn("Failed to fetch staff calendar unavailability:", error);
+      return [];
+    }
+  }
+
+  /**
+   * B8: active booking_holds as AvailabilityBlockDisplay overlays so the
+   * provider calendar renders in-flight holds as ghost slots. Soft-fails
+   * to an empty list (the hold endpoint is best-effort visualization, not
+   * authoritative conflict data).
+   */
+  async listProviderBookingHolds(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]> {
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const searchParams = new URLSearchParams();
+      searchParams.set("date_from", params.date_from);
+      searchParams.set("date_to", params.date_to);
+      const response = await fetcher.get<{ data: AvailabilityBlockDisplay[] }>(
+        `/api/provider/calendar/booking-holds?${searchParams.toString()}`,
+      );
+      return response.data || [];
+    } catch (error) {
+      console.warn("Failed to fetch booking holds:", error);
       return [];
     }
   }

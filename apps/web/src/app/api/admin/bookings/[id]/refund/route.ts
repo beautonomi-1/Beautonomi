@@ -127,18 +127,10 @@ export async function POST(
       return handleApiError(refundError, "Failed to create refund");
     }
 
-    await supabase.from("finance_transactions").insert({
-      tenant_id: financeTenantId,
-      booking_id: id,
-      provider_id: b.provider_id ?? null,
-      transaction_type: "refund",
-      amount: -amount,
-      fees: 0,
-      commission: 0,
-      net: -amount,
-      description: `Refund for booking ${b.booking_number}: ${reason || "Admin refund"}`,
-      created_at: new Date().toISOString(),
-    });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. A manual app-side insert here was the B1 double-write
+    // bug.
 
     await writeAuditLog({
       actor_user_id: user.id,

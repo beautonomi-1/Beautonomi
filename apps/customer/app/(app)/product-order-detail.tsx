@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Share,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -142,6 +144,49 @@ export default function ProductOrderDetailScreen() {
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{order.order_number}</Text>
           <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{formatDate(order.created_at)}</Text>
         </View>
+        {/*
+          §Customer-launch (audit 2026-04): web exposes a JSON receipt
+          endpoint (/api/me/orders/[id]/receipt) but mobile had no way to
+          surface/share one. Provide a native share action that builds a
+          text receipt from the already-fetched order so customers can
+          AirDrop / email / message it like a booking receipt.
+        */}
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              const lines = [
+                `Beautonomi Order`,
+                `Order #${order.order_number}`,
+                order.created_at ? `Placed: ${formatDate(order.created_at)}` : null,
+                order.provider?.business_name ? `Seller: ${order.provider.business_name}` : null,
+                `Status: ${order.status}`,
+                ``,
+                ...(order.items ?? []).map((it) => {
+                  const variant = it.product_variant?.option_values
+                    ? ` · ${Object.values(it.product_variant.option_values).join(", ")}`
+                    : "";
+                  return `• ${it.product_name}${variant} — ${it.quantity} × ${fmt(Number(it.unit_price ?? 0))}`;
+                }),
+                ``,
+                `Subtotal: ${fmt(Number(order.subtotal ?? 0))}`,
+                Number(order.delivery_fee ?? 0) > 0 ? `Delivery: ${fmt(Number(order.delivery_fee ?? 0))}` : null,
+                Number(order.tax_amount ?? 0) > 0 ? `Tax: ${fmt(Number(order.tax_amount ?? 0))}` : null,
+                `Total: ${fmt(Number(order.total_amount ?? 0))}`,
+              ].filter(Boolean);
+              await Share.share({
+                message: lines.join("\n"),
+                title: `Order ${order.order_number}`,
+              });
+            } catch (e) {
+              Alert.alert("Share", e instanceof Error ? e.message : "Couldn't share this receipt.");
+            }
+          }}
+          style={{ padding: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Share order receipt"
+        >
+          <Ionicons name="share-outline" size={22} color="#111827" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView

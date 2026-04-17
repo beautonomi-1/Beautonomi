@@ -319,6 +319,16 @@ export function DragDropProvider({
       setRescheduleConfirmation(null);
     } catch (error) {
       console.error("Failed to reschedule:", error);
+      // §Provider-launch (audit 2026-04): the dialog previously only
+      // logged failures, leaving the user staring at a spinner-free modal
+      // with no indication that the reschedule was rejected. Surface the
+      // server message (e.g. slot conflict / version conflict) via toast
+      // and keep the dialog open so they can pick a different time.
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : "Couldn't reschedule this booking. Please try a different time.";
+      toast.error(message);
     } finally {
       setIsRescheduling(false);
     }

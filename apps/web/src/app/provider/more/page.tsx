@@ -25,6 +25,7 @@ import {
   Link2,
   PiggyBank,
   Coins,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -83,6 +84,7 @@ const hubSections = [
     items: [
       { label: "Finance Hub", href: "/provider/more/finance-hub", icon: Wallet },
       { label: "Finance & Earnings", href: "/provider/finance", icon: Wallet },
+      { label: "Payments", href: "/provider/payments", icon: CreditCard },
       { label: "Payouts", href: "/provider/payouts", icon: Coins },
       { label: "Payroll", href: "/provider/team/payroll", icon: PiggyBank },
       { label: "Payout Accounts", href: "/provider/settings/payout-accounts", icon: Wallet },

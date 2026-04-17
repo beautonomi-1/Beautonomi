@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { bookShippingForOrder } from "./shipping";
+
+// F28: re-export so callers can `import { bookShippingForOrder } from "@/lib/orders/product-order-lifecycle"`.
+export { bookShippingForOrder };
 
 /**
  * Restore inventory for all line items on a product order (provider cancel / payment abandon).

@@ -13,6 +13,7 @@ import StepPackages from "./steps/step-packages";
 import StepCalendar from "./steps/step-calendar";
 import StepPromotions from "./steps/step-promotions";
 import StepYourInfo from "./steps/step-your-info";
+import StepForms from "./steps/step-forms";
 import StepPayment from "./steps/step-payment";
 import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
@@ -20,6 +21,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -42,7 +44,7 @@ import { isCompleteE164 } from "@/lib/phone";
 const BOOKING_CLIENT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type BookingMode = "salon" | "mobile";
-export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "payment";
+export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "forms" | "payment";
 
 export interface BookingState {
   mode: BookingMode | null;
@@ -132,6 +134,8 @@ export interface BookingState {
   /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
   tipPercentSelection?: number | null;
   providerId?: string;
+  /** IANA zone from GET /api/public/providers/[slug] — used to build `selected_datetime` for bookings. */
+  providerTimezone?: string | null;
   isGroupBooking?: boolean;
   groupParticipants?: Array<{
     id: string;
@@ -156,9 +160,32 @@ export interface BookingState {
   recurringFrequency?: "weekly" | "biweekly" | "monthly";
   /** Slot hold ID reserved when leaving the calendar step — passed to booking creation to exclude from conflict check. */
   holdId?: string | null;
+  /**
+   * B11: provider intake / consent / waiver form responses captured on the
+   * "forms" step. Keyed by `provider_forms.id` → `{ field_id: value }` so the
+   * POST /api/public/bookings body matches the `/book/continue` schema
+   * (`provider_form_responses`).
+   */
+  providerFormResponses?: Record<
+    string,
+    Record<string, string | number | boolean | null>
+  >;
+  /**
+   * B11: booking-level custom field values (booking entity type). Keyed by
+   * custom field `name`, matching POST /api/public/bookings `custom_field_values`.
+   */
+  customFieldValues?: Record<string, string | number | boolean | null>;
+  /**
+   * §15.4-24 (audit 2026-04): client-generated UUIDv4 sent as the
+   * `Idempotency-Key` header on POST /api/public/bookings. Persisted in
+   * the BookingState so accidental retries / page reloads reuse the same
+   * key and the server-side ledger dedupes to the original booking
+   * instead of creating a new one + double-charging.
+   */
+  idempotencyKey?: string;
 }
 
-const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "payment"];
+const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "forms", "payment"];
 
 const slideVariants = {
   enter: (direction: number) => ({
@@ -231,6 +258,16 @@ export default function BookingFlow() {
   const [direction, setDirection] = useState(0);
   /** When false and no URL/deeplink package, the packages step is omitted (empty catalog). */
   const [providerHasPackages, setProviderHasPackages] = useState<boolean | null>(null);
+  /**
+   * B11: null = not yet loaded (keep the step in order so we never black-flash
+   * past it); false = provider has no forms AND no booking custom-field defs
+   * (drop the step); true = render it.
+   */
+  const [hasFormsStep, setHasFormsStep] = useState<boolean | null>(null);
+  /** B11: StepForms broadcasts "all required fields satisfied" so the sticky
+   * action bar can enable Continue without duplicating the validation rules
+   * here. `true` when the step isn't shown (no forms configured). */
+  const [formsStepComplete, setFormsStepComplete] = useState<boolean>(true);
   /** Dedupe `?package=` deep-link prefill (per flow key + package id). */
   const packagePrefillDoneKeyRef = useRef<string | null>(null);
 
@@ -365,6 +402,59 @@ export default function BookingFlow() {
       track(EVENT_CHECKOUT_START, { provider_id: bookingState.providerId });
     }
   }, [isReady, currentStep, bookingState.providerId, track]);
+
+  // B11: probe for provider forms / booking custom-field definitions up front
+  // so `effectiveStepOrder` can drop the "forms" step before the user ever
+  // navigates to it. StepForms will still perform the full fetch when mounted
+  // (it needs the fields themselves to render), but this early check prevents
+  // the progress bar from flashing a step that will immediately auto-skip.
+  useEffect(() => {
+    const providerId = bookingState.providerId;
+    if (!providerId) {
+      setHasFormsStep(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      fetch(
+        `/api/public/provider-forms?provider_id=${encodeURIComponent(providerId)}`,
+      )
+        .then((r) => (r.ok ? r.json() : Promise.resolve({})))
+        .catch(() => ({})),
+      fetch("/api/custom-fields/definitions?entity_type=booking")
+        .then((r) => (r.ok ? r.json() : Promise.resolve({})))
+        .catch(() => ({})),
+    ])
+      .then(([formsRes, defsRes]) => {
+        if (cancelled) return;
+        const formsData =
+          (formsRes as { data?: { forms?: unknown[] } })?.data ?? formsRes;
+        const forms = Array.isArray((formsData as { forms?: unknown[] })?.forms)
+          ? (formsData as { forms: unknown[] }).forms
+          : [];
+        const defs = Array.isArray(
+          (defsRes as { data?: { definitions?: unknown[] } })?.data?.definitions,
+        )
+          ? (defsRes as { data: { definitions: unknown[] } }).data.definitions
+          : [];
+        const hasAny = forms.length > 0 || defs.length > 0;
+        setHasFormsStep(hasAny);
+        // Keep Continue disabled until StepForms actually reports a clean
+        // state — otherwise the parent would hold `formsStepComplete=true`
+        // from a previous flow and let the user skip required fields.
+        if (hasAny) setFormsStepComplete(false);
+        else setFormsStepComplete(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasFormsStep(false);
+          setFormsStepComplete(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingState.providerId]);
 
   useEffect(() => {
     const slug = searchParams.get("slug") || searchParams.get("partnerId");
@@ -506,6 +596,7 @@ export default function BookingFlow() {
             updateBookingState({
               providerId: data.data.id,
               taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
+              providerTimezone: data.data.timezone ?? null,
             });
           }
           // If provider opted out of search engine indexing, inject a noindex meta into this page
@@ -572,6 +663,14 @@ export default function BookingFlow() {
       const index = steps.indexOf("packages");
       if (index > -1) steps.splice(index, 1);
     }
+    // B11: drop the forms step when the provider has nothing configured AND no
+    // booking-level custom fields exist. While loading (null) we keep the step
+    // in the order; StepForms shows a spinner and auto-advances once it
+    // confirms there's nothing to collect.
+    if (hasFormsStep === false) {
+      const index = steps.indexOf("forms");
+      if (index > -1) steps.splice(index, 1);
+    }
     return steps;
   }, [
     user,
@@ -579,6 +678,7 @@ export default function BookingFlow() {
     bookingState.isGroupBooking,
     bookingState.selectedPackage,
     providerHasPackages,
+    hasFormsStep,
     searchParams,
     activeStepOrder,
   ]);
@@ -623,13 +723,12 @@ export default function BookingFlow() {
     }
 
     try {
-      // Slot times from /api/availability are bare HH:MM strings in the
-      // server's timezone (UTC). Construct the ISO timestamp using the same
-      // local-date string that was sent to the availability query + the slot
-      // time with an explicit "Z" suffix so the hold request matches the slot
-      // the server validated as available.
       const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-      const bookingDateTime = new Date(`${dateStr}T${bookingState.selectedTimeSlot}:00Z`);
+      const bookingDateTime = parseSelectedDatetimeInProviderTz(
+        dateStr,
+        bookingState.selectedTimeSlot!,
+        bookingState.providerTimezone,
+      );
 
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {
@@ -951,6 +1050,18 @@ export default function BookingFlow() {
           isCompleteE164(c.phone)
         );
       }
+      case "forms": {
+        // B11: gate on required provider-form fields and required booking
+        // custom fields. StepForms reports counts via onLoaded; the deeper
+        // definitions live in that component, so here we only enforce a
+        // shallow check: if we know there's nothing to collect
+        // (`hasFormsStep === false`) the step should already be out of the
+        // order; if we haven't finished loading yet, don't let the user
+        // advance past a screen they haven't seen.
+        if (hasFormsStep === null) return false;
+        if (hasFormsStep === false) return true;
+        return formsStepComplete;
+      }
       case "payment":
         return bookingState.paymentMethod !== undefined;
       default:
@@ -974,6 +1085,8 @@ export default function BookingFlow() {
         return "Promotions & Rewards";
       case "yourInfo":
         return "Your Information";
+      case "forms":
+        return "Additional Details";
       case "payment":
         return "Review & Pay";
       default:
@@ -1113,6 +1226,22 @@ export default function BookingFlow() {
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
+                />
+              ) : currentStep === "forms" ? (
+                <StepForms
+                  bookingState={bookingState}
+                  updateBookingState={updateBookingState}
+                  onNext={handleNext}
+                  onLoaded={({
+                    providerFormsCount,
+                    customFieldDefinitionsCount,
+                  }) => {
+                    setHasFormsStep(
+                      providerFormsCount > 0 ||
+                        customFieldDefinitionsCount > 0,
+                    );
+                  }}
+                  onCompletionChange={setFormsStepComplete}
                 />
               ) : currentStep === "payment" ? (
                 <StepPayment

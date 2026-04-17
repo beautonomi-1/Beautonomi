@@ -6,17 +6,20 @@
  * - Provider Portal  
  * - Superadmin Portal
  * 
- * Database Status Values:
+ * Database Status Values (must be kept in sync with supabase public.booking_status enum):
  * - pending: Booking created but not confirmed
+ * - pending_payment: Booking reserved, waiting for payment confirmation (webhook / redirect)
  * - confirmed: Booking confirmed and scheduled
  * - in_progress: Service has started
  * - completed: Service completed successfully
  * - cancelled: Booking was cancelled
  * - no_show: Customer didn't show up
+ * - waiting / checked_in: lifecycle micro-states inside the provider portal
  */
 
-export type BookingStatus = 
+export type BookingStatus =
   | "pending"
+  | "pending_payment"
   | "confirmed"
   | "in_progress"
   | "completed"
@@ -24,6 +27,23 @@ export type BookingStatus =
   | "no_show"
   | "waiting"
   | "checked_in";
+
+/**
+ * Source of truth: every literal that can appear in bookings.status must be in this list.
+ * Used by the enum-contract test in __tests__/lib/booking-status-enum-contract.test.ts
+ * to guard against drift between application code and the Postgres enum.
+ */
+export const ALL_BOOKING_STATUS_VALUES = [
+  "pending",
+  "pending_payment",
+  "confirmed",
+  "in_progress",
+  "completed",
+  "cancelled",
+  "no_show",
+  "waiting",
+  "checked_in",
+] as const satisfies readonly BookingStatus[];
 
 /**
  * Customer Portal Status Mapping
@@ -77,7 +97,7 @@ export function mapStatusToCustomer(dbStatus: BookingStatus, scheduledAt: string
 export function mapStatusFromCustomer(customerStatus: CustomerBookingStatus): BookingStatus[] {
   switch (customerStatus) {
     case "upcoming":
-      return ["pending", "confirmed", "in_progress", "waiting", "checked_in"];
+      return ["pending", "pending_payment", "confirmed", "in_progress", "waiting", "checked_in"];
     case "past":
       return ["completed"];
     case "cancelled":
@@ -93,6 +113,7 @@ export function mapStatusFromCustomer(customerStatus: CustomerBookingStatus): Bo
 export function mapStatusToProvider(dbStatus: BookingStatus): ProviderBookingStatus {
   const mapping: Record<BookingStatus, ProviderBookingStatus> = {
     pending: "pending",
+    pending_payment: "pending",
     confirmed: "booked",
     in_progress: "started",
     completed: "completed",
@@ -131,6 +152,7 @@ export function mapStatusFromProvider(providerStatus: ProviderBookingStatus | st
 export function getStatusLabel(status: BookingStatus): string {
   const labels: Record<BookingStatus, string> = {
     pending: "Pending",
+    pending_payment: "Awaiting Payment",
     confirmed: "Confirmed",
     in_progress: "In Progress",
     completed: "Completed",
@@ -148,6 +170,7 @@ export function getStatusLabel(status: BookingStatus): string {
 export function getStatusColor(status: BookingStatus): string {
   const colors: Record<BookingStatus, string> = {
     pending: "bg-yellow-100 text-yellow-800",
+    pending_payment: "bg-yellow-200 text-yellow-900",
     confirmed: "bg-blue-100 text-blue-800",
     in_progress: "bg-purple-100 text-purple-800",
     completed: "bg-green-100 text-green-800",
@@ -163,7 +186,7 @@ export function getStatusColor(status: BookingStatus): string {
  * Check if status allows cancellation
  */
 export function canCancel(status: BookingStatus): boolean {
-  return ["pending", "confirmed"].includes(status);
+  return ["pending", "pending_payment", "confirmed"].includes(status);
 }
 
 /**

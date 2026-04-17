@@ -2,10 +2,12 @@
 
 import { useLayoutEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { useAuth } from "@/providers/AuthProvider";
 
 const GATE_CACHE_KEY = "provider_gate_status";
 const GATE_CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const MAX_RETRY_ATTEMPTS = 2;
 
 function readGateCache(): boolean {
   if (typeof window === "undefined") return false;
@@ -25,40 +27,64 @@ function writeGateCache() {
   } catch { /* ignore */ }
 }
 
+function clearGateCache() {
+  try {
+    sessionStorage.removeItem(GATE_CACHE_KEY);
+  } catch { /* ignore */ }
+}
+
+type GateState =
+  | { kind: "loading" }
+  | { kind: "ready" }
+  | { kind: "error"; message: string };
+
 /**
  * After RoleGuard, redirects provider users whose status is not active
  * to /provider/get-started (setup status). Avoids showing dashboard to draft/pending_approval/suspended.
  *
  * The /api/me/portal result is cached in sessionStorage for 30 minutes so that
  * navigating between provider pages does not show a "Loading…" spinner on every route change.
+ *
+ * §Provider-launch (audit 2026-04): previously the portal check would
+ * "fail open" on any /api/me/portal error — a transient network blip or
+ * a 403 (non-provider trying to deep-link) would silently render the
+ * provider shell. This version fails closed with an explicit error
+ * screen and a guarded retry button (max 2 attempts, plus a manual
+ * "Try again" that re-enters loading).
  */
 export function ProviderPortalGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { signOut } = useAuth();
 
   const allowedPaths = ["/provider/get-started", "/provider/onboarding", "/provider/embed"];
   const isAllowedPath = allowedPaths.some((p) => pathname === p || pathname?.startsWith(p + "/"));
 
   // SSR and the first client render must match. Do not read sessionStorage in useState — on the
   // server it is always "no cache" while the client can have a warm cache, which caused React #418.
-  const [ready, setReady] = useState(isAllowedPath);
+  const [state, setState] = useState<GateState>(isAllowedPath ? { kind: "ready" } : { kind: "loading" });
+  const [retryKey, setRetryKey] = useState(0);
 
   useLayoutEffect(() => {
     if (isAllowedPath) {
-      setReady(true);
+      setState({ kind: "ready" });
       return;
     }
 
-    // Cache hit — no network call needed
     if (readGateCache()) {
-      setReady(true);
+      setState({ kind: "ready" });
       return;
     }
 
     let cancelled = false;
-    fetcher
-      .get<{ data: { portal?: string } }>("/api/me/portal")
-      .then((res) => {
+    let attempt = 0;
+
+    const run = async () => {
+      attempt += 1;
+      try {
+        const res = await fetcher.get<{ data: { portal?: string } }>("/api/me/portal", {
+          timeoutMs: 12_000,
+        });
         if (cancelled) return;
         const portal = res.data?.portal;
         if (portal === "provider_onboarding") {
@@ -82,28 +108,106 @@ export function ProviderPortalGate({ children }: { children: React.ReactNode }) 
           if (!canAccessSetupRoute) {
             router.replace("/provider/get-started");
           } else {
-            setReady(true);
+            setState({ kind: "ready" });
           }
           return;
         }
+
+        // Hard deny: the server says this user shouldn't be in the provider portal.
+        if (portal === "customer" || portal === "admin" || portal === "suspended") {
+          clearGateCache();
+          if (portal === "suspended") {
+            router.replace("/account-suspended");
+          } else {
+            router.replace("/");
+          }
+          return;
+        }
+
         writeGateCache();
-        setReady(true);
-      })
-      .catch(() => {
-        if (!cancelled) setReady(true); // fail open so a network blip doesn't lock the portal
-      });
+        setState({ kind: "ready" });
+      } catch (error) {
+        if (cancelled) return;
+
+        // 401/403 → redirect out of the portal (auth lost / not permitted).
+        if (error instanceof FetchError && (error.status === 401 || error.status === 403)) {
+          clearGateCache();
+          router.replace(error.status === 401 ? "/auth" : "/");
+          return;
+        }
+
+        // Otherwise retry up to MAX_RETRY_ATTEMPTS with linear backoff.
+        if (attempt < MAX_RETRY_ATTEMPTS) {
+          setTimeout(() => {
+            if (!cancelled) run();
+          }, 1500 * attempt);
+          return;
+        }
+
+        const message = error instanceof Error ? error.message : "Unable to verify your account.";
+        setState({ kind: "error", message });
+      }
+    };
+
+    setState({ kind: "loading" });
+    run();
 
     return () => { cancelled = true; };
   // pathname is intentionally excluded: once the gate passes, all sub-routes are allowed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+  }, [router, retryKey]);
 
-  if (!ready) {
+  if (state.kind === "loading") {
     return (
       <div className="min-h-[40vh] flex items-center justify-center">
         <div className="animate-pulse text-gray-500">Loading…</div>
       </div>
     );
   }
+
+  if (state.kind === "error") {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center px-6">
+        <div className="max-w-md w-full text-center">
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">
+            Couldn't verify your account
+          </h2>
+          <p className="text-sm text-gray-600 mb-6">
+            We couldn't reach the server to confirm your provider access. This usually means a
+            network issue. Please try again — we won't unlock the portal until verification
+            succeeds.
+          </p>
+          {state.message ? (
+            <p className="text-xs text-gray-500 mb-6">Details: {state.message}</p>
+          ) : null}
+          <div className="flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => setRetryKey((k) => k + 1)}
+              className="px-4 py-2 rounded-md bg-[#FF0077] hover:bg-[#D60565] text-white text-sm font-medium transition-colors"
+            >
+              Try again
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                clearGateCache();
+                try {
+                  await signOut();
+                } catch {
+                  /* fall through to redirect */
+                }
+                router.replace("/auth");
+              }}
+              className="px-4 py-2 rounded-md border border-gray-300 text-gray-700 text-sm font-medium hover:bg-gray-50 transition-colors"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return <>{children}</>;
 }

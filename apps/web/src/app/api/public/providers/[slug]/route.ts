@@ -78,6 +78,7 @@ export async function GET(
         years_in_business,
         tax_rate_percent,
         tips_enabled,
+        timezone,
         website,
         social_media_links,
         accepts_custom_requests,
@@ -117,6 +118,7 @@ export async function GET(
           years_in_business,
           tax_rate_percent,
           tips_enabled,
+          timezone,
           offers_mobile_services,
           minimum_mobile_booking_amount,
           user_id,
@@ -161,6 +163,7 @@ export async function GET(
             years_in_business,
             tax_rate_percent,
             tips_enabled,
+            timezone,
             user_id,
             users(include_in_search_engines)
           `)
@@ -196,6 +199,7 @@ export async function GET(
             years_in_business,
             tax_rate_percent,
             tips_enabled,
+            timezone,
             status,
             user_id,
             users(include_in_search_engines)
@@ -546,6 +550,7 @@ export async function GET(
       seo_indexable: includeInSearchEngines,
       tax_rate_percent: providerData.tax_rate_percent ?? 0,
       tips_enabled: providerData.tips_enabled ?? true,
+      timezone: providerData.timezone ?? "Africa/Johannesburg",
     } as PublicProviderDetail;
 
     const response = NextResponse.json({

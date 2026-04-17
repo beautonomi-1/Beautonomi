@@ -188,21 +188,12 @@ export async function POST(
       return errorResponse("Failed to credit customer wallet. Refund recorded for retry.", "WALLET_ERROR", 500);
     }
 
-    const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
-      tenant_id: walletTenantId,
-      booking_id: bookingId,
-      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
-      transaction_type: "refund",
-      amount: -amount,
-      fees: 0,
-      commission: 0,
-      net: -amount,
-      description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId}: ${reason}`,
-      created_at: new Date().toISOString(),
-    });
-    if (financeErr) {
-      console.error("Provider refund: finance ledger insert failed after wallet credit:", financeErr);
-    }
+    // NOTE: finance_transactions ledger row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. A second app-side insert here was the B1 double-count
+    // bug — it produced two rows per wallet refund because the unique index on
+    // `source_refund_id` is partial (IS NOT NULL) and a manual insert with
+    // `source_refund_id = NULL` never conflicted.
 
     // Record booking event for audit trail
     try {

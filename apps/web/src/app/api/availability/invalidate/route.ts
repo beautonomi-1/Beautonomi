@@ -1,16 +1,25 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { successResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  successResponse,
+  handleApiError,
+  requireAuthInApi,
+} from "@/lib/supabase/api-helpers";
 import { invalidateAvailabilityCache } from "@/lib/availability/cache-invalidation";
 
 /**
  * POST /api/availability/invalidate
- * 
- * Invalidate availability cache for a specific staff and date
- * This can be called when bookings are created/cancelled to ensure fresh data
+ *
+ * Invalidate availability cache for a specific staff and date.
+ * Called by provider-portal flows after booking mutations so the customer
+ * booking UI sees fresh slots. §Release-audit 2026-04: previously unauthed,
+ * now gated behind any signed-in Supabase user (tenants are still scoped by
+ * staff id + RLS).
  */
 export async function POST(request: NextRequest) {
   try {
+    await requireAuthInApi(request);
+
     const body = await request.json();
     const { staffId, date } = body;
 

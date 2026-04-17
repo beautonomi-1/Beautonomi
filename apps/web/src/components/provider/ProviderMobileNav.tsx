@@ -41,6 +41,7 @@ import {
   Link2,
   Monitor,
   PiggyBank,
+  CreditCard,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,7 @@ const navigationSections: NavSection[] = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" },
+      { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" },

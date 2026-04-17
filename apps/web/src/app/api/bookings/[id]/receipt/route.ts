@@ -8,6 +8,21 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 
 type BookingServiceRow = {
   price?: number | null;
+  guest_name?: string | null;
+  /**
+   * B14: immutable tax snapshot captured at booking time
+   * (F17 / migration 493). Shape: `{ code, rate, inclusive, jurisdiction, source, resolved_at }`.
+   * Exposed per-line so customers + auditors can see the exact VAT context
+   * applied, independent of later provider/platform tax-rate changes.
+   */
+  tax_snapshot?: {
+    code?: string | null;
+    rate?: number | null;
+    inclusive?: boolean | null;
+    jurisdiction?: string | null;
+    source?: string | null;
+    resolved_at?: string | null;
+  } | null;
   offerings?: { title?: string | null; price?: number | null } | null;
 };
 
@@ -82,8 +97,8 @@ export async function GET(
       .from("bookings")
       .select(`
         *,
-        customer:users(id, email, full_name, phone),
-        provider:providers(
+        customer:users!bookings_customer_id_fkey(id, email, full_name, phone),
+        provider:providers!bookings_provider_id_fkey(
           id,
           business_name,
           owner_email,
@@ -98,7 +113,9 @@ export async function GET(
           duration_minutes,
           price,
           currency,
-          offerings:offerings(id, title, price, duration_minutes)
+          guest_name,
+          tax_snapshot,
+          offerings:offerings!booking_services_offering_id_fkey(id, title, price, duration_minutes)
         ),
         booking_addons:booking_addons(
           id,
@@ -256,12 +273,20 @@ export async function GET(
       service_date: booking.scheduled_at,
       customer: booking.customer,
       provider: booking.provider,
-      services: booking.booking_services?.map((bs: BookingServiceRow) => ({
-        name: bs.offerings?.title || "Service",
-        quantity: 1,
-        price: bs.price || bs.offerings?.price || 0,
-        total: bs.price || bs.offerings?.price || 0,
-      })) || [],
+      services: booking.booking_services?.map((bs: BookingServiceRow) => {
+        const title = bs.offerings?.title || "Service";
+        const guest = bs.guest_name?.trim();
+        return {
+          name: guest ? `${title} (${guest})` : title,
+          quantity: 1,
+          price: bs.price || bs.offerings?.price || 0,
+          total: bs.price || bs.offerings?.price || 0,
+          // B14: forward the immutable tax snapshot stamped at booking
+          // creation so clients render the real VAT line (rate + inclusive
+          // flag) even if the provider's current tax settings have changed.
+          tax_snapshot: bs.tax_snapshot ?? null,
+        };
+      }) || [],
       addons:
         booking.booking_addons?.map((ba: BookingAddonRow) => ({
           name: (ba as Record<string, unknown>).addon_name as string || "Add-on",
@@ -298,6 +323,11 @@ export async function GET(
       payment_status: booking.payment_status,
       amount_paid: amountPaid,
       balance_due: balanceDue,
+      // B14: expose `total_refunded` so customer-facing receipts can render
+      // "Refunded" lines and compute net paid without re-hitting the refunds
+      // API. Sourced from `bookings.total_refunded` which is maintained by
+      // the finance trigger (migration 490).
+      total_refunded: totalRefundedRow,
       deposit_required: depositRequired,
       deposit_amount: depositAmount,
       deposit_percentage: depositPercentage,

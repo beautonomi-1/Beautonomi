@@ -1,12 +1,13 @@
 import * as Sentry from "@sentry/nextjs";
 import { SENTRY_DSN, SENTRY_TRACES_SAMPLE_RATE } from "./src/lib/sentry-client-config";
+import { scrubSentryEvent, scrubSentryTransaction } from "./src/lib/sentry/before-send";
 
 // Config is in a separate module so this instrumentation entry never references process,
 // avoiding Turbopack HMR "module factory is not available" for the process polyfill.
 if (SENTRY_DSN) {
   Sentry.init({
     dsn: SENTRY_DSN,
-    sendDefaultPii: true,
+    sendDefaultPii: false,
     tracesSampleRate: SENTRY_TRACES_SAMPLE_RATE,
     integrations: [
       Sentry.replayIntegration({
@@ -17,6 +18,8 @@ if (SENTRY_DSN) {
     ],
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1.0,
+    beforeSend: scrubSentryEvent,
+    beforeSendTransaction: scrubSentryTransaction,
   });
 }
 

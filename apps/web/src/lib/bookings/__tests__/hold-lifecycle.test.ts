@@ -49,15 +49,20 @@ describe("checkActiveHoldOverlap", () => {
     expect(supabase.from).toHaveBeenCalledWith("booking_holds");
   });
 
-  it("returns false on DB error (no false-positive 409)", async () => {
+  it("throws on DB error (fail-closed, no silent overlap-false)", async () => {
+    // §B6: previously the helper swallowed Supabase errors and returned
+    // `false`, which let parallel guest holds slip through when the query
+    // failed mid-booking. The contract is now fail-closed — the caller must
+    // decide to retry or reject with 409 instead of quietly accepting.
     const supabase = mockSupabase({
       data: null,
       error: { message: "connection error" },
     });
-    const result = await checkActiveHoldOverlap(supabase, providerId, start, end, {
-      dbStaffId: "staff-a",
-    });
-    expect(result).toBe(false);
+    await expect(
+      checkActiveHoldOverlap(supabase, providerId, start, end, {
+        dbStaffId: "staff-a",
+      }),
+    ).rejects.toThrow(/checkActiveHoldOverlap DB error for provider prov-1/);
   });
 
   it("handles null staff (provider-wide overlap)", async () => {

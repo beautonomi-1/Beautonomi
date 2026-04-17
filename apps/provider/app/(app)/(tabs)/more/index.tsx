@@ -38,8 +38,23 @@ const PROFILE_COMPLETION_ROUTE_MAP: Record<string, string> = {
   "/(app)/(tabs)/more/catalogue": "/(app)/(tabs)/more/catalogue-offerings-hub",
   "/(app)/(tabs)/more/gallery": "/(app)/(tabs)/more/gallery",
 };
+/**
+ * §Provider-launch (audit 2026-04): profile-completion rows previously
+ * fell back to `apiRoute` verbatim, which could push a web path (e.g.
+ * `/provider/settings/foo`) into the native router and crash or dead-end.
+ * If the API route isn't a known native route, send the provider to the
+ * settings hub where they can drill in manually instead of pushing an
+ * unknown string into `router.push`.
+ */
+const NATIVE_ROUTE_PREFIX = "/(app)/";
+const SETTINGS_HUB_ROUTE = "/(app)/(tabs)/more/settings-account-hub";
 function getProfileCompletionRoute(apiRoute: string): string {
-  return PROFILE_COMPLETION_ROUTE_MAP[apiRoute] ?? apiRoute;
+  const mapped = PROFILE_COMPLETION_ROUTE_MAP[apiRoute];
+  if (mapped) return mapped;
+  if (typeof apiRoute === "string" && apiRoute.startsWith(NATIVE_ROUTE_PREFIX)) {
+    return apiRoute;
+  }
+  return SETTINGS_HUB_ROUTE;
 }
 
 interface MenuItem {

@@ -212,8 +212,16 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     .single();
 
   if (bookingError || !booking) {
-    console.error("Booking not found:", metadata.booking_id);
-    return;
+    // B2: previously logged + returned, which caused the webhook router to
+    // return 200 to Paystack and never retry. Throw so the outer handler
+    // records the event as failed and Paystack can retry. This covers the
+    // race where the booking row was deleted between checkout initiation and
+    // webhook delivery, OR metadata carrying a stale booking_id.
+    const err = new Error(
+      `charge.success: booking ${metadata.booking_id} not found (reference=${reference})`
+    );
+    (err as Error & { cause?: unknown }).cause = bookingError ?? null;
+    throw err;
   }
 
   const bookingData = booking as ChargeBookingRow;
@@ -1211,7 +1219,7 @@ async function handleCustomOfferSuccess(
     .eq("id", offerId)
     .single();
   if (!offerRow) return;
-  type OfferRow = { status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
+  type OfferRow = { id?: string; status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
   type CustomRequestRow = { provider_id?: string; customer_id?: string; service_name?: string; description?: string; location_type?: string; preferred_start_at?: string; address_line1?: string; address_line2?: string; address_city?: string; address_state?: string; address_country?: string; address_postal_code?: string; service_category_id?: string; id?: string };
   const offer = offerRow as OfferRow;
   const req = offer.request as CustomRequestRow | undefined;
@@ -1339,6 +1347,42 @@ async function handleCustomOfferSuccess(
     bookingInsert.travel_fee = travelFee;
   }
 
+  /**
+   * §Release-audit 2026-04: previously this insert went straight to
+   * `bookings` with no conflict check. If a regular booking had been made
+   * on the same staff/provider in the meantime, we'd silently double-book
+   * the slot. Run a focused conflict check before insert; if there's a
+   * conflict, push the booking out to the next free hour rather than
+   * dropping it on the floor (the customer has already paid).
+   */
+  const _start = new Date(scheduledAt);
+  const _end = new Date(_start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
+  const _staffId = offer.staff_id || null;
+  let conflictResolved = false;
+  try {
+    const { checkBookingConflict, checkBookingConflictForProvider } = await import(
+      "@/lib/bookings/conflict-check"
+    );
+    const conflictResult = _staffId
+      ? await checkBookingConflict(adminSupabase, _staffId, _start, _end, 0)
+      : await checkBookingConflictForProvider(adminSupabase, req.provider_id, _start, _end, 0);
+    if (conflictResult.hasConflict) {
+      console.warn(
+        "[handleCustomOfferSuccess] booking conflict detected, deferring to next available hour",
+        { offerId: offer.id, provider_id: req.provider_id, original: scheduledAt, conflicts: conflictResult.conflictingBookings },
+      );
+      const next = new Date(Math.max(_end.getTime(), Date.now()) + 60 * 60 * 1000);
+      next.setMinutes(0, 0, 0);
+      scheduledAt = next.toISOString();
+      bookingInsert.scheduled_at = scheduledAt;
+      bookingInsert.status = "pending"; // requires provider re-confirm at the new time
+      bookingInsert.special_requests = `Custom order: ${req.description} — auto-rescheduled (slot conflict)`;
+      conflictResolved = true;
+    }
+  } catch (conflictErr) {
+    console.error("[handleCustomOfferSuccess] conflict check failed; proceeding anyway:", conflictErr);
+  }
+
   const { data: booking, error: bookingError } = await adminSupabase
     .from("bookings")
     .insert(bookingInsert)
@@ -1354,6 +1398,21 @@ async function handleCustomOfferSuccess(
   const start = new Date(scheduledAt);
   const end = new Date(start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
   const assignedStaffId = offer.staff_id || null;
+  // Surface conflict in audit trail for visibility (no-op on insert if table missing).
+  if (conflictResolved) {
+    try {
+      await adminSupabase.from("booking_events").insert({
+        booking_id: booking.id,
+        event_type: "auto_rescheduled",
+        event_data: {
+          reason: "custom_offer_payment_slot_conflict",
+          new_scheduled_at: scheduledAt,
+        },
+      });
+    } catch {
+      /* booking_events optional in test fixtures */
+    }
+  }
 
   const { error: bookingServiceError } = await adminSupabase
     .from("booking_services")
@@ -2520,8 +2579,13 @@ async function handleBookingRemainingSuccess(
     .eq("id", bookingId)
     .single();
   if (bookingError || !booking) {
-    console.error("Pay-remaining: booking not found", bookingId);
-    return;
+    // B2: pay-remaining success with unknown booking. Money was taken, so
+    // throw to force Paystack retry rather than silently returning 200.
+    const err = new Error(
+      `pay-remaining charge.success: booking ${bookingId} not found (reference=${reference})`
+    );
+    (err as Error & { cause?: unknown }).cause = bookingError ?? null;
+    throw err;
   }
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
@@ -2679,12 +2743,19 @@ async function handleAdditionalChargeSuccess(
   const bookingId = metadata.booking_id as string;
   const chargeId = metadata.additional_charge_id as string;
 
-  const { data: booking } = await supabase
+  const { data: booking, error: additionalBookingError } = await supabase
     .from("bookings")
     .select("*")
     .eq("id", bookingId)
     .single();
-  if (!booking) return;
+  if (!booking) {
+    // B2: additional-charge success but booking is gone. Throw so Paystack retries.
+    const err = new Error(
+      `additional-charge.success: booking ${bookingId} not found (reference=${reference}, charge=${chargeId})`
+    );
+    (err as Error & { cause?: unknown }).cause = additionalBookingError ?? null;
+    throw err;
+  }
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
 
@@ -2700,7 +2771,12 @@ async function handleAdditionalChargeSuccess(
     .eq("booking_id", bookingId)
     .single();
 
-  if (!charge) return;
+  if (!charge) {
+    const err = new Error(
+      `additional-charge.success: charge ${chargeId} not found for booking ${bookingId} (reference=${reference})`
+    );
+    throw err;
+  }
   if ((charge as { status?: string }).status === "paid") return;
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);

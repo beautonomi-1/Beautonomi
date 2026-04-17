@@ -25,6 +25,7 @@ export default function ReviewPage() {
   const [hoveredRating, setHoveredRating] = useState(0);
   const [comment, setComment] = useState("");
   const [photos, setPhotos] = useState<string[]>([]);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [services, setServices] = useState<Array<{ offering_id: string; offering_name: string; staff_id?: string | null; staff_name?: string | null }>>([]);
   const [serviceRatings, setServiceRatings] = useState<Record<string, number>>({});
   const [staffRatings, setStaffRatings] = useState<Record<string, number>>({});
@@ -63,9 +64,59 @@ export default function ReviewPage() {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    // In a real implementation, upload to storage and get URLs
-    // For now, we'll just show a placeholder
-    toast.info("Photo upload functionality coming soon");
+    // §Customer-launch (audit 2026-04): previously a "coming soon" toast.
+    // Wire the existing /api/upload route (already supports customer
+    // uploads up to 5MB) to persist review photos to Supabase storage
+    // and stash the returned public URLs for submit.
+    const MAX_BYTES = 5 * 1024 * 1024;
+    const MAX_PHOTOS = 6;
+    const remaining = Math.max(0, MAX_PHOTOS - photos.length);
+    if (remaining === 0) {
+      toast.error(`You can upload up to ${MAX_PHOTOS} photos.`);
+      e.target.value = "";
+      return;
+    }
+
+    const accepted = Array.from(files).slice(0, remaining).filter((f) => {
+      if (f.size > MAX_BYTES) {
+        toast.error(`${f.name} is larger than 5MB and was skipped.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (accepted.length === 0) {
+      e.target.value = "";
+      return;
+    }
+
+    setPhotoUploading(true);
+    const uploadedUrls: string[] = [];
+    for (const file of accepted) {
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "review-photos");
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: formData,
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+        const payload = (await res.json()) as { data?: { url?: string } };
+        const url = payload?.data?.url;
+        if (url) uploadedUrls.push(url);
+      } catch (err) {
+        console.error("Review photo upload failed", err);
+        toast.error(`Could not upload ${file.name}.`);
+      }
+    }
+    if (uploadedUrls.length > 0) {
+      setPhotos((prev) => [...prev, ...uploadedUrls]);
+      toast.success(`Added ${uploadedUrls.length} photo${uploadedUrls.length === 1 ? "" : "s"}`);
+    }
+    setPhotoUploading(false);
+    e.target.value = "";
   };
 
   const handleSubmit = async () => {
@@ -291,8 +342,8 @@ export default function ReviewPage() {
                   id="photo-upload"
                 />
                 <label htmlFor="photo-upload">
-                  <Button variant="outline" type="button" asChild>
-                    <span>Choose Photos</span>
+                  <Button variant="outline" type="button" asChild disabled={photoUploading}>
+                    <span>{photoUploading ? "Uploading..." : "Choose Photos"}</span>
                   </Button>
                 </label>
               </div>

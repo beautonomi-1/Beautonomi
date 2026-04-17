@@ -727,7 +727,17 @@ export default function ProviderOnboarding() {
         return;
       }
 
-      console.log("Submitting onboarding data:", JSON.stringify(onboardingData, null, 2));
+      // §Provider-launch (audit 2026-04): never log the full onboarding
+      // payload — it contains owner name, email, phone, address, ID
+      // numbers, and banking details. Surface just enough signal for
+      // debugging without leaking PII into the browser console.
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[onboarding] submitting", {
+          category_count: onboardingData.global_category_ids?.length ?? 0,
+          has_address: Boolean(onboardingData.address?.line1),
+          selected_plan_id: onboardingData.selected_plan_id ?? null,
+        });
+      }
 
       const response = await fetcher.post<{
         data: {

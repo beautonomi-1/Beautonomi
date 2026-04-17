@@ -65,6 +65,22 @@ const eslintConfig = defineConfig([
       "react-hooks/purity": "warn",
       "react-hooks/use-memo": "warn",
       "react-hooks/preserve-manual-memoization": "warn",
+      // F15: block imports of the retired legacy CalendarGrid path.
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              group: [
+                "**/provider-portal/CalendarGrid",
+                "**/provider-portal/CalendarGrid.tsx",
+              ],
+              message:
+                "Import CalendarGrid from '@/components/provider-portal/calendar' (or the sibling barrel).",
+            },
+          ],
+        },
+      ],
     },
   },
   // Tailwind config uses require() for preset/plugins; allow it.
@@ -84,6 +100,14 @@ const eslintConfig = defineConfig([
       "perf/no-heavy-barrel-import": "warn",
       "perf/no-static-mapbox": "error",
       "perf/no-framer-in-list": "warn",
+    },
+  },
+  // Security guardrail — F6: every API route must reference an auth guard.
+  {
+    files: ["src/app/api/**/route.ts", "src/app/api/**/route.tsx"],
+    plugins: { perf: perfPlugin },
+    rules: {
+      "perf/require-auth-on-route": "error",
     },
   },
 ]);

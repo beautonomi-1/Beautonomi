@@ -167,6 +167,8 @@ export interface PublicProviderDetail extends PublicProviderCard {
   tax_rate_percent?: number;
   /** Whether the provider accepts tips. */
   tips_enabled?: boolean;
+  /** IANA timezone for interpreting booking slot wall times (e.g. Africa/Johannesburg). */
+  timezone?: string | null;
 }
 
 // Service/Offering Types

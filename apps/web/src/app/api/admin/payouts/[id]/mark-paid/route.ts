@@ -99,15 +99,19 @@ export async function POST(
       );
     }
 
-    // Financial control: only allow mark-paid for approved or processing payouts.
-    // pending payouts must be approved first; rejected/failed payouts cannot be reversed this way.
-    const allowedStatuses = ["approved", "processing"];
-    if (!allowedStatuses.includes(payoutData.status)) {
+    // §Release-audit 2026-04: only `processing` payouts can be marked paid.
+    // The `payout_status` enum is `pending | processing | completed | failed`
+    // — there is no "approved" state — so the previous list including
+    // "approved" had a dead branch and a misleading error message. Pending
+    // requests must be approved first (which moves them to processing); we
+    // also reject `failed` because re-paying a failed payout requires a new
+    // request, not a flip from this endpoint.
+    if (payoutData.status !== "processing") {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: `Cannot mark payout as paid when status is "${payoutData.status}". Only approved or processing payouts can be marked paid.`,
+            message: `Cannot mark payout as paid when status is "${payoutData.status}". Only payouts in the "processing" state (i.e. already approved by an admin) can be marked paid.`,
             code: "INVALID_STATUS_TRANSITION",
           },
         },

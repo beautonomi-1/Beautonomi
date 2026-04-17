@@ -130,6 +130,31 @@ const nextConfig = {
     ];
   },
 
+  // F12 — feature-flagged rewrite that delegates /admin to the Vite SPA once
+  // every Next admin page has a SPA equivalent. Set ADMIN_UI_SOURCE=spa and
+  // ADMIN_SPA_URL=https://admin.beautonomi.co.za (or preview URL) to flip.
+  //
+  // Also mirrors the iOS Universal Links file at the legacy root path. Apple probes
+  // `/.well-known/apple-app-site-association` first, but some older clients / proxies still
+  // hit `/apple-app-site-association` at the root; mirroring avoids broken deep links.
+  async rewrites() {
+    const universalLinkRewrites = [
+      {
+        source: '/apple-app-site-association',
+        destination: '/.well-known/apple-app-site-association',
+      },
+    ];
+    if (process.env.ADMIN_UI_SOURCE !== 'spa' || !process.env.ADMIN_SPA_URL) {
+      return universalLinkRewrites;
+    }
+    const spa = process.env.ADMIN_SPA_URL.replace(/\/$/, '');
+    return [
+      ...universalLinkRewrites,
+      { source: '/admin', destination: spa },
+      { source: '/admin/:path*', destination: `${spa}/:path*` },
+    ];
+  },
+
   // Headers for caching & security
   async headers() {
     return [
@@ -137,6 +162,25 @@ const nextConfig = {
       {
         source: '/.well-known/assetlinks.json',
         headers: [{ key: 'Content-Type', value: 'application/json; charset=utf-8' }],
+      },
+      // iOS Universal Links — Apple requires `application/json` at this exact path (no extension) with no redirects.
+      // Without this, Safari will not open the Beautonomi / Beautonomi Partner apps from https:// links.
+      {
+        source: '/.well-known/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
+      },
+      // Legacy path: some older iOS versions fetched `apple-app-site-association` at the site root.
+      // Apple's CDN now always probes `/.well-known/...` first but mirroring the content here is cheap
+      // and keeps downgrade paths working.
+      {
+        source: '/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
       },
       // Admin SPA static chunks (Vite) — long cache; hashed filenames.
       {

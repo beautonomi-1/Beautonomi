@@ -23,6 +23,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -51,6 +52,22 @@ interface StepPaymentProps {
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
+/**
+ * Minimal UUIDv4 generator — avoids taking a runtime dep for a single
+ * client-side idempotency key. Falls back to Math.random when
+ * crypto.randomUUID is unavailable (very old browsers).
+ */
+function generateUuidV4(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function getSubtotalAfterDiscounts(state: BookingState): number {
   let services = 0;
   if (state.isGroupBooking && state.groupParticipants) {
@@ -419,10 +436,12 @@ export default function StepPayment({
     // Note: Minimum booking amount validation will be done server-side
     // We can add client-side validation here if provider info is available
 
-    // Slot times from /api/availability are in the server's timezone (UTC).
-    // Use the same local-date string + slot HH:MM + "Z" to build a correct UTC timestamp.
     const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-    const bookingDateTime = new Date(`${dateStr}T${bookingState.selectedTimeSlot}:00Z`);
+    const bookingDateTime = parseSelectedDatetimeInProviderTz(
+      dateStr,
+      bookingState.selectedTimeSlot!,
+      bookingState.providerTimezone,
+    );
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services
@@ -493,6 +512,18 @@ export default function StepPayment({
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
       loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
       hold_id: holdId || null,
+      // B11: forward provider form responses and booking custom field values
+      // collected on the new "forms" step. API validates these against the
+      // active provider_forms / custom_field_definitions the same way
+      // /book/continue does.
+      ...(bookingState.providerFormResponses &&
+      Object.keys(bookingState.providerFormResponses).length > 0
+        ? { provider_form_responses: bookingState.providerFormResponses }
+        : {}),
+      ...(bookingState.customFieldValues &&
+      Object.keys(bookingState.customFieldValues).length > 0
+        ? { custom_field_values: bookingState.customFieldValues }
+        : {}),
       ...(adCampaignId ? { campaign_id: adCampaignId } : {}),
       ...(bookingState.mode === "mobile"
         ? {
@@ -532,9 +563,21 @@ export default function StepPayment({
       bookingData.subscribe_recurring = { enabled: true, frequency: freq };
     }
 
+    // §15.4-24 (audit 2026-04): client-generated idempotency key so a
+    // retried POST (e.g. due to a mobile network blip after the server
+    // already created the booking) returns the same booking_id +
+    // payment_url instead of creating a duplicate + double-charging.
+    // Reused across this payment attempt; regenerated if the user
+    // abandons and re-enters the flow.
+    const idempotencyKey = bookingState.idempotencyKey ?? generateUuidV4();
+    if (!bookingState.idempotencyKey) {
+      updateBookingState({ idempotencyKey });
+    }
+
     const response = await fetcher.post<{
       data: PublicBookingCreateResult;
     }>("/api/public/bookings", bookingData, {
+      headers: { "Idempotency-Key": idempotencyKey },
       // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
       timeoutMs: 120000,
     });

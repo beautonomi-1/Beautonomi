@@ -191,9 +191,18 @@ interface PaymentSettings {
 
 export default function NewBookingScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string }>();
+  const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string }>();
   const { isTablet } = useResponsive();
-  const { selectedLocationId } = useProvider();
+  const { selectedLocationId: providerLocationId } = useProvider();
+  // §Provider-launch (audit 2026-04): honour an explicit `location_id` query
+  // param (carried from the calendar's location filter) over the provider
+  // context's remembered location so the new-booking fetches scope to the
+  // location the user was looking at.
+  const paramLocationId =
+    typeof params.location_id === "string" && params.location_id.length > 0
+      ? params.location_id
+      : undefined;
+  const selectedLocationId = paramLocationId ?? providerLocationId;
   const tenantCurrency = getTenantDefaultCurrency();
   const { width: windowWidth } = useWindowDimensions();
   const { bundle } = useConfigBundle();
@@ -447,12 +456,26 @@ export default function NewBookingScreen() {
     [availableSlotsData?.slots]
   );
 
+  // §Provider-launch (audit 2026-04): when the user entered this screen
+  // from a specific staff column or a filtered location on the calendar,
+  // we receive `staff_id` / `location_id` query params. Pre-seed each
+  // newly-added service with that staff so the provider doesn't have to
+  // re-pick it per line. Location is handled further down via the
+  // existing `selectedLocationId` flow.
+  const preselectedStaffId =
+    typeof params.staff_id === "string" && params.staff_id.length > 0
+      ? params.staff_id
+      : undefined;
+
   // --- Helpers ---
   function toggleService(serviceId: string) {
     setSelectedServices((prev) => {
       const exists = prev.find((s) => s.serviceId === serviceId);
       if (exists) return prev.filter((s) => s.serviceId !== serviceId);
-      return [...prev, { serviceId, addOnIds: [] }];
+      return [
+        ...prev,
+        { serviceId, addOnIds: [], ...(preselectedStaffId ? { staffId: preselectedStaffId } : {}) },
+      ];
     });
   }
 

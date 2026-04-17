@@ -4,6 +4,7 @@ import React, { memo, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import type { Appointment, TeamMember, TimeBlock } from "@/lib/provider-portal/types";
+import { mergeTeamWorkingHoursForCalendar } from "./utils";
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
 import { TimeBlockElement } from "./TimeBlockElement";
@@ -12,6 +13,8 @@ import { STAFF_DAY_COLUMN_LAYOUT } from "./constants";
 
 interface StaffColumnProps {
   member: TeamMember;
+  /** Full team — used when `member` has no personal working hours (week view parity). */
+  teamMembers: TeamMember[];
   date: Date;
   appointments: Appointment[];
   blocks: CalendarBlock[];
@@ -33,6 +36,7 @@ interface StaffColumnProps {
 
 function StaffColumnComponent({
   member,
+  teamMembers,
   date,
   appointments,
   blocks,
@@ -52,6 +56,13 @@ function StaffColumnComponent({
   formatPrice,
 }: StaffColumnProps) {
   const dateStr = format(date, "yyyy-MM-dd");
+
+  const staffWorkingHoursEffective = useMemo(() => {
+    if (member.working_hours && Object.keys(member.working_hours).length > 0) {
+      return member.working_hours;
+    }
+    return mergeTeamWorkingHoursForCalendar(teamMembers);
+  }, [member.working_hours, teamMembers]);
 
   const visibleAppointments = useMemo(() => {
     if (useMangomintMode && !showCanceled) {
@@ -77,7 +88,7 @@ function StaffColumnComponent({
         workStart={workStart}
         workEnd={workEnd}
         locationOperatingHours={locationOperatingHours}
-        staffWorkingHours={member.working_hours ?? undefined}
+        staffWorkingHours={staffWorkingHoursEffective}
         onTimeSlotClick={onTimeSlotClick}
       />
 
@@ -112,6 +123,7 @@ function StaffColumnComponent({
 
 export const StaffColumn = memo(StaffColumnComponent, (prev, next) => {
   if (prev.member.id !== next.member.id) return false;
+  if (prev.teamMembers !== next.teamMembers) return false;
   if (prev.date.getTime() !== next.date.getTime()) return false;
   if (prev.startHour !== next.startHour) return false;
   if (prev.useMangomintMode !== next.useMangomintMode) return false;
