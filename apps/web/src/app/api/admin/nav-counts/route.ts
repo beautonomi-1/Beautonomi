@@ -32,6 +32,9 @@ export async function GET(request: NextRequest) {
       productReturnsResult,
       providerSubsPastDueResult,
       webhookFailures24hResult,
+      opsNewLeadsResult,
+      opsStalledResult,
+      opsActivationResult,
     ] = await Promise.all([
       supabase
         .from("user_verifications")
@@ -126,6 +129,42 @@ export async function GET(request: NextRequest) {
           return { count: 0 };
         }
       })(),
+      // Provider Ops: new leads (unassigned / new stage)
+      (async () => {
+        try {
+          const { count, error } = await supabase
+            .from("provider_leads")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenantId)
+            .eq("commercial_stage", "new");
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
+      // Provider Ops: stalled onboarding (no progress in 48h)
+      (async () => {
+        try {
+          const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+          const { count, error } = await supabase
+            .from("provider_onboarding_tracking")
+            .select("id", { count: "exact", head: true })
+            .eq("tenant_id", tenantId)
+            .in("status", ["in_progress", "stalled"])
+            .lt("last_progress_at", cutoff);
+          if (error) return { count: 0 };
+          return { count: count ?? 0 };
+        } catch {
+          return { count: 0 };
+        }
+      })(),
+      // Provider Ops: providers pending activation
+      supabase
+        .from("providers")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending_approval")
+        .eq("tenant_id", tenantId),
     ]);
 
     const counts: Record<string, number> = {
@@ -141,6 +180,9 @@ export async function GET(request: NextRequest) {
       "/admin/ecommerce/returns": productReturnsResult.count ?? 0,
       "/admin/provider-subscriptions": providerSubsPastDueResult.count ?? 0,
       "/admin/webhooks": webhookFailures24hResult.count ?? 0,
+      "/admin/provider-ops/leads": opsNewLeadsResult.count ?? 0,
+      "/admin/provider-ops/tracker": opsStalledResult.count ?? 0,
+      "/admin/provider-ops/activation": opsActivationResult.count ?? 0,
     };
 
     return successResponse(counts);

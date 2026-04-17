@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Linking,
   FlatList,
   RefreshControl,
   ActivityIndicator,
@@ -12,7 +11,6 @@ import {
 import { Stack, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
-import { APP_URL } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 import { api } from "@/lib/api-client";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -64,8 +62,6 @@ export default function MyReturnsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
 
-  const returnsUrl = APP_URL ? `${APP_URL}/account-settings/returns` : null;
-  const ordersUrl = APP_URL ? `${APP_URL}/account-settings/orders` : null;
   const fb = getTenantDefaultCurrency();
 
   const load = useCallback(async (isRefresh = false) => {
@@ -74,6 +70,10 @@ export default function MyReturnsScreen() {
     setError(null);
     try {
       const res = await api.get<{ returns?: ReturnItem[] }>("/api/me/returns");
+      if (res.error) {
+        setError(res.error.message || "Failed to load returns");
+        return;
+      }
       const data = (res.data as { returns?: ReturnItem[] }) ?? res.data;
       const list = data?.returns ?? (Array.isArray(data) ? data : []);
       setReturns(Array.isArray(list) ? list : []);
@@ -116,17 +116,30 @@ export default function MyReturnsScreen() {
   );
 
   const handleEscalate = useCallback(
-    async (id: string) => {
-      setActionId(id);
-      try {
-        const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
-        if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to escalate");
-        else await load();
-      } catch {
-        Alert.alert("Error", "Failed to escalate");
-      } finally {
-        setActionId(null);
-      }
+    (id: string) => {
+      Alert.alert(
+        "Escalate return",
+        "Are you sure you want to escalate this return? Our support team will review it.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Escalate",
+            style: "destructive",
+            onPress: async () => {
+              setActionId(id);
+              try {
+                const res = await api.patch(`/api/me/returns/${id}`, { action: "escalate" });
+                if (res.error) Alert.alert("Error", (res.error as { message?: string })?.message ?? "Failed to escalate");
+                else await load();
+              } catch {
+                Alert.alert("Error", "Failed to escalate");
+              } finally {
+                setActionId(null);
+              }
+            },
+          },
+        ],
+      );
     },
     [load]
   );
@@ -163,11 +176,9 @@ export default function MyReturnsScreen() {
       <View style={{ flex: 1, backgroundColor: Colors.gray[50] }}>
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: contentPadding, paddingVertical: 12, backgroundColor: Colors.white, borderBottomWidth: 1, borderColor: Colors.gray[100] }}>
           <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Track return requests and refunds</Text>
-          {ordersUrl ? (
-            <TouchableOpacity onPress={() => Linking.openURL(ordersUrl)}>
-              <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>View orders</Text>
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity onPress={() => router.push("/(app)/product-orders" as never)}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.primary }}>View orders</Text>
+          </TouchableOpacity>
         </View>
 
         {returns.length === 0 ? (
@@ -179,14 +190,9 @@ export default function MyReturnsScreen() {
             <Text style={{ fontSize: 14, color: Colors.gray[600], textAlign: "center", marginBottom: 24 }}>
               You can request a return from your order details within 14 days of delivery.
             </Text>
-            <TouchableOpacity onPress={() => router.push("/(app)/product-orders" as any)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}>
+            <TouchableOpacity onPress={() => router.push("/(app)/product-orders" as never)} style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}>
               <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 16 }}>View my orders</Text>
             </TouchableOpacity>
-            {returnsUrl && (
-              <TouchableOpacity onPress={() => Linking.openURL(returnsUrl)} style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 14, color: Colors.primary }}>Open in browser</Text>
-              </TouchableOpacity>
-            )}
           </View>
         ) : (
           <FlatList
@@ -243,13 +249,6 @@ export default function MyReturnsScreen() {
           />
         )}
 
-        {returns.length > 0 && returnsUrl ? (
-          <View style={{ padding: contentPadding, paddingTop: 0 }}>
-            <TouchableOpacity onPress={() => Linking.openURL(returnsUrl)} style={{ alignItems: "center", paddingVertical: 12 }}>
-              <Text style={{ fontSize: 14, color: Colors.primary, fontWeight: "500" }}>Open full returns in browser</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
       </View>
     </>
   );

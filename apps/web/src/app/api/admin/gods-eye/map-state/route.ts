@@ -1,10 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection,
-  successResponse,
-  handleApiError,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchGodsEyeCustomerMarkers } from "@/lib/admin/gods-eye-customer-markers";
 
@@ -18,13 +14,13 @@ type AtHomeBookingOut = { booking_id: string; provider_id: string; customer_targ
 
 /**
  * GET /api/admin/gods-eye/map-state
- * Overview section. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
- * `customer_markers` (saved address or last booking coords) is included only for **superadmin** — traction / oversight.
+ * Superadmin only. Returns provider markers, active at-home bookings (target + tracking), at-salon bookings.
+ * `customer_markers` (saved address or last booking coords) when `customer_markers_max` is positive — superadmin-only route.
  * Query: location_type?, booking_status?, provider_status?, time_window_mins?, customer_markers_max? (default 2000, max 5000)
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const admin = getSupabaseAdmin();
     const { searchParams } = new URL(request.url);
@@ -55,23 +51,32 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: bookings, error: bookErr } = await bookingQuery;
-    if (bookErr) throw bookErr;
+    if (bookErr) console.warn("gods-eye map-state: bookings query:", bookErr.message);
     const bookingList = bookings || [];
 
     const cutoff = timeWindowMins
       ? new Date(Date.now() - Number(timeWindowMins) * 60 * 1000).toISOString()
       : new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-    const { data: recentProviderIds } = await admin
+    const { data: recentProviderIds, error: pingsErr } = await admin
       .from("provider_location_events")
       .select("provider_id")
       .gte("recorded_at", cutoff);
+    if (pingsErr) console.warn("gods-eye map-state: provider_location_events query:", pingsErr.message);
     const fromPings = [...new Set((recentProviderIds || []).map((r: PingRow) => r.provider_id))];
     const fromBookings = [...new Set(bookingList.map((b: BookingRow) => b.provider_id))];
-    const allProviderIds = [...new Set([...fromBookings, ...fromPings])];
+
+    const { data: allActiveProviders } = await admin
+      .from("providers")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("status", "active");
+    const fromActive = (allActiveProviders || []).map((p: { id: string }) => p.id);
+
+    const allProviderIds = [...new Set([...fromBookings, ...fromPings, ...fromActive])];
 
     let customer_markers: Awaited<ReturnType<typeof fetchGodsEyeCustomerMarkers>> = [];
-    if (user.role === "superadmin" && customerMarkersMax > 0) {
+    if (customerMarkersMax > 0) {
       try {
         customer_markers = await fetchGodsEyeCustomerMarkers(admin, tenantId, customerMarkersMax);
       } catch (e) {
@@ -106,7 +111,7 @@ export async function GET(request: NextRequest) {
       providerQuery = providerQuery.eq("status", providerStatus);
     }
     const { data: providers, error: provErr } = await providerQuery;
-    if (provErr) throw provErr;
+    if (provErr) console.warn("gods-eye map-state: providers query:", provErr.message);
     const providerList = providers || [];
     const providerIdsFilter = providerList.map((p: ProviderRow) => p.id);
 
@@ -132,13 +137,14 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    const { data: trackingStates } = await admin
+    const { data: trackingStates, error: trackingErr } = bookingList.length > 0 ? await admin
       .from("booking_tracking_state")
       .select("booking_id, provider_last_lat, provider_last_lng, provider_last_at, customer_target_lat, customer_target_lng, arrived_at_target, arrived_at, arrived_distance_m, last_distance_to_target_m, status")
       .in(
         "booking_id",
         bookingList.map((b: BookingRow) => b.id)
-      );
+      ) : { data: [], error: null };
+    if (trackingErr) console.warn("gods-eye map-state: booking_tracking_state query:", trackingErr.message);
 
     const trackingByBooking: Record<string, TrackingRow> = {};
     (trackingStates || []).forEach((t: TrackingRow) => {
@@ -148,7 +154,7 @@ export async function GET(request: NextRequest) {
     const locationIds = bookingList
       .filter((b: BookingRow) => b.location_type === "at_salon" && b.location_id)
       .map((b: BookingRow) => b.location_id);
-    let salonLocations: Record<string, { lat: number; lng: number; name?: string }> = {};
+    const salonLocations: Record<string, { lat: number; lng: number; name?: string }> = {};
     if (locationIds.length > 0) {
       const { data: locs } = await admin
         .from("provider_locations")
@@ -165,13 +171,37 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Fetch registered locations as fallback for providers without live pings
+    const { data: registeredLocations } = await admin
+      .from("provider_locations")
+      .select("id, provider_id, latitude, longitude, name")
+      .in("provider_id", providerIdsFilter)
+      .not("latitude", "is", null)
+      .not("longitude", "is", null);
+    const registeredByProvider: Record<string, { lat: number; lng: number; name?: string }> = {};
+    (registeredLocations || []).forEach((loc: { provider_id: string; latitude?: number | null; longitude?: number | null; name?: string }) => {
+      if (!registeredByProvider[loc.provider_id] && loc.latitude != null && loc.longitude != null) {
+        registeredByProvider[loc.provider_id] = { lat: Number(loc.latitude), lng: Number(loc.longitude), name: loc.name };
+      }
+    });
+
     type LastLocation = { provider_last_lat?: number; provider_last_lng?: number; provider_last_at?: string; lat?: number; lng?: number; recorded_at?: string };
     const providerMarkers = providerList.map((p: ProviderRow) => {
       const last = latestByProvider[p.id] || trackingByBooking[bookingList.find((b: BookingRow) => b.provider_id === p.id)?.id ?? ""] as LastLocation | undefined;
       const L = last as LastLocation | undefined;
-      const lastLat = L?.provider_last_lat ?? L?.lat;
-      const lastLng = L?.provider_last_lng ?? L?.lng;
+      let lastLat = L?.provider_last_lat ?? L?.lat;
+      let lastLng = L?.provider_last_lng ?? L?.lng;
       const lastAt = L?.provider_last_at ?? L?.recorded_at;
+
+      // Fallback to registered salon location
+      if (lastLat == null || lastLng == null) {
+        const reg = registeredByProvider[p.id];
+        if (reg) {
+          lastLat = reg.lat;
+          lastLng = reg.lng;
+        }
+      }
+
       const activeBooking = bookingList.find((b: BookingRow) => b.provider_id === p.id);
       const ts = activeBooking ? trackingByBooking[activeBooking.id] : null;
       let status: "idle" | "en_route" | "in_service" = "idle";

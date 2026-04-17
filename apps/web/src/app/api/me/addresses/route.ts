@@ -137,6 +137,7 @@ export async function POST(request: NextRequest) {
       latitude: latitude ?? null,
       longitude: longitude ?? null,
       is_default: d.is_default ?? false,
+      customer_managed_home: Boolean(d.is_default),
       access_codes: accessCodesJson,
       apartment_unit: d.apartment_unit ?? null,
       building_name: d.building_name ?? null,

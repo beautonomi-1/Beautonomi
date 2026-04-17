@@ -34,6 +34,7 @@ export function CalendarDesktopWithDnd({
       timeBlocks={viewProps.timeBlocks ?? []}
       availabilityBlocks={availabilityBlocks}
       enableConflictValidation={enableConflictValidation}
+      locationOperatingHours={viewProps.locationOperatingHours}
       onReschedule={onReschedule}
     >
       <div className="flex flex-1 flex-col min-h-0 min-w-0">

@@ -13,6 +13,7 @@ import {
   Linking,
   Modal,
   Pressable,
+  RefreshControl,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format, addDays, isSameDay, parseISO, startOfDay } from "date-fns";
@@ -28,6 +29,8 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { Avatar } from "@/components/ui/Avatar";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { SafetyPanicButton } from "@/components/SafetyPanicButton";
+import * as ImagePicker from "expo-image-picker";
+import { APP_URL } from "@/config/public-env";
 import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
@@ -61,18 +64,39 @@ function extractIsoTimePart(value: unknown): string {
   return /^\d{2}:\d{2}$/.test(timePart) ? timePart : "";
 }
 
-function formatDateTimeSafe(value: unknown): string {
+const DEFAULT_TZ = "Africa/Johannesburg";
+
+function formatDateTimeSafe(value: unknown, tz?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleString();
+  try {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleString();
+  }
 }
 
-function formatTimeSafe(value: unknown): string {
+function formatTimeSafe(value: unknown, tz?: string | null): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString();
+  try {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleTimeString();
+  }
 }
 
 function formatProductVariantLabel(variant: unknown): string | null {
@@ -141,6 +165,10 @@ type BookingDetail = {
   service_fee_amount?: number;
   tip_amount?: number;
   travel_fee_amount?: number;
+  deposit_required?: boolean;
+  deposit_percentage?: number | null;
+  deposit_amount?: number | null;
+  payment_option?: string | null;
   package_id?: string | null;
   package_name?: string | null;
   is_group_booking?: boolean;
@@ -174,6 +202,7 @@ type BookingDetail = {
     price?: number;
     guest_name?: string | null;
   }[];
+  booking_source?: string | null;
   /** Points earned for this booking (when completed); from provider_point_transactions */
   provider_points_earned?: number | null;
 };
@@ -291,7 +320,7 @@ export default function BookingDetailScreen() {
   const [rescheduling, setRescheduling] = useState(false);
   const rescheduleDateStr = format(rescheduleDate, "yyyy-MM-dd");
   const { data: rescheduleSlotsData } = useApi<{ slots: string[] }>(
-    `/api/provider/bookings/available-slots?date=${rescheduleDateStr}&duration_minutes=${durationMinutes}`,
+    `/api/provider/bookings/available-slots?date=${rescheduleDateStr}&duration_minutes=${durationMinutes}&exclude_booking_id=${id ?? ""}`,
     { enabled: showReschedule && !!rescheduleDateStr }
   );
   const rescheduleSlots = rescheduleSlotsData?.slots ?? [];
@@ -364,6 +393,12 @@ export default function BookingDetailScreen() {
   const [chargeMarkPaidMethod, setChargeMarkPaidMethod] = useState<"cash" | "card" | "mobile" | "bank_transfer" | "other">("card");
   const [markingChargePaid, setMarkingChargePaid] = useState(false);
 
+  // §Provider-launch (audit 2026-04): customer notification actions (P8 parity).
+  const [isNotifying, setIsNotifying] = useState(false);
+
+  // §Provider-launch (audit 2026-04): pull-to-refresh on booking detail.
+  const [refreshing, setRefreshing] = useState(false);
+
   // Arrival verification (provider enters code from customer)
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
@@ -375,6 +410,47 @@ export default function BookingDetailScreen() {
 
   // At-salon check-in (Client arrived)
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+
+  // Consent document upload
+  const [uploadingConsentFormId, setUploadingConsentFormId] = useState<string | null>(null);
+
+  async function handleUploadConsentDocument(formId: string) {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.[0]) return;
+
+      setUploadingConsentFormId(formId);
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const fileName = asset.fileName || `consent-${formId}.jpg`;
+      const mimeType = asset.mimeType || "image/jpeg";
+
+      const formData = new FormData();
+      formData.append("form_id", formId);
+      formData.append("file", { uri, name: fileName, type: mimeType } as unknown as Blob);
+
+      const res = await api.fetch<{ url: string }>(`/api/provider/bookings/${id}/consent-document`, {
+        method: "POST",
+        body: formData,
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      if (res.error) {
+        Alert.alert("Error", String(res.error));
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Alert.alert("Success", "Consent document uploaded");
+        await refresh();
+      }
+    } catch (err) {
+      Alert.alert("Error", "Failed to upload document");
+    } finally {
+      setUploadingConsentFormId(null);
+    }
+  }
 
   // Audit log
   const [showAuditLog, setShowAuditLog] = useState(false);
@@ -397,6 +473,8 @@ export default function BookingDetailScreen() {
   const [showRateClientSheet, setShowRateClientSheet] = useState(false);
   const [rateClientStars, setRateClientStars] = useState(0);
   const [rateClientComment, setRateClientComment] = useState("");
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
   const [submittingRateClient, setSubmittingRateClient] = useState(false);
   /** Whether this booking already has a row in provider_client_ratings (null = not loaded yet). */
   const [hasProviderClientRating, setHasProviderClientRating] = useState<boolean | null>(null);
@@ -422,13 +500,16 @@ export default function BookingDetailScreen() {
         const loc = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });
-        await api.post(`/api/provider/bookings/${id}/location`, {
+        const res = await api.post(`/api/provider/bookings/${id}/location`, {
           latitude: loc.coords.latitude,
           longitude: loc.coords.longitude,
           accuracy: loc.coords.accuracy ?? undefined,
         });
+        if (res.error && __DEV__) {
+          console.warn("[LocationSync] Failed to send location:", res.error);
+        }
       } catch {
-        // Ignore; next interval will retry
+        // Network error; next interval will retry
       }
     };
     locationPermissionDeniedRef.current = false;
@@ -659,7 +740,12 @@ export default function BookingDetailScreen() {
   const totalAmount = b.total_amount ?? 0;
   const totalPaid = b.total_paid ?? 0;
   const totalRefunded = b.total_refunded ?? 0;
-  const outstanding = totalAmount - totalPaid + totalRefunded;
+  const walletAmountApplied = Number((b as any).wallet_amount ?? 0);
+  const giftCardAmountApplied = Number((b as any).gift_card_amount ?? 0);
+  const effectivePaid = Math.max(0, totalPaid - totalRefunded);
+  const outstandingRaw = totalAmount - effectivePaid - walletAmountApplied - giftCardAmountApplied;
+  const ps = ((b as any).payment_status || "").toLowerCase();
+  const outstanding = ps === "refunded" ? 0 : Math.max(0, outstandingRaw);
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
   const canRefund = totalPaid > 0 && totalRefunded < totalPaid;
@@ -814,6 +900,34 @@ export default function BookingDetailScreen() {
   const handleStatusChange = async (newStatus: string) => {
     if (!id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (newStatus === "started") {
+      const { error: err } = await postMutation(`/api/provider/bookings/${id}/start-service`, {});
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      await refresh();
+      return;
+    }
+
+    if (newStatus === "completed") {
+      const { error: err } = await postMutation(`/api/provider/bookings/${id}/complete-service`, {});
+      if (err) {
+        Alert.alert("Error", err);
+        return;
+      }
+      await refresh();
+      setShowRateClientSheet(true);
+      return;
+    }
+
+    if (newStatus === "cancelled") {
+      setCancelReason("");
+      setShowCancelModal(true);
+      return;
+    }
+
     const version = (b as BookingDetail & { version?: number }).version;
     const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
       status: newStatus,
@@ -837,10 +951,18 @@ export default function BookingDetailScreen() {
   const showStatusActions = () => {
     const actions: { label: string; status: string; destructive?: boolean }[] = [];
     if (b.status !== "confirmed" && b.status !== "booked" && isActive) {
-      actions.push({ label: "Confirm", status: "confirmed" });
+      actions.push({ label: "Confirm", status: "booked" });
     }
-    if (b.status === "confirmed" || b.status === "booked") {
-      actions.push({ label: "Start service", status: "started" });
+    if (isAtHome) {
+      if ((isArrived || arrivalVerified) && !isStarted) {
+        actions.push({ label: "Start service", status: "started" });
+      }
+    } else {
+      const salonReady =
+        b.status === "confirmed" || b.status === "booked" || clientArrivedAtSalon;
+      if (salonReady && !isStarted) {
+        actions.push({ label: "Start service", status: "started" });
+      }
     }
     if (isStarted) {
       actions.push({ label: "Complete", status: "completed" });
@@ -887,11 +1009,29 @@ export default function BookingDetailScreen() {
       return;
     }
     setRescheduling(true);
-    const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00`;
+    const naiveDt = new Date(`${rescheduleDateStr}T${rescheduleTime}:00`);
+    const offsetMin = naiveDt.getTimezoneOffset();
+    const tzSign = offsetMin <= 0 ? "+" : "-";
+    const absMin = Math.abs(offsetMin);
+    const tzHH = String(Math.floor(absMin / 60)).padStart(2, "0");
+    const tzMM = String(absMin % 60).padStart(2, "0");
+    const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00${tzSign}${tzHH}:${tzMM}`;
     try {
+      const staffIds = (b.services ?? []).map((s: { staff_id?: string | null }) => s.staff_id).filter((sid): sid is string => !!sid);
+      const checkParams = new URLSearchParams({
+        scheduled_at: newScheduledAt,
+        duration_minutes: String(durationMinutes),
+        exclude_booking_id: id,
+      });
+      if (staffIds.length > 0) checkParams.set("staff_ids", staffIds.join(","));
       const checkRes = await api.get<{ available?: boolean }>(
-        `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}`
+        `/api/provider/bookings/check-availability?${checkParams}`
       );
+      if (checkRes.error) {
+        Alert.alert("Error", checkRes.error.message ?? "Could not verify availability. Please try again.");
+        setRescheduling(false);
+        return;
+      }
       if (checkRes.data?.available === false) {
         Alert.alert("Slot unavailable", "This time is no longer available. Choose another.");
         setRescheduling(false);
@@ -1078,6 +1218,65 @@ export default function BookingDetailScreen() {
     }
   };
 
+  /**
+   * §Provider-launch (audit 2026-04): manually fire provider→customer
+   * notifications (re-send confirmation, send reminder, send cancellation
+   * notice). Matches the web booking detail "Customer Notifications"
+   * panel so operations running from a phone have the same tools.
+   */
+  const handleResendBookingNotification = async (
+    type: "confirmation" | "reminder",
+  ) => {
+    if (!id) return;
+    setIsNotifying(true);
+    try {
+      const res = await postMutation(`/api/provider/bookings/${id}/notify-resend`, { type });
+      if (res.error) {
+        Alert.alert("Notification", res.error);
+        return;
+      }
+      const sent = (res.data as { sent?: boolean } | undefined)?.sent;
+      if (sent === false) {
+        Alert.alert("Notification", "Customer could not be notified.");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert(
+        "Notification",
+        type === "confirmation"
+          ? "Confirmation re-sent to customer."
+          : "Reminder sent to customer.",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const handleSendCancellationNotice = async () => {
+    if (!id) return;
+    setIsNotifying(true);
+    try {
+      const isNoShow = b?.status === "no_show";
+      const res = await postMutation(
+        `/api/provider/bookings/${id}/notify-cancellation`,
+        { cancellation_type: isNoShow ? "no_show" : "normal" },
+      );
+      if (res.error) {
+        Alert.alert("Notification", res.error);
+        return;
+      }
+      const sent = (res.data as { sent?: boolean } | undefined)?.sent;
+      if (sent === false) {
+        Alert.alert("Notification", "Cancellation notice could not be sent.");
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Notification", "Cancellation notice sent to customer.");
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const submitVerifyQrBody = async (body: { verification_code?: string; qr_data?: string }) => {
     if (!id) return false;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -1163,7 +1362,9 @@ export default function BookingDetailScreen() {
       Platform.OS === "ios"
         ? `https://maps.apple.com/?q=${encoded}`
         : `https://www.google.com/maps/search/?api=1&query=${encoded}`;
-    Linking.openURL(url).catch(() => {});
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Error", "Could not open maps. Please check your map application.");
+    });
   };
 
   const handleRequestPayment = async () => {
@@ -1209,6 +1410,7 @@ export default function BookingDetailScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowSendPaymentLink(false);
     Alert.alert("Done", `Payment link sent via ${sendPaymentLinkMethod}.`);
+    refresh();
   };
 
   const handleChargeMarkPaid = async () => {
@@ -1270,6 +1472,21 @@ export default function BookingDetailScreen() {
         style={twStyle("flex-1")}
         contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={async () => {
+              // §Provider-launch (audit 2026-04): pull-to-refresh on booking detail.
+              setRefreshing(true);
+              try {
+                await refresh();
+              } finally {
+                setRefreshing(false);
+              }
+            }}
+            tintColor="#6B7280"
+          />
+        }
       >
         {isAtHome ? (
           <View style={twStyle("rounded-2xl border-2 border-violet-200 bg-violet-50 p-4 mb-3")}>
@@ -1330,13 +1547,68 @@ export default function BookingDetailScreen() {
                   <Ionicons name="person-circle-outline" size={24} color="#4b5563" />
                 </TouchableOpacity>
               ) : null}
+              {/*
+                §Provider-launch (audit 2026-04): quick contact actions on
+                the booking detail header. Previously a provider had to
+                open the customer profile sheet and then jump to the
+                Clients tab to message — this puts call / SMS-message
+                / text-message one tap away.
+              */}
+              {b.customers?.phone ? (
+                <TouchableOpacity
+                  onPress={() => Linking.openURL(`tel:${b.customers!.phone}`).catch(() => {})}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call ${customerName}`}
+                >
+                  <Ionicons name="call-outline" size={20} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
+              {customerId ? (
+                <TouchableOpacity
+                  onPress={async () => {
+                    try {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      const result = await api.post<{ id: string }>(
+                        "/api/provider/conversations/create",
+                        { customer_id: customerId },
+                      );
+                      if (result.error) {
+                        Alert.alert(
+                          "Message",
+                          (result.error as { message?: string }).message ?? "Could not start conversation.",
+                        );
+                        return;
+                      }
+                      const convId = result.data?.id;
+                      if (convId) {
+                        router.push(`/(app)/(tabs)/more/messaging/${convId}` as never);
+                      }
+                    } catch {
+                      Alert.alert("Message", "Failed to start conversation.");
+                    }
+                  }}
+                  style={twStyle("ml-2 p-1.5 rounded-full bg-gray-100")}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Message ${customerName}`}
+                >
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#4b5563" />
+                </TouchableOpacity>
+              ) : null}
             </View>
-            <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
-              <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
+            <View style={twStyle("flex-row items-center")}>
+              {b.booking_source === "walk_in" && (
+                <View style={[twStyle("rounded-full bg-green-100 px-2 py-1"), { marginRight: 6 }]}>
+                  <Text style={twStyle("text-xs font-medium text-green-800")}>Walk-in</Text>
+                </View>
+              )}
+              <View style={twStyle(`rounded-full px-2 py-1 ${statusColor(b.status)}`)}>
+                <Text style={twStyle("text-xs font-medium text-gray-800")}>{b.status}</Text>
+              </View>
             </View>
           </View>
           <Text style={twStyle("text-sm text-gray-600")}>
-            {formatDateTimeSafe(b.scheduled_at)}
+            {formatDateTimeSafe(b.scheduled_at, (b as any).display_time_zone)}
           </Text>
           {addressLine ? (
             <Text style={twStyle("mt-2 text-sm text-gray-500")}>{addressLine}</Text>
@@ -1752,7 +2024,7 @@ export default function BookingDetailScreen() {
               <View style={twStyle("mb-2 border-b border-gray-100 pb-2")}>
                 {typeof b.subtotal === "number" && b.subtotal > 0 ? (
                   <Text style={twStyle("text-sm text-gray-600")}>
-                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {b.subtotal.toLocaleString()}
+                    Subtotal: {b.currency ?? getTenantDefaultCurrency()} {Math.max(0, b.subtotal - (b.travel_fee_amount ?? 0)).toLocaleString()}
                   </Text>
                 ) : null}
                 {typeof b.discount_amount === "number" && b.discount_amount > 0 ? (
@@ -1796,6 +2068,12 @@ export default function BookingDetailScreen() {
             {totalAmount > 0 && (
               <Text style={twStyle("text-sm text-gray-600")}>
                 Total: {b.currency ?? getTenantDefaultCurrency()} {totalAmount.toLocaleString()}
+              </Text>
+            )}
+            {b.deposit_required && b.payment_option === "deposit" && typeof b.deposit_amount === "number" && b.deposit_amount > 0 && (
+              <Text style={twStyle("text-sm text-gray-600 mt-0.5")}>
+                Deposit{b.deposit_percentage ? ` (${b.deposit_percentage}%)` : ""}:{" "}
+                {b.currency ?? getTenantDefaultCurrency()} {b.deposit_amount.toLocaleString()}
               </Text>
             )}
             {totalPaid > 0 && (
@@ -1907,6 +2185,103 @@ export default function BookingDetailScreen() {
                   <Text style={twStyle("font-medium text-red-700")}>Refund</Text>
                 </TouchableOpacity>
               )}
+              <TouchableOpacity
+                onPress={async () => {
+                  // §Provider-launch (audit 2026-04): mint a short-lived
+                  // HMAC-signed URL via authenticated API call, then open
+                  // in the system viewer. Never expose the raw
+                  // /receipt/pdf route to an unauthenticated browser
+                  // window — it would fail auth and show a blank page /
+                  // JSON error.
+                  try {
+                    const res = await api.post<{
+                      url: string;
+                      expires_at: string;
+                    }>(`/api/provider/bookings/${id}/receipt/signed-url`);
+                    const signedUrl = res.data?.url;
+                    if (!signedUrl) {
+                      Alert.alert("Receipt", "Could not open the receipt right now. Please try again.");
+                      return;
+                    }
+                    const can = await Linking.canOpenURL(signedUrl);
+                    if (!can) {
+                      Alert.alert("Receipt", "This device cannot open the receipt link.");
+                      return;
+                    }
+                    await Linking.openURL(signedUrl);
+                  } catch (err) {
+                    const msg =
+                      err instanceof Error ? err.message : "Please try again.";
+                    Alert.alert("Receipt", msg);
+                  }
+                }}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="View receipt"
+              >
+                <Text style={twStyle("font-medium text-gray-700")}>View receipt</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/*
+          §Provider-launch (audit 2026-04): "Customer Notifications" block,
+          mirroring the web detail's P8 panel. Lets the provider manually
+          re-send confirmation / reminder emails + SMS, or send a cancellation
+          notice when a cancel is being handled out-of-band.
+        */}
+        {id && b?.customer_id && b.status !== "completed" && (
+          <View style={twStyle("rounded-xl border border-gray-200 bg-white p-4 mb-3")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>
+              Customer notifications
+            </Text>
+            <View style={twStyle("flex-row flex-wrap gap-2")}>
+              <TouchableOpacity
+                onPress={() => handleResendBookingNotification("confirmation")}
+                disabled={isNotifying}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Resend booking confirmation to customer"
+              >
+                {isNotifying ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Text style={twStyle("font-medium text-gray-800")}>
+                    Re-send confirmation
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleResendBookingNotification("reminder")}
+                disabled={isNotifying}
+                style={twStyle("rounded-xl border border-gray-300 py-2.5 px-4")}
+                accessibilityRole="button"
+                accessibilityLabel="Send reminder to customer"
+              >
+                {isNotifying ? (
+                  <ActivityIndicator size="small" color="#374151" />
+                ) : (
+                  <Text style={twStyle("font-medium text-gray-800")}>Send reminder</Text>
+                )}
+              </TouchableOpacity>
+              {(b.status === "cancelled" || b.status === "no_show") && (
+                <TouchableOpacity
+                  onPress={handleSendCancellationNotice}
+                  disabled={isNotifying}
+                  style={twStyle("rounded-xl border border-red-300 py-2.5 px-4")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send cancellation notice to customer"
+                >
+                  {isNotifying ? (
+                    <ActivityIndicator size="small" color="#b91c1c" />
+                  ) : (
+                    <Text style={twStyle("font-medium text-red-700")}>
+                      Send cancellation notice
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         )}
@@ -1960,7 +2335,7 @@ export default function BookingDetailScreen() {
                 )}
                 {s.scheduled_start_at && (
                   <Text style={twStyle("text-xs text-gray-500 mt-1")}>
-                    {formatTimeSafe(s.scheduled_start_at)}
+                    {formatTimeSafe(s.scheduled_start_at, (b as any).display_time_zone)}
                     {s.duration_minutes ? ` · ${s.duration_minutes} min` : ""}
                   </Text>
                 )}
@@ -2096,9 +2471,10 @@ export default function BookingDetailScreen() {
             })}
           </ScrollView>
           <Text style={twStyle("text-sm font-medium text-gray-700 mb-2")}>Time</Text>
+          <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
           <View style={twStyle("flex-row flex-wrap")}>
             {rescheduleSlots.length > 0 ? (
-              rescheduleSlots.slice(0, 24).map((slot) => {
+              rescheduleSlots.map((slot) => {
                 const isSelected = rescheduleTime === slot;
                 return (
                   <TouchableOpacity
@@ -2114,6 +2490,7 @@ export default function BookingDetailScreen() {
               <Text style={twStyle("text-sm text-gray-500")}>Loading slots…</Text>
             )}
           </View>
+          </ScrollView>
           <ActionButton
             label={rescheduling ? "Rescheduling…" : "Confirm reschedule"}
             onPress={handleReschedule}
@@ -2179,7 +2556,9 @@ export default function BookingDetailScreen() {
             textAlignVertical="top"
           />
           <Text style={twStyle("text-xs text-gray-500 mb-3")}>
-            Refund is processed per your platform rules (e.g. wallet or original payment method). The booking balance will update after this succeeds.
+            {
+              "The refund amount will be credited to the customer's wallet balance. The booking balance will update after this succeeds."
+            }
           </Text>
           <ActionButton label={refunding ? "Processing…" : "Confirm refund"} onPress={handleRefund} loading={refunding} fullWidth />
         </View>
@@ -2379,6 +2758,71 @@ export default function BookingDetailScreen() {
         </Pressable>
       </Modal>
 
+      {/* Cancel booking modal (cross-platform replacement for Alert.prompt) */}
+      <Modal
+        visible={showCancelModal}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowCancelModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center", padding: 24 }}
+          onPress={() => setShowCancelModal(false)}
+        >
+          <Pressable
+            style={{ backgroundColor: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 360 }}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={{ fontSize: 18, fontWeight: "700", color: Colors.gray[900], marginBottom: 8 }}>Cancel Booking</Text>
+            <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 16 }}>Please provide a reason for cancellation:</Text>
+            <TextInput
+              value={cancelReason}
+              onChangeText={setCancelReason}
+              placeholder="Reason for cancellation…"
+              placeholderTextColor={Colors.gray[400]}
+              multiline
+              numberOfLines={3}
+              style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, padding: 12, fontSize: 15, color: Colors.gray[900], backgroundColor: Colors.gray[50], textAlignVertical: "top", minHeight: 80 }}
+            />
+            <View style={{ flexDirection: "row", gap: 12, marginTop: 20 }}>
+              <TouchableOpacity
+                onPress={() => setShowCancelModal(false)}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "500", color: Colors.gray[700] }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={async () => {
+                  setShowCancelModal(false);
+                  const version = (b as BookingDetail & { version?: number }).version;
+                  const { error: err } = await patchMutation(`/api/provider/bookings/${id}`, {
+                    status: "cancelled",
+                    cancellation_reason: cancelReason.trim() || "No reason provided",
+                    ...(version !== undefined && { version }),
+                  });
+                  if (err) {
+                    if (isConflictError(err)) {
+                      Alert.alert(
+                        "Conflict",
+                        "This booking was modified by another user. Please refresh and try again.",
+                        [{ text: "Dismiss", style: "cancel" }, { text: "Refresh", onPress: () => refresh() }]
+                      );
+                    } else {
+                      Alert.alert("Error", err);
+                    }
+                    return;
+                  }
+                  await refresh();
+                }}
+                style={{ flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: "#dc2626", alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel Booking</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Rate this client sheet (after completion modal CTA) */}
       <BottomSheet
         visible={showRateClientSheet}
@@ -2488,14 +2932,40 @@ export default function BookingDetailScreen() {
                     ) : null
                   )) : null}
                   {b.provider_form_responses ? Object.entries(b.provider_form_responses).map(([formId, answers]) =>
-                    typeof answers === "object" && answers !== null ? Object.entries(answers as Record<string, unknown>).map(([fieldId, val]) => (
-                      val != null && val !== "" ? (
-                        <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
-                          <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
-                          <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
-                        </View>
-                      ) : null
-                    )) : null
+                    typeof answers === "object" && answers !== null ? (
+                      <View key={formId}>
+                        {Object.entries(answers as Record<string, unknown>)
+                          .filter(([k]) => k !== "_consent_document_url")
+                          .map(([fieldId, val]) => (
+                            val != null && val !== "" ? (
+                              <View key={`${formId}-${fieldId}`} style={twStyle("flex-row justify-between py-1.5 border-b border-amber-100")}>
+                                <Text style={twStyle("text-sm text-gray-600")}>{String(fieldId).replace(/_/g, " ")}</Text>
+                                <Text style={twStyle("text-sm font-medium text-gray-900")} numberOfLines={2}>{String(val)}</Text>
+                              </View>
+                            ) : null
+                          ))}
+                        {(answers as Record<string, unknown>)._consent_document_url ? (
+                          <TouchableOpacity
+                            style={twStyle("mt-2 flex-row items-center")}
+                            onPress={() => Linking.openURL(String((answers as Record<string, unknown>)._consent_document_url))}
+                          >
+                            <Ionicons name="document-text-outline" size={16} color="#6366f1" />
+                            <Text style={twStyle("ml-1 text-sm font-medium text-indigo-600")}>View consent document</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                        <TouchableOpacity
+                          style={twStyle("mt-1 flex-row items-center")}
+                          onPress={() => handleUploadConsentDocument(formId)}
+                          disabled={uploadingConsentFormId === formId}
+                        >
+                          <Ionicons name="cloud-upload-outline" size={16} color="#6b7280" />
+                          <Text style={twStyle("ml-1 text-sm font-medium text-gray-600")}>
+                            {(answers as Record<string, unknown>)._consent_document_url ? "Replace" : "Upload"} consent document
+                          </Text>
+                          {uploadingConsentFormId === formId && <ActivityIndicator size="small" style={{ marginLeft: 8 }} />}
+                        </TouchableOpacity>
+                      </View>
+                    ) : null
                   ) : null}
                 </View>
               </View>

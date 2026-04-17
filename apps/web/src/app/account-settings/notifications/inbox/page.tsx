@@ -245,7 +245,7 @@ function NotificationsInbox() {
             disabled={isRefreshing}
             title="Refresh"
           >
-            <RefreshCw className={cn("w-4 h-4", isRefreshing && "animate-spin")} />
+            <RefreshCw className="w-4 h-4" />
           </Button>
           <Link href="/account-settings/notifications">
             <Button variant="ghost" size="icon" title="Notification preferences">
@@ -280,8 +280,7 @@ function NotificationsInbox() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400">
-          <RefreshCw className="w-8 h-8 animate-spin mb-3" />
+        <div className="flex flex-col items-center justify-center py-20 text-gray-500">
           <p className="text-sm">Loading notifications…</p>
         </div>
       ) : notifications.length === 0 ? (

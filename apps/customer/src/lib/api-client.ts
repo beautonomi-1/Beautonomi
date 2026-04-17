@@ -5,7 +5,7 @@
 import { createApiClient, type ApiClientExtraOptions } from "@beautonomi/api";
 import type { ApiResponse } from "@beautonomi/types";
 import { supabase } from "@/lib/supabase/client";
-import { APP_URL, webApiTenantHeaders } from "@/config/public-env";
+import { APP_URL, getBackendUrl, webApiTenantHeaders } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 import { authFlowBreadcrumb, captureError, isSentryEnabled } from "@/lib/sentry";
 
@@ -66,6 +66,8 @@ async function getAccessToken(): Promise<string | null> {
 
 const baseApi = createApiClient({
   baseUrl: APP_URL,
+  /** Align with config bundle / Help WebView: localhost in dev when EXPO_PUBLIC_APP_URL is unset. */
+  getBaseUrl: getBackendUrl,
   getAccessToken,
   getDefaultHeaders: () => ({
     ...webApiTenantHeaders(),

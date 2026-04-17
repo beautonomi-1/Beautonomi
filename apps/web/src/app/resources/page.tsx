@@ -4,6 +4,7 @@ import Footer from "@/components/layout/footer";
 import BottomNav from "@/components/layout/bottom-nav";
 import Link from "next/link";
 import { getPublicPageContent } from "@/lib/content/getPublicPageContent";
+import { sanitizeCmsPageHtml } from "@/lib/html/cms-page-html";
 import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 
 export const metadata: Metadata = {
@@ -39,7 +40,7 @@ export default async function ResourcesPage() {
             {Object.entries(content).map(([key, section]) => (
               <div key={key}>
                 {section.content_type === "html" ? (
-                  <div dangerouslySetInnerHTML={{ __html: section.content }} />
+                  <div dangerouslySetInnerHTML={{ __html: sanitizeCmsPageHtml(section.content) }} />
                 ) : (
                   <p className="whitespace-pre-wrap">{section.content}</p>
                 )}

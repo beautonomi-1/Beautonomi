@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
 
       // 2. Check if working on this day/time (if date/time provided)
       if (date && startTime && endTime) {
-        const dayOfWeek = new Date(date).getDay(); // 0 = Sunday, 6 = Saturday
+        const dayOfWeek = new Date(`${date}T12:00:00`).getDay(); // 0 = Sunday, 6 = Saturday
         const schedule = (member as any).staff_schedules?.find(
           (s: any) => s.day_of_week === dayOfWeek
         );

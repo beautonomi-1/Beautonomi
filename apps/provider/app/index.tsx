@@ -16,7 +16,8 @@ const PROFILE_TIMEOUT_MS = 12 * 1000; // 12s – avoid infinite loading
 
 export default function Index() {
   const { session, loading, signOut } = useAuth();
-  const [portalState, setPortalState] = useState<"idle" | "loading" | "wrong_app" | "ok">("idle");
+  const [portalState, setPortalState] = useState<"idle" | "loading" | "wrong_app" | "ok" | "error">("idle");
+  const [portalRetryKey, setPortalRetryKey] = useState(0);
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
@@ -54,7 +55,11 @@ export default function Index() {
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
       portalTimedOut = true;
-      setPortalState("ok"); // assume provider so user isn't stuck
+      // §Provider-launch (audit 2026-04): was "fail open" assuming provider.
+      // That allowed customers / admins / suspended users to briefly enter
+      // the provider shell on flaky networks. Now we fail closed: show a
+      // retry screen rather than gamble on the user's role.
+      setPortalState("error");
     }, PORTAL_TIMEOUT_MS);
 
     const applyPortalResult = (portal: string) => {
@@ -80,18 +85,21 @@ export default function Index() {
               setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
               return;
             }
-            setPortalState("ok");
+            // §Provider-launch: fail closed on persistent portal errors so
+            // we don't silently drop customers/admins/suspended users into
+            // the provider shell.
+            setPortalState("error");
             return;
           }
           const portal = res.data?.portal;
           if (!portal) {
-            setPortalState("ok");
+            setPortalState("error");
             return;
           }
           applyPortalResult(portal);
         })
         .catch(() => {
-          if (!cancelled && !portalTimedOut) setPortalState("ok");
+          if (!cancelled && !portalTimedOut) setPortalState("error");
         });
     };
 
@@ -105,7 +113,8 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
-  }, [loading, session?.user?.id]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, session?.user?.id, portalRetryKey]);
 
   // Phase 2: profile check (only when portal is ok)
   const runProfileCheck = (isRetry: boolean) => {
@@ -194,6 +203,7 @@ export default function Index() {
       hasProfile,
       profileLoadError,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
   useEffect(() => {
@@ -207,6 +217,7 @@ export default function Index() {
       hasProfile,
       profileLoadError,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, checkingProfile, hasProfile, profileLoadError]);
 
   // 1. Auth resolving — always wait here first so a post-login router.replace("/") that
@@ -244,6 +255,42 @@ export default function Index() {
           signOut();
         }}
       />
+    );
+  }
+
+  // §Provider-launch: explicit error state instead of fail-open to provider.
+  if (portalState === "error") {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: Colors.white, padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[800], textAlign: "center", marginBottom: 8 }}>
+          Couldn&apos;t verify your account
+        </Text>
+        <Text style={{ fontSize: 14, color: Colors.gray[500], textAlign: "center", marginBottom: 24 }}>
+          We had trouble confirming your provider access. Check your connection and try again.
+        </Text>
+        <TouchableOpacity
+          onPress={() => {
+            clearPortalCache();
+            setPortalState("idle");
+            setPortalRetryKey((k) => k + 1);
+          }}
+          style={{ backgroundColor: Colors.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, marginBottom: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Retry verifying account"
+        >
+          <Text style={{ color: "#fff", fontWeight: "600" }}>Try again</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => {
+            clearPortalCache();
+            signOut();
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+        >
+          <Text style={{ color: Colors.gray[500], fontSize: 14, textDecorationLine: "underline" }}>Sign out</Text>
+        </TouchableOpacity>
+      </View>
     );
   }
 

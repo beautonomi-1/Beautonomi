@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_USERS_TRUST, request);
     const supabase = await getSupabaseServer(request);
 
     if (!supabase) {
@@ -60,6 +61,22 @@ export async function PUT(
         { status: 500 }
       );
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.user.password_change",
+      entity_type: "user",
+      entity_id: id,
+      module: "users_trust",
+      risk_level: "high",
+      retention_tier: "access",
+      status: "succeeded",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: admin.role === "superadmin",
+    });
 
     return NextResponse.json({
       data: { success: true },

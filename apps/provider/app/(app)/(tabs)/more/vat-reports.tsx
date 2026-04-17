@@ -85,8 +85,11 @@ export default function VATReportsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const markAsRemitted = useCallback(
@@ -108,6 +111,20 @@ export default function VATReportsScreen() {
       refresh();
     },
     [patchRemitted, refresh]
+  );
+
+  const confirmMarkAsRemitted = useCallback(
+    (report: VATReport) => {
+      Alert.alert(
+        "Mark as remitted?",
+        `Confirm you submitted ${report.period_label} VAT to SARS. This updates your records only.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Mark remitted", onPress: () => void markAsRemitted(report) },
+        ]
+      );
+    },
+    [markAsRemitted]
   );
 
   const exportReport = useCallback(
@@ -349,7 +366,7 @@ export default function VATReportsScreen() {
                       </Text>
                       <ActionButton
                         label={markingRemitted ? "Saving…" : "Mark as remitted to SARS"}
-                        onPress={() => markAsRemitted(report)}
+                        onPress={() => confirmMarkAsRemitted(report)}
                         loading={markingRemitted}
                         fullWidth
                       />

@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, getPaginationParams  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import {
+  getNegativeBalanceProvidersForTenant,
+  type NegativeBalanceProvidersPayload,
+} from "@/lib/admin/negative-provider-payout-balances";
 
 /**
  * GET /api/admin/payouts
@@ -15,6 +19,15 @@ export async function GET(request: NextRequest) {
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
+    let negativeBalanceProviders: NegativeBalanceProvidersPayload = { count: 0, providers: [] };
+    if (supabase) {
+      try {
+        negativeBalanceProviders = await getNegativeBalanceProvidersForTenant(supabase, tenantId);
+      } catch (e) {
+        console.warn("Failed to list negative provider payout balances:", e);
+      }
+    }
+
     if (!supabase) {
       return NextResponse.json({
         data: [],
@@ -24,6 +37,7 @@ export async function GET(request: NextRequest) {
           limit: 50,
           total: 0,
           has_more: false,
+          negative_balance_providers: negativeBalanceProviders,
         },
       });
     }
@@ -57,14 +71,18 @@ export async function GET(request: NextRequest) {
       console.error("Error fetching payouts:", error);
       return NextResponse.json({
         data: [],
-        error: null,
+        error: {
+          message: error.message || "Failed to fetch payouts",
+          code: "QUERY_ERROR",
+        },
         meta: {
           page,
           limit,
           total: 0,
           has_more: false,
+          negative_balance_providers: negativeBalanceProviders,
         },
-      });
+      }, { status: 500 });
     }
 
     if (!payouts || payouts.length === 0) {
@@ -76,6 +94,7 @@ export async function GET(request: NextRequest) {
           limit,
           total: 0,
           has_more: false,
+          negative_balance_providers: negativeBalanceProviders,
         },
       });
     }
@@ -162,6 +181,7 @@ export async function GET(request: NextRequest) {
         limit,
         total: count || 0,
         has_more: (count || 0) > offset + limit,
+        negative_balance_providers: negativeBalanceProviders,
       },
     });
   } catch (error) {

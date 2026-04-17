@@ -178,23 +178,62 @@ export function toggleShowCanceled(): boolean {
 // REACT HOOK
 // ============================================================================
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 /**
- * React hook for managing calendar preferences
+ * React hook for managing calendar preferences.
+ * Loads from server on mount (falling back to localStorage), and debounce-syncs
+ * every change back to the server.
  */
 export function useCalendarPreferences() {
   const [preferences, setPreferences] = useState<MangomintCalendarPreferences>(DEFAULT_PREFERENCES);
   const [isLoaded, setIsLoaded] = useState(false);
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isInitialLoad = useRef(true);
   
-  // Load preferences on mount
+  // Load preferences: try server first, fall back to localStorage
   useEffect(() => {
-    const loaded = loadPreferences();
-    queueMicrotask(() => {
-      setPreferences(loaded);
+    let cancelled = false;
+
+    async function load() {
+      let serverPrefs: MangomintCalendarPreferences | null = null;
+      try {
+        serverPrefs = await loadPreferencesFromServer("");
+      } catch {
+        // server unavailable
+      }
+
+      if (cancelled) return;
+
+      if (serverPrefs) {
+        const merged = { ...DEFAULT_PREFERENCES, ...serverPrefs };
+        setPreferences(merged);
+        try { localStorage.setItem(MANGOMINT_STORAGE_KEY, JSON.stringify(merged)); } catch { /* noop */ }
+      } else {
+        const local = loadPreferences();
+        setPreferences(local);
+      }
+      isInitialLoad.current = false;
       setIsLoaded(true);
-    });
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, []);
+
+  // Debounced sync to server on preference change (after initial load)
+  useEffect(() => {
+    if (!isLoaded || isInitialLoad.current) return;
+
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      syncPreferencesToServer("", preferences).catch(() => {});
+    }, 1500);
+
+    return () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    };
+  }, [preferences, isLoaded]);
   
   // Update a single preference
   const updatePreference = useCallback(<K extends keyof MangomintCalendarPreferences>(
@@ -238,6 +277,7 @@ export function useCalendarPreferences() {
   const reset = useCallback(() => {
     resetPreferences();
     setPreferences(DEFAULT_PREFERENCES);
+    syncPreferencesToServer("", DEFAULT_PREFERENCES).catch(() => {});
   }, []);
   
   return {

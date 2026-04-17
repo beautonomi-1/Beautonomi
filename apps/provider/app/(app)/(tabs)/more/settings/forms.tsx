@@ -11,6 +11,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
@@ -44,15 +45,18 @@ export default function FormsScreen() {
   const [newTitle, setNewTitle] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [newType, setNewType] = useState<"intake" | "consent" | "waiver">("intake");
-  const { data: forms, loading, refresh } = useApi<Form[]>(
+  const { data: forms, loading, error: loadError, refresh } = useApi<Form[]>(
     `/api/provider/forms${filter ? `?form_type=${filter}` : ""}`
   );
   const { execute: createForm } = useApiMutation("post");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const handleCreateForm = useCallback(async () => {
@@ -82,10 +86,19 @@ export default function FormsScreen() {
 
   const list = forms ?? [];
 
-  if (loading && !forms) {
+  if (loading && !forms && !loadError) {
     return (
       <ScreenContainer scrollable={false}>
         <LoadingState message="Loading forms..." />
+      </ScreenContainer>
+    );
+  }
+
+  if (loadError && !forms) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Forms" showBack />
+        <ErrorState message={loadError} onRetry={refresh} />
       </ScreenContainer>
     );
   }

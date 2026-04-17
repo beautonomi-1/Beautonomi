@@ -10,8 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
-import { motion } from "framer-motion";
-import { Wallet, RefreshCw, ArrowUpRight, ArrowDownRight, Loader2 } from "lucide-react";
+import { Wallet, RefreshCw, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import EmptyState from "@/components/ui/empty-state";
 
 type WalletData = {
@@ -41,7 +40,7 @@ export default function WalletPage() {
   const load = async () => {
     try {
       setIsLoading(true);
-      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { cache: "no-store" });
+      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { staleTimeMs: 15_000 });
       setWallet(res.data.wallet);
       setTransactions(res.data.transactions || []);
     } catch (e) {
@@ -55,7 +54,7 @@ export default function WalletPage() {
   const refresh = async () => {
     try {
       setIsRefreshing(true);
-      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { cache: "no-store" });
+      const res = await fetcher.get<{ data: { wallet: WalletData; transactions: WalletTx[] } }>("/api/me/wallet", { staleTimeMs: 0 });
       setWallet(res.data.wallet);
       setTransactions(res.data.transactions || []);
       toast.success("Wallet refreshed");
@@ -106,25 +105,19 @@ export default function WalletPage() {
           <Breadcrumb items={[{ label: "Home", href: "/" }, { label: "Account Settings", href: "/account-settings" }, { label: "Wallet" }]} />
           <BackButton href="/account-settings" />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+          <div
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">Wallet</h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {/* Available Balance Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <div className="flex items-center gap-3 mb-4">
@@ -136,13 +129,10 @@ export default function WalletPage() {
                   <div className="text-4xl md:text-5xl font-bold text-gray-900 mt-2">
                     {wallet ? format(Number(wallet.balance || 0)) : "—"}
                   </div>
-                </motion.div>
+                </div>
 
                 {/* Top Up Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-6">Top up</h2>
@@ -165,52 +155,42 @@ export default function WalletPage() {
                       />
                     </div>
                     
-                    <motion.button
+                    <button
                       type="button"
                       onClick={startTopup}
                       disabled={isToppingUp || !topupAmount || Number(topupAmount) <= 0}
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
                       className="w-full bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isToppingUp ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          <span>Processing...</span>
-                        </>
+                        <span>Processing…</span>
                       ) : (
                         <>
                           <ArrowUpRight className="w-5 h-5" />
                           <span>Top up</span>
                         </>
                       )}
-                    </motion.button>
+                    </button>
                     
                     <p className="text-xs text-gray-500 font-light mt-2">
                       You'll be redirected to complete the top up with your card.
                     </p>
                   </div>
-                </motion.div>
+                </div>
 
                 {/* Recent Activity Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <div className="flex items-center justify-between mb-6">
                     <h2 className="text-xl font-semibold tracking-tighter text-gray-900">Recent activity</h2>
-                    <motion.button
+                    <button type="button"
                       onClick={refresh}
                       disabled={isRefreshing}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
                       className="p-2 hover:bg-white/40 rounded-lg transition-colors disabled:opacity-50"
                       aria-label="Refresh"
                     >
-                      <RefreshCw className={`w-5 h-5 text-gray-600 ${isRefreshing ? "animate-spin" : ""}`} />
-                    </motion.button>
+                      <RefreshCw className="w-5 h-5 text-gray-600" />
+                    </button>
                   </div>
 
                   {transactions.length === 0 ? (
@@ -222,10 +202,8 @@ export default function WalletPage() {
                   ) : (
                     <div className="space-y-3">
                       {transactions.map((t) => (
-                        <motion.div
+                        <div
                           key={t.id}
-                          initial={{ opacity: 0, x: -10 }}
-                          animate={{ opacity: 1, x: 0 }}
                           className="flex items-center justify-between p-4 bg-white/40 backdrop-blur-sm rounded-xl border border-white/20 hover:bg-white/60 transition-colors"
                         >
                           <div className="flex items-center gap-4 flex-1">
@@ -262,14 +240,14 @@ export default function WalletPage() {
                             {t.type === "credit" ? "+" : "-"}
                             {format(Number(t.amount || 0))}
                           </div>
-                        </motion.div>
+                        </div>
                       ))}
                     </div>
                   )}
-                </motion.div>
+                </div>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

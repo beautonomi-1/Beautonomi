@@ -41,6 +41,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
+import { AddressAutocomplete, type ParsedAddress } from "@/components/ui/AddressAutocomplete";
 import { twStyle } from "@/lib/twStyle";
 
 type BusinessData = {
@@ -247,32 +248,37 @@ export default function BusinessDetailsScreen() {
     const phoneE164 =
       composed && phoneNational.trim() ? normalizeSupabaseAuthPhone(composed) : undefined;
 
-    const res = await api.patch<BusinessData>("/api/provider/settings/business", {
-      business_name: form.business_name.trim() || undefined,
-      description: form.description?.trim() || null,
-      email: form.email.trim() || undefined,
-      phone: phoneE164,
-      website: form.website?.trim() || null,
-      address_line1: form.address_line1?.trim() || null,
-      city: form.city?.trim() || null,
-      state: form.state?.trim() || null,
-      postal_code: form.postal_code?.trim() || null,
-      country: form.country?.trim() || null,
-      yearsInBusiness: form.yearsInBusiness,
-      languagesSpoken: form.languagesSpoken,
-      instagram_url: form.instagram_url?.trim() || null,
-      facebook_url: form.facebook_url?.trim() || null,
-      tiktok_url: form.tiktok_url?.trim() || null,
-      twitter_url: form.twitter_url?.trim() || null,
-    });
-    setSaving(false);
-    if (res.error) {
-      Alert.alert("Error", res.error.message);
-      return;
+    try {
+      const res = await api.patch<BusinessData>("/api/provider/settings/business", {
+        business_name: form.business_name.trim() || undefined,
+        description: form.description?.trim() || null,
+        email: form.email.trim() || undefined,
+        phone: phoneE164,
+        website: form.website?.trim() || null,
+        address_line1: form.address_line1?.trim() || null,
+        city: form.city?.trim() || null,
+        state: form.state?.trim() || null,
+        postal_code: form.postal_code?.trim() || null,
+        country: form.country?.trim() || null,
+        yearsInBusiness: form.yearsInBusiness,
+        languagesSpoken: form.languagesSpoken,
+        instagram_url: form.instagram_url?.trim() || null,
+        facebook_url: form.facebook_url?.trim() || null,
+        tiktok_url: form.tiktok_url?.trim() || null,
+        twitter_url: form.twitter_url?.trim() || null,
+      });
+      if (res.error) {
+        Alert.alert("Error", res.error.message);
+        return;
+      }
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Saved", "Business details updated.");
+      refresh();
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+    } finally {
+      setSaving(false);
     }
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert("Saved", "Business details updated.");
-    refresh();
   }, [form, refresh, t, phoneCountryCode, phoneNational]);
 
   if (loading && !data) {
@@ -556,12 +562,22 @@ export default function BusinessDetailsScreen() {
             </View>
             <View style={twStyle("mb-4")}>
               <Text style={twStyle("mb-1.5 text-sm font-medium text-gray-700")}>Address line 1</Text>
-              <TextInput
-                style={twStyle("rounded-xl border border-gray-200 bg-white px-4 py-3 text-base text-gray-900")}
+              <AddressAutocomplete
                 value={form.address_line1 ?? ""}
-                onChangeText={(t) => setForm((f) => ({ ...f, address_line1: t.trim() || null }))}
-                placeholder="Street address"
-                placeholderTextColor="#9ca3af"
+                onSelect={(addr: ParsedAddress) => {
+                  setForm((f) => ({
+                    ...f,
+                    address_line1: addr.address_line1 || f.address_line1,
+                    city: addr.city || f.city,
+                    state: addr.state || f.state,
+                    postal_code: addr.postal_code || f.postal_code,
+                    country: addr.country || f.country,
+                  }));
+                }}
+                onBlur={(query) => {
+                  if (query.trim()) setForm((f) => ({ ...f, address_line1: query.trim() }));
+                }}
+                placeholder="Start typing address…"
               />
             </View>
             <View style={twStyle("mb-4 flex-row")}>

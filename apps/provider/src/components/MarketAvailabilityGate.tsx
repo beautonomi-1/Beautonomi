@@ -91,7 +91,10 @@ async function hasActiveManualOverride(): Promise<boolean> {
 async function persistPreferredHomeTenant(tenantId: string | null | undefined): Promise<void> {
   if (!tenantId) return;
   try {
-    await api.patch("/api/me/profile", { preferred_home_tenant_id: tenantId });
+    const res = await api.patch("/api/me/profile", { preferred_home_tenant_id: tenantId });
+    if (res.error && __DEV__) {
+      console.warn("[MarketGate] Failed to persist preferred tenant:", res.error);
+    }
   } catch {
     // best effort only
   }

@@ -49,20 +49,86 @@ export async function GET(request: NextRequest) {
       .or(userScopeOr)
       .limit(5);
 
-    // Search bookings (by booking number or customer/provider info)
-    const { data: bookings, error: bookingsError } = await supabase
+    // Search bookings — by booking number, then also try matching via customer/provider
+    let bookingIds: string[] = [];
+
+    const { data: bookingsByNumber } = await supabase
       .from("bookings")
-      .select("id, booking_number, customer_id, provider_id, status, created_at")
+      .select("id")
       .eq("tenant_id", tenantId)
       .ilike("booking_number", `%${searchTerm}%`)
       .limit(5);
+    bookingIds = (bookingsByNumber || []).map((b: { id: string }) => b.id);
 
-    // Search providers (by business name, owner name, or email)
+    // Also search bookings by customer name/email/phone
+    if (bookingIds.length < 5) {
+      const matchedUserIds = (users || []).map((u: { id: string }) => u.id);
+      if (matchedUserIds.length > 0) {
+        const { data: bookingsByUser } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .in("customer_id", matchedUserIds)
+          .not("id", "in", `(${bookingIds.join(",") || "00000000-0000-0000-0000-000000000000"})`)
+          .order("created_at", { ascending: false })
+          .limit(5 - bookingIds.length);
+        bookingIds.push(...(bookingsByUser || []).map((b: { id: string }) => b.id));
+      }
+    }
+
+    let bookings: Array<{
+      id: string; booking_number: string; customer_id: string;
+      provider_id: string | null; status: string; created_at: string;
+      customer_name: string | null; customer_email: string | null;
+      provider_name: string | null;
+    }> = [];
+
+    if (bookingIds.length > 0) {
+      const { data: bookingRows } = await supabase
+        .from("bookings")
+        .select("id, booking_number, customer_id, provider_id, status, created_at")
+        .in("id", bookingIds)
+        .order("created_at", { ascending: false });
+
+      const custIds = [...new Set((bookingRows || []).map((b: { customer_id: string }) => b.customer_id).filter(Boolean))];
+      const provIds = [...new Set((bookingRows || []).map((b: { provider_id: string | null }) => b.provider_id).filter(Boolean))] as string[];
+
+      const custMap = new Map<string, { full_name: string | null; email: string }>();
+      const provMap = new Map<string, string>();
+
+      if (custIds.length > 0) {
+        const { data: custRows } = await supabase.from("users").select("id, full_name, email").in("id", custIds);
+        for (const c of custRows || []) custMap.set(c.id, c as { full_name: string | null; email: string });
+      }
+      if (provIds.length > 0) {
+        const { data: provRows } = await supabase.from("providers").select("id, business_name").in("id", provIds);
+        for (const p of provRows || []) provMap.set(p.id, (p as { id: string; business_name: string }).business_name);
+      }
+
+      bookings = (bookingRows || []).map((b: Record<string, unknown>) => {
+        const cust = custMap.get(b.customer_id as string);
+        return {
+          id: b.id as string,
+          booking_number: b.booking_number as string,
+          customer_id: b.customer_id as string,
+          provider_id: b.provider_id as string | null,
+          status: b.status as string,
+          created_at: b.created_at as string,
+          customer_name: cust?.full_name || null,
+          customer_email: cust?.email || null,
+          provider_name: b.provider_id ? provMap.get(b.provider_id as string) || null : null,
+        };
+      });
+    }
+
+    const bookingsError = null;
+
+    // Search providers (by business name, owner name, email, or phone)
     const { data: providers, error: providersError } = await supabase
       .from("providers")
-      .select("id, business_name, owner_name, owner_email, status")
+      .select("id, business_name, owner_name, owner_email, phone, status")
       .eq("tenant_id", tenantId)
-      .or(`business_name.ilike.%${searchTerm}%,owner_name.ilike.%${searchTerm}%,owner_email.ilike.%${searchTerm}%`)
+      .or(`business_name.ilike.%${searchTerm}%,owner_name.ilike.%${searchTerm}%,owner_email.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%`)
       .limit(5);
 
     if (usersError) {

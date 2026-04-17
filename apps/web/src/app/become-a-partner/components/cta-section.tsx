@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import { usePageContent } from "@/hooks/usePageContent";
+import { CmsHtml } from "@/components/cms/CmsHtml";
+import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 
 export default function CTASection() {
   const router = useRouter();
@@ -35,15 +37,15 @@ export default function CTASection() {
       <div className="py-12 sm:py-16 md:py-20 bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-3 sm:mb-4 px-4">
-            {ctaTitle.includes("<") ? (
-              <span dangerouslySetInnerHTML={{ __html: ctaTitle }} />
+            {cmsContentLooksLikeHtml(ctaTitle) ? (
+              <CmsHtml html={ctaTitle} className="block" as="span" />
             ) : (
               ctaTitle
             )}
           </h2>
           <p className="text-base sm:text-lg text-gray-600 mb-6 sm:mb-8 max-w-2xl mx-auto px-4">
-            {ctaDescription.includes("<") ? (
-              <span dangerouslySetInnerHTML={{ __html: ctaDescription }} />
+            {cmsContentLooksLikeHtml(ctaDescription) ? (
+              <CmsHtml html={ctaDescription} className="block" as="span" />
             ) : (
               ctaDescription
             )}

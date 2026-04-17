@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import LoginModal from "@/components/global/login-modal";
 import type { PricingFAQ, PricingPageContent, PricingPlan } from "./pricing-data";
+import { PricingFeatureHtml } from "@/components/pricing/PricingFeatureHtml";
 
 interface PricingPageClientProps {
   pricingPlans: PricingPlan[];
@@ -110,7 +111,9 @@ export default function PricingPageClient({
                   {plan.features.map((feature, index) => (
                     <li key={index} className="flex items-start gap-3">
                       <Check className="w-5 h-5 text-[#FF0077] flex-shrink-0 mt-0.5" />
-                      <span className="text-gray-700">{feature}</span>
+                      <div className="min-w-0 flex-1 text-gray-700 [&_a]:text-[#FF0077] [&_a]:underline [&_p]:m-0 [&_ul]:list-disc [&_ul]:pl-5">
+                        <PricingFeatureHtml html={feature} />
+                      </div>
                     </li>
                   ))}
                 </ul>

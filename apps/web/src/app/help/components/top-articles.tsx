@@ -3,6 +3,12 @@ import Link from 'next/link';
 
 const articles = [
   {
+    title: "Using the Beautonomi customer app (iOS & Android)",
+    description:
+      "How Home, Search, Bookings, Chats, and Wishlists work on your phone, plus Help, payments in the browser, and notifications.",
+    link: "/learn/article/customer-mobile-app",
+  },
+  {
     title: "Canceling your booking",
     description: "Your plans have changed and you need to cancel your booking. Here’s how to do it and what to expect.",
     link: "/learn/article/canceling-your-booking",

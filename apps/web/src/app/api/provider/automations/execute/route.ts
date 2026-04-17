@@ -350,17 +350,31 @@ async function shouldExecuteAutomation(
     }
 
     case "appointment_rescheduled": {
+      // §Release-audit 2026-04: the previous query filtered `bookings.status
+      // = 'rescheduled'`, but the booking_status enum has no such value —
+      // rescheduling keeps the status as `confirmed` / `pending` and writes
+      // a `rescheduled` row into `booking_events`. Rebuild the trigger on
+      // top of that event log so this automation actually fires.
       const targetTime = subMinutes(now, delayMinutes);
       const windowStart = subMinutes(targetTime, 15);
 
-      // Find recently rescheduled appointments
+      const { data: events } = await supabaseAdmin
+        .from("booking_events")
+        .select("booking_id, created_at")
+        .eq("event_type", "rescheduled")
+        .gte("created_at", windowStart.toISOString())
+        .lte("created_at", targetTime.toISOString());
+
+      const bookingIds = [
+        ...new Set((events ?? []).map((e: any) => e.booking_id).filter(Boolean)),
+      ];
+      if (bookingIds.length === 0) return { shouldRun: false };
+
       const { data: bookings } = await supabaseAdmin
         .from("bookings")
         .select("id, customer_id, updated_at, status")
         .eq("provider_id", automation.provider_id)
-        .eq("status", "rescheduled")
-        .gte("updated_at", windowStart.toISOString())
-        .lte("updated_at", targetTime.toISOString());
+        .in("id", bookingIds);
 
       if (bookings && bookings.length > 0) {
         return {
@@ -372,16 +386,19 @@ async function shouldExecuteAutomation(
     }
 
     case "new_lead": {
+      // §Release-audit 2026-04: dropped the `"inquiry"` status filter — that
+      // literal is not a member of booking_status, so the previous query
+      // always excluded it silently. `pending` (booking not yet confirmed)
+      // is the current lead state.
       const minutesAgo = triggerConfig.minutes || delayMinutes || 60;
       const targetTime = subMinutes(now, minutesAgo);
       const windowStart = subMinutes(targetTime, 15);
 
-      // Find new inquiries/leads (bookings with status 'pending' or 'inquiry')
       const { data: leads } = await supabaseAdmin
         .from("bookings")
         .select("id, customer_id, created_at, status")
         .eq("provider_id", automation.provider_id)
-        .in("status", ["pending", "inquiry"])
+        .eq("status", "pending")
         .gte("created_at", windowStart.toISOString())
         .lte("created_at", targetTime.toISOString());
 

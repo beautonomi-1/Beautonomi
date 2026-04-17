@@ -1,6 +1,6 @@
 "use client";
 
-import React, { memo, useCallback, useRef } from "react";
+import React, { memo, useCallback } from "react";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -50,15 +50,23 @@ function GestureLayerComponent({
       {timeSlots.map((time) => {
         const { hour } = parseScheduledTime(time);
         const outsideLocation = isOutsideOperatingHours(date, hour, locationOperatingHours);
-        const outsideStaff = staffWorkingHours
+        const hasStaffSchedule =
+          staffWorkingHours != null && Object.keys(staffWorkingHours).length > 0;
+        const outsideStaff = hasStaffSchedule
           ? isOutsideStaffHours(date, hour, staffWorkingHours)
           : false;
-        const isNonWorking = outsideLocation || outsideStaff || hour < workStart || hour >= workEnd;
+        // With an explicit weekly schedule, use staff hours; otherwise fall back to
+        // location hours (or merged team hours passed from StaffColumn / DateColumn).
+        const staffIsWorking = hasStaffSchedule ? !outsideStaff : !outsideLocation;
+        const businessClosed = outsideLocation && !staffIsWorking;
+        const staffOff = !businessClosed && outsideStaff;
+        const isNonWorking = businessClosed;
         const isHighContrast = useMangomintMode && highContrast;
         const blockedPattern =
           isHighContrast
             ? "repeating-linear-gradient(135deg, #1f2937 0px, #1f2937 6px, #374151 6px, #374151 12px)"
             : "repeating-linear-gradient(135deg, #e5e7eb 0px, #e5e7eb 6px, #d1d5db 6px, #d1d5db 12px)";
+        const staffOffPattern = "repeating-linear-gradient(135deg, #f0f0f0 0px, #f0f0f0 6px, #e8e8e8 6px, #e8e8e8 12px)";
 
         return (
           <DroppableTimeSlot
@@ -70,21 +78,28 @@ function GestureLayerComponent({
               "border-b border-gray-200 transition-colors relative group/slot",
               isNonWorking
                 ? "cursor-not-allowed border-l-[5px] border-l-amber-500/90 bg-amber-50/40"
-                : "cursor-pointer hover:bg-gray-50/70",
+                : staffOff
+                  ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-gray-50/60"
+                  : "cursor-pointer hover:bg-gray-50/70",
             )}
           >
             <div
               className="relative z-[1]"
               style={{
                 height: `${HOUR_HEIGHT}px`,
-                backgroundColor: isNonWorking && !isHighContrast ? "#f3f4f6" : undefined,
-                backgroundImage: isNonWorking ? blockedPattern : undefined,
+                backgroundColor: isNonWorking && !isHighContrast ? "#f3f4f6" : staffOff ? "#fafafa" : undefined,
+                backgroundImage: isNonWorking ? blockedPattern : staffOff ? staffOffPattern : undefined,
               }}
               onClick={isNonWorking ? undefined : () => handleSlotClick(time)}
             >
-              {!isNonWorking && (
+              {!isNonWorking && !staffOff && (
                 <div className="absolute inset-0 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
                   <Plus className="w-5 h-5 text-gray-400" />
+                </div>
+              )}
+              {staffOff && (
+                <div className="absolute inset-0 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
+                  <Plus className="w-5 h-5 text-gray-300" />
                 </div>
               )}
               {isNonWorking && (

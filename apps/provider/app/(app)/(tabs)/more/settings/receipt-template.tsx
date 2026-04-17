@@ -8,7 +8,9 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
+import { formatCurrency } from "@/lib/format";
 
 interface ReceiptSettings {
   receipt_header: string | null;
@@ -19,7 +21,7 @@ interface ReceiptSettings {
 }
 
 export default function ReceiptTemplateScreen() {
-  const { data: settings, loading, refresh } = useApi<ReceiptSettings>("/api/provider/settings/sales/receipt");
+  const { data: settings, loading, error: loadError, refresh } = useApi<ReceiptSettings>("/api/provider/settings/sales/receipt");
   const { execute: saveReceipt, loading: saving } = useApiMutation("patch");
 
   const [header, setHeader] = useState("");
@@ -87,6 +89,15 @@ export default function ReceiptTemplateScreen() {
     );
   }
 
+  if (loadError && !settings) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader title="Receipt Template" showBack />
+        <ErrorState message="Failed to load receipt settings" onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
+
   return (
     <ScreenContainer>
       <ScreenHeader title="Receipt Template" showBack subtitle="Customize your receipts" />
@@ -119,11 +130,11 @@ export default function ReceiptTemplateScreen() {
         <View style={twStyle("border-t border-dashed border-gray-200 pt-3")}>
           <View style={twStyle("flex-row justify-between mb-1")}>
             <Text style={twStyle("text-xs text-gray-500")}>Service Example</Text>
-            <Text style={twStyle("text-xs text-gray-700")}>R 250.00</Text>
+            <Text style={twStyle("text-xs text-gray-700")}>{formatCurrency(250)}</Text>
           </View>
           <View style={twStyle("flex-row justify-between border-t border-gray-100 pt-1 mt-1")}>
             <Text style={twStyle("text-xs font-medium text-gray-700")}>Total</Text>
-            <Text style={twStyle("text-xs font-bold text-gray-900")}>R 250.00</Text>
+            <Text style={twStyle("text-xs font-bold text-gray-900")}>{formatCurrency(250)}</Text>
           </View>
         </View>
         <View style={twStyle("mt-3 items-center border-t border-dashed border-gray-200 pt-3")}>

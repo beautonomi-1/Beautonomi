@@ -1,92 +1,41 @@
 import { NextRequest } from "next/server";
 import { isUuidString, SYNTHETIC_PROVIDER_STAFF_PREFIX } from "@beautonomi/utils";
-import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import {
-  loadAvailabilityConstraints,
-  parseSyntheticProviderStaffId,
-} from "@/lib/availability/load-constraints";
-import { mergeUnionAnyStaffSlots } from "@/lib/availability/merge-any-staff-slots";
+  availabilitySlotsAsTimeSlots,
+  computePublicSlugAvailabilitySlots,
+} from "@/lib/availability/public-slug-availability-engine";
+import { parseSyntheticProviderStaffId } from "@/lib/availability/load-constraints";
 import type { TimeSlot } from "@/lib/availability/types";
-import { getProviderIdForUser, handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import {
+  getProviderIdForUser,
+  handleApiError,
+  successResponse,
+} from "@/lib/supabase/api-helpers";
 import { getSupabaseServer } from "@/lib/supabase/server";
-
-/** Cap union queries so one request cannot fan out unbounded. */
-const MAX_STAFF_IDS_FOR_ANY = 35;
-
-async function computeSlotsForStaff(
-  supabase: NonNullable<Awaited<ReturnType<typeof getSupabaseServer>>>,
-  staffId: string,
-  date: string,
-  mode: string,
-  duration: number,
-  travelBuffer: number,
-  avoidGaps: boolean,
-  excludeHoldId?: string,
-  /** All active staff IDs for the provider — used for time-off/day-off parity queries. */
-  allStaffIdsForParity?: string[]
-): Promise<TimeSlot[]> {
-  let providerIdForSettings: string | undefined;
-  const syntheticProviderId = parseSyntheticProviderStaffId(staffId);
-  if (syntheticProviderId) {
-    providerIdForSettings = syntheticProviderId;
-  } else if (!staffId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
-    const { data: staffRow } = await supabase
-      .from("provider_staff")
-      .select("provider_id")
-      .eq("id", staffId)
-      .maybeSingle();
-    providerIdForSettings = staffRow?.provider_id ?? undefined;
-  }
-
-  const constraints = await loadAvailabilityConstraints(
-    supabase,
-    staffId,
-    date,
-    providerIdForSettings,
-    {
-      excludeHoldId,
-      // Mirror the public slug availability route: apply staff_days_off, staff_time_off,
-      // and availability_blocks so the web booking flow honours the same blocks as the
-      // customer mobile app and the portal reschedule flow.
-      ...(providerIdForSettings
-        ? {
-            publicCalendarParity: {
-              providerId: providerIdForSettings,
-              date,
-              locationId: undefined,
-              slotStaffId: staffId,
-              staffIdsForTimeOff: allStaffIdsForParity ?? (staffId ? [staffId] : undefined),
-            },
-          }
-        : {}),
-    }
-  );
-
-  return calculateAvailableSlots(
-    constraints,
-    duration,
-    date,
-    {
-      slotInterval: 15,
-      avoidGaps,
-      travelBuffer: mode === "mobile" ? travelBuffer : 0,
-    }
-  );
-}
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 /**
  * GET /api/availability
  *
- * Get available time slots for a staff member on a specific date.
- * Uses loadAvailabilityConstraints + calculateAvailableSlots (same pipeline as
- * portal/me reschedule). For duration, pass total blocked minutes (e.g. sum of
- * service durations + buffers) so slots match the book flow.
+ * Available time slots for a staff member on a specific date.
  *
- * Query params: staffId, date, mode, duration, travelBuffer, avoidGaps, excludeHoldId
+ * B12: this route now delegates to the same engine as the public-slug
+ * availability endpoint (`/api/public/providers/[slug]/availability`) and the
+ * portal reschedule endpoint (`/api/portal/availability`) via
+ * {@link computePublicSlugAvailabilitySlots}. We flatten the shared
+ * `AvailabilitySlot[]` contract back to the legacy `{ time, available }` shape
+ * for existing callers (`/booking` step-calendar, mobile `AvailabilitySlotPicker`)
+ * through {@link availabilitySlotsAsTimeSlots}. New callers should use
+ * `/api/public/providers/[slug]/availability` directly (ISO start/end + staff_id).
+ *
+ * Query params: staffId, providerId, date, mode, duration, travelBuffer,
+ *   avoidGaps (unused — now honoured via providerSettings.avoidGaps),
+ *   excludeHoldId, locationId, excludeBookingId.
  *
  * **`staffId=any` (or omitted):** returns **no slots** unless **`providerId`** (provider UUID)
- * is passed — then slots are the **union** of availability across active staff (or the
- * synthetic solo `provider-{uuid}` staff when the provider has no `provider_staff` rows).
+ * is passed — then slots are the **union** of availability across active staff
+ * (or the synthetic solo `provider-{uuid}` staff when the provider has no
+ * `provider_staff` rows), matching the public slug endpoint.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -97,8 +46,11 @@ export async function GET(request: NextRequest) {
     const mode = searchParams.get("mode") || "salon";
     const duration = parseInt(searchParams.get("duration") || "60", 10);
     const travelBuffer = parseInt(searchParams.get("travelBuffer") || "0", 10);
-    const avoidGaps = searchParams.get("avoidGaps") === "true";
-    const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
+    const excludeHoldId =
+      searchParams.get("excludeHoldId")?.trim() || undefined;
+    const excludeBookingId =
+      searchParams.get("exclude_booking_id")?.trim() || undefined;
+    const locationId = searchParams.get("locationId")?.trim() || undefined;
 
     if (!date) {
       return successResponse({ date, slots: [] });
@@ -106,11 +58,13 @@ export async function GET(request: NextRequest) {
 
     const supabase = await getSupabaseServer();
     if (!supabase) {
-      return handleApiError(new Error("Database connection failed"), "Failed to connect to database");
+      return handleApiError(
+        new Error("Database connection failed"),
+        "Failed to connect to database",
+      );
     }
 
     let authenticatedProviderId: string | null = null;
-
     try {
       const {
         data: { user },
@@ -125,53 +79,67 @@ export async function GET(request: NextRequest) {
     const staffIdTrim = staffIdRaw?.trim() ?? "";
     const wantsAnyStaff = !staffIdTrim || staffIdTrim === "any";
 
-    let slots: TimeSlot[];
-
-    if (wantsAnyStaff) {
-      if (!providerIdParam || !isUuidString(providerIdParam)) {
-        return successResponse({ date, slots: [] });
+    // Resolve the provider id the shared engine needs. For explicit staff ids
+    // we look up the provider row so settings (avoid_gaps, timezone) and
+    // calendar-parity data are honoured. For any-staff requests the caller
+    // must pass providerId (same rule as before).
+    let providerIdForEngine: string | undefined = providerIdParam;
+    if (!providerIdForEngine && !wantsAnyStaff) {
+      const synthetic = parseSyntheticProviderStaffId(staffIdTrim);
+      if (synthetic) {
+        providerIdForEngine = synthetic;
+      } else if (!staffIdTrim.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX)) {
+        const admin = getSupabaseAdmin();
+        const { data: staffRow } = await admin
+          .from("provider_staff")
+          .select("provider_id")
+          .eq("id", staffIdTrim)
+          .maybeSingle();
+        providerIdForEngine = staffRow?.provider_id ?? undefined;
       }
+    }
 
+    // Any-staff requires providerId (same contract as before).
+    if (wantsAnyStaff && (!providerIdForEngine || !isUuidString(providerIdForEngine))) {
+      return successResponse({ date, slots: [] });
+    }
+
+    // Load active staff rows when doing an any-staff union. Mirrors the same
+    // query as the public slug endpoint so both routes converge.
+    let activeStaffRows: Array<{ id: string }> = [];
+    if (wantsAnyStaff && providerIdForEngine) {
       const { data: staffRows } = await supabase
         .from("provider_staff")
         .select("id")
-        .eq("provider_id", providerIdParam)
-        .eq("is_active", true)
-        .limit(MAX_STAFF_IDS_FOR_ANY);
-
-      const ids = (staffRows || []).map((r: { id: string }) => r.id);
-      const staffIdsToScan =
-        ids.length > 0 ? ids : [`${SYNTHETIC_PROVIDER_STAFF_PREFIX}${providerIdParam}`];
-
-      const slotArrays = await Promise.all(
-        staffIdsToScan.map((sid) =>
-          computeSlotsForStaff(
-            supabase,
-            sid,
-            date,
-            mode,
-            duration,
-            travelBuffer,
-            avoidGaps,
-            excludeHoldId,
-            ids.length > 0 ? ids : undefined
-          )
-        )
-      );
-      slots = mergeUnionAnyStaffSlots(slotArrays);
-    } else {
-      slots = await computeSlotsForStaff(
-        supabase,
-        staffIdTrim,
-        date,
-        mode,
-        duration,
-        travelBuffer,
-        avoidGaps,
-        excludeHoldId
-        // allStaffIdsForParity: undefined — will default to [staffIdTrim] inside
-      );
+        .eq("provider_id", providerIdForEngine)
+        .eq("is_active", true);
+      activeStaffRows = (staffRows || []).map((r: { id: string }) => ({
+        id: r.id,
+      }));
     }
+
+    if (!providerIdForEngine) {
+      // No provider context available — the shared engine requires it.
+      return successResponse({ date, slots: [] });
+    }
+
+    const publicSlots = await computePublicSlugAvailabilitySlots({
+      supabase,
+      providerId: providerIdForEngine,
+      date,
+      totalBlockedMinutes: Number.isFinite(duration) && duration > 0 ? duration : 60,
+      travelBufferMinutes:
+        mode === "mobile" && Number.isFinite(travelBuffer) && travelBuffer >= 0
+          ? Math.min(360, travelBuffer)
+          : 0,
+      locationId: locationId ?? null,
+      staffIdParam: wantsAnyStaff ? "any" : staffIdTrim,
+      activeStaffRows,
+      excludeHoldId,
+      excludeBookingId,
+    });
+
+    const slots: TimeSlot[] = availabilitySlotsAsTimeSlots(publicSlots);
 
     const response: Record<string, unknown> = {
       date,

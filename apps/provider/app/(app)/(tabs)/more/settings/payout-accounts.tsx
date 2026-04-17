@@ -16,6 +16,7 @@ import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -60,7 +61,7 @@ export default function PayoutAccountsScreen() {
     account_name: "",
   });
 
-  const { data: accounts, loading, refresh } = useApi<PayoutAccount[]>(
+  const { data: accounts, loading, error: accountsError, refresh } = useApi<PayoutAccount[]>(
     "/api/provider/payout-accounts"
   );
   const { data: banksData, loading: banksLoading, refresh: refreshBanks } = useApi<{
@@ -83,8 +84,11 @@ export default function PayoutAccountsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const activeCount = useMemo(
@@ -239,7 +243,15 @@ export default function PayoutAccountsScreen() {
     resetVerifyState();
   }
 
-  if (loading && !accounts) return <LoadingState />;
+  if (loading && !accounts && !accountsError) return <LoadingState />;
+  if (accountsError && !accounts) {
+    return (
+      <ScreenContainer scrollable={false}>
+        <ScreenHeader title="Payout Accounts" showBack subtitle="Bank accounts for payouts" />
+        <ErrorState message={accountsError} onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
 
   return (
     <ScreenContainer scrollable={false}>

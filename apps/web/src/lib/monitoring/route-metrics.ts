@@ -11,6 +11,48 @@ function emit(level: MetricLevel, payload: Record<string, unknown>) {
   }
 }
 
+/**
+ * Emit a single counter-style metric. Use for post-booking effect failures so ops
+ * dashboards can alert on `booking_post_effects_failure_total > N`.
+ */
+export function emitMetric(name: string, tags: Record<string, string | number | boolean | null | undefined>): void {
+  emit("info", {
+    event: "metric",
+    metric: name,
+    ...tags,
+    emitted_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Run an async side-effect that must NEVER break the parent request. Errors are
+ * logged, reported to Sentry when available, and counted via `emitMetric`.
+ *
+ * Usage:
+ *   await safely(
+ *     () => notifyProvider(bookingId),
+ *     { metric: "booking_post_effects_failure_total", tags: { op: "notifyProvider" } },
+ *   );
+ */
+export async function safely<T>(
+  op: () => Promise<T>,
+  context: { metric: string; tags?: Record<string, string | number | boolean | null | undefined> },
+): Promise<T | null> {
+  try {
+    return await op();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitMetric(context.metric, { ...context.tags, status: "error", message });
+    try {
+      const Sentry = await import("@sentry/nextjs");
+      Sentry.captureException(error, { tags: { ...context.tags, metric: context.metric } as Record<string, string> });
+    } catch {
+      // Sentry not configured — swallow.
+    }
+    return null;
+  }
+}
+
 export async function withRouteMetrics(
   request: Request,
   route: string,

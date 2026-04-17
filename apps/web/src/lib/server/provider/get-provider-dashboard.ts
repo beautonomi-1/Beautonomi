@@ -291,6 +291,20 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       }
     }
 
+    const tipsTotal = sumAmount(["tip"]);
+    const tipsThisMonth = sumAmount(["tip"], startOfMonth);
+
+    const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"];
+    const expensesTotal = sumAmount(EXPENSE_TYPES);
+    const expensesThisMonth = sumAmount(EXPENSE_TYPES, startOfMonth);
+
+    let platformFeesPaid = 0;
+    for (const r of parsedRows) {
+      if (r.transaction_type === "payment") {
+        platformFeesPaid += Math.abs(r.netValue);
+      }
+    }
+
     const revenueToday = sumNet(["provider_earnings"], startOfToday);
     const revenueThisWeek = sumNet(["provider_earnings"], startOfWeek);
     const revenueThisMonth = sumNet(["provider_earnings"], startOfMonth);
@@ -354,7 +368,7 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     // Calculate pending payments (unpaid bookings)
     let unpaidBookingsQuery = supabaseAdmin
       .from("bookings")
-      .select("total_amount, total_paid, total_refunded, payment_status")
+      .select("total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, payment_status")
       .eq("provider_id", providerId)
       .in("payment_status", ["pending", "partially_paid"])
       .not("status", "in", "(cancelled,no_show)");
@@ -365,13 +379,15 @@ export async function getProviderDashboardResponse(request: NextRequest) {
     
     const { data: unpaidBookings } = await unpaidBookingsQuery;
 
-    /** Sum outstanding per booking (not full total_amount — fixes partial payments). */
     const pendingPaymentsAmount =
       unpaidBookings?.reduce((sum, b) => {
         const total = Number((b as { total_amount?: number }).total_amount ?? 0);
         const paid = Number((b as { total_paid?: number }).total_paid ?? 0);
         const refunded = Number((b as { total_refunded?: number }).total_refunded ?? 0);
-        const outstanding = Math.max(0, total - paid + refunded);
+        const wallet = Number((b as { wallet_amount?: number }).wallet_amount ?? 0);
+        const gift = Number((b as { gift_card_amount?: number }).gift_card_amount ?? 0);
+        const effectivePaid = Math.max(0, paid - refunded);
+        const outstanding = Math.max(0, total - effectivePaid - wallet - gift);
         return sum + outstanding;
       }, 0) || 0;
     const pendingPaymentsCount = unpaidBookings?.length || 0;
@@ -800,9 +816,16 @@ export async function getProviderDashboardResponse(request: NextRequest) {
       
       // Revenue streams
       service_earnings_total: providerEarningsTotal,
+      tips_total: tipsTotal,
+      tips_this_month: tipsThisMonth,
       gift_card_sales_total: giftCardSalesTotal,
       membership_sales_total: membershipSalesTotal,
-      refunds_total: Math.abs(refundsTotal), // Show as positive number
+      refunds_total: Math.abs(refundsTotal),
+
+      // Expenses (subscriptions, ads, platform fees)
+      platform_fees_paid: platformFeesPaid,
+      expenses_total: expensesTotal,
+      expenses_this_month: expensesThisMonth,
       
       // Travel fees breakdown
       travel_fees_total: travelFeesTotal,

@@ -4,9 +4,25 @@ import { requireRoleInApi, getProviderIdForUser } from "@/lib/supabase/api-helpe
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 
 type BookingServiceRow = {
   price?: number | null;
+  guest_name?: string | null;
+  /**
+   * B14: immutable tax snapshot captured at booking time
+   * (F17 / migration 493). Shape: `{ code, rate, inclusive, jurisdiction, source, resolved_at }`.
+   * Exposed per-line so customers + auditors can see the exact VAT context
+   * applied, independent of later provider/platform tax-rate changes.
+   */
+  tax_snapshot?: {
+    code?: string | null;
+    rate?: number | null;
+    inclusive?: boolean | null;
+    jurisdiction?: string | null;
+    source?: string | null;
+    resolved_at?: string | null;
+  } | null;
   offerings?: { title?: string | null; price?: number | null } | null;
 };
 
@@ -81,13 +97,15 @@ export async function GET(
       .from("bookings")
       .select(`
         *,
-        customer:users(id, email, full_name, phone),
-        provider:providers(
+        customer:users!bookings_customer_id_fkey(id, email, full_name, phone),
+        provider:providers!bookings_provider_id_fkey(
           id,
           business_name,
           owner_email,
           phone,
-          address
+          address,
+          receipt_header,
+          receipt_footer
         ),
         booking_services:booking_services(
           id,
@@ -95,11 +113,14 @@ export async function GET(
           duration_minutes,
           price,
           currency,
-          offerings:offerings(id, title, price, duration_minutes)
+          guest_name,
+          tax_snapshot,
+          offerings:offerings!booking_services_offering_id_fkey(id, title, price, duration_minutes)
         ),
         booking_addons:booking_addons(
           id,
           addon_id,
+          addon_name,
           quantity,
           price
         ),
@@ -220,21 +241,55 @@ export async function GET(
       paid_at: ac.paid_at || null,
     }));
 
+    const bRaw = bookingRaw as Record<string, unknown>;
+    const completedPayments = (booking.booking_payments || []) as Array<{ amount?: number; status?: string }>;
+    const paymentsPaid = completedPayments
+      .filter((p) => p.status === "completed")
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    const walletCredit = Number(bRaw.wallet_amount ?? 0);
+    const giftCardCredit = Number(bRaw.gift_card_amount ?? 0);
+    const totalPaidRow = Number(bRaw.total_paid ?? 0);
+    const totalRefundedRow = Number(bRaw.total_refunded ?? 0);
+    const amountPaid = paymentsPaid + walletCredit + giftCardCredit;
+    const balanceDue = computeBookingOutstandingDisplay({
+      totalAmount: totalFromRow,
+      totalPaid: totalPaidRow,
+      totalRefunded: totalRefundedRow,
+      walletAmount: walletCredit,
+      giftCardAmount: giftCardCredit,
+      unpaidAdditionalCharges: additionalCharges
+        .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+        .reduce((sum, ac) => sum + Number(ac.amount || 0), 0),
+      paymentStatus: booking.payment_status,
+    });
+    const depositRequired = Boolean(bRaw.deposit_required);
+    const depositAmount = Number(bRaw.deposit_amount || 0);
+    const depositPercentage = Number(bRaw.deposit_percentage || 0);
+    const paymentOption = (bRaw.payment_option as string) || "full";
+
     const receipt = {
       booking_number: booking.booking_number,
       booking_date: booking.created_at,
       service_date: booking.scheduled_at,
       customer: booking.customer,
       provider: booking.provider,
-      services: booking.booking_services?.map((bs: BookingServiceRow) => ({
-        name: bs.offerings?.title || "Service",
-        quantity: 1,
-        price: bs.price || bs.offerings?.price || 0,
-        total: bs.price || bs.offerings?.price || 0,
-      })) || [],
+      services: booking.booking_services?.map((bs: BookingServiceRow) => {
+        const title = bs.offerings?.title || "Service";
+        const guest = bs.guest_name?.trim();
+        return {
+          name: guest ? `${title} (${guest})` : title,
+          quantity: 1,
+          price: bs.price || bs.offerings?.price || 0,
+          total: bs.price || bs.offerings?.price || 0,
+          // B14: forward the immutable tax snapshot stamped at booking
+          // creation so clients render the real VAT line (rate + inclusive
+          // flag) even if the provider's current tax settings have changed.
+          tax_snapshot: bs.tax_snapshot ?? null,
+        };
+      }) || [],
       addons:
         booking.booking_addons?.map((ba: BookingAddonRow) => ({
-          name: "Add-on",
+          name: (ba as Record<string, unknown>).addon_name as string || "Add-on",
           quantity: ba.quantity || 1,
           price: Number(ba.price || 0),
           total: Number(ba.price || 0) * Number(ba.quantity || 1),
@@ -254,9 +309,9 @@ export async function GET(
             (bp.unit_price || bp.products?.retail_price || 0) * (bp.quantity || 1),
         };
       }) || [],
-      subtotal,
+      subtotal: Math.max(0, subtotal - travelFee),
       tax,
-      /** Platform / service fee (Beautonomi fee), not tips */
+      tax_rate: Number(bRaw.tax_rate || 0),
       fees: serviceFee,
       travel_fee: travelFee,
       tip_amount: tipAmount,
@@ -266,8 +321,21 @@ export async function GET(
       total: totalFromRow,
       currency: booking.currency || currencyFallback,
       payment_status: booking.payment_status,
+      amount_paid: amountPaid,
+      balance_due: balanceDue,
+      // B14: expose `total_refunded` so customer-facing receipts can render
+      // "Refunded" lines and compute net paid without re-hitting the refunds
+      // API. Sourced from `bookings.total_refunded` which is maintained by
+      // the finance trigger (migration 490).
+      total_refunded: totalRefundedRow,
+      deposit_required: depositRequired,
+      deposit_amount: depositAmount,
+      deposit_percentage: depositPercentage,
+      payment_option: paymentOption,
       transactions: booking.booking_payments || [],
       additional_charges: additionalCharges,
+      receipt_header: ((booking.provider as Record<string, unknown>)?.receipt_header as string) || null,
+      receipt_footer: ((booking.provider as Record<string, unknown>)?.receipt_footer as string) || null,
     };
 
     return NextResponse.json({ receipt });

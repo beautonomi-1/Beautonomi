@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const customFieldSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const body = await request.json();
     const validated = customFieldSchema.parse(body);
 
@@ -109,6 +110,19 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.custom_field.create",
+      entity_type: "custom_field",
+      entity_id: field.id,
+      module: "platform_config",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name: validated.name, field_type: validated.field_type, entity_type: validated.entity_type },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ field });
   } catch (error) {

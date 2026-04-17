@@ -22,7 +22,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToast } from "@/lib/adminToast";
 import { publicEnv } from "@/config/publicEnv";
-import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Eye, EyeOff } from "lucide-react";
 
 const LIMIT = 50;
 const BUCKET = "explore-posts";
@@ -120,6 +120,8 @@ export function ExplorePostsPage() {
   const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [bulkHideOpen, setBulkHideOpen] = useState(false);
+  const [singleHidePostId, setSingleHidePostId] = useState<string | null>(null);
+  const [singleHideNotes, setSingleHideNotes] = useState("");
 
   const q = useQuery({
     queryKey: qk,
@@ -158,6 +160,35 @@ export function ExplorePostsPage() {
       adminToast.error(m);
     },
   });
+
+  type SinglePostModerationVars = {
+    id: string;
+    is_hidden: boolean;
+    moderation_notes?: string | null;
+  };
+
+  const singlePostMut = useMutation({
+    mutationFn: (vars: SinglePostModerationVars) =>
+      adminApi.patchJson<Record<string, unknown>>(`/api/admin/explore/posts/${vars.id}`, {
+        is_hidden: vars.is_hidden,
+        ...(vars.moderation_notes !== undefined ? { moderation_notes: vars.moderation_notes } : {}),
+      }),
+    onSuccess: async (_data, vars) => {
+      setSingleHidePostId(null);
+      setSingleHideNotes("");
+      adminToast.success(vars.is_hidden ? "Post hidden" : "Post unhidden");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostsAll() });
+      await qc.invalidateQueries({ queryKey: qk });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.explorePostDetail(vars.id) });
+    },
+    onError: (e) => {
+      const m = e instanceof Error ? e.message : "Update failed";
+      setMsg(m);
+      adminToast.error(m);
+    },
+  });
+
+  const rowBusyId = singlePostMut.isPending ? singlePostMut.variables?.id : undefined;
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -434,9 +465,40 @@ export function ExplorePostsPage() {
                     )}
                   </AdminTd>
                   <AdminTd className="text-right">
-                    <Link className="text-sm font-medium text-primary underline" to={adminSpaTo(`/admin/explore/${id}`)}>
-                      Open
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <Link className="text-sm font-medium text-primary underline" to={adminSpaTo(`/admin/explore/${id}`)}>
+                        Open
+                      </Link>
+                      {hidden ? (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-800 disabled:opacity-50"
+                          disabled={rowBusyId === id}
+                          title="Show in public feed again"
+                          onClick={() => {
+                            if (!window.confirm("Unhide this post and show it in the public Explore feed again?")) return;
+                            singlePostMut.mutate({ id, is_hidden: false, moderation_notes: null });
+                          }}
+                        >
+                          <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          Unhide
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs font-medium text-gray-800 disabled:opacity-50"
+                          disabled={rowBusyId === id}
+                          title="Remove from public feed"
+                          onClick={() => {
+                            setSingleHideNotes("");
+                            setSingleHidePostId(id);
+                          }}
+                        >
+                          <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          Hide
+                        </button>
+                      )}
+                    </div>
                   </AdminTd>
                 </tr>
               );
@@ -503,6 +565,50 @@ export function ExplorePostsPage() {
                 className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white"
                 onClick={() => {
                   modMut.mutate("hide");
+                }}
+              >
+                Hide
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {singleHidePostId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">Hide this post?</h3>
+            <p className="mt-2 text-sm text-gray-600">It will be removed from the public Explore feed. Optional note is saved on the post.</p>
+            <label className="mt-4 flex flex-col text-xs font-medium text-gray-600">
+              Moderation note (optional)
+              <textarea
+                className="mt-1 min-h-[72px] rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
+                value={singleHideNotes}
+                onChange={(e) => setSingleHideNotes(e.target.value)}
+              />
+            </label>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                onClick={() => {
+                  setSingleHidePostId(null);
+                  setSingleHideNotes("");
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-gray-900 px-3 py-2 text-sm text-white disabled:opacity-50"
+                disabled={singlePostMut.isPending}
+                onClick={() => {
+                  const note = singleHideNotes.trim();
+                  singlePostMut.mutate({
+                    id: singleHidePostId,
+                    is_hidden: true,
+                    ...(note ? { moderation_notes: note } : {}),
+                  });
                 }}
               >
                 Hide

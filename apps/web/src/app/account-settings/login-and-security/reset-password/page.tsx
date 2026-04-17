@@ -8,7 +8,6 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { motion } from "framer-motion";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -104,9 +103,7 @@ export default function ResetPasswordPage() {
   if (success) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <motion.div
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
+        <div
           className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-lg"
         >
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
@@ -119,7 +116,7 @@ export default function ResetPasswordPage() {
             Your password has been reset successfully. Redirecting you to the
             home page…
           </p>
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -127,9 +124,7 @@ export default function ResetPasswordPage() {
   if (verifyError) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+        <div
           className="w-full max-w-md rounded-2xl border border-red-100 bg-white p-8 text-center shadow-lg"
         >
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
@@ -139,7 +134,7 @@ export default function ResetPasswordPage() {
           <p className="mb-6 text-sm text-gray-500">{verifyError}</p>
           <Button onClick={() => router.push("/forgot-password")} className="w-full mb-2">Request new link</Button>
           <button type="button" onClick={() => router.push("/")} className="text-sm text-gray-500 hover:text-gray-700">Back to home</button>
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -147,25 +142,21 @@ export default function ResetPasswordPage() {
   if (!isReady) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center px-4">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
+        <div
           className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 text-center shadow-lg"
         >
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-gray-200 border-t-gray-900" />
+          <p className="mx-auto mb-4 text-sm text-gray-500">Loading…</p>
           <p className="text-sm text-gray-500">
             Verifying your reset link…
           </p>
-        </motion.div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex min-h-[60vh] items-center justify-center px-4 py-8">
-      <motion.div
-        initial={{ y: 16, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
+      <div
         className="w-full max-w-md rounded-2xl border border-gray-100 bg-white p-8 shadow-lg"
       >
         <div className="mx-auto mb-6 flex h-14 w-14 items-center justify-center rounded-full bg-gray-50">
@@ -252,7 +243,7 @@ export default function ResetPasswordPage() {
             {isSubmitting ? "Updating…" : "Update Password"}
           </Button>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }

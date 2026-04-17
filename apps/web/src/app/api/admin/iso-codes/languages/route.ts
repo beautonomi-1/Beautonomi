@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -23,7 +23,7 @@ const languageSchema = z.object({
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: languages, error } = await supabase
       .from("iso_languages")
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: Request) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_INTEGRATIONS_DEV, request);
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validationResult = languageSchema.safeParse(body);

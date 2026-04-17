@@ -284,10 +284,20 @@ export interface ProviderApi {
   deleteTimeBlock(id: string): Promise<void>;
   listBlockedTimeTypes(): Promise<BlockedTimeType[]>;
 
+  // Days Off
+  setDayOff(staffId: string, data: { date: string; reason?: string; type?: string }): Promise<any>;
+  removeDayOff(staffId: string, dayOffId: string): Promise<void>;
+  listDaysOff(staffId: string, params?: { date_from?: string; date_to?: string }): Promise<any[]>;
+
   // Availability blocks (closed periods, breaks – date-specific non-bookable time)
   listAvailabilityBlocks(params: { from: string; to: string }): Promise<AvailabilityBlockDisplay[]>;
   /** staff_time_off + staff_days_off as calendar segments (matches public booking blockers). */
   listStaffCalendarUnavailability(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]>;
+  /** B8: active booking_holds rendered as calendar ghost slots. */
+  listProviderBookingHolds(params: {
     date_from: string;
     date_to: string;
   }): Promise<AvailabilityBlockDisplay[]>;
@@ -963,7 +973,7 @@ export class ProviderApiClient implements ProviderApi {
         // Service fee fields (should be 0 for provider-created appointments)
         service_fee_percentage: (data as any).service_fee_percentage || 0,
         service_fee_amount: (data as any).service_fee_amount || 0,
-        booking_source: (data as any).booking_source || 'walk_in', // Mark as provider-created
+        booking_source: (data as any).booking_source || 'provider',
         // For walk-in clients, pass customer info to create customer
         customer_name: data.client_name,
         customer_email: data.client_email || null,
@@ -975,7 +985,16 @@ export class ProviderApiClient implements ProviderApi {
         address_city: data.address_city || null,
         address_state: data.address_state || null,
         address_postal_code: data.address_postal_code || null,
+        address_country: (data as any).address_country || null,
+        address_latitude: (data as any).address_latitude || null,
+        address_longitude: (data as any).address_longitude || null,
         referral_source_id: (data as any).referral_source_id ?? null,
+        payment_method: (data as any).payment_method || null,
+        send_notification: (data as any).send_notification ?? true,
+        deposit_required: (data as any).deposit_required || false,
+        deposit_percentage: (data as any).deposit_percentage || null,
+        deposit_amount: (data as any).deposit_amount || null,
+        payment_option: (data as any).payment_option || "full",
       };
 
       const response = await fetcher.post<{ data: any }>("/api/provider/bookings", bookingData);
@@ -1347,16 +1366,18 @@ export class ProviderApiClient implements ProviderApi {
         params.append('limit', pagination.limit.toString());
       }
 
-      const response = await fetcher.get<PaginatedResponse<Sale>>(
+      const response = await fetcher.get<any>(
         `/api/provider/sales?${params.toString()}`
       );
-      
+
+      const payload = response.data;
+      const salesArray = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
       return {
-        data: response.data ?? [],
-        total: response.total ?? 0,
-        page: response.page ?? 1,
-        limit: response.limit ?? 20,
-        total_pages: response.total_pages ?? 1,
+        data: salesArray,
+        total: payload?.total ?? salesArray.length,
+        page: payload?.page ?? 1,
+        limit: payload?.limit ?? 20,
+        total_pages: payload?.total_pages ?? 1,
       };
     } catch (error: any) {
       await this.logProviderApiFailure(
@@ -2318,6 +2339,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: s.end_time,
         notes: s.notes,
         is_recurring: s.is_recurring,
+        source: s.source || "shift",
       }));
     } catch (error: any) {
       await this.handleApiError(
@@ -2339,6 +2361,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: data.end_time,
         notes: data.notes,
         is_recurring: data.is_recurring,
+        recurring_pattern: (data as any).recurring_pattern,
       });
       
       const s = response.data;
@@ -2374,6 +2397,7 @@ export class ProviderApiClient implements ProviderApi {
         end_time: data.end_time,
         notes: data.notes,
         is_recurring: data.is_recurring,
+        recurring_pattern: (data as any).recurring_pattern,
       });
       
       const s = response.data;
@@ -3415,15 +3439,10 @@ export class ProviderApiClient implements ProviderApi {
   }
 
   async listExpressBookingLinks(): Promise<ExpressBookingLink[]> {
-    try {
-      const { fetcher } = await import("@/lib/http/fetcher");
-      const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
-      const rows = res.data ?? [];
-      return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
-    } catch (error) {
-      console.warn("Failed to load express booking links:", error);
-      return [];
-    }
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const res = await fetcher.get<{ data: any[] }>("/api/provider/express-booking");
+    const rows = res.data ?? [];
+    return Array.isArray(rows) ? rows.map((r) => this.mapExpressLinkFromApi(r)) : [];
   }
 
   async createExpressBookingLink(
@@ -3805,6 +3824,7 @@ export class ProviderApiClient implements ProviderApi {
     const { fetcher } = await import("@/lib/http/fetcher");
     const params = new URLSearchParams();
     if (filters?.status) params.append("status", filters.status);
+    if (filters?.search) params.append("search", filters.search);
     if (filters?.date_from) params.append("date_from", filters.date_from);
     if (filters?.date_to) params.append("date_to", filters.date_to);
     if (pagination?.page) params.append("page", String(pagination.page));
@@ -3960,6 +3980,31 @@ export class ProviderApiClient implements ProviderApi {
     }
   }
 
+  /**
+   * B8: active booking_holds as AvailabilityBlockDisplay overlays so the
+   * provider calendar renders in-flight holds as ghost slots. Soft-fails
+   * to an empty list (the hold endpoint is best-effort visualization, not
+   * authoritative conflict data).
+   */
+  async listProviderBookingHolds(params: {
+    date_from: string;
+    date_to: string;
+  }): Promise<AvailabilityBlockDisplay[]> {
+    try {
+      const { fetcher } = await import("@/lib/http/fetcher");
+      const searchParams = new URLSearchParams();
+      searchParams.set("date_from", params.date_from);
+      searchParams.set("date_to", params.date_to);
+      const response = await fetcher.get<{ data: AvailabilityBlockDisplay[] }>(
+        `/api/provider/calendar/booking-holds?${searchParams.toString()}`,
+      );
+      return response.data || [];
+    } catch (error) {
+      console.warn("Failed to fetch booking holds:", error);
+      return [];
+    }
+  }
+
   async listTimeBlocks(filters?: FilterParams): Promise<TimeBlock[]> {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
@@ -4062,7 +4107,7 @@ export class ProviderApiClient implements ProviderApi {
     try {
       const { fetcher } = await import("@/lib/http/fetcher");
       const response = await fetcher.patch<{ data: any }>(`/api/provider/time-blocks/${id}`, {
-        staff_id: data.team_member_id,
+        staff_id: data.team_member_id === undefined ? undefined : (data.team_member_id || null),
         blocked_time_type_id: data.blocked_time_type_id,
         name: data.name,
         date: data.date,
@@ -4100,6 +4145,27 @@ export class ProviderApiClient implements ProviderApi {
   async deleteTimeBlock(id: string): Promise<void> {
     const { fetcher } = await import("@/lib/http/fetcher");
     await fetcher.delete(`/api/provider/time-blocks/${id}`);
+  }
+
+  async setDayOff(staffId: string, data: { date: string; reason?: string; type?: string }): Promise<any> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const response = await fetcher.post<{ data: any }>(`/api/provider/staff/${staffId}/days-off`, data);
+    return response.data;
+  }
+
+  async removeDayOff(staffId: string, dayOffId: string): Promise<void> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    await fetcher.delete(`/api/provider/staff/${staffId}/days-off/${dayOffId}`);
+  }
+
+  async listDaysOff(staffId: string, params?: { date_from?: string; date_to?: string }): Promise<any[]> {
+    const { fetcher } = await import("@/lib/http/fetcher");
+    const searchParams = new URLSearchParams();
+    if (params?.date_from) searchParams.set("date_from", params.date_from);
+    if (params?.date_to) searchParams.set("date_to", params.date_to);
+    const q = searchParams.toString();
+    const response = await fetcher.get<{ data: any[] }>(`/api/provider/staff/${staffId}/days-off${q ? `?${q}` : ""}`);
+    return response.data || [];
   }
 
   async listBlockedTimeTypes(): Promise<BlockedTimeType[]> {
@@ -4229,10 +4295,11 @@ export class ProviderApiClient implements ProviderApi {
     return this.addToWaitingRoom({ ...data, checked_in_method: "self" });
   }
 
-  async moveWaitingRoomToService(entryId: string, _appointmentId?: string): Promise<Appointment> {
+  async moveWaitingRoomToService(entryId: string, appointmentId?: string): Promise<Appointment> {
     const { fetcher } = await import("@/lib/http/fetcher");
-    await fetcher.patch(`/api/provider/waiting-room/${entryId}`, { status: "in_service" });
-    return this.getAppointment(entryId);
+    const patchRes = await fetcher.patch<{ data: any }>(`/api/provider/waiting-room/${entryId}`, { status: "in_service" });
+    const bookingId = appointmentId || patchRes?.data?.booking_id || entryId;
+    return this.getAppointment(bookingId);
   }
 
   private mapColorSchemeRow(row: any): CalendarColorScheme {
@@ -4617,63 +4684,19 @@ export class ProviderApiClient implements ProviderApi {
 
   async printReceipt(appointmentId: string): Promise<Blob> {
     try {
-      const printData = await this.getAppointmentPrintData(appointmentId);
-      
-      // Create a simple PDF-like HTML receipt
-      const receiptHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Receipt - ${printData.appointment.ref_number}</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; }
-              .header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-              .section { margin-bottom: 15px; }
-              .label { font-weight: bold; color: #666; font-size: 12px; }
-              .value { margin-top: 5px; font-size: 14px; }
-              .total { font-size: 18px; font-weight: bold; margin-top: 20px; padding-top: 10px; border-top: 2px solid #000; }
-              .footer { margin-top: 30px; padding-top: 10px; border-top: 1px solid #ccc; font-size: 12px; color: #666; text-align: center; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>${printData.business_name || "Business"}</h1>
-              <p>Receipt</p>
-            </div>
-            <div class="section">
-              <div class="label">Reference Number</div>
-              <div class="value">${printData.appointment.ref_number}</div>
-            </div>
-            <div class="section">
-              <div class="label">Date</div>
-              <div class="value">${new Date(printData.appointment.scheduled_date).toLocaleDateString()} at ${printData.appointment.scheduled_time}</div>
-            </div>
-            <div class="section">
-              <div class="label">Client</div>
-              <div class="value">${printData.appointment.client_name}</div>
-            </div>
-            <div class="section">
-              <div class="label">Service</div>
-              <div class="value">${printData.appointment.service_name}</div>
-            </div>
-            <div class="section">
-              <div class="label">Team Member</div>
-              <div class="value">${printData.appointment.team_member_name}</div>
-            </div>
-            <div class="total">
-              Total: R ${printData.appointment.price.toFixed(2)}
-            </div>
-            <div class="footer">
-              <p>Thank you for your business!</p>
-              <p>Printed on ${new Date().toLocaleString()}</p>
-            </div>
-          </body>
-        </html>
-      `;
-      
-      // Convert HTML to Blob
-      const blob = new Blob([receiptHtml], { type: "text/html" });
-      return blob;
+      const bookingId = appointmentId.includes("-svc-")
+        ? appointmentId.split("-svc-")[0]!
+        : appointmentId;
+
+      const response = await fetch(`/api/provider/bookings/${bookingId}/receipt/pdf`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch receipt PDF: ${response.status}`);
+      }
+
+      return await response.blob();
     } catch (error) {
       console.error("Failed to print receipt:", error);
       throw error;
@@ -4748,10 +4771,14 @@ export class ProviderApiClient implements ProviderApi {
       if (filters?.status) params.append("status", filters.status);
       if (filters?.type) params.append("type", filters.type);
       
-      const response = await fetcher.get<{ data: { data: any[] } | unknown[] }>(
+      const response = await fetcher.get<{ data: any }>(
         `/api/provider/campaigns${params.toString() ? `?${params.toString()}` : ""}`
       );
-      return Array.isArray(response.data) ? response.data : (response.data as any)?.data || [];
+      const d = response.data;
+      if (Array.isArray(d)) return d;
+      if (d?.items && Array.isArray(d.items)) return d.items;
+      if (d?.data && Array.isArray(d.data)) return d.data;
+      return [];
     } catch (error) {
       console.error("Failed to fetch campaigns:", error);
       return [];

@@ -10,6 +10,7 @@ import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 const refundSchema = z.object({
   amount: z.number().min(0.01).optional(), // If not provided, full refund
@@ -136,6 +137,8 @@ export async function POST(
       tenant_id: bookingData.tenant_id ?? tenantId,
       provider_id: bookingData.provider_id,
     });
+    const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     if (refundAmount > Number(txData.amount)) {
       return NextResponse.json(
@@ -232,21 +235,10 @@ export async function POST(
         created_at: new Date().toISOString(),
       });
 
-    // Create finance ledger entry for refund
-    await supabase
-      .from("finance_transactions")
-      .insert({
-        tenant_id: financeTenantId,
-        booking_id: txData.booking_id,
-        provider_id: bookingData.provider_id,
-        transaction_type: "refund",
-        amount: -refundAmount,
-        fees: 0,
-        commission: 0,
-        net: -refundAmount,
-        description: `Refund for booking ${bookingData.booking_number}: ${reason}`,
-        created_at: new Date().toISOString(),
-      });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) via the
+    // booking_refunds insert above. App-side insertion here would duplicate the
+    // ledger (B1).
 
     // Audit log
     await writeAuditLog({

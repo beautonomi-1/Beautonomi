@@ -1,11 +1,13 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useMemo } from "react";
-import { View, Platform } from "react-native";
+import { View, Platform, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useTranslation } from "@beautonomi/i18n";
 import { Colors } from "@/constants/colors";
+import { TAB_BAR_MIN_BOTTOM_INSET, tabBarOuterHeight } from "@/constants/layout";
 import { AppHeader } from "@/components/AppHeader";
 import { authFlowBreadcrumb, isSentryEnabled } from "@/lib/sentry";
 
@@ -25,7 +27,8 @@ export default function TabsLayout() {
     authFlowBreadcrumb("authenticated_tabs_layout_mount", { app: "provider" });
   }, []);
 
-  const TAB_BAR_HEIGHT = 60 + (insets.bottom > 0 ? insets.bottom : 10);
+  const safeBottom = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const TAB_BAR_HEIGHT = tabBarOuterHeight(insets.bottom);
   const screenOptions = useMemo(
     () => ({
       sceneStyle: {
@@ -40,8 +43,10 @@ export default function TabsLayout() {
         borderTopWidth: 1,
         borderTopColor: "#f3f4f6",
         height: TAB_BAR_HEIGHT,
+        minHeight: TAB_BAR_HEIGHT,
+        flexShrink: 0,
         paddingTop: 8,
-        paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+        paddingBottom: safeBottom,
         elevation: 8,
         ...(Platform.OS === "web"
           ? { boxShadow: "0 -2px 6px rgba(0,0,0,0.06)" }
@@ -67,8 +72,23 @@ export default function TabsLayout() {
         fontWeight: "600" as const,
         marginTop: 2,
       },
+      tabBarButton: (props: any) => {
+        const { onPress, children, ...rest } = props;
+        return (
+          <TouchableOpacity
+            {...rest}
+            onPress={(e) => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              onPress?.(e);
+            }}
+            activeOpacity={0.7}
+          >
+            {children}
+          </TouchableOpacity>
+        );
+      },
     }),
-    [TAB_BAR_HEIGHT, insets.bottom, isTablet],
+    [TAB_BAR_HEIGHT, isTablet, safeBottom],
   );
 
   return (
@@ -109,7 +129,6 @@ export default function TabsLayout() {
         options={{
           title: t("payments.transactionHistory"),
           tabBarIcon: ({ focused }) => <TabIcon name={focused ? "card" : "card-outline"} focused={focused} />,
-          href: null,
         }}
       />
       <Tabs.Screen

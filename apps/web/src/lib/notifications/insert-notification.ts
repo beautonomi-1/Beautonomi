@@ -43,8 +43,10 @@ const TYPE_MAP: Record<string, string> = {
   rebook_reminder: "booking_reminder",
   // Payments
   refund_processed: "payment_received",
+  payment_request: "payment_received",
   payment_link_sent: "payment_received",
   additional_charge_paid: "payment_received",
+  additional_charge_requested: "payment_received",
   payout_processed: "payment_received",
   payout_failed: "payment_received",
   // Messages

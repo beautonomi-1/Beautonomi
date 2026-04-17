@@ -44,8 +44,11 @@ export default function StaffPermissionsListScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   if (loading && !staffList) {

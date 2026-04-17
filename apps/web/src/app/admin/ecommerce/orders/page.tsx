@@ -5,6 +5,14 @@ import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import {
   ShoppingBag,
   DollarSign,
   Clock,
@@ -14,8 +22,11 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
+  Search,
 } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface OrderSummary {
   total_orders: number;
@@ -60,8 +71,24 @@ export default function AdminProductOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
+  const { format: fmtMoney } = useReportCurrency();
   const [totalPages, setTotalPages] = useState(1);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const updateOrder = async (orderId: string, payload: Record<string, string>) => {
+    setActionLoading(orderId);
+    try {
+      await fetcher.patch(`/api/admin/product-orders/${orderId}`, payload);
+      toast.success("Order updated");
+      fetchOrders();
+    } catch {
+      toast.error("Failed to update order");
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -69,6 +96,7 @@ export default function AdminProductOrdersPage() {
       const params = new URLSearchParams();
       params.set("page", String(page));
       if (statusFilter) params.set("status", statusFilter);
+      if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
       const res = await fetcher.get<{
         data: { orders: ProductOrder[]; summary: OrderSummary; pagination: { totalPages: number } };
@@ -79,11 +107,12 @@ export default function AdminProductOrdersPage() {
         setSummary(res.data.summary);
         setTotalPages(res.data.pagination.totalPages);
       }
-    } catch {
-      /* handled by empty state */
+    } catch (err) {
+      console.error("Failed to load orders:", err);
+      toast.error("Failed to load product orders");
     }
     setLoading(false);
-  }, [page, statusFilter]);
+  }, [page, statusFilter, searchQuery]);
 
   useEffect(() => {
     const id = setTimeout(() => fetchOrders(), 0);
@@ -93,7 +122,7 @@ export default function AdminProductOrdersPage() {
   const statCards = summary
     ? [
         { label: "Total Orders", value: summary.total_orders, icon: ShoppingBag, color: "text-blue-600", bg: "bg-blue-50" },
-        { label: "Revenue", value: `R${summary.total_revenue.toFixed(2)}`, icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
+        { label: "Revenue", value: fmtMoney(summary.total_revenue), icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
         { label: "Pending", value: summary.pending, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
         { label: "Delivered", value: summary.delivered, icon: CheckCircle, color: "text-emerald-600", bg: "bg-emerald-50" },
         { label: "Cancelled", value: summary.cancelled, icon: XCircle, color: "text-red-600", bg: "bg-red-50" },
@@ -127,6 +156,15 @@ export default function AdminProductOrdersPage() {
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+          <Input
+            placeholder="Search by order #, customer, or provider..."
+            value={searchQuery}
+            onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+            className="pl-10"
+          />
+        </div>
         <select
           value={statusFilter}
           onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
@@ -180,7 +218,7 @@ export default function AdminProductOrdersPage() {
                       </td>
                       <td className="px-4 py-3 text-gray-700">{o.provider?.business_name}</td>
                       <td className="px-4 py-3 text-gray-700">{o.items?.length ?? 0}</td>
-                      <td className="px-4 py-3 font-semibold text-gray-900">R{Number(o.total_amount).toFixed(2)}</td>
+                      <td className="px-4 py-3 font-semibold text-gray-900">{fmtMoney(Number(o.total_amount))}</td>
                       <td className="px-4 py-3">
                         <Badge variant={STATUS_BADGE[o.status] ?? "outline"}>{o.status.replace(/_/g, " ")}</Badge>
                       </td>
@@ -223,19 +261,84 @@ export default function AdminProductOrdersPage() {
                                 <tr key={item.id} className="border-b border-gray-100">
                                   <td className="py-2 text-gray-900">{item.product_name}</td>
                                   <td className="py-2 text-gray-700">{item.quantity}</td>
-                                  <td className="py-2 text-gray-700">R{Number(item.unit_price).toFixed(2)}</td>
-                                  <td className="py-2 font-medium text-gray-900">R{Number(item.total_price).toFixed(2)}</td>
+                                  <td className="py-2 text-gray-700">{fmtMoney(Number(item.unit_price))}</td>
+                                  <td className="py-2 font-medium text-gray-900">{fmtMoney(Number(item.total_price))}</td>
                                 </tr>
                               ))}
                             </tbody>
                           </table>
                           <div className="mt-3 flex gap-6 text-sm">
-                            <span className="text-gray-500">Subtotal: <span className="font-medium text-gray-900">R{Number(o.subtotal ?? 0).toFixed(2)}</span></span>
+                            <span className="text-gray-500">Subtotal: <span className="font-medium text-gray-900">{fmtMoney(Number(o.subtotal ?? 0))}</span></span>
                             {Number(o.delivery_fee) > 0 && (
-                              <span className="text-gray-500">Delivery: <span className="font-medium text-gray-900">R{Number(o.delivery_fee).toFixed(2)}</span></span>
+                              <span className="text-gray-500">Delivery: <span className="font-medium text-gray-900">{fmtMoney(Number(o.delivery_fee))}</span></span>
                             )}
                             {Number(o.platform_fee) > 0 && (
-                              <span className="text-gray-500">Platform Fee: <span className="font-medium text-pink-600">R{Number(o.platform_fee).toFixed(2)}</span></span>
+                              <span className="text-gray-500">Platform Fee: <span className="font-medium text-pink-600">{fmtMoney(Number(o.platform_fee))}</span></span>
+                            )}
+                          </div>
+
+                          {/* Admin Actions */}
+                          <div className="mt-4 pt-3 border-t flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Status:</span>
+                              <Select
+                                value={o.status}
+                                onValueChange={(val) => updateOrder(o.id, { status: val })}
+                                disabled={actionLoading === o.id}
+                              >
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="confirmed">Confirmed</SelectItem>
+                                  <SelectItem value="processing">Processing</SelectItem>
+                                  <SelectItem value="shipped">Shipped</SelectItem>
+                                  <SelectItem value="delivered">Delivered</SelectItem>
+                                  <SelectItem value="cancelled">Cancelled</SelectItem>
+                                  <SelectItem value="refunded">Refunded</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Payment:</span>
+                              <Select
+                                value={o.payment_status}
+                                onValueChange={(val) => updateOrder(o.id, { payment_status: val })}
+                                disabled={actionLoading === o.id}
+                              >
+                                <SelectTrigger className="h-8 w-[150px] text-xs">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="pending">Pending</SelectItem>
+                                  <SelectItem value="paid">Paid</SelectItem>
+                                  <SelectItem value="refunded">Refunded</SelectItem>
+                                  <SelectItem value="partially_refunded">Partial Refund</SelectItem>
+                                  <SelectItem value="failed">Failed</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <a href={`/admin/ecommerce/orders/${o.id}`} onClick={(e) => e.stopPropagation()}>
+                              <Button variant="outline" size="sm" className="h-8 text-xs">
+                                View Full Details
+                              </Button>
+                            </a>
+                            {o.status !== "cancelled" && o.status !== "refunded" && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                className="h-8 text-xs"
+                                disabled={actionLoading === o.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (confirm("Cancel and refund this order?")) {
+                                    updateOrder(o.id, { status: "refunded", payment_status: "refunded" });
+                                  }
+                                }}
+                              >
+                                Cancel & Refund
+                              </Button>
                             )}
                           </div>
                         </td>

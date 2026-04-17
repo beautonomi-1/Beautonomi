@@ -126,8 +126,11 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const allOrders = data?.orders ?? [];
@@ -204,7 +207,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
   const doUpdateStatus = useCallback(
     async (orderId: string, status: string, extra?: { tracking_number?: string; carrier?: string }) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
+      const { error: err, data: responseData } = await patchOrder(`/api/provider/product-orders/${orderId}`, {
         status,
         ...extra,
       });
@@ -221,7 +224,7 @@ export function ProductOrdersContent({ deepLinkOrderId }: { deepLinkOrderId?: st
         refresh();
       }
     },
-    [patchOrder, refresh]
+    [patchOrder, refresh, data]
   );
 
   const handleStatusTap = useCallback(

@@ -76,43 +76,72 @@ export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: 
     return new Date(utcGuess.getTime() - diffMs);
   }
 
-  const date = new Date(dateStr);
-  date.setHours(hours, minutes, seconds, 0);
-  return date;
+  // No timezone provided — treat date + time as UTC to stay consistent
+  // with the rest of the availability engine.
+  const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`;
+  return new Date(iso);
 }
 
 /**
- * Expand recurring pattern to actual dates
+ * Expand recurring pattern to check if a target date matches.
+ *
+ * Accepts multiple DB formats:
+ *  - Canonical: { frequency: "weekly", days: [3], end_date? }
+ *  - Legacy web: { pattern: "weekly", interval: 1, end_date? }
+ *  - Mobile/alt:  { frequency: "weekly", days_of_week: [3] }
+ *  - Bare:       { pattern: "daily" }
+ *
+ * When `days` / `days_of_week` is missing for weekly, the anchor date's
+ * weekday is inferred so legacy rows still match.
  */
 export function expandRecurringPattern(
-  pattern: {
-    frequency: 'weekly' | 'daily' | 'monthly';
-    days?: number[];
-    end_date?: string;
-  },
+  pattern: Record<string, unknown>,
   startDate: string,
   targetDate: string
 ): boolean {
-  const start = new Date(startDate);
-  const target = new Date(targetDate);
-  const end = pattern.end_date ? new Date(pattern.end_date) : null;
+  const start = new Date(`${startDate}T12:00:00`);
+  const target = new Date(`${targetDate}T12:00:00`);
 
-  if (end && target > end) {
-    return false;
+  const endRaw = (pattern.end_date ?? pattern.endDate) as string | undefined;
+  if (endRaw) {
+    const end = new Date(`${endRaw}T23:59:59`);
+    if (target > end) return false;
   }
 
-  if (pattern.frequency === 'daily') {
-    return target >= start;
+  if (target < start) return false;
+
+  const freq = (
+    (pattern.frequency as string) || (pattern.pattern as string) || ''
+  ).toLowerCase();
+
+  const interval = Math.max(1, Number(pattern.interval) || 1);
+
+  if (freq === 'daily') {
+    const daysDiff = Math.floor(
+      (target.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    return daysDiff % interval === 0;
   }
 
-  if (pattern.frequency === 'weekly' && pattern.days) {
-    const targetDay = target.getDay();
-    return pattern.days.includes(targetDay) && target >= start;
+  if (freq === 'weekly' || freq === 'biweekly') {
+    const days = (pattern.days ?? pattern.days_of_week) as number[] | undefined;
+    const every = freq === 'biweekly' ? 2 : interval;
+
+    if (days && days.length > 0) {
+      const targetDay = target.getDay();
+      if (!days.includes(targetDay)) return false;
+    } else {
+      if (target.getDay() !== start.getDay()) return false;
+    }
+
+    const weeks = Math.floor(
+      (target.getTime() - start.getTime()) / (7 * 24 * 60 * 60 * 1000)
+    );
+    return weeks % every === 0;
   }
 
-  if (pattern.frequency === 'monthly') {
-    // Same day of month
-    return target.getDate() === start.getDate() && target >= start;
+  if (freq === 'monthly') {
+    return target.getDate() === start.getDate();
   }
 
   return false;

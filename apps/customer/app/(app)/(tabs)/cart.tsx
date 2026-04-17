@@ -15,8 +15,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
 import { api } from "@/lib/api-client";
-import { getApiErrorMessage } from "@/lib/api-error";
 import { Colors, Shadows } from "@/constants/colors";
+import { tabBarOuterHeight, TAB_BAR_MIN_BOTTOM_INSET } from "@/constants/layout";
 import { haptic } from "@/lib/haptics";
 import { APP_URL } from "@/config/public-env";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -77,6 +77,7 @@ export default function CartScreen() {
     fetchCart,
     updateQuantity: patchCartQuantity,
     removeItem: removeCartLine,
+    clearCart,
     isGuestCart,
   } = useCart();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
@@ -89,12 +90,47 @@ export default function CartScreen() {
     [items],
   );
 
+  const [clearingCart, setClearingCart] = useState(false);
+
+  const handleClearCart = useCallback(() => {
+    if (items.length === 0) return;
+    Alert.alert("Clear Cart", "Remove all items from your cart?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear All",
+        style: "destructive",
+        onPress: async () => {
+          setClearingCart(true);
+          try {
+            await clearCart();
+            haptic.success();
+          } catch {
+            Alert.alert("Error", "Failed to clear cart");
+          } finally {
+            setClearingCart(false);
+          }
+        },
+      },
+    ]);
+  }, [items.length, clearCart]);
+
   useLayoutEffect(() => {
     navigation.setOptions({
       title: totalQty > 0 ? `Cart (${totalQty})` : "Cart",
       headerShown: true,
+      headerRight: totalQty > 0
+        ? () => (
+            <TouchableOpacity onPress={handleClearCart} disabled={clearingCart} style={{ paddingHorizontal: 8 }}>
+              {clearingCart ? (
+                <ActivityIndicator size="small" color="#EF4444" />
+              ) : (
+                <Text style={{ fontSize: 14, fontWeight: "500", color: "#EF4444" }}>Clear all</Text>
+              )}
+            </TouchableOpacity>
+          )
+        : undefined,
     });
-  }, [navigation, totalQty]);
+  }, [navigation, totalQty, handleClearCart, clearingCart]);
 
   // Derive provider IDs from items to pre-fetch shipping configs
   const providerIds = useMemo(
@@ -105,8 +141,11 @@ export default function CartScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchCart();
-    setRefreshing(false);
+    try {
+      await fetchCart();
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchCart]);
 
   const updateQuantity = useCallback(
@@ -129,12 +168,21 @@ export default function CartScreen() {
   );
 
   const removeItem = useCallback(
-    async (itemId: string) => {
-      setRemovingId(itemId);
-      haptic.light();
-      const { error: err } = await removeCartLine(itemId);
-      if (err) Alert.alert("Error", err);
-      setRemovingId(null);
+    (itemId: string) => {
+      Alert.alert("Remove item", "Remove this item from your cart?", [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            setRemovingId(itemId);
+            haptic.light();
+            const { error: err } = await removeCartLine(itemId);
+            if (err) Alert.alert("Error", err);
+            setRemovingId(null);
+          },
+        },
+      ]);
     },
     [removeCartLine],
   );
@@ -177,8 +225,9 @@ export default function CartScreen() {
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
-  const bottomChromePadding = 12 + insets.bottom;
-  const scrollBottomPadding = 88 + bottomChromePadding;
+  const bottomSafe = Math.max(insets.bottom, TAB_BAR_MIN_BOTTOM_INSET);
+  const bottomChromePadding = 12 + bottomSafe;
+  const scrollBottomPadding = 28 + tabBarOuterHeight(insets.bottom) + bottomChromePadding;
 
   return (
     <>
@@ -246,10 +295,10 @@ export default function CartScreen() {
             <Ionicons name="cart-outline" size={56} color="#D1D5DB" />
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827", marginTop: 16 }}>Your cart is empty</Text>
             <Text style={{ fontSize: 14, color: "#6B7280", marginTop: 8, textAlign: "center" }}>
-              Browse providers and add products to get started.
+              Browse the shop and add products to get started.
             </Text>
             <TouchableOpacity
-              onPress={() => router.push("/(app)/(tabs)/explore" as any)}
+              onPress={() => router.push("/(app)/(tabs)/shop" as any)}
               style={{ marginTop: 24, paddingVertical: 14, paddingHorizontal: 32, backgroundColor: Colors.primary, borderRadius: 12 }}
             >
               <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Browse products</Text>
@@ -263,7 +312,7 @@ export default function CartScreen() {
           </View>
         ) : (
           <View style={{ padding: contentPadding }}>
-            {Object.values(groups).map((g) => {
+            {Object.values(groups).filter((g) => g.provider?.id).map((g) => {
               const sc = shippingConfigs[g.provider.id];
               const isPickupOnly = sc ? (sc.offers_collection && !sc.offers_delivery) : false;
               return (
@@ -373,29 +422,35 @@ export default function CartScreen() {
                 <Text style={{ fontSize: 13, color: "#6B7280", marginTop: 6, textAlign: "right" }}>
                   Subtotal: {fmt(g.subtotal)}
                 </Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (isGuestCart) {
-                      signInForCheckout(g.provider.id);
-                      return;
-                    }
-                    haptic.medium();
-                    router.push({
-                      pathname: "/(app)/(tabs)/shop/product-checkout",
-                      params: { provider_id: g.provider.id },
-                    } as any);
-                  }}
-                  style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
-                >
-                  {isPickupOnly ? (
-                    <View style={{ flexDirection: "row", alignItems: "center" }}>
-                      <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
-                    </View>
-                  ) : (
-                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
-                  )}
-                </TouchableOpacity>
+                {g.items.some((i) => !i.in_stock) ? (
+                  <View style={{ marginTop: 12, backgroundColor: "#D1D5DB", borderRadius: 12, paddingVertical: 14, alignItems: "center" }}>
+                    <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Remove out-of-stock items to checkout</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (isGuestCart) {
+                        signInForCheckout(g.provider.id);
+                        return;
+                      }
+                      haptic.medium();
+                      router.push({
+                        pathname: "/(app)/(tabs)/shop/product-checkout",
+                        params: { provider_id: g.provider.id },
+                      } as any);
+                    }}
+                    style={{ marginTop: 12, backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 14, alignItems: "center" }}
+                  >
+                    {isPickupOnly ? (
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        <Ionicons name="storefront-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+                        <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout for pickup — {fmt(g.subtotal)}</Text>
+                      </View>
+                    ) : (
+                      <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Checkout — {fmt(g.subtotal)}</Text>
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
               );
             })}

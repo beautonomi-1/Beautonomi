@@ -37,6 +37,8 @@ type Campaign = {
   daily_budget?: number | null;
   bid_cpc?: number;
   pack_impressions?: number | null;
+  billing_model?: string;
+  duration_days?: number | null;
   start_at?: string | null;
   end_at?: string | null;
   targeting?: { global_category_ids?: string[] };
@@ -53,6 +55,14 @@ type PerformanceSummary = {
 type ImpressionPack = {
   id: string;
   impressions: number;
+  price_zar: number;
+  display_order?: number;
+};
+
+type TimePack = {
+  id: string;
+  duration_days: number;
+  label: string;
   price_zar: number;
   display_order?: number;
 };
@@ -77,6 +87,8 @@ export default function AdsSettingsScreen() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
+  const [timePacks, setTimePacks] = useState<TimePack[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -109,18 +121,30 @@ export default function AdsSettingsScreen() {
       const [campRes, perfRes, packsRes, catRes] = await Promise.all([
         api.get<Campaign[]>("/api/provider/ads/campaigns"),
         api.get<{ summary: PerformanceSummary }>("/api/provider/ads/performance"),
-        api.get<ImpressionPack[]>("/api/provider/ads/packs"),
+        api.get<{ impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[] }>("/api/provider/ads/packs"),
         api.get<GlobalCategory[]>("/api/public/categories/global?all=true"),
       ]);
+      const anyError = campRes.error || perfRes.error || packsRes.error;
+      if (anyError) {
+        Alert.alert("Error", "Some ads data could not be loaded. Pull to refresh.");
+      }
       setCampaigns(Array.isArray(campRes.data) ? campRes.data : []);
       setPerformance(perfRes.data?.summary ?? null);
-      setPacks(Array.isArray(packsRes.data) ? packsRes.data : []);
+      const pd = packsRes.data;
+      if (pd && typeof pd === "object" && !Array.isArray(pd)) {
+        setPacks(Array.isArray(pd.impression_packs) ? pd.impression_packs : []);
+        setTimePacks(Array.isArray(pd.time_packs) ? pd.time_packs : []);
+        setAvailableModels(Array.isArray(pd.available_models) ? pd.available_models : []);
+      } else {
+        setPacks(Array.isArray(pd) ? (pd as any) : []);
+      }
       setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
     } catch {
       setCampaigns([]);
       setPerformance(null);
       setPacks([]);
       setGlobalCategories([]);
+      Alert.alert("Error", "Failed to load ads data. Please try again.");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -166,6 +190,10 @@ export default function AdsSettingsScreen() {
             : undefined,
         }
       );
+      if (res.error) {
+        Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+        return;
+      }
       const data = res.data as any;
       const campaign = data?.campaign ?? data;
       if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
@@ -196,6 +224,10 @@ export default function AdsSettingsScreen() {
           "/api/provider/ads/campaigns",
           { impression_pack_id: pack.id }
         );
+        if (res.error) {
+          Alert.alert("Error", (res.error as any)?.message ?? "Failed to create campaign");
+          return;
+        }
         const data = res.data as any;
         const campaign = data?.campaign ?? data;
         if (campaign?.id) setCampaigns((prev) => [campaign, ...prev]);
@@ -220,12 +252,16 @@ export default function AdsSettingsScreen() {
     if (!editCampaign) return;
     setUpdating(editCampaign.id);
     try {
-      await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
+      const res = await api.patch(`/api/provider/ads/campaigns/${editCampaign.id}`, {
         budget: editForm.budget ? parseFloat(editForm.budget.replace(/,/g, ".")) : undefined,
         daily_budget: editForm.daily_budget === "" ? null : editForm.daily_budget ? parseFloat(editForm.daily_budget.replace(/,/g, ".")) : undefined,
         bid_cpc: editForm.bid_cpc ? parseFloat(editForm.bid_cpc.replace(/,/g, ".")) : undefined,
         targeting: { global_category_ids: editForm.global_category_ids },
       });
+      if (res.error) {
+        Alert.alert("Error", (res.error as any)?.message ?? "Failed to update campaign");
+        return;
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setEditCampaign(null);
       loadAll();
@@ -241,7 +277,11 @@ export default function AdsSettingsScreen() {
     async (campaignId: string, status: "active" | "paused" | "ended") => {
       setUpdating(campaignId);
       try {
-        await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
+        const res = await api.patch(`/api/provider/ads/campaigns/${campaignId}`, { status });
+        if (res.error) {
+          Alert.alert("Error", (res.error as any)?.message ?? "Failed to update status");
+          return;
+        }
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         loadAll();
       } catch (e: any) {
@@ -328,8 +368,58 @@ export default function AdsSettingsScreen() {
             </View>
           )}
 
+          {/* Time-based boost packs */}
+          {timePacks.length > 0 && availableModels.includes("time_based") && (
+            <View style={twStyle("mb-6")}>
+              <Text style={twStyle("text-sm font-semibold text-gray-700 mb-1")}>Boost for a set number of days</Text>
+              <Text style={twStyle("text-xs text-gray-500 mb-3")}>Flat rate, guaranteed sponsored placement for the full duration.</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
+                {timePacks.map((tp) => (
+                  <TouchableOpacity
+                    key={tp.id}
+                    onPress={async () => {
+                      setCreatingPackId(tp.id);
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      try {
+                        const targeting = createForm.global_category_ids.length > 0
+                          ? { global_category_ids: createForm.global_category_ids }
+                          : {};
+                        const res = await api.post<{ payment_url?: string }>("/api/provider/ads/campaigns", {
+                          time_pack_id: tp.id,
+                          targeting,
+                        });
+                        if (res.data?.payment_url) {
+                          await Linking.openURL(res.data.payment_url);
+                          return;
+                        }
+                        Alert.alert("Success", "Campaign created.");
+                        loadAll();
+                      } catch {
+                        Alert.alert("Error", "Failed to create campaign.");
+                      } finally {
+                        setCreatingPackId(null);
+                      }
+                    }}
+                    disabled={!!creatingPackId}
+                    style={twStyle("rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4 w-36")}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={twStyle("text-lg font-bold text-gray-900")}>{tp.duration_days}</Text>
+                    <Text style={twStyle("text-xs text-gray-500")}>{tp.duration_days === 1 ? "day" : "days"}</Text>
+                    <Text style={twStyle("text-sm font-semibold text-gray-900 mt-1")}>{tenantCurrency} {Number(tp.price_zar).toFixed(2)}</Text>
+                    {creatingPackId === tp.id ? (
+                      <ActivityIndicator size="small" color="#111" style={{ marginTop: 8 }} />
+                    ) : (
+                      <Text style={twStyle("text-xs text-emerald-600 mt-2")}>Boost →</Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* Impression packs */}
-          {packs.length > 0 && (
+          {packs.length > 0 && availableModels.includes("impression_pack") && (
             <View style={twStyle("mb-6")}>
               <Text style={twStyle("text-sm font-semibold text-gray-700 mb-3")}>Buy impressions</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={twStyle("-mx-4")} contentContainerStyle={twStyle("px-4 gap-3 flex-row")}>
@@ -375,7 +465,10 @@ export default function AdsSettingsScreen() {
                         <View style={[twStyle("rounded-lg px-2 py-1"), { backgroundColor: `${STATUS_COLOR[c.status] ?? "#6b7280"}20` }]}>
                           <Text style={[twStyle("text-xs font-semibold"), { color: STATUS_COLOR[c.status] ?? "#6b7280" }]}>{c.status}</Text>
                         </View>
-                        {c.pack_impressions != null && (
+                        {c.billing_model === "time_based" && c.duration_days && (
+                          <Text style={twStyle("text-xs text-emerald-600")}>{c.duration_days} day boost</Text>
+                        )}
+                        {c.billing_model !== "time_based" && c.pack_impressions != null && (
                           <Text style={twStyle("text-xs text-gray-500")}>{c.pack_impressions} impressions</Text>
                         )}
                       </View>
@@ -398,7 +491,7 @@ export default function AdsSettingsScreen() {
                               <Text style={twStyle("text-white text-xs font-medium")}>Resume</Text>
                             </TouchableOpacity>
                           )}
-                          {(c.status === "draft" || c.status === "paused") && c.pack_impressions == null && (
+                          {(c.status === "draft" || c.status === "paused") && c.pack_impressions == null && c.billing_model !== "time_based" && (
                             <TouchableOpacity onPress={() => openEdit(c)} style={twStyle("border border-gray-300 px-3 py-1.5 rounded-lg")}>
                               <Text style={twStyle("text-gray-700 text-xs font-medium")}>Edit</Text>
                             </TouchableOpacity>
@@ -407,9 +500,21 @@ export default function AdsSettingsScreen() {
                       )}
                     </View>
                     <View style={twStyle("flex-row mt-3 gap-4 flex-wrap")}>
-                      <Text style={twStyle("text-sm text-gray-600")}>Budget: {tenantCurrency} {Number(c.budget).toFixed(2)}</Text>
-                      <Text style={twStyle("text-sm text-gray-600")}>Spent: {tenantCurrency} {Number(c.spent).toFixed(2)}</Text>
-                      {c.daily_budget != null && <Text style={twStyle("text-sm text-gray-600")}>Daily: {tenantCurrency} {Number(c.daily_budget).toFixed(2)}</Text>}
+                      <Text style={twStyle("text-sm text-gray-600")}>Paid: {tenantCurrency} {Number(c.budget).toFixed(2)}</Text>
+                      {c.billing_model === "time_based" ? (
+                        <>
+                          {c.end_at && (
+                            <Text style={twStyle("text-sm text-gray-600")}>
+                              Ends: {new Date(c.end_at).toLocaleDateString()}
+                            </Text>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Text style={twStyle("text-sm text-gray-600")}>Spent: {tenantCurrency} {Number(c.spent).toFixed(2)}</Text>
+                          {c.daily_budget != null && <Text style={twStyle("text-sm text-gray-600")}>Daily: {tenantCurrency} {Number(c.daily_budget).toFixed(2)}</Text>}
+                        </>
+                      )}
                     </View>
                     {(c.targeting?.global_category_ids?.length ?? 0) > 0 && (
                       <Text style={twStyle("text-xs text-gray-400 mt-1")}>

@@ -60,13 +60,21 @@ export default function TimeBlocksPage() {
   const handleDeleteBlock = async (id: string) => {
     if (!confirm("Are you sure you want to delete this time block?")) return;
 
+    // Optimistic removal so the row disappears immediately
+    const prev = timeBlocks;
+    setTimeBlocks((blocks) => blocks.filter((b) => b.id !== id));
+
     try {
       await providerApi.deleteTimeBlock(id);
       toast.success("Time block deleted");
+      // Bust the GET cache so the background refresh returns fresh data
+      const { clearFetcherCache } = await import("@/lib/http/fetcher");
+      clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete time block:", error);
       toast.error("Failed to delete time block");
+      setTimeBlocks(prev);
     }
   };
 
@@ -83,13 +91,19 @@ export default function TimeBlocksPage() {
   const handleDeleteType = async (id: string) => {
     if (!confirm("Are you sure you want to delete this blocked time type?")) return;
 
+    const prev = blockedTimeTypes;
+    setBlockedTimeTypes((types) => types.filter((t) => t.id !== id));
+
     try {
       await providerApi.deleteBlockedTimeType(id);
       toast.success("Blocked time type deleted");
+      const { clearFetcherCache } = await import("@/lib/http/fetcher");
+      clearFetcherCache();
       loadData();
     } catch (error) {
       console.error("Failed to delete blocked time type:", error);
       toast.error("Failed to delete blocked time type");
+      setBlockedTimeTypes(prev);
     }
   };
 
@@ -103,6 +117,14 @@ export default function TimeBlocksPage() {
         title="Time Blocks"
         subtitle="Block out time for breaks, meetings, or unavailable periods"
       />
+
+      <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-4">
+        <p className="text-sm text-amber-800">
+          <strong>How time blocks work:</strong> Time blocks prevent customers from booking during specific periods
+          (e.g. lunch breaks, team meetings). They apply within operating hours and staff schedules.
+          Recurring blocks repeat automatically each week. Blocks assigned to &quot;All team members&quot; apply to everyone.
+        </p>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="mt-6">
         <TabsList>

@@ -18,9 +18,12 @@ export interface EndOfDayResponse {
   bookingPaymentsTotal: number;
   walletTotal: number;
   salesTotal: number;
+  tipsTotal: number;
+  cancellationFeesTotal: number;
   total: number;
   bookingCount: number;
   salesCount: number;
+  note: string;
 }
 
 /**
@@ -85,7 +88,7 @@ export async function GET(request: NextRequest) {
     type BookingRow = { id: string; location_id?: string };
     const bpRowList = (bpRows ?? []) as BpRow[];
     const bookingIds = [...new Set(bpRowList.map((r) => r.booking_id))];
-    let providerBookingIds = new Set<string>();
+    const providerBookingIds = new Set<string>();
     if (bookingIds.length > 0) {
       const { data: bookings, error: bookError } = await supabaseAdmin
         .from("bookings")
@@ -101,38 +104,39 @@ export async function GET(request: NextRequest) {
     }
 
     let bookingPaymentsTotal = 0;
-    let bookingCount = 0;
-    const bpBookingIds = new Set<string>(); // bookings already counted via booking_payments
+    const bpBookingIds = new Set<string>();
     for (const row of bpRowList) {
       if (!providerBookingIds.has(row.booking_id)) continue;
       const amount = Number(row.amount ?? 0);
       const method = normalizePaymentMethod(row.payment_method);
       byPaymentMethod[method] = (byPaymentMethod[method] || 0) + amount;
       bookingPaymentsTotal += amount;
-      bookingCount += 1;
       bpBookingIds.add(row.booking_id);
     }
 
-    // Wallet-only bookings have no booking_payments row — read wallet_amount directly from bookings.
-    // Only include bookings that were scheduled on this day and not already counted above.
+    // Wallet-only bookings — query independently so days with zero booking_payments
+    // still capture wallet-settled bookings.
     let walletTotal = 0;
-    if (providerBookingIds.size > 0) {
+    const walletOnlyBookingIds = new Set<string>();
+    {
       const { data: walletBookings } = await supabaseAdmin
         .from("bookings")
-        .select("id, wallet_amount, scheduled_at, location_id")
+        .select("id, wallet_amount, location_id")
         .eq("provider_id", providerId)
         .gte("scheduled_at", dayStart)
         .lt("scheduled_at", dayEndISO)
         .gt("wallet_amount", 0);
       for (const wb of (walletBookings ?? []) as { id: string; wallet_amount?: number; location_id?: string }[]) {
-        if (bpBookingIds.has(wb.id)) continue; // already counted the card leg
+        if (bpBookingIds.has(wb.id)) continue;
         if (locationId && wb.location_id !== locationId) continue;
         const walletAmt = Number(wb.wallet_amount ?? 0);
         byPaymentMethod["wallet"] = (byPaymentMethod["wallet"] || 0) + walletAmt;
         walletTotal += walletAmt;
-        bookingCount += 1;
+        walletOnlyBookingIds.add(wb.id);
       }
     }
+
+    const bookingCount = bpBookingIds.size + walletOnlyBookingIds.size;
 
     // Sales: provider_id, optional location_id, sale_date in day
     let salesQuery = supabaseAdmin
@@ -159,7 +163,28 @@ export async function GET(request: NextRequest) {
     }
     const salesCount = (salesRows || []).length;
 
-    const total = bookingPaymentsTotal + walletTotal + salesTotal;
+    // Ledger-based tips and cancellation fees for the day
+    let tipsTotal = 0;
+    let cancellationFeesTotal = 0;
+    try {
+      const { data: ledgerRows } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("transaction_type, amount, net")
+        .eq("provider_id", providerId)
+        .in("transaction_type", ["tip", "cancellation_fee"])
+        .gte("created_at", dayStart)
+        .lt("created_at", dayEndISO);
+      for (const r of ledgerRows ?? []) {
+        const row = r as { transaction_type: string; amount?: number; net?: number };
+        if (row.transaction_type === "tip") {
+          tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        } else if (row.transaction_type === "cancellation_fee") {
+          cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
+        }
+      }
+    } catch { /* non-critical — report still works without ledger extras */ }
+
+    const total = bookingPaymentsTotal + walletTotal + salesTotal + tipsTotal + cancellationFeesTotal;
 
     const response: EndOfDayResponse = {
       date: dateStr,
@@ -167,9 +192,12 @@ export async function GET(request: NextRequest) {
       bookingPaymentsTotal,
       walletTotal,
       salesTotal,
+      tipsTotal,
+      cancellationFeesTotal,
       total,
       bookingCount,
       salesCount,
+      note: "Cash-register style: sums booking_payments, sales, tips, and cancellation fees by payment date. For ledger-based revenue, use the payments report.",
     };
 
     return successResponse(response);

@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Users, Calendar, Edit, Trash2, CheckCircle } from "lucide-react";
+import { Search, Users, Calendar, Edit, Trash2, CheckCircle } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
@@ -37,8 +37,20 @@ export default function GroupBookingsPage() {
         status: statusFilter !== "all" ? statusFilter : undefined,
       };
 
-      if (dateRange === "month") {
-        const now = new Date();
+      const now = new Date();
+      const todayStr = now.toISOString().split("T")[0];
+
+      if (dateRange === "today") {
+        filters.date_from = todayStr;
+        filters.date_to = todayStr;
+      } else if (dateRange === "week") {
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - now.getDay());
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        filters.date_from = weekStart.toISOString().split("T")[0];
+        filters.date_to = weekEnd.toISOString().split("T")[0];
+      } else if (dateRange === "month") {
         filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
         filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
       }

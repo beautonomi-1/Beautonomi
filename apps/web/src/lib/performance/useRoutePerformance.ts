@@ -53,7 +53,7 @@ export function useRoutePerformance(
       routeMetrics.clearRoute(routeName);
     };
     // Only run on mount/unmount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [routeName]);
 
   useEffect(() => {

@@ -36,20 +36,51 @@ export async function PATCH(
     const supabase = getSupabaseAdmin();
     const { data: existing } = await supabase
       .from("ads_campaigns")
-      .select("id, provider_id, pack_impressions")
+      .select("id, provider_id, pack_impressions, budget, billing_model")
       .eq("id", campaignId)
       .single();
     if (!existing || existing.provider_id !== providerId) {
       return errorResponse("Campaign not found", "NOT_FOUND", 404);
     }
+    const billingModel = (existing as any).billing_model ?? "cpc_budget";
     const isPackCampaign = (existing as any).pack_impressions != null;
-    if (!isPackCampaign) {
-      if (body.budget !== undefined) updates.budget = Math.max(0, Number(body.budget));
+    const isTimeBased = billingModel === "time_based";
+
+    if (isTimeBased) {
+      // Time-based campaigns: only status and targeting can be edited
+      if (body.budget !== undefined || body.daily_budget !== undefined || body.bid_cpc !== undefined) {
+        return errorResponse(
+          "Time-based campaigns cannot have their budget or bid modified. Purchase a new boost to extend.",
+          "TIME_BASED_READONLY",
+          400
+        );
+      }
+      if (body.start_at !== undefined || body.end_at !== undefined) {
+        return errorResponse(
+          "Time-based campaign dates are set automatically and cannot be changed.",
+          "TIME_BASED_READONLY",
+          400
+        );
+      }
+    } else if (!isPackCampaign) {
+      if (body.budget !== undefined) {
+        const newBudget = Math.max(0, Number(body.budget));
+        if (newBudget > Number(existing.budget ?? 0)) {
+          return errorResponse(
+            "Budget increases require a new payment. Use the top-up flow to add funds.",
+            "BUDGET_INCREASE_REQUIRES_PAYMENT",
+            400
+          );
+        }
+        updates.budget = newBudget;
+      }
       if (body.daily_budget !== undefined) updates.daily_budget = body.daily_budget == null ? null : Math.max(0, Number(body.daily_budget));
       if (body.bid_cpc !== undefined) updates.bid_cpc = Math.max(0, Number(body.bid_cpc));
     }
-    if (body.start_at !== undefined) updates.start_at = body.start_at;
-    if (body.end_at !== undefined) updates.end_at = body.end_at;
+    if (!isTimeBased) {
+      if (body.start_at !== undefined) updates.start_at = body.start_at;
+      if (body.end_at !== undefined) updates.end_at = body.end_at;
+    }
     if (body.targeting !== undefined) updates.targeting = body.targeting;
     if (body.bid_settings !== undefined) updates.bid_settings = body.bid_settings;
 

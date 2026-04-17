@@ -42,7 +42,6 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
-import { PhoneInput } from "@/components/ui/phone-input";
 import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { toast } from "sonner";
 import {
@@ -101,9 +100,8 @@ const isValidPhone = (phone: string): boolean => {
 
 function generateTimeOptions(): string[] {
   const opts: string[] = [];
-  for (let h = 6; h <= 22; h++) {
+  for (let h = 0; h <= 23; h++) {
     for (let m = 0; m < 60; m += 15) {
-      if (h === 22 && m > 0) break;
       opts.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
     }
   }
@@ -168,7 +166,7 @@ export function AppointmentDialog({
     client_phone: "",
     team_member_id: defaultTeamMemberId || "",
     scheduled_date: defaultDate || new Date(),
-    scheduled_time: defaultTime || "10:00",
+    scheduled_time: defaultTime || "",
     notes: "",
     is_recurring: false,
     recurrence_pattern: "weekly" as "daily" | "weekly" | "biweekly" | "monthly",
@@ -219,7 +217,7 @@ export function AppointmentDialog({
         client_phone: "",
         team_member_id: defaultTeamMemberId || "",
         scheduled_date: defaultDate || new Date(),
-        scheduled_time: defaultTime || "10:00",
+        scheduled_time: defaultTime || "",
         notes: "",
         is_recurring: false,
         recurrence_pattern: "weekly",
@@ -1239,8 +1237,8 @@ export function AppointmentDialog({
           </div>
 
           {/* ── Sticky footer ── */}
-          <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 space-y-3 bg-white">
-            <div className="flex gap-2">
+          <div className="flex-shrink-0 border-t border-gray-100 px-5 py-3 sm:py-4 space-y-3 bg-white">
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 type="button"
                 variant="outline"

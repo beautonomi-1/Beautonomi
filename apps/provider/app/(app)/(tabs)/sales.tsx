@@ -251,8 +251,11 @@ export default function SalesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshMetrics(), refreshSales()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshMetrics(), refreshSales()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshMetrics, refreshSales]);
 
   // Cart helpers
@@ -260,7 +263,7 @@ export default function SalesScreen() {
     "/api/provider/settings/payments",
     { enabled: isFocused, staleTimeMs: 60_000 },
   );
-  const taxRate = (paymentSettings?.taxRatePercent ?? 15) / 100;
+  const taxRate = (paymentSettings?.taxRatePercent ?? 0) / 100;
   const taxInclusive = paymentSettings?.taxInclusive ?? true;
 
   const cartTotal = useMemo(

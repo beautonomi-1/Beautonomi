@@ -4,10 +4,20 @@ import dynamic from "next/dynamic";
 import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import PartnerHeroMobile from "./components/partner-hero-mobile";
-import PartnerHero from "./components/partner-hero";
-import PartnerServices from "./components/partner-services";
 import Link from "next/link";
+
+const heroFallback = (
+  <div className="w-full h-[300px] md:h-[400px] bg-gray-100 animate-pulse" aria-hidden />
+);
+const PartnerHeroMobile = dynamic(() => import("./components/partner-hero-mobile"), {
+  loading: () => heroFallback,
+});
+const PartnerHero = dynamic(() => import("./components/partner-hero"), {
+  loading: () => heroFallback,
+});
+const PartnerServices = dynamic(() => import("./components/partner-services"), {
+  loading: () => tabChunkFallback,
+});
 import { useAuth } from "@/providers/AuthProvider";
 import { useAmplitude } from "@/hooks/useAmplitude";
 import { EVENT_PROVIDER_PROFILE_VIEW } from "@/lib/analytics/amplitude/types";
@@ -187,7 +197,9 @@ export default function PartnerProfileClient({
               <TabsTrigger value="reviews" className={tabTriggerClass}>Reviews</TabsTrigger>
               <TabsTrigger value="memberships" className={tabTriggerClass}>Memberships</TabsTrigger>
               <TabsTrigger value="giftcard" className={tabTriggerClass}>Giftcard</TabsTrigger>
-              <TabsTrigger value="custom-service" className={tabTriggerClass}>Request Custom Service</TabsTrigger>
+              {provider.accepts_custom_requests !== false && (
+                <TabsTrigger value="custom-service" className={tabTriggerClass}>Request Custom Service</TabsTrigger>
+              )}
               <TabsTrigger value="about" className={tabTriggerClass}>About</TabsTrigger>
             </div>
           </TabsList>
@@ -222,18 +234,20 @@ export default function PartnerProfileClient({
           <TabsContent value="giftcard" className="mt-0">
             <PartnerBuy id={provider.id} slug={provider.slug} />
           </TabsContent>
-          <TabsContent value="custom-service" className="mt-0">
-            <RequestCustomServicePage
-              providerId={provider.id}
-              acceptsCustomRequests={provider.accepts_custom_requests !== false}
-              businessName={provider.business_name}
-            />
-          </TabsContent>
+          {provider.accepts_custom_requests !== false && (
+            <TabsContent value="custom-service" className="mt-0">
+              <RequestCustomServicePage
+                providerId={provider.id}
+                acceptsCustomRequests
+                businessName={provider.business_name}
+              />
+            </TabsContent>
+          )}
           <TabsContent value="about" className="mt-0">
             <PartnerAbout
               description={provider.description}
               locations={provider.locations}
-              operating_hours={provider.operating_hours ?? provider.locations?.[0]?.working_hours}
+              operating_hours={provider.operating_hours ?? (provider.locations?.find((l: any) => l.is_primary) ?? provider.locations?.[0])?.working_hours}
             />
           </TabsContent>
         </Tabs>

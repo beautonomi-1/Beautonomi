@@ -49,6 +49,7 @@ export default function ProfileDetailsScreen() {
   useScreenTracking("Profile Details");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [beautyPrefsWarning, setBeautyPrefsWarning] = useState<string | null>(null);
   const [, setProfileData] = useState<Record<string, unknown> | null>(null);
   const [, setBeautyPrefs] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
@@ -65,6 +66,7 @@ export default function ProfileDetailsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setBeautyPrefsWarning(null);
     try {
       const [profileRes, beautyRes] = await Promise.all([
         api.get<Record<string, unknown> | null>("/api/me/profile-data"),
@@ -73,6 +75,9 @@ export default function ProfileDetailsScreen() {
       if (profileRes.error) {
         setError(getApiErrorMessage(profileRes.error, "Failed to load"));
         return;
+      }
+      if (beautyRes.error) {
+        setBeautyPrefsWarning(getApiErrorMessage(beautyRes.error, "Beauty preferences could not be loaded"));
       }
       const pd = profileRes.data;
       setProfileData(pd ?? null);
@@ -85,7 +90,7 @@ export default function ProfileDetailsScreen() {
       const ints = pd?.interests;
       setInterests(Array.isArray(ints) ? (ints as string[]) : []);
 
-      const bp = beautyRes.data ?? {};
+      const bp = beautyRes.error ? {} : (beautyRes.data ?? {});
       setBeautyPrefs(bp);
       setHairType((bp.hair_type as string) ?? "");
       setSkinType((bp.skin_type as string) ?? "");
@@ -251,6 +256,20 @@ export default function ProfileDetailsScreen() {
             <Text style={{ fontSize: 13, color: Colors.gray[500], marginBottom: 12 }}>
               Help providers personalise your experience
             </Text>
+            {beautyPrefsWarning ? (
+              <View
+                style={{
+                  backgroundColor: "#FFFBEB",
+                  borderWidth: 1,
+                  borderColor: "#FDE68A",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={{ fontSize: 13, color: "#92400E" }}>{beautyPrefsWarning}</Text>
+              </View>
+            ) : null}
             <View style={{ marginBottom: 12 }}>
               <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Hair type</Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>

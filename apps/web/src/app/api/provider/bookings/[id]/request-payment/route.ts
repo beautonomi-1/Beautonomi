@@ -91,6 +91,14 @@ export async function POST(
 
     const bookingData = booking as any;
 
+    const totalAmount = Number(bookingData.total_amount ?? 0);
+    const totalPaidStored = Number(bookingData.total_paid ?? 0);
+    const totalRefundedStored = Number(bookingData.total_refunded ?? 0);
+    const walletApplied = Number(bookingData.wallet_amount ?? 0);
+    const giftApplied = Number(bookingData.gift_card_amount ?? 0);
+    const effPaid = Math.max(0, totalPaidStored - totalRefundedStored);
+    const remainingBalance = Math.max(0, totalAmount - effPaid - walletApplied - giftApplied);
+
     // Check if booking is in progress or completed
     if (!["in_progress", "completed"].includes(bookingData.status)) {
       return errorResponse("Can only request additional payment for in-progress or completed bookings", "INVALID_STATUS", 400);
@@ -118,7 +126,7 @@ export async function POST(
     const newCharge = chargeRow as AdditionalCharge;
 
     // Create booking event
-    await supabase
+    const { error: eventError } = await supabase
       .from("booking_events")
       .insert({
         booking_id: id,
@@ -130,8 +138,32 @@ export async function POST(
         },
         created_by: user.id,
       });
+    if (eventError) {
+      console.error("Failed to create booking event for additional charge:", eventError);
+    }
 
-    // Notify customer using template
+    // In-app notification for the customer
+    try {
+      const { insertNotification } = await import("@/lib/notifications/insert-notification");
+      const bookingRef = bookingData.booking_number || bookingData.ref_number || id.slice(0, 8).toUpperCase();
+      await insertNotification({
+        user_id: bookingData.customer_id,
+        type: "payment_request",
+        title: "Payment Requested",
+        message: `Your provider has requested an additional payment of ${newCharge.currency} ${Number(newCharge.amount).toFixed(2)} for: ${newCharge.description || "Additional charge"}. Booking #${bookingRef}.`,
+        data: {
+          booking_id: id,
+          charge_id: newCharge.id,
+          amount: Number(newCharge.amount),
+          description: newCharge.description,
+        },
+        action_url: `/account-settings/bookings/${id}`,
+      });
+    } catch (notifErr) {
+      console.warn("Failed to insert in-app notification for additional charge:", notifErr);
+    }
+
+    // Push / email notification via OneSignal
     try {
       const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
       await sendTemplateNotification(
@@ -139,7 +171,7 @@ export async function POST(
         [bookingData.customer_id],
         {
           partial_amount: `${newCharge.currency} ${Number(newCharge.amount).toFixed(2)}`,
-          remaining_balance: `${newCharge.currency} ${(Number(bookingData.total_amount || 0) + Number(newCharge.amount)).toFixed(2)}`,
+          remaining_balance: `${newCharge.currency} ${remainingBalance.toFixed(2)}`,
           booking_number: bookingData.booking_number || bookingData.ref_number || "",
           booking_id: id,
           charge_description: newCharge.description || "Additional charge",
@@ -161,6 +193,7 @@ export async function POST(
     return successResponse({
       booking: updatedBooking as Booking,
       charge: newCharge,
+      remaining_balance: remainingBalance,
       message: "Additional payment request created successfully",
     });
   } catch (error) {

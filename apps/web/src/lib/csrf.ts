@@ -5,10 +5,16 @@ const CSRF_COOKIE = "csrf_token";
 const CSRF_HEADER = "x-csrf-token";
 const SECRET = process.env.CSRF_SECRET || process.env.CRON_SECRET || "";
 
-if (!SECRET && process.env.NODE_ENV === "production") {
-  console.error(
-    "CSRF_SECRET (or CRON_SECRET) is not set — CSRF protection will reject all mutations. " +
-    "Generate one with: openssl rand -hex 32",
+// Client bundles import `getCsrfHeaders` from this module; env secrets are not
+// available in the browser, so only warn on the server (Node / middleware).
+if (
+  !SECRET &&
+  process.env.NODE_ENV === "production" &&
+  typeof window === "undefined"
+) {
+  console.warn(
+    "CSRF_SECRET (or CRON_SECRET) is not set — CSRF protection is DISABLED for cookie-authenticated mutations. " +
+      "Generate one with: openssl rand -hex 32",
   );
 }
 

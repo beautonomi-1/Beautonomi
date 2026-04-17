@@ -9,8 +9,7 @@ import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Colors } from "@/constants/colors";
-
-type PackagesResponse = { packages?: unknown[] };
+import { normalizePackagesList } from "@/lib/unpack-provider-api";
 
 function countServices(data: unknown): number {
   if (Array.isArray(data)) return data.length;
@@ -19,8 +18,7 @@ function countServices(data: unknown): number {
 }
 
 function countPackages(data: unknown): number {
-  const p = (data as PackagesResponse)?.packages;
-  return Array.isArray(p) ? p.length : 0;
+  return normalizePackagesList(data).length;
 }
 
 function countProducts(data: unknown): number {
@@ -46,8 +44,11 @@ export default function CatalogueOfferingsHubScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshServices(), refreshProducts(), refreshPackages()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshServices(), refreshProducts(), refreshPackages()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshServices, refreshProducts, refreshPackages]);
 
   const goServices = useCallback(() => {

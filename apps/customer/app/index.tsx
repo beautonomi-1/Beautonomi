@@ -213,6 +213,7 @@ export default function Index() {
       clearTimeout(t);
       clearTimeout(timeoutId);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id]);
 
   // Customer onboarding (web + native): server is source of truth before sending users home.
@@ -231,42 +232,57 @@ export default function Index() {
     }
 
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
     setCustomerOnboardingDone(null);
 
     if (isSentryEnabled()) {
       authFlowBreadcrumb(`${IDX}.onboarding_fetch_start`, {});
     }
 
-    api
-      .get<{ completed?: boolean }>("/api/me/onboarding/complete")
-      .then((res) => {
-        if (cancelled) return;
-        if (isSentryEnabled()) {
+    const fetchOnboarding = (attempt: number) => {
+      api
+        .get<{ completed?: boolean }>("/api/me/onboarding/complete")
+        .then((res) => {
+          if (cancelled) return;
+          if (isSentryEnabled()) {
+            if (res.error) {
+              authFlowBreadcrumb(`${IDX}.onboarding_fetch_error`, {
+                kind: "api_error",
+                attempt,
+              });
+            } else {
+              authFlowBreadcrumb(`${IDX}.onboarding_fetch_success`, {
+                completed: res.data?.completed === true,
+              });
+            }
+          }
           if (res.error) {
+            if (attempt < 3 && !cancelled) {
+              retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
+            }
+            return;
+          }
+          setCustomerOnboardingDone(res.data?.completed === true);
+        })
+        .catch((e) => {
+          if (isSentryEnabled()) {
             authFlowBreadcrumb(`${IDX}.onboarding_fetch_error`, {
-              kind: "api_error",
-            });
-          } else {
-            authFlowBreadcrumb(`${IDX}.onboarding_fetch_success`, {
-              completed: res.data?.completed === true,
+              kind: "throw",
+              message: e instanceof Error ? e.message : String(e),
+              attempt,
             });
           }
-        }
-        if (res.error) setCustomerOnboardingDone(true);
-        else setCustomerOnboardingDone(res.data?.completed === true);
-      })
-      .catch((e) => {
-        if (isSentryEnabled()) {
-          authFlowBreadcrumb(`${IDX}.onboarding_fetch_error`, {
-            kind: "throw",
-            message: e instanceof Error ? e.message : String(e),
-          });
-        }
-        if (!cancelled) setCustomerOnboardingDone(true);
-      });
+          if (attempt < 3 && !cancelled) {
+            retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
+          }
+        });
+    };
+
+    fetchOnboarding(0);
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [portalState, session?.user?.id]);
 
@@ -318,6 +334,7 @@ export default function Index() {
       customerOnboardingDone,
       profileState,
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalState, customerOnboardingDone, profileState]);
 
   useEffect(() => {

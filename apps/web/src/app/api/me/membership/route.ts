@@ -5,6 +5,13 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+function isNotExpired(expiresAt: string | null | undefined): boolean {
+  if (!expiresAt) return true;
+  const ts = new Date(expiresAt).getTime();
+  if (!Number.isFinite(ts)) return true;
+  return ts >= Date.now();
+}
+
 /**
  * GET /api/me/membership
  *
@@ -52,7 +59,8 @@ export async function GET(request: NextRequest) {
     let benefits: { name: string; description?: string }[] = [];
 
     if (!cmError && activeRows && activeRows.length > 0) {
-      const first = activeRows[0] as any;
+      const validRows = (activeRows as any[]).filter((row) => isNotExpired(row?.expires_at ?? null));
+      const first = validRows[0] as any;
       const plan = first?.membership;
       if (first && plan) {
         hasPlatformMembership = true;
@@ -79,6 +87,18 @@ export async function GET(request: NextRequest) {
           auto_renew: first.auto_renew !== false,
         };
       }
+      const staleIds = (activeRows as any[])
+        .filter((row) => row?.id && !isNotExpired(row?.expires_at ?? null))
+        .map((row) => row.id as string);
+      if (staleIds.length > 0) {
+        await supabase
+          .from("customer_memberships")
+          .update({
+            status: "expired",
+            updated_at: new Date().toISOString(),
+          })
+          .in("id", staleIds);
+      }
     }
 
     // 2) Salon/provider memberships (user_memberships + membership_plans + providers)
@@ -93,7 +113,7 @@ export async function GET(request: NextRequest) {
         started_at,
         expires_at,
         plan:membership_plans(id, name, description, price_monthly, currency, discount_percent),
-        provider:providers(id, business_name, slug)
+        provider:providers(id, business_name, slug, tenant_id)
       `
       )
       .eq("user_id", user.id)
@@ -116,10 +136,16 @@ export async function GET(request: NextRequest) {
     }[] = [];
 
     if (!umError && umRows && Array.isArray(umRows)) {
+      const staleUserMembershipIds: string[] = [];
       for (const row of umRows as any[]) {
         const plan = row.plan;
         const provider = row.provider;
-        if (plan && provider) {
+        const rowIsActive = isNotExpired(row?.expires_at ?? null);
+        if (!rowIsActive && row?.id) {
+          staleUserMembershipIds.push(row.id);
+          continue;
+        }
+        if (plan && provider && provider.tenant_id === tenantId) {
           provider_memberships.push({
             id: row.id,
             provider_id: row.provider_id,
@@ -135,6 +161,14 @@ export async function GET(request: NextRequest) {
             started_at: row.started_at || new Date().toISOString(),
           });
         }
+      }
+      if (staleUserMembershipIds.length > 0) {
+        await (supabase.from("user_memberships") as any)
+          .update({
+            status: "expired",
+            updated_at: new Date().toISOString(),
+          })
+          .in("id", staleUserMembershipIds);
       }
     }
 

@@ -198,8 +198,11 @@ export default function RecurringAppointmentsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const allItems = data?.data ?? [];
@@ -443,7 +446,7 @@ export default function RecurringAppointmentsScreen() {
             description={
               statusFilter !== "all"
                 ? "Change the filter to see others."
-                : "Repeating schedules create visits automatically when due (daily job). Set them up from the calendar or web portal. Payment is still per booking unless the client pays separately."
+                : "Repeating schedules create visits automatically when due (daily job). Set them up from the calendar or this screen. Payment is still per booking unless the client pays separately."
             }
           />
         ) : (

@@ -11,6 +11,7 @@
  *   - Additional charges on existing bookings
  */
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import { convertFromSmallestUnit } from "@/lib/payments/paystack";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -21,6 +22,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import {
@@ -63,7 +65,25 @@ type PaystackChargeData = {
   authorization?: { authorization_code?: string; reusable?: boolean; last4?: string; exp_month?: string; exp_year?: string; brand?: string; card_type?: string };
   message?: string;
   gateway_response?: string;
+  /** Present on some subscription renewal charges (Paystack object shape varies by event). */
+  subscription?: { subscription_code?: string };
+  plan?: { subscription?: { subscription_code?: string } };
 };
+
+/**
+ * Resolve Paystack subscription code from a charge.failed / charge payload.
+ * Renewals may omit booking metadata; subscription linkage can appear on metadata or nested objects.
+ */
+function extractPaystackSubscriptionCodeFromCharge(data: PaystackChargeData): string | null {
+  const meta = data.metadata || {};
+  const fromMeta = meta.subscription_code ?? meta.paystack_subscription_code;
+  if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim();
+  const direct = data.subscription?.subscription_code;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+  const fromPlan = data.plan?.subscription?.subscription_code;
+  if (typeof fromPlan === "string" && fromPlan.trim()) return fromPlan.trim();
+  return null;
+}
 
 /** Booking row fields used in charge handlers */
 type ChargeBookingRow = Record<string, unknown> & {
@@ -192,8 +212,16 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     .single();
 
   if (bookingError || !booking) {
-    console.error("Booking not found:", metadata.booking_id);
-    return;
+    // B2: previously logged + returned, which caused the webhook router to
+    // return 200 to Paystack and never retry. Throw so the outer handler
+    // records the event as failed and Paystack can retry. This covers the
+    // race where the booking row was deleted between checkout initiation and
+    // webhook delivery, OR metadata carrying a stale booking_id.
+    const err = new Error(
+      `charge.success: booking ${metadata.booking_id} not found (reference=${reference})`
+    );
+    (err as Error & { cause?: unknown }).cause = bookingError ?? null;
+    throw err;
   }
 
   const bookingData = booking as ChargeBookingRow;
@@ -221,7 +249,8 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Tip/Tax/Travel fees/Service fee are excluded from commission
+  // Tip/Tax/Travel fees/Service fee are excluded from commission.
+  // These are the FULL booking-level amounts (used for booking-level ledger entries).
   const tipAmount = Number(metadata?.tip_amount ?? bookingData.tip_amount ?? 0);
   const taxAmount = Number(metadata?.tax_amount ?? bookingData.tax_amount ?? 0);
   const travelFee = Number(metadata?.travel_fee ?? bookingData.travel_fee ?? 0);
@@ -231,36 +260,82 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       bookingData.platform_service_fee ??
       0,
   );
-  const commissionBase = Number(
-    metadata?.commission_base ??
-      Number(bookingData.total_amount || 0) - tipAmount - taxAmount - travelFee - serviceFeeAmount,
-  );
 
-  // Get platform commission settings
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payoutSettings = (settingsRow as { settings?: { payouts?: { commission_enabled?: boolean; platform_commission_percentage?: number } } } | null)?.settings?.payouts ?? {};
-  const commissionEnabled = payoutSettings.commission_enabled !== false;
-  const commissionRate = commissionEnabled
-    ? (payoutSettings.platform_commission_percentage ?? 0)
+  // Commission base must be proportional to the ACTUAL charged amount, not the
+  // full booking total. For deposit payments, metadata.commission_base contains the
+  // full booking's commission base, which would overstate revenue. Instead, compute
+  // the net-revenue ratio from booking totals and apply it to the charged amount.
+  const bookingTotal = Number(bookingData.total_amount || 0);
+  const fullCommissionBase = bookingTotal > 0
+    ? bookingTotal - tipAmount - taxAmount - travelFee - serviceFeeAmount
     : 0;
+  const netRevenueRatio = bookingTotal > 0
+    ? Math.max(0, fullCommissionBase / bookingTotal)
+    : 1;
+  const commissionBase = Math.max(0, Math.round(amountInCurrency * netRevenueRatio * 100) / 100);
+
+  const resolvedTenantIdForPlatformSettings =
+    bookingData.tenant_id ?? financeTenantId ?? null;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: resolvedTenantIdForPlatformSettings,
+    providerId: bookingData.provider_id ?? null,
+  });
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
+    commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
 
-  const providerEarnings = subtractMoney(commissionBase, platformCommission) + travelFee + tipAmount;
+  // Provider earnings for this charge: commission base minus platform take.
+  // Travel and tip are booking-level items recorded separately (not per-charge).
+  const providerEarnings = subtractMoney(commissionBase, platformCommission);
 
-  // Update booking payment status
+  // Deposit-aware payment status: if this is a deposit-only charge, the booking
+  // is partially_paid (balance still owed), not fully paid.
+  const stdPaymentOption = String(metadata?.payment_option || "full");
+  const stdRequiresDeposit = Boolean(metadata?.requires_deposit);
+  const stdIsDeposit = stdRequiresDeposit && stdPaymentOption === "deposit";
+
+  // Ensure booking_payments parity for webhook-first flows.
+  // This keeps bookings.total_paid / payment_status aligned even if redirect verify is skipped.
+  // Idempotency is enforced by migration 380 unique index on (payment_provider, payment_provider_id).
+  if (amountInCurrency > 0) {
+    const { data: existingBookingPayment } = await supabase
+      .from("booking_payments")
+      .select("id")
+      .eq("payment_provider", "paystack")
+      .eq("payment_provider_id", reference)
+      .maybeSingle();
+
+    if (!existingBookingPayment) {
+      const { error: bookingPaymentInsertError } = await supabase
+        .from("booking_payments")
+        .insert({
+          booking_id: metadata.booking_id,
+          tenant_id: financeTenantId,
+          amount: amountInCurrency,
+          payment_method: "card",
+          payment_provider: "paystack",
+          payment_provider_id: reference,
+          payment_provider_data: {
+            source: "paystack_webhook",
+            payment_option: stdPaymentOption,
+            requires_deposit: stdRequiresDeposit,
+            save_card: Boolean(metadata?.save_card),
+          },
+          status: "completed",
+          notes: stdIsDeposit
+            ? `Deposit payment received via Paystack webhook. Ref: ${reference}`
+            : `Payment received via Paystack webhook. Ref: ${reference}`,
+        });
+      if (bookingPaymentInsertError && bookingPaymentInsertError.code !== "23505") {
+        console.error("[charge-success] booking_payments insert failed:", bookingPaymentInsertError);
+      }
+    }
+  }
+
   const { error: updateError } = await supabase
     .from("bookings")
     .update({
-      payment_status: "paid",
+      payment_status: stdIsDeposit ? "partially_paid" : "paid",
       payment_reference: reference,
       payment_date: new Date().toISOString(),
       payment_provider: "paystack",
@@ -365,7 +440,45 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     }
   }
 
-  // Create payment transaction record
+  const webhookNow = new Date().toISOString();
+
+  // ── Idempotency guard — MUST run before payment_transactions insert ───────
+  // Two scenarios:
+  //
+  //   A. Same Paystack reference fires twice (webhook retry).
+  //      Detected by: payment_transactions already has a row for this reference.
+  //      Action: return immediately — skip everything.
+  //
+  //   B. A SECOND Paystack charge on the same booking (deposit + pay-remaining
+  //      both routed through this handler instead of the pay-remaining handler).
+  //      Detected by: finance_transactions already has a 'payment' row for this
+  //      booking but the Paystack reference is new.
+  //      Action: write payment + provider_earnings ONLY (per-charge amounts).
+  //      Booking-level rows (service_fee, tax, tip, travel_fee) are recorded once
+  //      from the first charge and must NOT be written again.
+  const { data: existingPaymentTxForRef } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("reference", reference)
+    .maybeSingle();
+
+  if (existingPaymentTxForRef) {
+    // Scenario A: webhook retry for a reference already fully processed.
+    console.log(`[charge-success] Paystack ref ${reference} already in payment_transactions — skipping (idempotent retry).`);
+    return;
+  }
+
+  // Scenario B detection: has the ledger for this booking been written before?
+  // Use 'payment' row as the indicator — it is always written for any non-zero charge.
+  const { data: existingFinancePaymentRow } = await supabase
+    .from("finance_transactions")
+    .select("id")
+    .eq("booking_id", metadata.booking_id)
+    .eq("transaction_type", "payment")
+    .maybeSingle();
+  const isSecondCharge = !!existingFinancePaymentRow;
+
+  // Now insert the payment_transactions row for this charge (after idempotency checks).
   await supabase.from("payment_transactions").insert({
     booking_id: metadata.booking_id,
     reference,
@@ -379,7 +492,7 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       customer_email: customer?.email,
       customer_code: customer?.customer_code,
     },
-    created_at: new Date().toISOString(),
+    created_at: webhookNow,
   });
 
   await supabase
@@ -388,12 +501,13 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
       status: "paid",
       payment_provider: "paystack",
       payment_provider_transaction_id: reference,
-      processed_at: new Date().toISOString(),
+      processed_at: webhookNow,
       payment_provider_response: data,
     })
     .eq("booking_id", metadata.booking_id)
     .eq("payment_provider", "paystack");
 
+  if (!isSecondCharge) {
   await supabase.from("finance_transactions").insert({
     booking_id: metadata.booking_id,
     provider_id: bookingData.provider_id || null,
@@ -436,7 +550,6 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
     });
   }
 
-  const webhookNow = new Date().toISOString();
   await supabase.from("finance_transactions").insert([
     ...(tipAmount > 0
       ? [{
@@ -483,6 +596,38 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
         ]
       : []),
   ]);
+  } else {
+    // Scenario B: second Paystack charge for this booking. Booking-level rows
+    // (service_fee, tax, tip, travel) were already recorded for the first charge.
+    // Only append the per-charge payment + provider_earnings rows.
+    console.log(`[charge-success] Second charge detected for booking ${metadata.booking_id} (ref: ${reference}) — writing payment+earnings only.`);
+    await supabase.from("finance_transactions").insert([
+      {
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "payment",
+        amount: commissionBase,
+        fees: feesInCurrency,
+        commission: platformCommission,
+        net: platformCommission,
+        description: `Payment (charge 2) for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      },
+      {
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "provider_earnings",
+        amount: subtractMoney(commissionBase, platformCommission),
+        fees: 0,
+        commission: 0,
+        net: subtractMoney(commissionBase, platformCommission),
+        description: `Provider earnings (charge 2) for booking ${bookingData.booking_number}`,
+        created_at: webhookNow,
+      },
+    ]);
+  }
 
   // For split wallet + card payments: record the wallet portion in the ledger.
   // The card portion is recorded above (payment + provider_earnings rows).
@@ -531,6 +676,28 @@ async function processSuccessfulPayment(data: PaystackChargeData, supabase: Supa
         commission: 0,
         net: giftCardAmountApplied,
         description: `Gift card contribution for booking ${bookingData.booking_number} (split payment)`,
+        created_at: webhookNow,
+      });
+    }
+
+    // Keep gift-card liability rollforward balanced across all booking payment paths.
+    const { data: existingGcLiabilityReduction } = await supabase
+      .from("finance_transactions")
+      .select("id")
+      .eq("booking_id", metadata.booking_id)
+      .eq("transaction_type", "gift_card_liability_reduction")
+      .maybeSingle();
+    if (!existingGcLiabilityReduction) {
+      await supabase.from("finance_transactions").insert({
+        booking_id: metadata.booking_id,
+        provider_id: bookingData.provider_id || null,
+        tenant_id: financeTenantId,
+        transaction_type: "gift_card_liability_reduction",
+        amount: giftCardAmountApplied,
+        fees: 0,
+        commission: 0,
+        net: -giftCardAmountApplied,
+        description: `Gift card liability reduction for booking ${bookingData.booking_number} (split payment)`,
         created_at: webhookNow,
       });
     }
@@ -718,12 +885,136 @@ async function handleProductOrderChargeFailed(data: PaystackChargeData, supabase
     .eq("id", o.id);
 }
 
+/**
+ * Recurring subscription renewal failed at the card charge layer (charge.failed).
+ * Complements invoice.payment_failed / invoice.update — some flows only emit charge.failed.
+ * Sets provider_subscriptions to past_due (grace handled by cron), records payment_transactions metadata, notifies once.
+ */
+async function handleSubscriptionRenewalChargeFailed(
+  data: PaystackChargeData,
+  subscriptionCode: string,
+  supabase: SupabaseClient,
+) {
+  const { reference, amount, fees, message, gateway_response } = data;
+  const paystackRef =
+    reference ||
+    `sub_renew_failed:${subscriptionCode}:${crypto.randomUUID()}`;
+
+  const { data: existingTx } = await supabase
+    .from("payment_transactions")
+    .select("id")
+    .eq("provider", "paystack")
+    .eq("reference", paystackRef)
+    .maybeSingle();
+  if (existingTx) {
+    console.log(
+      `Subscription renewal charge.failed already recorded for ref ${paystackRef}`,
+    );
+    return;
+  }
+
+  const { data: subRow } = await supabase
+    .from("provider_subscriptions")
+    .select("provider_id, plan_id, status, subscription_plans:plan_id(name)")
+    .eq("paystack_subscription_code", subscriptionCode)
+    .maybeSingle();
+
+  if (!subRow) {
+    console.warn(
+      `charge.failed: no provider_subscriptions row for subscription_code ${subscriptionCode}`,
+    );
+    return;
+  }
+
+  const prevStatus = (subRow as { status?: string }).status;
+  if (prevStatus !== "active" && prevStatus !== "past_due") {
+    console.log(
+      `charge.failed: skip past_due handling for subscription ${subscriptionCode} (status=${prevStatus})`,
+    );
+    return;
+  }
+
+  const amountSmallest = amount ?? 0;
+  const feesSmallest = fees ?? 0;
+  const failureMeta = {
+    source: "paystack_charge_failed",
+    subscription_code: subscriptionCode,
+    paystack_reference: reference ?? null,
+    failure_reason: message || gateway_response || "paystack_charge_failed",
+    failed_at: new Date().toISOString(),
+    kind: "subscription_renewal",
+  };
+
+  await supabase
+    .from("provider_subscriptions")
+    .update({
+      status: "past_due",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("paystack_subscription_code", subscriptionCode);
+
+  await supabase.from("payment_transactions").insert({
+    booking_id: null,
+    reference: paystackRef,
+    amount: convertFromSmallestUnit(amountSmallest),
+    fees: convertFromSmallestUnit(feesSmallest),
+    net_amount: convertFromSmallestUnit(amountSmallest - feesSmallest),
+    status: "failed",
+    provider: "paystack",
+    transaction_type: "provider_subscription_payment",
+    metadata: failureMeta,
+    created_at: new Date().toISOString(),
+  });
+
+  if (prevStatus !== "active") {
+    return;
+  }
+
+  try {
+    const subData = subRow as {
+      provider_id?: string;
+      subscription_plans?: { name?: string } | null;
+    };
+    const { data: provider } = await supabase
+      .from("providers")
+      .select("user_id, business_name")
+      .eq("id", subData.provider_id)
+      .maybeSingle();
+    if (provider) {
+      const { sendTemplateNotification } = await import("@/lib/notifications/onesignal");
+      await sendTemplateNotification(
+        "subscription_payment_failed",
+        [(provider as { user_id: string }).user_id],
+        {
+          business_name:
+            (provider as { business_name?: string }).business_name || "Provider",
+          plan_name: subData.subscription_plans?.name || "subscription",
+          amount: `${convertFromSmallestUnit(amountSmallest)}`,
+          app_url: process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com",
+        },
+        ["push"],
+        { appType: "provider" },
+      );
+    }
+  } catch (notifErr) {
+    console.warn(
+      "Failed to send subscription_payment_failed (charge.failed):",
+      notifErr,
+    );
+  }
+}
+
 async function processFailedPayment(data: PaystackChargeData, supabase: SupabaseClient) {
   const { reference, metadata, message, gateway_response } = data;
 
   if (!reference || !metadata?.booking_id) {
     if (metadata?.product_order_id) {
       await handleProductOrderChargeFailed(data, supabase);
+      return;
+    }
+    const subscriptionCode = extractPaystackSubscriptionCodeFromCharge(data);
+    if (subscriptionCode) {
+      await handleSubscriptionRenewalChargeFailed(data, subscriptionCode, supabase);
       return;
     }
     if (metadata?.custom_offer_id) {
@@ -811,12 +1102,15 @@ async function processFailedPayment(data: PaystackChargeData, supabase: Supabase
     }
   }
 
-  // Update booking payment status
+  // Update booking: mark payment as failed AND cancel the booking to release the slot
   const { error: updateError } = await supabase.from("bookings")
     .update({
       payment_status: "failed",
       payment_reference: reference,
       payment_provider: "paystack",
+      status: "cancelled",
+      cancellation_reason: "Payment failed",
+      cancelled_at: new Date().toISOString(),
     })
     .eq("id", metadata.booking_id);
 
@@ -925,7 +1219,7 @@ async function handleCustomOfferSuccess(
     .eq("id", offerId)
     .single();
   if (!offerRow) return;
-  type OfferRow = { status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
+  type OfferRow = { id?: string; status?: string; booking_id?: string; duration_minutes?: number; price?: number; currency?: string; scheduled_at?: string; location_id?: string | null; staff_id?: string | null; request?: CustomRequestRow; travel_fee?: number };
   type CustomRequestRow = { provider_id?: string; customer_id?: string; service_name?: string; description?: string; location_type?: string; preferred_start_at?: string; address_line1?: string; address_line2?: string; address_city?: string; address_state?: string; address_country?: string; address_postal_code?: string; service_category_id?: string; id?: string };
   const offer = offerRow as OfferRow;
   const req = offer.request as CustomRequestRow | undefined;
@@ -956,6 +1250,12 @@ async function handleCustomOfferSuccess(
   const _serviceFeePercentage = Number(meta.service_fee_percentage ?? 0);
   const promotionDiscountAmount = Number(meta.promotion_discount_amount ?? 0);
   const promotionId = meta.promotion_id && String(meta.promotion_id).trim() ? meta.promotion_id : null;
+  const coPaymentOption = String(meta.payment_option || "full");
+  const coTotalAmount = Number(meta.total_amount || 0);
+  const coDepositAmount = Number(meta.deposit_amount || 0);
+  const coDepositPct = Number(meta.deposit_percentage || 0);
+  const coRequiresDeposit = Boolean(meta.requires_deposit);
+  const isDepositPayment = coPaymentOption === "deposit" && coDepositAmount > 0;
 
   const offeringTitle = (req.service_name && String(req.service_name).trim()) ? String(req.service_name).trim() : "Custom Service";
   const { data: createdOffering, error: offeringError } = await adminSupabase
@@ -1014,12 +1314,19 @@ async function handleCustomOfferSuccess(
     tax_amount: taxAmount,
     service_fee_percentage: 0,
     service_fee_amount: serviceFeeAmount,
-    total_amount: amountInCurrency,
+    total_amount: isDepositPayment ? coTotalAmount : amountInCurrency,
     currency: offer.currency || offerCurrencyFallback,
-    payment_status: "paid",
+    payment_status: isDepositPayment ? "partially_paid" : "paid",
+    ...(coRequiresDeposit ? {
+      deposit_required: true,
+      deposit_percentage: coDepositPct,
+      deposit_amount: coDepositAmount,
+      payment_option: coPaymentOption,
+    } : {}),
     payment_reference: payload.reference,
     payment_date: new Date().toISOString(),
     payment_provider: "paystack",
+    booking_source: "online",
     special_requests: `Custom order: ${req.description}`,
     loyalty_points_earned: 0,
     loyalty_points_used: 0,
@@ -1040,6 +1347,42 @@ async function handleCustomOfferSuccess(
     bookingInsert.travel_fee = travelFee;
   }
 
+  /**
+   * §Release-audit 2026-04: previously this insert went straight to
+   * `bookings` with no conflict check. If a regular booking had been made
+   * on the same staff/provider in the meantime, we'd silently double-book
+   * the slot. Run a focused conflict check before insert; if there's a
+   * conflict, push the booking out to the next free hour rather than
+   * dropping it on the floor (the customer has already paid).
+   */
+  const _start = new Date(scheduledAt);
+  const _end = new Date(_start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
+  const _staffId = offer.staff_id || null;
+  let conflictResolved = false;
+  try {
+    const { checkBookingConflict, checkBookingConflictForProvider } = await import(
+      "@/lib/bookings/conflict-check"
+    );
+    const conflictResult = _staffId
+      ? await checkBookingConflict(adminSupabase, _staffId, _start, _end, 0)
+      : await checkBookingConflictForProvider(adminSupabase, req.provider_id, _start, _end, 0);
+    if (conflictResult.hasConflict) {
+      console.warn(
+        "[handleCustomOfferSuccess] booking conflict detected, deferring to next available hour",
+        { offerId: offer.id, provider_id: req.provider_id, original: scheduledAt, conflicts: conflictResult.conflictingBookings },
+      );
+      const next = new Date(Math.max(_end.getTime(), Date.now()) + 60 * 60 * 1000);
+      next.setMinutes(0, 0, 0);
+      scheduledAt = next.toISOString();
+      bookingInsert.scheduled_at = scheduledAt;
+      bookingInsert.status = "pending"; // requires provider re-confirm at the new time
+      bookingInsert.special_requests = `Custom order: ${req.description} — auto-rescheduled (slot conflict)`;
+      conflictResolved = true;
+    }
+  } catch (conflictErr) {
+    console.error("[handleCustomOfferSuccess] conflict check failed; proceeding anyway:", conflictErr);
+  }
+
   const { data: booking, error: bookingError } = await adminSupabase
     .from("bookings")
     .insert(bookingInsert)
@@ -1055,6 +1398,21 @@ async function handleCustomOfferSuccess(
   const start = new Date(scheduledAt);
   const end = new Date(start.getTime() + Number(offer.duration_minutes || 60) * 60 * 1000);
   const assignedStaffId = offer.staff_id || null;
+  // Surface conflict in audit trail for visibility (no-op on insert if table missing).
+  if (conflictResolved) {
+    try {
+      await adminSupabase.from("booking_events").insert({
+        booking_id: booking.id,
+        event_type: "auto_rescheduled",
+        event_data: {
+          reason: "custom_offer_payment_slot_conflict",
+          new_scheduled_at: scheduledAt,
+        },
+      });
+    } catch {
+      /* booking_events optional in test fixtures */
+    }
+  }
 
   const { error: bookingServiceError } = await adminSupabase
     .from("booking_services")
@@ -1099,23 +1457,42 @@ async function handleCustomOfferSuccess(
     payment_provider_transaction_id: payload.reference,
     payment_provider_response: {},
     processed_at: new Date().toISOString(),
-    description: `Custom offer payment`,
-    metadata: { custom_offer_id: offerId },
+    description: isDepositPayment ? `Custom offer deposit payment` : `Custom offer payment`,
+    metadata: { custom_offer_id: offerId, payment_option: coPaymentOption },
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
 
-  // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
-  const { data: settingsRow } = await adminSupabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Create booking_payments row so custom offer payments are visible in
+  // EOD reports, receipt amount_paid calculations, and provider dashboards.
+  const paystackTxId = payload.reference || null;
+  try {
+    await adminSupabase.from("booking_payments").insert({
+      booking_id: booking.id,
+      ...(booking.tenant_id ? { tenant_id: booking.tenant_id } : {}),
+      amount: amountInCurrency,
+      payment_method: "card",
+      payment_provider: "paystack",
+      payment_provider_id: paystackTxId,
+      status: "completed",
+      notes: isDepositPayment
+        ? `Custom offer deposit payment. Ref: ${paystackTxId ?? ""}`
+        : `Custom offer payment. Ref: ${paystackTxId ?? ""}`,
+      payment_provider_data: {
+        source: "custom_offer_webhook",
+        custom_offer_id: offerId,
+        payment_option: coPaymentOption,
+      },
+    });
+  } catch (bpErr: unknown) {
+    console.error("[custom-offer] booking_payments insert failed:", bpErr);
+  }
 
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
+  // Commission + ledger entries (use metadata.commission_base when present for tax/fee-aware base)
+  const commissionRate = await resolveCommissionPercentageForProvider(adminSupabase, {
+    tenantId: (provForCurrency as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+    providerId: req.provider_id ?? null,
+  });
   const commissionBase = Number(meta.commission_base) > 0 ? Number(meta.commission_base) : Math.max(0, bookingSubtotal + travelFee - promotionDiscountAmount);
   const platformCommission = percentOf(commissionBase, commissionRate);
   const providerEarnings = subtractMoney(commissionBase, platformCommission);
@@ -1164,7 +1541,8 @@ async function handleCustomOfferSuccess(
     },
   ]);
 
-  // Service fee, tip, tax, travel fee ledger entries
+  // Booking-level ledger entries: only create when amount > 0 (aligned with standard booking flow).
+  // Use correct `net` values: tip and travel_fee flow to provider, tax and service_fee do not.
   const extraRows: any[] = [];
   if (serviceFeeAmount > 0) {
     extraRows.push({
@@ -1180,8 +1558,8 @@ async function handleCustomOfferSuccess(
       created_at: new Date().toISOString(),
     });
   }
-  extraRows.push(
-    {
+  if (tipAmount > 0) {
+    extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
@@ -1189,11 +1567,13 @@ async function handleCustomOfferSuccess(
       amount: tipAmount,
       fees: 0,
       commission: 0,
-      net: 0,
+      net: tipAmount,
       description: `Tip (custom order)`,
       created_at: new Date().toISOString(),
-    },
-    {
+    });
+  }
+  if (taxAmount > 0) {
+    extraRows.push({
       booking_id: booking.id,
       provider_id: req.provider_id,
       tenant_id: customOfferFinanceTenantId,
@@ -1204,8 +1584,8 @@ async function handleCustomOfferSuccess(
       net: 0,
       description: `Tax (custom order)`,
       created_at: new Date().toISOString(),
-    }
-  );
+    });
+  }
   if (travelFee > 0) {
     extraRows.push({
       booking_id: booking.id,
@@ -1215,8 +1595,22 @@ async function handleCustomOfferSuccess(
       amount: travelFee,
       fees: 0,
       commission: 0,
-      net: 0,
+      net: travelFee,
       description: `Travel fee (custom order)`,
+      created_at: new Date().toISOString(),
+    });
+  }
+  if (promotionDiscountAmount > 0) {
+    extraRows.push({
+      booking_id: booking.id,
+      provider_id: req.provider_id,
+      tenant_id: customOfferFinanceTenantId,
+      transaction_type: "promotion_discount",
+      amount: promotionDiscountAmount,
+      fees: 0,
+      commission: 0,
+      net: -promotionDiscountAmount,
+      description: `Promotion discount (custom order)`,
       created_at: new Date().toISOString(),
     });
   }
@@ -1416,6 +1810,27 @@ async function handleWalletTopupSuccess(
     provider_id: null,
   });
 
+  // Mark paid FIRST with atomic WHERE status='pending' guard to prevent double-credit
+  const { data: markedPaid, error: markError } = await supabase
+    .from("wallet_topups")
+    .update({
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      paystack_reference: payload.reference,
+      updated_at: new Date().toISOString(),
+      tenant_id: topupWalletTenantId,
+    })
+    .eq("id", topupId)
+    .eq("status", "pending")
+    .select("id")
+    .maybeSingle();
+
+  if (markError || !markedPaid) {
+    console.log(`Wallet topup ${topupId} already processed or update failed, skipping credit`);
+    return;
+  }
+
+  // Credit wallet only after status is atomically flipped to 'paid'
   await supabase.rpc("wallet_credit_admin", {
     p_user_id: topupRow.user_id,
     p_amount: amountInCurrency,
@@ -1425,17 +1840,6 @@ async function handleWalletTopupSuccess(
     p_reference_type: "wallet_topup",
     p_tenant_id: topupWalletTenantId,
   });
-
-  await supabase
-    .from("wallet_topups")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      paystack_reference: payload.reference,
-      updated_at: new Date().toISOString(),
-      tenant_id: topupWalletTenantId,
-    })
-    .eq("id", topupId);
 }
 
 async function handleWalletTopupFailed(
@@ -1656,23 +2060,59 @@ async function handleMembershipOrderSuccess(
   const orderData = order as MembershipOrderRow;
   if (orderData.status === "paid") return;
 
-  const providerId = orderData.provider_id ?? null;
+  const { data: planRow } = await (supabase.from("membership_plans") as any)
+    .select("id, provider_id")
+    .eq("id", orderData.plan_id)
+    .maybeSingle();
+  const planProviderId = (planRow as { provider_id?: string | null } | null)?.provider_id ?? null;
+  if (!planProviderId) {
+    console.error("Membership plan missing or has no provider:", orderData.plan_id);
+    return;
+  }
+  if (orderData.provider_id && orderData.provider_id !== planProviderId) {
+    console.error("Membership order/provider mismatch:", {
+      orderId,
+      orderProviderId: orderData.provider_id,
+      planProviderId,
+      planId: orderData.plan_id,
+    });
+    return;
+  }
+  const providerId = planProviderId;
 
   const membershipFinanceTenantId = await resolveTenantIdForFinanceLedger(supabase, {
     tenant_id: null,
     provider_id: providerId,
   });
 
-  const expiresAt = new Date();
+  const now = new Date();
+  const { data: existingMembership } = await (supabase.from("user_memberships") as any)
+    .select("id, status, started_at, expires_at")
+    .eq("user_id", orderData.user_id)
+    .eq("provider_id", providerId)
+    .maybeSingle();
+  const existing = existingMembership as
+    | { status?: string | null; started_at?: string | null; expires_at?: string | null }
+    | null;
+  const existingExpiry = existing?.expires_at ? new Date(existing.expires_at) : null;
+  const existingExpiryValid = Boolean(existingExpiry && Number.isFinite(existingExpiry.getTime()));
+  const hasFutureActiveTerm =
+    existing?.status === "active" &&
+    existingExpiryValid &&
+    (existingExpiry as Date).getTime() > now.getTime();
+  const renewalStart = hasFutureActiveTerm ? (existingExpiry as Date) : now;
+  const expiresAt = new Date(renewalStart);
   expiresAt.setMonth(expiresAt.getMonth() + 1);
+  const startedAt =
+    hasFutureActiveTerm && existing?.started_at ? existing.started_at : now.toISOString();
 
   await supabase.from("user_memberships").upsert(
     {
       user_id: orderData.user_id,
-      provider_id: orderData.provider_id,
+      provider_id: providerId,
       plan_id: orderData.plan_id,
       status: "active",
-      started_at: new Date().toISOString(),
+      started_at: startedAt,
       expires_at: expiresAt.toISOString(),
       metadata: { source: "purchase", membership_order_id: orderId },
       updated_at: new Date().toISOString(),
@@ -1843,32 +2283,18 @@ async function handleProviderSubscriptionOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
-  await supabase.from("finance_transactions").insert([
-    {
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: providerSubOrderFinanceTenantId,
-      transaction_type: "provider_subscription_payment",
-      amount: netAmount,
-      fees: feesInCurrency,
-      commission: 0,
-      net: netAmount,
-      description: `Provider subscription payment`,
-      created_at: new Date().toISOString(),
-    },
-    {
-      booking_id: null,
-      provider_id: providerId,
-      tenant_id: providerSubOrderFinanceTenantId,
-      transaction_type: "provider_expense",
-      amount: amountInCurrency,
-      fees: 0,
-      commission: 0,
-      net: -amountInCurrency,
-      description: `Provider subscription fee`,
-      created_at: new Date().toISOString(),
-    },
-  ]);
+  await supabase.from("finance_transactions").insert({
+    booking_id: null,
+    provider_id: providerId,
+    tenant_id: providerSubOrderFinanceTenantId,
+    transaction_type: "provider_subscription_payment",
+    amount: netAmount,
+    fees: feesInCurrency,
+    commission: 0,
+    net: netAmount,
+    description: `Provider subscription payment`,
+    created_at: new Date().toISOString(),
+  });
 }
 
 async function handleProviderSubscriptionOrderFailed(
@@ -1923,11 +2349,28 @@ async function handleAdsBudgetOrderSuccess(
     })
     .eq("id", orderId);
 
+  // Check if time-based campaign — auto-activate with correct dates
+  const { data: campaignRow } = await supabase
+    .from("ads_campaigns")
+    .select("billing_model, duration_days")
+    .eq("id", campaignId)
+    .single();
+
+  const campaignUpdate: Record<string, any> = {
+    budget: amountInCurrency,
+    updated_at: new Date().toISOString(),
+  };
+
+  if ((campaignRow as any)?.billing_model === "time_based") {
+    const now = new Date();
+    const days = Number((campaignRow as any).duration_days) || 7;
+    campaignUpdate.status = "active";
+    campaignUpdate.start_at = now.toISOString();
+    campaignUpdate.end_at = new Date(now.getTime() + days * 86400000).toISOString();
+  }
+
   await supabase.from("ads_campaigns")
-    .update({
-      budget: amountInCurrency,
-      updated_at: new Date().toISOString(),
-    })
+    .update(campaignUpdate)
     .eq("id", campaignId)
     .eq("provider_id", providerId);
 
@@ -1949,6 +2392,10 @@ async function handleAdsBudgetOrderSuccess(
     created_at: new Date().toISOString(),
   });
 
+  const billingLabel = (campaignRow as any)?.billing_model === "time_based"
+    ? `Ads time-based boost (${(campaignRow as any)?.duration_days ?? "N"} days)`
+    : "Ads campaign budget (pre-pay)";
+
   await supabase.from("finance_transactions").insert({
     booking_id: null,
     provider_id: providerId,
@@ -1958,7 +2405,7 @@ async function handleAdsBudgetOrderSuccess(
     fees: feesInCurrency,
     commission: 0,
     net: netAmount,
-    description: "Ads campaign budget (pre-pay)",
+    description: billingLabel,
     created_at: new Date().toISOString(),
   });
 }
@@ -2132,8 +2579,13 @@ async function handleBookingRemainingSuccess(
     .eq("id", bookingId)
     .single();
   if (bookingError || !booking) {
-    console.error("Pay-remaining: booking not found", bookingId);
-    return;
+    // B2: pay-remaining success with unknown booking. Money was taken, so
+    // throw to force Paystack retry rather than silently returning 200.
+    const err = new Error(
+      `pay-remaining charge.success: booking ${bookingId} not found (reference=${reference})`
+    );
+    (err as Error & { cause?: unknown }).cause = bookingError ?? null;
+    throw err;
   }
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
@@ -2171,15 +2623,10 @@ async function handleBookingRemainingSuccess(
     return;
   }
 
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 0;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: bookingData.tenant_id ?? payRemainingFinanceTenantId ?? null,
+    providerId,
+  });
   const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 
@@ -2296,12 +2743,19 @@ async function handleAdditionalChargeSuccess(
   const bookingId = metadata.booking_id as string;
   const chargeId = metadata.additional_charge_id as string;
 
-  const { data: booking } = await supabase
+  const { data: booking, error: additionalBookingError } = await supabase
     .from("bookings")
     .select("*")
     .eq("id", bookingId)
     .single();
-  if (!booking) return;
+  if (!booking) {
+    // B2: additional-charge success but booking is gone. Throw so Paystack retries.
+    const err = new Error(
+      `additional-charge.success: booking ${bookingId} not found (reference=${reference}, charge=${chargeId})`
+    );
+    (err as Error & { cause?: unknown }).cause = additionalBookingError ?? null;
+    throw err;
+  }
   const bookingData = booking as ChargeBookingRow;
   const providerId = bookingData.provider_id ?? null;
 
@@ -2317,25 +2771,23 @@ async function handleAdditionalChargeSuccess(
     .eq("booking_id", bookingId)
     .single();
 
-  if (!charge) return;
+  if (!charge) {
+    const err = new Error(
+      `additional-charge.success: charge ${chargeId} not found for booking ${bookingId} (reference=${reference})`
+    );
+    throw err;
+  }
   if ((charge as { status?: string }).status === "paid") return;
 
   const amountInCurrency = convertFromSmallestUnit(amount || 0);
   const feesInCurrency = convertFromSmallestUnit(fees || 0);
   const netAmount = amountInCurrency - feesInCurrency;
 
-  // Commission
-  const { data: settingsRow } = await supabase
-    .from("platform_settings")
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const commissionRate =
-    (settingsRow as { settings?: { payouts?: { platform_commission_percentage?: number } } } | null)?.settings?.payouts?.platform_commission_percentage ?? 15;
-  const platformCommission = percentOf(netAmount, commissionRate);
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: bookingData.tenant_id ?? additionalChargeFinanceTenantId ?? null,
+    providerId,
+  });
+  const platformCommission = commissionRate > 0 ? percentOf(netAmount, commissionRate) : 0;
   const providerEarnings = subtractMoney(netAmount, platformCommission);
 
   await supabase.from("additional_charges")
@@ -2407,6 +2859,28 @@ async function handleAdditionalChargeSuccess(
     .eq("payment_provider", "paystack")
     .eq("payment_provider_transaction_id", reference);
 
+  // Create booking_payments row for ledger parity with walk-in mark-paid flow
+  try {
+    await supabase.from("booking_payments").insert({
+      booking_id: bookingId,
+      amount: amountInCurrency,
+      payment_method: "card",
+      payment_provider: "paystack",
+      payment_provider_id: reference,
+      payment_provider_data: {
+        additional_charge_id: chargeId,
+        paystack_reference: reference,
+        paystack_fees: feesInCurrency,
+      },
+      status: "completed",
+      notes: `Additional charge payment via Paystack (${(charge as { description?: string }).description || "add-on"})`,
+      created_by: bookingData.customer_id,
+      ...(bookingData.tenant_id ? { tenant_id: bookingData.tenant_id } : {}),
+    });
+  } catch (bpErr) {
+    console.warn("[additional-charge-webhook] booking_payments insert failed:", bpErr);
+  }
+
   await supabase.from("booking_events").insert({
     booking_id: bookingId,
     event_type: "additional_payment_paid",
@@ -2414,7 +2888,40 @@ async function handleAdditionalChargeSuccess(
     created_by: bookingData.customer_id,
   });
 
-  // Notify customer + provider
+  // In-app notification rows
+  try {
+    const { insertNotification } = await import("@/lib/notifications/insert-notification");
+    const bookingRef = bookingData.booking_number || bookingId.slice(0, 8).toUpperCase();
+    const notifCurrency = bookingData.currency || "ZAR";
+    await insertNotification({
+      user_id: bookingData.customer_id,
+      type: "additional_charge_paid",
+      title: "Additional Payment Confirmed",
+      message: `Your additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} for booking #${bookingRef} was successful.`,
+      data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
+      action_url: `/account-settings/bookings/${bookingId}`,
+    });
+    const { data: providerRowForNotif } = await supabase
+      .from("providers")
+      .select("user_id")
+      .eq("id", bookingData.provider_id)
+      .single();
+    const providerUserIdForNotif = (providerRowForNotif as { user_id?: string } | null)?.user_id;
+    if (providerUserIdForNotif) {
+      await insertNotification({
+        user_id: providerUserIdForNotif,
+        type: "additional_charge_paid",
+        title: "Additional Payment Received",
+        message: `Additional payment of ${notifCurrency} ${amountInCurrency.toFixed(2)} received for booking #${bookingRef}.`,
+        data: { booking_id: bookingId, charge_id: chargeId, amount: amountInCurrency },
+        action_url: `/provider/bookings/${bookingId}`,
+      });
+    }
+  } catch (notifErr) {
+    console.warn("[additional-charge-webhook] in-app notification failed:", notifErr);
+  }
+
+  // Push notification (customer + provider)
   try {
     const { sendToUser } = await import("@/lib/notifications/onesignal");
     const notifyCurrency =

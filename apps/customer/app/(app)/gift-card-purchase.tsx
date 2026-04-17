@@ -18,6 +18,7 @@ import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { formatMoney } from "@beautonomi/utils";
 
 const AMOUNTS = [100, 250, 500, 1000, 2500, 5000];
 
@@ -56,13 +57,14 @@ export default function GiftCardPurchaseScreen() {
         Alert.alert("Error", "Payment link not available");
         return;
       }
-      const result = await WebBrowser.openBrowserAsync(paymentUrl, {
+      await WebBrowser.openBrowserAsync(paymentUrl, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.FULL_SCREEN,
       });
-      if (result.type === "cancel" || result.type === "dismiss") {
-        // User closed – they may have completed payment on web
-        router.back();
-      }
+      Alert.alert(
+        "Payment",
+        "If you completed your payment, the gift card will appear in your account shortly.",
+        [{ text: "OK", onPress: () => router.back() }],
+      );
     } catch (e) {
       Alert.alert("Error", getApiErrorMessage(e, "Failed to purchase"));
     } finally {
@@ -107,13 +109,13 @@ export default function GiftCardPurchaseScreen() {
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>−</Text>
             </TouchableOpacity>
             <Text style={{ fontSize: 20, fontWeight: "600", color: Colors.gray[900], marginRight: 16 }}>{quantity}</Text>
-            <TouchableOpacity onPress={() => setQuantity((q) => q + 1)} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}>
+            <TouchableOpacity onPress={() => setQuantity((q) => Math.min(10, q + 1))} style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.gray[100], alignItems: "center", justifyContent: "center" }}>
               <Text style={{ fontSize: 20, color: Colors.gray[700] }}>+</Text>
             </TouchableOpacity>
           </View>
           <View style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginBottom: 24 }}>
             <Text style={{ color: Colors.gray[600] }}>Total</Text>
-            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{tenantCurrency} {total.toLocaleString()}</Text>
+            <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }}>{formatMoney(total, tenantCurrency)}</Text>
           </View>
           <TouchableOpacity onPress={purchase} disabled={finalAmount <= 0 || loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: finalAmount <= 0 || loading ? 0.5 : 1 }}>
             {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Pay with card</Text>}

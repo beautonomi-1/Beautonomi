@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView, Switch, Platform } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Switch, Platform, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -134,9 +134,13 @@ const SETTINGS_SECTIONS: { title: string; items: SettingItem[] }[] = [
   },
   {
     title: "Notifications",
+    // §Provider-launch (audit 2026-04): collapsed two entries into one.
+    // Both routes previously edited the same server preferences and had
+    // slightly different UIs, which made it look like changes weren't
+    // saving. The canonical screen (settings/notification-preferences)
+    // includes per-channel, quiet hours, digest, and test notifications.
     items: [
-      { icon: "notifications-outline", label: "Notification Settings", subtitle: "Email, SMS, push preferences", route: "/(app)/(tabs)/more/settings/notifications-settings", color: "#ec4899" },
-      { icon: "options-outline", label: "Notification Preferences", subtitle: "Per-channel alert control", route: "/(app)/(tabs)/more/settings/notification-preferences", color: "#8b5cf6" },
+      { icon: "notifications-outline", label: "Notification Preferences", subtitle: "Email, SMS, push, quiet hours, and digests", route: "/(app)/(tabs)/more/settings/notification-preferences", color: "#ec4899" },
     ],
   },
   {
@@ -171,10 +175,14 @@ export default function SettingsScreen() {
 
   async function handleBiometricToggle() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (isEnabled) {
-      await disable();
-    } else {
-      await enable();
+    try {
+      if (isEnabled) {
+        await disable();
+      } else {
+        await enable();
+      }
+    } catch {
+      Alert.alert("Error", `Could not ${isEnabled ? "disable" : "enable"} ${biometricLabel}. Please try again.`);
     }
   }
 

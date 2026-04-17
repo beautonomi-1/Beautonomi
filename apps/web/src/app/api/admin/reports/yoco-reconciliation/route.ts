@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
     const from = fromStr ? new Date(fromStr) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const to = toStr ? new Date(toStr) : new Date();
 
-    let query = supabaseAdmin
+    const query = supabaseAdmin
       .from("provider_yoco_payments")
       .select("id, provider_id, yoco_payment_id, amount, currency, status, appointment_id, sale_id, created_at")
       .in("provider_id", scopeProviderIds)

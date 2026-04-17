@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { useProviderPortal } from "@/providers/provider-portal/ProviderPortalProvider";
 
 type RequestItem = {
   id: string;
@@ -31,6 +32,7 @@ type RequestItem = {
 
 export default function ProviderCustomRequestsPage() {
   const { bundle } = useConfigBundle();
+  const { selectedLocationId } = useProviderPortal();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [items, setItems] = useState<RequestItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +51,8 @@ export default function ProviderCustomRequestsPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const res = await fetcher.get<{ data: RequestItem[] }>("/api/provider/custom-requests");
+      const locQ = selectedLocationId ? `?location_id=${encodeURIComponent(selectedLocationId)}` : "";
+      const res = await fetcher.get<{ data: RequestItem[] }>(`/api/provider/custom-requests${locQ}`);
       setItems(res.data || []);
     } catch (err) {
       const errorMessage =
@@ -66,7 +69,7 @@ export default function ProviderCustomRequestsPage() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [selectedLocationId]);
 
   const openOffer = (req: RequestItem) => {
     setSelected(req);
@@ -134,7 +137,7 @@ export default function ProviderCustomRequestsPage() {
                     <div className="text-sm text-gray-600 mt-2">
                       {r.preferred_start_at ? `Preferred: ${new Date(r.preferred_start_at).toLocaleString()}` : "Preferred: not set"} •{" "}
                       {r.location_type || "at_salon"}
-                      {r.budget_min != null || r.budget_max != null ? ` • Budget: ${r.budget_min ?? ""} - ${r.budget_max ?? ""}` : ""}
+                      {r.budget_min != null || r.budget_max != null ? ` • Budget: ${tenantCurrency} ${r.budget_min ?? "0"} – ${tenantCurrency} ${r.budget_max ?? "∞"}` : ""}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">

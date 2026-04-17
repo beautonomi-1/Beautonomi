@@ -20,7 +20,7 @@ export async function POST(
     const { user } = await requireRoleInApi(['customer'], request);
     const supabase = await getSupabaseServer(request);
     const { id: bookingId, chargeId } = await params;
-    const _body = await request.json();
+    const _body = await request.json().catch(() => ({}));
 
     // Verify booking belongs to customer
     const { data: booking, error: bookingError } = await supabase
@@ -118,13 +118,16 @@ export async function POST(
     }
 
     // Update charge status to 'approved' (ready for payment)
-    await supabase
+    const { error: updateError } = await supabase
       .from("additional_charges")
       .update({ status: 'approved' })
       .eq("id", chargeId);
+    if (updateError) {
+      console.error("Failed to update charge status to approved:", updateError);
+    }
 
     // Create booking event
-    await supabase
+    const { error: eventError } = await supabase
       .from("booking_events")
       .insert({
         booking_id: bookingId,
@@ -137,6 +140,9 @@ export async function POST(
         },
         created_by: user.id,
       });
+    if (eventError) {
+      console.error("Failed to create booking event for charge payment:", eventError);
+    }
 
     return successResponse({
       authorization_url: paystackResponse.data?.authorization_url ?? "",

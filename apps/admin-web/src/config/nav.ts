@@ -30,6 +30,7 @@ import {
   Receipt,
   UserCheck,
   MessageSquare,
+  MessageCircle,
   TrendingUp,
   Zap,
   Coins,
@@ -46,6 +47,13 @@ import {
   MapPinned,
   Boxes,
   ShieldAlert,
+  Radio,
+  ClipboardList,
+  GitMerge,
+  CheckCircle2,
+  Columns3,
+  Plug,
+  Sparkles,
 } from "lucide-react";
 import type { AdminSection } from "@beautonomi/admin-access";
 import {
@@ -60,6 +68,7 @@ import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
+  ADMIN_SECTION_PROVIDER_OPS,
 } from "@beautonomi/admin-access";
 
 export interface NavItemConfig {
@@ -84,6 +93,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye, superadminOnly: true },
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3, superadminOnly: true },
+      { title: "Geo & Devices", href: "/admin/analytics/geo", icon: Globe2, superadminOnly: true },
       { title: "Reports", href: "/admin/reports", icon: FileText },
     ],
   },
@@ -91,6 +101,20 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Support",
     section: ADMIN_SECTION_SUPPORT,
     items: [{ title: "Support Tickets", href: "/admin/support-tickets", icon: AlertCircle }],
+  },
+  {
+    label: "Provider Ops Hub",
+    section: ADMIN_SECTION_PROVIDER_OPS,
+    items: [
+      { title: "Dashboard", href: "/admin/provider-ops", icon: Radio },
+      { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserCheck },
+      { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Columns3 },
+      { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList },
+      { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2 },
+      { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: GitMerge },
+      { title: "Reports", href: "/admin/provider-ops/reports", icon: BarChart3 },
+      { title: "Settings", href: "/admin/provider-ops/settings", icon: Settings },
+    ],
   },
   {
     label: "Providers & operations",
@@ -115,9 +139,11 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Fee Management", href: "/admin/fees", icon: CreditCard },
       { title: "Platform Fees", href: "/admin/settings/platform-fees", icon: DollarSign },
       { title: "Taxes", href: "/admin/taxes", icon: Receipt },
+      { title: "Period Locks", href: "/admin/period-locks", icon: Receipt },
       { title: "Plans & pricing", href: "/admin/plans", icon: CreditCard },
       { title: "Provider Subscriptions", href: "/admin/provider-subscriptions", icon: CreditCard },
       { title: "Subscription Revenue", href: "/admin/subscription-revenue", icon: TrendingUp },
+      { title: "Wallet Reconciliation", href: "/admin/wallet-reconciliation", icon: Wallet },
       { title: "Billing", href: "/admin/billing", icon: CreditCard },
     ],
   },
@@ -157,6 +183,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     label: "Marketing & comms",
     section: ADMIN_SECTION_MARKETING_COMMS,
     items: [
+      { title: "Ads & Campaigns", href: "/admin/ads", icon: MessageSquare, superadminOnly: true },
       { title: "Promotions", href: "/admin/promotions", icon: Gift },
       { title: "Loyalty", href: "/admin/loyalty", icon: Award },
       { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },
@@ -167,6 +194,8 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Broadcast", href: "/admin/broadcast", icon: MessageSquare },
       { title: "Marketing Automations", href: "/admin/automations", icon: Zap },
       { title: "Notification Templates", href: "/admin/notification-templates", icon: Bell },
+      { title: "SMS Templates", href: "/admin/sms-templates", icon: MessageSquare },
+      { title: "Email Templates", href: "/admin/email-templates", icon: Bell },
     ],
   },
   {
@@ -175,9 +204,37 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     items: [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
+      {
+        title: "Integrations hub",
+        href: "/admin/control-plane/integrations",
+        icon: Plug,
+        superadminOnly: true,
+      },
+      {
+        title: "Sumsub",
+        href: "/admin/control-plane/integrations/sumsub",
+        icon: ShieldCheck,
+        superadminOnly: true,
+      },
+      {
+        title: "Gemini",
+        href: "/admin/control-plane/integrations/gemini",
+        icon: Sparkles,
+        superadminOnly: true,
+      },
+      {
+        title: "Aura",
+        href: "/admin/control-plane/integrations/aura",
+        icon: Zap,
+        superadminOnly: true,
+      },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
+      { title: "Paystack", href: "/admin/integrations/paystack", icon: CreditCard },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
+      { title: "OneSignal (push)", href: "/admin/notifications", icon: Radio },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
+      { title: "WhatsApp Sessions", href: "/admin/whatsapp/sessions", icon: MessageCircle },
+      { title: "WhatsApp Templates", href: "/admin/whatsapp/templates", icon: MessageCircle },
     ],
   },
   {
@@ -195,11 +252,18 @@ export const NAV_GROUPS: NavGroupConfig[] = [
     section: ADMIN_SECTION_PLATFORM_CONFIG,
     items: [
       { title: "Settings", href: "/admin/settings", icon: Settings },
+      { title: "Tenants", href: "/admin/settings/tenants", icon: Network, superadminOnly: true },
       { title: "Tenant domains", href: "/admin/settings/tenant-domains", icon: Network, superadminOnly: true },
       { title: "Control Plane", href: "/admin/control-plane/overview", icon: Layers, superadminOnly: true },
       {
         title: "Compliance purge",
         href: "/admin/control-plane/compliance",
+        icon: ShieldAlert,
+        superadminOnly: true,
+      },
+      {
+        title: "Tenant reset",
+        href: "/admin/control-plane/tenant-reset",
         icon: ShieldAlert,
         superadminOnly: true,
       },
@@ -209,6 +273,7 @@ export const NAV_GROUPS: NavGroupConfig[] = [
       { title: "Referral Settings", href: "/admin/settings/referrals", icon: Link2 },
       { title: "Referral sources", href: "/admin/referral-sources", icon: Share2 },
       { title: "Team permissions", href: "/admin/settings/team-permissions", icon: Shield, superadminOnly: true },
+      { title: "Admin team", href: "/admin/settings/admin-team", icon: UserCheck, superadminOnly: true },
     ],
   },
 ];

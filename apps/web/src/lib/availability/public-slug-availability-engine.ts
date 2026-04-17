@@ -2,6 +2,12 @@
  * Shared engine: loadAvailabilityConstraints + calculateAvailableSlots — same as
  * portal (`/api/portal/availability`) and `/api/availability`, extended with
  * public calendar parity (availability_blocks, staff time off / day off).
+ *
+ * B12: this file is the single contract both the public slug endpoint and the
+ * legacy `/api/availability` route go through. {@link computePublicSlugAvailabilitySlots}
+ * emits the public `AvailabilitySlot[]` shape (ISO start/end). Legacy callers
+ * that still expect `{ time, available }` rows can use
+ * {@link availabilitySlotsAsTimeSlots} to convert without duplicating the engine.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -85,6 +91,8 @@ export async function computePublicSlugAvailabilitySlots(args: {
   /** Active provider_staff rows (any-staff mode); empty when solo synthetic */
   activeStaffRows: Array<{ id: string }>;
   excludeHoldId?: string;
+  /** Exclude a booking from conflict checks (reschedule flow) */
+  excludeBookingId?: string;
 }): Promise<AvailabilitySlot[]> {
   const {
     supabase,
@@ -96,6 +104,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
     staffIdParam,
     activeStaffRows,
     excludeHoldId,
+    excludeBookingId,
   } = args;
 
   const anyoneMode =
@@ -119,6 +128,7 @@ export async function computePublicSlugAvailabilitySlots(args: {
       providerId,
       {
         excludeHoldId,
+        excludeBookingId,
         publicCalendarParity: {
           ...parityBase,
           slotStaffId: staffColumnId,
@@ -159,4 +169,28 @@ export async function computePublicSlugAvailabilitySlots(args: {
     staffColumnId.startsWith(SYNTHETIC_PROVIDER_STAFF_PREFIX) ? undefined : staffColumnId;
 
   return mapTimeSlotsToPublicShape(slots, date, totalBlockedMinutes, emitStaffId, locationId);
+}
+
+/**
+ * B12: convert `AvailabilitySlot[]` (ISO start/end, the public slug contract)
+ * back to the legacy `TimeSlot` shape `{ time, available }` used by
+ * `/api/availability` consumers (the canonical `/booking` web flow, mobile's
+ * `AvailabilitySlotPicker`). The input uses ISO-8601 UTC while `time` is a
+ * wall-clock `HH:MM` aligned to the same provider timezone the engine already
+ * emitted it in — so we project back via the ISO `start` string.
+ */
+export function availabilitySlotsAsTimeSlots(
+  slots: AvailabilitySlot[],
+): TimeSlot[] {
+  return slots.map((s) => {
+    // `start` was produced by `combineDateAndTime(date, "HH:MM")` above, so the
+    // HH:MM component we want back is the one the engine originally emitted.
+    // Using `substring` on the ISO keeps the same timezone alignment — parsing
+    // via `new Date()` + `toLocaleString` would risk a TZ shift on the server.
+    const isoTimePart = s.start.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
+    return {
+      time: isoTimePart,
+      available: s.is_available,
+    };
+  });
 }

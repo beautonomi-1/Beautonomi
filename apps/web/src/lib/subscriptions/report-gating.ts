@@ -10,6 +10,26 @@ import { checkAnalyticsFeatureAccess } from "./feature-access";
 import { isUserSuperadmin } from "./entitlements";
 import { errorResponse } from "@/lib/supabase/api-helpers";
 
+/** User-facing copy only — access is enforced via `subscription_plans.features.advanced_analytics` (see `checkAnalyticsFeatureAccess`). */
+function subscriptionRequiredMessage(
+  kind: "analytics" | "basic" | "advanced" | "export" | "api"
+): string {
+  switch (kind) {
+    case "analytics":
+      return "Reports require a subscription that includes analytics. Please upgrade to a plan with analytics enabled.";
+    case "basic":
+      return "This report requires a subscription that includes basic reports. Please upgrade your plan.";
+    case "advanced":
+      return "This report requires a subscription that includes advanced analytics. Please upgrade your plan.";
+    case "export":
+      return "Data export requires a subscription that includes export. Please upgrade your plan.";
+    case "api":
+      return "API access requires a subscription that includes API access. Please upgrade your plan.";
+    default:
+      return "Reports require a subscription upgrade.";
+  }
+}
+
 /**
  * Check if provider can access a specific report type
  */
@@ -46,7 +66,7 @@ export async function canAccessReport(
     return {
       allowed: false,
       error: errorResponse(
-        "Reports require a subscription upgrade. Please upgrade your plan to access reports.",
+        subscriptionRequiredMessage("analytics"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -57,7 +77,7 @@ export async function canAccessReport(
     return {
       allowed: false,
       error: errorResponse(
-        "Basic reports require a subscription upgrade. Please upgrade to Starter plan or higher.",
+        subscriptionRequiredMessage("basic"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -68,7 +88,7 @@ export async function canAccessReport(
     return {
       allowed: false,
       error: errorResponse(
-        "Advanced reports require a Professional plan or higher. Please upgrade to access detailed analytics.",
+        subscriptionRequiredMessage("advanced"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -79,7 +99,7 @@ export async function canAccessReport(
     return {
       allowed: false,
       error: errorResponse(
-        "Data export requires a Professional plan or higher. Please upgrade to export reports.",
+        subscriptionRequiredMessage("export"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -90,7 +110,7 @@ export async function canAccessReport(
     return {
       allowed: false,
       error: errorResponse(
-        "API access requires an Enterprise plan. Please upgrade to access the API.",
+        subscriptionRequiredMessage("api"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -127,7 +147,7 @@ export async function canAccessReportType(
     return {
       allowed: false,
       error: errorResponse(
-        "Reports require a subscription upgrade. Please upgrade your plan to access reports.",
+        subscriptionRequiredMessage("analytics"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),
@@ -141,7 +161,7 @@ export async function canAccessReportType(
       return {
         allowed: false,
         error: errorResponse(
-          "Basic reports require a subscription upgrade. Please upgrade to Starter plan or higher.",
+          subscriptionRequiredMessage("basic"),
           "SUBSCRIPTION_REQUIRED",
           403
         ),
@@ -157,7 +177,7 @@ export async function canAccessReportType(
       return {
         allowed: false,
         error: errorResponse(
-          "Advanced reports require a Professional plan or higher. Please upgrade to access detailed analytics.",
+          subscriptionRequiredMessage("advanced"),
           "SUBSCRIPTION_REQUIRED",
           403
         ),
@@ -171,7 +191,7 @@ export async function canAccessReportType(
     return {
       allowed: false,
       error: errorResponse(
-        "Reports require a subscription upgrade. Please upgrade your plan to access reports.",
+        subscriptionRequiredMessage("basic"),
         "SUBSCRIPTION_REQUIRED",
         403
       ),

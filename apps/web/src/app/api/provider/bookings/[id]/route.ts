@@ -13,6 +13,7 @@ import {
   type ProviderBookingStatus,
 } from "@/lib/utils/booking-status";
 import { checkBookingConflict } from "@/lib/bookings/conflict-check";
+import { isProviderCalendarWindowBlocked } from "@/lib/public-booking/provider-calendar-block-overlap";
 import { invalidateProviderBookingsReadCache } from "@/lib/bookings/provider-bookings-read-cache";
 import { awardPointsForBooking } from "@/lib/services/provider-gamification";
 import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
@@ -21,6 +22,9 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantMoneyFormatter } from "@/lib/money/tenant-intl-format";
 import { isOTPExpired } from "@/lib/otp/generator";
 import { isQRCodeExpired } from "@/lib/qr/generator";
+import { isValidProviderBookingStatusTransition } from "@/lib/bookings/booking-status-transitions";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
+import { resolveBookingDisplayTimeZone } from "@/lib/bookings/display-datetime";
 
 function mapStatusToDatabase(frontendStatus: string): string {
   return mapStatusFromProvider(frontendStatus as ProviderBookingStatus);
@@ -216,6 +220,7 @@ export async function GET(
         version,
         customers:users!bookings_customer_id_fkey(id, full_name, email, phone, rating_average, review_count),
         locations:provider_locations(id, name, address_line1, city),
+        providers:providers!bookings_provider_id_fkey(timezone),
         group_bookings!bookings_group_booking_id_fkey(ref_number, booking_participants(id, participant_name, participant_email, participant_phone, is_primary_contact)),
         service_packages!bookings_package_id_fkey(id, name),
         booking_services(
@@ -239,7 +244,8 @@ export async function GET(
           total_price,
           products:products!booking_products_product_id_fkey(id, name, retail_price),
           product_variant:product_variants(id, option_values)
-        )
+        ),
+        additional_charges(id, amount, status)
       `
       )
       .eq("id", id)
@@ -346,18 +352,40 @@ export async function GET(
       service_fee_percentage: bookingData.service_fee_percentage || 0,
       service_fee_amount: bookingData.service_fee_amount || 0,
       tip_amount: bookingData.tip_amount || 0,
+      travel_fee: bookingData.travel_fee || 0,
       travel_fee_amount: bookingData.travel_fee || 0,
       total_amount: bookingData.total_amount || 0,
       total_paid: bookingData.total_paid || 0,
       total_refunded: bookingData.total_refunded || 0,
       wallet_amount: Number((bookingData as Record<string, unknown>).wallet_amount ?? 0),
       gift_card_amount: Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0),
+      display_time_zone: resolveBookingDisplayTimeZone(
+        (() => {
+          const p = bookingData as { providers?: { timezone?: string | null } | { timezone?: string | null }[] };
+          const row = p.providers;
+          const one = Array.isArray(row) ? row[0] : row;
+          return one?.timezone ?? null;
+        })(),
+      ),
       outstanding_balance: (() => {
         const tot = Number(bookingData.total_amount ?? 0);
         const paid = Number(bookingData.total_paid ?? 0);
+        const refunded = Number(bookingData.total_refunded ?? 0);
         const wallet = Number((bookingData as Record<string, unknown>).wallet_amount ?? 0);
         const gift = Number((bookingData as Record<string, unknown>).gift_card_amount ?? 0);
-        return Math.max(0, tot - paid - wallet - gift);
+        type AcRow = { status?: string; amount?: number };
+        const unpaidCharges = ((bookingData as unknown as { additional_charges?: AcRow[] }).additional_charges ?? [])
+          .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+          .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0);
+        return computeBookingOutstandingDisplay({
+          totalAmount: tot,
+          totalPaid: paid,
+          totalRefunded: refunded,
+          walletAmount: wallet,
+          giftCardAmount: gift,
+          unpaidAdditionalCharges: unpaidCharges,
+          paymentStatus: bookingData.payment_status,
+        });
       })(),
       currency: bookingData.currency || lastResortCurrency,
       payment_status: (bookingData.payment_status ?? "pending") as BookingResponse["payment_status"],
@@ -603,11 +631,11 @@ export async function PATCH(
     // Conflict detection: Check if booking was modified by another user
     const { version, updated_at } = body;
     if (version !== undefined) {
-      // Using version number for optimistic locking
-      const currentVersion = (currentBooking as BookingRow).version || 0;
-      if (version !== currentVersion) {
+      // Using version number for optimistic locking (client hint; DB update still uses .eq("version"))
+      const clientExpectedVersion = (currentBooking as BookingRow).version || 0;
+      if (version !== clientExpectedVersion) {
         return errorResponse(
-          "This booking was modified by another user. Please refresh and try again.",
+          "Booking was modified by another user. Please refresh and try again.",
           "CONFLICT",
           409
         );
@@ -619,7 +647,7 @@ export async function PATCH(
       if (Math.abs(currentUpdatedAt - providedUpdatedAt) > 1000) {
         // More than 1 second difference indicates a conflict
         return errorResponse(
-          "This booking was modified by another user. Please refresh and try again.",
+          "Booking was modified by another user. Please refresh and try again.",
           "CONFLICT",
           409
         );
@@ -687,6 +715,33 @@ export async function PATCH(
             409
           );
         }
+      }
+
+      const rescheduleCalBlock = await isProviderCalendarWindowBlocked(supabaseAdmin, {
+        providerId,
+        locationId: (location_id ?? (currentBooking as { location_id?: string | null }).location_id) || undefined,
+        staffId: staffId ?? null,
+        startAt: newStart,
+        endAt: newEnd,
+      });
+      if (rescheduleCalBlock.blocked) {
+        return errorResponse(
+          rescheduleCalBlock.reason || "This time slot conflicts with a time block, day off, or is outside working hours.",
+          "CALENDAR_BLOCK",
+          409,
+        );
+      }
+    }
+
+    // Validate status transition (strict provider lifecycle)
+    if (requestedDbStatus) {
+      const currentDbStatus = (currentBooking as BookingRow).status ?? "";
+      if (!isValidProviderBookingStatusTransition(currentDbStatus, requestedDbStatus)) {
+        return errorResponse(
+          `Cannot transition booking from ${currentDbStatus} to ${requestedDbStatus}`,
+          "INVALID_STATUS_TRANSITION",
+          400
+        );
       }
     }
 
@@ -767,9 +822,40 @@ export async function PATCH(
       updateData.cancellation_reason = cancellation_reason;
     }
     
-    // Update cancellation fee if provided
+    // Auto-compute cancellation fee when cancelling without explicit fee
+    // (supports mobile clients that don't send a fee).
     if (cancellation_fee !== undefined) {
       updateData.cancellation_fee = cancellation_fee;
+    } else if (requestedDbStatus === "cancelled" && (currentBooking as any)?.cancellation_fee == null) {
+      try {
+        const { getCancellationPolicy, canCancelBooking } = await import("@/lib/bookings/cancellation-policy");
+        const { computeCancellationRefundAmount } = await import("@/lib/bookings/refund-processing");
+        const locType = ((currentBooking as any)?.location_type as "at_salon" | "at_home") || "at_salon";
+        const policy = await getCancellationPolicy(getSupabaseAdmin(), providerId, locType);
+        if (policy) {
+          const checkResult = canCancelBooking(
+            {
+              id,
+              created_at: (currentBooking as any).created_at,
+              scheduled_at: (currentBooking as any).scheduled_at,
+              location_type: locType,
+            },
+            policy,
+            new Date(),
+            { forbidLateSelfService: false }
+          );
+          if (checkResult.isLateCancellation) {
+            const bookingTotal = Number((currentBooking as any).total_amount ?? 0);
+            const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, true);
+            const autoFee = Math.round(Math.max(0, bookingTotal - policyRefundAmount) * 100) / 100;
+            if (autoFee > 0) {
+              updateData.cancellation_fee = autoFee;
+            }
+          }
+        }
+      } catch (autoFeeErr) {
+        console.error("[provider PATCH] auto cancellation_fee computation failed:", autoFeeErr);
+      }
     }
 
     // Keep total_amount consistent with cancellation_fee math (DB trigger-enforced formula).
@@ -893,13 +979,24 @@ export async function PATCH(
 
     // Use service role: RLS only allows the provider *owner* to UPDATE bookings; staff with
     // edit_appointments already passed requirePermission + branch checks above.
-    const { error: updateError } = await supabaseAdminPatch
+    // Enforce optimistic lock: UPDATE only succeeds if version still matches the row we read.
+    const { data: updatedRows, error: updateError } = await supabaseAdminPatch
       .from("bookings")
       .update(updateData)
-      .eq("id", id);
+      .eq("id", id)
+      .eq("version", currentVersion)
+      .select("id");
 
     if (updateError) {
       throw updateError;
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return errorResponse(
+        "Booking was modified by another user. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // When a provider cancels a booking and applies a cancellation fee, record it in the
@@ -933,7 +1030,7 @@ export async function PATCH(
             fees: 0,
             commission: 0,
             net: appliedCancelFee,
-            description: `Cancellation fee retained for booking ${bookingRef ?? id} (provider cancellation)`,
+            description: `Cancellation fee for booking ${bookingRef ?? id} — provider-retained (provider cancellation)`,
             created_at: new Date().toISOString(),
           });
         }
@@ -1212,10 +1309,52 @@ export async function PATCH(
             }
           }
 
+          // §Release-audit 2026-04: also refund any points the customer
+          // REDEEMED on this booking. Without this, points spent on a booking
+          // are lost when the provider cancels it (only earned points were
+          // being reversed before).
+          try {
+            const { data: redeemedRow } = await supabaseAdmin
+              .from("bookings")
+              .select("loyalty_points_used, loyalty_points_redeemed, customer_id")
+              .eq("id", id)
+              .maybeSingle();
+            const pointsToRefund = Number(
+              (redeemedRow as { loyalty_points_used?: number | null; loyalty_points_redeemed?: number | null } | null)?.loyalty_points_used ??
+                (redeemedRow as { loyalty_points_redeemed?: number | null } | null)?.loyalty_points_redeemed ??
+                0,
+            );
+            const refundCustomerId =
+              (redeemedRow as { customer_id?: string | null } | null)?.customer_id || customerId;
+            if (pointsToRefund > 0 && refundCustomerId) {
+              const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+              await refundRedeemedLoyaltyPoints(supabaseAdmin, {
+                bookingId: id,
+                customerId: refundCustomerId,
+                pointsRedeemed: pointsToRefund,
+                reason: "provider_cancel",
+              });
+            }
+          } catch (loyaltyRefundErr) {
+            console.error('[provider cancel] failed to refund redeemed loyalty points:', loyaltyRefundErr);
+          }
+
           // Send cancellation notification
           await sendCancellationNotification(id, {
             cancelledBy: 'provider',
             refundInfo: 'Please contact provider for refund details',
+          });
+
+          try {
+            const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+            await matchWaitlistOnCancellation(supabaseAdmin, id);
+          } catch (waitlistErr) {
+            console.error("[provider PATCH cancel] waitlist matching failed:", waitlistErr);
+          }
+        } else if (dbStatus === "no_show") {
+          await sendCancellationNotification(id, {
+            cancelledBy: 'provider',
+            refundInfo: 'Marked as no-show by provider',
           });
         } else if (dbStatus === "confirmed" && previousStatus === "pending") {
           // Send confirmation notification

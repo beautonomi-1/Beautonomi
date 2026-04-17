@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/staff/[id]/reset-password
@@ -13,7 +14,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const supabase = getSupabaseAdmin();
     const { id } = await params;
 
@@ -69,6 +70,20 @@ export async function POST(
       const msg = errBody?.msg ?? errBody?.message ?? "Failed to send reset email";
       return handleApiError(new Error(msg), msg, "RESET_FAILED", recoverRes.status);
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.staff.password_reset",
+      entity_type: "provider_staff",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "access",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       success: true,

@@ -17,13 +17,17 @@ export async function GET(request: NextRequest) {
     const since7 = new Date(now - 7 * 86400000).toISOString();
     const since30 = new Date(now - 30 * 86400000).toISOString();
 
-    const { data: campaignRows, error: cErr } = await admin.from("ads_campaigns").select("status");
+    const { data: campaignRows, error: cErr } = await admin.from("ads_campaigns").select("status, billing_model");
     if (cErr) throw cErr;
 
     const campaigns_by_status: Record<string, number> = { draft: 0, active: 0, paused: 0, ended: 0 };
+    const campaigns_by_model: Record<string, number> = { cpc_budget: 0, impression_pack: 0, time_based: 0 };
     for (const r of campaignRows ?? []) {
-      const s = String((r as { status: string }).status);
+      const row = r as { status: string; billing_model?: string };
+      const s = String(row.status);
       campaigns_by_status[s] = (campaigns_by_status[s] ?? 0) + 1;
+      const m = String(row.billing_model ?? "cpc_budget");
+      campaigns_by_model[m] = (campaigns_by_model[m] ?? 0) + 1;
     }
 
     async function countEvents(since: string, eventType: string) {
@@ -61,6 +65,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       campaigns_by_status,
+      campaigns_by_model,
       events_7d: { impressions: imp7, clicks: clk7, books: book7 },
       events_30d: { impressions: imp30, clicks: clk30, books: book30 },
       prepaid_revenue_30d_zar,

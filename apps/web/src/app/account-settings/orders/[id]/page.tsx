@@ -5,6 +5,8 @@ import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
+import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 interface ProductOrder {
   id: string;
@@ -57,18 +59,30 @@ export default function OrderDetailPage() {
   const params = useParams();
   const router = useRouter();
   const locale = useTenantLocaleTag();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.id) return;
     (async () => {
       setLoading(true);
+      setErrorMsg(null);
       try {
         const res = await fetch(`/api/me/orders/${params.id}`, { cache: "no-store" });
         const json = await res.json();
-        if (json.data) setOrder(json.data.order);
-      } catch { /* ignore */ }
+        if (json.data?.order) {
+          setOrder(json.data.order);
+        } else if (res.status === 404) {
+          setErrorMsg("Order not found");
+        } else {
+          setErrorMsg(json.error || "Something went wrong loading this order.");
+        }
+      } catch {
+        setErrorMsg("Unable to connect. Please check your network and try again.");
+      }
       setLoading(false);
     })();
   }, [params.id]);
@@ -76,7 +90,7 @@ export default function OrderDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-pink-200 border-t-pink-600" />
+        <p className="text-sm text-gray-500">Loading…</p>
       </div>
     );
   }
@@ -84,7 +98,7 @@ export default function OrderDetailPage() {
   if (!order) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center text-gray-400">
-        <p>Order not found</p>
+        <p>{errorMsg || "Order not found"}</p>
         <button onClick={() => router.back()} className="mt-4 text-pink-600 hover:underline">Go back</button>
       </div>
     );
@@ -92,6 +106,8 @@ export default function OrderDetailPage() {
 
   const idx = timelineIndex(order.status);
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
+  const cur = order.provider ? (order as unknown as Record<string, unknown>).currency as string | undefined : undefined;
+  const sym = cur || tenantCurrency;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -181,9 +197,9 @@ export default function OrderDetailPage() {
                       <span className="font-normal text-gray-500"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
                     )}
                   </p>
-                  <p className="text-xs text-gray-400">{item.quantity} x R{Number(item.unit_price).toFixed(2)}</p>
+                  <p className="text-xs text-gray-400">{item.quantity} x {sym} {Number(item.unit_price).toFixed(2)}</p>
                 </div>
-                <p className="font-semibold text-gray-900">R{Number(item.total_price).toFixed(2)}</p>
+                <p className="font-semibold text-gray-900">{sym} {Number(item.total_price).toFixed(2)}</p>
               </div>
             ))}
           </div>
@@ -193,23 +209,40 @@ export default function OrderDetailPage() {
         <div className="rounded-2xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 font-semibold text-gray-900">Payment Summary</h2>
           <div className="space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>R{Number(order.subtotal).toFixed(2)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>{sym} {Number(order.subtotal).toFixed(2)}</span></div>
             {Number(order.delivery_fee) > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Delivery</span><span>R{Number(order.delivery_fee).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Delivery</span><span>{sym} {Number(order.delivery_fee).toFixed(2)}</span></div>
             )}
             {Number(order.tax_amount) > 0 && (
-              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>R{Number(order.tax_amount).toFixed(2)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Tax</span><span>{sym} {Number(order.tax_amount).toFixed(2)}</span></div>
             )}
             <div className="flex justify-between border-t border-gray-100 pt-3 text-lg font-bold">
               <span>Total</span>
-              <span className="text-pink-600">R{Number(order.total_amount).toFixed(2)}</span>
+              <span className="text-pink-600">{sym} {Number(order.total_amount).toFixed(2)}</span>
             </div>
           </div>
         </div>
 
+        {/* Provider */}
+        {order.provider && (
+          <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
+            <h2 className="mb-2 font-semibold text-gray-900">Sold by</h2>
+            <Link href={`/partner-profile?slug=${order.provider.slug}`} className="inline-flex items-center gap-3 text-sm text-gray-700 hover:text-pink-600 transition-colors">
+              {order.provider.logo_url ? (
+                <Image src={order.provider.logo_url} alt="" width={32} height={32} className="h-8 w-8 rounded-full object-cover" />
+              ) : (
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 text-xs font-bold text-gray-500">
+                  {(order.provider.business_name ?? "P").charAt(0).toUpperCase()}
+                </div>
+              )}
+              <span className="font-medium">{order.provider.business_name}</span>
+            </Link>
+          </div>
+        )}
+
         {/* Request Return */}
         {(order.status === "delivered" || order.status === "ready_for_collection") && (
-          <div className="rounded-2xl bg-white p-6 shadow-sm">
+          <div className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="mb-2 font-semibold text-gray-900">Need to return an item?</h2>
             <p className="mb-4 text-sm text-gray-500">
               You can request a return within 14 days of delivery. Items must be unused and in original condition.

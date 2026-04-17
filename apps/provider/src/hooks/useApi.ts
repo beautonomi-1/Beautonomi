@@ -94,7 +94,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const requestPromise =
         inflight ??
         (async () => {
-          const result = await api.get<T>(path);
+          const result = await api.get<T>(path, timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
           if (result.error) {
             const e = result.error as ApiError;
             return {
@@ -124,30 +124,49 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       }
       if (!mountedRef.current || id !== requestIdRef.current) return;
 
-      responseCache.set(cacheKey, {
-        data: payload.data,
-        error: payload.error,
-        errorCode: payload.errorCode,
-        expiresAt: Date.now() + staleTimeMs,
-      });
-      pruneResponseCache(Date.now());
-
+      // §Provider-launch (audit 2026-04): preserve last-known-good data on
+      // refresh failure.  Screens like the calendar otherwise clear on any
+      // blip (pull-to-refresh, backgrounded, flaky network) and show a
+      // generic error over a previously-usable grid. We still propagate
+      // the error so consumers can render a subtle banner, but we keep
+      // `data` intact when we already had something cached.
       if (payload.error) {
         setError(payload.error);
         setErrorCode(payload.errorCode);
-        setData(null);
+        // Only write the failure result into the response cache when we
+        // don't already have a successful entry cached — this lets later
+        // reads still hit the good data.
+        const existing = responseCache.get(cacheKey);
+        if (!existing || existing.error || !existing.data) {
+          responseCache.set(cacheKey, {
+            data: null,
+            error: payload.error,
+            errorCode: payload.errorCode,
+            expiresAt: Date.now() + staleTimeMs,
+          });
+          setData(null);
+        }
+        // else: keep the previously-successful data & cached entry.
       } else {
+        responseCache.set(cacheKey, {
+          data: payload.data,
+          error: null,
+          errorCode: null,
+          expiresAt: Date.now() + staleTimeMs,
+        });
         setData(payload.data);
         setErrorCode(null);
       }
+      pruneResponseCache(Date.now());
     } catch (err) {
       if (!mountedRef.current || id !== requestIdRef.current) return;
+      // Same "keep stale data" rule for thrown errors (timeout / network).
       setError(getApiErrorMessage(err, "Request failed"));
       setErrorCode(null);
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
-  }, [cacheKey, path, enabled, staleTimeMs]);
+  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs]);
 
   useEffect(() => {
     mountedRef.current = true;

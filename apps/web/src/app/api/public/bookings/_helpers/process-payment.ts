@@ -13,7 +13,8 @@ import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-dr
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-import { percentOf, subtractMoney, toCents } from "@beautonomi/utils";
+import { resolveCommissionPercentageForProvider } from "@/lib/finance/resolve-commission-percentage";
+import { percentOf, subtractMoney } from "@beautonomi/utils";
 import { resolvePaymentTenantForBookingRequest } from "@/lib/bookings/resolve-payment-tenant";
 import { syncBookingAfterPaystackSuccess } from "@/lib/bookings/sync-booking-after-paystack-success";
 import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-payment-types";
@@ -94,10 +95,24 @@ export async function processPayment(
 
   // ── Determine amount to collect ──────────────────────────────────────────
   let amountToCollect = v.totalAmount;
-  if (v.provider.requires_deposit) {
-    const pct = Number(v.provider.deposit_percentage || 30);
-    const deposit = percentOf(v.totalAmount, pct);
-    amountToCollect = paymentOption === "full" ? v.totalAmount : deposit;
+  const providerRequiresDeposit = Boolean(v.provider.requires_deposit);
+  const depositPct = Number(v.provider.deposit_percentage || 30);
+  const computedDeposit = providerRequiresDeposit ? percentOf(v.totalAmount, depositPct) : 0;
+  const isDepositPayment = providerRequiresDeposit && paymentOption !== "full";
+
+  if (providerRequiresDeposit) {
+    amountToCollect = isDepositPayment ? computedDeposit : v.totalAmount;
+  }
+
+  // Persist deposit context on the booking row so receipts, invoices, and
+  // reports can display deposit vs balance information.
+  if (providerRequiresDeposit) {
+    await supabaseAdmin.from("bookings").update({
+      deposit_required: true,
+      deposit_percentage: depositPct,
+      deposit_amount: computedDeposit,
+      payment_option: isDepositPayment ? "deposit" : "full",
+    }).eq("id", booking.id);
   }
 
   // ── Gift card reservation ────────────────────────────────────────────────
@@ -240,15 +255,18 @@ export async function processPayment(
     );
     const shouldAutoConfirmStatus = !appointmentSettings.requireConfirmationForBookings;
 
-    const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
-    if (loyaltyPointsUsed > 0) {
+    const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
+    if (loyaltyPointsRedeemed > 0) {
       await (supabase.from("bookings") as any)
-        .update({ loyalty_points_used: loyaltyPointsUsed })
+        .update({
+          loyalty_points_used: loyaltyPointsRedeemed,
+          loyalty_discount_amount: v.loyaltyDiscountAmount ?? 0,
+        })
         .eq("id", booking.id);
       try {
         await (supabase.from("loyalty_point_transactions") as any).insert({
           user_id: v.customerId,
-          points: loyaltyPointsUsed,
+          points: loyaltyPointsRedeemed,
           transaction_type: "redeemed",
           description: `Redeemed for booking ${booking.booking_number}`,
           reference_id: booking.id,
@@ -259,9 +277,11 @@ export async function processPayment(
       }
     }
 
+    const effectivePaymentStatus = isDepositPayment ? "partially_paid" : "paid";
+
     await (supabase.from("bookings") as any)
       .update({
-        payment_status: "paid",
+        payment_status: effectivePaymentStatus,
         payment_provider: walletAmountApplied > 0 ? "wallet" : "gift_card",
         payment_date: new Date().toISOString(),
         status: shouldAutoConfirmStatus ? "confirmed" : "pending",
@@ -353,7 +373,7 @@ export async function processPayment(
         );
       }
 
-      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
+      const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       const chargeResult = await chargeAuthorization(
         savedCard.provider_payment_method_id,
         email,
@@ -374,7 +394,8 @@ export async function processPayment(
           commission_base: v.commissionBase,
           payment_method_id: savedPaymentMethodId,
           hold_id: validatedDraft.hold_id || null,
-          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
           ...(recurringSubscribeEligible
             ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
             : {}),
@@ -467,7 +488,7 @@ export async function processPayment(
       });
     } else {
       // ── New card (Paystack redirect) ───────────────────────────────────
-      const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
+      const loyaltyPointsRedeemed = v.loyaltyPointsRedeemed ?? 0;
       const paystackData = await initializePaystackTransaction({
         email,
         amountInSmallestUnit: convertToSmallestUnit(amountToCollect),
@@ -494,7 +515,8 @@ export async function processPayment(
           save_card: saveCard,
           set_as_default: setAsDefault,
           hold_id: validatedDraft.hold_id || undefined,
-          loyalty_points_used: loyaltyPointsUsed > 0 ? loyaltyPointsUsed : undefined,
+          loyalty_points_used: loyaltyPointsRedeemed > 0 ? loyaltyPointsRedeemed : undefined,
+          loyalty_discount_amount: v.loyaltyDiscountAmount > 0 ? v.loyaltyDiscountAmount : undefined,
           ...(recurringSubscribeEligible
             ? { subscribe_recurring_frequency: validatedDraft.subscribe_recurring!.frequency }
             : {}),
@@ -536,6 +558,12 @@ export async function processPayment(
   }
 
   // ── Cash payment — explicitly mark as pending (pay at appointment) ──────────
+  // DESIGN DECISION: No booking_payments row is created here for customer cash bookings.
+  // Cash means "pay at the salon" — money hasn't been collected yet.
+  // When the provider later marks the booking as paid (via mark-paid endpoint),
+  // a booking_payments row is created, which fires the DB trigger
+  // (create_finance_ledger_from_payment) to generate finance_transactions entries.
+  // This ensures cash revenue only appears in reports when actually collected.
   if (paymentMethod === "cash") {
     const appointmentSettings = await getAppointmentSettingsFromDB(
       supabaseAdmin,
@@ -593,24 +621,19 @@ async function insertNoGatewayLedger(
     provider_id: draft.provider_id,
   });
 
-  // Platform settings for commission
-  const { data: settingsRow } = await (supabase.from("platform_settings") as any)
-    .select("settings")
-    .eq("is_active", true)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const payoutSettings = (settingsRow as any)?.settings?.payouts || {};
-  const commissionEnabled = payoutSettings.commission_enabled !== false;
-  const commissionRate = commissionEnabled
-    ? (payoutSettings.platform_commission_percentage ?? 0)
-    : 0;
+  const resolvedTenantId = booking.tenant_id ?? marketTenantId ?? null;
+  const commissionRate = await resolveCommissionPercentageForProvider(supabase, {
+    tenantId: resolvedTenantId,
+    providerId: draft.provider_id,
+  });
 
   const platformCommission =
-    commissionEnabled && commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
+    commissionRate > 0 ? percentOf(v.commissionBase, commissionRate) : 0;
 
-  const providerEarnings = subtractMoney(v.commissionBase, platformCommission) + v.travelFee + v.tipAmount;
+  // provider_earnings represents the service-base share going to the provider, EXCLUDING tip and
+  // travel fee — those are inserted as their own finance_transactions rows ("tip", "travel_fee")
+  // to match the Paystack webhook path and avoid double-counting in aggregate reports.
+  const providerEarnings = subtractMoney(v.commissionBase, platformCommission);
 
   // Determine the settlement method label for ledger descriptions and provider field.
   // Priority: wallet > gift_card > package/entitlement (zero-cost)
@@ -650,6 +673,19 @@ async function insertNoGatewayLedger(
     },
     created_at: new Date().toISOString(),
   });
+
+  // Idempotency: skip ledger writes if a payment row already exists for this booking
+  // (prevents duplicates if this function is ever retried after a partial failure).
+  const { data: existingLedgerPayment } = await (supabase.from("finance_transactions") as any)
+    .select("id")
+    .eq("booking_id", booking.id)
+    .eq("transaction_type", "payment")
+    .maybeSingle();
+
+  if (existingLedgerPayment) {
+    console.log(`[process-payment] finance_transactions already present for booking ${booking.id} (${settlementMethod}) — skipping duplicate write.`);
+    return { paymentUrl: null };
+  }
 
   const now = new Date().toISOString();
   await (supabase.from("finance_transactions") as any).insert([

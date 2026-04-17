@@ -5,8 +5,6 @@ import crypto from "crypto";
 import { YOCO_WEBHOOK_EVENTS } from "@/lib/payments/yoco";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
-
 /**
  * POST /api/provider/yoco/webhook
  *
@@ -160,11 +158,11 @@ export async function POST(request: Request) {
           .eq("id", eventRowId);
       }
 
-      // Still return 200 to acknowledge receipt
-      return NextResponse.json({
-        received: true,
-        error: error instanceof Error ? error.message : "Processing error",
-      });
+      // Return 500 so Yoco retries delivery for financial events
+      return NextResponse.json(
+        { received: false, error: error instanceof Error ? error.message : "Processing error" },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ received: true });
@@ -282,14 +280,7 @@ async function handlePaymentNotification(
       
       if (paymentError) {
         console.error("Error creating booking_payment:", paymentError);
-        // Fallback: Update booking directly if booking_payment creation fails
-        await supabase
-          .from("bookings")
-          .update({
-            payment_status: "paid",
-            payment_date: new Date().toISOString(),
-          })
-          .eq("id", bookingId);
+        throw new Error(`Failed to create booking_payment for Yoco payment ${id}: ${paymentError.message}`);
       } else {
         console.log(`✅ Booking payment created for ${booking.booking_number} via Yoco terminal. Finance transactions will be auto-created by trigger.`);
         // The trigger (migration 169) will automatically:
@@ -372,6 +363,19 @@ async function handleRefundSuccess(
 
   const currency = (data.currency as string) ?? lastResortCurrency;
 
+  // Idempotency: skip if refund already recorded
+  if (id) {
+    const { data: existingYocoRefund } = await supabase
+      .from("provider_yoco_refunds")
+      .select("id")
+      .eq("yoco_refund_id", id)
+      .maybeSingle();
+    if (existingYocoRefund) {
+      console.log(`Yoco refund ${id} already recorded, skipping (idempotent)`);
+      return;
+    }
+  }
+
   await supabase
     .from("provider_yoco_refunds")
     .insert({
@@ -435,33 +439,9 @@ async function handleRefundSuccess(
       console.error("Yoco webhook: failed to create booking_refund:", refundError);
     } else {
       console.log(`Yoco refund ${id} synced to booking ${bookingId} (booking_refund created).`);
-
-      const { data: bookingRow } = await supabaseAdmin
-        .from("bookings")
-        .select("tenant_id, provider_id")
-        .eq("id", bookingId)
-        .maybeSingle();
-      const yocoRefundFinanceTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
-        tenant_id: (bookingRow as { tenant_id?: string | null } | null)?.tenant_id,
-        provider_id:
-          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
-      });
-      const { error: yocoFinanceErr } = await supabaseAdmin.from("finance_transactions").insert({
-        tenant_id: yocoRefundFinanceTenantId,
-        booking_id: bookingId,
-        provider_id:
-          (bookingRow as { provider_id?: string | null } | null)?.provider_id ?? providerId,
-        transaction_type: "refund",
-        amount: -amountInCurrency,
-        fees: 0,
-        commission: 0,
-        net: -amountInCurrency,
-        description: `Yoco card refund (${id})`,
-        created_at: new Date().toISOString(),
-      });
-      if (yocoFinanceErr) {
-        console.error("Yoco webhook: finance ledger insert after booking_refund:", yocoFinanceErr);
-      }
+      // finance_transactions row is written by trigger
+      // `create_finance_ledger_from_booking_refund` (migration 490) via the
+      // booking_refunds insert above — no app-side insert (B1).
     }
   }
 }

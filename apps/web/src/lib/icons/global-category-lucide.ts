@@ -15,7 +15,6 @@ import {
   BeautonomiSkinFacials,
   BeautonomiSpa,
   BeautonomiWigsWeaves,
-  BeautonomiAll,
 } from "@/components/icons/categories/beautonomi-category-icons";
 
 const asIcon = (C: typeof BeautonomiHair) => C as LucideIcon;

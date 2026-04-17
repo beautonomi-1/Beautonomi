@@ -6,6 +6,9 @@ import { validatePortalToken } from "@/lib/portal/token";
 import { getCancellationPolicy, canCancelBooking } from "@/lib/bookings/cancellation-policy";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -85,6 +88,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const nonReschedulableStatuses = ["completed", "cancelled", "no_show"];
+    if (nonReschedulableStatuses.includes(booking.status)) {
+      return handleApiError(
+        new Error("Cannot reschedule a booking that is " + booking.status),
+        `Cannot reschedule a ${booking.status} booking`,
+        "INVALID_STATUS",
+        400
+      );
+    }
+
     // Check if booking can be rescheduled (same policy as cancellation)
     const policy = await getCancellationPolicy(
       supabase,
@@ -124,8 +137,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const firstService = bookingServices[0];
-    const staffId = firstService.staff_id;
+    const allStaffIds = [...new Set(bookingServices.map((bs: { staff_id?: string }) => bs.staff_id).filter((sid): sid is string => !!sid))];
+    const staffId = allStaffIds[0];
 
     if (!staffId) {
       return handleApiError(
@@ -144,38 +157,47 @@ export async function POST(request: NextRequest) {
       totalDuration += dur + buf;
     });
 
-    // Load availability constraints for new date.
-    // Pass publicCalendarParity so staff_days_off / staff_time_off / availability_blocks
-    // block the same windows here that customers see in the booking flow.
-    const newDate = newDatetime.toISOString().split('T')[0];
+    // Resolve provider timezone so the new slot is validated in the provider's
+    // business clock, not Node's local time or UTC.
+    const { data: portalProviderRow } = await supabase
+      .from('providers')
+      .select('timezone')
+      .eq('id', booking.provider_id)
+      .maybeSingle();
+    const portalProviderTz =
+      ((portalProviderRow as { timezone?: string | null } | null)?.timezone?.trim() ||
+        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+
+    const newDate = formatInTimeZone(newDatetime, portalProviderTz, "yyyy-MM-dd");
+    const requestedTime = formatInTimeZone(newDatetime, portalProviderTz, "HH:mm");
+
     const constraints = await loadAvailabilityConstraints(
       supabase,
       staffId,
       newDate,
       booking.provider_id,
       {
+        excludeBookingId: validation.bookingId,
         publicCalendarParity: {
           providerId: booking.provider_id,
           date: newDate,
           locationId: undefined,
           slotStaffId: staffId,
-          staffIdsForTimeOff: [staffId],
+          staffIdsForTimeOff: allStaffIds,
         },
       }
     );
 
-    // Check if new slot is available
     const slots = calculateAvailableSlots(
       constraints,
       totalDuration,
       newDate,
       {
         slotInterval: 15,
-        travelBuffer: booking.location_type === 'at_home' ? 30 : 0,
+        travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
       }
     );
 
-    const requestedTime = newDatetime.toTimeString().substring(0, 5); // HH:MM
     const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
 
     if (!isAvailable) {
@@ -187,18 +209,64 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Update booking scheduled_at
+    // B5: DB-level lock against cross-booking contention on (staff, slot).
+    try {
+      const { data: conflictRow, error: conflictErr } = await (
+        adminSupabase.rpc as any
+      )("check_reschedule_slot_conflict", {
+        p_booking_id: validation.bookingId,
+        p_staff_id: staffId,
+        p_provider_id: booking.provider_id,
+        p_new_start: newDatetime.toISOString(),
+        p_total_minutes: totalDuration,
+      });
+      if (!conflictErr) {
+        const c = Array.isArray(conflictRow) ? conflictRow[0] : conflictRow;
+        if (c && (c as { conflict?: boolean }).conflict) {
+          return handleApiError(
+            new Error("Slot locked by concurrent booking"),
+            "That time just became unavailable. Please pick another slot.",
+            "SLOT_CONTENDED",
+            409,
+          );
+        }
+      }
+    } catch (err) {
+      console.warn("[portal reschedule] slot conflict RPC missing", err);
+    }
+
+    // Optimistic lock: read current version, then update with eq('version', ...) to
+    // prevent concurrent reschedules from overwriting each other.
+    const { data: currentRow } = await adminSupabase
+      .from('bookings')
+      .select('version')
+      .eq('id', validation.bookingId)
+      .single();
+    const currentVersion = (currentRow as any)?.version ?? 0;
+
     const { data: updatedBooking, error: updateError } = await adminSupabase
       .from('bookings')
       .update({
         scheduled_at: newDatetime.toISOString(),
+        version: currentVersion + 1,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', validation.bookingId)
+      .eq('version', currentVersion)
       .select()
       .single();
 
     if (updateError) {
       throw updateError;
+    }
+
+    if (!updatedBooking) {
+      return handleApiError(
+        new Error("Booking was modified concurrently"),
+        "This booking was updated by someone else. Please try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // Update all booking_services with new times

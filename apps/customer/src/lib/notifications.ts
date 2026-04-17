@@ -63,13 +63,19 @@ export function navigateFromNotification(n: Notification): void {
     }
   }
 
+  // ── Support tickets ────────────────────────────────────────────────────
+  if (data.ticket_id) {
+    router.push("/(app)/help" as never);
+    return;
+  }
+
   // ── Conversations / messages ─────────────────────────────────────────────
   if (data.conversation_id) {
     router.push({ pathname: "/(app)/chat", params: { id: data.conversation_id } });
     return;
   }
-  if (nType === "new_message" || nType === "message") {
-    router.push("/(app)/account-settings/messages");
+  if (nType === "new_message" || nType === "message" || nType === "chat_message") {
+    router.push("/(app)/(tabs)/chats" as never);
     return;
   }
 
@@ -133,8 +139,12 @@ export function navigateFromNotification(n: Notification): void {
     router.push("/(app)/account-settings/referrals");
     return;
   }
-  if (nType === "payment_success" || nType === "payment_failed" || nType === "refund_processed") {
+  if (nType === "payment_success" || nType === "payment_successful" || nType === "payment_failed" || nType === "refund_processed") {
     router.push("/(app)/account-settings/payments");
+    return;
+  }
+  if (nType === "support_ticket" || nType === "ticket_update" || nType === "ticket_reply") {
+    router.push("/(app)/help" as never);
     return;
   }
   if (nType === "waitlist_available" || nType === "waitlist_update") {
@@ -145,9 +155,11 @@ export function navigateFromNotification(n: Notification): void {
   // ── Link / action_url heuristics (fallback) ───────────────────────────────
   if (link) {
     if (link.includes("/account-settings/bookings/") || link.includes("/bookings/")) {
-      const id = link.split("/").filter(Boolean).pop();
-      if (id && id.length > 8) {
-        router.push({ pathname: "/(app)/booking-detail", params: { id } });
+      const segments = link.split("/").filter(Boolean);
+      const bookingsIdx = segments.findIndex((s) => s === "bookings");
+      const bookingId = bookingsIdx >= 0 && bookingsIdx + 1 < segments.length ? segments[bookingsIdx + 1] : null;
+      if (bookingId && bookingId.length > 8) {
+        router.push({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
         return;
       }
     }
@@ -158,7 +170,10 @@ export function navigateFromNotification(n: Notification): void {
     if (link.includes("referrals")) { router.push("/(app)/account-settings/referrals"); return; }
     if (link.includes("loyalty")) { router.push("/(app)/account-settings/loyalty"); return; }
     if (link.includes("payments")) { router.push("/(app)/account-settings/payments"); return; }
-    if (link.includes("messaging") || link.includes("messages")) { router.push("/(app)/account-settings/messages"); return; }
+    if (link.includes("messaging") || link.includes("messages")) { router.push("/(app)/(tabs)/chats" as never); return; }
     if (link.includes("bookings")) { router.push("/(app)/account-settings/bookings"); return; }
+    if (link.includes("my-tickets") || link.includes("support")) { router.push("/(app)/help" as never); return; }
   }
+
+  router.push("/(app)/notifications" as never);
 }

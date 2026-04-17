@@ -78,29 +78,42 @@ export function useProductCatalog() {
       if (f.tags) params.set("tags", f.tags);
       if (f.sort) params.set("sort", f.sort);
 
-      const res = await api.get<CatalogResponse>(`/api/public/products?${params}`);
+      try {
+        const res = await api.get<CatalogResponse>(`/api/public/products?${params}`);
 
-      if (res.error) {
-        setError(res.error.message);
-      } else if (res.data) {
-        const d = res.data;
-        if (isAppend) {
-          setProducts((prev) => {
-            const ids = new Set(prev.map((p) => p.id));
-            return [...prev, ...d.products.filter((p) => !ids.has(p.id))];
-          });
-        } else {
-          setProducts(d.products);
+        if (res.error) {
+          setError(res.error.message);
+        } else if (res.data) {
+          const raw = res.data as Partial<CatalogResponse>;
+          const productsList = Array.isArray(raw.products) ? raw.products : [];
+          const cats = Array.isArray(raw.categories) ? raw.categories : [];
+          const pag = raw.pagination ?? {
+            page: currentPage,
+            limit: 24,
+            total: productsList.length,
+            totalPages: 1,
+          };
+          const d = { ...raw, products: productsList, categories: cats, pagination: pag } as CatalogResponse;
+          if (isAppend) {
+            setProducts((prev) => {
+              const ids = new Set(prev.map((p) => p.id));
+              return [...prev, ...d.products.filter((p) => !ids.has(p.id))];
+            });
+          } else {
+            setProducts(d.products);
+          }
+          setCategories(d.categories);
+          setPage(d.pagination.page);
+          setTotalPages(d.pagination.totalPages);
         }
-        setCategories(d.categories);
-        setPage(d.pagination.page);
-        setTotalPages(d.pagination.totalPages);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load products");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+        setLoadingMore(false);
+        initialDone.current = true;
       }
-
-      setLoading(false);
-      setRefreshing(false);
-      setLoadingMore(false);
-      initialDone.current = true;
     },
     [page],
   );

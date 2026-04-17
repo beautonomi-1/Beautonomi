@@ -17,6 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { useCart } from "@/features/shop/useCart";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
@@ -53,6 +54,7 @@ interface ProductsResponse {
 export default function ShopScreen() {
   const router = useRouter();
   const { contentPadding } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const cart = useCart();
   const fb = getTenantDefaultCurrency();
@@ -103,11 +105,12 @@ export default function ShopScreen() {
     else setLoadingMore(true);
     setError(null);
 
-    const params = new URLSearchParams({ page: String(pageNum), limit: "20" });
-    if (q.trim()) params.set("search", q.trim());
+    const searchParams = new URLSearchParams({ page: String(pageNum), limit: "20" });
+    if (q.trim()) searchParams.set("search", q.trim());
+    if (params.category?.trim()) searchParams.set("category", params.category.trim());
 
     try {
-      const res = await api.get<ProductsResponse>(`/api/public/products?${params}`);
+      const res = await api.get<ProductsResponse>(`/api/public/products?${searchParams}`);
       if (res.error) {
         setError("Could not load products. Pull to refresh.");
         if (pageNum === 1) setProducts([]);
@@ -182,16 +185,20 @@ export default function ShopScreen() {
           "/api/me/wishlists/toggle",
           { item_type: "product", item_id: p.id },
         );
-        const action = (res.data as { action?: string; data?: { action?: string } })?.action
-          ?? (res.data as { data?: { action?: string } })?.data?.action;
-        if (action === "added" || action === "removed") {
-          setWishlistProductIds((prev) => {
-            const next = new Set(prev);
-            if (action === "added") next.add(p.id);
-            else next.delete(p.id);
-            return next;
-          });
-          haptic.success();
+        if (res.error) {
+          Alert.alert("Error", "Could not update wishlist. Please try again.");
+        } else {
+          const action = (res.data as { action?: string; data?: { action?: string } })?.action
+            ?? (res.data as { data?: { action?: string } })?.data?.action;
+          if (action === "added" || action === "removed") {
+            setWishlistProductIds((prev) => {
+              const next = new Set(prev);
+              if (action === "added") next.add(p.id);
+              else next.delete(p.id);
+              return next;
+            });
+            haptic.success();
+          }
         }
       } finally {
         setWishlistBusyId(null);
@@ -479,7 +486,7 @@ export default function ShopScreen() {
             data={products}
             keyExtractor={productKeyExtractor}
             numColumns={2}
-            contentContainerStyle={{ padding: contentPadding, paddingBottom: 100 }}
+            contentContainerStyle={{ padding: contentPadding, paddingBottom: tabScrollPaddingBottom }}
             columnWrapperStyle={{ gap: 12 }}
             ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchProducts({ pageNum: 1, isRefresh: true })} colors={[PRIMARY]} />}

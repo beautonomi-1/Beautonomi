@@ -5,7 +5,11 @@
  * from the database with fallback to static constants.
  */
 
+import { mapToBookingStatusEnum } from "@beautonomi/utils";
 import { APPOINTMENT_STATUS, DEFAULT_APPOINTMENT_STATUS } from "./constants";
+
+/** Re-export: shared with Expo customer app via `@beautonomi/utils`. */
+export { mapToBookingStatusEnum };
 
 export interface AppointmentSettings {
   defaultAppointmentStatus: string;
@@ -104,7 +108,7 @@ export async function determineAppointmentStatus(
 ): Promise<string> {
   // If explicit status is provided, use it (allows manual override)
   if (explicitStatus) {
-    return explicitStatus;
+    return mapToBookingStatusEnum(explicitStatus);
   }
 
   try {
@@ -124,10 +128,10 @@ export async function determineAppointmentStatus(
       }
     }
 
-    return status;
+    return mapToBookingStatusEnum(status);
   } catch (error) {
     console.warn("Failed to load appointment settings, using default:", error);
-    return DEFAULT_APPOINTMENT_STATUS;
+    return mapToBookingStatusEnum(DEFAULT_APPOINTMENT_STATUS);
   }
 }
 
@@ -178,7 +182,7 @@ export async function determineAppointmentStatusFromDB(
 ): Promise<string> {
   // If explicit status is provided, use it (allows manual override)
   if (explicitStatus) {
-    return explicitStatus;
+    return mapToBookingStatusEnum(explicitStatus);
   }
 
   try {
@@ -198,9 +202,9 @@ export async function determineAppointmentStatusFromDB(
       }
     }
 
-    return status;
+    return mapToBookingStatusEnum(status);
   } catch (error) {
     console.warn("Failed to determine appointment status, using default:", error);
-    return DEFAULT_APPOINTMENT_STATUS;
+    return mapToBookingStatusEnum(DEFAULT_APPOINTMENT_STATUS);
   }
 }

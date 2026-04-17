@@ -20,6 +20,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface FinanceSummary {
   service_collected_gross: number;
@@ -41,6 +42,7 @@ interface FinanceSummary {
   ads_gross: number;
   ads_gateway_fees: number;
   total_platform_take_net: number;
+  total_platform_take_net_including_customer_fees?: number;
 
   provider_earnings: number;
   refunds_gross: number;
@@ -51,6 +53,45 @@ interface FinanceSummary {
   wallet_topup_revenue: number;
   referral_payouts: number;
   total_platform_take_after_referrals: number;
+
+  service_fee_revenue?: number;
+  platform_fee_revenue?: number;
+  customer_paid_platform_fees?: number;
+  ecommerce_platform_fees?: number;
+  additional_charge_gross?: number;
+  travel_fees?: number;
+  cancellation_fees_retained?: number;
+
+  revenue_streams?: {
+    booking_commission: number;
+    customer_paid_platform_fees?: number;
+    subscriptions: number;
+    ads: number;
+    service_fees: number;
+    ecommerce_fees_detail?: number;
+    wallet_topups: number;
+    total: number;
+  };
+
+  platform_revenue?: {
+    booking_commission: number;
+    customer_paid_platform_fees?: number;
+    subscriptions: number;
+    ads: number;
+    service_fees: number;
+    ecommerce_fees_detail?: number;
+    wallet_topups: number;
+    total: number;
+  };
+
+  provider_revenue?: {
+    provider_earnings: number;
+    cancellation_fees: number;
+    tips: number;
+    taxes_collected: number;
+    refunds: number;
+    net_after_refunds: number;
+  };
 
   period: {
     start_date: string | null;
@@ -78,14 +119,20 @@ export default function AdminFinance() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [startDate, setStartDate] = useState("");
+  const { format: fmtMoney } = useReportCurrency();
   const [endDate, setEndDate] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 50; // Items per page
 
+  // Support ?provider_id= param for filtering by specific provider (linked from admin provider detail)
+  const providerId = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("provider_id")
+    : null;
+
   useEffect(() => {
     loadFinanceData();
-  }, [startDate, endDate, page]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/page change
+  }, [startDate, endDate, page, providerId]); // eslint-disable-line react-hooks/exhaustive-deps -- load when filters/page change
 
   const loadFinanceData = async () => {
     try {
@@ -96,6 +143,7 @@ export default function AdminFinance() {
       const summaryParams = new URLSearchParams();
       if (startDate) summaryParams.set("start_date", startDate);
       if (endDate) summaryParams.set("end_date", endDate);
+      if (providerId) summaryParams.set("provider_id", providerId);
 
       const summaryResponse = await fetcher.get<{
         data: FinanceSummary;
@@ -108,6 +156,7 @@ export default function AdminFinance() {
       const txParams = new URLSearchParams();
       if (startDate) txParams.set("start_date", startDate);
       if (endDate) txParams.set("end_date", endDate);
+      if (providerId) txParams.set("provider_id", providerId);
       txParams.set("page", page.toString());
       txParams.set("limit", "50");
 
@@ -348,11 +397,11 @@ export default function AdminFinance() {
                   infoTooltip="Total amount refunded to customers in the period (gross refund value)."
                 />
                 <SummaryCard
-                  title="Gift Card Sales"
+                  title="Gift Card Sales (Liability)"
                   value={summary.gift_card_sales}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
-                  infoTooltip="Revenue from gift card purchases (recorded in finance ledger when customer buys a card). Redemptions are part of booking GMV."
+                  infoTooltip="Cash received from gift card purchases — NOT revenue. This is a liability until cards are redeemed via bookings. Revenue is recognized as platform commission when bookings are made."
                 />
                 <SummaryCard
                   title="Membership Sales"
@@ -418,10 +467,10 @@ export default function AdminFinance() {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
                 <SummaryCard
                   title="Total Platform Take (Net)"
-                  value={summary.total_platform_take_net}
+                  value={summary.total_platform_take_net_including_customer_fees ?? summary.total_platform_take_net}
                   icon={<DollarSign className="w-4 h-4 sm:w-5 sm:h-5" />}
                   format="currency"
-                  infoTooltip="Commission (net) + Subscription revenue + Ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
+                  infoTooltip="Commission (net) + customer-paid platform fees + subscription revenue + ads revenue, before wallet top-up and referral payouts. Use the card below for true platform net."
                 />
                 <SummaryCard
                   title="Total Platform Take (after referrals & wallet)"
@@ -430,6 +479,72 @@ export default function AdminFinance() {
                   format="currency"
                   infoTooltip="True platform net: Commission + Subscriptions + Wallet top-up revenue − Referral payouts. This is the full financial picture including gift-card-style revenue and referral expense."
                 />
+              </div>
+            )}
+
+            {/* Revenue Streams Breakdown */}
+            {summary?.revenue_streams && (
+              <div className="bg-white border rounded-lg overflow-hidden shadow-sm mb-6 sm:mb-8">
+                <div className="px-3 sm:px-6 py-3 sm:py-4 border-b">
+                  <h2 className="text-base sm:text-lg font-semibold">Platform Revenue Streams</h2>
+                  <p className="text-xs text-gray-500 mt-1">How the platform makes money — all revenue sources in one view.</p>
+                </div>
+                <div className="p-3 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                    {[
+                      { label: "Booking Commission", value: summary.revenue_streams.booking_commission, desc: "Net commission after gateway fees" },
+                      { label: "Platform Fees (Customer-Paid)", value: summary.revenue_streams.customer_paid_platform_fees ?? summary.revenue_streams.service_fees, desc: "Checkout platform fees paid by customers" },
+                      { label: "Subscriptions", value: summary.revenue_streams.subscriptions, desc: "Provider subscription payments" },
+                      { label: "Ads Revenue", value: summary.revenue_streams.ads, desc: "Ad campaign prepayments" },
+                      { label: "Service Fees (Legacy Label)", value: summary.revenue_streams.service_fees, desc: "Same as customer-paid platform fees" },
+                      { label: "Ecommerce Fees (in commission)", value: summary.revenue_streams.ecommerce_fees_detail ?? 0, desc: "Included in booking commission total" },
+                      { label: "Wallet Top-ups", value: summary.revenue_streams.wallet_topups, desc: "Wallet funding by customers" },
+                      
+                    ].map((item) => (
+                      <div key={item.label} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">{item.label}</p>
+                        <p className="text-lg font-semibold text-gray-900">{fmtMoney(item.value)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-indigo-50 rounded-lg flex items-center justify-between">
+                    <span className="text-sm font-medium text-indigo-800">Total Platform Revenue</span>
+                    <span className="text-lg font-bold text-indigo-900">{fmtMoney(summary.revenue_streams.total)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Provider Revenue Section */}
+            {summary && (
+              <div className="bg-white border rounded-lg overflow-hidden shadow-sm mb-6 sm:mb-8">
+                <div className="px-3 sm:px-6 py-3 sm:py-4 border-b">
+                  <h2 className="text-base sm:text-lg font-semibold">Provider Revenue via Platform</h2>
+                  <p className="text-xs text-gray-500 mt-1">How much providers are earning through bookings, e-commerce, tips, and other services.</p>
+                </div>
+                <div className="p-3 sm:p-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+                    {[
+                      { label: "Provider Earnings", value: summary.provider_revenue?.provider_earnings ?? summary.provider_earnings, desc: "Net provider share from bookings & orders" },
+                      { label: "Cancellation Fees", value: summary.provider_revenue?.cancellation_fees ?? summary.cancellation_fees_retained ?? 0, desc: "Fees retained by providers on cancellations" },
+                      { label: "Tips", value: summary.provider_revenue?.tips ?? summary.tips_gross, desc: "Customer tips (100% to provider)" },
+                      { label: "Taxes Collected", value: summary.provider_revenue?.taxes_collected ?? summary.taxes_gross, desc: "Tax pass-through (provider remits)" },
+                      { label: "Refunds", value: summary.provider_revenue?.refunds ?? summary.refunds_gross, desc: "Refunds deducted from provider balance" },
+                      { label: "Net After Refunds", value: summary.provider_revenue?.net_after_refunds ?? (summary.provider_earnings - Math.abs(summary.refunds_gross)), desc: "Earnings minus refunds" },
+                    ].map((item) => (
+                      <div key={item.label} className="bg-gray-50 rounded-lg p-3">
+                        <p className="text-xs text-gray-500">{item.label}</p>
+                        <p className="text-lg font-semibold text-gray-900">{fmtMoney(item.value)}</p>
+                        <p className="text-[10px] text-gray-400 mt-0.5">{item.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 p-3 bg-emerald-50 rounded-lg flex items-center justify-between">
+                    <span className="text-sm font-medium text-emerald-800">Platform is helping providers earn</span>
+                    <span className="text-lg font-bold text-emerald-900">{fmtMoney(summary.provider_revenue?.provider_earnings ?? summary.provider_earnings)}</span>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -484,13 +599,13 @@ export default function AdminFinance() {
                             {tx.transaction_type}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                            R {tx.amount.toLocaleString()}
+                            {fmtMoney(tx.amount)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            R {tx.fees.toLocaleString()}
+                            {fmtMoney(tx.fees)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                            R {tx.net.toLocaleString()}
+                            {fmtMoney(tx.net)}
                           </td>
                           <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {tx.booking?.booking_number || "N/A"}
@@ -530,18 +645,18 @@ export default function AdminFinance() {
                           </div>
                           <div className="text-right">
                             <div className="text-sm font-semibold text-gray-900">
-                              R {tx.net.toLocaleString()}
+                              {fmtMoney(tx.net)}
                             </div>
                             {tx.fees > 0 && (
                               <div className="text-xs text-gray-500">
-                                Fees: R {tx.fees.toLocaleString()}
+                                Fees: {fmtMoney(tx.fees)}
                               </div>
                             )}
                           </div>
                         </div>
                         {tx.amount !== tx.net && (
                           <div className="text-xs text-gray-500 pt-1 border-t">
-                            Gross: R {tx.amount.toLocaleString()}
+                            Gross: {fmtMoney(tx.amount)}
                           </div>
                         )}
                       </div>
@@ -601,8 +716,9 @@ function SummaryCard({
   format?: "number" | "currency";
   infoTooltip?: string;
 }) {
+  const { format: fmtCurrency } = useReportCurrency();
   const formattedValue =
-    format === "currency" ? `R ${value.toLocaleString()}` : value.toLocaleString();
+    format === "currency" ? fmtCurrency(value) : value.toLocaleString();
 
   return (
     <div className="bg-white border rounded-lg p-4 sm:p-6 shadow-sm hover:shadow-md transition-shadow">

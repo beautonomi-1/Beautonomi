@@ -26,15 +26,19 @@ const settingsCategories: { id: string; title: string; description: string; item
       { title: "Locations", description: "Manage your business locations", href: "/provider/settings/locations" },
       { title: "Operating Hours", description: "Set opening and closing times for your locations", href: "/provider/settings/operating-hours" },
       { title: "Distance Settings", description: "Configure service distance limits for house calls", href: "/provider/settings/distance" },
-      { title: "Service Area", description: "Set your service radius or zones for house calls (Tinder-style)", href: "/provider/settings/service-area" },
+      { title: "Service Zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones" },
       { title: "Identity verification", description: "Verify your identity with Sumsub (KYC) for payouts", href: "/provider/settings/verification" },
-      { title: "Service Zones", description: "Define service areas and zones for at-home bookings", href: "/provider/settings/service-zones" },
       { title: "Online booking", description: "Configure online booking settings", href: "/provider/settings/appointment-activity/online-booking" },
+      { title: "Group Appointments", description: "Enable and configure group booking for clients", href: "/provider/settings/appointment-activity/group-appointments" },
       { title: "Note Templates", description: "Create reusable note templates", href: "/provider/settings/note-templates" },
       { title: "Resources", description: "Manage resources and equipment", href: "/provider/settings/appointment-activity/resources" },
       { title: "Business closed periods", description: "Set holiday and closure dates", href: "/provider/settings/appointment-activity/closed-periods" },
       { title: "Blocked time types", description: "Configure blocked time options", href: "/provider/settings/appointment-activity/blocked-time" },
       { title: "Calendar Integration", description: "Sync with Google Calendar, Apple Calendar, and Outlook", href: "/provider/settings/calendar-integration" },
+      { title: "Calendar display", description: "Display preferences for the calendar", href: "/provider/settings/calendar/display-preferences" },
+      { title: "Calendar colors & icons", description: "Colors and icons for appointments", href: "/provider/settings/calendar/colors-icons" },
+      { title: "Calendar links", description: "Booking and calendar links", href: "/provider/settings/calendar/links" },
+      { title: "Waitlist settings", description: "Configure waitlist behavior", href: "/provider/settings/appointment-activity/waitlist" },
     ],
   },
   {
@@ -55,6 +59,7 @@ const settingsCategories: { id: string; title: string; description: string; item
     description: "Service menu and membership settings",
     items: [
       { title: "Services Menu", description: "Manage your service offerings", href: "/provider/settings/services/menu" },
+      { title: "Packages", description: "Service and product bundles", href: "/provider/packages" },
       { title: "Service Addons", description: "Manage addons, products, and upgrades", href: "/provider/settings/addons" },
       { title: "Memberships", description: "Set up membership plans", href: "/provider/settings/services/memberships" },
     ],
@@ -105,9 +110,21 @@ const settingsCategories: { id: string; title: string; description: string; item
   {
     id: "account",
     title: "Account",
-    description: "Account settings and preferences",
+    description: "Account settings, security, and privacy",
+    // §Provider-launch (audit 2026-04): the Account tab previously only
+    // surfaced Notification Preferences, which meant providers couldn't
+    // change their password, enable 2FA, review active sessions, or
+    // request a data export from inside the business portal. These links
+    // all point at the shared /account-settings routes that already exist
+    // for customers — they're user-scoped, not provider-scoped, so
+    // linking is the correct level of reuse.
     items: [
       { title: "Notification Preferences", description: "Manage how you receive notifications", href: "/provider/settings/notifications" },
+      { title: "Login & Security", description: "Change password, enable two-factor authentication, and review active sessions", href: "/account-settings/login-and-security" },
+      { title: "Personal Info", description: "Update your name, email, phone number, and profile photo", href: "/account-settings/personal-info" },
+      { title: "Privacy & Sharing", description: "Control what you share, cookies, marketing consent, and targeted advertising", href: "/account-settings/privacy-and-sharing" },
+      { title: "Data Rights & Export", description: "Request a copy of your data or delete your account (GDPR/POPIA)", href: "/account-settings/privacy-and-sharing#data-rights" },
+      { title: "Preferences", description: "Language, region, currency, and accessibility preferences", href: "/account-settings/preferences" },
     ],
   },
 ];

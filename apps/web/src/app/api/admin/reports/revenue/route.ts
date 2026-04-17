@@ -4,6 +4,11 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
+import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  FINANCE_METRIC_CONTRACT_VERSION,
+  getFinanceMetricContracts,
+} from "@/lib/admin/finance-metric-contracts";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,17 +47,54 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get revenue by day
-    // Includes total_amount (GMV) + actual cash collected (total_paid + wallet_amount + gift_card).
-    // total_amount = the service price — what was charged to the customer (GMV).
-    // actual_collected = total_paid (gateway) + wallet_amount + gift_card_amount — real money received.
-    const { data: bookings } = await supabase
-      .from('bookings')
-      .select('scheduled_at, total_amount, total_paid, wallet_amount, gift_card_amount, status, provider_id, payment_status')
-      .eq('tenant_id', tenantId)
-      .gte('scheduled_at', startDate.toISOString())
-      .lte('scheduled_at', endDate.toISOString())
-      .in('status', ['completed', 'confirmed']);
+    // Revenue rows: align with how teams read "activity in period".
+    // - Completed: anchor on completed_at (service may have been scheduled earlier).
+    // - Confirmed (not yet completed): anchor on scheduled_at within the window.
+    const startISO = startDate.toISOString();
+    const endISO = endDate.toISOString();
+
+    const { data: completedBookings } = await supabase
+      .from("bookings")
+      .select(
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("status", "completed")
+      .not("completed_at", "is", null)
+      .gte("completed_at", startISO)
+      .lte("completed_at", endISO);
+
+    const { data: confirmedBookings } = await supabase
+      .from("bookings")
+      .select(
+        "id, scheduled_at, completed_at, created_at, total_amount, total_paid, total_refunded, wallet_amount, gift_card_amount, status, provider_id, payment_status"
+      )
+      .eq("tenant_id", tenantId)
+      .eq("status", "confirmed")
+      .gte("scheduled_at", startISO)
+      .lte("scheduled_at", endISO);
+
+    type BookingRow = {
+      id?: string;
+      scheduled_at?: string;
+      completed_at?: string;
+      created_at?: string;
+      total_amount?: number;
+      total_paid?: number;
+      total_refunded?: number;
+      wallet_amount?: number;
+      gift_card_amount?: number;
+      provider_id?: string;
+      status?: string;
+      payment_status?: string;
+    };
+
+    const byId = new Map<string, BookingRow>();
+    for (const b of [...(completedBookings || []), ...(confirmedBookings || [])]) {
+      const row = b as BookingRow;
+      if (row?.id) byId.set(row.id, row);
+    }
+    const bookings: BookingRow[] = [...byId.values()];
 
     const revenueByDay: Record<string, { revenue: number; actual_collected: number; bookings: number }> = {};
     const revenueByProvider: Record<string, { revenue: number; actual_collected: number; bookings: number; provider_name: string }> = {};
@@ -60,15 +102,28 @@ export async function GET(request: NextRequest) {
 
     let totalRevenue = 0;
     let totalActualCollected = 0;
+    let totalRefunded = 0;
     let totalWalletRevenue = 0;
     let totalGatewayRevenue = 0;
     let totalGiftCardRevenue = 0;
 
-    type BookingRow = { scheduled_at?: string; total_amount?: number; total_paid?: number; wallet_amount?: number; gift_card_amount?: number; provider_id?: string; status?: string; payment_status?: string };
+    const bucketDate = (booking: BookingRow): string | null => {
+      const anchor =
+        booking.status === "completed"
+          ? booking.completed_at || booking.scheduled_at || booking.created_at
+          : booking.scheduled_at || booking.created_at;
+      if (!anchor) return null;
+      const t = new Date(anchor).getTime();
+      if (Number.isNaN(t)) return null;
+      return new Date(anchor).toISOString().split("T")[0];
+    };
+
     (bookings || []).forEach((booking: BookingRow) => {
-      const date = new Date(booking.scheduled_at ?? "").toISOString().split('T')[0];
+      const date = bucketDate(booking);
+      if (!date) return;
       const gmvAmount = Number(booking.total_amount ?? 0);
       const gatewayAmount = Number(booking.total_paid ?? 0);
+      const refundedAmount = Number(booking.total_refunded ?? 0);
       const walletAmount = Number(booking.wallet_amount ?? 0);
       const giftCardAmount = Number(booking.gift_card_amount ?? 0);
       const collectedAmount = gatewayAmount + walletAmount + giftCardAmount;
@@ -101,6 +156,7 @@ export async function GET(request: NextRequest) {
 
       totalRevenue += gmvAmount;
       totalActualCollected += collectedAmount;
+      totalRefunded += refundedAmount;
       totalWalletRevenue += walletAmount;
       totalGatewayRevenue += gatewayAmount;
       totalGiftCardRevenue += giftCardAmount;
@@ -245,12 +301,27 @@ export async function GET(request: NextRequest) {
       iterDate.setDate(iterDate.getDate() + 1);
     }
 
+    // Unified platform revenue breakdown from finance ledger
+    const allLedgerRows = await fetchFinanceLedgerRowsForTenant(
+      supabase,
+      tenantId,
+      { start: startDate.toISOString(), end: endDate.toISOString() },
+    );
+    const ledgerAgg = aggregateFinanceLedgerRows(allLedgerRows);
+
+    const platformRecognizedRevenueNet =
+      ledgerAgg.platform_take_net + ledgerAgg.subscription_net + ledgerAgg.ads_net + ledgerAgg.service_fee_revenue;
+
     return successResponse({
       period,
       // GMV: total booking value at time of booking (what was charged)
       totalRevenue,
-      // Actual collected: gateway + wallet + gift card (real money/credit received)
+      // Gross collected: gateway + wallet + gift card (before refunds)
       totalActualCollected,
+      // Total refunded back to customers
+      totalRefunded,
+      // Net collected: gross collected minus refunds
+      netCollected: totalActualCollected - totalRefunded,
       // Breakdown of how actual_collected is composed
       collectionBreakdown: {
         gateway: totalGatewayRevenue,
@@ -259,7 +330,7 @@ export async function GET(request: NextRequest) {
       },
       revenueByDay: revenueByDayArray,
       revenueByProvider: Object.values(revenueByProvider).sort((a, b) => b.revenue - a.revenue),
-      revenueByService: [], // Can be enhanced later
+      revenueByService: [],
       revenueByStatus: Object.entries(revenueByStatus).map(([status, data]) => ({
         status,
         ...data,
@@ -272,11 +343,40 @@ export async function GET(request: NextRequest) {
         salesByDay: salesByDayArray,
         redemptionsByDay: redemptionsByDayArray,
       },
-      // Cancellation and promotion analytics (from finance_transactions ledger)
-      cancellationFeesRetained: totalCancellationFeesRetained,
+      cancellationFeesRetainedByProviders: totalCancellationFeesRetained,
       promotionDiscountsGiven: totalPromotionDiscounts,
-      // Net revenue = GMV minus refunds minus promotion discounts
+      // Booking-side operational metric (GMV after discounts), not platform recognized revenue.
+      gmvAfterDiscounts: totalRevenue - totalPromotionDiscounts,
       netRevenueAfterDiscounts: totalRevenue - totalPromotionDiscounts,
+
+      platformRevenue: {
+        booking_commission_net: ledgerAgg.platform_take_net,
+        subscription_net: ledgerAgg.subscription_net,
+        ads_net: ledgerAgg.ads_net,
+        service_fee_revenue_net: ledgerAgg.service_fee_revenue,
+        total_platform_revenue_net: platformRecognizedRevenueNet,
+        gateway_fees_total: ledgerAgg.gateway_fees_services + ledgerAgg.subscription_gateway_fees + ledgerAgg.ads_gateway_fees,
+        provider_earnings_net: ledgerAgg.provider_earnings_net,
+        refunds_gross: ledgerAgg.refunds_gross,
+        refunds_abs_gross: ledgerAgg.refunds_abs_gross,
+        provider_refund_impact_net: ledgerAgg.provider_refund_net_impact,
+        platform_refund_contra: ledgerAgg.platform_refund_contra,
+        tips_gross: ledgerAgg.tips_gross,
+        taxes_gross: ledgerAgg.taxes_gross,
+      },
+      passThrough: {
+        taxes_collected: ledgerAgg.taxes_gross,
+        tips_collected: ledgerAgg.tips_gross,
+      },
+      metrics_meta: {
+        contract_version: FINANCE_METRIC_CONTRACT_VERSION,
+        generated_at: new Date().toISOString(),
+        contracts: getFinanceMetricContracts([
+          "platformRecognizedRevenue",
+          "providerNetEarnings",
+          "taxesCollected",
+        ]),
+      },
     });
   } catch (error) {
     return handleApiError(error, 'Failed to load revenue report');

@@ -183,9 +183,23 @@ export function mapStatus(
   const currentStage = typeof statusOrAppointment === "string" ? undefined : (statusOrAppointment as any).current_stage;
   const locationType = typeof statusOrAppointment === "string" ? undefined : (statusOrAppointment as any).location_type;
 
+  // B7: explicit handling of the DB-side vocabulary the calendar previously
+  // fell through to CONFIRMED. These statuses are set by the checkout /
+  // waiting-room flows and must not be rendered as "Confirmed", otherwise
+  // provider staff cannot distinguish paid-and-arrived from
+  // pending-payment or checked-in-but-not-yet-in-service.
+  const statusStr = status as string;
+
+  if (statusStr === "pending_payment" || statusStr === "awaiting_payment") {
+    return AppointmentStatus.UNCONFIRMED;
+  }
+
+  if (statusStr === "waiting" || statusStr === "checked_in") {
+    return AppointmentStatus.WAITING;
+  }
+
   // In-salon: status is booked/confirmed and client has arrived → WAITING (client checked in, ready for service)
   // Note: API may return "confirmed" (database format) which maps to "booked"
-  const statusStr = status as string;
   if (
     (status === APPOINTMENT_STATUS.BOOKED || statusStr === "booked" || statusStr === "confirmed") &&
     currentStage === "client_arrived" &&
@@ -216,7 +230,12 @@ export function mapStatus(
     case "no_show":
       return AppointmentStatus.NO_SHOW;
     default:
-      return AppointmentStatus.CONFIRMED;
+      // B7: refuse to silently fall back to CONFIRMED. Log and treat unknown
+      // statuses as UNCONFIRMED so they are visually flagged for operators.
+      if (typeof window === "undefined") {
+        console.warn(`[mapStatus] unrecognised booking status "${statusStr}" — defaulting to UNCONFIRMED`);
+      }
+      return AppointmentStatus.UNCONFIRMED;
   }
 }
 
@@ -637,6 +656,8 @@ export function canPlace(
   options: {
     allowDoubleBooking?: boolean;
     processingFreesProvider?: boolean;
+    locationOperatingHours?: Record<string, { open: string; close: string; closed?: boolean }> | null;
+    staffWorkingHours?: Record<string, { open?: string; close?: string; open_time?: string; close_time?: string; closed?: boolean; is_open?: boolean }> | null;
   } = {}
 ): { valid: boolean; reason?: string; conflictsWith?: string[] } {
   const conflicts: string[] = [];
@@ -687,11 +708,64 @@ export function canPlace(
       conflicts.push(`block:${block.id}`);
     }
   }
+
+  // Check operating hours — appointment must fit entirely within them
+  if (options.locationOperatingHours) {
+    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const dayIdx = new Date(targetSlot.date + "T12:00:00").getDay();
+    const dayKey = dayNames[dayIdx];
+    const dayHours = options.locationOperatingHours[dayKey];
+
+    if (!dayHours || dayHours.closed) {
+      // Staff might still work on a closed day — check staff hours
+      if (!options.staffWorkingHours) {
+        conflicts.push("operating-hours:closed");
+      }
+    } else {
+      const locOpenMin = timeToMinutes(dayHours.open);
+      const locCloseMin = timeToMinutes(dayHours.close);
+      if (targetStartMin < locOpenMin || (targetStartMin + durationMin) > locCloseMin) {
+        // Allow if staff is explicitly working during this time
+        if (!options.staffWorkingHours) {
+          conflicts.push("operating-hours:outside");
+        }
+      }
+    }
+  }
+
+  // Check staff working hours — appointment must fit within the staff member's shift
+  if (options.staffWorkingHours) {
+    const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+    const dayIdx = new Date(targetSlot.date + "T12:00:00").getDay();
+    const dayKey = dayNames[dayIdx];
+    const dayWh = options.staffWorkingHours[dayKey];
+
+    if (!dayWh || dayWh.closed === true || dayWh.is_open === false) {
+      conflicts.push("staff-hours:off-shift");
+    } else {
+      const openStr = dayWh.open ?? dayWh.open_time;
+      const closeStr = dayWh.close ?? dayWh.close_time;
+      if (openStr && closeStr) {
+        const staffOpenMin = timeToMinutes(openStr);
+        const staffCloseMin = timeToMinutes(closeStr);
+        if (targetStartMin < staffOpenMin || (targetStartMin + durationMin) > staffCloseMin) {
+          conflicts.push("staff-hours:outside-shift");
+        }
+      }
+    }
+  }
   
   if (conflicts.length > 0) {
+    const hasHourConflict = conflicts.some(c => c.startsWith("operating-hours:") || c.startsWith("staff-hours:"));
+    const hasBookingConflict = conflicts.some(c => !c.startsWith("operating-hours:") && !c.startsWith("staff-hours:") && !c.startsWith("block:"));
+    const hasBlockConflict = conflicts.some(c => c.startsWith("block:"));
+    const reasons: string[] = [];
+    if (hasHourConflict) reasons.push("outside working hours");
+    if (hasBookingConflict) reasons.push("overlaps with existing booking(s)");
+    if (hasBlockConflict) reasons.push("overlaps with time block(s)");
     return {
       valid: false,
-      reason: `Conflicts with ${conflicts.length} existing booking(s) or block(s)`,
+      reason: reasons.join(", "),
       conflictsWith: conflicts,
     };
   }

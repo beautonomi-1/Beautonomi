@@ -18,6 +18,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonList } from "@/components/ui/Skeleton";
 import { twStyle } from "@/lib/twStyle";
 
@@ -53,7 +54,7 @@ export default function ReferralSourcesScreen() {
   const [editing, setEditing] = useState<ReferralSource | null>(null);
   const [form, setForm] = useState({ name: "", description: "", isActive: true });
 
-  const { data: sources, loading, refresh } = useApi<ReferralSource[]>(
+  const { data: sources, loading, error: loadError, refresh } = useApi<ReferralSource[]>(
     "/api/provider/referral-sources"
   );
   const { execute: createSource, loading: creating } = useApiPost<any, any>(
@@ -64,8 +65,11 @@ export default function ReferralSourcesScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -195,8 +199,10 @@ export default function ReferralSourcesScreen() {
 
       <View style={twStyle("mt-3")} />
 
-      {loading && !sources ? (
+      {loading && !sources && !loadError ? (
         <SkeletonList rows={5} />
+      ) : loadError && !sources ? (
+        <ErrorState message={loadError} onRetry={refresh} />
       ) : filtered.length === 0 ? (
         <EmptyState
           icon="git-network-outline"

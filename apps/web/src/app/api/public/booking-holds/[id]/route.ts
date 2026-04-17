@@ -13,6 +13,7 @@ import { getCancellationPolicy } from "@/lib/bookings/cancellation-policy";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { getPaymentFeatureFlagsForTenant } from "@/lib/subscriptions/entitlements";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 export async function GET(
   request: NextRequest,
@@ -69,6 +70,11 @@ export async function GET(
 
     const expiresAt = new Date(hold.expires_at);
     if (expiresAt < new Date()) {
+      await supabase
+        .from("booking_holds")
+        .update({ hold_status: "expired" })
+        .eq("id", hold.id)
+        .eq("hold_status", "active");
       return handleApiError(
         new Error("Hold has expired"),
         "Your hold has expired. Please select a new time.",
@@ -100,7 +106,7 @@ export async function GET(
     const { data: providerRow } = await supabase
       .from("providers")
       .select(
-        "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage"
+        "tips_enabled, tip_presets, currency, no_show_fee_enabled, no_show_fee_amount, requires_deposit, deposit_percentage, tax_rate_percent, tax_inclusive, customer_fee_config_id"
       )
       .eq("id", hold.provider_id)
       .eq("tenant_id", tenantId)
@@ -160,6 +166,62 @@ export async function GET(
           : undefined,
     };
 
+    // Resolve tax rate from provider (optional - 0 when provider hasn't set one)
+    const providerTaxRate = (providerRow as any)?.tax_rate_percent != null
+      ? Math.max(0, Number((providerRow as any).tax_rate_percent))
+      : 0;
+    const taxInclusive = Boolean((providerRow as any)?.tax_inclusive ?? false);
+
+    // Resolve service fee config (same priority as validate-booking / platform-fees API)
+    let serviceFeeConfig = {
+      type: "fixed" as string,
+      percentage: 0,
+      fixed: 0,
+      show: false,
+    };
+    try {
+      const customerFeeConfigId = (providerRow as any)?.customer_fee_config_id;
+      if (customerFeeConfigId) {
+        const { data: feeConfig } = await supabase
+          .from("platform_fee_config")
+          .select("fee_type, fee_percentage, fee_fixed_amount, applies_to, is_active")
+          .eq("id", customerFeeConfigId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (feeConfig) {
+          const isPercentage = feeConfig.fee_type === "percentage";
+          serviceFeeConfig = {
+            type: isPercentage ? "percentage" : "fixed",
+            percentage: isPercentage ? Number(feeConfig.fee_percentage || 0) : 0,
+            fixed: isPercentage ? 0 : Number(feeConfig.fee_fixed_amount || 0),
+            show: feeConfig.applies_to === "customer" || feeConfig.applies_to === "both",
+          };
+        }
+      }
+      if (!serviceFeeConfig.show && serviceFeeConfig.percentage === 0 && serviceFeeConfig.fixed === 0) {
+        const scoped = await fetchScopedSingle<Record<string, unknown>>({
+          supabase,
+          table: "platform_settings",
+          tenantId,
+          select: "settings",
+          apply: (q: any) => q.eq("is_active", true),
+          orderBy: { column: "updated_at", ascending: false },
+        });
+        const settings = (scoped.data as { settings?: Record<string, unknown> } | null)?.settings;
+        const payoutSettings = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
+        if (payoutSettings) {
+          serviceFeeConfig = {
+            type: (payoutSettings.platform_service_fee_type as string) || "fixed",
+            percentage: (payoutSettings.platform_service_fee_percentage as number) ?? 0,
+            fixed: (payoutSettings.platform_service_fee_fixed as number) ?? 0,
+            show: (payoutSettings.show_service_fee_to_customer as boolean) !== false,
+          };
+        }
+      }
+    } catch {
+      // Non-critical — checkout will still work; server calculates the authoritative total
+    }
+
     return successResponse({
       hold_id: hold.id,
       provider_id: hold.provider_id,
@@ -182,13 +244,14 @@ export async function GET(
       tips_enabled,
       tip_presets,
       cancellation_policy,
-      /** Mirrors `providers.requires_deposit` — UI should only offer deposit vs full when true. */
       deposit_required: requiresDeposit,
       deposit_percentage: depositPercentage,
-      /** Same flags as server payment routes (`isPaystackEnabledForTenant`, etc.). */
       payment_paystack: paymentFlags.payment_paystack,
       payment_wallet: paymentFlags.payment_wallet,
       gift_cards: paymentFlags.gift_cards,
+      tax_rate_percent: providerTaxRate,
+      tax_inclusive: taxInclusive,
+      service_fee_config: serviceFeeConfig,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch booking hold");

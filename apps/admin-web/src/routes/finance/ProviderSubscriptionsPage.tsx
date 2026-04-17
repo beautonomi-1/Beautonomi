@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { adminToast } from "@/lib/adminToast";
 import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
@@ -6,6 +7,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -32,6 +34,7 @@ type SubRow = Record<string, unknown> & {
 type PlanOption = { id: string; name: string };
 
 export function ProviderSubscriptionsPage() {
+  useAdminDocumentTitle("Provider Subscriptions");
   const qc = useQueryClient();
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
   const [sp, setSp] = useSearchParams();
@@ -71,8 +74,22 @@ export function ProviderSubscriptionsPage() {
     mutationFn: ({ subId, planId }: { subId: string; planId: string }) =>
       adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { plan_id: planId }),
     onSuccess: async () => {
+      adminToast.success("Plan updated");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
     },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update plan"),
+  });
+
+  const changeStatus = useMutation({
+    mutationFn: ({ subId, newStatus }: { subId: string; newStatus: string }) =>
+      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { status: newStatus }),
+    onSuccess: async () => {
+      adminToast.success("Subscription status updated");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(qk) });
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.navCounts() });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
   });
 
   /** Draft plan_id per subscription row until user clicks Apply */
@@ -116,6 +133,8 @@ export function ProviderSubscriptionsPage() {
           >
             <option value="all">all</option>
             <option value="active">active</option>
+            <option value="trial">trial</option>
+            <option value="expired">expired</option>
             <option value="cancelled">cancelled</option>
             <option value="past_due">past_due</option>
           </select>
@@ -132,6 +151,7 @@ export function ProviderSubscriptionsPage() {
               <AdminTh>Change plan</AdminTh>
               <AdminTh>Status</AdminTh>
               <AdminTh>Period</AdminTh>
+              <AdminTh>Manage</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
@@ -200,8 +220,51 @@ export function ProviderSubscriptionsPage() {
                       {plansQ.isLoading ? <span className="text-xs text-gray-500">Loading plans…</span> : null}
                     </div>
                   </AdminTd>
-                  <AdminTd>{String(r.status ?? "")}</AdminTd>
+                  <AdminTd>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      r.status === "active" ? "bg-green-100 text-green-800" :
+                      r.status === "past_due" ? "bg-amber-100 text-amber-800" :
+                      r.status === "expired" ? "bg-red-100 text-red-800" :
+                      r.status === "cancelled" ? "bg-gray-100 text-gray-600" :
+                      r.status === "trial" ? "bg-blue-100 text-blue-800" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
+                      {String(r.status ?? "")}
+                    </span>
+                  </AdminTd>
                   <AdminTd>{String(r.billing_period ?? "")}</AdminTd>
+                  <AdminTd>
+                    <div className="flex flex-wrap gap-1">
+                      {(r.status === "expired" || r.status === "past_due" || r.status === "cancelled") && (
+                        <button
+                          type="button"
+                          className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                          disabled={changeStatus.isPending}
+                          onClick={() => {
+                            if (confirm(`Reactivate subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              changeStatus.mutate({ subId: sid, newStatus: "active" });
+                            }
+                          }}
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                      {r.status === "active" && (
+                        <button
+                          type="button"
+                          className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
+                          disabled={changeStatus.isPending}
+                          onClick={() => {
+                            if (confirm(`Cancel subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              changeStatus.mutate({ subId: sid, newStatus: "cancelled" });
+                            }
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </AdminTd>
                 </tr>
               );
             })}

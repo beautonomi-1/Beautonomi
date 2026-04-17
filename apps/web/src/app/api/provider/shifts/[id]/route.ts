@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { isSyntheticProviderShiftId } from "@/lib/provider/staff-shift-ids";
 import { z } from "zod";
 
 const updateShiftSchema = z.object({
@@ -26,6 +27,14 @@ export async function GET(
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+
+    if (isSyntheticProviderShiftId(id)) {
+      return errorResponse(
+        "Synthetic schedule slots are not stored as shift rows. Use GET /api/provider/shifts?week_start=… for merged data, or POST /api/provider/shifts to create an override.",
+        "SYNTHETIC_SHIFT",
+        400,
+      );
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);
@@ -86,6 +95,15 @@ export async function PATCH(
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+
+    if (isSyntheticProviderShiftId(id)) {
+      return errorResponse(
+        "This slot comes from the weekly schedule or location hours, not a saved shift. Use POST /api/provider/shifts to create a date-specific override.",
+        "SYNTHETIC_SHIFT",
+        400,
+      );
+    }
+
     const body = await request.json();
 
     // Validate input
@@ -178,6 +196,14 @@ export async function DELETE(
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
+
+    if (isSyntheticProviderShiftId(id)) {
+      return errorResponse(
+        "Cannot delete a weekly-template or location-hours slot. Adjust staff_schedules or location hours, or create a blocking shift override.",
+        "SYNTHETIC_SHIFT",
+        400,
+      );
+    }
 
     // Get provider ID
     const providerId = await getProviderIdForUser(user.id, supabase);

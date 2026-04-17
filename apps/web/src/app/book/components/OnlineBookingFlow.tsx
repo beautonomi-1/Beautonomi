@@ -8,6 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { toast } from "sonner";
 import Link from "next/link";
 import Image from "next/image";
@@ -116,7 +117,10 @@ export default function OnlineBookingFlow({
   const [slots, setSlots] = useState<{ time: string; start: string; end: string }[]>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [creatingHold, setCreatingHold] = useState(false);
-  const [holdId, setHoldId] = useState<string | null>(null);
+  const [holdId, setHoldId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return sessionStorage.getItem("beautonomi_hold_id") || null; } catch { return null; }
+  });
   const [gateOpen, setGateOpen] = useState(false);
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -364,11 +368,14 @@ export default function OnlineBookingFlow({
           location_type: locationType,
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
           address: addressPayload,
+          previous_hold_id: holdId || null,
+          guest_fingerprint_hash: getGuestFingerprintHash(),
         }
       );
       const id = (res.data as any)?.hold_id ?? res.data?.hold_id;
       if (id) {
         setHoldId(id);
+        try { sessionStorage.setItem("beautonomi_hold_id", id); } catch {}
         setGateOpen(true);
       } else {
         toast.error("Failed to secure slot");

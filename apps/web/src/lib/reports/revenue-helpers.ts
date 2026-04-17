@@ -4,9 +4,9 @@ import { LEDGER_FULL_PROVIDER_NET_TYPES } from "./constants";
 
 export type ProviderRevenueOptions = {
   /**
-   * Defaults to LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip) so
-   * commission and per-booking allocation include tips/travel. Use DASHBOARD_REVENUE_TRANSACTION_TYPES
-   * for the same net as the main provider dashboard revenue cards.
+   * Defaults to LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip).
+   * Staff payroll commission uses STAFF_COMMISSION_REVENUE_TYPES (provider_earnings only).
+   * Use DASHBOARD_REVENUE_TRANSACTION_TYPES for the main provider dashboard revenue cards.
    */
   transactionTypes?: readonly string[];
 };
@@ -21,9 +21,8 @@ export type ProviderRevenueOptions = {
  * - Online bookings (always have finance_transactions)
  * - Walk-in bookings paid via Paystack (platform holds the money, creates finance_transactions)
  *
- * Default transaction types are LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip)
- * so per-booking splits match commission logic. Pass DASHBOARD_REVENUE_TRANSACTION_TYPES to match
- * the main provider app dashboard revenue cards (provider_earnings only).
+ * Default transaction types are LEDGER_FULL_PROVIDER_NET_TYPES (provider_earnings + travel_fee + tip).
+ * Pass DASHBOARD_REVENUE_TRANSACTION_TYPES or STAFF_COMMISSION_REVENUE_TYPES for provider_earnings only.
  */
 export async function getProviderRevenue(
   supabaseAdmin: SupabaseClient,

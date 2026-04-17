@@ -47,6 +47,12 @@ export async function signInWithPassword({ email, password }: SignInCredentials)
 }
 
 export async function signOut() {
+  // Clear server-side session cookies first (sign-in uses Next.js server cookies).
+  try {
+    await fetch("/api/auth/sign-out", { method: "POST", credentials: "include" });
+  } catch {
+    // ignore network errors — local Supabase sign-out is the fallback
+  }
   const supabase = getSupabaseBrowserClient();
   if (supabase) {
     await supabase.auth.signOut();

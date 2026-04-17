@@ -157,7 +157,7 @@ The port-safe script checks for port availability using `net.createServer()` and
 |-----|--------|--------|
 | test | `beautonomi/` (legacy) | Wrong directory |
 | build | `beautonomi/` (legacy) | Wrong directory |
-| security | `npm audit` (legacy) | Uses npm, not pnpm |
+| security | `pnpm run audit:deps` | Uses npm bulk advisory API (`tooling/audit/npm-audit-lockfile.mjs`); `pnpm audit` returns 410 until pnpm supports it — [pnpm#11265](https://github.com/pnpm/pnpm/issues/11265) |
 | errors | Grep for console.error | |
 
 **This CI does NOT cover the monorepo.** It only targets the legacy `beautonomi/` directory.

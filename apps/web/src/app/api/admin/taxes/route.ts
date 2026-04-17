@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
     const tenantId = await resolveAdminApiTenantId(request);
     const { searchParams } = new URL(request.url);
     const providerId = searchParams.get("provider_id");
+    const startDate = searchParams.get("start_date");
+    const endDate = searchParams.get("end_date");
 
     // Get tax rates from reference_data
     const { data: taxRates, error: taxError } = await supabase
@@ -52,23 +54,51 @@ export async function GET(request: NextRequest) {
     }
 
     // Get platform-wide tax statistics
-    const { data: bookings } = await supabase
+    let bookingsQuery = supabase
       .from("bookings")
-      .select("tax_amount, total_amount, status")
+      .select("tax_amount, total_amount, status, scheduled_at")
       .eq("tenant_id", tenantId)
-      .eq("status", "completed");
+      .in("status", ["confirmed", "completed"]);
+    if (startDate) bookingsQuery = bookingsQuery.gte("scheduled_at", startDate);
+    if (endDate) bookingsQuery = bookingsQuery.lte("scheduled_at", `${endDate}T23:59:59.999Z`);
+    const { data: bookings } = await bookingsQuery;
 
     const totalTaxCollected = bookings?.reduce((sum, b) => sum + (Number(b.tax_amount) || 0), 0) || 0;
-    const totalRevenue = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
+    const taxableGmv = bookings?.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0) || 0;
+
+    // Fetch platform default tax rate from platform_settings for display
+    let defaultTaxRate: number | null = null;
+    try {
+      const { getSupabaseAdmin } = await import("@/lib/supabase/admin");
+      const adminClient = getSupabaseAdmin();
+      const { data: platformRow } = await adminClient
+        .from("platform_settings")
+        .select("settings")
+        .eq("is_active", true)
+        .eq("tenant_id", tenantId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const taxSettings = (platformRow?.settings as Record<string, any> | undefined)?.taxes;
+      defaultTaxRate = taxSettings?.default_tax_rate != null ? Number(taxSettings.default_tax_rate) : null;
+    } catch {
+      // Non-critical; proceed without default rate
+    }
 
     return successResponse({
       tax_rates: taxRates || [],
       provider_tax_rate: providerTaxRate,
+      default_tax_rate: defaultTaxRate,
       statistics: {
         total_tax_collected: totalTaxCollected,
-        total_revenue: totalRevenue,
-        tax_percentage: totalRevenue > 0 ? (totalTaxCollected / totalRevenue) * 100 : 0,
+        // Kept for backward compatibility with existing UIs; this is GMV basis, not platform revenue.
+        total_revenue: taxableGmv,
+        taxable_gmv: taxableGmv,
+        platform_revenue: 0,
+        tax_percentage: taxableGmv > 0 ? (totalTaxCollected / taxableGmv) * 100 : 0,
         total_bookings: bookings?.length || 0,
+        note:
+          "Taxes are pass-through and not recognized platform revenue. Statistics are booking-tax based for the selected reporting window.",
       },
     });
   } catch (error) {
@@ -141,5 +171,87 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     return handleApiError(error, "Failed to update tax configuration");
+  }
+}
+
+/**
+ * PATCH /api/admin/taxes
+ *
+ * Update an existing tax rate by id.
+ */
+export async function PATCH(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) return unauthorizedResponse("Authentication required");
+
+    const supabase = await getSupabaseServer(request);
+    const body = await request.json();
+    const { id, code, name, description, display_order, rate, included } = body;
+    if (!id) return handleApiError(new Error("id required"), "id required", "VALIDATION_ERROR", 400);
+
+    const { error } = await supabase
+      .from("reference_data")
+      .update({
+        code,
+        name,
+        description,
+        display_order,
+        metadata: { rate, included: included || false },
+      })
+      .eq("id", id)
+      .eq("type", "tax_rate");
+
+    if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.taxes.update_rate",
+      entity_type: "reference_data",
+      entity_id: id,
+      metadata: body,
+    });
+
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to update tax rate");
+  }
+}
+
+/**
+ * DELETE /api/admin/taxes
+ *
+ * Delete a tax rate by id (body: { id }).
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
+    if (!user) return unauthorizedResponse("Authentication required");
+
+    const supabase = await getSupabaseServer(request);
+    const body = await request.json();
+    const { id } = body;
+    if (!id) return handleApiError(new Error("id required"), "id required", "VALIDATION_ERROR", 400);
+
+    const { error } = await supabase
+      .from("reference_data")
+      .delete()
+      .eq("id", id)
+      .eq("type", "tax_rate");
+
+    if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.taxes.delete_rate",
+      entity_type: "reference_data",
+      entity_id: id,
+      metadata: {},
+    });
+
+    return successResponse({ success: true });
+  } catch (error) {
+    return handleApiError(error, "Failed to delete tax rate");
   }
 }

@@ -121,6 +121,7 @@ export default function MarketMap({
   const mapRef = useRef<Map | null>(null);
   const mapboxLibRef = useRef<typeof import("mapbox-gl").default | null>(null);
   const drawRef = useRef<InstanceType<typeof MapboxDrawType> | null>(null);
+  const drawListenerRef = useRef<((e: { features?: GeoJSON.Feature[] }) => void) | null>(null);
   const fragmentMarkerRef = useRef<Marker | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -261,6 +262,14 @@ export default function MarketMap({
       const MapboxDraw = drawModule.default;
       if (cancelled || !mapRef.current) return;
 
+      if (!map.isStyleLoaded()) {
+        await new Promise<void>((resolve) => {
+          const check = () => { if (map.isStyleLoaded()) resolve(); else map.once("styledata", check); };
+          check();
+        });
+      }
+      if (cancelled || !mapRef.current) return;
+
       const draw = new MapboxDraw({
         displayControlsDefault: false,
         defaultMode: "simple_select",
@@ -294,6 +303,7 @@ export default function MarketMap({
       if (!e?.features?.length) return;
       onCreate({ features: e.features });
     };
+    drawListenerRef.current = listener;
     map.on("draw.create", listener);
     })();
 
@@ -301,10 +311,13 @@ export default function MarketMap({
       cancelled = true;
       const draw = drawRef.current;
       if (draw && mapRef.current) {
-        mapRef.current.off("draw.create", () => {});
+        if (drawListenerRef.current) {
+          mapRef.current.off("draw.create", drawListenerRef.current);
+        }
         try { mapRef.current.removeControl(draw as unknown as IControl); } catch { /* ignore */ }
       }
       drawRef.current = null;
+      drawListenerRef.current = null;
     };
   }, [mapReady]);
 

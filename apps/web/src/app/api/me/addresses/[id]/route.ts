@@ -140,12 +140,16 @@ export async function PUT(
         .neq("id", id);
     }
 
+    const willBeDefault =
+      validationResult.data.is_default === true || Boolean((existing as any).is_default);
+
     // Prepare access_codes as JSONB if provided
     const updateData: any = {
       ...validationResult.data,
       latitude,
       longitude,
       updated_at: new Date().toISOString(),
+      ...(willBeDefault ? { customer_managed_home: true } : {}),
     };
     
     if (validationResult.data.access_codes !== undefined) {

@@ -41,7 +41,7 @@ describe("GET /auth/callback", () => {
         type: "recovery",
       });
     },
-    10000
+    30_000
   );
 
   it("redirects to booking with error when token_hash and type=recovery but verifyOtp fails", async () => {

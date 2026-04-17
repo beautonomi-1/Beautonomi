@@ -1,11 +1,15 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
+import {
+  effectiveStockQuantity,
+  retailStockValue,
+} from "@/lib/provider-portal/product-inventory-metrics";
 
 /**
  * GET /api/provider/products/metrics
- * 
- * Get product inventory metrics
+ *
+ * Get product inventory metrics (retail value = Σ qty × retail per SKU, including variants).
  */
 export async function GET(request: NextRequest) {
   try {
@@ -18,10 +22,9 @@ export async function GET(request: NextRequest) {
       return notFoundResponse("Provider not found");
     }
 
-    // Get all products for metrics (not paginated); include variants for aggregate stock when has_variants
     const { data: products, error } = await supabase
       .from("products")
-      .select("quantity, retail_price, low_stock_level, has_variants, product_variants(quantity)")
+      .select("quantity, retail_price, low_stock_level, has_variants, track_stock_quantity, product_variants(quantity, retail_price)")
       .eq("provider_id", providerId)
       .eq("is_active", true);
 
@@ -30,24 +33,17 @@ export async function GET(request: NextRequest) {
     }
 
     const productsArray = products || [];
-    const stockQty = (p: (typeof productsArray)[number]) => {
-      if (p.has_variants && Array.isArray(p.product_variants) && p.product_variants.length > 0) {
-        return p.product_variants.reduce((s, v) => s + (Number((v as { quantity?: number }).quantity) || 0), 0);
-      }
-      return Number(p.quantity) || 0;
-    };
     const totalProducts = productsArray.length;
-    const lowStockProducts = productsArray.filter(
-      (p) => {
-        const q = stockQty(p);
-        return q > 0 && q <= (p.low_stock_level || 5);
-      }
-    ).length;
-    const outOfStockProducts = productsArray.filter((p) => stockQty(p) === 0).length;
-    const totalInventoryValue = productsArray.reduce(
-      (sum, p) => sum + (Number(p.retail_price || 0) * stockQty(p)),
-      0
-    );
+    const lowStockProducts = productsArray.filter((p) => {
+      if (p.track_stock_quantity === false) return false;
+      const q = effectiveStockQuantity(p);
+      return q > 0 && q <= (Number(p.low_stock_level) || 5);
+    }).length;
+    const outOfStockProducts = productsArray.filter((p) => {
+      if (p.track_stock_quantity === false) return false;
+      return effectiveStockQuantity(p) === 0;
+    }).length;
+    const totalInventoryValue = productsArray.reduce((sum, p) => sum + retailStockValue(p), 0);
 
     return successResponse({
       totalProducts,

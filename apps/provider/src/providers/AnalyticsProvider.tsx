@@ -125,11 +125,19 @@ export function AnalyticsProvider({ children }: { children: React.ReactNode }) {
   // Deep links: Amplitude Guides/Surveys + marketing attribution (UTM / click ids).
   useEffect(() => {
     let cancelled = false;
-    Linking.getInitialURL().then(async (url) => {
-      if (cancelled || !url) return;
-      const handled = await handleEngagementURL(url);
-      if (handled) return;
-    });
+    Linking.getInitialURL()
+      .then(async (url) => {
+        try {
+          if (cancelled || !url) return;
+          const handled = await handleEngagementURL(url);
+          if (handled) return;
+        } catch {
+          /* ignore */
+        }
+      })
+      .catch(() => {
+        /* ignore */
+      });
     const subscription = Linking.addEventListener("url", async ({ url }) => {
       await captureMarketingAttributionFromUrl(url);
       const handled = await handleEngagementURL(url);

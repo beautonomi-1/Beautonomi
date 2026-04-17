@@ -19,19 +19,29 @@ export async function getAvailablePayoutBalance(
   supabase: SupabaseClient,
   providerId: string,
   options?: GetAvailablePayoutBalanceOptions
-): Promise<{ availableBalance: number; pendingPayoutsSum: number }> {
+): Promise<{
+  availableBalance: number;
+  pendingPayoutsSum: number;
+  rawBalance: number;
+  hasNegativeBalance: boolean;
+}> {
   const allTime = "1970-01-01T00:00:00.000Z";
   const now = new Date();
   const nowIso = now.toISOString();
   const holdDays = options?.holdDays ?? 0;
   const availableFrom = holdDays > 0 ? new Date(now.getTime() - holdDays * 24 * 60 * 60 * 1000).toISOString() : allTime;
 
-  // cancellation_fee: provider-retained income when a customer cancels late; included in balance.
+  // Include all platform-held provider revenue types:
+  // - provider_earnings: core service income
+  // - tip, travel_fee, service_fee: pass-through amounts held by platform
+  // - cancellation_fee: provider-retained income when a customer cancels late
+  // - payout: completed payouts (subtracted)
+  // - refund: refund clawbacks (negative amounts)
   const { data: ledgerRows, error: ledgerError } = await supabase
     .from("finance_transactions")
     .select("id, transaction_type, amount, net, created_at, booking_id")
     .eq("provider_id", providerId)
-    .in("transaction_type", ["provider_earnings", "payout", "refund", "cancellation_fee"])
+    .in("transaction_type", ["provider_earnings", "payout", "refund", "cancellation_fee", "tip", "travel_fee", "service_fee"])
     .gte("created_at", allTime)
     .lte("created_at", nowIso)
     .order("created_at", { ascending: false });
@@ -98,6 +108,12 @@ export async function getAvailablePayoutBalance(
       onlineEarnings += Number(row.net ?? row.amount ?? 0);
       continue;
     }
+    // Tips, travel fees, and service fees are platform-held pass-throughs owed to the provider.
+    if (row.transaction_type === "tip" || row.transaction_type === "travel_fee" || row.transaction_type === "service_fee") {
+      if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
+      onlineEarnings += Number(row.net ?? row.amount ?? 0);
+      continue;
+    }
     if (row.transaction_type !== "provider_earnings") continue;
     if (holdDays > 0 && row.created_at && row.created_at > availableFrom) continue;
     if (excludeWalkInNotOnPlatform(row.booking_id)) continue;
@@ -114,7 +130,9 @@ export async function getAvailablePayoutBalance(
   const rawAvailable = onlineEarnings - completedPayouts - pendingPayoutsSum;
   /** 2dp so UI and POST /api/provider/payouts validation never disagree on fractional cents */
   const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-  const availableBalance = Math.max(0, round2(rawAvailable));
+  const rawBalance = round2(rawAvailable);
+  const availableBalance = Math.max(0, rawBalance);
+  const hasNegativeBalance = rawBalance < -0.01;
 
-  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum) };
+  return { availableBalance, pendingPayoutsSum: round2(pendingPayoutsSum), rawBalance, hasNegativeBalance };
 }

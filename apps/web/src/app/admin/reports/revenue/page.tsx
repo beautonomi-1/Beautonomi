@@ -9,6 +9,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   LineChart,
   Line,
@@ -47,6 +48,17 @@ interface RevenueReportData {
     salesByDay: Array<{ date: string; sales: number; count: number }>;
     redemptionsByDay: Array<{ date: string; redemptions: number; count: number }>;
   };
+  platformRevenue?: {
+    booking_commission_net: number;
+    subscription_net: number;
+    ads_net: number;
+    total_platform_revenue_net: number;
+    gateway_fees_total: number;
+    provider_earnings_net: number;
+    refunds_gross: number;
+    tips_gross: number;
+    taxes_gross: number;
+  };
 }
 
 export default function RevenueReportPage() {
@@ -55,6 +67,7 @@ export default function RevenueReportPage() {
   const [data, setData] = useState<RevenueReportData | null>(null);
   const [period, setPeriod] = useState("30d");
   const [startDate, setStartDate] = useState("");
+  const { format: fmtMoney } = useReportCurrency();
   const [endDate, setEndDate] = useState("");
 
   useEffect(() => {
@@ -218,7 +231,7 @@ export default function RevenueReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.totalRevenue.toLocaleString()}
+                {fmtMoney(data.totalRevenue)}
               </div>
             </CardContent>
           </Card>
@@ -240,11 +253,33 @@ export default function RevenueReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {(data.totalRevenue / Math.max(1, data.revenueByDay.reduce((sum, day) => sum + day.bookings, 0))).toFixed(2)}
+                {fmtMoney(data.totalRevenue / Math.max(1, data.revenueByDay.reduce((sum, day) => sum + day.bookings, 0)))}
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Platform Revenue Breakdown */}
+        {data.platformRevenue && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+            {[
+              { label: "Booking Commission (Net)", value: data.platformRevenue.booking_commission_net },
+              { label: "Subscriptions (Net)", value: data.platformRevenue.subscription_net },
+              { label: "Ads Revenue (Net)", value: data.platformRevenue.ads_net },
+              { label: "Provider Earnings (Net)", value: data.platformRevenue.provider_earnings_net },
+              { label: "Total Platform Revenue", value: data.platformRevenue.total_platform_revenue_net },
+            ].map((item) => (
+              <Card key={item.label}>
+                <CardHeader className="py-3 pb-1">
+                  <CardTitle className="text-xs font-medium text-muted-foreground">{item.label}</CardTitle>
+                </CardHeader>
+                <CardContent className="py-2">
+                  <div className="text-xl font-bold">{fmtMoney(item.value)}</div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {/* Revenue Over Time */}
         <Card className="mb-6">
@@ -259,9 +294,9 @@ export default function RevenueReportPage() {
                   dataKey="date"
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
-                <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                <YAxis tickFormatter={(value) => fmtMoney(value)} />
                 <Tooltip
-                  formatter={(value: number) => `R ${value.toLocaleString()}`}
+                  formatter={(value: number) => fmtMoney(value)}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />
                 <Legend />
@@ -293,8 +328,8 @@ export default function RevenueReportPage() {
                     textAnchor="end"
                     height={100}
                   />
-                  <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
-                  <Tooltip formatter={(value: number) => `R ${value.toLocaleString()}`} />
+                  <YAxis tickFormatter={(value) => fmtMoney(value)} />
+                  <Tooltip formatter={(value: number) => fmtMoney(value)} />
                   <Legend />
                   <Bar dataKey="revenue" fill="#00C49F" name="Revenue" />
                 </BarChart>
@@ -314,8 +349,8 @@ export default function RevenueReportPage() {
                 <BarChart data={data.revenueByStatus}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="status" />
-                  <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
-                  <Tooltip formatter={(value: number) => `R ${value.toLocaleString()}`} />
+                  <YAxis tickFormatter={(value) => fmtMoney(value)} />
+                  <Tooltip formatter={(value: number) => fmtMoney(value)} />
                   <Legend />
                   <Bar dataKey="revenue" fill="#FFBB28" name="Revenue" />
                 </BarChart>
@@ -335,7 +370,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    R {data.giftCardMetrics.totalSales.toLocaleString()}
+                    {fmtMoney(data.giftCardMetrics.totalSales)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Cash received (liability)</p>
                 </CardContent>
@@ -347,7 +382,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    R {data.giftCardMetrics.totalRedemptions.toLocaleString()}
+                    {fmtMoney(data.giftCardMetrics.totalRedemptions)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Value redeemed</p>
                 </CardContent>
@@ -359,7 +394,7 @@ export default function RevenueReportPage() {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">
-                    R {data.giftCardMetrics.outstandingLiability.toLocaleString()}
+                    {fmtMoney(data.giftCardMetrics.outstandingLiability)}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">Unredeemed balance</p>
                 </CardContent>
@@ -401,9 +436,9 @@ export default function RevenueReportPage() {
                       dataKey="date"
                       tickFormatter={(value) => format(new Date(value), "MMM d")}
                     />
-                    <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                    <YAxis tickFormatter={(value) => fmtMoney(value)} />
                     <Tooltip
-                      formatter={(value: number) => `R ${value.toLocaleString()}`}
+                      formatter={(value: number) => fmtMoney(value)}
                       labelFormatter={(label) => format(new Date(label), "PP")}
                     />
                     <Legend />

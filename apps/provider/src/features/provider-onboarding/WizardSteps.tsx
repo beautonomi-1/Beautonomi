@@ -168,7 +168,8 @@ function Step2Identity() {
         type: "phone_change",
       });
       if (error) throw error;
-      await api.patch("/api/me/profile", { phone, phone_verified: true });
+      const patchRes = await api.patch("/api/me/profile", { phone, phone_verified: true });
+      if (patchRes.error) throw new Error("Phone verified but could not save to profile. Please try again.");
       updateFormData({
         phone_verified: true,
         owner_phone: phone,

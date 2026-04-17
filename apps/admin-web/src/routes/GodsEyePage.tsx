@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
-import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { AdminMetricCard } from "@/components/ui/AdminMetricCard";
@@ -27,6 +26,7 @@ import { AdminQueryBlock } from "@/components/admin/AdminQueryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { formatAdminCurrency, formatAdminNumber } from "@/lib/adminFormatCurrency";
 import { cn } from "@/lib/cn";
+import { useSuperadminPage } from "@/hooks/useSuperadminPage";
 import { GodsEyeLiveMap } from "@/routes/GodsEyeLiveMap";
 
 interface ActivityRow {
@@ -170,7 +170,7 @@ const quickLinks: { to: string; label: string; icon: LucideIcon; description: st
 ];
 
 export function GodsEyePage() {
-  const { allowed, denied } = useSuperadminPage("Gods Eye is superadmin only.");
+  const { allowed, denied } = useSuperadminPage("Superadmin access is required.");
 
   const q = useQuery({
     queryKey: adminQueryKeys.godsEye(),

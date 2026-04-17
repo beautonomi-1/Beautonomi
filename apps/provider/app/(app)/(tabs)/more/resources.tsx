@@ -111,8 +111,11 @@ export default function ResourcesScreen({ embedded }: { embedded?: boolean } = {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshGroups()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshGroups()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshGroups]);
 
   const filteredResources = useMemo(() => {

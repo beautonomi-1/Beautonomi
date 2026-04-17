@@ -20,7 +20,7 @@ interface ReviewItemProps {
     rating: number;
     date: string;
     provider_response?: string;
-    provider_response_date?: string;
+    provider_response_at?: string;
   };
   onDelete?: () => void;
   onReport?: () => void;
@@ -197,8 +197,8 @@ export default function ReviewItem({
           <div className="bg-gray-50 rounded-lg p-4 mt-4 border-l-4 border-[#FF0077]">
             <div className="flex items-center gap-2 mb-2">
               <span className="font-semibold text-sm text-gray-900">Provider Response</span>
-              {review.provider_response_date && (
-                <span className="text-xs text-gray-500">{review.provider_response_date}</span>
+              {review.provider_response_at && (
+                <span className="text-xs text-gray-500">{new Date(review.provider_response_at).toLocaleDateString()}</span>
               )}
             </div>
             <p className="text-sm text-gray-700">{review.provider_response}</p>

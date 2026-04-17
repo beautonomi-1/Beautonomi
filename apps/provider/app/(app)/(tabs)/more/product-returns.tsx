@@ -6,6 +6,9 @@ import {
   ScrollView,
   RefreshControl,
   Alert,
+  Modal,
+  Pressable,
+  TextInput,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -53,6 +56,8 @@ export function ProductReturnsContent() {
   const [viewReturn, setViewReturn] = useState<ReturnRequest | null>(null);
   const [detail, setDetail] = useState<ReturnRequest | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const [rejectNoteModal, setRejectNoteModal] = useState(false);
+  const [rejectNote, setRejectNote] = useState("");
 
   const url = `/api/provider/returns?limit=50${statusFilter ? `&status=${statusFilter}` : ""}`;
   const { data, loading, error, refresh } = useApi<ReturnsListResponse>(url);
@@ -60,8 +65,11 @@ export function ProductReturnsContent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const returnsList = data?.returns ?? [];
@@ -206,7 +214,7 @@ export function ProductReturnsContent() {
               ) : null}
               {detail.refund_amount != null && (
                 <Text style={twStyle("mb-3 text-sm font-medium text-gray-900")}>
-                  Refund amount: R {Number(detail.refund_amount).toFixed(2)}
+                  Refund amount: {formatCurrency(Number(detail.refund_amount))}
                 </Text>
               )}
               {getActions(detail.status).map(({ action, label }) => (
@@ -214,10 +222,8 @@ export function ProductReturnsContent() {
                   key={action}
                   onPress={() => {
                     if (action === "reject") {
-                      Alert.alert("Reject return", "Add a note (optional)?", [
-                        { text: "Reject without note", onPress: () => performAction("reject") },
-                        { text: "Cancel", style: "cancel" },
-                      ]);
+                      setRejectNote("");
+                      setRejectNoteModal(true);
                     } else if (action === "approve") {
                       performAction("approve", { return_method: "drop_off", resolution: "full_refund" });
                     } else {
@@ -240,6 +246,36 @@ export function ProductReturnsContent() {
           ) : null}
         </BottomSheet>
       )}
+
+      <Modal visible={rejectNoteModal} transparent animationType="fade" onRequestClose={() => setRejectNoteModal(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setRejectNoteModal(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Reject return</Text>
+            <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>Add a note for the customer (optional):</Text>
+            <TextInput
+              value={rejectNote}
+              onChangeText={setRejectNote}
+              placeholder="e.g. Item was used, outside return window"
+              multiline
+              style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 72, textAlignVertical: "top", marginBottom: 16 }}
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity onPress={() => setRejectNoteModal(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => {
+                  setRejectNoteModal(false);
+                  performAction("reject", rejectNote.trim() ? { note: rejectNote.trim() } : undefined);
+                }}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>Reject</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </>
   );
 }

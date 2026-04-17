@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CompliancePurgeType = "user" | "provider_org" | "tenant_reset";
+
 export type CompliancePurgeReportV2 = {
   schema_version: 2;
-  purge_type: "user" | "provider_org";
+  purge_type: CompliancePurgeType;
   started_at: string;
   completed_at: string;
   safeguards: {
@@ -18,6 +20,10 @@ export type CompliancePurgeReportV2 = {
     compliance_clear_user_references_rpc: boolean;
     message_attachment_storage_objects_removed: number;
     auth_users_deleted: string[];
+    /** For tenant_reset only — per-table rows removed (or counted, if dry_run). */
+    tenant_reset_counts?: Record<string, { rows?: number; via?: string; skipped?: string }>;
+    tenant_reset_dry_run?: boolean;
+    tenant_reset_allowed_default_tenant?: boolean;
   };
   snapshot?: unknown;
   per_user_snapshots?: unknown[];
@@ -28,7 +34,7 @@ export async function insertCompliancePurgeAuditLog(
   row: {
     actor_user_id: string;
     tenant_id: string | null;
-    purge_type: "user" | "provider_org";
+    purge_type: CompliancePurgeType;
     target_user_id: string | null;
     provider_id: string | null;
     reason: string;

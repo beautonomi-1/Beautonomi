@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { mapboxStyleUrlToStaticStylePath } from "@/lib/mapbox/attach-map-resize";
 
 interface ServiceZone {
   id?: string;
@@ -23,8 +24,6 @@ interface ZoneMapViewerProps {
   onZoneClick?: (zone: ServiceZone) => void;
 }
 
-const DEFAULT_STYLE = "mapbox/streets-v12";
-
 /**
  * Zone map viewer using Mapbox Static Images API (aligned with platform Mapbox config).
  * Falls back to list view when Mapbox is not configured.
@@ -37,6 +36,7 @@ export default function ZoneMapViewer({
 }: ZoneMapViewerProps) {
   const [staticImageUrl, setStaticImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [imageFailed, setImageFailed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,9 +52,8 @@ export default function ZoneMapViewer({
           setStaticImageUrl(null);
           return;
         }
-        const stylePath = styleUrl
-          ? (styleUrl.match(/mapbox:\/\/styles\/(.+)/)?.[1] ?? DEFAULT_STYLE)
-          : DEFAULT_STYLE;
+        setImageFailed(false);
+        const stylePath = mapboxStyleUrlToStaticStylePath(styleUrl);
         const pin = `pin-l+FF0077(${center.longitude},${center.latitude})`;
         const centerStr = `${center.longitude},${center.latitude},12`;
         const url = `https://api.mapbox.com/styles/v1/${stylePath}/static/${pin}/${centerStr}/600x400@2x?access_token=${token}`;
@@ -77,7 +76,7 @@ export default function ZoneMapViewer({
     );
   }
 
-  if (!staticImageUrl) {
+  if (!staticImageUrl || imageFailed) {
     return (
       <div className="border rounded-lg p-4" style={{ height, overflowY: "auto" }}>
         <h3 className="font-semibold mb-4">Service Zones</h3>
@@ -123,6 +122,7 @@ export default function ZoneMapViewer({
         className="w-full h-full object-cover"
         width={600}
         height={400}
+        onError={() => setImageFailed(true)}
       />
     </div>
   );

@@ -9,6 +9,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { getTenantLocaleTagFromRegionConfig } from "@/lib/locale/tenant-locale";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 /**
  * POST /api/admin/bookings/[id]/refund
@@ -40,7 +41,7 @@ export async function POST(
       supabase,
       id,
       tenantId,
-      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id"
+      "id, total_amount, total_paid, total_refunded, customer_id, booking_number, currency, payment_status, tenant_id, provider_id, wallet_amount, gift_card_amount"
     );
     if ("error" in loaded) return loaded.error;
 
@@ -59,13 +60,18 @@ export async function POST(
       booking_number: string;
       currency?: string;
       provider_id?: string | null;
+      wallet_amount?: number;
+      gift_card_amount?: number;
     };
 
     if (b.payment_status !== "paid" && b.payment_status !== "partially_paid") {
       return errorResponse("Can only refund paid or partially paid bookings", "INVALID_STATUS", 400);
     }
 
-    const availableForRefund = (b.total_paid ?? 0) - (b.total_refunded ?? 0);
+    // total_paid from booking_payments trigger only counts gateway payments.
+    // Include wallet and gift card amounts for the full collected total.
+    const totalCollected = (b.total_paid ?? 0) + (b.wallet_amount ?? 0) + (b.gift_card_amount ?? 0);
+    const availableForRefund = totalCollected - (b.total_refunded ?? 0);
     if (amount > availableForRefund) {
       const displayCurrency = b.currency || lastResortCurrency;
       const fmtAvail = new Intl.NumberFormat(adminRefundLocale, {
@@ -83,6 +89,8 @@ export async function POST(
       tenant_id: (loaded.booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
       provider_id: b.provider_id ?? null,
     });
+    const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     // 1. Credit customer wallet (refunds always go to wallet)
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
@@ -119,18 +127,10 @@ export async function POST(
       return handleApiError(refundError, "Failed to create refund");
     }
 
-    await supabase.from("finance_transactions").insert({
-      tenant_id: financeTenantId,
-      booking_id: id,
-      provider_id: b.provider_id ?? null,
-      transaction_type: "refund",
-      amount: -amount,
-      fees: 0,
-      commission: 0,
-      net: -amount,
-      description: `Refund for booking ${b.booking_number}: ${reason || "Admin refund"}`,
-      created_at: new Date().toISOString(),
-    });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. A manual app-side insert here was the B1 double-write
+    // bug.
 
     await writeAuditLog({
       actor_user_id: user.id,
@@ -149,6 +149,13 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq("id", id);
+
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await matchWaitlistOnCancellation(supabase, id);
+      } catch (waitlistErr) {
+        console.error("[admin refund cancel] waitlist matching failed:", waitlistErr);
+      }
     }
 
     try {

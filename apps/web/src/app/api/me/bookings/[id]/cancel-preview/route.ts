@@ -24,7 +24,7 @@ export async function GET(
     const { data: booking, error } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, total_paid, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, customer_id, total_amount, total_paid, currency, wallet_balance_used, gift_card_amount"
       )
       .eq("id", bookingId)
       .single();
@@ -71,9 +71,16 @@ export async function GET(
 
     const bookingTotal = Number(booking.total_amount ?? 0);
     const totalPaid = roundCurrency2(Math.max(0, Number(booking.total_paid ?? 0)));
+    const walletCollected = roundCurrency2(
+      Math.max(0, Number((booking as any).wallet_balance_used ?? 0))
+    );
+    const giftCardCollected = roundCurrency2(
+      Math.max(0, Number((booking as any).gift_card_amount ?? 0))
+    );
+    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
     const isLate = check.isLateCancellation === true;
     const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
 
     return successResponse({

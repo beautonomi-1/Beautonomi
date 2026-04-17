@@ -61,6 +61,17 @@ import {
   MapPinned,
   Boxes,
   ShieldAlert,
+  Megaphone,
+  MapPin,
+  ClipboardList,
+  UserPlus,
+  Kanban,
+  Radio,
+  CheckCircle2,
+  Copy,
+  Settings2,
+  Plug,
+  Sparkles,
 } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -93,6 +104,7 @@ import {
   ADMIN_SECTION_INTEGRATIONS_DEV,
   ADMIN_SECTION_OPERATIONS,
   ADMIN_SECTION_PLATFORM_CONFIG,
+  ADMIN_SECTION_PROVIDER_OPS,
 } from "@/lib/admin-sections";
 import type { AdminSection } from "@/lib/admin-sections";
 import type { UserRole } from "@/types/beautonomi";
@@ -120,6 +132,7 @@ const navGroups: NavGroup[] = [
       { title: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard },
       { title: "Gods Eye", href: "/admin/gods-eye", icon: Eye },
       { title: "Analytics", href: "/admin/analytics", icon: BarChart3 },
+      { title: "Geo & Devices", href: "/admin/analytics/geo", icon: MapPin },
       { title: "Reports", href: "/admin/reports", icon: FileText },
     ],
   },
@@ -140,6 +153,20 @@ const navGroups: NavGroup[] = [
       { title: "Disputes", href: "/admin/disputes", icon: AlertCircle },
       { title: "User Reports", href: "/admin/user-reports", icon: Flag },
       { title: "Refunds", href: "/admin/refunds", icon: RotateCcw },
+    ],
+  },
+  {
+    label: "Provider Ops",
+    section: ADMIN_SECTION_PROVIDER_OPS,
+    items: [
+      { title: "Ops Dashboard", href: "/admin/provider-ops", icon: Radio },
+      { title: "Onboarding Tracker", href: "/admin/provider-ops/tracker", icon: ClipboardList },
+      { title: "Lead Inbox", href: "/admin/provider-ops/leads", icon: UserPlus },
+      { title: "Pipeline Board", href: "/admin/provider-ops/pipeline", icon: Kanban },
+      { title: "Activation Queue", href: "/admin/provider-ops/activation", icon: CheckCircle2 },
+      { title: "Duplicate Review", href: "/admin/provider-ops/duplicates", icon: Copy },
+      { title: "Reports", href: "/admin/provider-ops/reports", icon: BarChart3 },
+      { title: "Settings", href: "/admin/provider-ops/settings", icon: Settings2 },
     ],
   },
   {
@@ -192,6 +219,7 @@ const navGroups: NavGroup[] = [
     label: "Marketing & comms",
     section: ADMIN_SECTION_MARKETING_COMMS,
     items: [
+      { title: "Ads & Campaigns", href: "/admin/ads", icon: Megaphone },
       { title: "Promotions", href: "/admin/promotions", icon: Gift },
       { title: "Loyalty", href: "/admin/loyalty", icon: Award },
       { title: "Point rules", href: "/admin/gamification/point-rules", icon: Coins },
@@ -209,6 +237,30 @@ const navGroups: NavGroup[] = [
     items: [
       { title: "Webhooks", href: "/admin/webhooks", icon: Globe },
       { title: "API Keys", href: "/admin/api-keys", icon: Shield },
+      {
+        title: "Integrations hub",
+        href: "/admin/control-plane/integrations",
+        icon: Plug,
+        superadminOnly: true,
+      },
+      {
+        title: "Sumsub",
+        href: "/admin/control-plane/integrations/sumsub",
+        icon: ShieldCheck,
+        superadminOnly: true,
+      },
+      {
+        title: "Gemini",
+        href: "/admin/control-plane/integrations/gemini",
+        icon: Sparkles,
+        superadminOnly: true,
+      },
+      {
+        title: "Aura",
+        href: "/admin/control-plane/integrations/aura",
+        icon: Zap,
+        superadminOnly: true,
+      },
       { title: "Amplitude", href: "/admin/integrations/amplitude", icon: BarChart3 },
       { title: "Mapbox", href: "/admin/mapbox", icon: Map },
       { title: "ISO Codes", href: "/admin/iso-codes", icon: Globe },
@@ -249,8 +301,8 @@ const navGroups: NavGroup[] = [
 
 interface SearchResult {
   users: Array<{ id: string; email: string; phone: string | null; full_name: string | null; role: string }>;
-  bookings: Array<{ id: string; booking_number: string; customer_id: string; provider_id: string | null; status: string; created_at: string }>;
-  providers: Array<{ id: string; business_name: string; owner_name: string | null; owner_email: string | null; status: string }>;
+  bookings: Array<{ id: string; booking_number: string; customer_id: string; provider_id: string | null; status: string; created_at: string; customer_name?: string | null; customer_email?: string | null; provider_name?: string | null }>;
+  providers: Array<{ id: string; business_name: string; owner_name: string | null; owner_email: string | null; phone?: string | null; status: string }>;
 }
 
 /** Read the last-known role from local/session storage for use during auth hydration. */
@@ -304,6 +356,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [searchResults, setSearchResults] = useState<SearchResult | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [showResults, setShowResults] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const [navCounts, setNavCounts] = useState<Record<string, number>>({});
   const [effectiveSectionRoles, setEffectiveSectionRoles] = useState<Record<string, string[]> | null>(null);
@@ -337,6 +390,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
     const timeoutId = setTimeout(async () => {
       setIsSearching(true);
+      setSearchError(null);
       try {
         const response = await fetcher.get<{ data: SearchResult }>(
           `/api/admin/search?q=${encodeURIComponent(searchQuery.trim())}`
@@ -346,6 +400,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       } catch (error) {
         console.error("Search error:", error);
         setSearchResults(null);
+        setSearchError("Search failed. Please try again.");
       } finally {
         setIsSearching(false);
       }
@@ -374,7 +429,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       .then((res) => {
         if (!cancelled && res?.data) setNavCounts(res.data);
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load nav counts:", err);
+      });
     return () => {
       cancelled = true;
     };
@@ -433,7 +490,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
           setAdminScopeTenantId(rows[0].id);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.error("Failed to load tenants:", err);
+      });
     return () => {
       cancelled = true;
     };
@@ -536,6 +595,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-80 overflow-y-auto z-50">
                   {isSearching ? (
                     <div className="p-4 text-center text-gray-500">Searching...</div>
+                  ) : searchError ? (
+                    <div className="p-4 text-center text-red-500">{searchError}</div>
                   ) : totalResults === 0 ? (
                     <div className="p-4 text-center text-gray-500">No results found</div>
                   ) : searchResults ? (
@@ -548,7 +609,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.users.map((user) => (
                             <Link
                               key={user.id}
-                              href={`/admin/users?highlight=${user.id}`}
+                              href={`/admin/users/${user.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -559,9 +620,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
                                   {user.full_name || "No name"}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{user.role}</span>
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">
-                                  {user.email} {user.phone ? `• ${user.phone}` : ""}
+                                  {user.email}{user.phone ? ` · ${user.phone}` : ""}
                                 </div>
                               </div>
                             </Link>
@@ -576,7 +638,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.bookings.map((booking) => (
                             <Link
                               key={booking.id}
-                              href={`/admin/bookings?highlight=${booking.id}`}
+                              href={`/admin/bookings/${booking.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -586,10 +648,11 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <Calendar className="w-4 h-4 text-gray-400" />
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
-                                  {booking.booking_number}
+                                  #{booking.booking_number}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{booking.status}</span>
                                 </div>
-                                <div className="text-xs text-gray-500">
-                                  {new Date(booking.created_at).toLocaleDateString()}
+                                <div className="text-xs text-gray-500 truncate">
+                                  {booking.customer_name || booking.customer_email || "Customer"}{booking.provider_name ? ` → ${booking.provider_name}` : ""} · {new Date(booking.created_at).toLocaleDateString()}
                                 </div>
                               </div>
                             </Link>
@@ -604,7 +667,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                           {searchResults.providers.map((provider) => (
                             <Link
                               key={provider.id}
-                              href={`/admin/providers?highlight=${provider.id}`}
+                              href={`/admin/providers/${provider.id}`}
                               onClick={() => {
                                 setShowResults(false);
                                 setSearchQuery("");
@@ -615,9 +678,10 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                               <div className="flex-1 min-w-0">
                                 <div className="text-sm font-medium text-gray-900 truncate">
                                   {provider.business_name}
+                                  <span className="ml-2 text-[10px] text-gray-400 font-normal">{provider.status}</span>
                                 </div>
                                 <div className="text-xs text-gray-500 truncate">
-                                  {provider.owner_name || provider.owner_email || ""}
+                                  {provider.owner_email || provider.owner_name || ""}{provider.phone ? ` · ${provider.phone}` : ""}
                                 </div>
                               </div>
                             </Link>
@@ -681,6 +745,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                     <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg max-h-96 overflow-y-auto z-50">
                       {isSearching ? (
                         <div className="p-4 text-center text-gray-500">Searching...</div>
+                      ) : searchError ? (
+                        <div className="p-4 text-center text-red-500">{searchError}</div>
                       ) : totalResults === 0 ? (
                         <div className="p-4 text-center text-gray-500">No results found</div>
                       ) : (

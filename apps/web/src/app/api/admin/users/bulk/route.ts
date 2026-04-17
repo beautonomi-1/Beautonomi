@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";

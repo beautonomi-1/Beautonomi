@@ -640,7 +640,7 @@ export function ProductsContent() {
                             />
                           </View>
                           <View style={{ width: 80 }}>
-                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Supply R</Text>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Supply price</Text>
                             <TextInput
                               value={row.supply_price ? String(row.supply_price) : ""}
                               onChangeText={(v) => {
@@ -655,7 +655,7 @@ export function ProductsContent() {
                             />
                           </View>
                           <View style={{ width: 80 }}>
-                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Retail R *</Text>
+                            <Text style={{ fontSize: 12, color: Colors.gray[500] }}>Retail price *</Text>
                             <TextInput
                               value={row.retail_price ? String(row.retail_price) : ""}
                               onChangeText={(v) => {

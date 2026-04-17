@@ -15,7 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Search, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, MessageSquare, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -65,6 +75,40 @@ export default function SupportTicketsPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [assignFilter, setAssignFilter] = useState<string>("all");
   const [pageIndex, setPageIndex] = useState(0);
+
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [newSubject, setNewSubject] = useState("");
+  const [newDescription, setNewDescription] = useState("");
+  const [newPriority, setNewPriority] = useState("medium");
+  const [newCategory, setNewCategory] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateTicket = async () => {
+    if (!newSubject.trim() || !newDescription.trim()) {
+      toast.error("Subject and description are required");
+      return;
+    }
+    setCreating(true);
+    try {
+      await fetcher.post("/api/admin/support-tickets", {
+        subject: newSubject.trim(),
+        description: newDescription.trim(),
+        priority: newPriority,
+        category: newCategory || undefined,
+      });
+      toast.success("Ticket created");
+      setShowCreateDialog(false);
+      setNewSubject("");
+      setNewDescription("");
+      setNewPriority("medium");
+      setNewCategory("");
+      loadTickets();
+    } catch {
+      toast.error("Failed to create ticket");
+    } finally {
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(searchTerm), 350);
@@ -155,10 +199,15 @@ export default function SupportTicketsPage() {
   return (
     <RoleGuard allowedRoles={STAFF_ROLES} redirectTo="/">
       <div className="container mx-auto px-4 py-8">
-        <AdminPageHeader
-          title="Support Tickets"
-          description="Manage customer and provider support requests"
-        />
+        <div className="flex items-center justify-between mb-2">
+          <AdminPageHeader
+            title="Support Tickets"
+            description="Manage customer and provider support requests"
+          />
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="h-4 w-4 mr-2" /> Create Ticket
+          </Button>
+        </div>
 
         <AdminFilterBar className="mb-6">
           <div className="flex flex-col gap-4">
@@ -362,6 +411,61 @@ export default function SupportTicketsPage() {
             </div>
           </>
         )}
+        {/* Create Ticket Dialog */}
+        <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Support Ticket</DialogTitle>
+              <DialogDescription>Create a ticket on behalf of a customer or for internal tracking.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label>Subject</Label>
+                <Input value={newSubject} onChange={(e) => setNewSubject(e.target.value)} placeholder="Brief summary of the issue..." />
+              </div>
+              <div>
+                <Label>Description</Label>
+                <Textarea value={newDescription} onChange={(e) => setNewDescription(e.target.value)} placeholder="Detailed description..." rows={4} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Priority</Label>
+                  <Select value={newPriority} onValueChange={setNewPriority}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Category (optional)</Label>
+                  <Select value={newCategory} onValueChange={setNewCategory}>
+                    <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {Object.entries(SUPPORT_TICKET_CATEGORY_GROUPS).map(([group, cats]) => (
+                        <SelectGroup key={group}>
+                          <SelectLabel>{group}</SelectLabel>
+                          {(cats as unknown as string[]).map((c) => (
+                            <SelectItem key={c} value={c}>{labelForSupportTicketCategory(c)}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+              <Button onClick={handleCreateTicket} disabled={creating}>
+                {creating ? "Creating..." : "Create Ticket"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </RoleGuard>
   );

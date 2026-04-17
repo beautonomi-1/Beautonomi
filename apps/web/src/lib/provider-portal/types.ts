@@ -33,6 +33,8 @@ export interface Salon {
   /** Optional location hours payloads for calendar bootstrapping */
   operating_hours?: Record<string, WorkingHoursDay> | null;
   working_hours?: Record<string, WorkingHoursDay> | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /** Day key in working_hours: monday, tuesday, ... */
@@ -430,6 +432,8 @@ export interface Shift {
   notes?: string;
   is_recurring?: boolean;
   recurring_pattern?: { type?: "alternating" | "weekly" | string; [key: string]: unknown };
+  /** "shift" = date-specific staff_shifts row; "schedule" = derived from weekly staff_schedules */
+  source?: "shift" | "schedule";
 }
 
 export interface Campaign {
@@ -535,8 +539,10 @@ export type RecurrencePattern =
 
 export interface RecurrenceRule {
   pattern: RecurrencePattern;
+  frequency?: string;
   interval: number; // For custom patterns
-  days_of_week?: number[]; // 0-6, Sunday-Saturday
+  days?: number[]; // Normalized API field (0-6, Sunday-Saturday)
+  days_of_week?: number[]; // Legacy alias for days
   day_of_month?: number; // For monthly
   end_date?: string; // Optional end date
   occurrences?: number; // Optional number of occurrences
@@ -789,10 +795,14 @@ export interface AvailabilityBlockDisplay {
   end_time: string;
   team_member_id: string | null; // null = applies to all staff
   location_id: string | null; // null = all locations
-  block_type: "unavailable" | "break" | "maintenance";
+  block_type: "unavailable" | "break" | "maintenance" | "hold";
   reason?: string | null;
   /** Table `availability_blocks` vs synthesized staff time off / day off (matches public booking rules). */
-  _source: "availability_block" | "staff_unavailability";
+  _source: "availability_block" | "staff_unavailability" | "booking_hold";
+  /** Only set for `_source === "booking_hold"` — actual row id on booking_holds for refresh / cleanup. */
+  hold_id?: string | null;
+  /** Only set for booking holds — IANA timestamp when the hold expires (UTC ISO). */
+  hold_expires_at?: string | null;
 }
 
 export interface BlockedTimeType {

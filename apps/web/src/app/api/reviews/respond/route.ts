@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
       .from('reviews')
       .update({
         provider_response: response,
-        provider_response_date: new Date().toISOString(),
+        provider_response_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       })
       .eq('id', review_id)

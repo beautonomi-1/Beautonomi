@@ -30,7 +30,7 @@ export async function syncBookingAfterPaystackSuccess(
   const { data: row, error } = await admin
     .from("bookings")
     .select(
-      "id, status, provider_id, total_amount, total_paid, wallet_amount, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
+      "id, status, provider_id, total_amount, total_paid, wallet_amount, gift_card_amount, payment_status, payment_date, paid_at, confirmed_at, cancelled_at",
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -62,8 +62,9 @@ export async function syncBookingAfterPaystackSuccess(
   // We re-derive the true paid status here to ensure correct accounting.
   const totalPaid = Number((row as Record<string, unknown>).total_paid ?? 0);
   const walletAmount = Number((row as Record<string, unknown>).wallet_amount ?? 0);
+  const giftCardAmount = Number((row as Record<string, unknown>).gift_card_amount ?? 0);
   const totalAmount = Number((row as Record<string, unknown>).total_amount ?? 0);
-  const effectivelyPaid = totalPaid + walletAmount;
+  const effectivelyPaid = totalPaid + walletAmount + giftCardAmount;
   const isFullyCovered = totalAmount > 0 && effectivelyPaid >= totalAmount - 0.01; // 1-cent tolerance for rounding
 
   const hasRecordedPayment = ps === "paid" || ps === "partially_paid" || isFullyCovered;

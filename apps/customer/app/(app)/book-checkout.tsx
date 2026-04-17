@@ -29,6 +29,7 @@ import { useSavedCards } from "@/hooks/useSavedCards";
 import * as WebBrowser from "expo-web-browser";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { clearPendingExcludeHoldId } from "@/lib/booking-flow-hold";
+import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { useConfigBundle, useFeatureFlag, useModuleConfig } from "@/providers/ConfigBundleProvider";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { formatMoney } from "@beautonomi/utils";
@@ -90,6 +91,17 @@ interface HoldData {
   payment_wallet?: boolean;
   gift_cards?: boolean;
   cash_enabled_on_platform?: boolean;
+  /** Provider tax rate (0 when provider hasn't enabled tax). */
+  tax_rate_percent?: number;
+  /** Whether tax is inclusive in the service prices. */
+  tax_inclusive?: boolean;
+  /** Service fee config from provider or platform settings. */
+  service_fee_config?: {
+    type: string;
+    percentage: number;
+    fixed: number;
+    show: boolean;
+  };
 }
 
 interface ConsumeResponse {
@@ -162,7 +174,7 @@ function formatCurrency(amount: number, currency = getTenantDefaultCurrency()) {
 
 function getTimeRemaining(expiresAt: string): { minutes: number; seconds: number; expired: boolean } {
   const diff = new Date(expiresAt).getTime() - Date.now();
-  if (diff <= 0) return { minutes: 0, seconds: 0, expired: true };
+  if (!Number.isFinite(diff) || diff <= 0) return { minutes: 0, seconds: 0, expired: true };
   const totalSeconds = Math.floor(diff / 1000);
   return { minutes: Math.floor(totalSeconds / 60), seconds: totalSeconds % 60, expired: false };
 }
@@ -540,12 +552,23 @@ export default function BookCheckoutScreen() {
   const [appliedPromoDiscount, setAppliedPromoDiscount] = useState(0);
   const [promoError, setPromoError] = useState<string | null>(null);
   const [promoValidating, setPromoValidating] = useState(false);
+  /** Parity with web: POST /api/me/loyalty-points/calculate-redemption + consume `loyalty_points_used`. */
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState("");
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [redemptionRate, setRedemptionRate] = useState(10);
+  const [minRedemptionPoints, setMinRedemptionPoints] = useState(0);
+  const [maxRedemptionPercentage, setMaxRedemptionPercentage] = useState(100);
+  const [loyaltyPointsApplied, setLoyaltyPointsApplied] = useState(0);
+  const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState(0);
+  const [loyaltyValidating, setLoyaltyValidating] = useState(false);
+  const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
   const [tipAmount, setTipAmount] = useState(0);
   const [tipCustomInput, setTipCustomInput] = useState("");
   const [isSlotExpired, setIsSlotExpired] = useState(false);
   const [addonsList, setAddonsList] = useState<AddonOption[]>([]);
   const [selectedAddonIds, setSelectedAddonIds] = useState<string[]>([]);
   const [isGroupBooking, setIsGroupBooking] = useState(false);
+  const [groupBookingEnabled, setGroupBookingEnabled] = useState(false);
   const [subscribeRecurring, setSubscribeRecurring] = useState(false);
   const [recurringFrequency, setRecurringFrequency] = useState<"weekly" | "biweekly" | "monthly">("weekly");
   const [groupParticipants, setGroupParticipants] = useState<{ id: string; name: string; phone?: string; notes?: string; service_ids: string[] }[]>([]);
@@ -559,6 +582,7 @@ export default function BookCheckoutScreen() {
     hasVariants?: boolean;
     defaultVariantId?: string | null;
     defaultVariantPrice?: number;
+    variants?: { id: string; retail_price: number }[];
   }[]>([]);
   const [selectedProducts, setSelectedProducts] = useState<{ productId: string; productVariantId?: string | null; name: string; price: number; quantity: number; currency: string }[]>([]);
   const [packagesList, setPackagesList] = useState<{ id: string; name: string; description?: string; price: number; currency: string }[]>([]);
@@ -592,6 +616,10 @@ export default function BookCheckoutScreen() {
       try {
         const res = await api.get<HoldData>(`/api/public/booking-holds/${hold_id}`, { timeout: 120_000 });
         if (cancelled) return;
+
+        if (res.error) {
+          throw new Error((res.error as any)?.message || t("checkout.invalidOrExpiredHold"));
+        }
 
         const data = (res.data ?? {}) as Record<string, unknown>;
         if (!data.hold_id && !data.booking_services_snapshot) {
@@ -640,6 +668,9 @@ export default function BookCheckoutScreen() {
             ? (data as { tip_presets: number[] }).tip_presets
             : undefined,
           cancellation_policy: data.cancellation_policy as HoldData["cancellation_policy"],
+          tax_rate_percent: (data as any).tax_rate_percent != null ? Number((data as any).tax_rate_percent) : 0,
+          tax_inclusive: Boolean((data as any).tax_inclusive),
+          service_fee_config: (data as any).service_fee_config ?? undefined,
           ...(packageIdFromHold ? { package_id: packageIdFromHold } : {}),
         };
         setHold(holdData);
@@ -727,6 +758,16 @@ export default function BookCheckoutScreen() {
   }, [hold?.provider_id]);
 
   useEffect(() => {
+    if (!provider_slug) return;
+    api.get<{ enabled?: boolean; data?: { enabled?: boolean } }>(
+      `/api/public/providers/${encodeURIComponent(provider_slug)}/group-booking-settings`
+    ).then((res) => {
+      const data = (res as any).data ?? res;
+      setGroupBookingEnabled(!!data?.enabled);
+    }).catch(() => setGroupBookingEnabled(false));
+  }, [provider_slug]);
+
+  useEffect(() => {
     if (!hold) return;
     api.get<{ data?: { definitions?: CustomFieldDefinition[] }; definitions?: CustomFieldDefinition[] }>(
       "/api/custom-fields/definitions?entity_type=booking"
@@ -741,12 +782,17 @@ export default function BookCheckoutScreen() {
     if (!user) return;
     api.get<{ wallet?: { balance: number }; data?: { wallet?: { balance: number } } }>("/api/me/wallet")
       .then((res) => {
-        if (res.error) return;
+        if (res.error) {
+          console.warn("[Checkout] Failed to fetch wallet balance:", res.error);
+          return;
+        }
         const raw = res.data as any;
         const wallet = raw?.data?.wallet ?? raw?.wallet;
         if (wallet?.balance != null) setWalletBalance(Number(wallet.balance) || 0);
       })
-      .catch(() => {});
+      .catch((e) => {
+        console.warn("[Checkout] Wallet fetch error:", e);
+      });
   }, [user]);
 
   // Fetch addons for every service in the hold and merge (dedupe by id) for multi-service bookings
@@ -833,6 +879,9 @@ export default function BookCheckoutScreen() {
                   hasVariants: Boolean(p.hasVariants),
                   defaultVariantId,
                   defaultVariantPrice,
+                  variants: Array.isArray(p.variants)
+                    ? p.variants.map((v: any) => ({ id: v.id, retail_price: Number(v.retail_price) || 0 }))
+                    : undefined,
                 };
               })
             : []
@@ -848,18 +897,24 @@ export default function BookCheckoutScreen() {
       try {
         const raw = await AsyncStorage.getItem("beautonomi_booking_product_cart");
         if (!raw?.trim() || cancelled) return;
-        const lines = JSON.parse(raw) as { product_id: string; quantity: number }[];
+        const lines = JSON.parse(raw) as { product_id: string; product_variant_id?: string; quantity: number }[];
         if (!Array.isArray(lines)) return;
         const merged = lines
           .map((line) => {
             const p = productsList.find((x) => x.id === line.product_id);
             if (!p) return null;
             const q = Math.max(1, Math.floor(Number(line.quantity) || 1));
+            const variantId = line.product_variant_id ?? p.defaultVariantId ?? null;
+            let variantPrice: number | undefined;
+            if (variantId && p.hasVariants && Array.isArray(p.variants)) {
+              const v = p.variants.find((v) => v.id === variantId);
+              if (v) variantPrice = v.retail_price;
+            }
             return {
               productId: p.id,
-              productVariantId: p.defaultVariantId ?? null,
+              productVariantId: variantId,
               name: p.name,
-              price: Number(p.retail_price) || 0,
+              price: variantPrice ?? (Number(p.retail_price) || 0),
               quantity: q,
               currency: p.currency || getTenantDefaultCurrency(),
             };
@@ -1016,7 +1071,37 @@ export default function BookCheckoutScreen() {
     .reduce((s, a) => s + (Number(a.price) || 0), 0);
   const productsSubtotal = selectedProducts.reduce((s, p) => s + p.price * p.quantity, 0);
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
-  const total = Math.max(0, prePromoTotal - appliedPromoDiscount + tipAmount);
+  const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
+  const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
+  const subtotalAfterLoyalty = Math.max(0, subtotalAfterPromo - loyaltyDiscountAmount);
+
+  // Tax: only when provider has set a non-zero tax rate (applied after promo + loyalty discount)
+  const taxRatePercent = hold?.tax_rate_percent ?? 0;
+  const isTaxInclusive = hold?.tax_inclusive ?? false;
+  const taxAmount = taxRatePercent > 0
+    ? isTaxInclusive
+      ? subtotalAfterLoyalty - subtotalAfterLoyalty / (1 + taxRatePercent / 100)
+      : Math.round((subtotalAfterLoyalty * taxRatePercent) / 100 * 100) / 100
+    : 0;
+
+  // Service fee: only when configured and visible to customer
+  const sfConfig = hold?.service_fee_config;
+  const serviceFeeAmount = sfConfig && sfConfig.show
+    ? sfConfig.type === "percentage"
+      ? Math.round((subtotalAfterLoyalty * sfConfig.percentage) / 100 * 100) / 100
+      : sfConfig.fixed
+    : 0;
+
+  const total = isTaxInclusive
+    ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
+    : Math.max(0, subtotalAfterLoyalty + taxAmount + tipAmount + serviceFeeAmount);
+
+  const bookingSubtotalForLoyalty = subtotalAfterPromo;
+  const maxRedeemablePointsOnBooking = useMemo(() => {
+    if (bookingSubtotalForLoyalty <= 0) return 0;
+    const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
+    return Math.floor(maxDiscount * redemptionRate);
+  }, [bookingSubtotalForLoyalty, maxRedemptionPercentage, redemptionRate]);
 
   useEffect(() => {
     if (hold && hold_id && total != null && !checkoutTrackedRef.current) {
@@ -1122,6 +1207,115 @@ export default function BookCheckoutScreen() {
     return () => clearTimeout(timer);
   }, [promoNeedsAutoValidate, prePromoTotal, promotionCode, hold?.provider_id]);
 
+  useEffect(() => {
+    setLoyaltyPointsApplied(0);
+    setLoyaltyDiscountAmount(0);
+    setLoyaltyPointsInput("");
+    setLoyaltyError(null);
+  }, [subtotalAfterPromo]);
+
+  useEffect(() => {
+    if (!user) {
+      setLoyaltyBalance(0);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{
+          data?: {
+            balance?: number;
+            redemption_rate?: number;
+            min_redemption_points?: number;
+            max_redemption_percentage?: number;
+          };
+        }>("/api/me/loyalty/balance");
+        if (cancelled || res.error) return;
+        const raw = res.data as { data?: Record<string, unknown> } | Record<string, unknown>;
+        const d = (raw as { data?: Record<string, unknown> }).data ?? raw;
+        if (d && typeof d === "object") {
+          if ("balance" in d && d.balance != null) setLoyaltyBalance(Number(d.balance) || 0);
+          if ("redemption_rate" in d && d.redemption_rate != null) setRedemptionRate(Number(d.redemption_rate) || 10);
+          if ("min_redemption_points" in d && d.min_redemption_points != null) {
+            setMinRedemptionPoints(Number(d.min_redemption_points) || 0);
+          }
+          if ("max_redemption_percentage" in d && d.max_redemption_percentage != null) {
+            setMaxRedemptionPercentage(Number(d.max_redemption_percentage) ?? 100);
+          }
+        }
+      } catch {
+        // Loyalty is optional
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  const applyLoyaltyPoints = useCallback(async () => {
+    if (!user) return;
+    const raw = parseInt(loyaltyPointsInput.trim(), 10);
+    if (!Number.isFinite(raw) || raw <= 0) {
+      setLoyaltyError("Enter how many points to use");
+      return;
+    }
+    setLoyaltyValidating(true);
+    setLoyaltyError(null);
+    try {
+      const res = await api.post<{
+        data?: {
+          valid?: boolean;
+          errors?: string[];
+          calculation?: { points_to_redeem: number; discount_amount: number };
+          config?: { min_redemption_points?: number };
+        };
+      }>("/api/me/loyalty-points/calculate-redemption", {
+        points_to_redeem: raw,
+        booking_subtotal: bookingSubtotalForLoyalty,
+      });
+      if (res.error) {
+        setLoyaltyPointsApplied(0);
+        setLoyaltyDiscountAmount(0);
+        setLoyaltyError(res.error.message || "Could not apply loyalty points");
+        return;
+      }
+      const top = res.data as { data?: Record<string, unknown> } | Record<string, unknown> | null;
+      const rawPayload = (top && typeof top === "object" && "data" in top && (top as { data?: unknown }).data)
+        ? (top as { data: Record<string, unknown> }).data
+        : (top as Record<string, unknown> | null);
+      const payload = rawPayload ?? {};
+      const calc = payload.calculation as { points_to_redeem: number; discount_amount: number } | undefined;
+      if (!calc) {
+        setLoyaltyError("Could not calculate loyalty");
+        return;
+      }
+      const { points_to_redeem, discount_amount } = calc;
+      const minPts =
+        (payload.config as { min_redemption_points?: number } | undefined)?.min_redemption_points ?? minRedemptionPoints;
+      if (points_to_redeem < minPts) {
+        setLoyaltyError(`At least ${minPts} redeemable points on this booking (after % cap).`);
+        setLoyaltyPointsApplied(0);
+        setLoyaltyDiscountAmount(0);
+        return;
+      }
+      setLoyaltyPointsApplied(points_to_redeem);
+      setLoyaltyDiscountAmount(Math.round(Number(discount_amount) * 100) / 100);
+      setLoyaltyPointsInput(String(points_to_redeem));
+      haptic.success();
+      const errs = payload.errors as string[] | undefined;
+      const valid = payload.valid as boolean | undefined;
+      if (errs?.length && !valid) {
+        Alert.alert("Loyalty", errs.join(" "));
+      }
+    } catch (e) {
+      setLoyaltyPointsApplied(0);
+      setLoyaltyDiscountAmount(0);
+      setLoyaltyError(getApiErrorMessage(e as Error, "Failed to apply loyalty points"));
+    } finally {
+      setLoyaltyValidating(false);
+    }
+  }, [user, loyaltyPointsInput, bookingSubtotalForLoyalty, minRedemptionPoints]);
+
   const applyGiftCard = useCallback(async () => {
     const code = giftCardCode.trim().toUpperCase();
     if (!code) return;
@@ -1131,6 +1325,12 @@ export default function BookCheckoutScreen() {
       const res = await api.get<{ valid?: boolean; balance?: number; currency?: string; message?: string }>(
         `/api/public/gift-cards/validate?code=${encodeURIComponent(code)}`
       );
+      if (res.error) {
+        setGiftCardValid(null);
+        setGiftCardError(res.error.message || "Could not validate gift card");
+        setGiftCardValidating(false);
+        return;
+      }
       const data = res.data as any;
       if (data?.valid && data?.balance != null) {
         setGiftCardValid({ balance: Number(data.balance), currency: data.currency || getTenantDefaultCurrency() });
@@ -1210,12 +1410,16 @@ export default function BookCheckoutScreen() {
               style: "destructive",
               onPress: async () => {
                 try {
-                  await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
+                  const res = await api.post(`/api/me/bookings/${previousBookingId}/cancel`, {
                     reason: "Reschedule - previous appointment replaced",
                   });
-                  haptic.success();
+                  if (res.error) {
+                    Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
+                  } else {
+                    haptic.success();
+                  }
                 } catch {
-                  // Still navigate to new booking
+                  Alert.alert("Note", "Could not cancel the previous booking. You can cancel it manually from your bookings.");
                 }
                 router.replace({ pathname: "/(app)/booking-detail", params: { id: bookingId } });
               },
@@ -1347,11 +1551,17 @@ export default function BookCheckoutScreen() {
     setError(null);
 
     try {
+      const fingerprint = await getGuestFingerprintHash();
+
       const payload: Record<string, unknown> = {
         payment_method: paymentMethod === "wallet" ? "card" : paymentMethod === "giftcard" ? "giftcard" : paymentMethod,
         payment_option: paymentOption,
-        use_wallet: paymentMethod === "wallet" || (paymentMethod === "card" && useWallet),
+        use_wallet:
+          paymentMethod === "wallet" ||
+          (paymentMethod === "card" && useWallet) ||
+          loyaltyPointsApplied > 0,
         save_card: paymentMethod === "card" && (useNewCard || savedCards.length === 0) ? saveCard : false,
+        guest_fingerprint_hash: fingerprint,
       };
       if (paymentMethod === "card" && selectedCardId && !useNewCard && savedCards.length > 0) {
         payload.payment_method_id = selectedCardId;
@@ -1367,6 +1577,7 @@ export default function BookCheckoutScreen() {
       if (selectedAddonIds.length > 0) payload.addons = selectedAddonIds;
       if (routeRescheduleBookingId) payload.reschedule_booking_id = routeRescheduleBookingId;
       if (tipAmount > 0) payload.tip_amount = tipAmount;
+      if (loyaltyPointsApplied > 0) payload.loyalty_points_used = loyaltyPointsApplied;
       const validParticipants = isGroupBooking ? groupParticipants.filter((p) => p.name.trim()).map((p) => ({
         name: p.name.trim(),
         email: undefined,
@@ -1413,13 +1624,29 @@ export default function BookCheckoutScreen() {
       if (res.error) {
         haptic.error();
         const errStatus = (res.error as { status?: number }).status;
-        // If the server rejects with 401 or 403, the session has expired mid-checkout.
-        // Redirect to login so the user can re-authenticate and return to complete the booking.
-        if (errStatus === 401 || errStatus === 403) {
+        const errCode = (res.error as { code?: string }).code;
+        if (errStatus === 401) {
           router.replace({
             pathname: "/(auth)/login",
             params: { return_to: `/(app)/book/continue?hold_id=${hold_id}` },
           });
+          return;
+        }
+        if (errStatus === 403) {
+          const msg403 = errCode === "SUBSCRIPTION_LIMIT_EXCEEDED"
+            ? "You've reached your booking limit. Please upgrade your plan."
+            : errCode === "MARKET_SWITCH_REQUIRED"
+            ? "This provider is in a different market. Please update your location."
+            : "You don't have permission to complete this booking. Please sign in again.";
+          setError(msg403);
+          return;
+        }
+        if (errStatus === 410 || errCode === "HOLD_INVALID" || errCode === "HOLD_EXPIRED" || errCode === "HOLD_INACTIVE") {
+          setError(t("checkout.holdExpiredFallback", "Your hold has expired. Please go back and select a new time."));
+          return;
+        }
+        if (errStatus === 409 || errCode === "CONFLICT") {
+          setError(t("checkout.slotTakenFallback", "That time slot was just taken. Please go back and choose another time."));
           return;
         }
         setError(getApiErrorMessage(res.error, "Failed to complete booking"));
@@ -1453,12 +1680,11 @@ export default function BookCheckoutScreen() {
         });
         if (saveCard) refreshCards();
 
-        // Poll booking status to confirm payment went through (mirrors web /checkout/success verify logic).
-        // The Paystack webhook may fire before or shortly after the browser closes.
         let confirmedBookingId = bookingId;
         let confirmedBookingStatus: string | undefined;
+        let paymentConfirmed = false;
         if (bookingId) {
-          const MAX_ATTEMPTS = 8;
+          const MAX_ATTEMPTS = 10;
           const POLL_INTERVAL_MS = 2000;
           for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
@@ -1469,6 +1695,7 @@ export default function BookCheckoutScreen() {
               if (statusVal && statusVal !== "pending_payment") {
                 confirmedBookingId = bookingId;
                 confirmedBookingStatus = statusVal;
+                paymentConfirmed = true;
                 break;
               }
             } catch {
@@ -1478,6 +1705,18 @@ export default function BookCheckoutScreen() {
               await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
             }
           }
+        }
+
+        if (!paymentConfirmed) {
+          Alert.alert(
+            "Payment pending",
+            "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process. Check your bookings shortly.",
+            [
+              { text: "View bookings", onPress: () => router.replace("/(app)/(tabs)/bookings" as never) },
+              { text: "OK", style: "cancel" },
+            ],
+          );
+          return;
         }
 
         const amountPaid = paymentOption === "deposit" && hasDeposit ? depositAmount : total;
@@ -1498,7 +1737,7 @@ export default function BookCheckoutScreen() {
       setConsuming(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- pay helpers and navigateToBooking are stable refs
-  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency]);
+  }, [hold_id, hold, user, paymentMethod, paymentOption, useWallet, selectedCardId, useNewCard, savedCards, saveCard, total, depositAmount, hasDeposit, currency, bookingCustomDefinitions, bookingCustomValues, providerForms, providerFormValues, specialRequests, houseCallInstructionsPrefill, promotionCode, tipAmount, routeRescheduleBookingId, giftCardCode, giftCardValid, selectedAddonIds, isGroupBooking, groupParticipants, selectedProducts, snapshotOfferingIds, selectedPackageId, paystackEnabled, walletEnabled, subscribeRecurring, recurringFrequency, loyaltyPointsApplied]);
 
   /* ─── Loading skeleton ─── */
   if (loading) {
@@ -1573,6 +1812,8 @@ export default function BookCheckoutScreen() {
         ...(hold.location_id ? { location_id: hold.location_id } : {}),
         ...(hold.location_type ? { location_type: hold.location_type } : {}),
         ...(selectedPackageId ? { package: selectedPackageId } : {}),
+        ...(routeRescheduleBookingId ? { reschedule_booking_id: routeRescheduleBookingId } : {}),
+        hold_id: hold_id,
       },
     });
   };
@@ -1807,7 +2048,8 @@ export default function BookCheckoutScreen() {
               </View>
             )}
 
-            {/* Group booking */}
+            {/* Group booking — only shown when provider enables online group booking */}
+            {groupBookingEnabled && (
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Group booking</Text>
@@ -1918,6 +2160,7 @@ export default function BookCheckoutScreen() {
                 </>
               )}
             </View>
+            )}
 
             {/* Products (add to booking) */}
             {productsList.length > 0 && (
@@ -2185,7 +2428,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || tipAmount > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || loyaltyDiscountAmount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
@@ -2209,10 +2452,32 @@ export default function BookCheckoutScreen() {
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{formatCurrency(travelFee, currency)}</Text>
                     </View>
                   )}
-                  {appliedPromoDiscount > 0 && (
+                  {effectivePromoDiscount > 0 && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
-                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(appliedPromoDiscount, currency)}</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
+                    </View>
+                  )}
+                  {loyaltyDiscountAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>Loyalty</Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(loyaltyDiscountAmount, currency)}</Text>
+                    </View>
+                  )}
+                  {taxAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                        Tax{taxRatePercent > 0 ? ` (${taxRatePercent}%)` : ""}{isTaxInclusive ? " (incl.)" : ""}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                        {isTaxInclusive ? "" : "+"}{formatCurrency(taxAmount, currency)}
+                      </Text>
+                    </View>
+                  )}
+                  {serviceFeeAmount > 0 && sfConfig?.show && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>Platform Fee</Text>
+                      <Text style={{ fontSize: 13, color: "#6B7280" }}>+{formatCurrency(serviceFeeAmount, currency)}</Text>
                     </View>
                   )}
                   {tipAmount > 0 && (
@@ -2230,8 +2495,9 @@ export default function BookCheckoutScreen() {
 
               {/* Wallet credit breakdown — shown when wallet covers part/all of total */}
               {(paymentMethod === "card" && useWallet && walletBalance > 0) && (() => {
-                const walletApplied = Math.min(walletBalance, total);
-                const paystackRemainder = Math.max(0, total - walletApplied);
+                const chargeableAmount = (paymentOption === "deposit" && hasDeposit) ? depositAmount : total;
+                const walletApplied = Math.min(walletBalance, chargeableAmount);
+                const paystackRemainder = Math.max(0, chargeableAmount - walletApplied);
                 return (
                   <>
                     <View style={{ height: 1, backgroundColor: "#E5E7EB", marginVertical: 10, borderStyle: "dashed" }} />
@@ -2387,10 +2653,95 @@ export default function BookCheckoutScreen() {
               </View>
               {promoError ? (
                 <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{promoError}</Text>
-              ) : appliedPromoDiscount > 0 ? (
+              ) : effectivePromoDiscount > 0 ? (
                 <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
-                  Promo applied — {formatCurrency(appliedPromoDiscount, currency)} off
+                  Promo applied — {formatCurrency(effectivePromoDiscount, currency)} off
                 </Text>
+              ) : null}
+              {user ? (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 8 }}>Loyalty points</Text>
+                  <Text style={{ fontSize: 12, color: "#6B7280", marginBottom: 8 }}>
+                    Balance {loyaltyBalance.toLocaleString()} pts
+                    {maxRedeemablePointsOnBooking > 0
+                      ? ` · Up to ${maxRedeemablePointsOnBooking.toLocaleString()} pts on this booking (after % cap)`
+                      : ""}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      value={loyaltyPointsInput}
+                      onChangeText={(v) => {
+                        setLoyaltyPointsInput(v.replace(/[^\d]/g, ""));
+                        setLoyaltyError(null);
+                      }}
+                      placeholder="Points to use"
+                      keyboardType="number-pad"
+                      editable={loyaltyBalance > 0 && bookingSubtotalForLoyalty > 0}
+                      style={{
+                        flex: 1,
+                        backgroundColor: "#F9FAFB",
+                        borderWidth: 1,
+                        borderColor: loyaltyError ? "#DC2626" : "#E5E7EB",
+                        borderRadius: 12,
+                        paddingHorizontal: 14,
+                        paddingVertical: 12,
+                        fontSize: 15,
+                        color: "#111827",
+                      }}
+                      placeholderTextColor="#9CA3AF"
+                    />
+                    <TouchableOpacity
+                      onPress={() => {
+                        if (loyaltyDiscountAmount > 0) {
+                          setLoyaltyPointsApplied(0);
+                          setLoyaltyDiscountAmount(0);
+                          setLoyaltyPointsInput("");
+                          setLoyaltyError(null);
+                          haptic.light();
+                        } else {
+                          void applyLoyaltyPoints();
+                        }
+                      }}
+                      disabled={
+                        loyaltyValidating ||
+                        (loyaltyDiscountAmount <= 0 && (loyaltyBalance <= 0 || !loyaltyPointsInput.trim()))
+                      }
+                      style={{
+                        backgroundColor:
+                          loyaltyPointsInput.trim() || loyaltyDiscountAmount > 0 ? Colors.primary : "#E5E7EB",
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderRadius: 12,
+                        justifyContent: "center",
+                        minWidth: 72,
+                        alignItems: "center",
+                      }}
+                    >
+                      {loyaltyValidating ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={{ color: "#fff", fontWeight: "600", fontSize: 14 }}>
+                          {loyaltyDiscountAmount > 0 ? "Clear" : "Use"}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                  {loyaltyError ? (
+                    <Text style={{ fontSize: 12, color: "#DC2626", marginTop: 6 }}>{loyaltyError}</Text>
+                  ) : loyaltyDiscountAmount > 0 ? (
+                    <Text style={{ fontSize: 12, color: "#059669", marginTop: 6 }}>
+                      −{formatCurrency(loyaltyDiscountAmount, currency)} applied ({loyaltyPointsApplied.toLocaleString()} pts)
+                    </Text>
+                  ) : loyaltyBalance <= 0 ? (
+                    <Text style={{ fontSize: 11, color: "#6B7280", marginTop: 4 }}>
+                      You&apos;ll earn points after this booking — use them for money off next time.
+                    </Text>
+                  ) : minRedemptionPoints > 0 ? (
+                    <Text style={{ fontSize: 11, color: "#9CA3AF", marginTop: 4 }}>
+                      Min. {minRedemptionPoints} pts per redemption when eligible
+                    </Text>
+                  ) : null}
+                </View>
               ) : null}
             </View>
 
@@ -2930,13 +3281,15 @@ export default function BookCheckoutScreen() {
             shadowRadius: 40,
             elevation: 20,
           }}>
-            {/* Animated icon — green for confirmed, amber for pending provider approval */}
+            {/* Animated icon — green for confirmed, amber for pending provider approval / payment */}
             {(() => {
               const isPending = bookingConfirmedData.bookingStatus === "pending";
-              const iconName = isPending ? "time-outline" : "checkmark-circle";
-              const iconColor = isPending ? "#F59E0B" : Colors.primary;
-              const bgColor = isPending ? "#FEF3C7" : `${Colors.primary}12`;
-              const borderColor = isPending ? "#FCD34D" : `${Colors.primary}30`;
+              const isPendingPayment = bookingConfirmedData.bookingStatus === "pending_payment";
+              const isWaiting = isPending || isPendingPayment;
+              const iconName = isWaiting ? "time-outline" : "checkmark-circle";
+              const iconColor = isWaiting ? "#F59E0B" : Colors.primary;
+              const bgColor = isWaiting ? "#FEF3C7" : `${Colors.primary}12`;
+              const borderColor = isWaiting ? "#FCD34D" : `${Colors.primary}30`;
               return (
                 <View style={{
                   width: 88, height: 88, borderRadius: 44,
@@ -2951,8 +3304,18 @@ export default function BookCheckoutScreen() {
             })()}
 
             <Text style={{ fontSize: 22, fontWeight: "800", color: "#111827", textAlign: "center", marginBottom: 6 }}>
-              {bookingConfirmedData.bookingStatus === "pending" ? "Booking received!" : "Booking confirmed!"}
+              {bookingConfirmedData.bookingStatus === "pending_payment"
+                ? "Payment processing..."
+                : bookingConfirmedData.bookingStatus === "pending"
+                ? "Booking received!"
+                : "Booking confirmed!"}
             </Text>
+
+            {bookingConfirmedData.bookingStatus === "pending_payment" && (
+              <Text style={{ fontSize: 13, color: "#92400E", textAlign: "center", backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>
+                Your payment is being confirmed. You&apos;ll receive a notification shortly.
+              </Text>
+            )}
 
             {bookingConfirmedData.bookingStatus === "pending" && (
               <Text style={{ fontSize: 13, color: "#92400E", textAlign: "center", backgroundColor: "#FEF3C7", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 6, marginBottom: 8 }}>

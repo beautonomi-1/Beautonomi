@@ -189,74 +189,16 @@ export function calculateAvailableSlots(
   const { staffShifts, timeBlocks, existingBookings, workHoursEnabled = true } = constraints;
   const { slotInterval = 15, avoidGaps = false, travelBuffer = 0 } = options;
 
-  // If work hours are disabled, staff is available all day (subject to bookings and time blocks)
+  // Last-resort fallback: no location hours resolved and work_hours_enabled is false.
+  // loadAvailabilityConstraints normally resolves location hours into staffShifts
+  // when work_hours_enabled=false, so this branch only fires if no location is configured.
   if (!workHoursEnabled) {
-    // Default to business hours (9 AM to 6 PM) when work hours are disabled
-    const workStart = "09:00";
-    const workEnd = "18:00";
-    
-    // Generate all possible slots for the day
-    const allSlots = generateTimeSlots(workStart, workEnd, slotInterval);
-
-    // Calculate blocked segments from existing bookings
-    const blockedSegments: TimeSegment[] = [];
-    existingBookings.forEach((booking) => {
-      const segments = calculateBookingSegments(booking, date);
-      blockedSegments.push(...segments.filter((s) => s.type === 'blocked'));
-    });
-
-    // Check each slot for availability
-    const availableSlots: TimeSlot[] = allSlots.map((slotTime) => {
-      const slotStartMinutes = timeToMinutes(slotTime);
-      const slotEndMinutes = slotStartMinutes + duration + travelBuffer;
-
-      // Check if slot extends beyond default hours
-      const workEndMinutes = timeToMinutes(workEnd);
-      if (slotEndMinutes > workEndMinutes) {
-        return {
-          time: slotTime,
-          available: false,
-          reason: 'Extends beyond default hours',
-        };
-      }
-
-      // Convert to Date objects for overlap checking
-      const slotStart = combineDateAndTime(date, slotTime);
-      const slotEnd = combineDateAndTime(date, minutesToTime(slotEndMinutes));
-
-      // Check overlap with blocked segments
-      if (slotOverlapsBlockedSegments(slotStart, slotEnd, blockedSegments)) {
-        return {
-          time: slotTime,
-          available: false,
-          reason: 'Conflicts with existing booking',
-        };
-      }
-
-      // Check overlap with time blocks (still respect time blocks even if work hours disabled)
-      const overlapsBlock = timeBlocks.some((block) =>
-        slotOverlapsTimeBlock(slotStart, slotEnd, block, date)
-      );
-      if (overlapsBlock) {
-        return {
-          time: slotTime,
-          available: false,
-          reason: 'Time block',
-        };
-      }
-
-      return {
-        time: slotTime,
-        available: true,
-      };
-    });
-
-    // Apply gap avoidance if enabled
-    if (avoidGaps) {
-      return applyGapAvoidance(availableSlots, existingBookings, workStart, workEnd, date);
-    }
-
-    return availableSlots;
+    console.warn(
+      '[calculateAvailableSlots] workHoursEnabled=false fallback reached — ' +
+      'no location hours resolved. Returning empty slots.',
+      { date }
+    );
+    return [];
   }
 
   // If work hours are enabled but no shifts, return empty
@@ -264,13 +206,26 @@ export function calculateAvailableSlots(
     return [];
   }
 
-  // For now, use the first shift (could be enhanced to handle multiple shifts per day)
-  const shift = staffShifts[0];
-  const workStart = shift.start_time.substring(0, 5); // HH:MM
-  const workEnd = shift.end_time.substring(0, 5); // HH:MM
+  // Union slots across ALL shifts (supports split shifts like 09:00-12:00 + 14:00-18:00)
+  const allSlotTimesSet = new Set<string>();
+  for (const shift of staffShifts) {
+    const ws = shift.start_time.substring(0, 5);
+    const we = shift.end_time.substring(0, 5);
+    for (const t of generateTimeSlots(ws, we, slotInterval)) {
+      allSlotTimesSet.add(t);
+    }
+  }
+  const allSlots = [...allSlotTimesSet].sort();
 
-  // Generate all possible slots
-  const allSlots = generateTimeSlots(workStart, workEnd, slotInterval);
+  // Earliest start / latest end across all shifts (for gap avoidance)
+  const overallWorkStart = staffShifts.reduce(
+    (min, s) => { const t = s.start_time.substring(0, 5); return t < min ? t : min; },
+    staffShifts[0].start_time.substring(0, 5)
+  );
+  const overallWorkEnd = staffShifts.reduce(
+    (max, s) => { const t = s.end_time.substring(0, 5); return t > max ? t : max; },
+    staffShifts[0].end_time.substring(0, 5)
+  );
 
   // Calculate blocked segments from existing bookings
   const blockedSegments: TimeSegment[] = [];
@@ -284,9 +239,14 @@ export function calculateAvailableSlots(
     const slotStartMinutes = timeToMinutes(slotTime);
     const slotEndMinutes = slotStartMinutes + duration + travelBuffer;
 
-    // Check if slot extends beyond work hours
-    const workEndMinutes = timeToMinutes(workEnd);
-    if (slotEndMinutes > workEndMinutes) {
+    // Slot + duration must fit entirely within at least one shift
+    const fitsInAnyShift = staffShifts.some((shift) => {
+      const shiftStartMin = timeToMinutes(shift.start_time.substring(0, 5));
+      const shiftEndMin = timeToMinutes(shift.end_time.substring(0, 5));
+      return slotStartMinutes >= shiftStartMin && slotEndMinutes <= shiftEndMin;
+    });
+
+    if (!fitsInAnyShift) {
       return {
         time: slotTime,
         available: false,
@@ -327,9 +287,8 @@ export function calculateAvailableSlots(
 
   // Apply gap avoidance if enabled
   if (avoidGaps) {
-    return applyGapAvoidance(availableSlots, existingBookings, workStart, workEnd, date);
+    return applyGapAvoidance(availableSlots, existingBookings, overallWorkStart, overallWorkEnd, date);
   }
 
-  // Filter to only available slots (or show all with availability flag)
   return availableSlots;
 }

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { GeoJSONSource, Map, MapMouseEvent, Popup } from "mapbox-gl";
 import { fetcher } from "@/lib/http/fetcher";
+import { toast } from "sonner";
 import { Activity, Settings, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 
 const POLL_INTERVAL_MS = 10000;
 const DEFAULT_CENTER: [number, number] = [28.0473, -26.2041];
@@ -188,6 +190,7 @@ export default function LiveMapTab() {
   useEffect(() => {
     if (mapboxAccessToken == null || !mapboxAccessToken || !containerRef.current) return;
     let cancelled = false;
+    let detachResize: (() => void) | undefined;
 
     (async () => {
       const [mapboxModule] = await Promise.all([
@@ -198,20 +201,23 @@ export default function LiveMapTab() {
       if (cancelled || !containerRef.current) return;
       mapboxModuleRef.current = mb;
 
+      const container = containerRef.current;
       const map = new mb.Map({
-        container: containerRef.current,
+        container,
         accessToken: mapboxAccessToken,
         style: mapboxStyleUrl?.trim() || "mapbox://styles/mapbox/streets-v12",
         center: DEFAULT_CENTER,
         zoom: DEFAULT_ZOOM,
       });
       map.addControl(new mb.NavigationControl(), "top-right");
+      detachResize = attachMapResize(map, container);
       map.on("load", () => setMapReady(true));
       mapRef.current = map;
     })();
 
     return () => {
       cancelled = true;
+      detachResize?.();
       mapRef.current?.remove();
       mapRef.current = null;
       mapboxModuleRef.current = null;
@@ -428,6 +434,7 @@ export default function LiveMapTab() {
       }
     } catch (e) {
       console.error(e);
+      toast.error("Failed to open booking track");
     }
   };
 
@@ -462,6 +469,7 @@ export default function LiveMapTab() {
       URL.revokeObjectURL(url);
     } catch (e) {
       console.error(e);
+      toast.error("Failed to export evidence");
     }
   };
 

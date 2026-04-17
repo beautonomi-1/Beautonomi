@@ -518,28 +518,15 @@ export default function SignupScreen() {
           )}
         </TouchableOpacity>
 
-        {/* OR divider */}
-        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 16 }}>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-          <Text style={{ marginHorizontal: 16, fontSize: 13, color: "#9CA3AF" }}>Or sign up with phone</Text>
-          <View style={{ flex: 1, height: 1, backgroundColor: "#E5E7EB" }} />
-        </View>
-
-        <TouchableOpacity
-          onPress={() => router.push("/(auth)/login" as never)}
-          style={{
-            borderWidth: 1.5,
-            borderColor: PRIMARY,
-            borderRadius: 12,
-            paddingVertical: 14,
-            alignItems: "center",
-            marginBottom: 24,
-          }}
-          accessibilityRole="button"
-          accessibilityLabel="Sign up with phone number"
-        >
-          <Text style={{ color: PRIMARY, fontSize: 15, fontWeight: "600" }}>Use Phone Number</Text>
-        </TouchableOpacity>
+        {/*
+          §Provider-launch (audit 2026-04): removed the "Use Phone Number"
+          signup CTA — the underlying `supabase.auth.signInWithOtp({
+          shouldCreateUser: false })` path is login-only, so tapping this
+          sent new users to an OTP screen that could never create their
+          account. Email-first signup is the supported path; existing
+          accounts can still log in with phone OTP from the login screen.
+        */}
+        <View style={{ marginBottom: 8 }} />
 
         {/* Login link */}
         <TouchableOpacity

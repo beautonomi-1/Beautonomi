@@ -46,29 +46,37 @@ export default function RequestReturnScreen() {
       Alert.alert("Select Reason", "Please select a reason for your return");
       return;
     }
-    if (!order_id) return;
-
-    setSubmitting(true);
-    const res = await api.post<{ return_request: any }>("/api/me/returns", {
-      order_id,
-      order_item_id: order_item_id || undefined,
-      reason,
-      description: description.trim() || undefined,
-    });
-    setSubmitting(false);
-
-    if (res.error) {
-      Alert.alert("Error", res.error.message);
+    if (!order_id) {
+      Alert.alert("Error", "Order information is missing. Please go back and try again.");
       return;
     }
 
-    trackReturnRequested(order_id, reason, 0);
+    setSubmitting(true);
+    try {
+      const res = await api.post<{ return_request: any }>("/api/me/returns", {
+        order_id,
+        order_item_id: order_item_id || undefined,
+        reason,
+        description: description.trim() || undefined,
+      });
 
-    Alert.alert(
-      "Return Requested",
-      "Your return request has been submitted. The provider will review it shortly.",
-      [{ text: "OK", onPress: () => router.back() }],
-    );
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Failed to submit return request.");
+        return;
+      }
+
+      trackReturnRequested(order_id, reason, 0);
+
+      Alert.alert(
+        "Return Requested",
+        "Your return request has been submitted. The provider will review it shortly.",
+        [{ text: "OK", onPress: () => router.back() }],
+      );
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }, [reason, description, order_id, order_item_id, router]);
 
   return (

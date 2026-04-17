@@ -52,6 +52,35 @@ function handleNotificationRoute(data: Record<string, unknown>) {
         break;
       }
 
+      case "on_demand_accepted": {
+        const reqId = String(data.on_demand_request_id ?? "");
+        const acceptedBookingId = String(data.booking_id ?? data.bookingId ?? "");
+        if (acceptedBookingId) {
+          router.push({ pathname: "/(app)/booking-detail", params: { id: acceptedBookingId } });
+        } else if (reqId) {
+          router.push({
+            pathname: "/(app)/on-demand/result",
+            params: { status: "accepted", requestId: reqId },
+          });
+        } else {
+          router.push("/(app)/(tabs)/bookings");
+        }
+        break;
+      }
+
+      case "on_demand_expired": {
+        const expReqId = String(data.on_demand_request_id ?? "");
+        if (expReqId) {
+          router.push({
+            pathname: "/(app)/on-demand/result",
+            params: { status: "expired", requestId: expReqId },
+          });
+        } else {
+          router.push("/(app)/(tabs)/bookings");
+        }
+        break;
+      }
+
       case "payment_received":
       case "payment_successful":
       case "payment_failed":
@@ -80,13 +109,15 @@ function handleNotificationRoute(data: Record<string, unknown>) {
         break;
 
       case "new_message":
-      case "chat_message":
-        if (id) {
-          router.push({ pathname: "/(app)/chat", params: { id } });
+      case "chat_message": {
+        const conversationId = String(data.conversation_id ?? data.chat_id ?? "");
+        if (conversationId) {
+          router.push({ pathname: "/(app)/chat", params: { id: conversationId } });
         } else {
           router.push("/(app)/(tabs)/chats");
         }
         break;
+      }
 
       case "review_response":
       case "review_request":
@@ -150,10 +181,14 @@ function usePushRegistration() {
 
     let cancelled = false;
     (async () => {
-      const fromApi = await getOneSignalAppId();
-      if (cancelled) return;
-      const id = fromApi || ONE_SIGNAL_APP_ID || "";
-      setAppId(id ? id : null);
+      try {
+        const fromApi = await getOneSignalAppId();
+        if (cancelled) return;
+        const id = fromApi || ONE_SIGNAL_APP_ID || "";
+        setAppId(id ? id : null);
+      } catch {
+        // Push optional — ignore config fetch failures
+      }
     })();
     return () => {
       cancelled = true;
@@ -220,8 +255,12 @@ function usePushRegistration() {
           await registerWithBackend(subId);
         } else {
           const retry = setTimeout(async () => {
-            const id = await OneSignal.User.pushSubscription.getIdAsync();
-            if (id) await registerWithBackend(id);
+            try {
+              const id = await OneSignal.User.pushSubscription.getIdAsync();
+              if (id) await registerWithBackend(id);
+            } catch {
+              // ignore
+            }
           }, 3000);
           unsubscribe = () => clearTimeout(retry);
         }

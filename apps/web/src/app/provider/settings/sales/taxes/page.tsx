@@ -37,7 +37,7 @@ export default function TaxesSettings() {
         setVatNumber(data.vat_number || "");
         setTaxRate(Number(data.tax_rate_percent || 0));
       } catch {
-        // keep defaults
+        toast.error("Failed to load tax settings");
       } finally {
         setIsLoading(false);
       }

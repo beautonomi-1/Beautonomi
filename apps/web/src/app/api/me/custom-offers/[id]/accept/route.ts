@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import {
   requireRoleInApi,
   successResponse,
@@ -13,7 +14,7 @@ import { computeCustomOfferPricing } from "../../_helpers/custom-offer-pricing";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { toCents } from "@beautonomi/utils";
+import { toCents, percentOf } from "@beautonomi/utils";
 
 interface OfferRow {
   id: string;
@@ -44,7 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
     const { id } = await params;
 
-    let body: { tip_amount?: number; promotion_code?: string } = {};
+    let body: { tip_amount?: number; promotion_code?: string; payment_option?: "full" | "deposit" } = {};
     try {
       body = (await request.json()) || {};
     } catch {
@@ -92,9 +93,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return successResponse({ paymentUrl: offer.payment_url, alreadyAccepted: false });
     }
 
+    /**
+     * §Release-audit 2026-04: customers only have SELECT on custom_offers
+     * (RLS migration 036). Updating status here under the user-scoped
+     * client used to fail silently/explicitly. Use the admin client for
+     * status mutations the customer triggers, while still authorising via
+     * the request-owner check above.
+     */
+    const adminSupabase = getSupabaseAdmin();
+
     // Expiry check
     if (offer.expiration_at && new Date(offer.expiration_at).getTime() < Date.now()) {
-      await supabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
+      await adminSupabase.from("custom_offers").update({ status: "expired" }).eq("id", id);
       return handleApiError(new Error("Offer has expired"), "Offer expired");
     }
 
@@ -116,12 +126,26 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     }
 
     const { result } = pricing;
+
+    // Deposit support: check if the provider requires deposits
+    const { data: providerRow } = await supabase
+      .from("providers")
+      .select("requires_deposit, deposit_percentage")
+      .eq("id", req?.provider_id ?? "")
+      .maybeSingle();
+
+    const providerRequiresDeposit = Boolean((providerRow as any)?.requires_deposit);
+    const depositPct = Number((providerRow as any)?.deposit_percentage || 30);
+    const paymentOption = providerRequiresDeposit && body.payment_option === "deposit" ? "deposit" : "full";
+    const depositAmount = providerRequiresDeposit ? percentOf(result.totalAmount, depositPct) : 0;
+    const chargeAmount = paymentOption === "deposit" ? depositAmount : result.totalAmount;
+
     const reference = `co_${id}_${Date.now()}`;
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://beautonomi.com";
     const callbackUrl = `${appUrl}/checkout/success?payment_type=custom_offer&offer_id=${encodeURIComponent(id)}`;
 
     const email = (user as { email?: string }).email ?? "customer@example.com";
-    const amountKobo = toCents(result.totalAmount);
+    const amountKobo = toCents(chargeAmount);
 
     const init = await initializePaystackTransaction({
       email,
@@ -141,13 +165,18 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         promotion_id: result.promotionId ?? "",
         promotion_discount_amount: result.promotionDiscountAmount,
         commission_base: result.commissionBase,
+        payment_option: paymentOption,
+        total_amount: result.totalAmount,
+        deposit_amount: paymentOption === "deposit" ? chargeAmount : 0,
+        deposit_percentage: providerRequiresDeposit ? depositPct : 0,
+        requires_deposit: providerRequiresDeposit,
       },
       tenantId,
     });
 
     const paymentUrl = init.data.authorization_url;
 
-    const { error: updateError } = await supabase.from("custom_offers")
+    const { error: updateError } = await adminSupabase.from("custom_offers")
       .update({
         status: "payment_pending",
         payment_reference: reference,
@@ -161,7 +190,14 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       return handleApiError(new Error("Failed to save payment state"), "Unable to process payment. Please try again.", "DB_ERROR", 500);
     }
 
-    return successResponse({ paymentUrl });
+    return successResponse({
+      paymentUrl,
+      deposit_required: providerRequiresDeposit,
+      deposit_percentage: providerRequiresDeposit ? depositPct : 0,
+      deposit_amount: paymentOption === "deposit" ? chargeAmount : 0,
+      payment_option: paymentOption,
+      total_amount: result.totalAmount,
+    });
   } catch (error) {
     return handleApiError(error, "Failed to accept offer");
   }

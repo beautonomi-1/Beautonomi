@@ -30,10 +30,20 @@ export async function GET(request: NextRequest) {
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
 
-    const [{ totalRevenue, revenueByBooking, revenueByDate }, previousRevenue] = await Promise.all([
+    const [{ totalRevenue, revenueByBooking, revenueByDate }, previousRevenue, cancelFeeResult] = await Promise.all([
       getProviderRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
       getPreviousPeriodRevenue(supabaseAdmin, providerId, fromDate, toDate, locationId, dashOpts),
+      supabaseAdmin
+        .from("finance_transactions")
+        .select("net")
+        .eq("provider_id", providerId)
+        .eq("transaction_type", "cancellation_fee")
+        .gte("created_at", fromDate.toISOString())
+        .lte("created_at", toDate.toISOString()),
     ]);
+    const cancellationFees = (cancelFeeResult.data ?? []).reduce(
+      (s, r) => s + Number((r as any).net ?? 0), 0
+    );
 
     let bkQuery = supabaseAdmin
       .from("bookings")
@@ -76,12 +86,16 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       total_revenue: totalRevenue,
+      cancellation_fees: cancellationFees,
+      total_revenue_inclusive: totalRevenue + cancellationFees,
       previous_revenue: previousRevenue,
       revenue_by_service,
       revenue_by_staff: [] as { staff: string; revenue: number }[],
       daily_trend,
       avg_per_booking: bookingCountWithRevenue > 0 ? totalRevenue / bookingCountWithRevenue : 0,
       transaction_count: bookingCountWithRevenue,
+      time_basis: "ledger_created_at",
+      time_basis_note: "Revenue from finance_transactions.created_at (payment date). Booking dates shown for service breakdown are scheduled_at.",
     });
   } catch (error) {
     console.error("Error in revenue report:", error);

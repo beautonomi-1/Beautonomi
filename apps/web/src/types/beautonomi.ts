@@ -163,6 +163,12 @@ export interface PublicProviderDetail extends PublicProviderCard {
   total_points?: number;
   /** False when the provider opted out of search indexing; booking pages may set noindex. */
   seo_indexable?: boolean;
+  /** Tax rate applied to bookings for this provider (percentage, e.g. 15 = 15%). */
+  tax_rate_percent?: number;
+  /** Whether the provider accepts tips. */
+  tips_enabled?: boolean;
+  /** IANA timezone for interpreting booking slot wall times (e.g. Africa/Johannesburg). */
+  timezone?: string | null;
 }
 
 // Service/Offering Types
@@ -345,6 +351,8 @@ export interface BookingDraft {
     enabled: boolean;
     frequency: 'weekly' | 'biweekly' | 'monthly';
   };
+  /** Travel buffer minutes used during availability check; must match `/api/availability` travelBuffer. */
+  availability_travel_buffer_minutes?: number;
 }
 
 export interface BookingService {

@@ -7,6 +7,7 @@ import { requireAdminSection,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_ECOMMERCE } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const resolveSchema = z.object({
   resolution: z.enum(["full_refund", "partial_refund", "replacement", "store_credit", "denied"]),
@@ -90,6 +91,22 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.product_return.resolve",
+      entity_type: "product_return_request",
+      entity_id: id,
+      module: "ecommerce",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: { resolution: parsed.resolution },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse({ return_request: data });
   } catch (err) {
     return handleApiError(err, "Failed to resolve return request");

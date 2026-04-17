@@ -37,18 +37,31 @@ export class FetchTimeoutError extends Error {
 const ADMIN_SCOPE_STORAGE_KEY = "admin_scope_mode";
 const ADMIN_SCOPE_TENANT_STORAGE_KEY = "admin_scope_tenant_id";
 
+/** Path is `prefix` or `prefix/...`, not `prefix-other` (matches admin-api-client `matchesScopedPathPrefix`). */
+function adminPathMatchesPrefix(url: string, prefix: string): boolean {
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const path = new URL(url, base).pathname;
+    if (path === prefix) return true;
+    return path.startsWith(`${prefix}/`);
+  } catch {
+    return url === prefix || url.startsWith(`${prefix}/`);
+  }
+}
+
 function isScopedAdminCustomizationUrl(url: string): boolean {
   return (
-    url.startsWith("/api/admin/settings") ||
-    url.startsWith("/api/admin/content") ||
-    url.startsWith("/api/admin/email-templates") ||
-    url.startsWith("/api/admin/sms-templates") ||
-    url.startsWith("/api/admin/notification-templates") ||
-    url.startsWith("/api/admin/mapbox/config") ||
-    url.startsWith("/api/admin/control-plane/integrations/gemini") ||
-    url.startsWith("/api/admin/control-plane/integrations/aura") ||
-    url.startsWith("/api/admin/control-plane/integrations/sumsub") ||
-    url.startsWith("/api/admin/subscription-plans")
+    adminPathMatchesPrefix(url, "/api/admin/settings") ||
+    adminPathMatchesPrefix(url, "/api/admin/content") ||
+    adminPathMatchesPrefix(url, "/api/admin/email-templates") ||
+    adminPathMatchesPrefix(url, "/api/admin/sms-templates") ||
+    adminPathMatchesPrefix(url, "/api/admin/notification-templates") ||
+    adminPathMatchesPrefix(url, "/api/admin/mapbox/config") ||
+    adminPathMatchesPrefix(url, "/api/admin/maintenance") ||
+    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/gemini") ||
+    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/aura") ||
+    adminPathMatchesPrefix(url, "/api/admin/control-plane/integrations/sumsub") ||
+    adminPathMatchesPrefix(url, "/api/admin/subscription-plans")
   );
 }
 
@@ -230,6 +243,7 @@ export async function fetchJson<T = unknown>(
       headers: requestHeaders,
       body: requestBody,
       signal: controller.signal,
+      credentials: "same-origin",
       ...fetchOptions,
     });
 

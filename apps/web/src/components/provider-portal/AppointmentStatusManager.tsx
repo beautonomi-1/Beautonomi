@@ -445,19 +445,26 @@ export function QuickStatusActions({
 }: QuickStatusActionsProps) {
   const currentStatus = appointment.status;
 
-  // Define quick actions based on current status
-  // Note: Appointment uses "booked"|"started", we pass AppointmentStatus "confirmed"|"in_progress" to onStatusUpdate
+  const isAtHome = appointment.location_type === "at_home";
+  const providerReady =
+    appointment.current_stage === "provider_arrived" ||
+    appointment.arrival_otp_verified ||
+    appointment.qr_code_verified;
+
   const getQuickActions = () => {
     switch (currentStatus) {
       case "pending":
         return [
           { status: "confirmed" as AppointmentStatus, label: "Confirm", icon: CheckCircle2, color: "text-blue-600 hover:bg-blue-50" },
         ];
-      case "booked":
-        return [
-          { status: "in_progress" as AppointmentStatus, label: "Start", icon: Play, color: "text-purple-600 hover:bg-purple-50" },
-          { status: "no_show" as AppointmentStatus, label: "No Show", icon: UserX, color: "text-gray-600 hover:bg-gray-100" },
-        ];
+      case "booked": {
+        const actions: { status: AppointmentStatus; label: string; icon: typeof Play; color: string }[] = [];
+        if (!isAtHome || providerReady) {
+          actions.push({ status: "in_progress" as AppointmentStatus, label: "Start", icon: Play, color: "text-purple-600 hover:bg-purple-50" });
+        }
+        actions.push({ status: "no_show" as AppointmentStatus, label: "No Show", icon: UserX, color: "text-gray-600 hover:bg-gray-100" });
+        return actions;
+      }
       case "started":
         return [
           { status: "completed" as AppointmentStatus, label: "Complete", icon: CheckCircle2, color: "text-green-600 hover:bg-green-50" },

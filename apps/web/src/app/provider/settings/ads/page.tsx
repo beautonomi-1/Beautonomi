@@ -42,6 +42,8 @@ type Campaign = {
   daily_budget?: number | null;
   bid_cpc?: number;
   pack_impressions?: number | null;
+  billing_model?: string;
+  duration_days?: number | null;
   start_at: string | null;
   end_at: string | null;
   targeting?: { global_category_ids?: string[] };
@@ -58,6 +60,7 @@ type PerformanceSummary = {
 };
 
 type ImpressionPack = { id: string; impressions: number; price_zar: number; display_order: number };
+type TimePack = { id: string; duration_days: number; label: string; price_zar: number; display_order: number };
 
 export default function ProviderAdsPage() {
   const { currencyCode, format: fmt } = useReportCurrency();
@@ -67,6 +70,8 @@ export default function ProviderAdsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [performance, setPerformance] = useState<PerformanceSummary | null>(null);
   const [packs, setPacks] = useState<ImpressionPack[]>([]);
+  const [timePacks, setTimePacks] = useState<TimePack[]>([]);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -92,8 +97,9 @@ export default function ProviderAdsPage() {
     try {
       const res = await fetcher.get<{ data: Campaign[] }>("/api/provider/ads/campaigns");
       setCampaigns(res.data ?? []);
-    } catch {
+    } catch (err) {
       setCampaigns([]);
+      toast.error("Failed to load campaigns. Please try again.");
     }
   };
 
@@ -119,10 +125,17 @@ export default function ProviderAdsPage() {
       try {
         const [catRes, packsRes] = await Promise.all([
           fetcher.get<{ data: GlobalCategory[] }>("/api/public/categories/global?all=true"),
-          fetcher.get<{ data: ImpressionPack[] }>("/api/provider/ads/packs"),
+          fetcher.get<{ data: { impression_packs: ImpressionPack[]; time_packs: TimePack[]; available_models: string[] } }>("/api/provider/ads/packs"),
         ]);
         setGlobalCategories(Array.isArray(catRes.data) ? catRes.data : []);
-        setPacks(Array.isArray(packsRes.data) ? packsRes.data : []);
+        const packsData = packsRes.data;
+        if (packsData && typeof packsData === "object" && !Array.isArray(packsData)) {
+          setPacks(Array.isArray(packsData.impression_packs) ? packsData.impression_packs : []);
+          setTimePacks(Array.isArray(packsData.time_packs) ? packsData.time_packs : []);
+          setAvailableModels(Array.isArray(packsData.available_models) ? packsData.available_models : []);
+        } else {
+          setPacks(Array.isArray(packsData) ? (packsData as any) : []);
+        }
       } catch {
         setGlobalCategories([]);
         setPacks([]);
@@ -312,7 +325,55 @@ export default function ProviderAdsPage() {
         <div className="space-y-4">
           {enabled && (
             <>
-              {packs.length > 0 && (
+              {timePacks.length > 0 && availableModels.includes("time_based") && (
+                <div className="mb-6">
+                  <Label className="text-base font-medium">Boost for a set number of days</Label>
+                  <p className="text-sm text-muted-foreground mb-3">Pay a flat rate and your listing appears in sponsored slots for the full duration. Predictable and simple.</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+                    {timePacks.map((tp) => (
+                      <button
+                        key={tp.id}
+                        type="button"
+                        onClick={async () => {
+                          setCreatingPackId(tp.id);
+                          try {
+                            const targeting = createForm.global_category_ids.length > 0
+                              ? { global_category_ids: createForm.global_category_ids }
+                              : {};
+                            const res = await fetcher.post<{ data: { payment_url?: string } }>("/api/provider/ads/campaigns", {
+                              time_pack_id: tp.id,
+                              targeting,
+                            });
+                            if (res.data?.payment_url) {
+                              window.location.href = res.data.payment_url;
+                              return;
+                            }
+                            toast.success("Campaign created.");
+                            loadCampaigns();
+                          } catch {
+                            toast.error("Failed to create campaign");
+                          } finally {
+                            setCreatingPackId(null);
+                          }
+                        }}
+                        disabled={creatingPackId !== null}
+                        className="rounded-lg border-2 border-emerald-500/30 bg-emerald-50 p-4 text-left hover:border-emerald-500 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                      >
+                        <p className="font-semibold text-lg">{tp.duration_days} {tp.duration_days === 1 ? "day" : "days"}</p>
+                        <p className="text-sm text-muted-foreground">{tp.label}</p>
+                        <p className="font-medium mt-1">{fmt(Number(tp.price_zar))}</p>
+                        {creatingPackId === tp.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin mt-2" />
+                        ) : (
+                          <span className="text-xs text-emerald-600 mt-2 inline-block">Buy & boost →</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {packs.length > 0 && availableModels.includes("impression_pack") && (
                 <div>
                   <Label className="text-base font-medium">Buy impressions</Label>
                 <p className="text-sm text-muted-foreground mb-3">Choose a pack — you pay once and get a fixed number of impressions. Easy to estimate.</p>
@@ -452,7 +513,9 @@ export default function ProviderAdsPage() {
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      {c.pack_impressions != null
+                      {c.billing_model === "time_based"
+                        ? `${c.duration_days ?? "?"} day boost · ${fmt(Number(c.budget))} paid${c.end_at ? ` · Ends ${new Date(c.end_at).toLocaleDateString()}` : ""}`
+                        : c.pack_impressions != null
                         ? `${c.pack_impressions} impressions · ${fmt(Number(c.budget))} paid · ${fmt(Number(c.spent))} spent`
                         : `Total budget ${fmt(Number(c.budget))} · Spent ${fmt(Number(c.spent))}${c.daily_budget != null ? ` · Daily cap ${fmt(Number(c.daily_budget))}` : ""}${c.bid_cpc != null && c.bid_cpc > 0 ? ` · Bid ${fmt(Number(c.bid_cpc))}/click` : ""}`}
                     </p>

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, Clock, X, Loader2 } from "lucide-react";
 import { EmblaSlider, type EmblaSliderApi } from "@/components/ui/embla-slider";
 import { fetcher } from "@/lib/http/fetcher";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 
 interface TimeSlot {
   id: string;
@@ -26,9 +27,15 @@ interface AvailabilityCalendarProps {
   onDateTimeSelection: (dateTime: Date) => void;
   providerSlug?: string;
   serviceId?: string;
+  /** Comma-separated offering IDs for multi-service bookings */
+  serviceIds?: string;
   staffId?: string;
   locationId?: string;
   durationMinutes?: number;
+  bufferMinutes?: number;
+  /** When rescheduling, exclude this booking from conflict checks so its own slot stays available */
+  excludeBookingId?: string;
+  locationType?: 'at_salon' | 'at_home';
 }
 
 const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
@@ -36,9 +43,13 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   onDateTimeSelection,
   providerSlug,
   serviceId,
+  serviceIds,
   staffId,
   locationId,
   durationMinutes = 60,
+  bufferMinutes,
+  excludeBookingId,
+  locationType,
 }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -70,18 +81,27 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
   // Fetch availability from API
   const fetchAvailability = useCallback(async (date: Date): Promise<TimeSlot[]> => {
     if (!providerSlug) {
-      // Fallback to simulated data if no provider slug
-      return generateFallbackSlots(date);
+      return [];
     }
 
     const dateStr = formatDateForAPI(date);
     
-    // Build query params
     const params = new URLSearchParams({ date: dateStr });
-    if (serviceId) params.append("service_id", serviceId);
+    if (serviceIds) {
+      params.append("service_ids", serviceIds);
+    } else if (serviceId) {
+      params.append("service_id", serviceId);
+    }
     if (staffId) params.append("staff_id", staffId);
     if (locationId) params.append("location_id", locationId);
     if (durationMinutes) params.append("duration_minutes", durationMinutes.toString());
+    if (bufferMinutes !== undefined) {
+      params.append("buffer_minutes", bufferMinutes.toString());
+    }
+    if (excludeBookingId) params.append("exclude_booking_id", excludeBookingId);
+    if (locationType === "at_home") {
+      params.append("travel_buffer_minutes", String(HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES));
+    }
 
     try {
       const response = await fetcher.get<{
@@ -91,7 +111,6 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
 
       const slots = response.data?.slots || [];
       
-      // Transform API slots to component format
       return slots.map((slot, index) => ({
         id: `${dateStr}-${index}`,
         time: formatTimeDisplay(slot.start),
@@ -102,48 +121,9 @@ const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({
       }));
     } catch (err) {
       console.error("Error fetching availability:", err);
-      // Return fallback on error
-      return generateFallbackSlots(date);
+      return [];
     }
-  }, [providerSlug, serviceId, staffId, locationId, durationMinutes, selectedProfessional]);
-
-  // Fallback slot generation (for when API is unavailable)
-  const generateFallbackSlots = (date: Date): TimeSlot[] => {
-    const dayOfWeek = date.getDay();
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const dateStr = formatDateForAPI(date);
-    
-    const slots: TimeSlot[] = [];
-    const startHour = 9;
-    const endHour = 18;
-
-    for (let hour = startHour; hour < endHour; hour++) {
-      for (let minute = 0; minute < 60; minute += 30) {
-        const slotDate = new Date(date);
-        slotDate.setHours(hour, minute, 0, 0);
-        
-        const time12h = slotDate.toLocaleTimeString("en-US", {
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
-        });
-
-        // Weekend: closed; Weekdays: all available by default
-        const isAvailable = !isWeekend;
-
-        slots.push({
-          id: `${dateStr}-${hour}-${minute}`,
-          time: time12h,
-          available: isAvailable,
-          professional: selectedProfessional,
-          start: slotDate.toISOString(),
-          end: new Date(slotDate.getTime() + durationMinutes * 60000).toISOString(),
-        });
-      }
-    }
-
-    return slots;
-  };
+  }, [providerSlug, serviceId, serviceIds, staffId, locationId, durationMinutes, bufferMinutes, selectedProfessional, excludeBookingId, locationType]);
 
   const getDates = (startDate: Date, count: number): Date[] => {
     const dates = [];

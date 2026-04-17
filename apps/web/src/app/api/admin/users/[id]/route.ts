@@ -5,6 +5,7 @@ import { requireAdminSection, successResponse, notFoundResponse, handleApiError 
 import { ADMIN_SECTION_USERS_TRUST } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta, computeChangedFields } from "@/lib/audit/audit";
 
 function sanitizeUserForAdmin(row: Record<string, unknown>) {
   const { two_factor_secret: _tfs, ...rest } = row;
@@ -28,10 +29,11 @@ export async function GET(
     const admin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
 
-    const { data: userData, error } = await supabase
+    const { data: userData, error } = await admin
       .from("users")
       .select("*")
       .eq("id", id)
+      .eq("preferred_home_tenant_id", tenantId)
       .single();
 
     if (error || !userData) {
@@ -174,9 +176,12 @@ export async function GET(
  * Update user (suspend/reactivate)
  */
 const updateUserSchema = z.object({
+  full_name: z.string().min(1).max(200).optional(),
+  phone: z.string().max(30).nullable().optional(),
+  avatar_url: z.string().url().nullable().optional(),
   deactivated_at: z.string().nullable().optional(),
   deactivation_reason: z.string().nullable().optional(),
-  role: z.enum(["customer", "provider", "admin", "superadmin"]).optional(),
+  role: z.enum(["customer", "provider", "admin"]).optional(),
   email_notifications_enabled: z.boolean().optional(),
   sms_notifications_enabled: z.boolean().optional(),
   push_notifications_enabled: z.boolean().optional(),
@@ -238,7 +243,17 @@ export async function PATCH(
     }
 
     const updateData: Record<string, unknown> = {};
-    
+
+    if (validationResult.data.full_name !== undefined) {
+      updateData.full_name = validationResult.data.full_name;
+    }
+    if (validationResult.data.phone !== undefined) {
+      updateData.phone = validationResult.data.phone;
+    }
+    if (validationResult.data.avatar_url !== undefined) {
+      updateData.avatar_url = validationResult.data.avatar_url;
+    }
+
     if (validationResult.data.deactivated_at !== undefined) {
       const at = validationResult.data.deactivated_at
         ? new Date(validationResult.data.deactivated_at).toISOString()
@@ -304,6 +319,29 @@ export async function PATCH(
         ban_duration: "0",
       });
     }
+
+    const isDeactivation = !!updateData.deactivated_at;
+    const isReactivation = updateData.deactivated_at === null;
+    const riskLevel = isDeactivation || isReactivation || updateData.role ? "high" as const : "medium" as const;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: isDeactivation ? "admin.user.suspend" : isReactivation ? "admin.user.reactivate" : "admin.user.update",
+      entity_type: "user",
+      entity_id: id,
+      module: "users_trust",
+      risk_level: riskLevel,
+      retention_tier: riskLevel === "high" ? "access" : "operational",
+      status: "succeeded",
+      reason: validationResult.data.deactivation_reason ?? undefined,
+      after_json: updateData,
+      changed_fields: Object.keys(updateData),
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: user.role === "superadmin",
+    });
 
     return successResponse(sanitizeUserForAdmin(updatedUser as Record<string, unknown>));
   } catch (error) {

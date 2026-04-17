@@ -1,0 +1,378 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { ADMIN_SECTION_PROVIDER_OPS } from "@beautonomi/admin-access";
+import { adminApi } from "@/lib/adminClient";
+import { adminQueryKeys } from "@/lib/adminQueryKeys";
+import { cn } from "@/lib/cn";
+import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
+import { AdminPanel } from "@/components/ui/AdminPanel";
+import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
+import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
+import { GripVertical, Mail, Phone, MapPin, Tag, Calendar } from "lucide-react";
+
+const PIPELINE_PAGE_SIZE = 120;
+
+const PIPELINE_STAGES = [
+  { key: "new", label: "New", color: "border-blue-300 bg-blue-50", headerBg: "bg-blue-500", dot: "bg-blue-500" },
+  { key: "contacted", label: "Contacted", color: "border-cyan-300 bg-cyan-50", headerBg: "bg-cyan-500", dot: "bg-cyan-500" },
+  { key: "qualified", label: "Qualified", color: "border-emerald-300 bg-emerald-50", headerBg: "bg-emerald-500", dot: "bg-emerald-500" },
+  { key: "proposal_sent", label: "Proposal Sent", color: "border-violet-300 bg-violet-50", headerBg: "bg-violet-500", dot: "bg-violet-500" },
+  { key: "negotiating", label: "Negotiating", color: "border-purple-300 bg-purple-50", headerBg: "bg-purple-500", dot: "bg-purple-500" },
+  { key: "won", label: "Won", color: "border-green-300 bg-green-50", headerBg: "bg-green-500", dot: "bg-green-500" },
+  { key: "lost", label: "Lost", color: "border-red-300 bg-red-50", headerBg: "bg-red-500", dot: "bg-red-500" },
+  { key: "nurture", label: "Nurture", color: "border-amber-300 bg-amber-50", headerBg: "bg-amber-500", dot: "bg-amber-500" },
+  { key: "matched", label: "Matched", color: "border-teal-300 bg-teal-50", headerBg: "bg-teal-500", dot: "bg-teal-500" },
+] as const;
+
+interface LeadCategory {
+  global_category_id: string;
+  global_service_categories: { id: string; name: string; slug: string; icon: string | null } | null;
+}
+
+interface Lead {
+  id: string;
+  business_name: string | null;
+  contact_person_name: string | null;
+  email: string | null;
+  phone_e164: string | null;
+  commercial_stage: string;
+  source: string;
+  suggested_location_text: string | null;
+  created_at: string;
+  tags?: string[];
+  provider_lead_categories?: LeadCategory[];
+}
+
+interface LeadsPayload {
+  data: Lead[];
+  meta: { page: number; limit: number; total: number; has_more: boolean };
+  stage_counts: Record<string, number>;
+}
+
+function applyLeadStageInCache(
+  old: InfiniteData<LeadsPayload> | undefined,
+  id: string,
+  stage: string,
+): InfiniteData<LeadsPayload> | undefined {
+  if (!old?.pages?.length) return old;
+  return {
+    ...old,
+    pages: old.pages.map((page) => ({
+      ...page,
+      data: page.data.map((lead) => (lead.id === id ? { ...lead, commercial_stage: stage } : lead)),
+    })),
+  };
+}
+
+export function ProviderOpsPipelinePage() {
+  const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_PROVIDER_OPS, "Provider Ops access is required.");
+  const qc = useQueryClient();
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [draggedLeadId, setDraggedLeadId] = useState<string | null>(null);
+  const [landedLeadId, setLandedLeadId] = useState<string | null>(null);
+  const dragPreviewNodeRef = useRef<HTMLElement | null>(null);
+  const suppressCardClickRef = useRef(false);
+
+  const qk = adminQueryKeys.providerOps.leads("pipeline-board");
+
+  const q = useInfiniteQuery({
+    queryKey: qk,
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) =>
+      adminApi.getJson<LeadsPayload>(
+        `/api/admin/provider-ops/leads?page=${pageParam}&limit=${PIPELINE_PAGE_SIZE}`,
+        { timeoutMs: 60_000 },
+      ),
+    getNextPageParam: (lastPage) => (lastPage.meta.has_more ? lastPage.meta.page + 1 : undefined),
+    enabled: allowed,
+  });
+
+  const leads = useMemo(() => q.data?.pages.flatMap((p) => p.data) ?? [], [q.data]);
+  const totalLeads = q.data?.pages[0]?.meta.total ?? leads.length;
+  const loadedCount = leads.length;
+
+  const stageMut = useMutation({
+    mutationFn: ({ id, stage }: { id: string; stage: string }) =>
+      adminApi.patchJson(`/api/admin/provider-ops/leads/${id}/stage`, { stage }),
+    onMutate: async ({ id, stage }) => {
+      await qc.cancelQueries({ queryKey: qk });
+      const previousStage = qc
+        .getQueryData<InfiniteData<LeadsPayload>>(qk)
+        ?.pages.flatMap((p) => p.data)
+        .find((l) => l.id === id)?.commercial_stage;
+      qc.setQueryData<InfiniteData<LeadsPayload>>(qk, (old) => applyLeadStageInCache(old, id, stage));
+      queueMicrotask(() => {
+        setLandedLeadId(id);
+        window.setTimeout(() => setLandedLeadId((cur) => (cur === id ? null : cur)), 480);
+      });
+      return { previousStage, id };
+    },
+    onError: (err: Error, { id }, context) => {
+      setLandedLeadId((cur) => (cur === id ? null : cur));
+      if (context?.previousStage !== undefined) {
+        qc.setQueryData<InfiniteData<LeadsPayload>>(qk, (old) => applyLeadStageInCache(old, id, context.previousStage!));
+      }
+      adminToast.error(`Stage update failed: ${err.message}`);
+    },
+    onSuccess: () => {
+      adminToast.success("Stage updated");
+    },
+  });
+
+  useEffect(() => {
+    return () => {
+      dragPreviewNodeRef.current?.remove();
+      dragPreviewNodeRef.current = null;
+    };
+  }, []);
+
+  const cleanupDragPreview = useCallback(() => {
+    dragPreviewNodeRef.current?.remove();
+    dragPreviewNodeRef.current = null;
+  }, []);
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, leadId: string, cardEl: HTMLElement) => {
+      suppressCardClickRef.current = true;
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", leadId);
+      setDraggedLeadId(leadId);
+
+      const clone = cardEl.cloneNode(true) as HTMLElement;
+      clone.style.cssText = [
+        "position:fixed",
+        "left:-9999px",
+        "top:0",
+        "opacity:0.72",
+        "pointer-events:none",
+        `width:${cardEl.offsetWidth}px`,
+        "box-shadow:0 14px 28px rgba(0,0,0,0.18)",
+        "border-radius:0.5rem",
+      ].join(";");
+      document.body.appendChild(clone);
+      dragPreviewNodeRef.current = clone;
+
+      const rect = cardEl.getBoundingClientRect();
+      e.dataTransfer.setDragImage(clone, e.clientX - rect.left, e.clientY - rect.top);
+    },
+    [],
+  );
+
+  const handleDragEnd = useCallback(() => {
+    cleanupDragPreview();
+    setDraggedLeadId(null);
+    setDragOverStage(null);
+    window.setTimeout(() => {
+      suppressCardClickRef.current = false;
+    }, 0);
+  }, [cleanupDragPreview]);
+
+  function handleDrop(targetStage: string, e: React.DragEvent) {
+    e.preventDefault();
+    setDragOverStage(null);
+    const id = e.dataTransfer.getData("text/plain") || draggedLeadId || "";
+    if (!id) return;
+    const lead = leads.find((l) => l.id === id);
+    if (!lead || lead.commercial_stage === targetStage) {
+      setDraggedLeadId(null);
+      return;
+    }
+    setDraggedLeadId(null);
+    stageMut.mutate({ id: lead.id, stage: targetStage });
+  }
+
+  if (denied) return denied;
+  if (q.isPending) return <div className="space-y-6"><AdminPageHeader title="Pipeline Board" /><AdminPanel><AdminPageSkeleton rows={6} /></AdminPanel></div>;
+  if (q.error) {
+    if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
+    return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+  }
+
+  return (
+    <div className="flex min-h-[calc(100dvh-4rem)] flex-col overflow-hidden pb-[env(safe-area-inset-bottom,0px)]">
+      <style>{`
+        @keyframes pipeline-card-land {
+          from { opacity: 0.65; transform: translateY(8px) scale(0.98); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .pipeline-card-land {
+          animation: pipeline-card-land 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+      `}</style>
+      <div className="flex-shrink-0 px-2 pt-1 sm:px-1">
+        <AdminPageHeader
+          title="Pipeline Board"
+          description={`${totalLeads} leads total · ${loadedCount} loaded across ${PIPELINE_STAGES.length} stages · Drag to update status · Swipe columns on mobile`}
+        />
+        {q.hasNextPage && (
+          <div className="mt-2 flex items-center gap-3 px-1 pb-1">
+            <button
+              type="button"
+              disabled={q.isFetchingNextPage}
+              onClick={() => void q.fetchNextPage()}
+              className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+            >
+              {q.isFetchingNextPage ? "Loading…" : `Load more (${loadedCount} of ${totalLeads})`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-2 pb-4 [-webkit-overflow-scrolling:touch] touch-pan-x sm:px-1">
+        {PIPELINE_STAGES.map((stage) => {
+          const stageLeads = leads.filter((l) => l.commercial_stage === stage.key);
+          const isOver = dragOverStage === stage.key;
+          return (
+            <div
+              key={stage.key}
+              className={cn(
+                "flex w-[min(85vw,18rem)] max-w-sm flex-shrink-0 flex-col rounded-xl border-2 transition-all duration-150 sm:w-72",
+                isOver
+                  ? "border-[3px] border-blue-500 bg-blue-100/70 shadow-xl ring-4 ring-blue-300/40 scale-[1.02]"
+                  : stage.color,
+              )}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverStage(stage.key); }}
+              onDragLeave={(e) => {
+                const next = e.relatedTarget as Node | null;
+                if (next && e.currentTarget.contains(next)) return;
+                setDragOverStage(null);
+              }}
+              onDrop={(ev) => handleDrop(stage.key, ev)}
+            >
+              {/* Column header */}
+              <div className="flex-shrink-0 rounded-t-[10px] border-b bg-white/70 px-3 py-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className={cn("h-2.5 w-2.5 rounded-full", stage.dot)} />
+                    <h3 className="text-sm font-semibold text-gray-800">{stage.label}</h3>
+                  </div>
+                  <span className={cn(
+                    "rounded-full px-2 py-0.5 text-xs font-bold",
+                    stageLeads.length > 0 ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-500",
+                  )}>
+                    {stageLeads.length}
+                  </span>
+                </div>
+              </div>
+
+              {/* Cards */}
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain p-2 [-webkit-overflow-scrolling:touch]">
+                {stageLeads.map((lead) => {
+                  const name = lead.business_name || lead.contact_person_name || "Unnamed";
+                  const cats = (lead.provider_lead_categories ?? []).map((c) => c.global_service_categories?.name).filter(Boolean);
+                  const isDragging = draggedLeadId === lead.id;
+                  return (
+                    <div key={lead.id} className="relative">
+                      {isDragging && (
+                        <div
+                          className="absolute inset-0 z-0 flex min-h-[7.5rem] flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-100/90 text-[10px] font-medium text-gray-400"
+                          aria-hidden
+                        >
+                          Drop elsewhere
+                        </div>
+                      )}
+                      <div
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, lead.id, e.currentTarget)}
+                        onDragEnd={handleDragEnd}
+                        className={cn("relative z-10", isDragging && "opacity-0")}
+                      >
+                        <Link
+                          to={adminSpaTo(`/admin/provider-ops/leads/${lead.id}`)}
+                          onClick={(e) => {
+                            if (suppressCardClickRef.current) {
+                              e.preventDefault();
+                            }
+                          }}
+                          className="block"
+                        >
+                          <div
+                            className={cn(
+                              "group cursor-grab rounded-lg border bg-white transition-all duration-200 active:cursor-grabbing hover:shadow-md hover:-translate-y-0.5",
+                              landedLeadId === lead.id && "pipeline-card-land",
+                            )}
+                          >
+                            {/* Drag handle hint */}
+                            <div className="flex items-center gap-1 border-b border-gray-50 px-3 py-2">
+                              <GripVertical className="h-3.5 w-3.5 flex-shrink-0 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100" />
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-600">
+                                  {name.charAt(0).toUpperCase()}
+                                </div>
+                                <p className="truncate text-sm font-medium text-gray-900">{name}</p>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1.5 px-3 pb-2.5 pt-1.5">
+                              {lead.email && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate">
+                                  <Mail className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.email}
+                                </div>
+                              )}
+                              {lead.phone_e164 && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500">
+                                  <Phone className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.phone_e164}
+                                </div>
+                              )}
+                              {lead.suggested_location_text && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-gray-500 truncate">
+                                  <MapPin className="h-3 w-3 flex-shrink-0 text-gray-400" />{lead.suggested_location_text}
+                                </div>
+                              )}
+
+                              {/* Categories */}
+                              {cats.length > 0 && (
+                                <div className="flex flex-wrap gap-1 pt-0.5">
+                                  {cats.slice(0, 2).map((c) => (
+                                    <span key={c} className="rounded bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium text-indigo-600">{c}</span>
+                                  ))}
+                                  {cats.length > 2 && <span className="text-[9px] text-gray-400">+{cats.length - 2}</span>}
+                                </div>
+                              )}
+
+                              {/* Tags */}
+                              {lead.tags && lead.tags.length > 0 && (
+                                <div className="flex items-center gap-1 pt-0.5">
+                                  <Tag className="h-2.5 w-2.5 text-gray-400" />
+                                  <span className="text-[9px] text-gray-400">{lead.tags.slice(0, 3).join(", ")}{lead.tags.length > 3 ? ` +${lead.tags.length - 3}` : ""}</span>
+                                </div>
+                              )}
+
+                              {/* Footer */}
+                              <div className="flex items-center justify-between border-t border-gray-50 pt-1.5">
+                                <span className="rounded border border-gray-200 px-1.5 py-0.5 text-[9px] font-medium text-gray-500">{lead.source}</span>
+                                <span className="flex items-center gap-1 text-[9px] text-gray-400">
+                                  <Calendar className="h-2.5 w-2.5" />
+                                  {new Date(lead.created_at).toLocaleDateString()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
+                {stageLeads.length === 0 && (
+                  <div className={cn(
+                    "flex flex-col items-center justify-center rounded-lg border-2 border-dashed py-8 transition-colors",
+                    isOver ? "border-blue-400 bg-blue-100/60" : "border-gray-200",
+                  )}>
+                    <p className="text-xs text-gray-400">No leads</p>
+                    <p className="mt-1 text-[10px] text-gray-300">Drop a lead here</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

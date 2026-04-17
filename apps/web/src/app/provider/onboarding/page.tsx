@@ -202,7 +202,7 @@ function coerceOwnerPhoneToE164ForForm(raw: string | undefined): string {
   const trimmed = raw.trim();
   const compact = normalizeSupabaseAuthPhone(trimmed);
 
-  let e164 =
+  const e164 =
     normalizeFullPhoneToE164(trimmed) ?? normalizeFullPhoneToE164(compact);
   if (e164) return normalizeSupabaseAuthPhone(e164);
 
@@ -327,7 +327,7 @@ const INITIAL_ONBOARDING_DATA: Partial<OnboardingData> = {
     thursday: { open: "09:00", close: "18:00", closed: false },
     friday: { open: "09:00", close: "18:00", closed: false },
     saturday: { open: "09:00", close: "18:00", closed: false },
-    sunday: { open: "09:00", close: "18:00", closed: true },
+    sunday: { open: "09:00", close: "18:00", closed: false },
   },
   selected_zone_ids: [],
 };
@@ -534,9 +534,20 @@ export default function ProviderOnboarding() {
       case 11: // Service Catalog
         // Optional - no validation
         break;
-      case 12: // Hours
-        // Optional - no validation
+      case 12: { // Hours
+        const hours = formData.operating_hours;
+        if (!hours || Object.keys(hours).length === 0) {
+          errors.push("Please set your operating hours");
+        } else {
+          const hasOpenDay = Object.values(hours).some(
+            (h: any) => h && !h.closed
+          );
+          if (!hasOpenDay) {
+            errors.push("At least one day must be open");
+          }
+        }
         break;
+      }
       case 13: // Review
         // Optional - no validation
         break;
@@ -716,7 +727,17 @@ export default function ProviderOnboarding() {
         return;
       }
 
-      console.log("Submitting onboarding data:", JSON.stringify(onboardingData, null, 2));
+      // §Provider-launch (audit 2026-04): never log the full onboarding
+      // payload — it contains owner name, email, phone, address, ID
+      // numbers, and banking details. Surface just enough signal for
+      // debugging without leaking PII into the browser console.
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[onboarding] submitting", {
+          category_count: onboardingData.global_category_ids?.length ?? 0,
+          has_address: Boolean(onboardingData.address?.line1),
+          selected_plan_id: onboardingData.selected_plan_id ?? null,
+        });
+      }
 
       const response = await fetcher.post<{
         data: {

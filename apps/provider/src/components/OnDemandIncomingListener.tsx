@@ -73,8 +73,8 @@ export function OnDemandIncomingListener() {
           router.push(`/(app)/on-demand/incoming/${r.id}` as never);
           break;
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn("On-demand poll failed:", err);
       }
     };
 

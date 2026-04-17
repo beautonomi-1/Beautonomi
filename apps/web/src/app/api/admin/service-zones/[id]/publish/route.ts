@@ -7,6 +7,7 @@ import { requireAdminSection,
   notFoundResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
 
 const bodySchema = z.object({ version: z.number().int().optional() });
@@ -20,7 +21,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json().catch(() => ({}));
@@ -76,6 +77,15 @@ export async function POST(
     } catch {
       // Zone is live regardless; enrollment can be re-triggered manually
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id, actor_role: user.role,
+      action: "admin.service_zone.publish", entity_type: "platform_zone",
+      entity_id: id, module: "operations", risk_level: "medium",
+      retention_tier: "operational", status: "succeeded",
+      ip_address: reqMeta.ip_address, user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({ ...(updated as object), enrolled_count: enrolledCount });
   } catch (error) {

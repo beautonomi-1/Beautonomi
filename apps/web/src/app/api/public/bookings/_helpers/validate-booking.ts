@@ -2,7 +2,6 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
-import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { handleApiError } from "@/lib/supabase/api-helpers";
 import { ensureProviderFreeSubscriptionRow } from "@/lib/subscriptions/ensure-provider-free-subscription";
 import { checkBookingLimit } from "@/lib/subscriptions/limit-checker";
@@ -16,7 +15,6 @@ import {
   exceedsEntitlement,
   percentOf,
   sumMoney,
-  roundCurrency,
 } from "@beautonomi/utils";
 import { sumChainedBlockedMinutes } from "@/lib/booking-slot-math/blocked-window-minutes";
 
@@ -51,14 +49,20 @@ export interface ValidatedBookingData {
 
   tipAmount: number;
   taxRate: number;
+  /** true = tax is already included in service prices (extract, don't add) */
+  taxIncluded: boolean;
   taxAmount: number;
 
   serviceFeeAmount: number;
   serviceFeePercentage: number;
   serviceFeeConfigId: string | null;
+  /** Whether the service fee should be displayed to the customer on the booking confirmation screen */
+  showServiceFeeToCustomer: boolean;
 
   totalAmount: number;
   loyaltyPointsEarned: number;
+  loyaltyDiscountAmount: number;
+  loyaltyPointsRedeemed: number;
 
   /** Appointment status determined by provider settings */
   appointmentStatus: string;
@@ -356,8 +360,22 @@ export async function validateBooking(
     const policyFields = await fetchGroupBookingPolicyFieldsFromDb(supabaseAdmin, draft.provider_id);
     const participants = validatedDraft.group_participants as Array<{ service_ids?: string[]; serviceIds?: string[] }>;
     const participantOfferingIds = participants.flatMap((p) => p.service_ids ?? p.serviceIds ?? []);
+
+    // Web UI includes "You" (primary) in group_participants; mobile only sends additional guests.
+    // Detect whether primary is already in participants by checking if the first participant's
+    // services match draft.services (the primary's services).
+    const primaryOfferIds = new Set(draft.services.map((s: { offering_id: string }) => s.offering_id));
+    const firstPServiceIds = participants[0]?.service_ids ?? (participants[0] as any)?.serviceIds ?? [];
+    const primaryInParticipants =
+      participants.length > 0 &&
+      firstPServiceIds.length > 0 &&
+      firstPServiceIds.every((id: string) => primaryOfferIds.has(id));
+    const additionalGuestCount = primaryInParticipants
+      ? Math.max(0, participants.length - 1)
+      : participants.length;
+
     const gp = evaluateGroupBookingPolicy({
-      additionalGuestCount: participants.length,
+      additionalGuestCount,
       ...policyFields,
       primaryOfferingIds: draft.services.map((s) => s.offering_id),
       participantOfferingIds,
@@ -869,6 +887,33 @@ export async function validateBooking(
         promotionId = promo.id;
       }
     }
+
+    // Fallback: check `coupons` table if not found in `promotions`
+    if (!promotionId) {
+      const { data: coupon } = await (supabase.from("coupons") as any)
+        .select("id, code, discount_type, discount_value, max_discount, is_active, expires_at, max_uses, used_count")
+        .eq("code", promoCode)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (coupon) {
+        const now = new Date();
+        const notExpired = !coupon.expires_at || new Date(coupon.expires_at) >= now;
+        const underLimit = !coupon.max_uses || (coupon.used_count || 0) < coupon.max_uses;
+
+        if (notExpired && underLimit) {
+          if (coupon.discount_type === "percentage") {
+            promoDiscountAmount = percentOf(prePromoSubtotal, Number(coupon.discount_value || 0));
+            if (coupon.max_discount)
+              promoDiscountAmount = Math.min(promoDiscountAmount, Number(coupon.max_discount));
+          } else {
+            promoDiscountAmount = Number(coupon.discount_value || 0);
+          }
+          promoDiscountAmount = Math.max(0, Math.min(promoDiscountAmount, prePromoSubtotal));
+          promotionId = coupon.id;
+        }
+      }
+    }
   }
 
   const subtotal = Math.max(0, prePromoSubtotal - promoDiscountAmount);
@@ -922,12 +967,49 @@ export async function validateBooking(
   const tipsEnabled = Boolean((provider as any)?.tips_enabled ?? true);
   const tipAmount = tipsEnabled ? (draft.tip_amount || 0) : 0;
 
-  let taxRate = Number((provider as any)?.tax_rate_percent || 0);
-  if (taxRate === 0) {
+  // Use null/undefined check — provider explicitly setting 0% is valid and must NOT fall through
+  // to the platform default (|| 0 would treat 0% as "not set" which causes bogus 15% fallback)
+  const rawProviderTaxRate = (provider as any)?.tax_rate_percent;
+  let taxRate: number;
+  let taxIncluded = false; // whether tax is already included in prices (inclusive) vs added on top (exclusive)
+  if (rawProviderTaxRate == null) {
+    // Load platform default — also check the `included` flag if a tax_rate reference row is configured
     const { getPlatformDefaultTaxRate } = await import("@/lib/platform-tax-settings");
     taxRate = await getPlatformDefaultTaxRate();
+    // Check for platform-level inclusive tax configuration
+    try {
+      const { data: taxRefRow } = await supabaseAdmin
+        .from("reference_data")
+        .select("metadata")
+        .eq("type", "tax_rate")
+        .eq("is_active", true)
+        .order("display_order", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (taxRefRow?.metadata && typeof taxRefRow.metadata === "object") {
+        const meta = taxRefRow.metadata as Record<string, unknown>;
+        if (meta.included === true) taxIncluded = true;
+      }
+    } catch {
+      // Non-critical; default to exclusive tax
+    }
+  } else {
+    taxRate = Math.max(0, Number(rawProviderTaxRate));
+    // Provider-level inclusive flag if set
+    taxIncluded = Boolean((provider as any)?.tax_inclusive ?? false);
   }
-  const taxAmount = taxRate > 0 ? percentOf(subtotalAfterMembership, taxRate) : 0;
+
+  // Inclusive tax: tax is already embedded in the service prices — extract it from subtotal.
+  // Formula: tax_amount = subtotal - (subtotal / (1 + rate/100))
+  // Exclusive tax (default): tax_amount = subtotal × rate/100 (added on top).
+  let taxAmount = 0;
+  if (taxRate > 0) {
+    if (taxIncluded) {
+      taxAmount = subtotalAfterMembership - subtotalAfterMembership / (1 + taxRate / 100);
+    } else {
+      taxAmount = percentOf(subtotalAfterMembership, taxRate);
+    }
+  }
 
   // ── Service fee ──────────────────────────────────────────────────────────
   let serviceFeeAmount = 0;
@@ -961,6 +1043,7 @@ export async function validateBooking(
   }
 
   // Fallback to platform settings if no provider fee config
+  let showServiceFeeToCustomer = true; // default: show — prevents hidden charges
   if (serviceFeeAmount === 0 && !serviceFeeConfigId) {
     const scopedSettings = await fetchScopedSingle<Record<string, unknown>>({
       supabase: supabaseAdmin,
@@ -972,9 +1055,15 @@ export async function validateBooking(
     });
     const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
     const payoutSettings = (settings as Record<string, any> | undefined)?.payouts || {};
-    const serviceFeeType = payoutSettings.platform_service_fee_type || "percentage";
-    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage || 0;
-    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed || 0;
+    // Default to "fixed" (R0) when platform not configured — never default to percentage
+    const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
+    const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
+    const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
+
+    // Respect the show_service_fee_to_customer admin setting
+    if (payoutSettings.show_service_fee_to_customer === false) {
+      showServiceFeeToCustomer = false;
+    }
 
     if (serviceFeeType === "percentage") {
       serviceFeePercentage = fallbackFeePercentage;
@@ -982,9 +1071,17 @@ export async function validateBooking(
     } else {
       serviceFeeAmount = fallbackFeeFixed;
     }
+  } else if (serviceFeeConfigId) {
+    // Provider-specific fee config: always show since it's explicitly configured per provider
+    showServiceFeeToCustomer = true;
   }
 
-  const totalAmount = sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
+  // For tax-inclusive pricing, subtotalAfterMembership already embeds VAT — do NOT add
+  // taxAmount again (it is the extracted portion for display/reporting only).
+  // For tax-exclusive pricing, tax is on top of the subtotal.
+  const totalAmount = taxIncluded
+    ? sumMoney(subtotalAfterMembership, tipAmount, serviceFeeAmount)
+    : sumMoney(subtotalAfterMembership, tipAmount, taxAmount, serviceFeeAmount);
 
   // ── Loyalty points ───────────────────────────────────────────────────────
   let loyaltyPointsEarned = 0;
@@ -1000,6 +1097,86 @@ export async function validateBooking(
   if (loyaltyRule?.points_per_currency_unit) {
     loyaltyPointsEarned = Math.floor(totalAmount * Number(loyaltyRule.points_per_currency_unit));
   }
+
+  // ── Loyalty redemption ──────────────────────────────────────────────────
+  let loyaltyDiscountAmount = 0;
+  let loyaltyPointsRedeemed = 0;
+  const loyaltyPointsRequested = Number(validatedDraft.loyalty_points_used ?? 0);
+
+  if (loyaltyPointsRequested > 0) {
+    const { data: loyaltyConfig } = await supabase
+      .from("loyalty_point_config")
+      .select("redemption_rate, min_redemption_points, max_redemption_percentage, is_active")
+      .eq("is_active", true)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!loyaltyConfig) {
+      return handleApiError(
+        new Error("Loyalty points system not configured"),
+        "Loyalty points are currently unavailable.",
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const redemptionRate = Number(loyaltyConfig.redemption_rate) || 10;
+    const minPoints = Number(loyaltyConfig.min_redemption_points) || 0;
+    const maxPct = Number(loyaltyConfig.max_redemption_percentage) || 100;
+
+    if (loyaltyPointsRequested < minPoints) {
+      return handleApiError(
+        new Error(`Minimum ${minPoints} loyalty points required`),
+        `You need at least ${minPoints} points to redeem.`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const maxDiscount = (subtotalAfterMembership * maxPct) / 100;
+    const maxPointsByCap = Math.floor(maxDiscount * redemptionRate);
+    const pointsToRedeem = Math.min(loyaltyPointsRequested, maxPointsByCap);
+
+    if (loyaltyPointsRequested > 0 && maxPointsByCap < minPoints) {
+      return handleApiError(
+        new Error("Loyalty redemption capped below minimum"),
+        `This booking only allows up to ${maxPointsByCap} loyalty points (${maxPct}% max), which is below the minimum redemption of ${minPoints} points.`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    if (pointsToRedeem < minPoints) {
+      return handleApiError(
+        new Error(`Minimum ${minPoints} loyalty points required for this booking`),
+        `You need at least ${minPoints} points to redeem, but only ${pointsToRedeem} points can be applied on this booking (${maxPct}% maximum).`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const { data: balanceData } = await supabase.rpc(
+      "get_customer_available_points" as any,
+      { customer_uuid: customerId },
+    );
+    const availableBalance = Number(balanceData) || 0;
+
+    if (pointsToRedeem > availableBalance) {
+      return handleApiError(
+        new Error("Insufficient loyalty points"),
+        `You have ${availableBalance} loyalty points available. This redemption needs up to ${pointsToRedeem} points (${maxPct}% max on this booking).`,
+        "VALIDATION_ERROR",
+        400,
+      );
+    }
+
+    const discount = pointsToRedeem / redemptionRate;
+    loyaltyPointsRedeemed = pointsToRedeem;
+    loyaltyDiscountAmount = Math.round(discount * 100) / 100;
+  }
+
+  const totalAmountAfterLoyalty = Math.max(0, totalAmount - loyaltyDiscountAmount);
 
   // ── Appointment status ───────────────────────────────────────────────────
   const { determineAppointmentStatusFromDB } = await import(
@@ -1039,10 +1216,21 @@ export async function validateBooking(
   if (validatedDraft.hold_id) {
     const { data: holdRow } = await supabaseAdmin
       .from("booking_holds")
-      .select("end_at, hold_status, provider_id")
+      .select("end_at, hold_status, provider_id, expires_at")
       .eq("id", validatedDraft.hold_id)
       .maybeSingle();
-    if (!holdRow || holdRow.hold_status !== "active") {
+    const holdExpired =
+      holdRow &&
+      holdRow.expires_at &&
+      new Date(holdRow.expires_at as string).getTime() < Date.now();
+    if (!holdRow || holdRow.hold_status !== "active" || holdExpired) {
+      console.warn("[validate-booking] hold rejected", {
+        holdId: validatedDraft.hold_id,
+        found: !!holdRow,
+        status: holdRow?.hold_status ?? "missing",
+        expired: holdExpired,
+        expiresAt: holdRow?.expires_at ?? null,
+      });
       return handleApiError(
         new Error("Booking hold is no longer valid"),
         "Your hold has expired or was already used. Please select a new time.",
@@ -1085,12 +1273,12 @@ export async function validateBooking(
 
   if (allResourceIds.length > 0) {
     const selectedDatetime = new Date(draft.selected_datetime);
-    let resDuration = 0;
+    let resMinutes = 0;
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
-      resDuration += Number(off.duration_minutes || 0);
+      resMinutes += Number(off.duration_minutes || 0) + Number(off.buffer_minutes || 0);
     }
-    const resEnd = new Date(selectedDatetime.getTime() + resDuration * 60000);
+    const resEnd = new Date(selectedDatetime.getTime() + resMinutes * 60000);
 
     const resourceCheck = await checkResourceAvailability(
       supabase,
@@ -1121,11 +1309,12 @@ export async function validateBooking(
     const servicesMap = new Map();
     for (const s of draft.services) {
       const off = offeringById.get(s.offering_id);
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       servicesMap.set(s.offering_id, {
         offering_id: off.id,
         staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price),
+        price: Number(off.price) + homeAdj,
         currency,
         buffer_minutes: Number(off.buffer_minutes || 0),
       });
@@ -1146,6 +1335,7 @@ export async function validateBooking(
         const s = draft.services.find((serv: any) => serv.offering_id === serviceId);
         if (!s) return null;
         const off = offeringById.get(s.offering_id);
+        const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
         const start = new Date(cursor);
         const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
         cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
@@ -1153,7 +1343,7 @@ export async function validateBooking(
           offering_id: off.id,
           staff_id: s.staff_id || null,
           duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price),
+          price: Number(off.price) + homeAdj,
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
@@ -1164,6 +1354,7 @@ export async function validateBooking(
     if (bookingServicesData.length === 0 && draft.services.length > 0) {
       const s = draft.services[0];
       const off = offeringById.get(s.offering_id);
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       const start = new Date(draft.selected_datetime);
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       bookingServicesData = [
@@ -1171,7 +1362,7 @@ export async function validateBooking(
           offering_id: off.id,
           staff_id: s.staff_id || null,
           duration_minutes: Number(off.duration_minutes),
-          price: Number(off.price),
+          price: Number(off.price) + homeAdj,
           currency,
           scheduled_start_at: start.toISOString(),
           scheduled_end_at: end.toISOString(),
@@ -1186,11 +1377,12 @@ export async function validateBooking(
       const end = new Date(start.getTime() + Number(off.duration_minutes) * 60000);
       cursor = new Date(end.getTime() + Number(off.buffer_minutes || 0) * 60000);
 
+      const homeAdj = draft.location_type === "at_home" ? Number(off.at_home_price_adjustment || 0) : 0;
       return {
         offering_id: off.id,
         staff_id: s.staff_id || null,
         duration_minutes: Number(off.duration_minutes),
-        price: Number(off.price),
+        price: Number(off.price) + homeAdj,
         currency,
         scheduled_start_at: start.toISOString(),
         scheduled_end_at: end.toISOString(),
@@ -1245,6 +1437,21 @@ export async function validateBooking(
   }
 
   // ── Time-slot conflict: per scheduled segment (multi-service + multi-staff; solo null staff = provider-wide) ──
+  // F17: stamp immutable tax_snapshot on every booking_services line so historical
+  // reports are not affected by later VAT-rate changes.
+  const taxSnapshotValue = {
+    code: "RESOLVED",
+    rate: taxRate,
+    inclusive: taxIncluded,
+    jurisdiction: (provider as any)?.country_code ?? null,
+    source: rawProviderTaxRate != null ? "provider_override" : "platform_default",
+    resolved_at: new Date().toISOString(),
+  };
+  bookingServicesData = bookingServicesData.map((line: any) => ({
+    ...line,
+    tax_snapshot: line.tax_snapshot ?? taxSnapshotValue,
+  }));
+
   {
     const { normalizePublicStaffIdForDatabase } = await import("@beautonomi/utils");
     const {
@@ -1271,15 +1478,25 @@ export async function validateBooking(
     } else {
       const selectedDatetimeForConflict = new Date(draft.selected_datetime);
 
-      // Other guests' active holds vs each scheduled segment (including synthetic solo: dbStaffId null → provider-wide)
+      // Other guests' active holds vs each scheduled segment (including synthetic solo: dbStaffId null → provider-wide).
+      // Exclude the customer's own hold so it doesn't conflict with itself during checkout.
+      const ownHoldId = validatedDraft.hold_id ?? (draft as any).hold_id;
       for (const line of snapshotLines) {
         const { dbStaffId } = normalizePublicStaffIdForDatabase(line.staff_id);
         const segStart = new Date(line.scheduled_start_at);
         const segEnd = new Date(line.scheduled_end_at);
         const holdOverlap = await checkActiveHoldOverlap(supabaseAdmin, draft.provider_id, segStart, segEnd, {
           dbStaffId: dbStaffId ?? null,
+          excludeHoldId: ownHoldId,
         });
         if (holdOverlap) {
+          console.warn("[validate-booking] hold overlap blocked booking", {
+            providerId: draft.provider_id,
+            ownHoldId,
+            staffId: dbStaffId,
+            segStart: segStart.toISOString(),
+            segEnd: segEnd.toISOString(),
+          });
           return handleApiError(
             new Error("This time slot is no longer available. Please select another time."),
             "This time slot is no longer available. Please select another time.",
@@ -1374,25 +1591,38 @@ export async function validateBooking(
   }
 
   const selectedDatetime = new Date(draft.selected_datetime);
-  const bookingEndFromServices = new Date(selectedDatetime.getTime() + totalDuration * 60000);
-  // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s
-  // after the guest signs in and pays (recomputed duration can extend past the slot grid window).
-  const bookingEnd = holdReservedEndAt ?? bookingEndFromServices;
+  const effectiveDuration = groupTotalDurationMinutes != null && groupTotalDurationMinutes > totalDuration
+    ? groupTotalDurationMinutes
+    : totalDuration;
+  const bookingEndFromServices = new Date(selectedDatetime.getTime() + effectiveDuration * 60000);
+  // Hold flow: validate + lock used hold.end_at; create_booking_with_locking must use the same end or we get false 409s.
+  // For group bookings, if participants extend the duration past the hold window, use the computed end instead.
+  const bookingEnd = holdReservedEndAt && bookingEndFromServices <= holdReservedEndAt
+    ? holdReservedEndAt
+    : bookingEndFromServices;
 
   // ── Provider calendar blocks (time blocks, availability, staff off) ─────
   // Same sources as GET /api/public/providers/[slug]/availability; prevents bypass when draft skipped staff conflict paths.
+  // For at_home bookings, extend the blocked window by travel buffer to match availability engine behavior.
+  const travelBufferMinutes =
+    draft.location_type === "at_home"
+      ? Number(validatedDraft.availability_travel_buffer_minutes ?? 30)
+      : 0;
   const locationIdForCalendar =
     draft.location_type === "at_salon" ? draft.location_id ?? null : null;
   {
     const { isProviderCalendarWindowBlocked } = await import(
       "@/lib/public-booking/provider-calendar-block-overlap"
     );
-    for (const line of bookingServicesData) {
+    for (let i = 0; i < bookingServicesData.length; i++) {
+      const line = bookingServicesData[i];
       const segStart = new Date(line.scheduled_start_at);
       const segEnd = new Date(line.scheduled_end_at);
       const off = offeringById.get(line.offering_id);
       const buf = Number(off?.buffer_minutes ?? 15);
-      const effectiveEnd = new Date(segEnd.getTime() + buf * 60000);
+      const isLastSegment = i === bookingServicesData.length - 1;
+      const travelTail = isLastSegment ? travelBufferMinutes : 0;
+      const effectiveEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
       const cal = await isProviderCalendarWindowBlocked(supabaseAdmin, {
         providerId: draft.provider_id,
         locationId: locationIdForCalendar,
@@ -1407,6 +1637,62 @@ export async function validateBooking(
           "CONFLICT",
           409,
         );
+      }
+    }
+  }
+
+  // ── Working hours guard (defense in depth) ────────────────────────────────
+  // Verify each service segment (+ travel buffer for the last at_home segment) fits within working hours.
+  {
+    const DAY_KEYS_GUARD = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
+    const { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } = await import(
+      "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic"
+    );
+
+    for (let i = 0; i < bookingServicesData.length; i++) {
+      const line = bookingServicesData[i];
+      const segStart = new Date(line.scheduled_start_at);
+      const segEnd = new Date(line.scheduled_end_at);
+      const off = offeringById.get(line.offering_id);
+      const buf = Number(off?.buffer_minutes ?? 15);
+      const isLastSegment = i === bookingServicesData.length - 1;
+      const travelTail = isLastSegment ? travelBufferMinutes : 0;
+      const effectiveSegEnd = new Date(segEnd.getTime() + (buf + travelTail) * 60000);
+
+      const staffIdForGuard = line.staff_id ?? `provider-${draft.provider_id}`;
+      const dateStr = segStart.toISOString().slice(0, 10);
+      const dayIdx = new Date(`${dateStr}T12:00:00`).getDay();
+      const dayKey = DAY_KEYS_GUARD[dayIdx];
+
+      const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
+        supabaseAdmin,
+        draft.provider_id,
+        staffIdForGuard,
+        dayKey,
+      );
+
+      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
+        const parseHHMM = (t: string): number => {
+          const [h, m] = t.split(":").map(Number);
+          return (h || 0) * 60 + (m || 0);
+        };
+        const openMin = parseHHMM(wh.open_time);
+        const closeMin = parseHHMM(wh.close_time);
+        const segStartMin = segStart.getHours() * 60 + segStart.getMinutes();
+        const segEndMin = effectiveSegEnd.getHours() * 60 + effectiveSegEnd.getMinutes();
+
+        if (closeMin > openMin && (segStartMin < openMin || segEndMin > closeMin)) {
+          console.warn(
+            `[validateBooking] shift-guard: segment ${segStart.toISOString()}–${effectiveSegEnd.toISOString()} ` +
+            `outside working hours ${wh.open_time}–${wh.close_time} for staff ${staffIdForGuard}`
+          );
+          return handleApiError(
+            new Error("Booking falls outside working hours"),
+            "This time slot is no longer available. Please select another time.",
+            "CONFLICT",
+            409,
+          );
+        }
       }
     }
   }
@@ -1438,14 +1724,18 @@ export async function validateBooking(
 
     tipAmount,
     taxRate,
+    taxIncluded,
     taxAmount,
 
     serviceFeeAmount,
     serviceFeePercentage,
     serviceFeeConfigId,
+    showServiceFeeToCustomer,
 
-    totalAmount,
+    totalAmount: totalAmountAfterLoyalty,
     loyaltyPointsEarned,
+    loyaltyDiscountAmount,
+    loyaltyPointsRedeemed,
 
     appointmentStatus,
 

@@ -142,7 +142,7 @@ export async function GET(
     const tipsByStaff = await getTipsByStaff(supabaseAdmin, providerId, fromDate, toDate);
     const tipsEligible = (staff as { tips_enabled?: boolean | null }).tips_enabled !== false;
     const tips = tipsEligible ? tipsByStaff.get(id) || 0 : 0;
-    const commissionEligible = (staff as { commission_enabled?: boolean | null }).commission_enabled === true;
+    const commissionEligible = (staff as { commission_enabled?: boolean | null }).commission_enabled !== false;
 
     const item: StaffTotalsItem = {
       team_member_id: id,

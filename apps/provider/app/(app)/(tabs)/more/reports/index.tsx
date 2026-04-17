@@ -25,21 +25,17 @@ function navigateToReport(router: ReturnType<typeof useRouter>, report: Provider
     router.push(`/(app)/(tabs)/more/reports/${report.screen}` as never);
     return;
   }
+  if (report.target === "detail") {
+    router.push(`/(app)/(tabs)/more/reports/detail/${report.reportId}` as never);
+    return;
+  }
   if (report.target === "route") {
     router.push(report.route as never);
     return;
   }
-  router.push({
-    pathname: "/(app)/(tabs)/more/portal",
-    params: {
-      path: encodeURIComponent(report.webPath),
-      title: encodeURIComponent(report.name),
-    },
-  } as never);
 }
 
 function reportBadge(report: ProviderReportItem): string {
-  if (report.target === "portal") return "Web";
   if (report.target === "route") return "App";
   return "App";
 }
@@ -78,7 +74,7 @@ export default function ReportsIndex() {
       <ScreenHeader
         title="Reports"
         showBack
-        subtitle="Same catalog as web — native views where available; “Web” opens the full report in your browser"
+        subtitle="Same data as the web portal — all reports open in the app"
       />
 
       {analyticsLoading && !analytics ? (
@@ -207,14 +203,14 @@ export default function ReportsIndex() {
                             paddingHorizontal: 8,
                             paddingVertical: 2,
                             borderRadius: 8,
-                            backgroundColor: report.target === "portal" ? "#f3f4f6" : "#eef2ff",
+                            backgroundColor: "#eef2ff",
                           }}
                         >
                           <Text
                             style={{
                               fontSize: 10,
                               fontWeight: "700",
-                              color: report.target === "portal" ? Colors.gray[600] : "#4f46e5",
+                              color: "#4f46e5",
                               textTransform: "uppercase",
                             }}
                           >

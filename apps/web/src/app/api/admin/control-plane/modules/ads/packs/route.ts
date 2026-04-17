@@ -37,7 +37,8 @@ export async function PATCH(request: NextRequest) {
       if (p.is_active != null) update.is_active = Boolean(p.is_active);
       if (p.display_order != null) update.display_order = Number(p.display_order);
       if (Object.keys(update).length > 0) {
-        await supabase.from("ads_impression_packs").update(update).eq("id", p.id);
+        const { error: updateErr } = await supabase.from("ads_impression_packs").update(update).eq("id", p.id);
+        if (updateErr) console.error(`Failed to update pack ${p.id}:`, updateErr);
       }
     }
     const { data } = await supabase

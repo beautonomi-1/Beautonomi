@@ -33,7 +33,7 @@ export async function POST(
     const { data: booking, error: bookingError } = await supabase
       .from('bookings')
       .select(
-        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency, cancellation_fee, customer_package_entitlement_id'
+        'id, provider_id, location_type, scheduled_at, created_at, status, customer_id, version, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency, cancellation_fee, customer_package_entitlement_id, loyalty_points_used, loyalty_points_redeemed'
       )
       .eq('id', bookingId)
       .single();
@@ -155,10 +155,17 @@ export async function POST(
       (bFin.currency as string) || tenantRegionForCancel?.defaultCurrency || LAST_RESORT_CURRENCY;
     const bookingTotal = Number(bFin.total_amount ?? 0);
     const totalPaid = roundCurrency2(Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0)));
+    const walletCollected = roundCurrency2(
+      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
+    );
+    const giftCardCollected = roundCurrency2(
+      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
+    );
+    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
     const isLate = checkResult.isLateCancellation === true;
     const policyRefundAmount = computeCancellationRefundAmount(bookingTotal, policy, isLate);
-    /** Wallet credit must not exceed money actually collected (e.g. pending / unpaid bookings). */
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    /** Wallet credit must not exceed money actually collected across card, wallet, and gift card. */
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(
       Number(bFin.subtotal ?? 0) -
@@ -171,7 +178,7 @@ export async function POST(
     );
 
     const currentVersion = (booking as BookingRow).version ?? 0;
-    const { data: updatedBooking, error: updateError } = await adminSupabase
+    const { data: updatedRows, error: updateError } = await adminSupabase
       .from('bookings')
       .update({
         status: 'cancelled',
@@ -180,16 +187,27 @@ export async function POST(
         cancellation_reason: body.reason || 'Customer cancellation',
         cancellation_fee: cancellationFeeApplied,
         total_amount: newTotalAmount,
-        version: currentVersion + 1, // Increment version
+        version: currentVersion + 1,
         updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
-      .select()
-      .single();
+      .eq('version', currentVersion)
+      .select();
 
     if (updateError) {
       throw updateError;
     }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      return handleApiError(
+        new Error("Booking was modified concurrently"),
+        "This booking was updated by someone else. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
+    }
+
+    const updatedBooking = updatedRows[0];
 
     const entitlementId = (booking as { customer_package_entitlement_id?: string | null })
       .customer_package_entitlement_id;
@@ -282,21 +300,34 @@ export async function POST(
         const { cancelGroupBooking, getGroupBookingParticipantsForCancellation } = await import('@/lib/bookings/group-booking-cancellation');
         await cancelGroupBooking(supabase, groupBookingData.id, user.id, body.reason || 'Customer cancellation');
 
-        // Notify all participants
+        // Notify all participants directly via OneSignal. Previously this used a
+        // server-side fetch('/api/notifications/send-email') which is unsafe in a
+        // Route Handler (relative URL has no origin) and required an admin role.
+        const { sendToUser } = await import('@/lib/notifications/onesignal');
         const participants = await getGroupBookingParticipantsForCancellation(supabase, groupBookingData.id);
         for (const participant of participants) {
-          if (participant.participant_email) {
-            // Send cancellation email to participant
-            await fetch('/api/notifications/send-email', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                to: participant.participant_email,
-                subject: `Group Booking Cancelled - ${booking.booking_number || bookingId}`,
-                body: `Hi ${participant.participant_name}, the group booking ${booking.booking_number || bookingId} has been cancelled. ${refundInfo}`,
+          if (!participant.participant_email) continue;
+          const { data: participantUser } = await adminSupabase
+            .from('users')
+            .select('id')
+            .eq('email', participant.participant_email)
+            .maybeSingle();
+          if (!participantUser?.id) {
+            console.warn(`[cancel] group participant ${participant.participant_email} has no user record — skipping notification`);
+            continue;
+          }
+          try {
+            await sendToUser(
+              participantUser.id,
+              {
+                title: `Group Booking Cancelled - ${booking.booking_number || bookingId}`,
+                message: `Hi ${participant.participant_name}, the group booking ${booking.booking_number || bookingId} has been cancelled. ${refundInfo}`,
                 type: 'group_booking_cancellation',
-              }),
-            }).catch(() => {});
+              },
+              ['email'],
+            );
+          } catch (notifyErr) {
+            console.error('[cancel] group participant notify failed:', notifyErr);
           }
         }
       } catch (groupError) {
@@ -343,7 +374,7 @@ export async function POST(
           bookingTotal,
           cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: totalPaid }
+          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
         );
 
         if (refundResult.success && refundResult.amount && refundResult.amount > 0) {
@@ -354,9 +385,30 @@ export async function POST(
       }
     }
 
-    // Record retained cancellation fee as a dedicated finance_transaction so it appears
-    // in revenue reports and the admin ledger as platform-retained income.
-    // Convention: amount = absolute fee (positive), net = positive (platform keeps it).
+    // §Release-audit 2026-04: refund any loyalty points the customer redeemed
+    // on this booking. Without this, points spent on a booking are silently
+    // lost when the booking is cancelled.
+    try {
+      const pointsToRefund = Number(
+        (booking as { loyalty_points_used?: number | null; loyalty_points_redeemed?: number | null }).loyalty_points_used ??
+          (booking as { loyalty_points_redeemed?: number | null }).loyalty_points_redeemed ??
+          0,
+      );
+      if (pointsToRefund > 0) {
+        const { refundRedeemedLoyaltyPoints } = await import("@/lib/loyalty/refund-redeemed-points");
+        await refundRedeemedLoyaltyPoints(adminSupabase, {
+          bookingId,
+          customerId: user.id,
+          pointsRedeemed: pointsToRefund,
+          reason: "customer_cancel",
+        });
+      }
+    } catch (loyaltyRefundErr) {
+      console.error("[cancel] failed to refund redeemed loyalty points:", loyaltyRefundErr);
+    }
+
+    // Record cancellation fee as a dedicated finance_transaction (provider-retained income).
+    // Convention: amount = absolute fee (positive), net = positive (provider keeps it).
     if (cancellationFeeApplied > 0) {
       try {
         const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
@@ -374,7 +426,7 @@ export async function POST(
           fees: 0,
           commission: 0,
           net: cancellationFeeApplied,
-          description: `Cancellation fee retained for booking ${bookingRef} (${isLate ? "late cancellation" : "early cancellation"})`,
+          description: `Cancellation fee for booking ${bookingRef} — provider-retained (${isLate ? "late cancellation" : "early cancellation"})`,
           created_at: new Date().toISOString(),
         });
       } catch (feeErr) {

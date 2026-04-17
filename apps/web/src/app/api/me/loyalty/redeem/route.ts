@@ -64,7 +64,31 @@ export async function POST(request: NextRequest) {
     const currency = activeRule?.currency || tenantFallback || LAST_RESORT_CURRENCY;
     const redemptionValue = validated.points / redemptionRate;
 
-    // Create redemption transaction
+    const redeemWalletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+      tenant_id: redeemTenantId,
+      provider_id: null,
+    });
+
+    const { error: walletError } = await (adminSupabase.rpc as any)("wallet_credit_admin", {
+      p_user_id: user.id,
+      p_amount: redemptionValue,
+      p_currency: currency,
+      p_description: `Loyalty points redemption: ${validated.points} points`,
+      p_reference_id: null,
+      p_reference_type: "loyalty_redeem",
+      p_tenant_id: redeemWalletTenantId,
+    });
+
+    if (walletError) {
+      console.error("Failed to credit wallet on loyalty redeem:", walletError);
+      return handleApiError(
+        walletError instanceof Error ? walletError : new Error("Wallet credit failed"),
+        "Redemption failed. Please try again.",
+        "WALLET_CREDIT_FAILED",
+        500
+      );
+    }
+
     const { data: transaction, error: transactionError } = await adminSupabase
       .from("loyalty_point_transactions")
       .insert({
@@ -77,33 +101,18 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (transactionError) {
-      throw transactionError;
-    }
-
-    const redeemWalletTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
-      tenant_id: redeemTenantId,
-      provider_id: null,
-    });
-
-    // Credit user wallet with redemption value (platform wallet_credit_admin RPC)
-    try {
-      await (adminSupabase.rpc as any)("wallet_credit_admin", {
-        p_user_id: user.id,
-        p_amount: redemptionValue,
-        p_currency: currency,
-        p_description: `Loyalty points redemption: ${validated.points} points`,
-        p_reference_id: (transaction as { id?: string })?.id ?? null,
-        p_reference_type: "loyalty_redeem",
-        p_tenant_id: redeemWalletTenantId,
-      });
-    } catch (walletError) {
-      console.error("Failed to credit wallet on loyalty redeem:", walletError);
-      return handleApiError(
-        walletError instanceof Error ? walletError : new Error("Wallet credit failed"),
-        "Points were deducted but we could not add the amount to your wallet. Please contact support.",
-        "WALLET_CREDIT_FAILED",
-        500
+      console.error(
+        "CRITICAL: Loyalty redeem transaction insert failed after wallet credit:",
+        transactionError
       );
+      return successResponse({
+        transaction: null,
+        points_redeemed: validated.points,
+        redemption_value: redemptionValue,
+        currency,
+        new_balance: currentBalance,
+        message: "Points redeemed successfully",
+      });
     }
 
     return successResponse({

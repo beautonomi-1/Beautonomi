@@ -169,6 +169,10 @@ export default function ProductDetailScreen() {
           "/api/me/wishlists/check",
           { item_type: "product", item_id: id },
         );
+        if (res.error) {
+          if (!cancelled) setIsInWishlist(false);
+          return;
+        }
         const raw = res.data as any;
         const inWishlist = Boolean(raw?.is_in_wishlist ?? raw?.data?.is_in_wishlist);
         if (!cancelled) setIsInWishlist(inWishlist);
@@ -197,22 +201,31 @@ export default function ProductDetailScreen() {
     }
     setAddingToCart(true);
     haptic.medium();
-    const thumb =
-      selectedVariant?.image_url ||
-      product.image_urls?.[0] ||
-      (product as { image_url?: string }).image_url ||
-      null;
-    const guestSnapshot = {
-      name: product.name,
-      retail_price: Number(displayPrice),
-      currency: product.currency,
-      image_url: thumb,
-      provider_id: product.provider.id,
-      provider_name: product.provider.business_name,
-      provider_slug: product.provider.slug,
-    };
-    const { error: addErr } = await addToCart(product.id, 1, selectedVariantId, guestSnapshot);
-    setAddingToCart(false);
+    let addErr: string | undefined;
+    try {
+      const thumb =
+        selectedVariant?.image_url ||
+        product.image_urls?.[0] ||
+        (product as { image_url?: string }).image_url ||
+        null;
+      const guestSnapshot = {
+        name: product.name,
+        retail_price: Number(displayPrice),
+        currency: product.currency,
+        image_url: thumb ?? undefined,
+        provider_id: product.provider.id,
+        provider_name: product.provider.business_name,
+        provider_slug: product.provider.slug,
+      };
+      const result = await addToCart(product.id, 1, selectedVariantId, guestSnapshot);
+      addErr = result.error ?? undefined;
+    } catch (e: any) {
+      haptic.error();
+      Alert.alert("Could not add to cart", e?.message ?? "An unexpected error occurred.");
+      return;
+    } finally {
+      setAddingToCart(false);
+    }
     if (addErr) {
       haptic.error();
       Alert.alert("Could not add to cart", addErr);
@@ -262,6 +275,11 @@ export default function ProductDetailScreen() {
         "/api/me/wishlists/toggle",
         { item_type: "product", item_id: id },
       );
+      if (res.error) {
+        haptic.error();
+        Alert.alert("Error", res.error.message || "Could not update wishlist");
+        return;
+      }
       const action = (res.data as any)?.action ?? (res.data as any)?.data?.action;
       if (action === "added" || action === "removed") {
         const next = action === "added";
@@ -272,6 +290,7 @@ export default function ProductDetailScreen() {
       }
     } catch {
       haptic.error();
+      Alert.alert("Error", "Could not update wishlist. Please try again.");
     } finally {
       setWishlistLoading(false);
     }

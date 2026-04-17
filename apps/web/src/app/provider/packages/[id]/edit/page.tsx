@@ -23,6 +23,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { unpackPackageDetailPayload, unpackProductsListPayload } from "@/lib/http/unpack-provider-fetch";
 
 interface Product {
   id: string;
@@ -73,25 +74,28 @@ export default function EditPackagePage({
     try {
       setIsLoadingData(true);
       const [pkgResponse, servicesResponse, productsResponse] = await Promise.all([
-        fetcher.get<{ data: any }>(`/api/provider/packages/${id}`),
+        fetcher.get<unknown>(`/api/provider/packages/${id}`),
         fetcher.get<{ data: OfferingCard[] }>("/api/provider/services"),
-        fetcher.get<{ data: Product[]; total?: number }>("/api/provider/products?limit=1000"),
+        fetcher.get<unknown>("/api/provider/products?limit=1000"),
       ]);
 
-      const pkg = (pkgResponse as any).data ?? pkgResponse;
+      const pkg = unpackPackageDetailPayload(pkgResponse);
+      if (!pkg) {
+        throw new Error("Package not found");
+      }
       setFormData({
-        name: pkg.name ?? "",
-        description: pkg.description ?? "",
+        name: String(pkg.name ?? ""),
+        description: String(pkg.description ?? ""),
         price: pkg.price != null ? String(pkg.price) : "",
-        currency: pkg.currency ?? LAST_RESORT_CURRENCY,
+        currency: String(pkg.currency ?? LAST_RESORT_CURRENCY),
         discount_percentage:
           pkg.discount_percentage != null ? String(pkg.discount_percentage) : "",
         is_active: pkg.is_active !== false,
       });
 
-      const allServices: OfferingCard[] = servicesResponse.data || [];
-      const productsData =
-        (productsResponse as any).data?.data || productsResponse.data || [];
+      const svcPayload = servicesResponse.data;
+      const allServices: OfferingCard[] = Array.isArray(svcPayload) ? svcPayload : [];
+      const productsData = unpackProductsListPayload(productsResponse) as Product[];
       const allProducts: Product[] = productsData.filter(
         (p: Product) => p.is_active !== false
       );
@@ -100,20 +104,23 @@ export default function EditPackagePage({
       setProducts(allProducts);
 
       // Map existing items
-      const existingItems: PackageItem[] = (pkg.items ?? []).map((item: any) => {
+      const rawItems = Array.isArray(pkg.items) ? pkg.items : [];
+      const existingItems: PackageItem[] = rawItems.map((item: Record<string, unknown>) => {
         if (item.offering_id) {
+          const oid = String(item.offering_id);
           return {
             type: "service" as const,
-            offering_id: item.offering_id,
-            quantity: item.quantity ?? 1,
-            offering: allServices.find((s) => s.id === item.offering_id),
+            offering_id: oid,
+            quantity: Number(item.quantity) || 1,
+            offering: allServices.find((s) => s.id === oid),
           };
         }
+        const pid = item.product_id != null ? String(item.product_id) : "";
         return {
           type: "product" as const,
-          product_id: item.product_id,
-          quantity: item.quantity ?? 1,
-          product: allProducts.find((p) => p.id === item.product_id),
+          product_id: pid,
+          quantity: Number(item.quantity) || 1,
+          product: allProducts.find((p) => p.id === pid),
         };
       });
       setItems(existingItems);

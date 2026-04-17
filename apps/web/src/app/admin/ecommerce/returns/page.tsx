@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 
 interface ReturnRequest {
   id: string;
@@ -62,6 +64,7 @@ export default function AdminProductReturnsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [page, setPage] = useState(1);
+  const { format: fmtMoney } = useReportCurrency();
   const [totalPages, setTotalPages] = useState(1);
   const [resolving, setResolving] = useState<string | null>(null);
 
@@ -88,8 +91,9 @@ export default function AdminProductReturnsPage() {
         setSummary(res.data.summary);
         setTotalPages(res.data.pagination.totalPages);
       }
-    } catch {
-      /* handled by empty state */
+    } catch (err) {
+      console.error("Failed to load returns:", err);
+      toast.error("Failed to load product returns");
     }
     setLoading(false);
   }, [page, statusFilter]);
@@ -112,12 +116,15 @@ export default function AdminProductReturnsPage() {
         resolution: dialog.resolution,
         admin_notes: adminNotes || undefined,
       });
+      toast.success("Return resolved successfully");
       fetchReturns();
-    } catch {
-      /* handled by UI */
+      setResolving(null);
+      setDialog(null);
+    } catch (err) {
+      console.error("Failed to resolve return:", err);
+      toast.error("Failed to resolve return. Please try again.");
+      setResolving(null);
     }
-    setResolving(null);
-    setDialog(null);
   };
 
   const statCards = summary
@@ -125,7 +132,7 @@ export default function AdminProductReturnsPage() {
         { label: "Total Returns", value: summary.total, icon: Undo2, color: "text-blue-600", bg: "bg-blue-50" },
         { label: "Pending Review", value: summary.pending, icon: Clock, color: "text-amber-600", bg: "bg-amber-50" },
         { label: "Escalated", value: summary.escalated, icon: AlertTriangle, color: "text-red-600", bg: "bg-red-50" },
-        { label: "Total Refunded", value: `R${summary.total_refunded.toFixed(2)}`, icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
+        { label: "Total Refunded", value: fmtMoney(summary.total_refunded), icon: DollarSign, color: "text-green-600", bg: "bg-green-50" },
       ]
     : [];
 
@@ -215,9 +222,9 @@ export default function AdminProductReturnsPage() {
                   </div>
 
                   <div className="text-right shrink-0">
-                    <p className="text-lg font-bold text-gray-900">R{Number(r.refund_amount).toFixed(2)}</p>
+                    <p className="text-lg font-bold text-gray-900">{fmtMoney(Number(r.refund_amount))}</p>
                     {r.refund_processed_amount != null && r.refund_processed_amount > 0 && (
-                      <p className="text-xs text-green-600">Refunded: R{Number(r.refund_processed_amount).toFixed(2)}</p>
+                      <p className="text-xs text-green-600">Refunded: {fmtMoney(Number(r.refund_processed_amount))}</p>
                     )}
                     <p className="text-xs text-gray-500">
                       {new Date(r.created_at).toLocaleDateString()}

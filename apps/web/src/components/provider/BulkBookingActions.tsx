@@ -28,6 +28,14 @@ interface BulkBookingActionsProps {
   onSelectionChange: (ids: Set<string>) => void;
   onBulkAction: (action: string, ids: string[]) => Promise<void>;
   totalCount: number;
+  /**
+   * P-class (audit 2026-04): IDs of all bookings currently visible in the
+   * parent list. When provided, the "Select All" button selects every
+   * visible booking instead of showing the legacy "requires all booking
+   * IDs" info toast. Optional so existing callers don't break — but parents
+   * SHOULD pass this to give users a real bulk-select affordance.
+   */
+  visibleIds?: string[];
 }
 
 export function BulkBookingActions({
@@ -35,6 +43,7 @@ export function BulkBookingActions({
   onSelectionChange,
   onBulkAction,
   totalCount,
+  visibleIds,
 }: BulkBookingActionsProps) {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<{ action: string; label: string } | null>(null);
@@ -46,11 +55,16 @@ export function BulkBookingActions({
   const handleSelectAll = () => {
     if (isAllSelected) {
       onSelectionChange(new Set());
-    } else {
-      // In a real implementation, you'd need all booking IDs
-      // For now, we'll just show the UI
-      toast.info("Select all functionality requires all booking IDs");
+      return;
     }
+    if (visibleIds && visibleIds.length > 0) {
+      onSelectionChange(new Set(visibleIds));
+      return;
+    }
+    // Parent didn't pass the visible booking IDs — fall back to the legacy
+    // advisory toast so behaviour is unchanged for callers that haven't
+    // migrated. Any caller wanting real bulk-select should pass `visibleIds`.
+    toast.info("Select all is unavailable until the bookings list supplies IDs.");
   };
 
   const handleBulkAction = async (action: string, label: string) => {

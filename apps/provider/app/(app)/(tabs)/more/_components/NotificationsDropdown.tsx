@@ -11,6 +11,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Pressable,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -68,10 +69,12 @@ export function NotificationsDropdown({ visible, onClose, onSeeAll }: Notificati
   const handleMarkAllRead = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const res = await markAllRead("/api/provider/notifications/mark-all-read", {});
-    if (!res.error) {
-      await refresh();
-      await refreshCount();
+    if (res.error) {
+      Alert.alert("Error", res.error || "Could not mark notifications as read.");
+      return;
     }
+    await refresh();
+    await refreshCount();
   }, [markAllRead, refresh, refreshCount]);
 
   const handleSeeAll = useCallback(() => {

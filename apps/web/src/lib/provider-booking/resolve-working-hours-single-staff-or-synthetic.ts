@@ -22,15 +22,23 @@ export async function resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
   const syntheticPid = parseSyntheticProviderStaffId(staffIdParam);
   const { data: staff } = await supabaseAdmin
     .from("provider_staff")
-    .select("id, working_hours")
+    .select("id, working_hours, work_hours_enabled")
     .eq("id", staffIdParam)
     .eq("provider_id", providerId)
     .maybeSingle();
 
+  const staffWorkHoursEnabled = (staff as any)?.work_hours_enabled ?? false;
   const whFromStaff = (staff?.working_hours as Record<string, WorkingHoursDayRecord> | null)?.[dayKey];
   let wh: WorkingHoursDayRecord | null | undefined = whFromStaff;
 
-  if (!wh && syntheticPid === providerId) {
+  // Fall back to location hours when:
+  // - staff has no entry for this day
+  // - staff's work_hours_enabled is false (meaning "use location hours")
+  // - synthetic provider staff ID
+  const shouldFallbackToLocation =
+    !wh || !staffWorkHoursEnabled || syntheticPid === providerId;
+
+  if (shouldFallbackToLocation) {
     const { data: locs } = await supabaseAdmin
       .from("provider_locations")
       .select("working_hours")
@@ -40,7 +48,8 @@ export async function resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
       .order("created_at", { ascending: true })
       .limit(1);
     const loc = locs?.[0];
-    wh = (loc?.working_hours as Record<string, WorkingHoursDayRecord> | null)?.[dayKey] ?? null;
+    const locWh = (loc?.working_hours as Record<string, WorkingHoursDayRecord> | null)?.[dayKey] ?? null;
+    if (locWh) wh = locWh;
   }
 
   return wh;

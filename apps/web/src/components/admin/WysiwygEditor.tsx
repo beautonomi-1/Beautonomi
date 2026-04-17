@@ -20,6 +20,8 @@ interface WysiwygEditorProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  /** Shorter toolbar area for inline “per bullet” fields (pricing plan features). */
+  compact?: boolean;
 }
 
 export default function WysiwygEditor({
@@ -27,6 +29,7 @@ export default function WysiwygEditor({
   onChange,
   placeholder = "Start typing...",
   className = "",
+  compact = false,
 }: WysiwygEditorProps) {
   const modules = useMemo(
     () => ({
@@ -74,7 +77,7 @@ export default function WysiwygEditor({
   ];
 
   return (
-    <div className={`wysiwyg-editor ${className}`}>
+    <div className={`wysiwyg-editor ${compact ? "wysiwyg-editor--compact" : ""} ${className}`}>
       <ReactQuill
         theme="snow"
         value={value}
@@ -113,6 +116,15 @@ export default function WysiwygEditor({
         .wysiwyg-editor .ql-editor.ql-blank::before {
           color: #9ca3af;
           font-style: normal;
+        }
+        .wysiwyg-editor--compact .ql-container {
+          min-height: 96px;
+        }
+        .wysiwyg-editor--compact .ql-editor {
+          min-height: 96px;
+        }
+        .wysiwyg-editor--compact .ql-toolbar {
+          padding: 4px;
         }
       `}</style>
     </div>

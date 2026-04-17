@@ -10,6 +10,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { AdminPageHeader } from "@/components/admin/AdminPageHeader";
 import { AdminFilterBar } from "@/components/admin/AdminFilterBar";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +53,7 @@ export default function AdminDisputes() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const { format: fmtMoney } = useReportCurrency();
   const [selectedDispute, setSelectedDispute] = useState<Dispute | null>(null);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
   const [resolution, setResolution] = useState<"refund_full" | "refund_partial" | "deny">("deny");
@@ -85,6 +87,26 @@ export default function AdminDisputes() {
       setError(errorMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCloseDispute = async (dispute: Dispute) => {
+    try {
+      await fetcher.patch(`/api/admin/disputes/${dispute.id}`, { status: "closed" });
+      toast.success("Dispute closed");
+      loadDisputes();
+    } catch {
+      toast.error("Failed to close dispute");
+    }
+  };
+
+  const handleReopenDispute = async (dispute: Dispute) => {
+    try {
+      await fetcher.patch(`/api/admin/disputes/${dispute.id}`, { status: "open" });
+      toast.success("Dispute reopened");
+      loadDisputes();
+    } catch {
+      toast.error("Failed to reopen dispute");
     }
   };
 
@@ -205,6 +227,8 @@ export default function AdminDisputes() {
           <TabsContent value="all" className="space-y-4">
             <DisputeList
               disputes={groupedDisputes.all}
+              onClose={handleCloseDispute}
+              onReopen={handleReopenDispute}
               onResolve={(dispute) => {
                 setSelectedDispute(dispute);
                 setShowResolveDialog(true);
@@ -218,13 +242,15 @@ export default function AdminDisputes() {
                 setSelectedDispute(dispute);
                 setShowResolveDialog(true);
               }}
+              onClose={handleCloseDispute}
+              onReopen={handleReopenDispute}
             />
           </TabsContent>
           <TabsContent value="resolved" className="space-y-4">
-            <DisputeList disputes={groupedDisputes.resolved} onResolve={() => {}} />
+            <DisputeList disputes={groupedDisputes.resolved} onResolve={() => {}} onClose={handleCloseDispute} onReopen={handleReopenDispute} />
           </TabsContent>
           <TabsContent value="closed" className="space-y-4">
-            <DisputeList disputes={groupedDisputes.closed} onResolve={() => {}} />
+            <DisputeList disputes={groupedDisputes.closed} onResolve={() => {}} onClose={handleCloseDispute} onReopen={handleReopenDispute} />
           </TabsContent>
         </Tabs>
 
@@ -289,10 +315,15 @@ export default function AdminDisputes() {
 function DisputeList({
   disputes,
   onResolve,
+  onClose,
+  onReopen,
 }: {
   disputes: Dispute[];
   onResolve: (dispute: Dispute) => void;
+  onClose: (dispute: Dispute) => void;
+  onReopen: (dispute: Dispute) => void;
 }) {
+  const { format: fmtMoney } = useReportCurrency();
   if (disputes.length === 0) {
     return (
       <div className="bg-white p-8 rounded-lg border border-gray-200 text-center">
@@ -334,7 +365,7 @@ function DisputeList({
                   <strong>Booking:</strong> {dispute.booking?.booking_number}
                 </span>
                 <span>
-                  <strong>Amount:</strong> ${dispute.booking?.total_amount?.toFixed(2)}
+                  <strong>Amount:</strong> {fmtMoney(dispute.booking?.total_amount ?? 0)}
                 </span>
                 <span>
                   <strong>Customer:</strong>{" "}
@@ -349,7 +380,7 @@ function DisputeList({
               </div>
               {dispute.refund_amount && (
                 <div className="mt-2 text-sm">
-                  <strong>Refund Amount:</strong> ${dispute.refund_amount.toFixed(2)}
+                  <strong>Refund Amount:</strong> {fmtMoney(dispute.refund_amount)}
                 </div>
               )}
               {dispute.notes && (
@@ -358,9 +389,23 @@ function DisputeList({
                 </div>
               )}
             </div>
-            {dispute.status === "open" && (
-              <Button onClick={() => onResolve(dispute)}>Resolve</Button>
-            )}
+            <div className="flex flex-col gap-2">
+              {dispute.status === "open" && (
+                <>
+                  <Button onClick={() => onResolve(dispute)}>Resolve</Button>
+                  <Button variant="outline" size="sm" onClick={() => onClose(dispute)}>Close</Button>
+                </>
+              )}
+              {dispute.status === "resolved" && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => onClose(dispute)}>Close</Button>
+                  <Button variant="outline" size="sm" onClick={() => onReopen(dispute)}>Reopen</Button>
+                </>
+              )}
+              {dispute.status === "closed" && (
+                <Button variant="outline" size="sm" onClick={() => onReopen(dispute)}>Reopen</Button>
+              )}
+            </div>
           </div>
         </div>
       ))}

@@ -76,7 +76,7 @@ export const CRITICAL_ADMIN_FLOWS: CriticalAdminFlow[] = [
   },
   {
     id: "gods-eye",
-    description: "Superadmin cross-tenant overview",
+    description: "Superadmin — tenant-scoped metrics, live map, and gods-eye APIs",
     appPath: "gods-eye",
     pageModule: "routes/GodsEyePage.tsx",
     rbac: "superadmin",

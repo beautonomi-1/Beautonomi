@@ -1,16 +1,18 @@
 /**
  * Platform Service Fee Settings Helper
- * 
+ *
  * Provides utilities for getting the effective service fee based on:
  * 1. Provider's customer_fee_config_id (from platform_fee_config table)
- * 2. Platform default service fee (from platform_settings)
- * 3. Hardcoded fallback (10%)
+ * 2. Platform default service fee (from platform_settings.payouts)
+ * 3. Hard fallback: 0 — never charge unless explicitly configured
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { percentOf, roundCurrency } from "@beautonomi/utils";
 
-const DEFAULT_SERVICE_FEE_PERCENTAGE = 10.00; // 10% fallback
+// Zero fallback: never silently charge a fee when the platform hasn't configured one.
+// Operators must explicitly set a fee in admin settings.
+const DEFAULT_SERVICE_FEE_PERCENTAGE = 0;
 
 export interface ServiceFeeConfig {
   percentage: number;
@@ -21,9 +23,9 @@ export interface ServiceFeeConfig {
 }
 
 /**
- * Get the effective service fee configuration for a provider
- * Priority: provider customer_fee_config_id → platform default → 10% fallback
- * 
+ * Get the effective service fee configuration for a provider.
+ * Priority: provider customer_fee_config_id → platform default → 0 (no fee).
+ *
  * @param providerId - Provider ID
  * @param subtotal - Booking subtotal (for checking min_booking_amount)
  * @returns Service fee configuration
@@ -91,16 +93,16 @@ export async function getEffectiveServiceFeeConfig(
     
     if (platformSettings?.settings) {
       const payoutSettings = (platformSettings.settings as any)?.payouts || {};
-      const serviceFeeType = payoutSettings.platform_service_fee_type || "percentage";
-      const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage || 0;
-      const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed || 0;
+      const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
+      const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
+      const fallbackFeeFixed = payoutSettings.platform_service_fee_fixed ?? 0;
       
-      if (serviceFeeType === "percentage" && fallbackFeePercentage > 0) {
+      if (serviceFeeType === "percentage") {
         return {
           percentage: fallbackFeePercentage,
           feeType: "percentage",
         };
-      } else if (serviceFeeType === "fixed_amount" && fallbackFeeFixed > 0) {
+      } else {
         return {
           percentage: 0,
           fixedAmount: fallbackFeeFixed,
@@ -109,16 +111,16 @@ export async function getEffectiveServiceFeeConfig(
       }
     }
     
-    // Fallback to hardcoded default
+    // No settings configured: charge nothing
     return {
       percentage: DEFAULT_SERVICE_FEE_PERCENTAGE,
-      feeType: "percentage",
+      feeType: "fixed_amount",
     };
   } catch (error) {
     console.warn("Failed to get service fee config from database, using fallback:", error);
     return {
       percentage: DEFAULT_SERVICE_FEE_PERCENTAGE,
-      feeType: "percentage",
+      feeType: "fixed_amount",
     };
   }
 }
@@ -173,10 +175,10 @@ export async function getPlatformDefaultServiceFeePercentage(): Promise<number> 
     
     if (platformSettings?.settings) {
       const payoutSettings = (platformSettings.settings as any)?.payouts || {};
-      const serviceFeeType = payoutSettings.platform_service_fee_type || "percentage";
-      const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage || 0;
+      const serviceFeeType = payoutSettings.platform_service_fee_type || "fixed";
+      const fallbackFeePercentage = payoutSettings.platform_service_fee_percentage ?? 0;
       
-      if (serviceFeeType === "percentage" && fallbackFeePercentage > 0) {
+      if (serviceFeeType === "percentage") {
         return fallbackFeePercentage;
       }
     }

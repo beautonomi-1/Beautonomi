@@ -51,7 +51,7 @@ export default function CustomerWaitlistPage() {
       setError(null);
       const response = await fetcher.get<{ data: { entries: WaitlistEntry[] } }>(
         "/api/waitlist",
-        { cache: "no-store" }
+        { staleTimeMs: 15_000 }
       );
       setEntries(response.data.entries || []);
     } catch (err) {

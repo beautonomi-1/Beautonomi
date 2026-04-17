@@ -12,6 +12,7 @@ import { PermissionDenied } from "@/components/ui/PermissionDenied";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 type VerificationDetail = Record<string, unknown> & {
   id?: string;
@@ -38,10 +39,12 @@ export function VerificationDetailPage() {
     mutationFn: async (body: { status: "approved" | "rejected"; rejection_reason?: string | null }) => {
       return adminApi.patchJson<VerificationDetail>(`/api/admin/verifications/${id}`, body);
     },
-    onSuccess: async () => {
+    onSuccess: async (_data, vars) => {
       await qc.invalidateQueries({ queryKey: adminQueryKeys.verificationDetail(id) });
       await qc.invalidateQueries({ queryKey: ["admin", "verifications"] });
+      adminToast.success(vars.status === "approved" ? "Verification approved" : "Verification rejected");
     },
+    onError: (e: Error) => adminToast.error(`Review failed: ${e.message}`),
   });
 
   const openDocument = async () => {

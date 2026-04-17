@@ -18,6 +18,7 @@ interface Suggestion {
  * Labels must stay in sync with what the CMS may return so the merge below works.
  */
 const DEFAULT_SUGGESTIONS: Suggestion[] = [
+  { label: "Using the customer app (iOS & Android)", href: "/learn/article/customer-mobile-app" },
   { label: "Canceling your booking", href: "/learn/article/canceling-your-booking" },
   { label: "Change the date or time of your appointment", href: "/learn/article/reschedule-booking" },
   { label: "If your provider cancels your booking", href: "/learn/article/if-provider-cancels" },
@@ -89,8 +90,10 @@ export default function SearchBox({ content = null }: SearchBoxProps) {
 
   return (
     <div className="mb-8">
-      <div className="flex flex-col items-center gap-4 p-8">
-        <h1 className="text-5xl font-normal mb-3">{heroTitle}</h1>
+      <div className="flex flex-col items-center gap-4 py-6 sm:py-8 px-0 sm:px-4">
+        <h1 className="text-3xl sm:text-5xl font-normal mb-3 text-center px-1 max-w-[min(100%,42rem)] leading-tight">
+          {heroTitle}
+        </h1>
         <div className="relative w-full max-w-2xl">
           <div
             className={`relative flex items-center max-w-sm mx-auto py-3 pl-3 pr-2 border rounded-full transition-colors ${

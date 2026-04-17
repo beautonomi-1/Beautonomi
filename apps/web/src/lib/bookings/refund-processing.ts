@@ -162,21 +162,7 @@ export async function processBookingRefund(
     const lateLabel = options.isLateCancellation ? "late cancellation" : "cancellation";
     const description = `Refund for booking ${bookingRef}: ${lateLabel} — ${policy.late_cancellation_type}`;
 
-    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
-      p_user_id: (booking as { customer_id: string }).customer_id,
-      p_amount: refundAmount,
-      p_currency: currency || lastResortCurrency,
-      p_description: description,
-      p_reference_id: bookingId,
-      p_reference_type: "booking_refund",
-      p_tenant_id: walletTenantId,
-    });
-
-    if (walletError) {
-      console.error("Wallet credit failed for cancellation refund:", walletError);
-      return { success: false, error: "Failed to credit customer wallet" };
-    }
-
+    // Insert refund record FIRST (audit trail before money moves)
     const { data: refundRecord, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -195,26 +181,50 @@ export async function processBookingRefund(
       return { success: false, error: "Failed to create refund record" };
     }
 
-    // Convention: amount = absolute refund value (positive, matching refund-events.ts).
-    // net = negative to correctly reduce platform net revenue in aggregate reports.
-    const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
-      tenant_id: walletTenantId,
-      booking_id: bookingId,
-      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
-      transaction_type: "refund",
-      amount: refundAmount,
-      fees: 0,
-      commission: 0,
-      net: -refundAmount,
-      description,
-      created_at: new Date().toISOString(),
+    // Credit wallet AFTER refund row exists (ensures audit trail on retry)
+    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+      p_user_id: (booking as { customer_id: string }).customer_id,
+      p_amount: refundAmount,
+      p_currency: currency || lastResortCurrency,
+      p_description: description,
+      p_reference_id: bookingId,
+      p_reference_type: "booking_refund",
+      p_tenant_id: walletTenantId,
     });
-    if (financeErr) {
-      console.error(
-        "processBookingRefund: finance ledger insert failed after wallet credit:",
-        financeErr,
-      );
+
+    if (walletError) {
+      console.error("Wallet credit failed after refund record created:", walletError);
+      // Mark the refund as failed so it can be retried
+      await supabaseAdmin
+        .from("booking_refunds")
+        .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
+        .eq("id", (refundRecord as { id: string }).id);
+      return { success: false, error: "Failed to credit customer wallet. Refund recorded for retry." };
     }
+
+    // Record booking event for audit trail
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "refund_issued",
+        event_data: {
+          refund_id: (refundRecord as { id: string }).id,
+          amount: refundAmount,
+          refund_method: "store_credit",
+          reason: `Cancellation refund (${lateLabel})`,
+          is_late_cancellation: options.isLateCancellation,
+        },
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create refund booking event:", eventErr);
+    }
+
+    // NOTE: finance_transactions ledger row is written by the AFTER INSERT/UPDATE
+    // trigger `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. Do NOT write a second row here — that was the B1
+    // double-count bug. If the trigger ever fails, the refund row itself will be
+    // missing the paired ledger entry, which is detectable via
+    // `v_ledger_reconciliation`.
 
     return {
       success: true,

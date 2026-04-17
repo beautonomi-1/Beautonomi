@@ -20,6 +20,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
+import { adminToast } from "@/lib/adminToast";
 
 interface ProviderDistanceRow {
   id: string;
@@ -42,7 +43,8 @@ export function ProviderDistanceSettingsPage() {
 
   const q = useQuery({
     queryKey: adminQueryKeys.providers.distanceList(),
-    queryFn: () => adminApi.getJson<ProviderDistanceRow[]>("/api/admin/providers", { timeoutMs: 60_000 }),
+    queryFn: () =>
+      adminApi.getJson<ProviderDistanceRow[] | { data: ProviderDistanceRow[] }>("/api/admin/providers", { timeoutMs: 60_000 }),
     enabled: allowed,
   });
 
@@ -57,10 +59,12 @@ export function ProviderDistanceSettingsPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.providers.distanceList() });
       setEditing(null);
+      adminToast.success("Distance settings saved");
     },
+    onError: (e: Error) => adminToast.error(`Failed to save settings: ${e.message}`),
   });
 
-  const rows = q.data ?? [];
+  const rows = Array.isArray(q.data) ? q.data : (q.data as { data?: ProviderDistanceRow[] } | undefined)?.data ?? [];
   const label = (p: ProviderDistanceRow) => p.business_name || p.name || p.id;
 
   const filtered = searchQuery

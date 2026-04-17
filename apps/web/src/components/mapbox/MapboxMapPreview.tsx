@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from "react";
 import { MapPin } from "lucide-react";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 
 const DEFAULT_STYLE = "mapbox://styles/mapbox/streets-v12";
 
@@ -32,6 +33,7 @@ export default function MapboxMapPreview({
     if (!containerRef.current || !accessToken || typeof window === "undefined") return;
 
     let cancelled = false;
+    let detachResize: (() => void) | undefined;
 
     const init = async () => {
       const mapboxgl = (await import("mapbox-gl")).default;
@@ -39,11 +41,11 @@ export default function MapboxMapPreview({
 
       if (cancelled || !containerRef.current) return;
 
-      mapboxgl.accessToken = accessToken;
       const style = styleUrl?.trim() || DEFAULT_STYLE;
 
       const map = new mapboxgl.Map({
         container: containerRef.current,
+        accessToken,
         style,
         center: [longitude, latitude],
         zoom: 14,
@@ -54,6 +56,8 @@ export default function MapboxMapPreview({
         return;
       }
 
+      detachResize = attachMapResize(map, containerRef.current);
+
       const marker = new mapboxgl.Marker({ color: "#FF007F" })
         .setLngLat([longitude, latitude])
         .addTo(map);
@@ -62,10 +66,11 @@ export default function MapboxMapPreview({
       markerRef.current = marker;
     };
 
-    init();
+    void init();
 
     return () => {
       cancelled = true;
+      detachResize?.();
       if (markerRef.current) {
         markerRef.current.remove();
         markerRef.current = null;

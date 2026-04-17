@@ -18,18 +18,18 @@ interface GlobalCategory {
 
 const FALLBACK_CATEGORIES: GlobalCategory[] = [
   { id: "hair", name: "Hair", slug: "hair", icon: "/images/hairstylist_6672954.svg", display_order: 10, is_featured: true },
-  { id: "nails", name: "Nails", slug: "nails", icon: "/images/nail-art.png", display_order: 20, is_featured: true },
-  { id: "braids", name: "Braids", slug: "braids", icon: "/images/braids.png", display_order: 30, is_featured: true },
-  { id: "makeup", name: "Makeup", slug: "makeup", icon: "/images/makeup.png", display_order: 40, is_featured: true },
-  { id: "massage", name: "Massage", slug: "massage", icon: "/images/massage.png", display_order: 50, is_featured: true },
-  { id: "dreadlocks", name: "Dreadlocks", slug: "dreadlocks", icon: "/images/dreadlocks.png", display_order: 60, is_featured: true },
-  { id: "brows-lashes", name: "Brows & Lashes", slug: "brows-lashes", icon: "/images/mascara.png", display_order: 70, is_featured: true },
-  { id: "natural-hair", name: "Natural Hair", slug: "natural-hair", icon: "/images/afro-natural-hair.png", display_order: 80, is_featured: true },
-  { id: "wigs-weaves", name: "Wigs & Weaves", slug: "wigs-weaves", icon: "/images/curling-hair.png", display_order: 90, is_featured: true },
-  { id: "skin-facials", name: "Skin & Facials", slug: "skin-facials", icon: "/images/facial-treatment.png", display_order: 100, is_featured: true },
-  { id: "hair-removal", name: "Hair Removal", slug: "hair-removal", icon: "/images/wax.png", display_order: 110, is_featured: true },
-  { id: "barber", name: "Barber", slug: "barber", icon: "/images/barbershop.png", display_order: 120, is_featured: true },
-  { id: "spa", name: "Spa", slug: "spa", icon: "/images/facial.png", display_order: 130, is_featured: true },
+  { id: "nails", name: "Nails", slug: "nails", icon: "/images/nail-art.svg", display_order: 20, is_featured: true },
+  { id: "braids", name: "Braids", slug: "braids", icon: "/images/braids.svg", display_order: 30, is_featured: true },
+  { id: "makeup", name: "Makeup", slug: "makeup", icon: "/images/makeup.svg", display_order: 40, is_featured: true },
+  { id: "massage", name: "Massage", slug: "massage", icon: "/images/massage.svg", display_order: 50, is_featured: true },
+  { id: "dreadlocks", name: "Dreadlocks", slug: "dreadlocks", icon: "/images/dreadlocks.svg", display_order: 60, is_featured: true },
+  { id: "brows-lashes", name: "Brows & Lashes", slug: "brows-lashes", icon: "/images/mascara.svg", display_order: 70, is_featured: true },
+  { id: "natural-hair", name: "Natural Hair", slug: "natural-hair", icon: "/images/afro-natural-hair.svg", display_order: 80, is_featured: true },
+  { id: "wigs-weaves", name: "Wigs & Weaves", slug: "wigs-weaves", icon: "/images/curling-hair.svg", display_order: 90, is_featured: true },
+  { id: "skin-facials", name: "Skin & Facials", slug: "skin-facials", icon: "/images/facial-treatment.svg", display_order: 100, is_featured: true },
+  { id: "hair-removal", name: "Hair Removal", slug: "hair-removal", icon: "/images/wax.svg", display_order: 110, is_featured: true },
+  { id: "barber", name: "Barber", slug: "barber", icon: "/images/barbershop.svg", display_order: 120, is_featured: true },
+  { id: "spa", name: "Spa", slug: "spa", icon: "/images/facial.svg", display_order: 130, is_featured: true },
 ];
 
 const ServiceCategoriesNav = () => {

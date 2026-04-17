@@ -14,6 +14,12 @@ const ALLOWED_ORIGINS = [
   /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
 ];
 
+/** Canonical www; `/.well-known/*` must not redirect (Android App Links, Apple universal links). */
+const APEX_TO_WWW: Record<string, string> = {
+  'beautonomi.com': 'www.beautonomi.com',
+  'beautonomi.co.za': 'www.beautonomi.co.za',
+};
+
 function isAllowedOrigin(origin: string | null): boolean {
   if (!origin) return false;
   return ALLOWED_ORIGINS.some((allowed) =>
@@ -54,6 +60,18 @@ export async function proxy(request: NextRequest) {
   try {
     const { pathname } = request.nextUrl;
     const origin = request.headers.get('origin');
+
+    // Digital Asset Links / AASA: Google & Apple fetch `https://<apex>/.well-known/...` — must be 200, no redirect.
+    if (pathname.startsWith('/.well-known/')) {
+      return NextResponse.next();
+    }
+    const host = request.headers.get('host')?.split(':')[0]?.toLowerCase();
+    const wwwHost = host ? APEX_TO_WWW[host] : undefined;
+    if (wwwHost) {
+      const url = request.nextUrl.clone();
+      url.hostname = wwwHost;
+      return NextResponse.redirect(url, 308);
+    }
 
     /**
      * Controlled admin cutover (Tier B — `ADMIN_SPA_ROUTING=spa` on deploy).
@@ -112,7 +130,6 @@ export async function proxy(request: NextRequest) {
       '/privacy-policy',
       '/terms-and-condition',
       '/accessibility',
-      '/against-discrimination',
       '/BCover-for-partners',
       '/beautonomi-friendly',
       '/admin/login', // Admin login page – auth and role check happen client-side

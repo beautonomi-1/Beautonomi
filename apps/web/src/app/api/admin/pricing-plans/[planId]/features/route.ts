@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
+import { isBlankHtmlContent, sanitizePricingFeatureHtml } from "@/lib/html/pricing-feature-html";
 
 const putBodySchema = z.object({
   features: z.array(z.string()),
@@ -72,7 +73,9 @@ export async function PUT(
     const { error: delErr } = await supabase.from("pricing_plan_features").delete().eq("plan_id", planId);
     if (delErr) throw delErr;
 
-    const lines = parsed.data.features.map((t) => t.trim()).filter(Boolean);
+    const lines = parsed.data.features
+      .map((t) => sanitizePricingFeatureHtml(String(t ?? "")))
+      .filter((t) => !isBlankHtmlContent(t));
     if (lines.length === 0) {
       return successResponse({ replaced: 0 });
     }

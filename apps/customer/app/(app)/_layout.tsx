@@ -11,7 +11,7 @@ import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboa
 import { Colors } from "@/constants/colors";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
-import { ONBOARDING_DONE_KEY } from "./onboarding/index";
+import { onboardingDoneKey } from "./onboarding/index";
 import { isScreenshotMode } from "@/config/public-env";
 import {
   authFlowBreadcrumb,
@@ -73,7 +73,14 @@ function handleCustomerDeepLink(url: string): boolean {
 }
 
 export default function AppLayout() {
-  const { session } = useAuth();
+  const { session, loading: authLoading } = useAuth();
+
+  useEffect(() => {
+    if (!authLoading && !session) {
+      router.replace("/(auth)/login" as never);
+    }
+  }, [authLoading, session]);
+
   /** Stable per signed-in user — do NOT key on access_token (it changes on refresh and caused repeat router.replace / “swiping” on iOS). */
   const userId = session?.user?.id ?? null;
   /** Last user id we ran the onboarding deep-link guard for (token refresh keeps same id → no re-run). */
@@ -110,7 +117,7 @@ export default function AppLayout() {
 
     let cancelled = false;
 
-    AsyncStorage.getItem(ONBOARDING_DONE_KEY).then(async (done) => {
+    AsyncStorage.getItem(onboardingDoneKey(userId)).then(async (done) => {
       if (cancelled) return;
       if (done === "1") return;
 
@@ -118,7 +125,7 @@ export default function AppLayout() {
         const res = await api.get<{ completed: boolean }>("/api/me/onboarding/complete");
         if (cancelled) return;
         if (!res.error && res.data?.completed === true) {
-          await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+          await AsyncStorage.setItem(onboardingDoneKey(userId), "1");
           return;
         }
         if (!res.error && res.data?.completed === false) {

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { PaymentTransaction, FilterParams, PaginationParams } from "@/lib/provider-portal/types";
 import { PageHeader } from "@/components/provider/PageHeader";
@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Money } from "@/components/provider-portal/Money";
-import { Search, Filter, MoreVertical } from "lucide-react";
+import { Search, MoreVertical } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { SectionCard } from "@/components/provider/SectionCard";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,19 +30,27 @@ export default function ProviderPayments() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    loadPayments();
-  }, [page, dateRange]);
-
-  const loadPayments = async () => {
+  const loadPayments = useCallback(async () => {
     try {
       setIsLoading(true);
       const filters: FilterParams = {
         search: searchQuery || undefined,
       };
 
-      if (dateRange === "month") {
-        const now = new Date();
+      const now = new Date();
+      if (dateRange === "today") {
+        const today = now.toISOString().split("T")[0];
+        filters.date_from = today;
+        filters.date_to = today;
+      } else if (dateRange === "week") {
+        const day = now.getDay();
+        const weekStart = new Date(now);
+        weekStart.setDate(now.getDate() - day);
+        const weekEnd = new Date(now);
+        weekEnd.setDate(now.getDate() + (6 - day));
+        filters.date_from = weekStart.toISOString().split("T")[0];
+        filters.date_to = weekEnd.toISOString().split("T")[0];
+      } else if (dateRange === "month") {
         filters.date_from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
         filters.date_to = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
       }
@@ -52,10 +61,26 @@ export default function ProviderPayments() {
       setTotalPages(response.total_pages);
     } catch (error) {
       console.error("Failed to load payments:", error);
+      toast.error("Failed to load payments. Please try again.");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [page, dateRange, searchQuery]);
+
+  useEffect(() => {
+    loadPayments();
+  }, [loadPayments]);
+
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      if (page === 1) {
+        loadPayments();
+      } else {
+        setPage(1);
+      }
+    }, 300);
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading payments..." />;
@@ -104,10 +129,6 @@ export default function ProviderPayments() {
             <SelectItem value="custom">Custom Range</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline">
-          <Filter className="w-4 h-4 mr-2" />
-          Filter
-        </Button>
       </div>
 
       {/* Payments List */}

@@ -11,37 +11,37 @@ const REPORTS: { title: string; description: string; spaTo: string; icon: Lucide
   {
     title: "Revenue report",
     description: "Platform revenue analysis and trends",
-    spaTo: "reports/revenue",
+    spaTo: "/reports/revenue",
     icon: CreditCard,
   },
   {
     title: "Booking report",
     description: "Booking statistics and completion rates",
-    spaTo: "reports/bookings",
+    spaTo: "/reports/bookings",
     icon: FileBarChart,
   },
   {
     title: "Provider report",
     description: "Provider performance metrics",
-    spaTo: "reports/providers",
+    spaTo: "/reports/providers",
     icon: Store,
   },
   {
     title: "Customer report",
     description: "Customer behavior and LTV",
-    spaTo: "reports/customers",
+    spaTo: "/reports/customers",
     icon: Users,
   },
   {
     title: "Gift card report",
     description: "Gift card sales and redemptions",
-    spaTo: "reports/gift-cards",
+    spaTo: "/reports/gift-cards",
     icon: Gift,
   },
   {
     title: "Yoco reconciliation",
     description: "Payments sync debugging",
-    spaTo: "reports/yoco-reconciliation",
+    spaTo: "/reports/yoco-reconciliation",
     icon: CreditCard,
   },
 ];

@@ -37,6 +37,9 @@ export async function GET(request: Request) {
     const actorUserId = searchParams.get("actor_user_id");
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
+    const riskLevel = searchParams.get("risk_level");
+    const status = searchParams.get("status");
+    const moduleFilter = searchParams.get("module");
     const { page, limit, offset } = getPaginationParams(request);
 
     let query = supabase
@@ -67,6 +70,15 @@ export async function GET(request: Request) {
     }
     if (endDate) {
       query = query.lte("created_at", endDate);
+    }
+    if (riskLevel) {
+      query = query.eq("risk_level", riskLevel);
+    }
+    if (status) {
+      query = query.eq("status", status);
+    }
+    if (moduleFilter) {
+      query = query.eq("module", moduleFilter);
     }
 
     // Apply pagination

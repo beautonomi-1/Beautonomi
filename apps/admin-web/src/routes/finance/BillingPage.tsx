@@ -1,6 +1,7 @@
 import { useMemo } from "react";
+import { formatAdminCurrency } from "@/lib/adminFormatCurrency";
 import { useSearchParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_FINANCE } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
@@ -21,6 +22,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 
 type InvoiceRow = Record<string, unknown> & {
   id?: string;
@@ -38,12 +40,35 @@ type InvoicesPayload = {
   total_pages: number;
 };
 
+type SubRow = Record<string, unknown> & {
+  id?: string;
+  status?: string;
+  billing_period?: string;
+  started_at?: string;
+  expires_at?: string;
+  created_at?: string;
+  providers?: { business_name?: string } | null;
+  subscription_plans?: { name?: string } | null;
+};
+
+const SUB_STATUS_BADGE: Record<string, string> = {
+  active: "bg-green-100 text-green-800",
+  trial: "bg-blue-100 text-blue-800",
+  past_due: "bg-amber-100 text-amber-800",
+  expired: "bg-red-100 text-red-800",
+  cancelled: "bg-gray-100 text-gray-600",
+};
+
 export function BillingPage() {
+  useAdminDocumentTitle("Billing");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_FINANCE, "Finance access is required.");
+  const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
   const status = sp.get("status") || "";
+  const subStatus = sp.get("sub_status") || "active";
   const qKey = useMemo(() => `${page}|${status}`, [page, status]);
+  const subQk = useMemo(() => `billing|sub_status=${subStatus}`, [subStatus]);
 
   const q = useQuery({
     queryKey: adminQueryKeys.billing.invoices(qKey),
@@ -57,7 +82,29 @@ export function BillingPage() {
     enabled: allowed,
   });
 
+  const subsQuery = useQuery({
+    queryKey: adminQueryKeys.providerSubscriptions(subQk),
+    queryFn: async () => {
+      const p = new URLSearchParams();
+      if (subStatus !== "all") p.set("status", subStatus);
+      const qs = p.toString();
+      return adminApi.getJson<SubRow[]>(`/api/admin/provider-subscriptions${qs ? `?${qs}` : ""}`, { timeoutMs: 60_000 });
+    },
+    enabled: allowed,
+  });
+
+  const overrideStatusMut = useMutation({
+    mutationFn: ({ subId, newStatus }: { subId: string; newStatus: string }) =>
+      adminApi.patchJson<unknown>(`/api/admin/provider-subscriptions/${subId}`, { status: newStatus }),
+    onSuccess: async () => {
+      adminToast.success("Subscription status updated");
+      await qc.invalidateQueries({ queryKey: adminQueryKeys.providerSubscriptions(subQk) });
+    },
+    onError: (err: Error) => adminToast.error(err.message || "Failed to update status"),
+  });
+
   const rows = q.data?.invoices ?? [];
+  const subRows = Array.isArray(subsQuery.data) ? subsQuery.data : [];
 
   function setPage(n: number) {
     const next = new URLSearchParams(sp);
@@ -80,7 +127,7 @@ export function BillingPage() {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
     return (
       <div className="space-y-6">
-        <AdminPageHeader title="Billing" description="GET /api/admin/invoices" />
+        <AdminPageHeader title="Billing" />
         <AdminPanel>
           <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />
         </AdminPanel>
@@ -92,8 +139,11 @@ export function BillingPage() {
 
   return (
     <div className="space-y-6">
-      <AdminPageHeader title="Billing" description="GET /api/admin/invoices" />
+      <AdminPageHeader title="Billing" description="Invoices and provider subscription management." />
+
+      {/* Invoices section */}
       <AdminPanel>
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">Invoices</h3>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <label className="text-sm text-gray-600">
             Status filter{" "}
@@ -143,7 +193,7 @@ export function BillingPage() {
                 <AdminTd className="font-medium">{String(inv.invoice_number ?? inv.id)}</AdminTd>
                 <AdminTd>{String(inv.provider?.name ?? inv.provider?.business_name ?? "—")}</AdminTd>
                 <AdminTd>{String(inv.status ?? "")}</AdminTd>
-                <AdminTd className="tabular-nums">{Number(inv.total_amount ?? 0).toFixed(2)}</AdminTd>
+                <AdminTd className="tabular-nums">{formatAdminCurrency(Number(inv.total_amount ?? 0), String((inv as Record<string, unknown>).currency ?? "") || undefined)}</AdminTd>
               </tr>
             ))}
           </AdminTableBody>
@@ -169,6 +219,110 @@ export function BillingPage() {
           </button>
         </div>
       ) : null}
+
+      {/* Provider subscriptions section */}
+      <AdminPanel>
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <h3 className="text-sm font-semibold text-gray-900">Provider subscriptions</h3>
+          <label className="text-sm text-gray-600">
+            Status{" "}
+            <select
+              className="ml-2 rounded border border-gray-300 px-2 py-1 text-sm"
+              value={subStatus}
+              onChange={(e) => {
+                const n = new URLSearchParams(sp);
+                n.set("sub_status", e.target.value);
+                setSp(n, { replace: true });
+              }}
+            >
+              <option value="all">all</option>
+              <option value="active">active</option>
+              <option value="trial">trial</option>
+              <option value="expired">expired</option>
+              <option value="cancelled">cancelled</option>
+              <option value="past_due">past_due</option>
+            </select>
+          </label>
+        </div>
+      </AdminPanel>
+      {subsQuery.isLoading ? (
+        <AdminPanel><AdminPageSkeleton rows={3} /></AdminPanel>
+      ) : subsQuery.error ? (
+        <AdminPanel>
+          <AdminRetryBlock message={(subsQuery.error as Error).message} onRetry={() => void subsQuery.refetch()} />
+        </AdminPanel>
+      ) : subRows.length === 0 ? (
+        <EmptyState title="No subscriptions" description={`No provider subscriptions with status "${subStatus}".`} />
+      ) : (
+        <AdminDataTable>
+          <AdminTableHead>
+            <tr>
+              <AdminTh>Provider</AdminTh>
+              <AdminTh>Plan</AdminTh>
+              <AdminTh>Status</AdminTh>
+              <AdminTh>Period</AdminTh>
+              <AdminTh>Started</AdminTh>
+              <AdminTh>Expires</AdminTh>
+              <AdminTh>Override</AdminTh>
+            </tr>
+          </AdminTableHead>
+          <AdminTableBody>
+            {subRows.map((r) => {
+              const sid = String(r.id ?? "");
+              return (
+                <tr key={sid}>
+                  <AdminTd className="font-medium">{String(r.providers?.business_name ?? "—")}</AdminTd>
+                  <AdminTd>{String(r.subscription_plans?.name ?? "—")}</AdminTd>
+                  <AdminTd>
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${SUB_STATUS_BADGE[String(r.status ?? "")] ?? "bg-gray-100 text-gray-600"}`}>
+                      {String(r.status ?? "")}
+                    </span>
+                  </AdminTd>
+                  <AdminTd>{String(r.billing_period ?? "—")}</AdminTd>
+                  <AdminTd className="text-xs text-gray-500">
+                    {r.started_at ? new Date(r.started_at).toLocaleDateString() : r.created_at ? new Date(r.created_at).toLocaleDateString() : "—"}
+                  </AdminTd>
+                  <AdminTd className="text-xs text-gray-500">
+                    {r.expires_at ? new Date(r.expires_at).toLocaleDateString() : "—"}
+                  </AdminTd>
+                  <AdminTd>
+                    <div className="flex flex-wrap gap-1">
+                      {(r.status === "expired" || r.status === "past_due" || r.status === "cancelled") && (
+                        <button
+                          type="button"
+                          className="rounded bg-green-600 px-2 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
+                          disabled={overrideStatusMut.isPending}
+                          onClick={() => {
+                            if (confirm(`Reactivate subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              overrideStatusMut.mutate({ subId: sid, newStatus: "active" });
+                            }
+                          }}
+                        >
+                          Reactivate
+                        </button>
+                      )}
+                      {r.status === "active" && (
+                        <button
+                          type="button"
+                          className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 disabled:opacity-50"
+                          disabled={overrideStatusMut.isPending}
+                          onClick={() => {
+                            if (confirm(`Cancel subscription for ${r.providers?.business_name ?? "this provider"}?`)) {
+                              overrideStatusMut.mutate({ subId: sid, newStatus: "cancelled" });
+                            }
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </AdminTd>
+                </tr>
+              );
+            })}
+          </AdminTableBody>
+        </AdminDataTable>
+      )}
     </div>
   );
 }

@@ -191,9 +191,10 @@ export default function ProductCheckoutScreen() {
       if (shipRes.data) {
         const raw = shipRes.data as any;
         const sc = raw?.shipping ?? raw?.data?.shipping ?? raw?.config ?? raw;
-        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc))
+        if (sc && typeof sc === "object" && ("offers_delivery" in sc || "offers_collection" in sc)) {
           setShippingConfig(sc as ShippingConfig);
-        if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
+          if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
+        }
       }
 
       // Track checkout started
@@ -205,17 +206,20 @@ export default function ProductCheckoutScreen() {
         );
       }
 
-      // Fetch platform fee config
+      // Fetch platform fee config — pass provider_id so provider-specific overrides are respected
+      const feeUrl = provider_id
+        ? `/api/public/platform-fees?provider_id=${encodeURIComponent(provider_id)}`
+        : "/api/public/platform-fees";
       const feeRes = await api.get<{
         platform_service_fee_type: string;
         platform_service_fee_percentage: number;
         platform_service_fee_fixed: number;
         show_service_fee_to_customer: boolean;
-      }>("/api/public/platform-fees");
+      }>(feeUrl);
       if (feeRes.data) {
         setPlatformFeeConfig({
-          type: (feeRes.data as any).platform_service_fee_type ?? "percentage",
-          percentage: (feeRes.data as any).platform_service_fee_percentage ?? 5,
+          type: (feeRes.data as any).platform_service_fee_type ?? "fixed",
+          percentage: (feeRes.data as any).platform_service_fee_percentage ?? 0,
           fixed: (feeRes.data as any).platform_service_fee_fixed ?? 0,
           show: (feeRes.data as any).show_service_fee_to_customer !== false,
         });
@@ -241,7 +245,13 @@ export default function ProductCheckoutScreen() {
   }, [provider_id, user, fetchCart, providerCartForTracking]);
 
   const providerCart = provider_id ? cart.groupedByProvider[provider_id] : null;
+  const providerItems = providerCart?.items ?? [];
   const subtotal = providerCart?.subtotal ?? 0;
+  const taxAmount = providerItems.reduce((s, i) => {
+    const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
+    const linePrice = (i.effective_price ?? i.product?.retail_price ?? 0) * i.quantity;
+    return s + Math.round((linePrice * rate) / 100 * 100) / 100;
+  }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -254,7 +264,7 @@ export default function ProductCheckoutScreen() {
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + deliveryFee + platformFee;
+  const total = subtotal + taxAmount + deliveryFee + platformFee;
   const fb = getTenantDefaultCurrency();
   const fmt = (amount: number) => formatMoney(amount, fb);
 
@@ -338,11 +348,18 @@ export default function ProductCheckoutScreen() {
       return;
     }
 
-    if (!customerEmail || !order) {
+    if (!order) {
       setPlacing(false);
-      Alert.alert("Order Placed!", `Your order ${order?.order_number} has been placed. Payment pending.`, [
-        { text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) },
-      ]);
+      Alert.alert("Error", "We could not confirm your order. Please check Product orders or try again.");
+      return;
+    }
+    if (!customerEmail) {
+      setPlacing(false);
+      Alert.alert(
+        "Order Placed!",
+        `Your order ${order.order_number} has been placed. Payment is pending — add an email in account settings to pay online, or complete payment from Orders.`,
+        [{ text: "View Orders", onPress: () => router.replace("/(app)/product-orders" as any) }],
+      );
       return;
     }
 
@@ -574,6 +591,14 @@ export default function ProductCheckoutScreen() {
                     <Text style={{ fontSize: 13, color: "#1E3A8A", lineHeight: 18 }}>{sc.delivery_notes}</Text>
                   </View>
                 ) : null}
+                {sc && sc.estimated_delivery_days != null && sc.estimated_delivery_days > 0 && (
+                  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 8 }}>
+                    <Ionicons name="time-outline" size={14} color="#6B7280" style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 13, color: "#6B7280" }}>
+                      Estimated delivery: {sc.estimated_delivery_days} {sc.estimated_delivery_days === 1 ? "day" : "days"}
+                    </Text>
+                  </View>
+                )}
               </View>
             );
           }
@@ -633,6 +658,18 @@ export default function ProductCheckoutScreen() {
         })()}
 
         {/* Collection location */}
+        {fulfillment === "collection" && locations.length === 0 && (
+          <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
+              Collection Point
+            </Text>
+            <View style={{ backgroundColor: "#FEF3C7", borderRadius: 10, padding: 14 }}>
+              <Text style={{ fontSize: 13, color: "#92400E", lineHeight: 18 }}>
+                No collection locations are available for this provider. Please switch to delivery or contact the provider.
+              </Text>
+            </View>
+          </View>
+        )}
         {fulfillment === "collection" && locations.length > 0 && (
           <View style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 14 }}>
@@ -904,7 +941,7 @@ export default function ProductCheckoutScreen() {
             <View style={{ marginTop: 12, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 10, flexDirection: "row", alignItems: "center" }}>
               <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
               <Text style={{ fontSize: 12, color: "#92400E", marginLeft: 8, flex: 1 }}>
-                A platform service fee of {fmt(platformFee)} applies to online payments
+                A platform fee of {fmt(platformFee)} applies to online payments
               </Text>
             </View>
           )}
@@ -934,9 +971,16 @@ export default function ProductCheckoutScreen() {
                 borderBottomColor: "#F9FAFB",
               }}
             >
-              <Text style={{ fontSize: 14, color: "#374151", flex: 1 }} numberOfLines={1}>
-                {item.product?.name} x{item.quantity}
-              </Text>
+              <View style={{ flex: 1, marginRight: 8 }}>
+                <Text style={{ fontSize: 14, color: "#374151" }} numberOfLines={1}>
+                  {item.product?.name} x{item.quantity}
+                </Text>
+                {(item as any).product_variant?.option_values && Object.keys((item as any).product_variant.option_values).length > 0 && (
+                  <Text style={{ fontSize: 12, color: "#9CA3AF" }} numberOfLines={1}>
+                    {Object.values((item as any).product_variant.option_values).join(", ")}
+                  </Text>
+                )}
+              </View>
               <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                 {fmt(
                   (typeof item.effective_price === "number" ? item.effective_price : item.product?.retail_price ?? 0) *
@@ -951,6 +995,12 @@ export default function ProductCheckoutScreen() {
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
               <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(subtotal)}</Text>
             </View>
+            {taxAmount > 0 && (
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
+                <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(taxAmount)}</Text>
+              </View>
+            )}
             {fulfillment === "delivery" && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                 <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
@@ -961,7 +1011,7 @@ export default function ProductCheckoutScreen() {
             )}
             {platformFee > 0 && platformFeeConfig.show && (
               <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
-                <Text style={{ fontSize: 14, color: "#6B7280" }}>Service Fee</Text>
+                <Text style={{ fontSize: 14, color: "#6B7280" }}>Platform Fee</Text>
                 <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(platformFee)}</Text>
               </View>
             )}

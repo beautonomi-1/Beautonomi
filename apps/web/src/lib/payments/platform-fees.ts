@@ -48,18 +48,25 @@ export function calculateServiceFee(
 
 /**
  * Calculate platform commission (what platform takes from booking)
- * This is the revenue split between platform and provider
+ * This is the revenue split between platform and provider.
+ *
+ * @deprecated Prefer the inline commission calculation in charge-success.ts which
+ *   correctly derives the commission base from finance_transactions. If you use this
+ *   helper, you MUST pass the commission base (services + addons + products − discounts),
+ *   EXCLUDING tip, tax, travel fee, and service fee — never the full booking total.
+ *
+ * @param commissionBase The commission-eligible amount, NOT the booking total.
  */
 export function calculatePlatformCommission(
-  bookingTotal: number,
+  commissionBase: number,
   settings: PlatformFeeSettings
 ): {
   platformCommission: number;
   providerPayout: number;
 } {
   const commissionPercentage = settings.platform_commission_percentage;
-  const platformCommission = percentOf(bookingTotal, commissionPercentage);
-  const providerPayout = subtractMoney(bookingTotal, platformCommission);
+  const platformCommission = percentOf(commissionBase, commissionPercentage);
+  const providerPayout = subtractMoney(commissionBase, platformCommission);
 
   return {
     platformCommission,

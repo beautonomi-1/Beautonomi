@@ -171,32 +171,50 @@ export async function sendRebookReminders() {
   const startOfTodayUtc = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   const sent: string[] = [];
 
-  const since = new Date(now.getTime() - 400 * MS_PER_WEEK).toISOString();
-  const { data: bookings, error } = await supabaseAdmin
-    .from("bookings")
-    .select(
-      `
-      id,
-      customer_id,
-      completed_at,
-      providers!inner ( id, business_name, slug ),
-      booking_services (
-        id,
-        offering:offerings!inner (
-          id,
-          title,
-          reminder_to_rebook_enabled,
-          reminder_to_rebook_weeks
-        )
-      )
-    `
-    )
-    .eq("status", "completed")
-    .not("completed_at", "is", null)
-    .gte("completed_at", since);
+  // Only look back far enough to cover the max practical rebook window (52 weeks).
+  // Rebook fires when completed_at + weeks == today, so completed_at = today - weeks.
+  const MAX_REBOOK_WEEKS = 52;
+  const since = new Date(now.getTime() - (MAX_REBOOK_WEEKS + 1) * MS_PER_WEEK).toISOString();
+  const PAGE_SIZE = 500;
+  let offset = 0;
+  let allBookings: any[] = [];
 
-  if (error) throw error;
-  if (!bookings?.length) {
+  while (true) {
+    const { data: batch, error: batchErr } = await supabaseAdmin
+      .from("bookings")
+      .select(
+        `
+        id,
+        customer_id,
+        completed_at,
+        providers!inner ( id, business_name, slug ),
+        booking_services (
+          id,
+          offering:offerings!inner (
+            id,
+            title,
+            reminder_to_rebook_enabled,
+            reminder_to_rebook_weeks
+          )
+        )
+      `
+      )
+      .eq("status", "completed")
+      .not("completed_at", "is", null)
+      .gte("completed_at", since)
+      .order("completed_at", { ascending: true })
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (batchErr) throw batchErr;
+    if (!batch?.length) break;
+
+    allBookings = allBookings.concat(batch);
+    offset += PAGE_SIZE;
+    if (batch.length < PAGE_SIZE) break;
+  }
+
+  const bookings = allBookings;
+  if (!bookings.length) {
     return { success: true, rebookRemindersSent: 0 };
   }
 
@@ -227,8 +245,8 @@ export async function sendRebookReminders() {
 
       const serviceTitle = (off.title as string) || "Service";
       const bookingUrlPath = providerSlug
-        ? `/book/${encodeURIComponent(providerSlug)}?service=${encodeURIComponent(off.id)}`
-        : `/book`;
+        ? `/booking?slug=${encodeURIComponent(providerSlug)}&service=${encodeURIComponent(off.id)}`
+        : `/booking`;
 
       const { insertNotification: insertRebookNotification } = await import("@/lib/notifications/insert-notification");
       await insertRebookNotification({

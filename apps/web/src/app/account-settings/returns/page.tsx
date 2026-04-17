@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
 import { Undo2, ChevronRight, AlertTriangle } from "lucide-react";
+import AuthGuard from "@/components/auth/auth-guard";
 
 interface ReturnRequest {
   id: string;
@@ -33,7 +34,7 @@ export default function MyReturnsPage() {
 
   const fetchReturns = useCallback(async () => {
     setLoading(true);
-    const res = await fetcher.get<{ data: { returns: ReturnRequest[] } }>("/api/me/returns", { cache: "no-store" });
+    const res = await fetcher.get<{ data: { returns: ReturnRequest[] } }>("/api/me/returns", { staleTimeMs: 15_000 });
     if (res?.data?.returns) setReturns(res.data.returns);
     setLoading(false);
   }, []);
@@ -54,6 +55,7 @@ export default function MyReturnsPage() {
   };
 
   return (
+    <AuthGuard>
     <div className="max-w-3xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -127,5 +129,6 @@ export default function MyReturnsPage() {
         </div>
       )}
     </div>
+    </AuthGuard>
   );
 }

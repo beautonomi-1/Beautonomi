@@ -1,7 +1,7 @@
 import { Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Menu, LogOut, Search, Bell, ChevronDown } from "lucide-react";
+import { Menu, LogOut, Search, Bell, ChevronDown, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { AdminApiError } from "@beautonomi/admin-api-client";
 import {
   ADMIN_SCOPE_STORAGE_KEY,
@@ -30,6 +30,17 @@ export function AdminChrome() {
   } = useAdminSession();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem("admin_sidebar_collapsed") === "1";
+  });
+  const toggleCollapsed = () => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      window.localStorage.setItem("admin_sidebar_collapsed", next ? "1" : "0");
+      return next;
+    });
+  };
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<{
     users: Array<{ id: string; email: string; full_name: string | null; phone?: string | null }>;
@@ -202,20 +213,45 @@ export function AdminChrome() {
     <div className="flex min-h-screen bg-gray-50">
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 w-64 transform border-r border-gray-200 bg-white transition-transform md:static md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 z-40 transform border-r border-gray-200 bg-white transition-all md:static md:translate-x-0",
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          sidebarCollapsed ? "md:w-[4.5rem]" : "md:w-64",
+          "w-64"
         )}
       >
-        <div className="flex h-14 items-center border-b border-gray-100 px-4 font-semibold text-gray-900">
-          <span className="text-primary">Beautonomi</span>
-          <span className="ml-1 text-gray-700">Admin</span>
+        <div className={cn(
+          "flex h-14 items-center border-b border-gray-100 font-semibold text-gray-900",
+          sidebarCollapsed ? "justify-center px-2" : "justify-between px-4",
+        )}>
+          {sidebarCollapsed ? (
+            <span className="text-primary text-lg">B</span>
+          ) : (
+            <div className="flex items-center">
+              <span className="text-primary">Beautonomi</span>
+              <span className="ml-1 text-gray-700">Admin</span>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            className="hidden md:inline-flex items-center justify-center rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+            aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+          </button>
         </div>
-        <nav className="max-h-[calc(100vh-3.5rem)] overflow-y-auto p-3 text-sm">
+        <nav className={cn(
+          "max-h-[calc(100vh-3.5rem)] overflow-y-auto text-sm",
+          sidebarCollapsed ? "p-1.5" : "p-3",
+        )}>
           {filteredNav.map((group) => (
             <div key={group.label} className="mb-4">
-              <div className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-                {group.label}
-              </div>
+              {!sidebarCollapsed && (
+                <div className="mb-1 px-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+                  {group.label}
+                </div>
+              )}
               <ul className="space-y-0.5">
                 {group.items.map((item) => {
                   const count = navCounts[item.href] ?? 0;
@@ -225,27 +261,33 @@ export function AdminChrome() {
                         to={adminSpaTo(item.href)}
                         className={({ isActive }) =>
                           cn(
-                            "flex min-h-11 items-center justify-between rounded-xl border border-transparent px-3 py-2.5 text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
-                            isActive &&
-                              "border-primary/15 bg-primary/10 font-medium text-primary shadow-sm"
+                            "flex min-h-11 items-center rounded-xl border border-transparent text-gray-700 transition-colors hover:bg-primary/5 hover:text-gray-900 touch-manipulation",
+                            isActive && "border-primary/15 bg-primary/10 font-medium text-primary shadow-sm",
+                            sidebarCollapsed ? "relative justify-center px-2 py-2.5" : "justify-between px-3 py-2.5",
                           )
                         }
                         onClick={() => setSidebarOpen(false)}
+                        title={sidebarCollapsed ? item.title : undefined}
                       >
                         {({ isActive }) => (
                           <>
-                            <span className="flex items-center gap-2">
+                            <span className={cn("flex items-center", sidebarCollapsed ? "" : "gap-2")}>
                               <item.icon
                                 className={cn(
                                   "h-4 w-4 shrink-0",
                                   isActive ? "text-primary" : "text-gray-500 opacity-80"
                                 )}
                               />
-                              {item.title}
+                              {!sidebarCollapsed && <span>{item.title}</span>}
                             </span>
-                            {count > 0 ? (
+                            {!sidebarCollapsed && count > 0 ? (
                               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                                 {count}
+                              </span>
+                            ) : null}
+                            {sidebarCollapsed && count > 0 ? (
+                              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-[0.875rem] items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-semibold text-white">
+                                {count > 99 ? "•" : count}
                               </span>
                             ) : null}
                           </>
@@ -269,7 +311,7 @@ export function AdminChrome() {
         />
       ) : null}
 
-      <div className="flex flex-1 flex-col md:pl-0">
+      <div className="flex min-h-0 flex-1 flex-col md:pl-0">
         <header className="sticky top-0 z-20 flex min-h-14 flex-wrap items-center gap-2 border-b border-gray-200 bg-white/95 px-3 py-2 backdrop-blur-sm md:min-h-14 md:flex-nowrap md:gap-3 md:px-4 md:py-0">
           <button
             type="button"
@@ -491,8 +533,9 @@ export function AdminChrome() {
               className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl p-2 text-gray-600 hover:bg-gray-100 touch-manipulation"
               onClick={() => {
                 qc.removeQueries({ queryKey: adminQueryKeys.root });
-                navigate(adminSpaTo("/admin/login"), { replace: true });
-                void signOut();
+                void signOut().finally(() => {
+                  navigate(adminSpaTo("/admin/login"), { replace: true });
+                });
               }}
               aria-label="Sign out"
             >
@@ -518,8 +561,8 @@ export function AdminChrome() {
           </div>
         ) : null}
 
-        <main className="flex-1 p-4 md:p-6">
-          <div className="mx-auto max-w-[1600px]">
+        <main className="flex min-h-0 flex-1 flex-col p-4 md:p-6">
+          <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
             {isSectionPermissionsPending ? (
               <div className="space-y-4" aria-busy="true" aria-label="Loading permissions">
                 <AdminPageSkeleton rows={8} />

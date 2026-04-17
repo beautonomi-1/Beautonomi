@@ -13,10 +13,15 @@ import StepPackages from "./steps/step-packages";
 import StepCalendar from "./steps/step-calendar";
 import StepPromotions from "./steps/step-promotions";
 import StepYourInfo from "./steps/step-your-info";
+import StepForms from "./steps/step-forms";
 import StepPayment from "./steps/step-payment";
 import BookingActionBar from "./booking-action-bar";
 import { ChevronLeft, X } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
+import { toast } from "sonner";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -39,7 +44,7 @@ import { isCompleteE164 } from "@/lib/phone";
 const BOOKING_CLIENT_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type BookingMode = "salon" | "mobile";
-export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "payment";
+export type BookingStep = "services" | "groupParticipants" | "venue" | "packages" | "calendar" | "promotions" | "yourInfo" | "forms" | "payment";
 
 export interface BookingState {
   mode: BookingMode | null;
@@ -129,6 +134,8 @@ export interface BookingState {
   /** When set, percentage tip buttons stay highlighted after refresh (synced from payment step). */
   tipPercentSelection?: number | null;
   providerId?: string;
+  /** IANA zone from GET /api/public/providers/[slug] — used to build `selected_datetime` for bookings. */
+  providerTimezone?: string | null;
   isGroupBooking?: boolean;
   groupParticipants?: Array<{
     id: string;
@@ -151,9 +158,34 @@ export interface BookingState {
   /** Repeating schedule after checkout (POST /api/public/bookings subscribe_recurring). */
   subscribeRecurring?: boolean;
   recurringFrequency?: "weekly" | "biweekly" | "monthly";
+  /** Slot hold ID reserved when leaving the calendar step — passed to booking creation to exclude from conflict check. */
+  holdId?: string | null;
+  /**
+   * B11: provider intake / consent / waiver form responses captured on the
+   * "forms" step. Keyed by `provider_forms.id` → `{ field_id: value }` so the
+   * POST /api/public/bookings body matches the `/book/continue` schema
+   * (`provider_form_responses`).
+   */
+  providerFormResponses?: Record<
+    string,
+    Record<string, string | number | boolean | null>
+  >;
+  /**
+   * B11: booking-level custom field values (booking entity type). Keyed by
+   * custom field `name`, matching POST /api/public/bookings `custom_field_values`.
+   */
+  customFieldValues?: Record<string, string | number | boolean | null>;
+  /**
+   * §15.4-24 (audit 2026-04): client-generated UUIDv4 sent as the
+   * `Idempotency-Key` header on POST /api/public/bookings. Persisted in
+   * the BookingState so accidental retries / page reloads reuse the same
+   * key and the server-side ledger dedupes to the original booking
+   * instead of creating a new one + double-charging.
+   */
+  idempotencyKey?: string;
 }
 
-const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "payment"];
+const STEP_ORDER: BookingStep[] = ["services", "groupParticipants", "venue", "packages", "calendar", "promotions", "yourInfo", "forms", "payment"];
 
 const slideVariants = {
   enter: (direction: number) => ({
@@ -226,6 +258,16 @@ export default function BookingFlow() {
   const [direction, setDirection] = useState(0);
   /** When false and no URL/deeplink package, the packages step is omitted (empty catalog). */
   const [providerHasPackages, setProviderHasPackages] = useState<boolean | null>(null);
+  /**
+   * B11: null = not yet loaded (keep the step in order so we never black-flash
+   * past it); false = provider has no forms AND no booking custom-field defs
+   * (drop the step); true = render it.
+   */
+  const [hasFormsStep, setHasFormsStep] = useState<boolean | null>(null);
+  /** B11: StepForms broadcasts "all required fields satisfied" so the sticky
+   * action bar can enable Continue without duplicating the validation rules
+   * here. `true` when the step isn't shown (no forms configured). */
+  const [formsStepComplete, setFormsStepComplete] = useState<boolean>(true);
   /** Dedupe `?package=` deep-link prefill (per flow key + package id). */
   const packagePrefillDoneKeyRef = useRef<string | null>(null);
 
@@ -361,6 +403,59 @@ export default function BookingFlow() {
     }
   }, [isReady, currentStep, bookingState.providerId, track]);
 
+  // B11: probe for provider forms / booking custom-field definitions up front
+  // so `effectiveStepOrder` can drop the "forms" step before the user ever
+  // navigates to it. StepForms will still perform the full fetch when mounted
+  // (it needs the fields themselves to render), but this early check prevents
+  // the progress bar from flashing a step that will immediately auto-skip.
+  useEffect(() => {
+    const providerId = bookingState.providerId;
+    if (!providerId) {
+      setHasFormsStep(null);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([
+      fetch(
+        `/api/public/provider-forms?provider_id=${encodeURIComponent(providerId)}`,
+      )
+        .then((r) => (r.ok ? r.json() : Promise.resolve({})))
+        .catch(() => ({})),
+      fetch("/api/custom-fields/definitions?entity_type=booking")
+        .then((r) => (r.ok ? r.json() : Promise.resolve({})))
+        .catch(() => ({})),
+    ])
+      .then(([formsRes, defsRes]) => {
+        if (cancelled) return;
+        const formsData =
+          (formsRes as { data?: { forms?: unknown[] } })?.data ?? formsRes;
+        const forms = Array.isArray((formsData as { forms?: unknown[] })?.forms)
+          ? (formsData as { forms: unknown[] }).forms
+          : [];
+        const defs = Array.isArray(
+          (defsRes as { data?: { definitions?: unknown[] } })?.data?.definitions,
+        )
+          ? (defsRes as { data: { definitions: unknown[] } }).data.definitions
+          : [];
+        const hasAny = forms.length > 0 || defs.length > 0;
+        setHasFormsStep(hasAny);
+        // Keep Continue disabled until StepForms actually reports a clean
+        // state — otherwise the parent would hold `formsStepComplete=true`
+        // from a previous flow and let the user skip required fields.
+        if (hasAny) setFormsStepComplete(false);
+        else setFormsStepComplete(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHasFormsStep(false);
+          setFormsStepComplete(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [bookingState.providerId]);
+
   useEffect(() => {
     const slug = searchParams.get("slug") || searchParams.get("partnerId");
     if (!slug) {
@@ -382,28 +477,33 @@ export default function BookingFlow() {
     };
   }, [searchParams]);
 
-  // Load platform fee settings
+  // Load effective platform fee settings for this provider.
+  // Pass provider_id so the API mirrors validate-booking priority:
+  // provider customer_fee_config → platform_settings.payouts fallback.
+  // Re-fetch when providerId is known so fee preview always matches what the server will charge.
   useEffect(() => {
     const loadPlatformFeeSettings = async () => {
       try {
-        const response = await fetch("/api/public/platform-fees");
+        const url = bookingState.providerId
+          ? `/api/public/platform-fees?provider_id=${encodeURIComponent(bookingState.providerId)}`
+          : "/api/public/platform-fees";
+        const response = await fetch(url);
         const data = await response.json();
         if (data.data) {
           setPlatformFeeSettings(data.data);
         }
       } catch (error) {
         console.error("Error loading platform fee settings:", error);
-        // Use defaults
         setPlatformFeeSettings({
-          platform_service_fee_type: "percentage",
-          platform_service_fee_percentage: 5,
+          platform_service_fee_type: "fixed",
+          platform_service_fee_percentage: 0,
           platform_service_fee_fixed: 0,
           show_service_fee_to_customer: true,
         });
       }
     };
-    loadPlatformFeeSettings();
-  }, []);
+    void loadPlatformFeeSettings();
+  }, [bookingState.providerId]);
 
   // Membership discount is applied server-side from provider membership plans (user_memberships) in validate-booking
   const membershipDiscountPercent = 0;
@@ -412,8 +512,21 @@ export default function BookingFlow() {
   useEffect(() => {
     if (!platformFeeSettings) return;
 
+    let servicesTotal = 0;
+    if (bookingState.isGroupBooking && bookingState.groupParticipants?.length) {
+      servicesTotal = bookingState.groupParticipants.reduce((total, participant) => {
+        const participantTotal = participant.serviceIds.reduce((sum, serviceId) => {
+          const service = bookingState.selectedServices.find((s) => s.id === serviceId);
+          return sum + (service?.price || 0);
+        }, 0);
+        return total + participantTotal;
+      }, 0);
+    } else {
+      servicesTotal = bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0);
+    }
+
     const subtotal =
-      bookingState.selectedServices.reduce((sum, s) => sum + s.price, 0) +
+      servicesTotal +
       bookingState.selectedAddons.reduce((sum, a) => sum + a.price, 0) +
       bookingState.selectedProducts.reduce((sum, p) => sum + (p.price * p.quantity), 0) +
       (bookingState.address?.travelFee || 0);
@@ -480,7 +593,11 @@ export default function BookingFlow() {
           const response = await fetch(`/api/public/providers/${encodeURIComponent(providerSlug)}`);
           const data = await response.json();
           if (data.data?.id) {
-            updateBookingState({ providerId: data.data.id });
+            updateBookingState({
+              providerId: data.data.id,
+              taxRate: data.data.tax_rate_percent != null ? Number(data.data.tax_rate_percent) : 0,
+              providerTimezone: data.data.timezone ?? null,
+            });
           }
           // If provider opted out of search engine indexing, inject a noindex meta into this page
           if (data.data?.seo_indexable === false) {
@@ -546,6 +663,14 @@ export default function BookingFlow() {
       const index = steps.indexOf("packages");
       if (index > -1) steps.splice(index, 1);
     }
+    // B11: drop the forms step when the provider has nothing configured AND no
+    // booking-level custom fields exist. While loading (null) we keep the step
+    // in the order; StepForms shows a spinner and auto-advances once it
+    // confirms there's nothing to collect.
+    if (hasFormsStep === false) {
+      const index = steps.indexOf("forms");
+      if (index > -1) steps.splice(index, 1);
+    }
     return steps;
   }, [
     user,
@@ -553,6 +678,7 @@ export default function BookingFlow() {
     bookingState.isGroupBooking,
     bookingState.selectedPackage,
     providerHasPackages,
+    hasFormsStep,
     searchParams,
     activeStepOrder,
   ]);
@@ -569,11 +695,104 @@ export default function BookingFlow() {
     if (fallback) setCurrentStepIndex(activeStepOrder.indexOf(fallback));
   }, [currentStep, currentStepIndex, effectiveStepOrder, activeStepOrder]);
 
+  const [isCreatingHold, setIsCreatingHold] = useState(false);
+
+  /** Release an existing hold (best-effort, fire-and-forget). */
+  const releaseHold = async (holdId: string) => {
+    try {
+      await fetcher.post(`/api/public/booking-holds/${holdId}/release`, {});
+    } catch {
+      // Non-fatal — server-side expiry will clean it up
+    }
+  };
+
+  /** Create a booking hold when leaving the calendar step so the server can exclude
+   *  it from the conflict check — prevents the customer's own slot reservation from
+   *  blocking their own booking attempt. Non-fatal: booking proceeds even if hold fails. */
+  const createHoldForCalendarExit = async (): Promise<string | null> => {
+    if (
+      !bookingState.providerId ||
+      !bookingState.selectedDate ||
+      !bookingState.selectedTimeSlot ||
+      bookingState.selectedServices.length === 0
+    ) return null;
+
+    // Release any stale hold before creating a new one
+    if (bookingState.holdId) {
+      await releaseHold(bookingState.holdId);
+    }
+
+    try {
+      const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+      const bookingDateTime = parseSelectedDatetimeInProviderTz(
+        dateStr,
+        bookingState.selectedTimeSlot!,
+        bookingState.providerTimezone,
+      );
+
+      let totalMs = 0;
+      for (const svc of bookingState.selectedServices) {
+        totalMs += (svc.duration + (svc.bufferMinutes ?? 0)) * 60000;
+      }
+      for (const addon of bookingState.selectedAddons) {
+        totalMs += (addon.duration ?? 0) * 60000;
+      }
+      const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
+
+      const res = await fetcher.post<{ data?: { hold_id?: string; id?: string } }>(
+        "/api/public/booking-holds",
+        {
+          provider_id: bookingState.providerId,
+          services: bookingState.selectedServices.map((s) => ({
+            offering_id: s.id,
+            staff_id: s.staffId ?? null,
+          })),
+          start_at: bookingDateTime.toISOString(),
+          end_at: endDateTime.toISOString(),
+          location_type: bookingState.mode === "mobile" ? "at_home" : "at_salon",
+          location_id: bookingState.selectedLocationId ?? null,
+          previous_hold_id: bookingState.holdId || null,
+          guest_fingerprint_hash: getGuestFingerprintHash(),
+          ...(bookingState.mode === "mobile" && bookingState.address?.structuredAddress
+            ? {
+                address: {
+                  line1: bookingState.address.structuredAddress.line1,
+                  city: bookingState.address.structuredAddress.city,
+                  country: bookingState.address.structuredAddress.country,
+                  postal_code: bookingState.address.structuredAddress.postalCode,
+                  ...(bookingState.address.coordinates
+                    ? { latitude: bookingState.address.coordinates.lat, longitude: bookingState.address.coordinates.lng }
+                    : {}),
+                },
+              }
+            : {}),
+        }
+      );
+      return res?.data?.hold_id ?? res?.data?.id ?? null;
+    } catch (err) {
+      console.warn("[booking] hold creation failed:", err);
+      toast.warning("Could not reserve your time slot. It may no longer be available.");
+      return null;
+    }
+  };
+
   const handleNext = () => {
     if (effectiveStepIndex < effectiveStepOrder.length - 1) {
       setDirection(1);
       const nextStep = effectiveStepOrder[effectiveStepIndex + 1];
       const nextIndex = activeStepOrder.indexOf(nextStep);
+
+      // When leaving the calendar step, always create a fresh hold for the selected slot.
+      if (currentStep === "calendar") {
+        setIsCreatingHold(true);
+        createHoldForCalendarExit().then((newHoldId) => {
+          if (newHoldId) updateBookingState({ holdId: newHoldId });
+          setIsCreatingHold(false);
+          setCurrentStepIndex(nextIndex);
+        });
+        return;
+      }
+
       setCurrentStepIndex(nextIndex);
     }
   };
@@ -586,11 +805,18 @@ export default function BookingFlow() {
     setCurrentStepIndex(Math.max(0, Math.min(activeStepOrder.length - 1, stepIndex)));
   }, [activeStepOrder.length]);
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (effectiveStepIndex > 0) {
       setDirection(-1);
       const prevStep = effectiveStepOrder[effectiveStepIndex - 1];
       const prevIndex = activeStepOrder.indexOf(prevStep);
+      // Clear hold when returning to the calendar step so a fresh hold is created
+      // for the newly selected slot (prevents stale hold_id mismatch).
+      if (prevStep === "calendar") {
+        const id = bookingState.holdId;
+        if (id) await releaseHold(id);
+        updateBookingState({ holdId: null });
+      }
       setCurrentStepIndex(prevIndex);
     } else {
       router.back();
@@ -706,7 +932,7 @@ export default function BookingFlow() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run when URL/flow changes or cart is empty
+     
   }, [packageFlowKey, searchParams, bookingState.selectedServices.length, serviceDirect, productDirect]);
 
   /** Apply `?package=` bundle metadata when selected services match the package definition (legacy `/booking` flow). */
@@ -824,6 +1050,18 @@ export default function BookingFlow() {
           isCompleteE164(c.phone)
         );
       }
+      case "forms": {
+        // B11: gate on required provider-form fields and required booking
+        // custom fields. StepForms reports counts via onLoaded; the deeper
+        // definitions live in that component, so here we only enforce a
+        // shallow check: if we know there's nothing to collect
+        // (`hasFormsStep === false`) the step should already be out of the
+        // order; if we haven't finished loading yet, don't let the user
+        // advance past a screen they haven't seen.
+        if (hasFormsStep === null) return false;
+        if (hasFormsStep === false) return true;
+        return formsStepComplete;
+      }
       case "payment":
         return bookingState.paymentMethod !== undefined;
       default:
@@ -847,6 +1085,8 @@ export default function BookingFlow() {
         return "Promotions & Rewards";
       case "yourInfo":
         return "Your Information";
+      case "forms":
+        return "Additional Details";
       case "payment":
         return "Review & Pay";
       default:
@@ -987,11 +1227,32 @@ export default function BookingFlow() {
                   updateBookingState={updateBookingState}
                   onNext={handleNext}
                 />
+              ) : currentStep === "forms" ? (
+                <StepForms
+                  bookingState={bookingState}
+                  updateBookingState={updateBookingState}
+                  onNext={handleNext}
+                  onLoaded={({
+                    providerFormsCount,
+                    customFieldDefinitionsCount,
+                  }) => {
+                    setHasFormsStep(
+                      providerFormsCount > 0 ||
+                        customFieldDefinitionsCount > 0,
+                    );
+                  }}
+                  onCompletionChange={setFormsStepComplete}
+                />
               ) : currentStep === "payment" ? (
                 <StepPayment
                   bookingState={bookingState}
                   updateBookingState={updateBookingState}
-                  onNavigateToStep={(step) => {
+                  onNavigateToStep={async (step) => {
+                    if (step === "calendar") {
+                      const id = bookingState.holdId;
+                      if (id) await releaseHold(id);
+                      updateBookingState({ holdId: null, selectedTimeSlot: null });
+                    }
                     const idx = activeStepOrder.indexOf(step);
                     if (idx >= 0) setCurrentStepIndex(idx);
                   }}
@@ -1010,7 +1271,7 @@ export default function BookingFlow() {
       <BookingActionBar
         bookingState={bookingState}
         currentStep={currentStep}
-        canProceed={canProceed() ?? false}
+        canProceed={(canProceed() ?? false) && !isCreatingHold}
         onNext={handleNext}
         onBack={handleBack}
       />

@@ -21,14 +21,14 @@ export const adminQueryKeys = {
 
   bookings: {
     all: () => [...adminQueryKeys.root, "bookings"] as const,
-    list: (filters: { statusFilter: string; dateFilter: string }) =>
+    list: (filters: { statusFilter: string; dateFilter: string; page?: number }) =>
       [...adminQueryKeys.bookings.all(), "list", filters] as const,
     detail: (id: string) => [...adminQueryKeys.bookings.all(), "detail", id] as const,
   },
 
   disputes: {
     all: () => [...adminQueryKeys.root, "disputes"] as const,
-    list: (filters: { statusFilter: string }) => [...adminQueryKeys.disputes.all(), "list", filters] as const,
+    list: (filters: { statusFilter: string; page?: number }) => [...adminQueryKeys.disputes.all(), "list", filters] as const,
   },
 
   supportTickets: {
@@ -49,6 +49,10 @@ export const adminQueryKeys = {
 
   reviews: (q: string) => [...adminQueryKeys.root, "reviews", q] as const,
 
+  /** Provider→customer stars from `provider_client_ratings` (booking flow). */
+  providerClientRatings: (page: number, limit: number) =>
+    [...adminQueryKeys.root, "provider-client-ratings", page, limit] as const,
+
   userReports: (q: string) => [...adminQueryKeys.root, "user-reports", q] as const,
 
   refunds: (filters: { page: number; status: string }) => [...adminQueryKeys.root, "refunds", "list", filters] as const,
@@ -62,6 +66,10 @@ export const adminQueryKeys = {
   userBookings: (id: string) => [...adminQueryKeys.root, "users", id, "bookings"] as const,
 
   userWalletTransactions: (id: string) => [...adminQueryKeys.root, "users", id, "wallet-transactions"] as const,
+
+  userLoyalty: (id: string) => [...adminQueryKeys.root, "users", id, "loyalty"] as const,
+
+  providerGamification: (id: string) => [...adminQueryKeys.root, "providers", id, "gamification"] as const,
 
   loyaltyRules: () => [...adminQueryKeys.root, "loyalty", "rules"] as const,
 
@@ -77,6 +85,10 @@ export const adminQueryKeys = {
 
   notificationsConfig: () => [...adminQueryKeys.root, "notifications", "config"] as const,
 
+  smsTemplates: (q: string) => [...adminQueryKeys.root, "sms-templates", q] as const,
+
+  emailTemplates: (q: string) => [...adminQueryKeys.root, "email-templates", q] as const,
+
   automations: (q: string) => [...adminQueryKeys.root, "automations", q] as const,
 
   broadcastHistory: (q: string) => [...adminQueryKeys.root, "broadcast", "history", q] as const,
@@ -84,6 +96,10 @@ export const adminQueryKeys = {
   mapboxConfig: () => [...adminQueryKeys.root, "mapbox", "config"] as const,
 
   serviceZones: (q: string) => [...adminQueryKeys.root, "service-zones", q] as const,
+
+  serviceZoneDetail: (id: string) => [...adminQueryKeys.root, "service-zones", "detail", id] as const,
+
+  serviceZoneRollout: (id: string) => [...adminQueryKeys.root, "service-zones", "rollout", id] as const,
 
   explorePosts: (q: string) => [...adminQueryKeys.root, "explore", "posts", q] as const,
   /** Invalidate every Explore list query regardless of URL filter string (TanStack prefix match). */
@@ -94,6 +110,8 @@ export const adminQueryKeys = {
   catalogServices: (categoryId: string) => [...adminQueryKeys.root, "catalog", "services", categoryId] as const,
 
   learningArticles: (q: string) => [...adminQueryKeys.root, "learning", "articles", q] as const,
+  /** Prefix-match invalidates all learning article list queries (any status filter). */
+  learningArticlesAll: () => [...adminQueryKeys.root, "learning", "articles"] as const,
 
   addons: (q: string) => [...adminQueryKeys.root, "addons", q] as const,
 
@@ -104,6 +122,8 @@ export const adminQueryKeys = {
     summary: (range: string) => [...adminQueryKeys.finance.all(), "summary", range] as const,
     transactions: (filters: { range: string; page: number; type: string; limit: number }) =>
       [...adminQueryKeys.finance.all(), "transactions", filters] as const,
+    periodLocks: () => [...adminQueryKeys.finance.all(), "period-locks"] as const,
+    walletReconciliation: () => [...adminQueryKeys.finance.all(), "wallet-reconciliation"] as const,
   },
 
   payouts: {
@@ -153,7 +173,8 @@ export const adminQueryKeys = {
 
   productOrderDetail: (id: string) => [...adminQueryKeys.root, "product-orders", "detail", id] as const,
 
-  ecommerceOverview: () => [...adminQueryKeys.root, "ecommerce", "overview"] as const,
+  /** `periodKey` e.g. `all` or `2024-01-01|2024-01-31` for start/end query params */
+  ecommerceOverview: (periodKey: string) => [...adminQueryKeys.root, "ecommerce", "overview", periodKey] as const,
 
   productReturns: (q: string) => [...adminQueryKeys.root, "product-returns", q] as const,
 
@@ -164,6 +185,8 @@ export const adminQueryKeys = {
   apiKeys: (q: string) => [...adminQueryKeys.root, "api-keys", q] as const,
 
   amplitude: (env: string) => [...adminQueryKeys.root, "amplitude", env] as const,
+
+  paystackConfig: () => [...adminQueryKeys.root, "integrations", "paystack"] as const,
 
   promotions: () => [...adminQueryKeys.root, "promotions"] as const,
 
@@ -193,7 +216,55 @@ export const adminQueryKeys = {
 
   contentResources: () => [...adminQueryKeys.root, "content", "resources"] as const,
 
+  contentFaqs: () => [...adminQueryKeys.root, "content", "faqs"] as const,
+
+  contentAboutUs: () => [...adminQueryKeys.root, "content", "about-us"] as const,
+
+  contentPages: () => [...adminQueryKeys.root, "content", "pages"] as const,
+
+  contentFeaturedCities: () => [...adminQueryKeys.root, "content", "featured-cities"] as const,
+
+  contentAppLinks: () => [...adminQueryKeys.root, "content", "app-links"] as const,
+
   verificationDetail: (id: string) => [...adminQueryKeys.root, "verifications", "detail", id] as const,
 
   tenantDomains: () => [...adminQueryKeys.root, "tenant-domains"] as const,
+
+  ads: {
+    all: () => [...adminQueryKeys.root, "ads"] as const,
+    overview: () => [...adminQueryKeys.ads.all(), "overview"] as const,
+    campaigns: (q: string) => [...adminQueryKeys.ads.all(), "campaigns", q] as const,
+    campaignDetail: (id: string) => [...adminQueryKeys.ads.all(), "campaigns", "detail", id] as const,
+  },
+
+  analyticsGeo: () => [...adminQueryKeys.root, "analytics", "geo"] as const,
+
+  providerOps: {
+    all: () => [...adminQueryKeys.root, "provider-ops"] as const,
+    dashboard: () => [...adminQueryKeys.providerOps.all(), "dashboard"] as const,
+    leads: (q: string) => [...adminQueryKeys.providerOps.all(), "leads", q] as const,
+    leadDetail: (id: string) => [...adminQueryKeys.providerOps.all(), "leads", "detail", id] as const,
+    leadActivities: (id: string) => [...adminQueryKeys.providerOps.all(), "leads", id, "activities"] as const,
+    pipelineStats: () => [...adminQueryKeys.providerOps.all(), "pipeline", "stats"] as const,
+    tracker: (q: string) => [...adminQueryKeys.providerOps.all(), "tracker", q] as const,
+    trackerStats: () => [...adminQueryKeys.providerOps.all(), "tracker", "stats"] as const,
+    trackerDetail: (userId: string) => [...adminQueryKeys.providerOps.all(), "tracker", "detail", userId] as const,
+    activationQueue: (q: string) => [...adminQueryKeys.providerOps.all(), "activation", q] as const,
+    duplicates: () => [...adminQueryKeys.providerOps.all(), "duplicates"] as const,
+    reportsFunnel: () => [...adminQueryKeys.providerOps.all(), "reports", "funnel"] as const,
+    reportsDropoff: () => [...adminQueryKeys.providerOps.all(), "reports", "dropoff"] as const,
+    settings: () => [...adminQueryKeys.providerOps.all(), "settings"] as const,
+    categories: () => [...adminQueryKeys.providerOps.all(), "categories"] as const,
+    providerLifecycle: (id: string) => [...adminQueryKeys.providerOps.all(), "provider", id, "lifecycle"] as const,
+  },
+  whatsapp: {
+    all: () => [...adminQueryKeys.root, "whatsapp"] as const,
+    sessions: () => [...adminQueryKeys.whatsapp.all(), "sessions"] as const,
+    sessionDetail: (id: string) => [...adminQueryKeys.whatsapp.all(), "sessions", id] as const,
+    templates: () => [...adminQueryKeys.whatsapp.all(), "templates"] as const,
+    config: (env: string) => [...adminQueryKeys.whatsapp.all(), "config", env] as const,
+    batches: () => [...adminQueryKeys.whatsapp.all(), "batches"] as const,
+    batchDetail: (id: string) => [...adminQueryKeys.whatsapp.all(), "batches", id] as const,
+    leadComms: (leadId: string) => [...adminQueryKeys.whatsapp.all(), "lead-comms", leadId] as const,
+  },
 } as const;

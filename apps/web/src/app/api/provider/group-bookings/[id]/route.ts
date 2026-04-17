@@ -60,12 +60,18 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
+    const allowedFields = [
+      "title", "scheduled_at", "service_id", "staff_id", "location_id",
+      "max_participants", "duration_minutes", "notes", "status",
+    ];
+    const sanitized: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const key of allowedFields) {
+      if (key in body) sanitized[key] = body[key];
+    }
+
     const { data, error } = await supabase
       .from("group_bookings")
-      .update({
-        ...body,
-        updated_at: new Date().toISOString(),
-      })
+      .update(sanitized)
       .eq("id", id)
       .eq("provider_id", providerId)
       .select()
@@ -98,6 +104,14 @@ export async function DELETE(
       return notFoundResponse("Provider not found");
     }
 
+    // Fetch booking IDs before cancelling so we can trigger waitlist
+    const { data: groupBookings } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("group_booking_id", id)
+      .eq("provider_id", providerId)
+      .not("status", "in", "(cancelled,no_show)");
+
     // Cancel all associated bookings first
     await supabase
       .from("bookings")
@@ -114,6 +128,18 @@ export async function DELETE(
 
     if (error) {
       throw error;
+    }
+
+    // Notify waitlist for freed slots
+    if (groupBookings?.length) {
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await Promise.allSettled(
+          groupBookings.map((b: { id: string }) => matchWaitlistOnCancellation(supabase, b.id))
+        );
+      } catch (waitlistErr) {
+        console.error("[provider group cancel] waitlist matching failed:", waitlistErr);
+      }
     }
 
     return successResponse({ success: true, message: "Group booking cancelled" });

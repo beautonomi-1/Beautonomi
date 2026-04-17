@@ -16,7 +16,7 @@ import { getPlatformPaymentTypesForTenant } from "@/lib/payments/platform-paymen
 import { recordProductOrderPayment } from "@/lib/orders/record-product-order-payment";
 import { cancelStalePendingPaystackProductOrders } from "@/lib/orders/product-order-lifecycle";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { percentOf, sumMoney, roundCurrency } from "@beautonomi/utils";
+import { percentOf, sumMoney } from "@beautonomi/utils";
 
 const createOrderSchema = z.object({
   provider_id: z.string().uuid(),
@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
       .range(offset, offset + limit - 1);
 
     if (status) {
-      query = query.eq("status", status);
+      const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
+      query = statuses.length === 1 ? query.eq("status", statuses[0]) : query.in("status", statuses);
     }
 
     const { data: orders, error, count } = await query;
@@ -187,9 +188,34 @@ export async function POST(request: NextRequest) {
       return errorResponse("No cart items found for this provider", "EMPTY_CART", 400);
     }
 
-    // Validate stock for all items (use variant quantity when variant)
+    // Cancel stale pending Paystack orders first so their held stock is restored
+    // before we validate current inventory levels.
+    const adminSupabase = getSupabaseAdmin();
+    await cancelStalePendingPaystackProductOrders(adminSupabase, user.id, parsed.provider_id);
+
+    // Validate stock for all items (use variant quantity when variant).
+    // Re-fetch cart items after stale order cancellation to get updated stock counts.
+    const { data: freshCartItems, error: freshCartErr } = await (supabase.from("cart_items") as any)
+      .select(
+        `
+        id, quantity, product_variant_id,
+        product:products!inner (
+          id, name, retail_price, is_active, retail_sales_enabled, quantity,
+          image_urls, tax_rate, provider_id, has_variants
+        ),
+        product_variant:product_variants (
+          id, retail_price, quantity
+        )
+      `,
+      )
+      .eq("user_id", user.id)
+      .eq("provider_id", parsed.provider_id);
+
+    if (freshCartErr) throw freshCartErr;
+    const validatedCartItems = freshCartItems || cartItems;
+
     const stockErrors: string[] = [];
-    for (const item of cartItems) {
+    for (const item of validatedCartItems) {
       const p = item.product;
       const variant = item.product_variant;
       const effectiveQty = variant ? (variant.quantity ?? 0) : (p?.quantity ?? 0);
@@ -205,9 +231,6 @@ export async function POST(request: NextRequest) {
       return errorResponse(stockErrors.join("; "), "INSUFFICIENT_STOCK", 400);
     }
 
-    const adminSupabase = getSupabaseAdmin();
-    await cancelStalePendingPaystackProductOrders(adminSupabase, user.id, parsed.provider_id);
-
     // Get shipping config for delivery fee
     let deliveryFee = 0;
     if (parsed.fulfillment_type === "delivery") {
@@ -218,7 +241,7 @@ export async function POST(request: NextRequest) {
 
       if (shipConfig) {
         deliveryFee = parseFloat(shipConfig.delivery_fee) || 0;
-        const subtotalCalc = cartItems.reduce(
+        const subtotalCalc = validatedCartItems.reduce(
           (sum: number, ci: any) => {
             const price = ci.product_variant ? ci.product_variant.retail_price : ci.product.retail_price;
             return sum + (parseFloat(price) || 0) * ci.quantity;
@@ -247,7 +270,7 @@ export async function POST(request: NextRequest) {
       total_price: number;
     }> = [];
 
-    for (const item of cartItems) {
+    for (const item of validatedCartItems) {
       const p = item.product;
       const variant = item.product_variant;
       const unitPrice = variant ? parseFloat(variant.retail_price) : parseFloat(p.retail_price);
@@ -281,15 +304,15 @@ export async function POST(request: NextRequest) {
       const settings = (scopedSettings.data as { settings?: Record<string, unknown> } | null)?.settings;
       const payouts = (settings as Record<string, any> | undefined)?.payouts as Record<string, any> | undefined;
       if (payouts) {
-        const feeType = (payouts.platform_service_fee_type as string) || "percentage";
-        if (feeType === "fixed") {
-          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
-        } else {
-          const pct = Number(payouts.platform_service_fee_percentage) || 5;
+        const feeType = (payouts.platform_service_fee_type as string) || "fixed";
+        if (feeType === "percentage") {
+          const pct = Number(payouts.platform_service_fee_percentage) || 0;
           platformFee = percentOf(subtotal, pct);
+        } else {
+          platformFee = Number(payouts.platform_service_fee_fixed) || 0;
         }
       } else {
-        platformFee = percentOf(subtotal, 5);
+        platformFee = 0;
       }
     }
 
@@ -380,7 +403,7 @@ export async function POST(request: NextRequest) {
     if (itemsErr) throw itemsErr;
 
     // Decrement stock for each product (variant or product-level)
-    for (const item of cartItems) {
+    for (const item of validatedCartItems) {
       if (item.product_variant_id) {
         await (supabase.rpc as any)("decrement_product_variant_stock", {
           p_variant_id: item.product_variant_id,

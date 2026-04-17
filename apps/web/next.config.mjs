@@ -56,7 +56,7 @@ const nextConfig = {
       formats: ['image/avif', 'image/webp'],
       deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
       imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-      minimumCacheTTL: 60,
+      minimumCacheTTL: 2592000,
       dangerouslyAllowSVG: true,
       contentDispositionType: 'attachment',
       contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
@@ -82,7 +82,12 @@ const nextConfig = {
       '@radix-ui/react-dropdown-menu',
       '@radix-ui/react-dialog',
       '@radix-ui/react-popover',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-tooltip',
+      '@radix-ui/react-accordion',
       'recharts',
+      'sonner',
+      'react-icons',
     ],
   },
 
@@ -125,9 +130,58 @@ const nextConfig = {
     ];
   },
 
+  // F12 — feature-flagged rewrite that delegates /admin to the Vite SPA once
+  // every Next admin page has a SPA equivalent. Set ADMIN_UI_SOURCE=spa and
+  // ADMIN_SPA_URL=https://admin.beautonomi.co.za (or preview URL) to flip.
+  //
+  // Also mirrors the iOS Universal Links file at the legacy root path. Apple probes
+  // `/.well-known/apple-app-site-association` first, but some older clients / proxies still
+  // hit `/apple-app-site-association` at the root; mirroring avoids broken deep links.
+  async rewrites() {
+    const universalLinkRewrites = [
+      {
+        source: '/apple-app-site-association',
+        destination: '/.well-known/apple-app-site-association',
+      },
+    ];
+    if (process.env.ADMIN_UI_SOURCE !== 'spa' || !process.env.ADMIN_SPA_URL) {
+      return universalLinkRewrites;
+    }
+    const spa = process.env.ADMIN_SPA_URL.replace(/\/$/, '');
+    return [
+      ...universalLinkRewrites,
+      { source: '/admin', destination: spa },
+      { source: '/admin/:path*', destination: `${spa}/:path*` },
+    ];
+  },
+
   // Headers for caching & security
   async headers() {
     return [
+      // Android App Links — Google Play requires application/json and a 200 (no redirect) at this path per host.
+      {
+        source: '/.well-known/assetlinks.json',
+        headers: [{ key: 'Content-Type', value: 'application/json; charset=utf-8' }],
+      },
+      // iOS Universal Links — Apple requires `application/json` at this exact path (no extension) with no redirects.
+      // Without this, Safari will not open the Beautonomi / Beautonomi Partner apps from https:// links.
+      {
+        source: '/.well-known/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
+      },
+      // Legacy path: some older iOS versions fetched `apple-app-site-association` at the site root.
+      // Apple's CDN now always probes `/.well-known/...` first but mirroring the content here is cheap
+      // and keeps downgrade paths working.
+      {
+        source: '/apple-app-site-association',
+        headers: [
+          { key: 'Content-Type', value: 'application/json; charset=utf-8' },
+          { key: 'Cache-Control', value: 'public, max-age=3600' },
+        ],
+      },
       // Admin SPA static chunks (Vite) — long cache; hashed filenames.
       {
         source: '/admin/assets/:path*',
@@ -219,8 +273,8 @@ const nextConfig = {
               "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in https://maps.googleapis.com https://maps.gstatic.com https://api.mapbox.com https://events.mapbox.com https://flagcdn.com",
               // XHR/fetch/WebSocket
               "connect-src 'self' https://*.supabase.co https://*.supabase.in wss://*.supabase.co https://api.onesignal.com https://*.sentry.io https://*.amplitude.com https://api.paystack.co https://api.mapbox.com https://events.mapbox.com",
-              // Iframes (Paystack popup uses an iframe)
-              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co",
+              // Iframes: Paystack popup; Vercel preview toolbar (vercel.live)
+              "frame-src 'self' https://checkout.paystack.com https://js.paystack.co https://vercel.live",
               // Workers (Next.js, service workers)
               "worker-src 'self' blob:",
               "object-src 'none'",
@@ -267,10 +321,13 @@ const nextConfig = {
 
 const configWithAnalyzer = analyzer(nextConfig);
 
+/** When unset, source maps / release upload are skipped — keep the webpack plugin quiet (avoids CI noise). */
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN;
+
 export default withSentryConfig(configWithAnalyzer, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  silent: !process.env.CI,
+  authToken: sentryAuthToken,
+  silent: !sentryAuthToken,
   widenClientFileUpload: true,
 });

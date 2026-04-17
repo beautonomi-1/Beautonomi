@@ -1,4 +1,4 @@
-import { checkRateLimit, getClientIp, type RateLimitResult } from "./store";
+import { checkRateLimit, getClientIp } from "./store";
 
 const IP_CONFIG = {
   prefix: "hold-ip",

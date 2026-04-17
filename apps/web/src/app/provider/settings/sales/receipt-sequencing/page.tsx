@@ -22,7 +22,7 @@ export default function ReceiptSequencingSettings() {
         setPrefix(res.data.receipt_prefix || "REC");
         setNextNumber(Number(res.data.receipt_next_number || 1));
       } catch {
-        // keep defaults
+        toast.error("Failed to load receipt sequencing settings");
       }
     };
     load();

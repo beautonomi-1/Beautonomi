@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { providerTenantMismatchResponse } from "@/lib/tenant/provider-matches-host";
+import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 export async function POST(request: NextRequest) {
   try {
@@ -37,7 +38,9 @@ export async function POST(request: NextRequest) {
     });
 
     const body = await request.json();
-    const { plan_id } = body;
+    const rawPlanId = body.plan_id;
+    const plan_id =
+      typeof rawPlanId === "string" ? extractSubscriptionPlanUuid(rawPlanId) : rawPlanId;
 
     if (!plan_id) {
       return handleApiError(new Error("plan_id is required"), "VALIDATION_ERROR", 400);
@@ -45,13 +48,28 @@ export async function POST(request: NextRequest) {
 
     const { data: plan } = await supabaseAdmin
       .from("subscription_plans")
-      .select("id, name")
+      .select("id, name, price_monthly, price_yearly, is_free")
       .eq("id", plan_id)
       .eq("is_active", true)
       .maybeSingle();
 
     if (!plan) {
       return handleApiError(new Error("Plan not found"), "NOT_FOUND", 404);
+    }
+
+    // Only allow switching to free plans via this route.
+    // Paid plan upgrades must go through the upgrade/initialize-payment flow.
+    type PlanFields = { id: string; name: string; price_monthly?: number | null; price_yearly?: number | null; is_free?: boolean | null };
+    const p = plan as PlanFields;
+    const hasNonZeroMonthly = p.price_monthly != null && Number(p.price_monthly) > 0;
+    const hasNonZeroYearly = p.price_yearly != null && Number(p.price_yearly) > 0;
+    const isFreeTarget = p.is_free === true || (!hasNonZeroMonthly && !hasNonZeroYearly);
+    if (!isFreeTarget) {
+      return handleApiError(
+        new Error("Paid plan changes require the upgrade flow with payment"),
+        "PAYMENT_REQUIRED",
+        400
+      );
     }
 
     const { error: updateError } = await supabaseAdmin

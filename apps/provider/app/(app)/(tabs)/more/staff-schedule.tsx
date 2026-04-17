@@ -283,6 +283,7 @@ export default function StaffScheduleScreen() {
   const {
     data: shifts,
     loading: loadingShifts,
+    error: shiftsError,
     refresh: refreshShifts,
   } = useApi<Shift[]>(shiftsUrl, { enabled: !!selectedStaffId });
 
@@ -293,8 +294,11 @@ export default function StaffScheduleScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refreshStaff(), refreshShifts()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refreshStaff(), refreshShifts()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refreshStaff, refreshShifts]);
 
   /* ── Select staff from route param or first member ── */
@@ -472,6 +476,12 @@ export default function StaffScheduleScreen() {
         }
       />
 
+      <View style={{ backgroundColor: "#EEF2FF", borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, marginBottom: 12 }}>
+        <Text style={{ fontSize: 13, color: "#3730A3", lineHeight: 18 }}>
+          Schedules define when each staff member is available for bookings. You can set multiple shifts per day (split shifts).
+        </Text>
+      </View>
+
       {/* ── Add team member CTA: one flow with shifts on Team screen ── */}
       <TouchableOpacity
         style={twStyle("mb-3 flex-row items-center justify-center rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 py-2.5")}
@@ -587,14 +597,20 @@ export default function StaffScheduleScreen() {
                     text: "Apply",
                     onPress: async () => {
                       const weekdays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
+                      const failures: string[] = [];
                       for (const day of weekdays) {
-                        await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
+                        const { error: err } = await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
                           day_of_week: day,
                           start_time: "09:00",
                           end_time: "17:00",
                         });
+                        if (err) failures.push(day);
                       }
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      if (failures.length > 0) {
+                        Alert.alert("Partial failure", `Could not set hours for: ${failures.join(", ")}. Please try again.`);
+                      } else {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      }
                       refreshShifts();
                     },
                   },
@@ -617,14 +633,20 @@ export default function StaffScheduleScreen() {
                     text: "Apply",
                     onPress: async () => {
                       const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+                      const failures: string[] = [];
                       for (const day of days) {
-                        await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
+                        const { error: err } = await saveShift(`/api/provider/staff/${selectedStaffId}/shifts`, {
                           day_of_week: day,
                           start_time: "08:00",
                           end_time: "20:00",
                         });
+                        if (err) failures.push(day);
                       }
-                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      if (failures.length > 0) {
+                        Alert.alert("Partial failure", `Could not set hours for: ${failures.join(", ")}. Please try again.`);
+                      } else {
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                      }
                       refreshShifts();
                     },
                   },
@@ -655,15 +677,21 @@ export default function StaffScheduleScreen() {
                           return;
                         }
                         const targetId = otherStaff[0].id;
+                        let failed = 0;
                         for (const shift of currentShifts) {
-                          await saveShift(`/api/provider/staff/${targetId}/shifts`, {
+                          const { error: err } = await saveShift(`/api/provider/staff/${targetId}/shifts`, {
                             day_of_week: shift.day_of_week,
                             start_time: shift.start_time,
                             end_time: shift.end_time,
                           });
+                          if (err) failed++;
                         }
-                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                        Alert.alert("Done", `Schedule copied to ${otherStaff[0].name}`);
+                        if (failed > 0) {
+                          Alert.alert("Partial failure", `${failed} shift(s) could not be copied. Please try again.`);
+                        } else {
+                          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                          Alert.alert("Done", `Schedule copied to ${otherStaff[0].name}`);
+                        }
                       },
                     },
                   ]
@@ -686,6 +714,13 @@ export default function StaffScheduleScreen() {
         />
       ) : loadingShifts ? (
         <SkeletonList rows={7} />
+      ) : shiftsError && !shifts ? (
+        <View style={twStyle("px-4 py-8")}>
+          <Text style={twStyle("text-center text-sm text-red-600 mb-3")}>Could not load shifts. Pull down to retry.</Text>
+          <TouchableOpacity onPress={handleRefresh} style={twStyle("self-center rounded-lg bg-gray-100 px-5 py-2.5")}>
+            <Text style={twStyle("text-sm font-medium text-gray-700")}>Retry</Text>
+          </TouchableOpacity>
+        </View>
       ) : (
         <FlatList
           data={DAYS}

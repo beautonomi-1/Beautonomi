@@ -31,8 +31,11 @@ export async function GET(request: NextRequest) {
       .select(
         `
         id, name, slug, sku, brand, category, retail_price, quantity, low_stock_level,
-        supply_price, retail_sales_enabled, is_active, track_stock_quantity, image_urls, created_at, updated_at,
-        provider:providers!inner(id, business_name, slug, tenant_id, status)
+        supply_price, retail_sales_enabled, is_active, track_stock_quantity, image_urls,
+        has_variants, variant_option_types,
+        created_at, updated_at,
+        provider:providers!inner(id, business_name, slug, tenant_id, status),
+        variants:product_variants(id)
       `,
         { count: "exact" },
       )
@@ -65,8 +68,17 @@ export async function GET(request: NextRequest) {
       ),
     ).sort();
 
+    const enriched = (products ?? []).map((p: Record<string, unknown>) => {
+      const variants = Array.isArray(p.variants) ? p.variants : [];
+      return {
+        ...p,
+        variant_count: variants.length,
+        variants: undefined,
+      };
+    });
+
     return successResponse({
-      products: products ?? [],
+      products: enriched,
       categories,
       pagination: {
         page,

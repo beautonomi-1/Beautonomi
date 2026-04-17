@@ -7,7 +7,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import AuthGuard from "@/components/auth/auth-guard";
-import { motion } from "framer-motion";
 import { useAuth } from "@/providers/AuthProvider";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useCustomerBookingsRealtime } from "@/hooks/useSupabaseRealtime";
@@ -16,6 +15,23 @@ const Page = () => {
   const [activeTab, setActiveTab] = useState("upcoming");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const { user } = useAuth();
+  /**
+   * §Release-audit 2026-04: Radix `TabsContent` keeps inactive panels mounted
+   * but hidden, so each `BookingsList` runs its own `/api/me/bookings`
+   * request on first paint — three parallel queries even when the user
+   * only looks at "Upcoming". Track which tabs the user has actually
+   * visited and only mount those lists. Subsequent visits remember.
+   */
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(new Set(["upcoming"]));
+  const onTabChange = useCallback((next: string) => {
+    setActiveTab(next);
+    setVisitedTabs((prev) => {
+      if (prev.has(next)) return prev;
+      const out = new Set(prev);
+      out.add(next);
+      return out;
+    });
+  }, []);
 
   const handleRealtimeEvent = useCallback(() => {
     setRefreshTrigger((t) => t + 1);
@@ -39,29 +55,17 @@ const Page = () => {
             ]} 
           />
 
-          {/* Page Header - Glass Card Style */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
-          >
+          <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-2">
               Bookings
             </h1>
             <p className="text-sm md:text-base text-gray-600 font-light">
               Manage your appointments and view your booking history
             </p>
-          </motion.div>
+          </div>
 
-          {/* Tabs Container - Glass Card Style */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: 0.1 }}
-            className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
-          >
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8">
+            <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
               <TabsList className="mb-6 md:mb-8 grid grid-cols-3 w-full bg-gray-100/50 p-1 rounded-xl">
                 <TabsTrigger 
                   value="upcoming" 
@@ -84,15 +88,21 @@ const Page = () => {
               </TabsList>
 
               <TabsContent value="upcoming" className="mt-0">
-                <BookingsList status="upcoming" refreshTrigger={refreshTrigger} />
+                {visitedTabs.has("upcoming") && (
+                  <BookingsList status="upcoming" refreshTrigger={refreshTrigger} />
+                )}
               </TabsContent>
 
               <TabsContent value="past" className="mt-0">
-                <BookingsList status="past" refreshTrigger={refreshTrigger} />
+                {visitedTabs.has("past") && (
+                  <BookingsList status="past" refreshTrigger={refreshTrigger} />
+                )}
               </TabsContent>
 
               <TabsContent value="cancelled" className="mt-0">
-                <BookingsList status="cancelled" refreshTrigger={refreshTrigger} />
+                {visitedTabs.has("cancelled") && (
+                  <BookingsList status="cancelled" refreshTrigger={refreshTrigger} />
+                )}
               </TabsContent>
             </Tabs>
 
@@ -101,14 +111,14 @@ const Page = () => {
               <p className="text-xs md:text-sm font-light text-gray-600 text-center">
                 Can&apos;t find your reservation here?{" "}
                 <Link
-                  href="/"
+                  href="/help"
                   className="underline text-[#FF0077] hover:text-[#D60565] font-medium transition-colors"
                 >
                   Visit the Help Center
                 </Link>
               </p>
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </AuthGuard>

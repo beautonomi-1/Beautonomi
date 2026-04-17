@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -28,7 +28,7 @@ export async function GET(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     const { data: country, error } = await supabase
       .from("iso_countries")
@@ -82,7 +82,7 @@ export async function PUT(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
     const body = await request.json();
 
     const validationResult = updateCountrySchema.safeParse(body);
@@ -154,6 +154,11 @@ export async function PUT(
   }
 }
 
+/** PATCH — same body as PUT (admin SPA uses `patchJson`). */
+export async function PATCH(request: Request, ctx: { params: Promise<{ code: string }> }) {
+  return PUT(request, ctx);
+}
+
 /**
  * DELETE /api/admin/iso-codes/countries/[code]
  */
@@ -168,7 +173,7 @@ export async function DELETE(
     }
 
     const { code } = await params;
-    const supabase = await getSupabaseServer(request);
+    const supabase = getSupabaseAdmin();
 
     // Check if country is default
     const { data: country } = await supabase

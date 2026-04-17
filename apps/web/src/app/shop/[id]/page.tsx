@@ -54,7 +54,6 @@ interface CollectionLocation {
 /** Format price with currency; `fallback` is used when `currency` is missing (e.g. tenant default). */
 function formatPrice(price: number, currency: string | null | undefined, fallback: string): string {
   const code = (currency || fallback).toUpperCase();
-  if (code === LAST_RESORT_CURRENCY) return `R${price.toFixed(2)}`;
   return `${code} ${price.toFixed(2)}`;
 }
 

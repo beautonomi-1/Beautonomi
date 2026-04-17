@@ -1,0 +1,80 @@
+import { describe, it, expect } from "vitest";
+import { normalizeWorkingHours } from "../normalize-working-hours";
+
+const defaultDay = { is_open: true, open_time: "09:00", close_time: "18:00" };
+
+describe("normalizeWorkingHours", () => {
+  it("returns null for null/undefined input", () => {
+    expect(normalizeWorkingHours(null)).toBeNull();
+    expect(normalizeWorkingHours(undefined)).toBeNull();
+  });
+
+  it("normalizes Format A and fills missing days with defaults (full week)", () => {
+    const formatA = {
+      monday: { is_open: true, open_time: "09:00", close_time: "17:00" },
+      tuesday: { is_open: false, open_time: "09:00", close_time: "17:00" },
+    };
+    const result = normalizeWorkingHours(formatA);
+    expect(result).toEqual({
+      sunday: { ...defaultDay },
+      monday: { is_open: true, open_time: "09:00", close_time: "17:00" },
+      tuesday: { is_open: false, open_time: "09:00", close_time: "18:00" },
+      wednesday: { ...defaultDay },
+      thursday: { ...defaultDay },
+      friday: { ...defaultDay },
+      saturday: { ...defaultDay },
+    });
+  });
+
+  it("converts Format B to Format A and fills missing days", () => {
+    const formatB = {
+      monday: { open: "08:00", close: "16:00", closed: false },
+      wednesday: { open: "10:00", close: "20:00", closed: false },
+      sunday: { closed: true },
+    };
+    const result = normalizeWorkingHours(formatB);
+    expect(result).toEqual({
+      sunday: { is_open: false, open_time: "09:00", close_time: "18:00" },
+      monday: { is_open: true, open_time: "08:00", close_time: "16:00" },
+      tuesday: { ...defaultDay },
+      wednesday: { is_open: true, open_time: "10:00", close_time: "20:00" },
+      thursday: { ...defaultDay },
+      friday: { ...defaultDay },
+      saturday: { ...defaultDay },
+    });
+  });
+
+  it("preserves breaks", () => {
+    const input = {
+      monday: {
+        open: "09:00",
+        close: "18:00",
+        closed: false,
+        breaks: [{ start: "12:00", end: "13:00" }],
+      },
+    };
+    const result = normalizeWorkingHours(input);
+    expect(result!.monday.breaks).toEqual([{ start: "12:00", end: "13:00" }]);
+  });
+
+  it("ignores non-day keys and still returns a full week", () => {
+    const input = {
+      monday: { is_open: true, open_time: "09:00", close_time: "17:00" },
+      foo: { is_open: true, open_time: "09:00", close_time: "17:00" },
+    };
+    const result = normalizeWorkingHours(input);
+    expect(result).toEqual({
+      sunday: { ...defaultDay },
+      monday: { is_open: true, open_time: "09:00", close_time: "17:00" },
+      tuesday: { ...defaultDay },
+      wednesday: { ...defaultDay },
+      thursday: { ...defaultDay },
+      friday: { ...defaultDay },
+      saturday: { ...defaultDay },
+    });
+  });
+
+  it("returns null for empty object", () => {
+    expect(normalizeWorkingHours({})).toBeNull();
+  });
+});

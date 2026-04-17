@@ -6,6 +6,13 @@ import { cn } from "@/lib/utils";
 import { CheckCircle2, Clock, XCircle, AlertCircle, Calendar as CalendarIcon, User } from "lucide-react";
 import { format, isToday, parseISO } from "date-fns";
 
+function nextQuarterHourTime(): string {
+  const now = new Date();
+  const h = now.getHours();
+  const m = Math.ceil(now.getMinutes() / 15) * 15;
+  return `${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+}
+
 interface CalendarListProps {
   appointments: Appointment[];
   teamMembers: TeamMember[];
@@ -192,9 +199,8 @@ export function CalendarList({
                 <p className="text-sm text-gray-500">No appointments scheduled</p>
                 <button
                   onClick={() => {
-                    const defaultTime = "09:00";
                     const defaultMemberId = teamMembers[0]?.id || "";
-                    onTimeSlotClick?.(date, defaultTime, defaultMemberId);
+                    onTimeSlotClick?.(date, nextQuarterHourTime(), defaultMemberId);
                   }}
                   className="mt-2 text-sm text-primary hover:underline"
                 >
@@ -228,7 +234,7 @@ export function CalendarList({
                           const StatusIcon = style.icon;
                           const normalizedTime = typeof apt.scheduled_time === "string" && apt.scheduled_time.trim().length > 0
                             ? apt.scheduled_time
-                            : "09:00";
+                            : "00:00";
                           const endTime = new Date(parseISO(`${apt.scheduled_date}T${normalizedTime}`));
                           endTime.setMinutes(
                             endTime.getMinutes() + apt.duration_minutes
@@ -287,9 +293,8 @@ export function CalendarList({
                 {/* Add Appointment Button */}
                 <button
                   onClick={() => {
-                    const defaultTime = "09:00";
                     const defaultMemberId = teamMembers[0]?.id || "";
-                    onTimeSlotClick?.(date, defaultTime, defaultMemberId);
+                    onTimeSlotClick?.(date, nextQuarterHourTime(), defaultMemberId);
                   }}
                   className="w-full mt-4 py-3 px-4 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:border-primary hover:text-primary transition-colors touch-manipulation min-h-[44px]"
                 >

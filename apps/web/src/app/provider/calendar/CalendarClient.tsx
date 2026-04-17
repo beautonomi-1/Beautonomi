@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { providerApi } from "@/lib/provider-portal/api";
 import type { Appointment, TeamMember } from "@/lib/provider-portal/types";
 import { fetcher, PROVIDER_BOOTSTRAP_TIMEOUT_MS } from "@/lib/http/fetcher";
@@ -301,8 +301,8 @@ const parseHourFromUnknown = (value: unknown): number | null => {
 const readHoursField = (dayHours: unknown, key: "open" | "close"): unknown => {
   if (!dayHours || typeof dayHours !== "object") return undefined;
   const raw = dayHours as Record<string, unknown>;
-  if (key === "open") return raw.open ?? raw.open_time;
-  return raw.close ?? raw.close_time;
+  if (key === "open") return raw.open ?? raw.open_time ?? raw.start_time ?? raw.start;
+  return raw.close ?? raw.close_time ?? raw.end_time ?? raw.end;
 };
 
 const isClosedDay = (dayHours: unknown): boolean => {
@@ -449,8 +449,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const selectedDateSafe = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
   const [locationOperatingHours, setLocationOperatingHours] = useState<Record<string, { open: string; close: string; closed: boolean }> | null>(null);
   
-  // Calculate optimal startHour and endHour based on operating hours and actual appointment times
+  // Calculate optimal startHour and endHour based on operating hours,
+  // staff working hours, and actual appointment / block times.
   const { startHour, endHour } = React.useMemo(() => {
+    const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const getDayKey = (date: Date) => DAY_NAMES[date.getDay()];
+
     const getDatesForView = () => {
       const dates: Date[] = [];
       const start = new Date(selectedDateSafe);
@@ -464,39 +468,57 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       }
       return dates;
     };
-    const visibleDateStrs = new Set(getDatesForView().map(d => format(d, "yyyy-MM-dd")));
+    const visibleDates = getDatesForView();
+    const visibleDateStrs = new Set(visibleDates.map(d => format(d, "yyyy-MM-dd")));
 
-    // Base range from operating hours (or defaults)
     let calculatedStartHour = 8;
     let calculatedEndHour = 20;
 
-    if (locationOperatingHours) {
-      const getDayKey = (date: Date) => {
-        const DAY_NAMES = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-        return DAY_NAMES[date.getDay()];
-      };
-      let minHour = 23;
-      let maxHour = 0;
-      let hasOpenDays = false;
-      getDatesForView().forEach((date) => {
-        const dayHours = locationOperatingHours[getDayKey(date)];
-        if (dayHours && !isClosedDay(dayHours)) {
-          const openHour = parseHourFromUnknown(readHoursField(dayHours, "open"));
-          const closeHour = parseHourFromUnknown(readHoursField(dayHours, "close"));
-          if (openHour == null || closeHour == null) return;
-          hasOpenDays = true;
-          minHour = Math.min(minHour, openHour);
-          maxHour = Math.max(maxHour, closeHour);
-        }
-      });
-      if (hasOpenDays) {
-        const padding = 1;
-        calculatedStartHour = Math.max(0, minHour - padding);
-        calculatedEndHour = Math.min(23, maxHour + padding);
+    // Collect the widest hour range from BOTH location operating hours
+    // AND individual staff working hours so the calendar covers all
+    // shifts — including staff who work outside location hours or on
+    // weekends when the location is nominally "closed".
+    let minHour = 23;
+    let maxHour = 0;
+    let hasAnyOpenSlot = false;
+
+    const expandFromDayHours = (dayHours: unknown) => {
+      if (!dayHours || isClosedDay(dayHours)) return;
+      const openHour = parseHourFromUnknown(readHoursField(dayHours, "open"));
+      const closeHour = parseHourFromUnknown(readHoursField(dayHours, "close"));
+      if (openHour == null || closeHour == null) return;
+      hasAnyOpenSlot = true;
+      minHour = Math.min(minHour, openHour);
+      maxHour = Math.max(maxHour, closeHour);
+    };
+
+    visibleDates.forEach((date) => {
+      const dayKey = getDayKey(date);
+
+      // Location operating hours
+      if (locationOperatingHours) {
+        expandFromDayHours(locationOperatingHours[dayKey]);
       }
+
+      // Staff working hours — expand the range for every team member
+      // whose shift falls on a visible day, even if the location itself
+      // is marked "closed" for that day.
+      for (const member of teamMembers) {
+        if (!member.working_hours) continue;
+        expandFromDayHours(member.working_hours[dayKey]);
+      }
+    });
+
+    if (hasAnyOpenSlot) {
+      const padding = 1;
+      calculatedStartHour = Math.max(0, minHour - padding);
+      calculatedEndHour = Math.min(23, maxHour + padding);
     } else {
-      calculatedStartHour = 0;
-      calculatedEndHour = 23;
+      // No open slots detected — either location hours aren't set,
+      // all visible days are closed, or the data format wasn't parsed.
+      // Use sensible business-hour defaults so the grid isn't empty.
+      calculatedStartHour = 8;
+      calculatedEndHour = 20;
     }
 
     // Expand range to include all appointments on visible dates (prevents clipping)
@@ -512,8 +534,21 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
       if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
     });
 
+    // Include time blocks in the visible hour range
+    timeBlocks.forEach((block) => {
+      const blockDateStr =
+        typeof block.date === "string" && block.date.length >= 10 ? block.date.slice(0, 10) : "";
+      if (!blockDateStr || !visibleDateStrs.has(blockDateStr)) return;
+      const { hour: h } = parseTimeFromUnknown(block.start_time, 0, 0);
+      const endParts = parseTimeFromUnknown(block.end_time, h, 0);
+      const endMinutes = endParts.hour * 60 + endParts.minute;
+      const endH = Math.min(23, Math.ceil(endMinutes / 60));
+      if (h < calculatedStartHour) calculatedStartHour = Math.max(0, h - 1);
+      if (endH > calculatedEndHour) calculatedEndHour = Math.min(23, endH + 1);
+    });
+
     return { startHour: calculatedStartHour, endHour: calculatedEndHour };
-  }, [locationOperatingHours, selectedDateSafe, dateView, appointments]);
+  }, [locationOperatingHours, selectedDateSafe, dateView, appointments, timeBlocks, teamMembers]);
   
   const _timeBlockSidebarState = useTimeBlockSidebar();
   
@@ -550,8 +585,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   const [isSetDayOffDialogOpen, setIsSetDayOffDialogOpen] = useState(false);
   const [isEditWorkHoursDialogOpen, setIsEditWorkHoursDialogOpen] = useState(false);
   const [selectedStaffForDialog, setSelectedStaffForDialog] = useState<TeamMember | null>(null);
-  const [defaultTimeSlot, _setDefaultTimeSlot] = useState<string>("");
-  const [defaultTeamMemberId, _setDefaultTeamMemberId] = useState<string>("");
+  const [defaultTimeSlot, setDefaultTimeSlot] = useState<string>("");
+  const [defaultTeamMemberId, setDefaultTeamMemberId] = useState<string>("");
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [selectedAppointmentsForGroup, setSelectedAppointmentsForGroup] = useState<Appointment[]>([]);
   const touchStartX = useRef<number | null>(null);
@@ -592,8 +627,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     touchEndX.current = null;
   };
 
-  // Cache for calendar data
-  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timestamp: number }>>(new Map());
+  // Cache for calendar data (appointments + blocks)
+  const calendarCacheRef = useRef<Map<string, { data: Appointment[]; timeBlocks: TimeBlock[]; availabilityBlocks: AvailabilityBlockDisplay[]; timestamp: number }>>(new Map());
   const CALENDAR_CACHE_DURATION = 60 * 1000; // 60 seconds (increased from 10s for better perf)
   const pendingCalendarRequests = useRef<Map<string, Promise<any>>>(new Map());
 
@@ -606,6 +641,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     if (!initialCalendar.cacheKey || initialCalendar.error) return;
     calendarCacheRef.current.set(initialCalendar.cacheKey, {
       data: initialCalendar.appointments,
+      timeBlocks: initialCalendar.timeBlocks ?? [],
+      availabilityBlocks: initialCalendar.availabilityBlocks ?? [],
       timestamp: Date.now(),
     });
     if (initialCalendar.teamMembers.length > 0) {
@@ -617,7 +654,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
   }, [initialCalendar]);
 
-  // Load services using same API as /provider/appointments (listServices)
+  // Load services using same API as /provider/bookings (listServices)
   const servicesLoadedRef = useRef(false);
   const loadServices = useCallback(async () => {
     if (servicesLoadedRef.current || services.length > 0) return;
@@ -646,11 +683,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   // Load location operating hours
   useEffect(() => {
-    // Skip if location hasn't changed
-    if (prevLocationIdRef.current === currentLocationId) {
-      return;
-    }
-
     prevLocationIdRef.current = currentLocationId || null;
 
     const loadLocationHours = async () => {
@@ -659,16 +691,12 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         return;
       }
 
-      // Check cache first
-      if (locationHoursCacheRef.current.has(currentLocationId)) {
-        const cached = locationHoursCacheRef.current.get(currentLocationId) ?? null;
-        setLocationOperatingHours(cached);
-        return;
-      }
-
-      // Try to get from salons array first
+      // Always read fresh from salons array (invalidated on operating hours save)
       const location = salons.find(s => s.id === currentLocationId) as any;
-      const hours = location?.operating_hours || location?.working_hours;
+      const rawHours = location?.operating_hours || location?.working_hours;
+      const hours = rawHours && typeof rawHours === "object" && Object.keys(rawHours).length > 0
+        ? rawHours
+        : null;
       
       if (hours) {
         locationHoursCacheRef.current.set(currentLocationId, hours);
@@ -680,9 +708,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           const allLocations = response.data || [];
           const foundLocation = allLocations.find((loc: any) => loc.id === currentLocationId);
           
-          if (foundLocation?.operating_hours) {
-            locationHoursCacheRef.current.set(currentLocationId, foundLocation.operating_hours);
-            setLocationOperatingHours(foundLocation.operating_hours);
+          const foundHours = foundLocation?.operating_hours || foundLocation?.working_hours;
+          const validHours = foundHours && typeof foundHours === "object" && Object.keys(foundHours).length > 0
+            ? foundHours
+            : null;
+          if (validHours) {
+            locationHoursCacheRef.current.set(currentLocationId, validHours);
+            setLocationOperatingHours(validHours);
           } else {
             // No operating hours found, set to null (will use default 24-hour view)
             locationHoursCacheRef.current.set(currentLocationId, null);
@@ -764,7 +796,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         
         const { fromIso, toIso } = dateRangeBoundsUtc(dateFrom, dateTo, businessTz);
 
-        const [apptsResponse, membersResult, blocks, availBlocks, staffUnavail] = await Promise.all([
+        const [
+          apptsResponse,
+          membersResult,
+          blocks,
+          availBlocks,
+          staffUnavail,
+          bookingHolds,
+        ] = await Promise.all([
           providerApi.listAppointments(
             {
               date_from: dateFrom,
@@ -786,6 +825,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
             date_from: dateFrom,
             date_to: dateTo,
           }),
+          providerApi.listProviderBookingHolds({
+            date_from: dateFrom,
+            date_to: dateTo,
+          }),
         ]);
 
         const members = membersResult;
@@ -799,16 +842,35 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
           selectedTeamMember !== "all"
             ? staffUnavail.filter((b) => b.team_member_id === selectedTeamMember)
             : staffUnavail;
-        const mergedAvailOverlay = [...filteredStaffUnavail, ...sanitizedAvailBlocks];
+        // B8: filter active booking_holds the same way (team / location).
+        const filteredBookingHolds = bookingHolds.filter((b) => {
+          if (selectedTeamMember !== "all" && b.team_member_id && b.team_member_id !== selectedTeamMember) {
+            return false;
+          }
+          if (selectedLocationId && b.location_id && b.location_id !== selectedLocationId) {
+            return false;
+          }
+          return true;
+        });
+        const sanitizedBookingHolds = sanitizeAvailabilityBlocks(filteredBookingHolds);
+        const mergedAvailOverlay = [
+          ...filteredStaffUnavail,
+          ...sanitizedAvailBlocks,
+          ...sanitizedBookingHolds,
+        ];
 
-        // Update cache
+        const expandedBlocks = expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo);
+
+        // Update cache (include blocks so cached restores don't leave them stale)
         calendarCacheRef.current.set(cacheKey, {
           data: apptsResponse.data,
+          timeBlocks: expandedBlocks,
+          availabilityBlocks: mergedAvailOverlay,
           timestamp: Date.now(),
         });
 
         setAppointments(apptsResponse.data);
-        setTimeBlocks(expandTimeBlocksForCalendarRange(blocks, dateFrom, dateTo));
+        setTimeBlocks(expandedBlocks);
         setAvailabilityBlocks(mergedAvailOverlay);
         setTeamMembers((prevMembers) => {
           // Initialize selectedTeamMemberIds when members are loaded
@@ -922,6 +984,8 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const cached = calendarCacheRef.current.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CALENDAR_CACHE_DURATION) {
       setAppointments(cached.data);
+      if (cached.timeBlocks) setTimeBlocks(cached.timeBlocks);
+      if (cached.availabilityBlocks) setAvailabilityBlocks(cached.availabilityBlocks);
       // Load team members if needed (using cached version if available)
       if (teamMembers.length === 0) {
         loadTeamMembers(selectedLocationId || undefined)
@@ -1026,10 +1090,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }, 500);
   }, [forceRefresh]);
 
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_created', debouncedRealtimeRefresh);
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_cancelled', debouncedRealtimeRefresh);
+  // §Provider-launch (audit 2026-04): each call to `useSupabaseRealtime`
+  // with a booking_* event subscribes to the SAME underlying `bookings`
+  // channel (see subscribeToBookings). Registering four of them created
+  // four duplicate channels that all fire the same handler, wasting
+  // Realtime quota and causing 4x debounced refreshes per change. One
+  // subscription is sufficient because the handler already refreshes the
+  // whole calendar when any booking row changes.
   useSupabaseRealtime(supabaseClient, provider?.id, 'booking_updated', debouncedRealtimeRefresh);
-  useSupabaseRealtime(supabaseClient, provider?.id, 'booking_services_changed', debouncedRealtimeRefresh);
 
   // Initial load - wait for provider data (skip blocking spinner when RSC hydrated cache)
   useEffect(() => {
@@ -1093,7 +1161,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
   }, [loadData]);
 
   const navigateDate = (days: number) => {
-    // Optimistic update - update date immediately for instant feedback
     const baseDate = isValidDateValue(selectedDate) ? selectedDate : nowInTz(businessTz);
     const newDate = new Date(baseDate);
     if (dateView === "week") {
@@ -1103,11 +1170,13 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     } else {
       newDate.setDate(newDate.getDate() + days);
     }
-    // Update immediately - data will load in background
+    // Clear calendar cache so the next loadData call fetches fresh data
+    calendarCacheRef.current.clear();
     setSelectedDate(newDate);
   };
 
   const goToToday = () => {
+    calendarCacheRef.current.clear();
     setSelectedDate(nowInTz(businessTz));
   };
 
@@ -1205,6 +1274,76 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     return () => window.removeEventListener("openAppointmentDialog", handler);
   }, []);
 
+  // Read URL search params for prefill from waitlist / client profile / external navigation
+  const searchParams = useSearchParams();
+  const prefillHandledRef = useRef(false);
+  useEffect(() => {
+    if (prefillHandledRef.current) return;
+    const shouldOpenNew = searchParams.get("new") === "1";
+    const customerId = searchParams.get("customerId");
+    if (!shouldOpenNew && !customerId) return;
+    if (salons.length === 0 || teamMembers.length === 0) return;
+    prefillHandledRef.current = true;
+
+    const currentLocation = selectedLocationId
+      ? salons.find(s => s.id === selectedLocationId)
+      : salons[0];
+    const prefillStaffId = searchParams.get("staff_id") || "";
+    const staffId = prefillStaffId || (filteredTeamMembers[0]?.id ?? "");
+    const staffMember = teamMembers.find(m => m.id === staffId);
+    const prefillDate = searchParams.get("date") || format(nowInTz(businessTz), "yyyy-MM-dd");
+    const prefillTime = searchParams.get("time") || "";
+
+    const appointmentKind = searchParams.get("walk_in") === "true"
+      ? "walk_in" as const
+      : undefined;
+
+    openCreateMode({
+      staffId,
+      staffName: staffMember?.name,
+      date: prefillDate,
+      startTime: prefillTime,
+      locationId: currentLocation?.id,
+      locationName: currentLocation?.name,
+      appointmentKind,
+      prefillClientName: searchParams.get("client_name") || undefined,
+      prefillClientEmail: searchParams.get("client_email") || undefined,
+      prefillClientPhone: searchParams.get("client_phone") || undefined,
+      prefillCustomerId: customerId || undefined,
+      prefillServiceId: searchParams.get("service_id") || undefined,
+    });
+
+    // Clean up the URL params so a page refresh doesn't re-trigger
+    const url = new URL(window.location.href);
+    url.searchParams.delete("new");
+    url.searchParams.delete("customerId");
+    url.searchParams.delete("client_name");
+    url.searchParams.delete("client_email");
+    url.searchParams.delete("client_phone");
+    url.searchParams.delete("service_id");
+    url.searchParams.delete("staff_id");
+    url.searchParams.delete("time");
+    url.searchParams.delete("walk_in");
+    url.searchParams.delete("waitlist_entry_id");
+    window.history.replaceState({}, "", url.pathname + (url.search || ""));
+  }, [searchParams, salons, teamMembers, selectedLocationId, businessTz]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keyboard shortcuts for front-desk rapid booking
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      const isInputFocused = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (isInputFocused) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === "n") {
+        e.preventDefault();
+        handleCreateAppointmentRef.current();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   const _handleEditAppointment = () => {
     if (selectedAppointment) {
       setIsDetailsModalOpen(false);
@@ -1284,12 +1423,10 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     const clientNameForRating = apt.client_name?.trim() || "Client";
 
     try {
-      // Update appointment status to completed
-      await providerApi.updateAppointment(apt.id, {
-        status: "completed",
-        notes: notes || apt.notes,
-        ...((apt as any).version !== undefined && { version: (apt as any).version }),
-      });
+      await providerApi.completeService(apt.id);
+      if (notes && notes !== apt.notes) {
+        await providerApi.updateAppointment(apt.id, { notes }).catch(() => {});
+      }
 
       // Create sale record with payment details (all services + products on the booking)
       try {
@@ -1346,7 +1483,6 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     }
   };
 
-  // Handle status update from status manager
   const handleStatusManagerUpdate = async (
     appointmentId: string,
     newStatus: string,
@@ -1354,11 +1490,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
     _notes?: string
   ) => {
     try {
-      const apt = appointments.find((a) => a.id === appointmentId || (a as any).booking_id === appointmentId);
-      await providerApi.updateAppointment(appointmentId, {
-        status: newStatus as Appointment["status"],
-        ...(apt && (apt as any).version !== undefined && { version: (apt as any).version }),
-      });
+      if (newStatus === "completed" || newStatus === "in_progress" || newStatus === "started") {
+        if (newStatus === "completed") {
+          await providerApi.completeService(appointmentId);
+        } else {
+          await providerApi.startService(appointmentId);
+        }
+      } else {
+        const apt = appointments.find((a) => a.id === appointmentId || (a as any).booking_id === appointmentId);
+        await providerApi.updateAppointment(appointmentId, {
+          status: newStatus as Appointment["status"],
+          ...(apt && (apt as any).version !== undefined && { version: (apt as any).version }),
+        });
+      }
       setIsStatusManagerOpen(false);
       setSelectedAppointment(null);
       loadData();
@@ -1468,6 +1612,33 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
 
   return (
     <div className="bg-gray-50 sm:mx-0 sm:mt-0 max-w-full flex flex-col md:h-full md:overflow-x-hidden">
+      {/*
+        §Provider-launch (audit 2026-04): if a background refresh fails
+        while the calendar is already populated, previously `calendarError`
+        was set but never surfaced (the blocking error UI only fires when
+        teamMembers is empty). We now show a dismissible inline banner so
+        the provider knows the grid may be stale and can retry without
+        losing their place.
+      */}
+      {calendarError && teamMembers.length > 0 && (
+        <div
+          role="alert"
+          className="mx-3 mt-3 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div className="flex-1">
+            <span className="font-medium">Calendar couldn&apos;t refresh.</span>{" "}
+            <span className="text-amber-800">{calendarError}</span>
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => loadData(true)}>
+              Retry
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setCalendarError(null)}>
+              Dismiss
+            </Button>
+          </div>
+        </div>
+      )}
       {calendarViewportMd === null && (
         <div
           className="flex flex-1 min-h-[50vh] md:min-h-[min(100vh,720px)] w-full items-center justify-center"
@@ -1478,7 +1649,19 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
         </div>
       )}
       {calendarViewportMd === true && (
-      <div className="flex flex-col w-full max-w-full overflow-hidden flex-1 min-h-0">
+      <div className="flex flex-col w-full max-w-full overflow-hidden flex-1 min-h-0 relative">
+        {/*
+          §Provider-launch (audit 2026-04): the "Refreshing..." affordance
+          lived only inside the mobile layout, so desktop providers saw no
+          feedback during background revalidations. Mirror it here in the
+          top-right overlay so both surfaces communicate the stale state.
+        */}
+        {isRefreshing && (
+          <div className="absolute top-3 right-3 z-40 bg-white/95 backdrop-blur-sm rounded-lg shadow-lg px-3 py-1.5 flex items-center gap-2 border border-gray-200 pointer-events-none">
+            <RefreshCw className="w-3.5 h-3.5 text-primary animate-spin" />
+            <span className="text-xs text-gray-600">Refreshing…</span>
+          </div>
+        )}
         {/* Desktop Header - Mangomint Style */}
         <div className="bg-gradient-to-r from-[#1a1f3c] to-[#252a4a] sticky top-0 z-20 px-3 lg:px-6 py-3 overflow-x-auto">
           <div className="flex items-center justify-between gap-2 lg:gap-4 min-w-max">
@@ -1529,6 +1712,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                     selected={selectedDateSafe}
                     onSelect={(date) => {
                       if (date) {
+                        calendarCacheRef.current.clear();
                         setSelectedDate(date);
                         setIsDatePickerOpen(false);
                       }
@@ -1699,7 +1883,14 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setIsGroupBookingDialogOpen(true)}
+                onClick={() => {
+                  const now = new Date();
+                  const h = now.getHours();
+                  const m = Math.ceil(now.getMinutes() / 15) * 15;
+                  setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+                  if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
+                  setIsGroupBookingDialogOpen(true);
+                }}
                 className="h-8 w-8 lg:h-9 lg:w-9 text-white hover:bg-white/10 hidden md:flex"
                 title="Group Booking"
                 aria-label="Create group booking"
@@ -1918,6 +2109,7 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
               onRefresh={loadData}
               onDateChange={(date) => {
                 if (date instanceof Date && !isNaN(date.getTime())) {
+                  calendarCacheRef.current.clear();
                   setSelectedDate(date);
                 }
               }}
@@ -2143,6 +2335,11 @@ export function CalendarClient({ initialCalendar }: { initialCalendar: CalendarI
                   className="w-full justify-start gap-2"
                   onClick={() => {
                     setIsFilterSheetOpen(false);
+                    const now = new Date();
+                    const h = now.getHours();
+                    const m = Math.ceil(now.getMinutes() / 15) * 15;
+                    setDefaultTimeSlot(`${String(m >= 60 ? h + 1 : h).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+                    if (selectedTeamMember !== "all") setDefaultTeamMemberId(selectedTeamMember);
                     setIsGroupBookingDialogOpen(true);
                   }}
                 >

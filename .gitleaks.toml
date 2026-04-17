@@ -1,0 +1,44 @@
+title = "Beautonomi gitleaks configuration"
+
+# Extend the bundled default ruleset so new common leak detectors kick in automatically.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "paystack-secret-key"
+description = "Paystack secret key (sk_live_/sk_test_)"
+regex = '''sk_(live|test)_[a-f0-9]{40}'''
+tags = ["key", "paystack"]
+
+[[rules]]
+id = "paystack-public-key"
+description = "Paystack public key (pk_live_/pk_test_)"
+regex = '''pk_(live|test)_[a-f0-9]{40}'''
+tags = ["key", "paystack"]
+
+[[rules]]
+id = "yoco-secret-key"
+description = "Yoco secret key"
+regex = '''sk_(live|test)_[A-Za-z0-9]{20,}'''
+tags = ["key", "yoco"]
+
+[[rules]]
+id = "supabase-service-role-jwt"
+description = "Supabase service-role JWT"
+regex = '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.[A-Za-z0-9_\-]{20,}\.[A-Za-z0-9_\-]{20,}'''
+tags = ["jwt", "supabase"]
+
+# Allow-list for migration placeholders. Placeholder keys end in `_placeholder` and are
+# intentionally committed as examples in docs; they must never match a real Paystack key format.
+[allowlist]
+description = "Documentation / example placeholders"
+paths = [
+  '''docs/audits/.*\.md''',
+  '''docs/PLAYBOOKS/.*\.md''',
+  '''.*\.example''',
+  '''CHANGELOG\.md''',
+]
+regexes = [
+  '''sk_test_placeholder[a-z0-9]*''',
+  '''pk_test_placeholder[a-z0-9]*''',
+]

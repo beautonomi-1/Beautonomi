@@ -38,8 +38,11 @@ export default function AutomationsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   async function handleToggleActive(item: Automation) {

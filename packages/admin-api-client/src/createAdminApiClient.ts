@@ -197,8 +197,13 @@ export function createAdminApiClient(options: AdminApiClientOptions = {}) {
       });
     },
 
-    async deleteJson<T>(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
-      return requestJson<T>(path, { ...init, method: "DELETE" });
+    async deleteJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {
+      return requestJson<T>(path, {
+        ...init,
+        method: "DELETE",
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        ...(body !== undefined ? { headers: { "Content-Type": "application/json", ...((init?.headers as Record<string, string>) ?? {}) } } : {}),
+      });
     },
 
     async putJson<T>(path: string, body?: unknown, init?: RequestInit & { timeoutMs?: number }): Promise<T> {

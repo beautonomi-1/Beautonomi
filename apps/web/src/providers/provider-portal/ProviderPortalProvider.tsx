@@ -387,3 +387,19 @@ export function useProviderPortal() {
   }
   return context;
 }
+
+/**
+ * Invalidate the provider portal cache (sessionStorage + in-memory).
+ * Call after saving operating hours, location data, etc. so the calendar
+ * and other components pick up fresh data on next load.
+ */
+export function invalidateProviderPortalCache() {
+  cachedProviderData = null;
+  if (typeof window !== "undefined") {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+}

@@ -49,12 +49,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   // Load saved preference
   useEffect(() => {
-    AsyncStorage.getItem(THEME_KEY).then((val) => {
-      if (val === "light" || val === "dark" || val === "system") {
-        setThemeModeState(val);
-      }
-      setLoaded(true);
-    });
+    AsyncStorage.getItem(THEME_KEY)
+      .then((val) => {
+        if (val === "light" || val === "dark" || val === "system") {
+          setThemeModeState(val);
+        }
+      })
+      .catch(() => {
+        // Keep default "system" if storage fails
+      })
+      .finally(() => {
+        setLoaded(true);
+      });
   }, []);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {

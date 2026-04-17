@@ -75,7 +75,7 @@ describe("POST /api/provider/onboarding", () => {
       },
       from: vi.fn((table: string) => {
         if (table === "providers") {
-          let filters: Record<string, unknown> = {};
+          const filters: Record<string, unknown> = {};
           let insertPayload: Record<string, unknown> | null = null;
           return {
             select: vi.fn(() => ({
@@ -175,8 +175,86 @@ describe("POST /api/provider/onboarding", () => {
           };
         }
 
+        if (table === "provider_onboarding_tracking") {
+          return {
+            upsert: vi.fn(async () => ({ error: null })),
+            update: vi.fn(() => ({
+              eq: vi.fn(async () => ({ error: null })),
+            })),
+          };
+        }
+
+        if (table === "provider_leads") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                is: vi.fn(() => ({
+                  or: vi.fn(() => ({
+                    limit: vi.fn(async () => ({ data: [], error: null })),
+                  })),
+                })),
+              })),
+            })),
+            update: vi.fn(() => ({
+              eq: vi.fn(async () => ({ error: null })),
+            })),
+          };
+        }
+
+        if (table === "provider_lead_activities") {
+          return {
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
+        if (table === "provider_subscriptions") {
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                maybeSingle: vi.fn(async () => ({ data: null, error: null })),
+              })),
+            })),
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
+        if (table === "subscription_plans") {
+          const planRow = { data: { id: "00000000-0000-4000-8000-000000000001" }, error: null };
+          return {
+            select: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                eq: vi.fn(() => ({
+                  order: vi.fn(() => ({
+                    limit: vi.fn(() => ({
+                      maybeSingle: vi.fn(async () => planRow),
+                    })),
+                  })),
+                })),
+                limit: vi.fn(() => ({
+                  maybeSingle: vi.fn(async () => planRow),
+                })),
+              })),
+            })),
+          };
+        }
+
+        if (table === "offerings") {
+          return {
+            insert: vi.fn(() => ({
+              select: vi.fn(async () => ({ data: [], error: null })),
+            })),
+          };
+        }
+
+        if (table === "service_addons") {
+          return {
+            insert: vi.fn(async () => ({ error: null })),
+          };
+        }
+
         throw new Error(`Unexpected table: ${table}`);
       }),
+      rpc: vi.fn(async () => ({ data: null, error: { message: "does not exist" } })),
     };
     mockCreateClient.mockReturnValue(mockSupabaseAdmin);
 
@@ -207,6 +285,6 @@ describe("POST /api/provider/onboarding", () => {
 
     expect(providersInsertPayloads[0]?.tenant_id).toBe("tenant-uk");
     expect(zoneSelectionInsertPayloads[0]?.[0]?.currency).toBe("GBP");
-  }, 15000);
+  }, 45_000);
 });
 

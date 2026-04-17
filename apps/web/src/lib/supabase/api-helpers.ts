@@ -253,6 +253,31 @@ export async function requireRoleInApi(
         }
 
         let userRole = resolvedUserData!.role as UserRole;
+        const admin = getSupabaseAdmin();
+
+        // Owner registered in providers but users.role still "customer" (common before /api/me/role
+        // runs its upgrade, or when mobile loads /api/provider/profile in parallel with /api/me/role).
+        // Must match server-side checks in /api/me/role — otherwise Bearer + profile GET returns 403.
+        if (
+          userRole === "customer" &&
+          (roles.includes("provider_owner" as UserRole) ||
+            roles.includes("provider_staff" as UserRole))
+        ) {
+          const { data: ownsProvider } = await admin
+            .from("providers")
+            .select("id")
+            .eq("user_id", resolvedUserData!.id)
+            .limit(1)
+            .maybeSingle();
+          if (ownsProvider) {
+            userRole = "provider_owner" as UserRole;
+            await admin
+              .from("users")
+              .update({ role: "provider_owner" })
+              .eq("id", resolvedUserData!.id);
+          }
+        }
+
         // Customer with active provider_staff row gets provider_staff access for provider APIs
         if (userRole === "customer" && roles.includes("provider_staff")) {
           const { data: staffRow } = await supabase
@@ -264,7 +289,18 @@ export async function requireRoleInApi(
             .maybeSingle();
           if (staffRow) userRole = "provider_staff";
         }
-        if (!roles.includes(userRole))
+
+        // DB may store provider_onboarding (legacy / explicit). Allow only when the route is not
+        // admin/superadmin-scoped: require at least one of customer / provider_owner / provider_staff
+        // in the allowed list (never treat as superadmin-only).
+        const routeAcceptsProviderOnboarding =
+          userRole === ("provider_onboarding" as UserRole) &&
+          roles.some((r) =>
+            ["customer", "provider_owner", "provider_staff"].includes(r as string)
+          );
+        const roleAllowed = roles.includes(userRole) || routeAcceptsProviderOnboarding;
+
+        if (!roleAllowed)
           throw new Error(`Insufficient permissions: requires one of ${roles.join(", ")}`);
         return { user: { id: resolvedUserData!.id, role: userRole, email: authUser.email, user_metadata: authUser.user_metadata, full_name: resolvedUserData!.full_name } };
       } catch (err) {
@@ -399,6 +435,63 @@ export async function requireAdminSection(
     const allowed = memberships.some((m: { tenant_id: string }) => m.tenant_id === tenantId);
     if (!allowed) {
       throw new Error('Admin is not assigned to this tenant for the current host');
+    }
+  }
+
+  return { user };
+}
+
+/**
+ * Superadmin-only admin APIs (Gods Eye, …). Matches Next.js RoleGuard `superadmin` and admin nav `superadminOnly`.
+ */
+export async function requireSuperadmin(
+  request?: NextRequest | Request
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new Error("Authentication required");
+  if ((user.role as string) !== "superadmin") {
+    throw new Error("Insufficient permissions: superadmin access required");
+  }
+  return { user };
+}
+
+/**
+ * Require admin access if the user can access any of the given sections (OR).
+ * Superadmin can access all sections. Uses effective section roles from DB when set.
+ */
+export async function requireAdminSectionAny(
+  sections: AdminSection[],
+  request?: NextRequest | Request
+): Promise<{ user: { id: string; role: UserRole; email?: string; user_metadata?: any; full_name?: string | null } }> {
+  const { user } = await requireRoleInApi(ALL_ADMIN_ROLES, request);
+  if (!user) throw new Error("Authentication required");
+  const effectiveRoles = await getEffectiveAdminSectionRoles();
+  const role = user.role as UserRole;
+  if (role !== "superadmin") {
+    const ok = sections.some((section) => canAccessSection(role, section, effectiveRoles));
+    if (!ok) {
+      throw new Error(
+        `Insufficient permissions: access to one of sections '${sections.join("', '")}' required`
+      );
+    }
+  }
+
+  if (request && (user.role as string) !== "superadmin") {
+    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
+    const { data: memberships } = await supabase
+      .from("user_tenant_roles")
+      .select("tenant_id")
+      .eq("user_id", user.id)
+      .eq("is_active", true);
+    if (!memberships || memberships.length === 0) {
+      throw new Error(
+        "Admin user has no active tenant assignment (user_tenant_roles). Superadmins are exempt."
+      );
+    }
+    const allowed = memberships.some((m: { tenant_id: string }) => m.tenant_id === tenantId);
+    if (!allowed) {
+      throw new Error("Admin is not assigned to this tenant for the current host");
     }
   }
 

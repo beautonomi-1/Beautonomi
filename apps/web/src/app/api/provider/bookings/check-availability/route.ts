@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
 import { checkActiveHoldOverlap } from "@/lib/bookings/conflict-check";
+import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
 const DAY_KEYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"] as const;
 function dayKeyFromDate(dateStr: string): (typeof DAY_KEYS)[number] {
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
     const excludeBookingId = sp.get("exclude_booking_id");
 
     if (!scheduledAt) {
-      return handleApiError(new Error("scheduled_at is required"), "VALIDATION_ERROR", 400);
+      return handleApiError(new Error("scheduled_at is required"), "scheduled_at is required", "VALIDATION_ERROR", 400);
     }
 
     const startTime = new Date(scheduledAt);
@@ -73,7 +74,7 @@ export async function GET(request: NextRequest) {
     // 1) Existing bookings overlap
     let query = supabaseAdmin
       .from("bookings")
-      .select("id, booking_number, scheduled_at, booking_services(duration_minutes, staff_id)")
+      .select("id, booking_number, scheduled_at, booking_services(duration_minutes, staff_id, scheduled_start_at, scheduled_end_at)")
       .eq("provider_id", providerId)
       .not("status", "in", "(cancelled,no_show)")
       .gte("scheduled_at", new Date(startTime.getTime() - durationMinutes * 60000).toISOString())
@@ -90,14 +91,17 @@ export async function GET(request: NextRequest) {
     const { data: overlapping } = await query;
 
     (overlapping || []).forEach((b: any) => {
+      const services = b.booking_services || [];
       const bStart = new Date(b.scheduled_at);
-      const bDuration = (b.booking_services || []).reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0);
-      const bEnd = addMinutes(bStart, bDuration);
+      const hasScheduledTimes = services.length > 0 && services.every((bs: any) => bs.scheduled_start_at && bs.scheduled_end_at);
+      const bEnd = hasScheduledTimes
+        ? new Date(Math.max(...services.map((bs: any) => new Date(bs.scheduled_end_at).getTime())))
+        : addMinutes(bStart, services.reduce((s: number, bs: any) => s + (bs.duration_minutes || 30), 0));
 
       if (startTime < bEnd && endTime > bStart) {
         if (staffIds.length > 0) {
-          const bookingStaffIds = (b.booking_services || []).map((bs: any) => bs.staff_id).filter(Boolean);
-          const hasConflict = bookingStaffIds.length === 0 || staffIds.some((sid) => bookingStaffIds.includes(sid));
+          const bookingStaffIds = services.map((bs: any) => bs.staff_id).filter(Boolean);
+          const hasConflict = bookingStaffIds.length === 0 || staffIds.some((sid: string) => bookingStaffIds.includes(sid));
           if (hasConflict) conflicts.push(`Conflict with booking #${b.booking_number}`);
         } else {
           conflicts.push(`Conflict with booking #${b.booking_number}`);
@@ -105,19 +109,41 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // 2) Time blocks (breaks, time off) – treat as unavailable
-    const { data: timeBlocks } = await supabaseAdmin
+    // 2) Time blocks (breaks, time off) – treat as unavailable; includes recurring expansion
+    const { data: dateTimeBlocks } = await supabaseAdmin
       .from("time_blocks")
       .select("id, staff_id, name, date, start_time, end_time, is_active")
       .eq("provider_id", providerId)
       .eq("date", dateStr)
       .eq("is_active", true);
 
-    (timeBlocks || []).forEach((block: any) => {
+    const { data: recurringTimeBlocks } = await supabaseAdmin
+      .from("time_blocks")
+      .select("id, staff_id, name, date, start_time, end_time, is_active, is_recurring, recurring_pattern")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .eq("is_recurring", true)
+      .lt("date", dateStr);
+
+    const expandedRecurring = (recurringTimeBlocks || [])
+      .filter((block: any) => {
+        const originDate = new Date(`${block.date}T12:00:00`);
+        const targetDate = new Date(`${dateStr}T12:00:00`);
+        if (targetDate < originDate) return false;
+        if (block.recurring_pattern) {
+          return expandRecurringPattern(block.recurring_pattern, block.date, dateStr);
+        }
+        return targetDate.getDay() === originDate.getDay();
+      })
+      .map((block: any) => ({ ...block, date: dateStr }));
+
+    const timeBlocks = [...(dateTimeBlocks || []), ...expandedRecurring];
+
+    (timeBlocks).forEach((block: any) => {
       const startPart = typeof block.start_time === "string" ? block.start_time.slice(0, 5) : "00:00";
       const endPart = typeof block.end_time === "string" ? block.end_time.slice(0, 5) : "23:59";
-      const blockStart = new Date(`${block.date}T${startPart}:00`);
-      const blockEnd = new Date(`${block.date}T${endPart}:00`);
+      const blockStart = new Date(`${dateStr}T${startPart}:00`);
+      const blockEnd = new Date(`${dateStr}T${endPart}:00`);
       if (startTime < blockEnd && endTime > blockStart) {
         const appliesToStaff = !block.staff_id || staffIds.length === 0 || staffIds.includes(block.staff_id);
         if (appliesToStaff) {
@@ -153,25 +179,38 @@ export async function GET(request: NextRequest) {
           }
         }
       }
-    } else if (locationId) {
-      const { data: loc } = await supabaseAdmin
+    } else {
+      // Fallback: check primary location hours when no specific staff/location given
+      const locIdToCheck = locationId;
+      let locQuery = supabaseAdmin
         .from("provider_locations")
         .select("id, working_hours")
-        .eq("id", locationId)
         .eq("provider_id", providerId)
-        .single();
+        .eq("is_active", true);
+      if (locIdToCheck) {
+        locQuery = locQuery.eq("id", locIdToCheck);
+      } else {
+        locQuery = locQuery.order("is_primary", { ascending: false }).limit(1);
+      }
+      const { data: locs } = await locQuery;
+      const loc = locs?.[0];
       const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKeyFromDate(dateStr)];
-      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
-        const openMin = parseTimeToMinutes(wh.open_time);
-        const closeMin = parseTimeToMinutes(wh.close_time);
-        if (openMin !== null && closeMin !== null && closeMin > openMin) {
-          if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
-          for (const br of wh.breaks ?? []) {
-            const bs = parseTimeToMinutes(br.start);
-            const be = parseTimeToMinutes(br.end);
-            if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
-              conflicts.push("Overlaps break");
-              break;
+      if (wh) {
+        const isClosed = wh.is_open === false || (wh as Record<string, unknown>).closed === true;
+        if (isClosed) {
+          conflicts.push("Business is closed on this day");
+        } else if (wh.open_time && wh.close_time) {
+          const openMin = parseTimeToMinutes(wh.open_time);
+          const closeMin = parseTimeToMinutes(wh.close_time);
+          if (openMin !== null && closeMin !== null && closeMin > openMin) {
+            if (startMin < openMin || endMin > closeMin) conflicts.push("Outside working hours");
+            for (const br of wh.breaks ?? []) {
+              const bs = parseTimeToMinutes(br.start);
+              const be = parseTimeToMinutes(br.end);
+              if (bs !== null && be !== null && be > bs && startMin < be && endMin > bs) {
+                conflicts.push("Overlaps break");
+                break;
+              }
             }
           }
         }
@@ -198,6 +237,35 @@ export async function GET(request: NextRequest) {
       if (startTime < abEnd && endTime > abStart) {
         conflicts.push("Blocked time (unavailable)");
         break;
+      }
+    }
+
+    // 5) Staff days off and time off
+    if (staffIds.length > 0) {
+      const { data: daysOffRows } = await supabaseAdmin
+        .from("staff_days_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .eq("date", dateStr)
+        .in("staff_id", staffIds)
+        .or("is_approved.is.null,is_approved.eq.true");
+      const staffOnDayOff = new Set((daysOffRows || []).map((r: any) => r.staff_id as string));
+
+      const { data: timeOffRows } = await supabaseAdmin
+        .from("staff_time_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr)
+        .in("staff_id", staffIds)
+        .not("status", "eq", "denied");
+      for (const row of timeOffRows || []) {
+        if (row.staff_id) staffOnDayOff.add(row.staff_id as string);
+      }
+
+      const affectedStaff = staffIds.filter((sid) => staffOnDayOff.has(sid));
+      if (affectedStaff.length > 0) {
+        conflicts.push("Staff is on a day off or time off");
       }
     }
 

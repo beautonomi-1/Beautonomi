@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    let validated = createExpressLinkSchema.parse(body);
+    const validated = createExpressLinkSchema.parse(body);
     const prefillDb = sanitizeExpressPrefill(validated.prefill);
     const { prefill: _dropPrefill, ...validatedRow } = validated;
     if (validatedRow.location_type === "at_home") {

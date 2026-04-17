@@ -9,6 +9,82 @@ import { sendTemplateNotification, type NotificationChannel } from "./onesignal"
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { formatInTimeZone } from "date-fns-tz";
+
+/**
+ * B13: IANA timezone used when a booking row doesn't carry its provider's
+ * zone yet (older rows, or callers that haven't joined `providers.timezone`).
+ * Defaults to UTC so we never silently emit server-local dates to customers
+ * in another zone; callers should pass the real provider timezone whenever
+ * possible via {@link formatBookingDate} / {@link formatBookingTime}.
+ */
+const FALLBACK_NOTIFICATION_TIMEZONE = "UTC";
+
+function resolveTimezone(
+  tz: string | null | undefined,
+): string {
+  return typeof tz === "string" && tz.trim().length > 0
+    ? tz.trim()
+    : FALLBACK_NOTIFICATION_TIMEZONE;
+}
+
+/** B13: `toLocaleDateString()` equivalent pinned to the provider timezone. */
+export function formatBookingDate(
+  iso: string | Date | null | undefined,
+  timezone: string | null | undefined,
+): string {
+  if (!iso) return "";
+  try {
+    const d = iso instanceof Date ? iso : new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return formatInTimeZone(d, resolveTimezone(timezone), "yyyy-MM-dd");
+  } catch {
+    return "";
+  }
+}
+
+/** B13: `toLocaleTimeString()` equivalent pinned to the provider timezone. */
+export function formatBookingTime(
+  iso: string | Date | null | undefined,
+  timezone: string | null | undefined,
+): string {
+  if (!iso) return "";
+  try {
+    const d = iso instanceof Date ? iso : new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return formatInTimeZone(d, resolveTimezone(timezone), "HH:mm");
+  } catch {
+    return "";
+  }
+}
+
+/** B13: `toLocaleString()` (date + time) pinned to the provider timezone. */
+export function formatBookingDateTime(
+  iso: string | Date | null | undefined,
+  timezone: string | null | undefined,
+): string {
+  if (!iso) return "";
+  try {
+    const d = iso instanceof Date ? iso : new Date(iso);
+    if (Number.isNaN(d.getTime())) return "";
+    return formatInTimeZone(
+      d,
+      resolveTimezone(timezone),
+      "yyyy-MM-dd HH:mm",
+    );
+  } catch {
+    return "";
+  }
+}
+
+function providerTimezoneOf(
+  booking:
+    | { provider?: { timezone?: string | null } | null; timezone?: string | null }
+    | null
+    | undefined,
+): string | null | undefined {
+  return booking?.provider?.timezone ?? booking?.timezone ?? null;
+}
 
 /** ISO currency from a booking row; defaults to platform last-resort. */
 function bookingCurrency(booking: { currency?: string | null } | null | undefined): string {
@@ -50,7 +126,7 @@ async function getBookingDetails(bookingId: string): Promise<any> {
     .select(`
       *,
       customer:users!bookings_customer_id_fkey(id, full_name, email, phone),
-      provider:providers!bookings_provider_id_fkey(id, business_name, user_id),
+      provider:providers!bookings_provider_id_fkey(id, business_name, user_id, timezone),
       package:service_packages!package_id(id, name),
       booking_services(
         *,
@@ -119,8 +195,8 @@ export async function notifyBookingConfirmed(bookingId: string, channels?: Notif
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
     booking_number: booking.booking_number || bookingId,
@@ -163,8 +239,8 @@ export async function notifyBookingReminder24h(bookingId: string, channels?: Not
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     location: booking.location_type === "at_home" 
       ? booking.service_address || "Your location"
       : booking.provider?.business_name || "Salon",
@@ -191,7 +267,7 @@ export async function notifyBookingReminder2h(bookingId: string, channels?: Noti
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     location: booking.location_type === "at_home" 
       ? booking.service_address || "Your location"
       : booking.provider?.business_name || "Salon",
@@ -221,7 +297,7 @@ export async function notifyBookingCancelled(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_number: booking.booking_number || bookingId,
     refund_info: refundInfo,
     booking_id: bookingId,
@@ -244,7 +320,7 @@ export async function notifyBookingCancelled(
       {
         customer_name: booking.customer?.full_name || "Customer",
         booking_date: variables.booking_date,
-        booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+        booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
         services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
         booking_id: bookingId,
       },
@@ -268,12 +344,13 @@ export async function notifyBookingRescheduled(
   const booking = await getBookingDetails(bookingId);
   if (!booking) return { success: false, error: "Booking not found" };
 
+  const tz = providerTimezoneOf(booking);
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    new_date: newDate.toLocaleDateString(),
-    new_time: newDate.toLocaleTimeString(),
-    old_date: oldDate.toLocaleDateString(),
-    old_time: oldDate.toLocaleTimeString(),
+    new_date: formatBookingDate(newDate, tz),
+    new_time: formatBookingTime(newDate, tz),
+    old_date: formatBookingDate(oldDate, tz),
+    old_time: formatBookingTime(oldDate, tz),
     booking_id: bookingId,
   };
 
@@ -312,7 +389,7 @@ export async function notifyProviderEnRoute(bookingId: string, estimatedArrival:
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    estimated_arrival_time: estimatedArrival.toLocaleTimeString(),
+    estimated_arrival_time: formatBookingTime(estimatedArrival, providerTimezoneOf(booking)),
     service_address: booking.service_address || "Your location",
     booking_id: bookingId,
   };
@@ -387,8 +464,8 @@ export async function notifyHomeServiceLocationDetails(bookingId: string, channe
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     service_address: booking.service_address || "",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     special_instructions: booking.special_instructions || "None",
     booking_id: bookingId,
   };
@@ -413,8 +490,8 @@ export async function notifyServiceLocationRequired(bookingId: string, channels?
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -443,8 +520,8 @@ export async function notifyServiceLocationChanged(
     provider_name: booking.provider?.business_name || "Provider",
     new_address: newAddress,
     old_address: oldAddress,
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -534,8 +611,8 @@ export async function notifySalonDirections(bookingId: string, channels?: Notifi
     provider_name: booking.provider?.business_name || "Provider",
     salon_name: location?.name || booking.provider?.business_name || "Salon",
     salon_address: location?.address || "",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     parking_info: location?.parking_info || "Available",
     directions_url: directionsUrl,
     booking_id: bookingId,
@@ -568,7 +645,7 @@ export async function notifySalonArrivalReminder(bookingId: string, channels?: N
 
   const variables = {
     salon_name: location?.name || booking.provider?.business_name || "Salon",
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     provider_name: booking.provider?.business_name || "Provider",
     salon_address: location?.address || "",
     booking_id: bookingId,
@@ -731,7 +808,7 @@ export async function notifyServiceExtended(
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     extension_time: extensionTime,
-    new_end_time: newEndTime.toLocaleTimeString(),
+    new_end_time: formatBookingTime(newEndTime, providerTimezoneOf(booking)),
     additional_charge: fmt(additionalCharge, bookingCurrency(booking)),
     booking_id: bookingId,
   };
@@ -786,8 +863,8 @@ export async function notifyProviderRunningLate(
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     delay_minutes: delayMinutes.toString(),
-    new_arrival_time: newArrivalTime.toLocaleTimeString(),
-    original_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    new_arrival_time: formatBookingTime(newArrivalTime, providerTimezoneOf(booking)),
+    original_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -837,7 +914,7 @@ export async function notifyCustomerRunningLate(bookingId: string, channels?: No
     : booking.provider?.business_name || "Salon";
 
   const variables = {
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     provider_name: booking.provider?.business_name || "Provider",
     location_name: locationName,
     booking_id: bookingId,
@@ -861,8 +938,8 @@ export async function notifyCustomerNoShow(bookingId: string, noShowFee: number,
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     no_show_fee: fmt(noShowFee, bookingCurrency(booking)),
     booking_id: bookingId,
   };
@@ -1119,8 +1196,8 @@ export async function notifyProviderNewBooking(bookingId: string, channels?: Not
 
   const variables = {
     customer_name: booking.customer?.full_name || "Customer",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: formatBookingServicesLineForTemplates(booking),
     total_amount: fmt(booking.total_amount || 0, bookingCurrency(booking)),
     booking_id: bookingId,
@@ -1160,8 +1237,8 @@ export async function notifyProviderNewCustomer(bookingId: string, channels?: No
 
   const variables = {
     customer_name: booking.customer?.full_name || "Customer",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: formatBookingServicesLineForTemplates(booking),
     booking_id: bookingId,
   };
@@ -1187,8 +1264,8 @@ export async function notifyProviderReturningCustomer(bookingId: string, visitNu
   const variables = {
     customer_name: booking.customer?.full_name || "Customer",
     visit_number: visitNumber.toString(),
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: formatBookingServicesLineForTemplates(booking),
     booking_id: bookingId,
   };
@@ -1213,8 +1290,8 @@ export async function notifyProviderPreferredCustomer(bookingId: string, totalBo
 
   const variables = {
     customer_name: booking.customer?.full_name || "Customer",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: formatBookingServicesLineForTemplates(booking),
     total_bookings: totalBookings.toString(),
     booking_id: bookingId,
@@ -1421,7 +1498,7 @@ export async function notifyProviderHolidayMode(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, timezone")
     .eq("id", providerId)
     .single();
 
@@ -1429,9 +1506,10 @@ export async function notifyProviderHolidayMode(
     return { success: false, error: "Provider not found" };
   }
 
+  const tz = (provider as { timezone?: string | null }).timezone ?? null;
   const variables = {
-    start_date: startDate.toLocaleDateString(),
-    return_date: returnDate.toLocaleDateString(),
+    start_date: formatBookingDate(startDate, tz),
+    return_date: formatBookingDate(returnDate, tz),
   };
 
   return await sendTemplateNotification(
@@ -1454,7 +1532,7 @@ export async function notifyProviderHolidayModeEnding(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, timezone")
     .eq("id", providerId)
     .single();
 
@@ -1462,8 +1540,9 @@ export async function notifyProviderHolidayModeEnding(
     return { success: false, error: "Provider not found" };
   }
 
+  const tz = (provider as { timezone?: string | null }).timezone ?? null;
   const variables = {
-    return_date: returnDate.toLocaleDateString(),
+    return_date: formatBookingDate(returnDate, tz),
   };
 
   return await sendTemplateNotification(
@@ -1487,7 +1566,7 @@ export async function notifyProviderBreakScheduled(
   const supabase = getSupabaseAdmin();
   const { data: provider } = await supabase
     .from("providers")
-    .select("user_id")
+    .select("user_id, timezone")
     .eq("id", providerId)
     .single();
 
@@ -1495,9 +1574,10 @@ export async function notifyProviderBreakScheduled(
     return { success: false, error: "Provider not found" };
   }
 
+  const tz = (provider as { timezone?: string | null }).timezone ?? null;
   const variables = {
-    break_start: breakStart.toLocaleString(),
-    break_end: breakEnd.toLocaleString(),
+    break_start: formatBookingDateTime(breakStart, tz),
+    break_end: formatBookingDateTime(breakEnd, tz),
   };
 
   return await sendTemplateNotification(
@@ -1522,7 +1602,7 @@ export async function notifyReviewReminder(bookingId: string, channels?: Notific
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
@@ -1576,7 +1656,7 @@ export async function notifyBookingFollowUp(bookingId: string, channels?: Notifi
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -1599,7 +1679,7 @@ export async function notifyThankYouAfterService(bookingId: string, channels?: N
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
   };
 
   return await sendTemplateNotification(
@@ -1632,7 +1712,7 @@ export async function notifyAddonAdded(
     addon_name: addonName,
     addon_price: fmt(addonPrice, bookingCurrency(booking)),
     new_total: fmt(newTotal, bookingCurrency(booking)),
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     provider_name: booking.provider?.business_name || "Provider",
     booking_id: bookingId,
   };
@@ -1756,9 +1836,9 @@ export async function notifyBookingTimeChanged(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    old_time: oldTime.toLocaleTimeString(),
-    new_time: newTime.toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    old_time: formatBookingTime(oldTime, providerTimezoneOf(booking)),
+    new_time: formatBookingTime(newTime, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -1797,9 +1877,9 @@ export async function notifyBookingDateChanged(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    old_date: oldDate.toLocaleDateString(),
-    new_date: newDate.toLocaleDateString(),
-    booking_time: bookingTime.toLocaleTimeString(),
+    old_date: formatBookingDate(oldDate, providerTimezoneOf(booking)),
+    new_date: formatBookingDate(newDate, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(bookingTime, providerTimezoneOf(booking)),
     booking_id: bookingId,
   };
 
@@ -1939,13 +2019,16 @@ export async function notifyLoyaltyPointsEarned(
   totalPoints: number,
   providerName: string,
   bookingDate: Date,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  // B13: optional provider IANA timezone so the earned-points push quotes the
+  // right date when the customer is in a different zone from the server.
+  timezone?: string | null,
 ) {
   const variables = {
     points: points.toString(),
     total_points: totalPoints.toString(),
     provider_name: providerName,
-    booking_date: bookingDate.toLocaleDateString(),
+    booking_date: formatBookingDate(bookingDate, timezone),
   };
 
   return await sendTemplateNotification(
@@ -2551,7 +2634,7 @@ export async function notifyQualityIssueReported(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     issue_description: issueDescription,
     booking_id: bookingId,
   };
@@ -2626,7 +2709,7 @@ export async function notifySpecialInstructionsAdded(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     instructions: instructions,
     booking_id: bookingId,
   };
@@ -2667,8 +2750,8 @@ export async function notifyAllergyAlert(
   const variables = {
     customer_name: booking.customer?.full_name || "Customer",
     allergies: allergies,
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     services: booking.services?.map((s: { service?: { name?: string } }) => s.service?.name).join(", ") ?? "Services",
     booking_id: bookingId,
   };
@@ -2699,8 +2782,8 @@ export async function notifyWeatherAlert(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
-    booking_time: new Date(booking.scheduled_at).toLocaleTimeString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
+    booking_time: formatBookingTime(booking.scheduled_at, providerTimezoneOf(booking)),
     weather_condition: weatherCondition,
     booking_id: bookingId,
   };
@@ -2790,12 +2873,24 @@ export async function notifyBookingWaitlistAvailable(
   availableTime: Date,
   services: string,
   providerId: string,
-  channels?: NotificationChannel[]
+  channels?: NotificationChannel[],
+  // B13: optional IANA provider timezone — recommended so the waitlist push
+  // shows the time in the provider's zone rather than the Node server's.
+  timezone?: string | null,
 ) {
+  let tz: string | null | undefined = timezone;
+  if (!tz && providerId) {
+    const { data } = await getSupabaseAdmin()
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .maybeSingle();
+    tz = (data as { timezone?: string | null } | null)?.timezone ?? null;
+  }
   const variables = {
     provider_name: providerName,
-    available_date: availableDate.toLocaleDateString(),
-    available_time: availableTime.toLocaleTimeString(),
+    available_date: formatBookingDate(availableDate, tz),
+    available_time: formatBookingTime(availableTime, tz),
     services: services,
     provider_id: providerId,
   };
@@ -2885,7 +2980,7 @@ export async function notifyEmergencyCancellation(
 
   const variables = {
     provider_name: booking.provider?.business_name || "Provider",
-    booking_date: new Date(booking.scheduled_at).toLocaleDateString(),
+    booking_date: formatBookingDate(booking.scheduled_at, providerTimezoneOf(booking)),
     emergency_reason: emergencyReason,
     refund_info: refundInfo,
     booking_id: bookingId,

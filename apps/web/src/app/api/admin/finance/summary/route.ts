@@ -7,6 +7,14 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchFinanceLedgerRowsForTenant } from "@/lib/admin/finance-ledger-tenant";
 import { aggregateFinanceLedgerRows } from "@/lib/admin/aggregate-finance-ledger-rows";
+import {
+  FINANCE_METRIC_CONTRACT_VERSION,
+  getFinanceMetricContracts,
+} from "@/lib/admin/finance-metric-contracts";
+import {
+  getNegativeBalanceProvidersForTenant,
+  type NegativeBalanceProvidersPayload,
+} from "@/lib/admin/negative-provider-payout-balances";
 
 /**
  * GET /api/admin/finance/summary
@@ -26,18 +34,26 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("start_date");
     const endDate = searchParams.get("end_date");
-
-    const tx = await fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
-      start: startDate,
-      end: endDate,
-    });
-
-    const agg = aggregateFinanceLedgerRows(tx);
+    const providerIdFilter = searchParams.get("provider_id");
 
     const supabaseAdmin = getSupabaseAdmin();
-    let walletTopupRevenue = 0;
+
+    const [tx, negativeBalanceProviders] = await Promise.all([
+      fetchFinanceLedgerRowsForTenant(supabase, tenantId, {
+        start: startDate,
+        end: endDate,
+      }, providerIdFilter ? { restrictProviderIds: [providerIdFilter] } : undefined),
+      getNegativeBalanceProvidersForTenant(supabaseAdmin, tenantId).catch((e) => {
+        console.warn("Negative payout balance scan failed:", e);
+        return { count: 0, providers: [] } satisfies NegativeBalanceProvidersPayload;
+      }),
+    ]);
+
+    const agg = aggregateFinanceLedgerRows(tx);
+    let walletTopupCashCollected = 0;
     let referralPayouts = 0;
-    let cancellationFeesRetained = 0;
+    let outstandingGiftCardLiability = 0;
+    let bookingsGmv = 0;
     try {
       let topupQuery = supabaseAdmin
         .from("wallet_topups")
@@ -50,7 +66,7 @@ export async function GET(request: Request) {
       if (topErr) {
         console.warn("Wallet topups tenant-scoped query failed:", topErr.message);
       } else {
-        walletTopupRevenue = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
+        walletTopupCashCollected = (topups || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       }
 
       let refQuery = supabaseAdmin
@@ -68,28 +84,53 @@ export async function GET(request: Request) {
         referralPayouts = (refTxs || []).reduce((s, r) => s + Number(r.amount || 0), 0);
       }
 
-      let cancelFeeQuery = supabaseAdmin
-        .from("bookings")
-        .select("cancellation_fee")
+      const { data: giftCards, error: giftErr } = await supabaseAdmin
+        .from("gift_cards")
+        .select("balance")
         .eq("tenant_id", tenantId)
-        .eq("status", "cancelled");
-      if (startDate) cancelFeeQuery = cancelFeeQuery.gte("cancelled_at", startDate);
-      if (endDate) cancelFeeQuery = cancelFeeQuery.lte("cancelled_at", endDate);
-      const { data: cancellationRows, error: cancellationErr } = await cancelFeeQuery;
-      if (cancellationErr) {
-        console.warn("Cancellation fee query failed:", cancellationErr.message);
+        .eq("is_active", true)
+        .gt("balance", 0);
+      if (giftErr) {
+        console.warn("Gift card liability query failed:", giftErr.message);
       } else {
-        cancellationFeesRetained = (cancellationRows || []).reduce(
-          (s, r) => s + Number(r.cancellation_fee || 0),
+        outstandingGiftCardLiability = (giftCards || []).reduce(
+          (s, row) => s + Number(row.balance || 0),
           0
         );
+      }
+
+      let bookingsQuery = supabaseAdmin
+        .from("bookings")
+        .select("total_amount")
+        .eq("tenant_id", tenantId)
+        .in("status", ["confirmed", "completed"]);
+      if (startDate) bookingsQuery = bookingsQuery.gte("scheduled_at", startDate);
+      if (endDate) bookingsQuery = bookingsQuery.lte("scheduled_at", `${endDate}T23:59:59.999Z`);
+      const { data: bookingRows, error: bookingErr } = await bookingsQuery;
+      if (bookingErr) {
+        console.warn("Bookings GMV reconciliation query failed:", bookingErr.message);
+      } else {
+        bookingsGmv = (bookingRows || []).reduce((s, row) => s + Number(row.total_amount || 0), 0);
       }
     } catch (e) {
       console.warn("Wallet/referral counts failed:", e);
     }
 
-    const totalPlatformTakeAfterReferrals =
-      agg.platform_take_net + agg.subscription_net + agg.ads_net + walletTopupRevenue - referralPayouts;
+    // Cancellation fees from ledger (single source of truth, not from bookings table)
+    const cancellationFeesRetained = agg.cancellation_fees_retained;
+
+    const customerPaidPlatformFees = agg.service_fee_revenue;
+    const totalPlatformRecognizedRevenue =
+      agg.platform_take_net + agg.subscription_net + agg.ads_net + customerPaidPlatformFees;
+    const totalPlatformRecognizedRevenueAfterReferrals =
+      totalPlatformRecognizedRevenue - referralPayouts;
+    const providerRefundImpact = Math.abs(agg.provider_refund_net_impact);
+    const providerNetAfterRefunds =
+      agg.provider_earnings_net + cancellationFeesRetained + agg.tips_gross - providerRefundImpact;
+    const gmvVariance = agg.service_collected_gross - bookingsGmv;
+    const gmvVariancePct = bookingsGmv > 0 ? (gmvVariance / bookingsGmv) * 100 : 0;
+    const outOfBalance = Math.abs(gmvVariance) > 1;
+    const highNegativeRefundPressure = providerRefundImpact > Math.max(agg.provider_earnings_net, 0);
 
     const period = startDate && endDate ? "custom" : "month";
     let previousStart: string;
@@ -151,22 +192,129 @@ export async function GET(request: Request) {
         ads_gross: agg.ads_gross,
         ads_gateway_fees: agg.ads_gateway_fees,
         total_platform_take_net: agg.platform_take_net + agg.subscription_net + agg.ads_net,
+        total_platform_take_net_including_customer_fees: totalPlatformRecognizedRevenue,
 
         provider_earnings: agg.provider_earnings_net,
         cancellation_fees_retained: cancellationFeesRetained,
         refunds_gross: agg.refunds_gross,
+        refunds_abs_gross: agg.refunds_abs_gross,
+        provider_refund_net_impact: agg.provider_refund_net_impact,
         gift_card_sales: agg.gift_card_sales,
         membership_sales: agg.membership_sales,
 
-        wallet_topup_revenue: walletTopupRevenue,
+        service_fee_revenue: customerPaidPlatformFees,
+        platform_fee_revenue: customerPaidPlatformFees,
+        customer_paid_platform_fees: customerPaidPlatformFees,
+        ecommerce_platform_fees: agg.ecommerce_platform_fees,
+        additional_charge_gross: agg.additional_charge_gross,
+        travel_fees: agg.travel_fees,
+        manual_adjustments_net: agg.manual_adjustments_net,
+
+        wallet_topup_revenue: walletTopupCashCollected,
+        wallet_topup_cash_collected: walletTopupCashCollected,
         referral_payouts: referralPayouts,
-        total_platform_take_after_referrals: totalPlatformTakeAfterReferrals,
+        total_platform_take_after_referrals: totalPlatformRecognizedRevenueAfterReferrals,
+
+        platform_revenue: {
+          booking_commission: agg.platform_take_net,
+          customer_paid_platform_fees: customerPaidPlatformFees,
+          subscriptions: agg.subscription_net,
+          ads: agg.ads_net,
+          service_fees: customerPaidPlatformFees,
+          ecommerce_fees_detail: agg.ecommerce_platform_fees,
+          wallet_topups: walletTopupCashCollected,
+          manual_adjustments: agg.manual_adjustments_net,
+          total: totalPlatformRecognizedRevenue,
+          total_after_referrals: totalPlatformRecognizedRevenueAfterReferrals,
+        },
+
+        provider_revenue: {
+          provider_earnings: agg.provider_earnings_net,
+          cancellation_fees: cancellationFeesRetained,
+          tips: agg.tips_gross,
+          taxes_collected: agg.taxes_gross,
+          refunds: agg.refunds_gross,
+          refund_impact_net: agg.provider_refund_net_impact,
+          net_after_refunds: providerNetAfterRefunds,
+        },
+
+        revenue_streams: {
+          booking_commission: agg.platform_take_net,
+          customer_paid_platform_fees: customerPaidPlatformFees,
+          subscriptions: agg.subscription_net,
+          ads: agg.ads_net,
+          service_fees: customerPaidPlatformFees,
+          ecommerce_fees_detail: agg.ecommerce_platform_fees,
+          wallet_topups: walletTopupCashCollected,
+          manual_adjustments: agg.manual_adjustments_net,
+          total: totalPlatformRecognizedRevenue,
+        },
+
+        liabilities: {
+          wallet_topups_cash_collected: walletTopupCashCollected,
+          gift_card_outstanding: outstandingGiftCardLiability,
+        },
+        pass_through: {
+          taxes_collected: agg.taxes_gross,
+          tips_collected: agg.tips_gross,
+        },
+        reconciliation: {
+          generated_at: new Date().toISOString(),
+          checks: {
+            ledger_vs_bookings_gmv: {
+              ledger_gmv: agg.service_collected_gross,
+              bookings_gmv: bookingsGmv,
+              variance: gmvVariance,
+              variance_pct: gmvVariancePct,
+              status: outOfBalance ? "warning" : "ok",
+            },
+            negative_provider_payout_balances: {
+              count: negativeBalanceProviders.count ?? 0,
+              status: (negativeBalanceProviders.count ?? 0) > 0 ? "warning" : "ok",
+            },
+            refund_burden_pressure: {
+              provider_refund_impact: providerRefundImpact,
+              provider_earnings: agg.provider_earnings_net,
+              status: highNegativeRefundPressure ? "warning" : "ok",
+            },
+            platform_net_health: {
+              platform_net: agg.platform_take_net + agg.subscription_net + agg.ads_net + customerPaidPlatformFees,
+              manual_adjustments_net: agg.manual_adjustments_net,
+              status:
+                totalPlatformRecognizedRevenue < 0
+                  ? "warning"
+                  : "ok",
+            },
+          },
+        metrics_meta: {
+          contract_version: FINANCE_METRIC_CONTRACT_VERSION,
+          generated_at: new Date().toISOString(),
+          contracts: getFinanceMetricContracts([
+            "platformRecognizedRevenue",
+            "providerNetEarnings",
+            "taxesCollected",
+            "liabilityWalletTopups",
+            "liabilityGiftCardOutstanding",
+          ]),
+        },
+        language_context: {
+          audience: "platform_admin",
+          glossary: {
+            platform_net_earnings: "Recognized platform revenue after platform-specific deductions.",
+            provider_net_earnings: "Provider-attributable earnings net of provider-attributable deductions.",
+            taxes_collected: "Pass-through tax collected on behalf of tax authority, not platform revenue.",
+            wallet_topups_cash_collected: "Custodial cash inflow recorded as liability until redeemed.",
+          },
+        },
+        },
 
         gmv_growth: gmvGrowth,
         period: {
           start_date: startDate || null,
           end_date: endDate || null,
         },
+
+        negative_balance_providers: negativeBalanceProviders,
       },
       error: null,
     });

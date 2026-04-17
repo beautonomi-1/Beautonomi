@@ -5,6 +5,8 @@ import { successResponse, handleApiError, requireAuthInApi } from "@/lib/supabas
 import { rescheduleGroupBooking, isPrimaryContact, getGroupBooking } from "@/lib/bookings/group-booking";
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
 const rescheduleSchema = z.object({
@@ -75,15 +77,21 @@ export async function POST(
         .single();
 
       if (firstService?.staff_id) {
-        const newDate = newDatetime.toISOString().split('T')[0];
-
         // Resolve provider_id so publicCalendarParity can block day-offs / time-off.
         const { data: staffProviderRow } = await supabase
           .from('provider_staff')
-          .select('provider_id')
+          .select('provider_id, providers:provider_id(timezone)')
           .eq('id', firstService.staff_id)
           .maybeSingle();
         const groupProviderIdForParity = staffProviderRow?.provider_id as string | undefined;
+        const groupProviderTz =
+          (((staffProviderRow as unknown as { providers?: { timezone?: string | null } | null })?.providers
+            ?.timezone ?? null) as string | null)?.trim() ||
+          DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+
+        // B5: compute date + HH:mm in the provider's business timezone, not UTC.
+        const newDate = formatInTimeZone(newDatetime, groupProviderTz, "yyyy-MM-dd");
+        const requestedTime = formatInTimeZone(newDatetime, groupProviderTz, "HH:mm");
 
         const constraints = await loadAvailabilityConstraints(
           supabase,
@@ -129,7 +137,6 @@ export async function POST(
           }
         );
 
-        const requestedTime = newDatetime.toTimeString().substring(0, 5); // HH:MM
         const isAvailable = slots.some((slot) => slot.time === requestedTime && slot.available);
 
         if (!isAvailable) {

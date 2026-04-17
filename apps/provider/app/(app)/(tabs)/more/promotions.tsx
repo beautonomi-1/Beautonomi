@@ -55,8 +55,11 @@ export function PromotionsContent() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const handleCreate = useCallback(async () => {
@@ -98,16 +101,20 @@ export function PromotionsContent() {
     refresh();
   }, [code, value, description, promoType, createPromo, refresh]);
 
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const toggleActive = useCallback(
-    (p: Promotion) => {
-      patchPromo(`/api/provider/promotions/${p.id}`, { is_active: !p.is_active }).then(
-        ({ error: err }) => {
-          if (err) Alert.alert("Error", err);
-          else refresh();
-        }
-      );
+    async (p: Promotion) => {
+      if (togglingId) return;
+      setTogglingId(p.id);
+      try {
+        const { error: err } = await patchPromo(`/api/provider/promotions/${p.id}`, { is_active: !p.is_active });
+        if (err) Alert.alert("Error", err);
+        else refresh();
+      } finally {
+        setTogglingId(null);
+      }
     },
-    [patchPromo, refresh]
+    [patchPromo, refresh, togglingId]
   );
 
   const handleDelete = useCallback(

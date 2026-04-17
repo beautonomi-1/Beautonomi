@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, X, CheckCircle2, Sun, Cloud, Moon, Sparkles } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock, MapPin, CheckCircle2, Sun, Cloud, Moon, Sparkles } from "lucide-react";
 import { BookingState } from "../booking-flow";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -13,6 +13,7 @@ import { useTranslation } from "@beautonomi/i18n";
 import AddToWaitlistButton from "@/components/booking/AddToWaitlistButton";
 import { coerceSelectedDate } from "@beautonomi/utils";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 import {
   availabilityRouteDurationMinutes,
   slicesFromBookingCart,
@@ -42,22 +43,20 @@ function slotTimePeriod(timeStr: string): "morning" | "afternoon" | "evening" {
   return "evening";
 }
 
-function slotTimeOnSelectedDay(timeStr: string, day: Date): Date {
-  const parts = timeStr.trim().split(":");
-  const h = parseInt(parts[0] || "0", 10);
-  const min = parseInt(parts[1] || "0", 10);
-  const d = new Date(day);
-  d.setHours(h, min, 0, 0);
-  return d;
+function slotTimeOnSelectedDay(timeStr: string, day: Date, providerTz?: string | null): Date {
+  const y = day.getFullYear();
+  const m = String(day.getMonth() + 1).padStart(2, "0");
+  const d = String(day.getDate()).padStart(2, "0");
+  return parseSelectedDatetimeInProviderTz(`${y}-${m}-${d}`, timeStr, providerTz);
 }
 
-function isSlotTimeStillSelectable(timeStr: string, day: Date): boolean {
+function isSlotTimeStillSelectable(timeStr: string, day: Date, providerTz?: string | null): boolean {
   const now = new Date();
   const ds = startOfLocalDay(day).getTime();
   const ts = startOfLocalDay(now).getTime();
   if (ds < ts) return false;
   if (ds > ts) return true;
-  return slotTimeOnSelectedDay(timeStr, day).getTime() > now.getTime();
+  return slotTimeOnSelectedDay(timeStr, day, providerTz).getTime() > now.getTime();
 }
 
 function formatDuration(minutes: number): string {
@@ -145,8 +144,10 @@ export default function StepCalendar({
 
   const selectableSlots = useMemo(() => {
     if (!availability?.slots?.length || !selectedDay) return [];
-    return availability.slots.filter((s) => isSlotTimeStillSelectable(s.time, selectedDay));
-  }, [availability, selectedDay]);
+    return availability.slots.filter((s) =>
+      isSlotTimeStillSelectable(s.time, selectedDay, bookingState.providerTimezone),
+    );
+  }, [availability, selectedDay, bookingState.providerTimezone]);
 
   const availableCount = useMemo(
     () => selectableSlots.filter((s) => s.available).length,
@@ -157,7 +158,7 @@ export default function StepCalendar({
     if (!selectedDay || !bookingState.selectedTimeSlot || !availability?.slots) return;
     const row = availability.slots.find((s) => s.time === bookingState.selectedTimeSlot);
     if (!row) return;
-    if (isSlotTimeStillSelectable(row.time, selectedDay)) return;
+    if (isSlotTimeStillSelectable(row.time, selectedDay, bookingState.providerTimezone)) return;
     updateBookingState({ selectedTimeSlot: null });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDay, bookingState.selectedTimeSlot, availability?.date]);
@@ -177,25 +178,64 @@ export default function StepCalendar({
     if (!day) return;
     try {
       setIsLoading(true);
-      const staffId = bookingState.selectedServices[0]?.staffId;
       const dateStr = formatLocalDateYYYYMMDD(day);
       const mode = bookingState.mode || "salon";
-      const holdParam = excludeHoldId ? `&excludeHoldId=${encodeURIComponent(excludeHoldId)}` : "";
-      const providerParam =
-        bookingState.providerId && (!staffId || staffId === "any")
+      const effectiveHoldId = bookingState.holdId || excludeHoldId;
+      const holdParam = effectiveHoldId ? `&excludeHoldId=${encodeURIComponent(effectiveHoldId)}` : "";
+      const providerParam = bookingState.providerId
           ? `&providerId=${encodeURIComponent(bookingState.providerId)}`
           : "";
-      const response = await fetcher.get<{ data: AvailabilityData }>(
-        `/api/availability?staffId=${staffId || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}`,
-        { staleTimeMs: 0 }
-      );
-      setAvailability(response.data);
+      const locationParam =
+        bookingState.selectedLocationId
+          ? `&locationId=${encodeURIComponent(bookingState.selectedLocationId)}`
+          : "";
+
+      const uniqueStaffIds = [
+        ...new Set(
+          bookingState.selectedServices
+            .map((s) => s.staffId)
+            .filter((id): id is string => !!id)
+        ),
+      ];
+
+      const buildUrl = (sid: string | null) =>
+        `/api/availability?staffId=${sid || "any"}&date=${dateStr}&mode=${mode}&duration=${totalDuration}&travelBuffer=${travelBuffer}${holdParam}${providerParam}${locationParam}`;
+
+      if (uniqueStaffIds.length <= 1) {
+        const response = await fetcher.get<{ data: AvailabilityData }>(
+          buildUrl(uniqueStaffIds[0] ?? null),
+          { staleTimeMs: 0 }
+        );
+        setAvailability(response.data);
+      } else {
+        // Multiple different staff: fetch each staff's availability in parallel
+        // and intersect — a slot is available only if ALL assigned staff are free.
+        const results = await Promise.all(
+          uniqueStaffIds.map((sid) =>
+            fetcher.get<{ data: AvailabilityData }>(buildUrl(sid), { staleTimeMs: 0 })
+          )
+        );
+        const allSlotMaps = results.map((r) => {
+          const map = new Map<string, boolean>();
+          for (const s of r.data?.slots ?? []) map.set(s.time, s.available);
+          return map;
+        });
+        const baseSlots = results[0]?.data?.slots ?? [];
+        const intersected: TimeSlot[] = baseSlots.map((slot) => ({
+          ...slot,
+          available: allSlotMaps.every((m) => m.get(slot.time) === true),
+          ...(!allSlotMaps.every((m) => m.get(slot.time) === true) && slot.available
+            ? { reason: "Not all staff are available at this time" }
+            : {}),
+        }));
+        setAvailability({ date: dateStr, slots: intersected });
+      }
     } catch (error) {
       toast.error(error instanceof FetchError ? error.message : "Failed to load availability");
     } finally {
       setIsLoading(false);
     }
-  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.providerId]);
+  }, [selectedDate, bookingState.selectedServices, bookingState.mode, travelBuffer, totalDuration, excludeHoldId, bookingState.holdId, bookingState.providerId, bookingState.selectedLocationId]);
 
   useEffect(() => {
     if (selectedDate) loadAvailability();
@@ -238,11 +278,15 @@ export default function StepCalendar({
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
-    updateBookingState({ selectedDate: date, selectedTimeSlot: null });
+    updateBookingState({ selectedDate: date, selectedTimeSlot: null, holdId: null });
   };
 
   const handleTimeSelect = (time: string) => {
-    updateBookingState({ selectedTimeSlot: time });
+    if (time !== bookingState.selectedTimeSlot) {
+      updateBookingState({ selectedTimeSlot: time, holdId: null });
+    } else {
+      updateBookingState({ selectedTimeSlot: time });
+    }
   };
 
   // Auto-scroll date strip so selected date is centred

@@ -1,10 +1,9 @@
 import { NextRequest } from "next/server";
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
-import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
-import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const createSchema = z.object({
   provider_id: z.string().uuid(),
@@ -15,21 +14,27 @@ const createSchema = z.object({
 
 /**
  * GET /api/admin/referral-sources?provider_id=
- * List referral sources for a provider in the current admin tenant (superadmin + ops roles).
+ * List referral sources for a provider. Uses admin client to avoid tenant mismatch.
  */
 export async function GET(request: NextRequest) {
   try {
     await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    const supabase = await getSupabaseServer(request);
-    const tenantId = await resolveAdminApiTenantId(request);
+    const supabase = getSupabaseAdmin();
     const providerId = new URL(request.url).searchParams.get("provider_id")?.trim();
 
     if (!providerId) {
       return errorResponse("provider_id query parameter is required", "VALIDATION_ERROR", 400);
     }
 
-    const prov = await fetchProviderInAdminTenant(supabase, providerId, tenantId, "id");
-    if ("error" in prov) return prov.error;
+    // Verify provider exists
+    const { data: prov, error: provErr } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", providerId)
+      .maybeSingle();
+
+    if (provErr) throw provErr;
+    if (!prov) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const { data, error } = await supabase
       .from("referral_sources")
@@ -46,17 +51,23 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/admin/referral-sources
- * Create a referral source for a provider in the admin tenant.
+ * Create a referral source for a provider.
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
-    const supabase = await getSupabaseServer(request);
-    const tenantId = await resolveAdminApiTenantId(request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const supabase = getSupabaseAdmin();
     const body = createSchema.parse(await request.json());
 
-    const prov = await fetchProviderInAdminTenant(supabase, body.provider_id, tenantId, "id");
-    if ("error" in prov) return prov.error;
+    // Verify provider exists
+    const { data: prov, error: provErr } = await supabase
+      .from("providers")
+      .select("id")
+      .eq("id", body.provider_id)
+      .maybeSingle();
+
+    if (provErr) throw provErr;
+    if (!prov) return errorResponse("Provider not found", "NOT_FOUND", 404);
 
     const { data, error } = await supabase
       .from("referral_sources")
@@ -70,6 +81,20 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.referral_source.create",
+      entity_type: "referral_source",
+      entity_id: data.id,
+      module: "providers_operations",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name: body.name, provider_id: body.provider_id },
+      ...extractRequestMeta(request),
+    });
+
     return successResponse(data);
   } catch (error) {
     if (error instanceof z.ZodError) {

@@ -68,11 +68,30 @@ export async function checkLowStockAndAlert(providerId?: string) {
       productsByProvider.get(pid)!.push(product);
     }
 
-    // Send notifications
+    // Send notifications (with 7-day cooldown per provider to avoid daily spam)
+    const COOLDOWN_DAYS = 7;
+    const cooldownCutoff = new Date(Date.now() - COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString();
     let alertedCount = 0;
+    let skippedCooldown = 0;
+
     for (const [pid, providerProducts] of productsByProvider.entries()) {
       const provider = providerProducts[0].providers as any;
       if (!provider?.user_id) continue;
+
+      // Check if a low-stock alert was recently sent to this provider
+      const { data: recentAlert } = await supabaseAdmin
+        .from("notifications")
+        .select("id")
+        .eq("user_id", provider.user_id)
+        .eq("type", "system")
+        .contains("data", { provider_id: pid })
+        .gte("created_at", cooldownCutoff)
+        .limit(1);
+
+      if (recentAlert && recentAlert.length > 0) {
+        skippedCooldown++;
+        continue;
+      }
 
       try {
         const productNames = providerProducts.map((p) => p.name).join(", ");
@@ -80,7 +99,6 @@ export async function checkLowStockAndAlert(providerId?: string) {
           .map((p) => `${p.name} (${p.quantity} remaining, threshold: ${p.low_stock_level})`)
           .join("\n");
 
-        // Create notification
         const { insertNotification: insertStockNotif } = await import("@/lib/notifications/insert-notification");
         await insertStockNotif({
           user_id: provider.user_id,
@@ -124,6 +142,7 @@ export async function checkLowStockAndAlert(providerId?: string) {
       checked: products.length,
       alerted: alertedCount,
       lowStockCount: lowStockProducts.length,
+      skippedCooldown,
     };
   } catch (error) {
     console.error("Error checking low stock:", error);

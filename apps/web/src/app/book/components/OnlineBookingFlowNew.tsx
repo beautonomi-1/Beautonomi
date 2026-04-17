@@ -1,6 +1,7 @@
 "use client";
 
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
@@ -13,6 +14,7 @@ import { Loader2, ChevronRight } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { BeautonomiGateModal } from "./BeautonomiGateModal";
 import { rememberBookingDraftTenant } from "@/lib/booking/booking-draft-tenant";
+import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import {
   BookingNav,
   StepVenue,
@@ -418,7 +420,10 @@ export default function OnlineBookingFlowNew({
   const [slots, setSlots] = useState<Array<{ start: string; end: string; staff_id?: string; is_available?: boolean }>>([]);
   const [loadingSlots, setLoadingSlots] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  const [holdId, setHoldId] = useState<string | null>(null);
+  const [holdId, setHoldId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    try { return sessionStorage.getItem("beautonomi_hold_id") || null; } catch { return null; }
+  });
   const [gateOpen, setGateOpen] = useState(false);
   const [preAuthGateOpen, setPreAuthGateOpen] = useState(false);
   const [creatingHold, setCreatingHold] = useState(false);
@@ -712,7 +717,7 @@ export default function OnlineBookingFlowNew({
         // Also fire the dedicated variants API for any parent whose variant list was empty in the
         // flat response (e.g. pagination gaps), but skip ones we already have.
         const needsVariantFetch = baseServices.filter((svc: any) => !embeddedVariantMap[svc.id]);
-        let fetchedMap: Record<string, ServiceVariant[]> = {};
+        const fetchedMap: Record<string, ServiceVariant[]> = {};
         if (needsVariantFetch.length > 0) {
           const variantResults = await Promise.all(
             needsVariantFetch.map((svc: any) =>
@@ -997,6 +1002,11 @@ export default function OnlineBookingFlowNew({
     ? `&excludeHoldId=${encodeURIComponent(holdId)}`
     : "";
 
+  const travelBufferParam =
+    bookingData.venueType === "at_home"
+      ? `&travel_buffer_minutes=${HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES}`
+      : "";
+
   useEffect(() => {
     const day = coerceSelectedDate(bookingData.selectedDate);
     if (step !== "schedule" || !day || bookingData.selectedServices.length === 0) return;
@@ -1005,7 +1015,7 @@ export default function OnlineBookingFlowNew({
     const { durationMinutes, bufferMinutes } = slotParams;
     const serviceId = bookingData.selectedServices[0].offering_id;
     setLoadingSlots(true);
-    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
+    const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
     fetcher
       .get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS)
       .then((res) => {
@@ -1035,6 +1045,7 @@ export default function OnlineBookingFlowNew({
     slotParams.bufferMinutes,
     multiServiceIdsParam,
     excludeHoldParam,
+    travelBufferParam,
   ]);
 
   /** When entering the schedule step with no date, pick the earliest day that has a future bookable slot. */
@@ -1060,7 +1071,7 @@ export default function OnlineBookingFlowNew({
         d.setHours(0, 0, 0, 0);
         d.setDate(d.getDate() + offset);
         try {
-          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
+          const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
           const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS);
           if (cancelled) return;
           const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
@@ -1129,7 +1140,7 @@ export default function OnlineBookingFlowNew({
       const d = new Date();
       d.setHours(0, 0, 0, 0);
       d.setDate(d.getDate() + offset);
-      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}`;
+      const url = `/api/public/providers/${provider.slug}/availability?date=${dateStr(d)}&service_id=${serviceId}&staff_id=${staffId}&duration_minutes=${durationMinutes}&buffer_minutes=${bufferMinutes}&location_id=${bookingData.selectedLocation?.id ?? ""}&min_notice_minutes=${settings.min_notice_minutes}&max_advance_days=${settings.max_advance_days}${multiServiceIdsParam}${excludeHoldParam}${travelBufferParam}`;
       const res = await fetcher.get<{ data: any[] }>(url, AVAILABILITY_FETCH_OPTS).catch(() => ({ data: [] }));
       const raw = (res as any)?.data?.slots ?? (res as any)?.data ?? [];
       const list = Array.isArray(raw) ? raw : [];
@@ -1250,11 +1261,14 @@ export default function OnlineBookingFlowNew({
         location_id: bookingData.venueType === "at_salon" ? bookingData.selectedLocation?.id ?? null : null,
         address: addressPayload,
         resource_ids: bookingData.selectedResourceIds?.length ? bookingData.selectedResourceIds : undefined,
+        previous_hold_id: holdId || null,
+        guest_fingerprint_hash: getGuestFingerprintHash(),
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
       });
       const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;
       if (id) {
         setHoldId(id);
+        try { sessionStorage.setItem("beautonomi_hold_id", id); } catch {}
         try {
           const tc = await fetch("/api/public/tenant-context", { credentials: "same-origin", cache: "no-store" }).then((r) =>
             r.json().catch(() => null)

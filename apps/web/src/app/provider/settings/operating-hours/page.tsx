@@ -18,6 +18,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { OperatingHoursEditor, type OperatingHours } from "@/components/provider/OperatingHoursEditor";
 import { invalidateSetupStatusCache } from "@/lib/provider-portal/setup-status-utils";
+import { invalidateProviderPortalCache } from "@/providers/provider-portal/ProviderPortalProvider";
 
 interface Location {
   id: string;
@@ -52,9 +53,25 @@ export default function OperatingHoursSettings() {
           thursday: { open: "09:00", close: "18:00", closed: false },
           friday: { open: "09:00", close: "18:00", closed: false },
           saturday: { open: "09:00", close: "18:00", closed: false },
-          sunday: { open: "09:00", close: "18:00", closed: true },
+          sunday: { open: "09:00", close: "18:00", closed: false },
         };
-        setOperatingHours(location.operating_hours || defaultHours);
+        // Convert Format A (is_open/open_time/close_time) from DB to Format B (open/close/closed)
+        const raw = location.operating_hours || {};
+        const converted: OperatingHours = {} as OperatingHours;
+        const dayKeys = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+        for (const dk of dayKeys) {
+          const d = (raw as Record<string, any>)[dk];
+          if (d && typeof d === "object") {
+            converted[dk] = {
+              open: d.open || d.open_time || "09:00",
+              close: d.close || d.close_time || "18:00",
+              closed: d.closed === true || d.is_open === false,
+            };
+          } else {
+            converted[dk] = defaultHours[dk];
+          }
+        }
+        setOperatingHours(converted);
         setHasChanges(false);
       }
     }
@@ -93,6 +110,7 @@ export default function OperatingHoursSettings() {
       toast.success("Operating hours updated successfully");
       setHasChanges(false);
       invalidateSetupStatusCache();
+      invalidateProviderPortalCache();
       // Reload locations to get updated data
       await loadLocations();
     } catch (error: any) {
@@ -206,11 +224,16 @@ export default function OperatingHoursSettings() {
           )}
 
           {/* Info Note */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 space-y-2">
             <p className="text-sm text-blue-800">
-              <strong>Note:</strong> Operating hours determine when customers can book appointments at this location.
-              Make sure to keep these hours up to date to avoid booking conflicts.
+              <strong>How operating hours work:</strong>
             </p>
+            <ul className="text-sm text-blue-800 list-disc list-inside space-y-1">
+              <li>These hours determine when customers can book appointments at this location.</li>
+              <li>Staff members without custom work hours will follow these location hours.</li>
+              <li>Staff with <strong>Custom Work Hours</strong> enabled use their own schedule instead.</li>
+              <li>Time blocks (breaks, meetings) further restrict availability within these hours.</li>
+            </ul>
           </div>
         </div>
       </SectionCard>

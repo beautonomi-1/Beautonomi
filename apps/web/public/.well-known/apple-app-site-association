@@ -1,0 +1,68 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["QW33CYPQX5.com.beautonomi.partner"],
+        "components": [
+          {
+            "/": "/provider",
+            "comment": "Provider app owns the /provider landing page"
+          },
+          {
+            "/": "/provider/*",
+            "comment": "All provider portal routes open in the Beautonomi Partner app"
+          }
+        ]
+      },
+      {
+        "appIDs": ["QW33CYPQX5.com.beautonomi"],
+        "components": [
+          {
+            "/": "/admin",
+            "exclude": true,
+            "comment": "Admin portal must stay in the browser"
+          },
+          {
+            "/": "/admin/*",
+            "exclude": true
+          },
+          {
+            "/": "/api/*",
+            "exclude": true,
+            "comment": "API routes must not be intercepted by the app"
+          },
+          {
+            "/": "/.well-known/*",
+            "exclude": true
+          },
+          {
+            "/": "/_next/*",
+            "exclude": true
+          },
+          {
+            "/": "/provider",
+            "exclude": true,
+            "comment": "Provider pages are handled by the Partner app, not the customer app"
+          },
+          {
+            "/": "/provider/*",
+            "exclude": true
+          },
+          {
+            "/": "*",
+            "comment": "Every remaining customer-facing path opens in the Beautonomi app"
+          }
+        ]
+      }
+    ]
+  },
+  "webcredentials": {
+    "apps": [
+      "QW33CYPQX5.com.beautonomi",
+      "QW33CYPQX5.com.beautonomi.partner"
+    ]
+  },
+  "appclips": {
+    "apps": []
+  }
+}

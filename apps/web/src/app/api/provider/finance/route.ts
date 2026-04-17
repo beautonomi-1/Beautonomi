@@ -201,9 +201,39 @@ export async function GET(request: NextRequest) {
     const providerEarningsThis = sumNet(["provider_earnings"], { start: startDate, end: now });
     const providerEarningsLast = sumNet(["provider_earnings"], { start: lastMonthStart, end: lastMonthEnd });
 
+    // Break down earnings by source: bookings (have booking_id) vs product orders (booking_id is null)
+    const bookingEarningsTotal = rows
+      .filter((r: any) => r.transaction_type === "provider_earnings" && r.booking_id)
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const bookingEarningsThisPeriod = rows
+      .filter((r: any) => r.transaction_type === "provider_earnings" && r.booking_id)
+      .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const productSalesEarningsTotal = rows
+      .filter((r: any) => r.transaction_type === "provider_earnings" && !r.booking_id)
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const productSalesEarningsThisPeriod = rows
+      .filter((r: any) => r.transaction_type === "provider_earnings" && !r.booking_id)
+      .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const platformFeesDeducted = rows
+      .filter((r: any) => r.transaction_type === "platform_fee")
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+    const platformFeesDeductedThisPeriod = rows
+      .filter((r: any) => r.transaction_type === "platform_fee")
+      .filter((r: any) => { const d = new Date(r.created_at); return d >= startDate && d <= now; })
+      .reduce((s: number, r: any) => s + Number(r.net ?? r.amount ?? 0), 0);
+
     // Walk-in additional charges (audit/reporting only; not included in payout balance)
     const walkInAdditionalChargesTotal = sumNet(["walk_in_additional_charge"]);
     const walkInAdditionalChargesThisPeriod = sumNet(["walk_in_additional_charge"], { start: startDate, end: now });
+
+    const tipsTotal = sumNet(["tip"]);
+    const tipsThisPeriod = sumNet(["tip"], { start: startDate, end: now });
+    const cancellationFeesTotal = sumNet(["cancellation_fee"]);
+    const cancellationFeesThisPeriod = sumNet(["cancellation_fee"], { start: startDate, end: now });
+    const additionalChargesTotal = sumNet(["additional_charge", "additional_charge_payment"]);
+    const additionalChargesThisPeriod = sumNet(["additional_charge", "additional_charge_payment"], { start: startDate, end: now });
 
     const membershipSalesTotal = sumAmount(["membership_sale"], { start: startDate, end: now });
     const giftCardSalesTotal = sumAmount(["gift_card_sale"], { start: startDate, end: now });
@@ -270,6 +300,9 @@ export async function GET(request: NextRequest) {
       "membership_sale",
       "gift_card_sale",
       "walk_in_additional_charge",
+      "additional_charge",
+      "additional_charge_payment",
+      "cancellation_fee",
     ];
     
     const transactions = rows
@@ -305,7 +338,12 @@ export async function GET(request: NextRequest) {
         this_month: thisMonthTotal,
         last_month: lastMonthTotal,
         growth_percentage: Math.round(growthPercentage * 10) / 10,
-        bookings_earnings_total: providerEarningsTotal,
+        bookings_earnings_total: bookingEarningsTotal,
+        bookings_earnings_this_period: bookingEarningsThisPeriod,
+        product_sales_earnings_total: productSalesEarningsTotal,
+        product_sales_earnings_this_period: productSalesEarningsThisPeriod,
+        platform_fees_deducted: platformFeesDeducted,
+        platform_fees_deducted_this_period: platformFeesDeductedThisPeriod,
         gift_card_sales_this_period: giftCardSalesTotal,
         membership_sales_this_period: membershipSalesTotal,
         travel_fees_total: travelFeesTotal,
@@ -313,8 +351,23 @@ export async function GET(request: NextRequest) {
         refunds_total: refundsTotal,
         walk_in_additional_charges_total: walkInAdditionalChargesTotal,
         walk_in_additional_charges_this_period: walkInAdditionalChargesThisPeriod,
+        tips_total: tipsTotal,
+        tips_this_period: tipsThisPeriod,
+        cancellation_fees_total: cancellationFeesTotal,
+        cancellation_fees_this_period: cancellationFeesThisPeriod,
+        additional_charges_total: additionalChargesTotal,
+        additional_charges_this_period: additionalChargesThisPeriod,
       },
       transactions: transactions,
+      language_context: {
+        audience: "provider",
+        glossary: {
+          available_balance: "Amount currently available for payout after hold period and prior payouts.",
+          pending_payouts: "Payout requests created but not yet completed.",
+          refunds_total: "Total refund-related deductions affecting your earnings in the selected range.",
+          platform_fees_deducted: "Fees retained by platform according to configuration for this market.",
+        },
+      },
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch finance data");

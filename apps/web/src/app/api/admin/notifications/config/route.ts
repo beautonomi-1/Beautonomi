@@ -1,45 +1,154 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdminSection } from "@/lib/supabase/api-helpers";
-import { unauthorizedResponse } from "@/lib/auth/requireRole";
+import { NextRequest } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdminSectionAny, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { verifyOneSignalConfig } from "@/lib/notifications/onesignal";
 import { resolveOneSignalCredentials } from "@/lib/platform/secrets";
-import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import {
+  ADMIN_SECTION_INTEGRATIONS_DEV,
+  ADMIN_SECTION_MARKETING_COMMS,
+} from "@/lib/admin-sections";
+import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
 
 /**
  * GET /api/admin/notifications/config
- * 
- * Get OneSignal configuration status
+ *
+ * Safe snapshot for the admin SPA: channel toggles + whether secrets exist (no raw credentials).
+ * Push / email / SMS tests use OneSignal REST; Twilio appears when configured for SMS/WhatsApp flows.
  */
 export async function GET(request: NextRequest) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
-    if (!user) {
-      return unauthorizedResponse("Authentication required");
+    await requireAdminSectionAny(
+      [ADMIN_SECTION_MARKETING_COMMS, ADMIN_SECTION_INTEGRATIONS_DEV],
+      request
+    );
+
+    const tenantId = await resolveAdminApiTenantId(request);
+    const osVerify = await verifyOneSignalConfig({ tenantId });
+    const osResolved = await resolveOneSignalCredentials(undefined, { tenantId });
+    const appIdSet = !!osResolved.appId?.trim();
+    const apiKeySet = !!osResolved.restKey?.trim();
+
+    const supabase = getSupabaseAdmin();
+    let emailEnabled = true;
+    let smsEnabled = false;
+    let pushEnabled = true;
+    let onesignalSectionEnabled = true;
+    let twilioSectionEnabled = false;
+
+    try {
+      const scoped = await fetchScopedSingle<{ settings?: Record<string, unknown> }>({
+        supabase,
+        table: "platform_settings",
+        tenantId,
+        select: "settings",
+        apply: (q) => q.eq("is_active", true),
+        orderBy: { column: "updated_at", ascending: false },
+      });
+      const settingsRow = scoped.data;
+
+      const s = settingsRow?.settings;
+      if (s?.notifications && typeof s.notifications === "object") {
+        const n = s.notifications as Record<string, unknown>;
+        emailEnabled = n.email_enabled !== false;
+        smsEnabled = n.sms_enabled === true;
+        pushEnabled = n.push_enabled !== false;
+      }
+      if (s?.onesignal && typeof s.onesignal === "object") {
+        const o = s.onesignal as Record<string, unknown>;
+        if (typeof o.enabled === "boolean") onesignalSectionEnabled = o.enabled;
+      }
+      if (s?.twilio && typeof s.twilio === "object") {
+        const t = s.twilio as Record<string, unknown>;
+        twilioSectionEnabled = t.enabled === true;
+      }
+    } catch {
+      // dev DB may be partial
     }
 
-    const config = await verifyOneSignalConfig();
-    const resolved = await resolveOneSignalCredentials(undefined);
+    let twilioAccountSid = "";
+    let twilioAuthToken = "";
+    let twilioSmsFrom = "";
+    let twilioWhatsappFrom = "";
 
-    return NextResponse.json({
-      data: {
-        configured: config.configured,
-        missing: config.missing,
-        app_id: resolved.appId,
-        api_key_configured: !!resolved.restKey,
+    try {
+      const { data: secretRow } = await supabase
+        .from("platform_secrets")
+        .select("twilio_account_sid, twilio_auth_token, twilio_sms_from, twilio_whatsapp_from")
+        .is("tenant_id", null)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const sr = secretRow as Record<string, string | null | undefined> | null;
+      twilioAccountSid = sr?.twilio_account_sid?.trim() || process.env.TWILIO_ACCOUNT_SID?.trim() || "";
+      twilioAuthToken = sr?.twilio_auth_token?.trim() || process.env.TWILIO_AUTH_TOKEN?.trim() || "";
+      twilioSmsFrom = sr?.twilio_sms_from?.trim() || process.env.TWILIO_SMS_FROM?.trim() || "";
+      twilioWhatsappFrom = sr?.twilio_whatsapp_from?.trim() || process.env.TWILIO_WHATSAPP_FROM?.trim() || "";
+    } catch {
+      twilioAccountSid = process.env.TWILIO_ACCOUNT_SID?.trim() || "";
+      twilioAuthToken = process.env.TWILIO_AUTH_TOKEN?.trim() || "";
+      twilioSmsFrom = process.env.TWILIO_SMS_FROM?.trim() || "";
+      twilioWhatsappFrom = process.env.TWILIO_WHATSAPP_FROM?.trim() || "";
+    }
+
+    const twilioAccountSidSet = !!twilioAccountSid;
+    const twilioAuthTokenSet = !!twilioAuthToken;
+    const twilioSmsReady = twilioAccountSidSet && twilioAuthTokenSet && !!twilioSmsFrom;
+    const twilioIntegrationActive = twilioSmsReady && twilioSectionEnabled;
+
+    const osReady = appIdSet && apiKeySet && onesignalSectionEnabled;
+
+    const data = {
+      push: {
+        enabled: pushEnabled && osReady,
+        provider: "onesignal",
+        app_id_set: appIdSet,
+        api_key_set: apiKeySet,
       },
-      error: null,
-    });
+      email: {
+        enabled: emailEnabled && osReady,
+        provider: "onesignal",
+        api_key_set: apiKeySet,
+      },
+      /** OneSignal SMS (same REST app as push/email). “Test sms” uses this path. */
+      sms: {
+        enabled: smsEnabled && osReady,
+        provider: "onesignal",
+        api_key_set: apiKeySet,
+      },
+      whatsapp: {
+        enabled: twilioIntegrationActive && !!twilioWhatsappFrom,
+        provider: "twilio",
+        api_key_set: twilioAuthTokenSet,
+        from: twilioWhatsappFrom || undefined,
+      },
+      in_app: {
+        enabled: true,
+        provider: "beautonomi",
+      },
+      onesignal: {
+        enabled: osReady,
+        app_id_set: appIdSet,
+        api_key_set: apiKeySet,
+      },
+      twilio: {
+        enabled: twilioIntegrationActive,
+        account_sid_set: twilioAccountSidSet,
+        auth_token_set: twilioAuthTokenSet,
+        from_number: twilioSmsFrom || undefined,
+      },
+      diagnostics: {
+        onesignal_configured: osVerify.configured,
+        onesignal_missing: osVerify.missing,
+        /** @deprecated — use diagnostics.onesignal_configured */
+        configured: osVerify.configured,
+        missing: osVerify.missing,
+      },
+    };
+
+    return successResponse(data);
   } catch (error) {
-    console.error("Unexpected error in /api/admin/notifications/config:", error);
-    return NextResponse.json(
-      {
-        data: null,
-        error: {
-          message: "Failed to fetch configuration",
-          code: "INTERNAL_ERROR",
-        },
-      },
-      { status: 500 }
-    );
+    return handleApiError(error, "Failed to fetch notification configuration");
   }
 }

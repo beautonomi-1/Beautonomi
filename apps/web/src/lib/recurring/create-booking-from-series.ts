@@ -3,6 +3,7 @@ import { getEffectiveTaxRate } from "@/lib/platform-tax-settings";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { determineAppointmentStatusFromDB } from "@/lib/provider-portal/appointment-settings";
 import { checkBookingConflict, canOverrideDoubleBooking } from "@/lib/bookings/conflict-check";
+import { resolveTz, fromBusinessTime } from "@/lib/dates/provider-tz";
 
 type SeriesRow = {
   id: string;
@@ -65,21 +66,28 @@ export async function createBookingFromRecurringSeries(
   }
 
   const timeStr = toHhMmSs(row.start_time || row.preferred_time);
-  const scheduledAtLocal = new Date(`${occurrenceDateYmd}T${timeStr}`);
 
   const { data: providerRow } = await admin
     .from("providers")
-    .select("tenant_id, currency")
+    .select("tenant_id, currency, tax_rate_percent, customer_fee_config_id, timezone")
     .eq("id", row.provider_id)
     .maybeSingle();
 
   const currency =
     (providerRow as { currency?: string | null } | null)?.currency?.trim() || LAST_RESORT_CURRENCY;
 
+  // Build the scheduled datetime in the provider's business timezone, then convert to UTC.
+  // `occurrenceDateYmd` + `timeStr` represent wall-clock values in the salon's local time.
+  const providerTz = resolveTz((providerRow as { timezone?: string | null } | null)?.timezone);
+  const [hh, mm, ss] = timeStr.split(":").map(Number);
+  const [year, month, day] = occurrenceDateYmd.split("-").map(Number);
+  const wallClockDate = new Date(year, month - 1, day, hh, mm, ss || 0);
+  const scheduledAtLocal = fromBusinessTime(wallClockDate, providerTz);
+
   const offeringIds = [...new Set(lines.map((l) => l.offering_id))];
   const { data: offerings, error: offErr } = await admin
     .from("offerings")
-    .select("id, price, duration_minutes, currency")
+    .select("id, price, duration_minutes, buffer_minutes, currency")
     .in("id", offeringIds)
     .eq("provider_id", row.provider_id);
 
@@ -96,9 +104,55 @@ export async function createBookingFromRecurringSeries(
     subtotal += Number(o.price || 0);
   }
 
-  const taxRate = await getEffectiveTaxRate(row.provider_id);
+  // Pass provider's tax_rate_percent directly to avoid a second DB lookup.
+  // getEffectiveTaxRate treats null as "unset" and falls back to platform default.
+  const providerTaxRatePct = (providerRow as any)?.tax_rate_percent ?? null;
+  const taxRate = await getEffectiveTaxRate(row.provider_id, providerTaxRatePct);
   const taxAmount = Math.round(subtotal * (Number(taxRate) / 100) * 100) / 100;
-  const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
+
+  // Service fee — mirrors validate-booking.ts priority:
+  //   1. Provider customer_fee_config_id  2. platform_settings.payouts fallback
+  let serviceFeePercentage = 0;
+  let serviceFeeAmount = 0;
+  const providerFeeConfigId = (providerRow as any)?.customer_fee_config_id ?? null;
+  if (providerFeeConfigId) {
+    const { data: feeConfig } = await admin
+      .from("platform_fee_config")
+      .select("fee_type, fee_percentage, fee_fixed_amount")
+      .eq("id", providerFeeConfigId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (feeConfig) {
+      if ((feeConfig as any).fee_type === "percentage") {
+        serviceFeePercentage = Number((feeConfig as any).fee_percentage || 0);
+        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+      } else {
+        serviceFeeAmount = Number((feeConfig as any).fee_fixed_amount || 0);
+      }
+    }
+  }
+  // Fallback to platform_settings.payouts when no provider override
+  if (serviceFeeAmount === 0 && !providerFeeConfigId) {
+    const { data: psRow } = await admin
+      .from("platform_settings")
+      .select("settings")
+      .eq("is_active", true)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const payoutSettings = ((psRow as any)?.settings as Record<string, any> | null)?.payouts as Record<string, any> | undefined;
+    if (payoutSettings) {
+      const feeType = (payoutSettings.platform_service_fee_type as string) || "fixed";
+      if (feeType === "percentage") {
+        serviceFeePercentage = Number(payoutSettings.platform_service_fee_percentage ?? 0);
+        serviceFeeAmount = Math.round(subtotal * (serviceFeePercentage / 100) * 100) / 100;
+      } else {
+        serviceFeeAmount = Number(payoutSettings.platform_service_fee_fixed ?? 0);
+      }
+    }
+  }
+
+  const totalAmount = Math.round((subtotal + taxAmount + serviceFeeAmount) * 100) / 100;
 
   const portalStatus = await determineAppointmentStatusFromDB(admin, row.provider_id);
   const dbStatus = mapPortalStatusToDb(portalStatus);
@@ -108,10 +162,12 @@ export async function createBookingFromRecurringSeries(
   for (const line of lines) {
     const o = offeringMap.get(line.offering_id) as {
       duration_minutes?: number;
+      buffer_minutes?: number;
       price?: number;
       currency?: string;
     };
     const duration = Number(o.duration_minutes || 60);
+    const buffer = Number(o.buffer_minutes || 0);
     const price = Number(o.price || 0);
     const cur = o.currency || currency;
     const start = new Date(cursor);
@@ -126,15 +182,14 @@ export async function createBookingFromRecurringSeries(
       scheduled_start_at: start.toISOString(),
       scheduled_end_at: end.toISOString(),
     });
-    cursor = end;
+    cursor = new Date(end.getTime() + buffer * 60 * 1000);
   }
 
   const primaryStaffId =
     (pBookingServices[0]?.staff_id as string | null | undefined) ?? row.staff_id ?? null;
 
   const startAt = new Date(pBookingServices[0]!.scheduled_start_at as string);
-  const lastEnd = new Date(pBookingServices[pBookingServices.length - 1]!.scheduled_end_at as string);
-  const endAt = new Date(lastEnd.getTime() + BUFFER_MINUTES * 60 * 1000);
+  const endAt = cursor;
 
   const allowOverride = await canOverrideDoubleBooking(admin, row.provider_id);
   if (primaryStaffId && !allowOverride) {
@@ -181,8 +236,8 @@ export async function createBookingFromRecurringSeries(
     special_requests: row.notes || null,
     loyalty_points_earned: 0,
     travel_fee: 0,
-    service_fee_percentage: 0,
-    service_fee_amount: 0,
+    service_fee_percentage: serviceFeePercentage,
+    service_fee_amount: serviceFeeAmount,
     service_fee_paid_by: "customer",
   };
 

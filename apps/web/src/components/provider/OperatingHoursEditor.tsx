@@ -23,6 +23,17 @@ const DAYS = [
   { key: "sunday", label: "Sunday" },
 ];
 
+function toDayB(raw: Record<string, any> | undefined): { open: string; close: string; closed: boolean } {
+  if (!raw) return { open: "09:00", close: "18:00", closed: false };
+  // Handle Format A (is_open/open_time/close_time) from DB
+  const isClosed = raw.closed === true || raw.is_open === false;
+  return {
+    open: raw.open || raw.open_time || "09:00",
+    close: raw.close || raw.close_time || "18:00",
+    closed: isClosed,
+  };
+}
+
 export function OperatingHoursEditor({
   hours,
   onChange,
@@ -33,24 +44,20 @@ export function OperatingHoursEditor({
     field: "open" | "close" | "closed",
     value: string | boolean
   ) => {
-    const updatedHours = {
-      ...hours,
-      [day]: {
-        ...(hours[day] || { open: "09:00", close: "18:00", closed: false }),
-        [field]: value,
-      },
-    };
+    const existing = toDayB(hours[day]);
+    const updatedDay = { ...existing, [field]: value };
+    // Sync is_open with closed to prevent mixed-format conflicts
+    if (field === "closed") {
+      (updatedDay as any).is_open = !value;
+    }
+    const updatedHours = { ...hours, [day]: updatedDay };
     onChange(updatedHours);
   };
 
   return (
     <div className={`space-y-3 ${className}`}>
       {DAYS.map((day) => {
-        const dayHours = hours[day.key] || {
-          open: "09:00",
-          close: "18:00",
-          closed: false,
-        };
+        const dayHours = toDayB(hours[day.key]);
         return (
           <div
             key={day.key}

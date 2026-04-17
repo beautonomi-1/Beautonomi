@@ -5,8 +5,15 @@ import {
   successResponse,
   handleApiError,
   getProviderIdForUser,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import {
+  fetchDefaultAddressesForUsers,
+  parseAddressFromBody,
+  upsertCustomerDefaultAddress,
+  CustomerHomeAddressLockedError,
+} from "@/lib/provider-portal/user-default-address";
 
 /**
  * GET /api/provider/clients
@@ -115,18 +122,43 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    const customerIdsForAddr = [
+      ...new Set(
+        clientsWithCustomers
+          .map((c) => c.customer?.id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ];
+    const defaultAddrByUser = await fetchDefaultAddressesForUsers(
+      supabaseAdmin,
+      customerIdsForAddr,
+    );
+    clientsWithCustomers = clientsWithCustomers.map((row) => {
+      const cid = row.customer?.id;
+      const default_address = cid ? defaultAddrByUser.get(cid) ?? null : null;
+      return {
+        ...row,
+        customer: row.customer ? { ...row.customer, default_address } : row.customer,
+      };
+    });
+
     // If search query is provided, filter by name, email, or phone
     if (searchQuery && searchQuery.trim().length > 0) {
       const searchLower = searchQuery.toLowerCase().trim();
       clientsWithCustomers = clientsWithCustomers.filter((client) => {
         const customer = client.customer;
         if (!customer) return false;
-        
+
+        const da = (customer as { default_address?: { address_line1?: string; city?: string } | null })
+          .default_address;
+        const addrBlob = [da?.address_line1, da?.city].filter(Boolean).join(" ").toLowerCase();
+
         const nameMatch = customer.full_name?.toLowerCase().includes(searchLower);
         const emailMatch = customer.email?.toLowerCase().includes(searchLower);
         const phoneMatch = customer.phone?.toLowerCase().includes(searchLower);
-        
-        return nameMatch || emailMatch || phoneMatch;
+        const addrMatch = addrBlob.includes(searchLower);
+
+        return nameMatch || emailMatch || phoneMatch || addrMatch;
       });
     }
 
@@ -162,6 +194,9 @@ export async function POST(request: NextRequest) {
       return handleApiError(new Error("customer_id is required"), "Validation error", 400);
     }
 
+    const supabaseAdmin = await getSupabaseAdmin();
+    const addressPayload = parseAddressFromBody(body);
+
     // Check if client already exists
     const { data: existing } = await supabase
       .from("provider_clients")
@@ -185,6 +220,23 @@ export async function POST(request: NextRequest) {
         .single();
 
       if (error) throw error;
+
+      if (addressPayload) {
+        try {
+          await upsertCustomerDefaultAddress(supabaseAdmin, customer_id, addressPayload);
+        } catch (e) {
+          if (e instanceof CustomerHomeAddressLockedError) {
+            return errorResponse(e.message, e.code, 403);
+          }
+          console.error("POST /provider/clients: address upsert failed", e);
+          return handleApiError(
+            e instanceof Error ? e : new Error("Failed to save address"),
+            "Failed to save client address",
+            400,
+          );
+        }
+      }
+
       return successResponse(data);
     }
 
@@ -202,6 +254,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    if (addressPayload) {
+      try {
+        await upsertCustomerDefaultAddress(supabaseAdmin, customer_id, addressPayload);
+      } catch (e) {
+        if (e instanceof CustomerHomeAddressLockedError) {
+          return errorResponse(e.message, e.code, 403);
+        }
+        console.error("POST /provider/clients: address upsert failed", e);
+        return handleApiError(
+          e instanceof Error ? e : new Error("Failed to save address"),
+          "Failed to save client address",
+          400,
+        );
+      }
+    }
 
     return successResponse(data);
   } catch (error) {

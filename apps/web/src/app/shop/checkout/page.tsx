@@ -22,12 +22,16 @@ interface CartItem {
   id: string;
   quantity: number;
   effective_price?: number;
-  product_variant?: { option_values?: Record<string, string> } | null;
+  in_stock?: boolean;
+  product_variant?: { option_values?: Record<string, string>; quantity?: number } | null;
   product: {
     id: string;
     name: string;
     retail_price: number;
     image_urls: string[];
+    tax_rate?: string | number | null;
+    quantity?: number;
+    is_active?: boolean;
   };
 }
 
@@ -76,7 +80,7 @@ export default function ProductCheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<"paystack" | "card_on_delivery">("paystack");
   const [useWallet, setUseWallet] = useState(false);
   const [walletBalance, setWalletBalance] = useState(0);
-  const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "percentage", percentage: 5, fixed: 0, show: true });
+  const [platformFeeConfig, setPlatformFeeConfig] = useState({ type: "fixed", percentage: 0, fixed: 0, show: false });
   const [cashEnabledOnPlatform, setCashEnabledOnPlatform] = useState(false);
   const { enabled: paystackEnabled } = useFeatureFlag("payment_paystack");
   const { enabled: walletEnabled } = useFeatureFlag("payment_wallet");
@@ -150,11 +154,14 @@ export default function ProductCheckoutPage() {
           if (!sc.offers_collection && sc.offers_delivery) setFulfillment("delivery");
         }
 
-        const feeRes = await fetcher.get<{ data: any }>("/api/public/platform-fees");
+        const feeUrl = effectiveProviderId
+          ? `/api/public/platform-fees?provider_id=${encodeURIComponent(effectiveProviderId)}`
+          : "/api/public/platform-fees";
+        const feeRes = await fetcher.get<{ data: any }>(feeUrl);
         if (!cancelled && feeRes?.data) {
           setPlatformFeeConfig({
-            type: feeRes.data.platform_service_fee_type ?? "percentage",
-            percentage: feeRes.data.platform_service_fee_percentage ?? 5,
+            type: feeRes.data.platform_service_fee_type ?? "fixed",
+            percentage: feeRes.data.platform_service_fee_percentage ?? 0,
             fixed: feeRes.data.platform_service_fee_fixed ?? 0,
             show: feeRes.data.show_service_fee_to_customer !== false,
           });
@@ -208,6 +215,10 @@ export default function ProductCheckoutPage() {
     (s, i) => s + linePrice(i),
     0,
   );
+  const taxAmount = items.reduce((s, i) => {
+    const rate = parseFloat(String(i.product?.tax_rate || "0")) || 0;
+    return s + Math.round((linePrice(i) * rate) / 100 * 100) / 100;
+  }, 0);
   const deliveryFee =
     fulfillment === "delivery" && shippingConfig
       ? shippingConfig.free_delivery_threshold && subtotal >= shippingConfig.free_delivery_threshold
@@ -220,13 +231,24 @@ export default function ProductCheckoutPage() {
         ? platformFeeConfig.fixed
         : Math.round(subtotal * platformFeeConfig.percentage) / 100
       : 0;
-  const total = subtotal + deliveryFee + platformFee;
+  const total = subtotal + taxAmount + deliveryFee + platformFee;
   const hasAnyEnabledPaymentMethod = paystackEnabled || cashEnabledOnPlatform;
 
+  const hasOutOfStock = items.some((i) => i.in_stock === false);
+
   const handlePlaceOrder = useCallback(async () => {
-    if (!providerId) return;
-    if (fulfillment === "delivery" && !selectedAddress) return;
-    if (fulfillment === "collection" && !selectedLocation) return;
+    if (!providerId) {
+      setPageError("Missing provider. Please go back to cart and try again.");
+      return;
+    }
+    if (fulfillment === "delivery" && !selectedAddress) {
+      setPageError("Please select a delivery address.");
+      return;
+    }
+    if (fulfillment === "collection" && !selectedLocation) {
+      setPageError("Please select a collection point.");
+      return;
+    }
 
     setPlacing(true);
     setPageError(null);
@@ -375,7 +397,7 @@ export default function ProductCheckoutPage() {
                     Delivery
                   </p>
                   <p className="text-xs text-gray-400 mt-1">
-                    {deliveryFee === 0 ? "Free" : `R${deliveryFee.toFixed(2)}`}
+                    {deliveryFee === 0 ? "Free" : `${tenantCurrency} ${deliveryFee.toFixed(2)}`}
                   </p>
                 </button>
               )}
@@ -533,7 +555,7 @@ export default function ProductCheckoutPage() {
             </div>
             {paymentMethod === "paystack" && platformFeeConfig.show && platformFee > 0 && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg text-sm text-amber-800">
-                A platform service fee of R{platformFee.toFixed(2)} applies to online payments
+                A platform fee of {tenantCurrency} {platformFee.toFixed(2)} applies to online payments
               </div>
             )}
           </div>
@@ -543,15 +565,15 @@ export default function ProductCheckoutPage() {
             <h3 className="font-semibold text-gray-900 mb-4">Order Summary</h3>
             <div className="space-y-3 mb-4">
               {items.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span className="text-gray-700">
+                <div key={item.id} className="flex justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-gray-700">
                     {item.product?.name}
                     {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
                       <span className="text-gray-500 font-normal"> · {Object.entries(item.product_variant.option_values).map(([, v]) => v).join(", ")}</span>
                     )}{" "}
                     x{item.quantity}
                   </span>
-                  <span className="font-medium text-gray-900">
+                  <span className="flex-shrink-0 font-medium text-gray-900 whitespace-nowrap">
                     {tenantCurrency}
                     {linePrice(item).toFixed(2)}
                   </span>
@@ -566,6 +588,15 @@ export default function ProductCheckoutPage() {
                   {subtotal.toFixed(2)}
                 </span>
               </div>
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Tax</span>
+                  <span className="text-gray-900">
+                    {tenantCurrency}
+                    {taxAmount.toFixed(2)}
+                  </span>
+                </div>
+              )}
               {fulfillment === "delivery" && (
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-500">Delivery</span>
@@ -576,7 +607,7 @@ export default function ProductCheckoutPage() {
               )}
               {platformFee > 0 && platformFeeConfig.show && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500">Service Fee</span>
+                  <span className="text-gray-500">Platform Fee</span>
                   <span className="text-gray-900">
                     {tenantCurrency}
                     {platformFee.toFixed(2)}
@@ -593,10 +624,17 @@ export default function ProductCheckoutPage() {
             </div>
           </div>
 
+          {hasOutOfStock && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              Some items in your cart are out of stock. Please update your cart before placing the order.
+            </div>
+          )}
+
           {/* Pay button */}
           <button
             onClick={handlePlaceOrder}
-            disabled={placing || !hasAnyEnabledPaymentMethod}
+            disabled={placing || !hasAnyEnabledPaymentMethod || hasOutOfStock}
             className="w-full py-4 bg-pink-600 text-white rounded-xl font-bold text-lg hover:bg-pink-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {placing ? (

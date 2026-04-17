@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -157,7 +158,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
     const { id: idOrSlug } = await params;
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -210,6 +211,23 @@ export async function PATCH(
         .single();
       owner = ownerRow as typeof owner;
     }
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.provider.update",
+      entity_type: "provider",
+      entity_id: providerId,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "operational",
+      status: "succeeded",
+      after_json: updateData,
+      changed_fields: Object.keys(updateData).filter((k) => k !== "updated_at"),
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse({ ...updated, owner: owner ?? null });
   } catch (error) {
     return handleApiError(error, "Failed to update provider");

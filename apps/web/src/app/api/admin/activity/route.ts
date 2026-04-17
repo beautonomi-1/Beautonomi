@@ -35,6 +35,9 @@ export async function GET(request: NextRequest) {
       providerViolations,
       accountIssues,
       disputes,
+      opsNewLeads,
+      opsStalledOnboarding,
+      pendingUserReports,
     ] = await Promise.allSettled([
       // Pending payouts
       supabase
@@ -165,6 +168,46 @@ export async function GET(request: NextRequest) {
         .select('id, booking_id, reason, status, opened_by, created_at, bookings!inner(tenant_id)')
         .eq('bookings.tenant_id', tenantId)
         .eq('status', 'open')
+        .gte('created_at', last7Days.toISOString())
+        .order('created_at', { ascending: false })
+        .limit(10),
+
+      // Provider Ops: new leads (last 7 days)
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from('provider_leads')
+            .select('id, name, source, commercial_stage, created_at')
+            .eq('tenant_id', tenantId)
+            .gte('created_at', last7Days.toISOString())
+            .order('created_at', { ascending: false })
+            .limit(5);
+          return { data: data ?? [], error };
+        } catch { return { data: [], error: null }; }
+      })(),
+
+      // Provider Ops: stalled onboarding
+      (async () => {
+        try {
+          const cutoff = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString();
+          const { data, error } = await supabase
+            .from('provider_onboarding_tracking')
+            .select('id, user_id, status, current_step, last_progress_at')
+            .eq('tenant_id', tenantId)
+            .in('status', ['in_progress', 'stalled'])
+            .lt('last_progress_at', cutoff)
+            .order('last_progress_at', { ascending: true })
+            .limit(5);
+          return { data: data ?? [], error };
+        } catch { return { data: [], error: null }; }
+      })(),
+
+      // Pending user reports (last 7 days)
+      supabase
+        .from('user_reports')
+        .select('id, reporter_id, reported_user_id, report_type, status, created_at')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'pending')
         .gte('created_at', last7Days.toISOString())
         .order('created_at', { ascending: false })
         .limit(10),
@@ -349,7 +392,7 @@ export async function GET(request: NextRequest) {
             title: 'Refund Request',
             message: `Refund request for ${refund.currency ?? ""} ${Number(refund.amount ?? 0).toFixed(2)}`,
             timestamp: refund.created_at,
-            link: `/admin/finance`,
+            link: `/admin/refunds`,
             priority: 'high',
           });
         });
@@ -441,6 +484,66 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Process Provider Ops: new leads
+    if (opsNewLeads.status === 'fulfilled' && opsNewLeads.value.data) {
+      type LeadRow = { id: string; name?: string; source?: string; created_at?: string };
+      const { data: leads } = opsNewLeads.value;
+      if (leads && leads.length > 0) {
+        (leads as LeadRow[]).forEach((lead) => {
+          activities.push({
+            id: `ops-lead-${lead.id}`,
+            type: 'ops_new_lead',
+            title: 'New Provider Lead',
+            message: `${lead.name || 'Unnamed lead'} added via ${lead.source || 'manual'}`,
+            timestamp: lead.created_at ?? "",
+            link: `/admin/provider-ops/leads`,
+            priority: 'medium',
+          });
+        });
+      }
+    }
+
+    // Process Provider Ops: stalled onboarding
+    if (opsStalledOnboarding.status === 'fulfilled' && opsStalledOnboarding.value.data) {
+      type TrackingRow = { id: string; user_id?: string; current_step?: number; last_progress_at?: string };
+      const { data: stalled } = opsStalledOnboarding.value;
+      if (stalled && stalled.length > 0) {
+        (stalled as TrackingRow[]).forEach((t) => {
+          activities.push({
+            id: `ops-stalled-${t.id}`,
+            type: 'ops_stalled_onboarding',
+            title: 'Stalled Onboarding',
+            message: `Provider onboarding stalled at step ${t.current_step ?? '?'}`,
+            timestamp: t.last_progress_at ?? "",
+            link: `/admin/provider-ops/tracker`,
+            priority: 'high',
+          });
+        });
+      }
+    }
+
+    // Process pending user reports
+    if (pendingUserReports.status === 'fulfilled' && pendingUserReports.value.data) {
+      type ReportRow = { id: string; report_type?: string; created_at?: string };
+      const { data: reports } = pendingUserReports.value;
+      if (reports && reports.length > 0) {
+        (reports as ReportRow[]).forEach((report) => {
+          const direction = report.report_type === 'customer_reported_provider'
+            ? 'Customer reported a provider'
+            : 'Provider reported a customer';
+          activities.push({
+            id: `user-report-${report.id}`,
+            type: 'user_report',
+            title: 'User Report',
+            message: direction,
+            timestamp: report.created_at ?? "",
+            link: `/admin/user-reports`,
+            priority: 'high',
+          });
+        });
+      }
+    }
+
     activities.sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
@@ -471,6 +574,15 @@ export async function GET(request: NextRequest) {
       provider_violations: providerViolations.status === 'fulfilled' && providerViolations.value.data
         ? providerViolations.value.data.length
         : 0,
+      pending_user_reports: pendingUserReports.status === 'fulfilled' && pendingUserReports.value.data
+        ? pendingUserReports.value.data.length
+        : 0,
+      ops_new_leads: opsNewLeads.status === 'fulfilled' && opsNewLeads.value.data
+        ? opsNewLeads.value.data.length
+        : 0,
+      ops_stalled: opsStalledOnboarding.status === 'fulfilled' && opsStalledOnboarding.value.data
+        ? opsStalledOnboarding.value.data.length
+        : 0,
     };
 
     const totalUnread = 
@@ -481,7 +593,10 @@ export async function GET(request: NextRequest) {
       counts.payment_failures +
       counts.refund_requests +
       counts.disputes +
-      counts.provider_violations;
+      counts.provider_violations +
+      counts.pending_user_reports +
+      counts.ops_new_leads +
+      counts.ops_stalled;
 
     return successResponse({
       activities: activities.slice(0, 20), // Limit to 20 most recent

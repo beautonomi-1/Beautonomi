@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
@@ -247,7 +246,7 @@ const Page = () => {
       setError(null);
       const response = await fetcher.get<{ data: NotificationPreferences }>(
         "/api/me/notification-preferences",
-        { cache: "no-store" }
+        { staleTimeMs: 30_000 }
       );
       setPreferences(response.data || {});
       setUnsubscribeMarketing(response.data?.unsubscribe_marketing || false);
@@ -334,10 +333,7 @@ const Page = () => {
   return (
     <div className="min-h-screen bg-zinc-50/50">
       <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+        <div
           className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mt-8 mb-12"
         >
           <BackButton href="/account-settings" />
@@ -348,14 +344,11 @@ const Page = () => {
             ]}
           />
 
-          <motion.h1
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+          <h1
             className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900 border-b border-gray-200 mb-6 pb-4 mt-4 md:mt-6"
           >
             Notifications
-          </motion.h1>
+          </h1>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <TabsList className="mb-6 grid grid-cols-2 w-full h-auto p-1 bg-gray-100 rounded-xl shadow-inner border border-gray-200">
@@ -371,21 +364,14 @@ const Page = () => {
             </TabsList>
 
             <TabsContent value="offersUpdates">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+              <div
                 className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8 space-y-6"
               >
-                {offersUpdatesSections.map((section, index) => {
+                {offersUpdatesSections.map((section) => {
                   const Icon = section.icon;
                   return (
-                    <motion.div
+                    <div
                       key={section.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
-                      whileHover={{ scale: 1.01 }}
                       className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5"
                     >
                       <div className="flex items-start justify-between">
@@ -411,7 +397,7 @@ const Page = () => {
                           Edit
                         </button>
                       </div>
-                    </motion.div>
+                    </div>
                   );
                 })}
 
@@ -424,15 +410,11 @@ const Page = () => {
                     improve.
                   </p>
 
-                  {beautonomiUpdatesSections.map((section, index) => {
+                  {beautonomiUpdatesSections.map((section) => {
                     const Icon = section.icon;
                     return (
-                      <motion.div
+                      <div
                         key={section.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
-                        whileHover={{ scale: 1.01 }}
                         className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                       >
                         <div className="flex items-start justify-between">
@@ -458,12 +440,11 @@ const Page = () => {
                             Edit
                           </button>
                         </div>
-                      </motion.div>
+                      </div>
                     );
                   })}
 
-                  <motion.div
-                    whileHover={{ scale: 1.01 }}
+                  <div
                     className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mt-6"
                   >
                     <div className="flex items-center justify-between">
@@ -481,16 +462,13 @@ const Page = () => {
                         className="data-[state=checked]:bg-primary"
                       />
                     </div>
-                  </motion.div>
+                  </div>
                 </div>
-              </motion.div>
+              </div>
             </TabsContent>
 
             <TabsContent value="account">
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+              <div
                 className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-6 md:p-8 space-y-6"
               >
                 <div>
@@ -504,15 +482,11 @@ const Page = () => {
 
                   {accountSections
                     .filter((s) => s.id === "account_activity" || s.id === "client_policies")
-                    .map((section, index) => {
+                    .map((section) => {
                       const Icon = section.icon;
                       return (
-                        <motion.div
+                        <div
                           key={section.id}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
-                          whileHover={{ scale: 1.01 }}
                           className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                         >
                           <div className="flex items-start justify-between">
@@ -538,7 +512,7 @@ const Page = () => {
                               Edit
                             </button>
                           </div>
-                        </motion.div>
+                        </div>
                       );
                     })}
 
@@ -553,15 +527,11 @@ const Page = () => {
 
                     {accountSections
                       .filter((s) => s.id === "reminders" || s.id === "subscription_renewal")
-                      .map((section, index) => {
+                      .map((section) => {
                         const Icon = section.icon;
                         return (
-                          <motion.div
+                          <div
                             key={section.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
-                            whileHover={{ scale: 1.01 }}
                             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5 mb-4"
                           >
                             <div className="flex items-start justify-between">
@@ -587,7 +557,7 @@ const Page = () => {
                                 Edit
                               </button>
                             </div>
-                          </motion.div>
+                          </div>
                         );
                       })}
                   </div>
@@ -605,9 +575,8 @@ const Page = () => {
                       .map((section) => {
                         const Icon = section.icon;
                         return (
-                          <motion.div
+                          <div
                             key={section.id}
-                            whileHover={{ scale: 1.01 }}
                             className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-5"
                           >
                             <div className="flex items-start justify-between">
@@ -633,17 +602,14 @@ const Page = () => {
                                 Edit
                               </button>
                             </div>
-                          </motion.div>
+                          </div>
                         );
                       })}
                   </div>
                 </div>
 
                 {/* Help Section */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5, duration: 0.5, ease: "easeOut" }}
+                <div
                   className="pt-6 border-t border-gray-200"
                 >
                   <div className="flex items-start gap-3">
@@ -663,8 +629,8 @@ const Page = () => {
                       </a>
                     </div>
                   </div>
-                </motion.div>
-              </motion.div>
+                </div>
+              </div>
             </TabsContent>
           </Tabs>
 
@@ -686,7 +652,7 @@ const Page = () => {
               onUpdate={updatePreference}
             />
           ))}
-        </motion.div>
+        </div>
       </div>
     </div>
   );

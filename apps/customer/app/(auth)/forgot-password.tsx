@@ -34,8 +34,16 @@ export default function ForgotPasswordScreen() {
       Alert.alert("Email required", "Please enter your email address.");
       return;
     }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
+      Alert.alert("Invalid email", "Please enter a valid email address.");
+      return;
+    }
 
-    const base = (APP_URL ?? "").replace(/\/$/, "") || "https://beautonomi.com";
+    const base = (APP_URL ?? "").replace(/\/$/, "");
+    if (!base) {
+      Alert.alert("Configuration Error", "App URL is not configured. Please contact support.");
+      return;
+    }
     const redirectTo = `${base}/auth/callback`;
     setLoading(true);
     try {

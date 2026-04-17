@@ -34,10 +34,14 @@ export function NativePermissionsOnboardingProvider({ children }: { children: Re
       return;
     }
     let cancelled = false;
-    AsyncStorage.getItem(STORAGE_KEY).then((v) => {
-      if (cancelled) return;
-      setGate(v === "1" ? { phase: "complete", fromRestore: true } : { phase: "needs_onboarding" });
-    });
+    AsyncStorage.getItem(STORAGE_KEY)
+      .then((v) => {
+        if (cancelled) return;
+        setGate(v === "1" ? { phase: "complete", fromRestore: true } : { phase: "needs_onboarding" });
+      })
+      .catch(() => {
+        if (!cancelled) setGate({ phase: "needs_onboarding" });
+      });
     return () => {
       cancelled = true;
     };

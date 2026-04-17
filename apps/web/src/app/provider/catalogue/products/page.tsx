@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import { cn } from "@/lib/utils";
+import { displayRetailPriceMin } from "@/lib/provider-portal/product-inventory-metrics";
 
 /** In-stock total: variant sum when has_variants, else product.quantity (see GET /api/provider/products effective_quantity). */
 function productStockQty(p: ProductItem): number {
@@ -34,6 +35,23 @@ function productStockQty(p: ProductItem): number {
     return p.variants.reduce((s, v) => s + (v.quantity || 0), 0);
   }
   return p.quantity ?? 0;
+}
+
+/** List price: parent retail, or minimum variant retail when has_variants (parent row is often 0). */
+function productListRetail(p: ProductItem): { from: boolean; amount: number } {
+  if (p.has_variants && p.variants?.length) {
+    const amount = displayRetailPriceMin({
+      has_variants: true,
+      retail_price: p.retail_price,
+      quantity: p.quantity,
+      product_variants: p.variants.map((v) => ({
+        quantity: v.quantity,
+        retail_price: v.retail_price,
+      })),
+    });
+    return { from: true, amount };
+  }
+  return { from: false, amount: Number(p.retail_price) || 0 };
 }
 
 export default function ProviderProducts() {
@@ -262,8 +280,8 @@ export default function ProviderProducts() {
               <Package className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{totalProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Total Products</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{totalProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Total Products</p>
             </div>
           </div>
         </SectionCard>
@@ -273,8 +291,8 @@ export default function ProviderProducts() {
               <AlertTriangle className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{lowStockProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Low Stock</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{lowStockProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Low Stock</p>
             </div>
           </div>
         </SectionCard>
@@ -284,8 +302,8 @@ export default function ProviderProducts() {
               <Package className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">{outOfStockProducts}</p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Out of Stock</p>
+              <p className="text-base sm:text-lg font-semibold truncate">{outOfStockProducts}</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Out of Stock</p>
             </div>
           </div>
         </SectionCard>
@@ -295,10 +313,10 @@ export default function ProviderProducts() {
               <TrendingUp className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
             </div>
             <div className="min-w-0">
-              <p className="text-xl sm:text-2xl font-semibold truncate">
+              <p className="text-base sm:text-lg font-semibold truncate">
                 <Money amount={totalInventoryValue} />
               </p>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Inventory Value</p>
+              <p className="text-[11px] sm:text-xs text-gray-600 truncate">Inventory Value</p>
             </div>
           </div>
         </SectionCard>
@@ -526,7 +544,17 @@ export default function ProviderProducts() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-medium">
-                        <Money amount={product.retail_price} />
+                        {(() => {
+                          const r = productListRetail(product);
+                          return r.from ? (
+                            <span className="inline-flex flex-wrap items-center justify-end gap-1">
+                              <span className="text-xs font-normal text-muted-foreground">From</span>
+                              <Money amount={r.amount} />
+                            </span>
+                          ) : (
+                            <Money amount={r.amount} />
+                          );
+                        })()}
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>

@@ -11,6 +11,8 @@ Thumbs.db
 
 # --- Node / Monorepo ---
 node_modules/
+# Accidental npm lockfile (monorepo uses pnpm; optional local experiments)
+package-lock.json
 .pnpm-store/
 .turbo/
 .next/

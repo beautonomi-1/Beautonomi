@@ -2,9 +2,9 @@ import React from "react";
 import Image from "next/image";
 import Threading from "./../../../public/images/hair-removal.png";
 import MassageImage from "./../../../public/images/message-icon.svg"; 
-import HairStylingImage from "./../../../public/images/curling-hair.png";
-import NailsImage from "./../../../public/images/nail-art.png";
-import Facial from "./../../../public/images/facial.png";
+import HairStylingImage from "./../../../public/images/curling-hair.svg";
+import NailsImage from "./../../../public/images/nail-art.svg";
+import Facial from "./../../../public/images/facial.svg";
 import Hairdye from "./../../../public/images/hair-dye (1).png";
 import Pedicure from "./../../../public/images/pedicure.png";
 

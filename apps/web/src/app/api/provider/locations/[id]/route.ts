@@ -4,6 +4,7 @@ import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundRespon
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getMapboxService } from "@/lib/mapbox/mapbox";
 import { ensureProviderHasPrimaryLocation } from "@/lib/provider/location-maintenance";
+import { normalizeWorkingHours } from "@/lib/availability/normalize-working-hours";
 
 /**
  * GET /api/provider/locations/[id]
@@ -111,8 +112,9 @@ export async function PATCH(
     if (body.location_type !== undefined && (body.location_type === "salon" || body.location_type === "base")) {
       updateData.location_type = body.location_type;
     }
-    // Map operating_hours to working_hours for database
-    if (body.operating_hours !== undefined) updateData.working_hours = body.operating_hours;
+    if (body.operating_hours !== undefined) {
+      updateData.working_hours = normalizeWorkingHours(body.operating_hours) ?? body.operating_hours;
+    }
 
     const coordsInBody = body.latitude !== undefined || body.longitude !== undefined;
 

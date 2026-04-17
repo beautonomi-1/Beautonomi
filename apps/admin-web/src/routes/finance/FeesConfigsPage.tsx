@@ -84,7 +84,10 @@ function unwrapRelation<T>(v: unknown): T | undefined {
   return v as T;
 }
 
-const DEFAULT_CURRENCY = "ZAR";
+// Use the import.meta.env default currency when available; fall back to ZAR only as last resort.
+// Admin can set default_currency in General Settings — this constant should be replaced by a
+// settings query when `usePlatformSettings()` hook is available.
+const DEFAULT_CURRENCY = (import.meta.env.VITE_DEFAULT_CURRENCY as string | undefined) || "ZAR";
 const ADJUSTMENT_TYPES = ["correction", "waiver", "increase", "reconciliation", "other"] as const;
 const RECON_STATUSES = ["pending", "reviewed", "resolved", "disputed"] as const;
 

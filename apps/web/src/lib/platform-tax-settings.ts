@@ -1,23 +1,23 @@
 /**
  * Platform Tax Settings Helper
- * 
+ *
  * Provides utilities for getting the effective tax rate based on:
- * 1. Provider's tax_rate_percent (if configured)
- * 2. Platform default_tax_rate (from platform_settings)
- * 3. Hardcoded fallback (15%)
+ * 1. Provider's tax_rate_percent (if explicitly set — 0% is valid)
+ * 2. Platform default_tax_rate (from platform_settings.taxes.default_tax_rate)
+ * 3. Hard fallback: 0% (no tax unless explicitly configured — never assume VAT)
  */
 
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-const DEFAULT_TAX_RATE = 15.00; // 15% fallback
+const DEFAULT_TAX_RATE = 0; // Safe fallback: do not apply tax unless explicitly configured
 
 /**
- * Get the effective tax rate for a provider
- * Priority: provider tax_rate_percent → platform default_tax_rate → 15% fallback
- * 
- * @param providerId - Provider ID (optional, if not provided, returns platform default or fallback)
- * @param providerTaxRate - Provider's tax_rate_percent (optional, if provided, skips database lookup)
- * @returns Tax rate as a percentage (e.g., 15.00 for 15%)
+ * Get the effective tax rate for a provider.
+ * Priority: provider tax_rate_percent → platform default_tax_rate → 0% (hard fallback).
+ *
+ * @param providerId - Provider ID (optional, if not provided returns platform default)
+ * @param providerTaxRate - Provider's tax_rate_percent (pass explicitly to skip DB lookup)
+ * @returns Tax rate as a percentage (e.g., 15.00 for 15%, 0 for no tax)
  */
 export async function getEffectiveTaxRate(
   providerId?: string,
@@ -77,7 +77,25 @@ export async function getEffectiveTaxRate(
 export async function getPlatformDefaultTaxRate(): Promise<number> {
   try {
     const supabaseAdmin = await getSupabaseAdmin();
-    
+
+    // F17: tax_rates is the new source of truth. Fall back to platform_settings
+    // for environments where the migration hasn't been applied yet.
+    try {
+      const { data: tr } = await supabaseAdmin
+        .from("tax_rates")
+        .select("rate")
+        .eq("is_platform_default", true)
+        .is("effective_to", null)
+        .order("effective_from", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (tr && tr.rate !== null && tr.rate !== undefined) {
+        return Number(tr.rate);
+      }
+    } catch {
+      // table may not exist in older environments
+    }
+
     const { data: platformSettings } = await supabaseAdmin
       .from("platform_settings")
       .select("settings")
@@ -85,15 +103,14 @@ export async function getPlatformDefaultTaxRate(): Promise<number> {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    
+
     if (platformSettings?.settings) {
       const defaultTaxRate = (platformSettings.settings as { taxes?: { default_tax_rate?: number } })?.taxes?.default_tax_rate;
-      // Return platform default if explicitly set (including 0%)
       if (defaultTaxRate !== undefined && defaultTaxRate !== null) {
         return Number(defaultTaxRate);
       }
     }
-    
+
     return DEFAULT_TAX_RATE;
   } catch (error) {
     console.warn("Failed to get platform default tax rate, using fallback:", error);

@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -21,6 +22,7 @@ function parseUserIds(raw: string): string[] {
 }
 
 export function BroadcastComposePage() {
+  useAdminDocumentTitle("Compose Broadcast");
   const { denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const [channel, setChannel] = useState<Channel>("push");
   const [recipientType, setRecipientType] = useState<RecipientType>("all_users");
@@ -35,9 +37,13 @@ export function BroadcastComposePage() {
     mutationFn: async () => {
       const user_ids = recipientType === "custom" ? parseUserIds(customIds) : undefined;
       if (recipientType === "custom" && (!user_ids || user_ids.length === 0)) {
-        throw new Error("Add at least one user id for a custom audience.");
+        throw new Error("Add at least one user ID for a custom audience.");
+      }
+      if (!message.trim()) {
+        throw new Error("Message / body is required.");
       }
       if (channel === "push") {
+        if (!title.trim()) throw new Error("Push notifications require a title.");
         return adminApi.postJson<{ message?: string }>("/api/admin/broadcast/push", {
           title: title.trim(),
           message: message.trim(),
@@ -53,6 +59,7 @@ export function BroadcastComposePage() {
           user_ids,
         });
       }
+      if (!subject.trim()) throw new Error("Email broadcasts require a subject line.");
       return adminApi.postJson<{ message?: string }>("/api/admin/broadcast/email", {
         subject: subject.trim(),
         message: message.trim(),

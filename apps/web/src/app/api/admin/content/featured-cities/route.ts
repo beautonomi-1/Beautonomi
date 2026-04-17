@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { z } from "zod";
@@ -8,12 +9,19 @@ import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchScopedListMerged } from "@/lib/tenant/scoped-overrides";
 
+function slugify(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 const citySchema = z.object({
   name: z.string().min(1, "City name is required"),
   country: z.string().min(1, "Country is required"),
+  country_code: z.string().optional(),
+  city_code: z.string().optional(),
   image_url: z.string().url().optional().nullable(),
   description: z.string().optional().nullable(),
   is_active: z.boolean().optional().default(true),
+  display_order: z.number().int().min(0).optional().default(0),
 });
 
 const _updateCitySchema = citySchema.partial();
@@ -40,7 +48,7 @@ export async function GET(request: NextRequest) {
       tenantId,
       select: "*",
       dedupeKey: (city) => `${city.country}:${city.name}`.toLowerCase(),
-      orderBy: { column: "name", ascending: true },
+      orderBy: { column: "display_order", ascending: true },
     });
     const cities = scoped.data;
 
@@ -93,11 +101,10 @@ export async function POST(request: NextRequest) {
       return unauthorizedResponse("Authentication required");
     }
 
-    const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
+    const admin = getSupabaseAdmin();
     const body = await request.json();
 
-    // Validate request body
     const validationResult = citySchema.safeParse(body);
     if (!validationResult.success) {
       return NextResponse.json(
@@ -113,32 +120,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { name, country, image_url, description, is_active } = validationResult.data;
+    const { name, country, image_url, description, is_active, display_order } = validationResult.data;
+    const countryCode = validationResult.data.country_code || slugify(country);
+    const cityCode = validationResult.data.city_code || slugify(name);
 
-    const { data: city, error } = await supabase
+    const { data: city, error } = await admin
       .from("featured_cities")
       .insert({
         tenant_id: tenantId,
         name,
         country,
+        country_code: countryCode,
+        city_code: cityCode,
         image_url: image_url || null,
         description: description || null,
         is_active,
+        display_order,
       })
       .select()
       .single();
 
     if (error || !city) {
       console.error("Error creating featured city:", error);
+      const msg = error?.message?.includes("duplicate")
+        ? `A featured city "${name}" already exists for ${country}`
+        : "Failed to create featured city";
       return NextResponse.json(
         {
           data: null,
-          error: {
-            message: "Failed to create featured city",
-            code: "CREATE_ERROR",
-          },
+          error: { message: msg, code: "CREATE_ERROR" },
         },
-        { status: 500 }
+        { status: error?.message?.includes("duplicate") ? 409 : 500 }
       );
     }
 

@@ -12,9 +12,91 @@ import { requireSuperadminPlatform } from "@/lib/admin/require-superadmin-platfo
 import { writeAuditLog } from "@/lib/audit/audit";
 
 const patchSchema = z.object({
-  status: z.enum(["paused", "ended"]),
+  status: z.enum(["paused", "ended", "active"]),
   reason: z.string().max(500).optional(),
 });
+
+/**
+ * GET /api/admin/ads/campaigns/[id]
+ * Superadmin-only. Full campaign detail with event stats.
+ */
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await requireSuperadminPlatform(request);
+    if (!auth.user) return forbiddenResponse("Superadmin only");
+
+    const { id } = await params;
+    const admin = getSupabaseAdmin();
+
+    const { data: campaign, error } = await admin
+      .from("ads_campaigns")
+      .select("*")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!campaign) return notFoundResponse("Campaign not found");
+
+    const c = campaign as Record<string, unknown>;
+
+    const { data: provider } = await admin
+      .from("providers")
+      .select("id, business_name, owner_name, email, phone, slug, avatar_url")
+      .eq("id", c.provider_id as string)
+      .maybeSingle();
+
+    const now = new Date();
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000).toISOString();
+
+    const { data: events } = await admin
+      .from("ads_events")
+      .select("event_type")
+      .eq("campaign_id", id)
+      .gte("created_at", thirtyDaysAgo);
+
+    const eventCounts = { impressions: 0, clicks: 0, books: 0 };
+    for (const e of (events ?? []) as { event_type: string }[]) {
+      if (e.event_type === "impression") eventCounts.impressions++;
+      else if (e.event_type === "click") eventCounts.clicks++;
+      else if (e.event_type === "book") eventCounts.books++;
+    }
+
+    /**
+     * §Release-audit 2026-04: previously selected `payment_status`, but the
+     * `ads_budget_orders` schema (migration 262) defines the column as
+     * `status` with values `pending|paid|failed|refunded`. The mismatch
+     * meant Postgres would error and the entire admin campaign detail
+     * payload could fail or silently return without budget orders. We
+     * select `status` and alias it to `payment_status` to keep the existing
+     * UI contract intact.
+     */
+    const { data: budgetOrdersRaw } = await admin
+      .from("ads_budget_orders")
+      .select("id, amount, currency, status, paystack_reference, paid_at, created_at")
+      .eq("campaign_id", id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    const budgetOrders = (budgetOrdersRaw ?? []).map((o) => ({
+      id: (o as { id?: string }).id,
+      amount: (o as { amount?: number }).amount,
+      currency: (o as { currency?: string }).currency,
+      status: (o as { status?: string }).status,
+      payment_status: (o as { status?: string }).status,
+      paystack_reference: (o as { paystack_reference?: string }).paystack_reference,
+      paid_at: (o as { paid_at?: string | null }).paid_at,
+      created_at: (o as { created_at?: string }).created_at,
+    }));
+
+    return successResponse({
+      ...c,
+      provider: provider ?? null,
+      events_30d: eventCounts,
+      budget_orders: budgetOrders,
+    });
+  } catch (error) {
+    return handleApiError(error as Error, "Failed to fetch campaign");
+  }
+}
 
 /**
  * PATCH /api/admin/ads/campaigns/[id]
@@ -46,11 +128,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     }
 
     const prev = String((existing as { status: string }).status);
-    if (prev === "ended") {
+    if (prev === "ended" && status !== "active") {
       return errorResponse("Campaign is already ended", "INVALID_STATE", 400);
     }
     if (status === "paused" && prev === "paused") {
       return errorResponse("Campaign is already paused", "INVALID_STATE", 400);
+    }
+    if (status === "active" && prev === "ended") {
+      return errorResponse("Cannot resume an ended campaign. Ask the provider to create a new one.", "INVALID_STATE", 400);
+    }
+    if (status === "active" && prev !== "paused" && prev !== "draft") {
+      return errorResponse(`Cannot set status to active from ${prev}`, "INVALID_STATE", 400);
     }
 
     const { data: updated, error: updErr } = await admin

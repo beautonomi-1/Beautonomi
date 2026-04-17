@@ -519,9 +519,9 @@ export default function BookingProducts({
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between mt-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">{formatCurrency(currentPrice, product.currency)}</p>
+                  <div className="flex items-center justify-between gap-2 mt-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 whitespace-nowrap">{formatCurrency(currentPrice, product.currency)}</p>
                       {product.track_stock_quantity && (
                         <p className="text-xs text-gray-500 mt-1">
                           {stock > 0 ? `${stock} in stock` : "Out of stock"}
@@ -538,7 +538,7 @@ export default function BookingProducts({
                         Select option
                       </Button>
                     ) : isSelected ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-shrink-0 items-center gap-1.5 sm:gap-2">
                         <Button
                           variant="outline"
                           size="sm"

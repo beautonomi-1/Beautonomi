@@ -3,6 +3,7 @@ import { getSupabaseServer } from "@/lib/supabase/server";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 export async function GET(request: NextRequest) {
   try {
@@ -91,6 +92,19 @@ export async function POST(request: NextRequest) {
       version: 1,
       message_template,
       created_by: user.id,
+    });
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.sms_template.create",
+      entity_type: "sms_template",
+      entity_id: data.id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name },
+      ...extractRequestMeta(request),
     });
 
     return NextResponse.json({ template: data });

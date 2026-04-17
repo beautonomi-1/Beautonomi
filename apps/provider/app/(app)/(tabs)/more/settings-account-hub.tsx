@@ -60,9 +60,8 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Locations", description: "Business locations", href: "/provider/settings/locations", mobileRoute: "/(app)/(tabs)/more/locations" },
       { title: "Operating hours", description: "Opening and closing times", href: "/provider/settings/operating-hours", mobileRoute: "/(app)/(tabs)/more/settings-operating-hours" },
       { title: "Distance settings", description: "House call limits", href: "/provider/settings/distance", mobileRoute: "/(app)/(tabs)/more/settings/distance-settings" },
-      { title: "Service area", description: "Service radius or zones", href: "/provider/settings/service-area", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
+      { title: "Service zones", description: "Service radius and at-home booking zones", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
       { title: "Identity verification", description: "KYC for payouts", href: "/provider/settings/verification", mobileRoute: "/(app)/(tabs)/more/settings/verification" },
-      { title: "Service zones", description: "At-home booking zones", href: "/provider/settings/service-zones", mobileRoute: "/(app)/(tabs)/more/settings/service-zones" },
       { title: "Online booking", description: "Online booking settings", href: "/provider/settings/appointment-activity/online-booking", mobileRoute: "/(app)/(tabs)/more/settings/online-booking" },
       { title: "Note templates", description: "Reusable note templates", href: "/provider/settings/note-templates", mobileRoute: "/(app)/(tabs)/more/settings/note-templates" },
       { title: "Resources", description: "Resources and equipment", href: "/provider/settings/appointment-activity/resources", mobileRoute: "/(app)/(tabs)/more/settings/resource-groups" },
@@ -93,7 +92,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Service menu and add-ons",
     items: [
       { title: "Services menu", description: "Service offerings", href: "/provider/settings/services/menu", mobileRoute: "/(app)/(tabs)/more/catalogue" },
-      { title: "Packages", description: "Bundles of services and products", href: "/provider/settings/services/packages", mobileRoute: "/(app)/(tabs)/more/packages-list" },
+      { title: "Packages", description: "Bundles of services and products", href: "/provider/packages", mobileRoute: "/(app)/(tabs)/more/packages-list" },
       { title: "Service add-ons", description: "Add-ons and upgrades", href: "/provider/settings/addons", mobileRoute: "/(app)/(tabs)/more/settings/service-addons" },
       { title: "Memberships", description: "Membership plans", href: "/provider/settings/services/memberships", mobileRoute: "/(app)/(tabs)/more/membership-plans" },
     ],
@@ -106,7 +105,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Payout center", description: "Balance, statements and payouts", href: "/provider/payouts", mobileRoute: "/(app)/(tabs)/more/payouts" },
       { title: "Payout accounts", description: "Bank accounts for payouts", href: "/provider/settings/payout-accounts", mobileRoute: "/(app)/(tabs)/more/settings/payout-accounts" },
       { title: "Yoco integration", description: "Yoco payment devices", href: "/provider/settings/sales/yoco-integration", mobileRoute: "/(app)/(tabs)/more/settings/yoco-devices" },
-      { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
+      { title: "Receipt sequencing", description: "Receipt numbering", href: "/provider/settings/sales/receipt-sequencing", mobileRoute: "/(app)/(tabs)/more/settings/receipt-sequencing" },
       { title: "Receipt template", description: "Receipt design", href: "/provider/settings/sales/receipt-template", mobileRoute: "/(app)/(tabs)/more/settings/receipt-template" },
       { title: "Taxes", description: "Tax rates", href: "/provider/settings/sales/taxes", mobileRoute: "/(app)/(tabs)/more/settings/tax-configuration" },
       { title: "Travel fees", description: "At-home travel fees", href: "/provider/settings/sales/travel-fees", mobileRoute: "/(app)/(tabs)/more/settings/travel-fees" },
@@ -135,6 +134,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     title: "Marketing",
     description: "Integrations and ads",
     items: [
+      { title: "AI studio", description: "Profile and content suggestions (plan-based)", href: "/provider/settings/ai", mobileRoute: "/(app)/(tabs)/more/ai-studio" },
       { title: "Paid ads", description: "Boosted listings and campaigns", href: "/provider/settings/ads", mobileRoute: "/(app)/(tabs)/more/settings/ads" },
       { title: "Email integration", description: "SendGrid, Mailchimp", href: "/provider/settings/integrations/email", mobileRoute: "/(app)/(tabs)/more/settings/email-integration" },
       { title: "Twilio integration", description: "SMS and WhatsApp", href: "/provider/settings/integrations/twilio", mobileRoute: "/(app)/(tabs)/more/settings/twilio-integration" },
@@ -146,7 +146,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
     description: "Account and notifications",
     items: [
       { title: "My profile", description: "Photo, personal info, address & plan", href: "/provider/account/profile", mobileRoute: "/(app)/(tabs)/more/profile" },
-      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/notification-preferences" },
+      { title: "Notification preferences", description: "How you receive notifications", href: "/provider/settings/notifications", mobileRoute: "/(app)/(tabs)/more/settings/notification-preferences" },
       { title: "My tickets", description: "View and reply to your support tickets", href: "/help/my-tickets", mobileRoute: "/(app)/(tabs)/more/support-tickets" },
       { title: "Contact support", description: "Submit a support ticket or get help", href: "/help/submit-ticket", mobileRoute: "/(app)/(tabs)/more/contact-support" },
       { title: "Change password", description: "Update your account password", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-change-password" },
@@ -192,6 +192,15 @@ export default function SettingsAccountHubScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (item.action === "signOut") {
         handleSignOut();
+        return;
+      }
+      // §Provider-launch (audit 2026-04): the dynamically-injected
+      // "Upgrade to Salon" row inside the `appointment-activity` category
+      // (isUpgrade=true) has no mobileRoute, which previously made the
+      // tap a no-op. Route upgrade rows to the native upgrade screen so
+      // freelancers can actually reach it from either entry point.
+      if (item.isUpgrade) {
+        router.push("/(app)/(tabs)/more/upgrade-info" as never);
         return;
       }
       if (item.mobileRoute) {

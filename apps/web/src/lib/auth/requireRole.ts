@@ -5,6 +5,7 @@
  */
 
 import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import type { UserRole } from "@/types/beautonomi";
 import { NextResponse } from "next/server";
 
@@ -125,15 +126,45 @@ export async function requireRole(
       throw new Error('User role not assigned. Please contact support.');
     }
 
-    if (!allowedRoles.includes(userRole)) {
-      console.error(`User ${authUser.id} has role '${userRole}' but required one of: ${allowedRoles.join(', ')}`);
+    // Align with requireRoleInApi Bearer path: business owner may still have users.role = customer
+    // (OAuth / web cookie session before /api/me/role persists provider_owner).
+    let effectiveRole = userRole as UserRole;
+    if (
+      effectiveRole === "customer" &&
+      (allowedRoles.includes("provider_owner") || allowedRoles.includes("provider_staff"))
+    ) {
+      const admin = getSupabaseAdmin();
+      const { data: ownsProvider } = await admin
+        .from("providers")
+        .select("id")
+        .eq("user_id", u.id)
+        .limit(1)
+        .maybeSingle();
+      if (ownsProvider) {
+        effectiveRole = "provider_owner";
+        await admin.from("users").update({ role: "provider_owner" }).eq("id", u.id);
+      }
+    }
+
+    const routeAcceptsProviderOnboarding =
+      effectiveRole === "provider_onboarding" &&
+      allowedRoles.some((r) =>
+        ["customer", "provider_owner", "provider_staff"].includes(r as string)
+      );
+    const roleAllowed =
+      allowedRoles.includes(effectiveRole) || routeAcceptsProviderOnboarding;
+
+    if (!roleAllowed) {
+      console.error(
+        `User ${authUser.id} has role '${effectiveRole}' but required one of: ${allowedRoles.join(", ")}`
+      );
       return null;
     }
 
     return {
       user: {
         id: u.id,
-        role: userRole,
+        role: effectiveRole,
         email: authUser.email,
         user_metadata: authUser.user_metadata as Record<string, unknown> | undefined,
         full_name: u.full_name,

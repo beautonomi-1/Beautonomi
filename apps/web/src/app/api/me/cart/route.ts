@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         product:products (
           id, name, retail_price, image_urls, quantity, is_active, retail_sales_enabled,
-          brand, category, provider_id, has_variants
+          brand, category, provider_id, has_variants, tax_rate
         ),
         product_variant:product_variants (
           id, retail_price, quantity, option_values

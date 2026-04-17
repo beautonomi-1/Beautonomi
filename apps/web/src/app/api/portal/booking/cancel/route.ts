@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
       .select(
-        "id, provider_id, location_type, scheduled_at, created_at, status, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, currency"
+        "id, provider_id, location_type, scheduled_at, created_at, status, booking_number, subtotal, discount_amount, tax_amount, service_fee_amount, travel_fee, tip_amount, total_amount, total_paid, wallet_amount, gift_card_amount, currency"
       )
       .eq("id", validation.bookingId)
       .single();
@@ -139,7 +139,14 @@ export async function POST(request: NextRequest) {
     const totalPaid = roundCurrency2(
       Math.max(0, Number((booking as { total_paid?: number | null }).total_paid ?? 0))
     );
-    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, totalPaid));
+    const walletCollected = roundCurrency2(
+      Math.max(0, Number((booking as { wallet_amount?: number | null }).wallet_amount ?? 0))
+    );
+    const giftCardCollected = roundCurrency2(
+      Math.max(0, Number((booking as { gift_card_amount?: number | null }).gift_card_amount ?? 0))
+    );
+    const effectiveCollectedAmount = roundCurrency2(totalPaid + walletCollected + giftCardCollected);
+    const walletRefundAmount = roundCurrency2(Math.min(policyRefundAmount, effectiveCollectedAmount));
     const cancellationFeeApplied = roundCurrency2(Math.max(0, bookingTotal - policyRefundAmount));
     const newTotalAmount = roundCurrency2(
       Number(bFin.subtotal ?? 0) -
@@ -189,10 +196,45 @@ export async function POST(request: NextRequest) {
           bookingTotal,
           cancelCurrency,
           policy,
-          { isLateCancellation: isLate, maxWalletCredit: totalPaid }
+          { isLateCancellation: isLate, maxWalletCredit: effectiveCollectedAmount }
         );
       } catch (refundErr) {
         console.error("Error processing refund during portal cancellation:", refundErr);
+      }
+    }
+
+    // Record cancellation fee in the finance ledger (provider-retained income)
+    if (cancellationFeeApplied > 0) {
+      try {
+        const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
+        const cancelFeeTenantId = await resolveTenantIdForFinanceLedger(adminSupabase, {
+          tenant_id: provForCurrency?.tenant_id ?? null,
+          provider_id: booking.provider_id,
+        });
+        const bookingRef = (booking as { booking_number?: string }).booking_number || validation.bookingId.slice(0, 8);
+        // Idempotent: only insert if no existing cancellation_fee row for this booking
+        const { data: existingRow } = await adminSupabase
+          .from("finance_transactions")
+          .select("id")
+          .eq("booking_id", validation.bookingId)
+          .eq("transaction_type", "cancellation_fee")
+          .maybeSingle();
+        if (!existingRow) {
+          await adminSupabase.from("finance_transactions").insert({
+            tenant_id: cancelFeeTenantId,
+            booking_id: validation.bookingId,
+            provider_id: booking.provider_id,
+            transaction_type: "cancellation_fee",
+            amount: cancellationFeeApplied,
+            fees: 0,
+            commission: 0,
+            net: cancellationFeeApplied,
+            description: `Cancellation fee for booking ${bookingRef} — provider-retained (portal cancellation)`,
+            created_at: new Date().toISOString(),
+          });
+        }
+      } catch (feeErr) {
+        console.error("[portal cancel] cancellation_fee ledger insert failed:", feeErr);
       }
     }
 
@@ -209,6 +251,13 @@ export async function POST(request: NextRequest) {
       cancelledBy: "customer",
       refundInfo,
     });
+
+    try {
+      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+      await matchWaitlistOnCancellation(supabase, validation.bookingId);
+    } catch (waitlistErr) {
+      console.error("[portal cancel] waitlist matching failed:", waitlistErr);
+    }
 
     return successResponse({
       booking: updatedBooking,

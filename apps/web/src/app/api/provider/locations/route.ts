@@ -9,6 +9,7 @@ import {
   linkActiveStaffToNewLocation,
   setPrimaryLocation,
 } from "@/lib/provider/location-maintenance";
+import { normalizeWorkingHours } from "@/lib/availability/normalize-working-hours";
 
 interface Location {
   id: string;
@@ -181,8 +182,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Map operating_hours to working_hours for database
-    const workingHours = body.operating_hours || null;
+    const workingHours = normalizeWorkingHours(body.operating_hours) ?? (body.operating_hours || null);
 
     const locationTypeValue =
       locationType === "base" || locationType === "salon" ? locationType : "salon";

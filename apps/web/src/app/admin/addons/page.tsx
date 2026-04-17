@@ -84,6 +84,7 @@ export default function AdminAddons() {
       setServices(response.data || []);
     } catch (error) {
       console.error("Error loading services:", error);
+      toast.error("Failed to load services list");
     }
   };
 

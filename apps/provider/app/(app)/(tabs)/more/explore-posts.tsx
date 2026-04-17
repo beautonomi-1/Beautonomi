@@ -92,7 +92,7 @@ export default function ExplorePostsScreen() {
   const commentsPath = viewPost ? `/api/explore/posts/${viewPost.id}/comments` : "";
   const { data: commentsResp, loading: commentsLoading, refresh: refreshComments } = useApi<{
     data: ExploreComment[];
-  }>(commentsPath || "/api/explore/posts/comments", { enabled: !!viewPost && !editMode });
+  }>(commentsPath || "/api/explore/posts/_/comments", { enabled: !!viewPost && !!commentsPath && !editMode });
   const { execute: postComment, loading: postingComment } = useApiMutation<ExploreComment>("post");
 
   const [commentBody, setCommentBody] = useState("");
@@ -102,8 +102,11 @@ export default function ExplorePostsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   useEffect(() => {

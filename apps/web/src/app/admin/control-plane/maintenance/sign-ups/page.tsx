@@ -15,7 +15,6 @@ import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
 import { ArrowLeft, Download } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
-import type { MaintenanceScope } from "@/lib/maintenance-types";
 import { MAINTENANCE_SCOPES } from "@/lib/maintenance-types";
 
 interface SignUpRow {

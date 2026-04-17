@@ -60,13 +60,72 @@ const createHoldSchema = z.object({
     .optional()
     .nullable(),
   guest_fingerprint_hash: z.string().optional().nullable(),
+  previous_hold_id: z.string().uuid().optional().nullable(),
   resource_ids: z.array(z.string().uuid()).optional(),
   /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
   package_id: z.string().uuid().optional().nullable(),
   primary_package_id: z.string().uuid().optional().nullable(),
 });
 
-const HOLD_EXPIRY_MINUTES = 7;
+const HOLD_EXPIRY_MINUTES = 20;
+
+type HoldOverlapScopeArgs = {
+  supabase: SupabaseClient;
+  providerId: string;
+  staffId: string | null;
+  startAtIso: string;
+  endAtIso: string;
+  nowIso: string;
+};
+
+async function expireStaleOverlappingHoldsForScope(args: HoldOverlapScopeArgs): Promise<void> {
+  // Expire ALL past-due holds for this provider in the overlapping time range,
+  // regardless of staff_id. This prevents stale holds from a different staff
+  // resolution from blocking the current request.
+  const { error } = await args.supabase
+    .from("booking_holds")
+    .update({ hold_status: "expired" })
+    .eq("provider_id", args.providerId)
+    .eq("hold_status", "active")
+    .lte("expires_at", args.nowIso)
+    .lt("start_at", args.endAtIso)
+    .gt("end_at", args.startAtIso);
+  if (error) {
+    console.warn("[booking-holds] stale hold expiry failed (inline cleanup):", error.message);
+  }
+}
+
+type HoldOverlapResult = { id: string; guest_fingerprint_hash: string | null }[];
+
+async function findActiveHoldOverlapsForScope(args: HoldOverlapScopeArgs): Promise<HoldOverlapResult> {
+  const query = args.staffId
+    ? args.supabase
+        .from("booking_holds")
+        .select("id, guest_fingerprint_hash")
+        .eq("provider_id", args.providerId)
+        .eq("staff_id", args.staffId)
+        .eq("hold_status", "active")
+        .gt("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso)
+        .limit(5)
+    : args.supabase
+        .from("booking_holds")
+        .select("id, guest_fingerprint_hash")
+        .eq("provider_id", args.providerId)
+        .is("staff_id", null)
+        .eq("hold_status", "active")
+        .gt("expires_at", args.nowIso)
+        .lt("start_at", args.endAtIso)
+        .gt("end_at", args.startAtIso)
+        .limit(5);
+  const { data, error } = await query;
+  if (error) {
+    console.error("[booking-holds] overlap query failed:", error.message);
+    return [];
+  }
+  return (data as HoldOverlapResult) ?? [];
+}
 
 export async function POST(request: NextRequest) {
   return withRouteMetrics(
@@ -97,6 +156,7 @@ export async function POST(request: NextRequest) {
           location_id,
           address,
           guest_fingerprint_hash,
+          previous_hold_id,
           resource_ids,
           package_id: bodyPackageId,
           primary_package_id: bodyPrimaryPackageId,
@@ -164,24 +224,24 @@ export async function POST(request: NextRequest) {
           });
         }
 
-        // Max 1 active, non-expired hold per fingerprint
-        if (guest_fingerprint_hash) {
-          const { data: activeHold } = await supabase
+        // Release a specific previous hold if the client tells us about it
+        if (previous_hold_id) {
+          await supabase
             .from("booking_holds")
-            .select("id")
+            .update({ hold_status: "cancelled" })
+            .eq("id", previous_hold_id)
+            .eq("hold_status", "active");
+        }
+
+        // Cancel any existing active holds from the same client so a retry
+        // doesn't collide with the user's own stale hold.
+        if (guest_fingerprint_hash) {
+          await supabase
+            .from("booking_holds")
+            .update({ hold_status: "cancelled" })
             .eq("guest_fingerprint_hash", guest_fingerprint_hash)
             .eq("hold_status", "active")
-            .gt("expires_at", nowIso)
-            .limit(1)
-            .maybeSingle();
-          if (activeHold) {
-            return handleApiError(
-              new Error("You already have an active booking hold. Please complete or cancel it first."),
-              "You already have an active booking hold. Please complete or cancel it first.",
-              "ACTIVE_HOLD_EXISTS",
-              429
-            );
-          }
+            .eq("provider_id", provider_id);
         }
 
         // Load provider
@@ -282,6 +342,43 @@ export async function POST(request: NextRequest) {
         const rawStaffKey = bodyStaffId ?? services[0]?.staff_id ?? null;
         const { dbStaffId: holdStaffIdForDb, syntheticToken: syntheticStaffPublicId } =
           normalizePublicStaffIdForDatabase(rawStaffKey ?? undefined);
+
+        await expireStaleOverlappingHoldsForScope({
+          supabase,
+          providerId: provider_id,
+          staffId: holdStaffIdForDb,
+          startAtIso: startDate.toISOString(),
+          endAtIso: endDate.toISOString(),
+          nowIso,
+        });
+
+        const scopeOverlaps = await findActiveHoldOverlapsForScope({
+          supabase,
+          providerId: provider_id,
+          staffId: holdStaffIdForDb,
+          startAtIso: startDate.toISOString(),
+          endAtIso: endDate.toISOString(),
+          nowIso,
+        });
+        if (scopeOverlaps.length > 0) {
+          // If all overlapping holds belong to this same guest, cancel them and proceed
+          if (
+            guest_fingerprint_hash &&
+            scopeOverlaps.every((h) => h.guest_fingerprint_hash === guest_fingerprint_hash)
+          ) {
+            await supabase
+              .from("booking_holds")
+              .update({ hold_status: "cancelled" })
+              .in("id", scopeOverlaps.map((h) => h.id));
+          } else {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
+        }
 
         // Build booking_services_snapshot
         let cursor = new Date(startDate);
@@ -403,7 +500,9 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff
+        // Overlapping active holds: any snapshot staff line, or provider "anyone" holds when no specific staff.
+        // First expire any stale (past-due) holds for the resolved staff scope — the earlier
+        // broad expiry targeted holdStaffIdForDb which may differ after "anyone" staff resolution.
         const distinctSnapshotStaffIds = [
           ...new Set(
             bookingServicesSnapshot
@@ -412,54 +511,71 @@ export async function POST(request: NextRequest) {
           ),
         ];
 
-        let overlappingHolds: { id: string }[] | null = null;
+        if (distinctSnapshotStaffIds.length > 0) {
+          await supabase
+            .from("booking_holds")
+            .update({ hold_status: "expired" })
+            .eq("provider_id", provider_id)
+            .eq("hold_status", "active")
+            .lte("expires_at", nowIso)
+            .lt("start_at", endDate.toISOString())
+            .gt("end_at", startDate.toISOString())
+            .in("staff_id", distinctSnapshotStaffIds);
+        }
+
+        let overlappingHolds: { id: string; guest_fingerprint_hash: string | null }[] | null = null;
         if (distinctSnapshotStaffIds.length > 0) {
           const { data } = await supabase
             .from("booking_holds")
-            .select("id")
+            .select("id, guest_fingerprint_hash")
+            .eq("provider_id", provider_id)
             .eq("hold_status", "active")
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
             .in("staff_id", distinctSnapshotStaffIds)
-            .limit(1);
+            .limit(5);
           overlappingHolds = data;
         } else {
           const { data: anyoneOverlaps } = await supabase
             .from("booking_holds")
-            .select("id")
+            .select("id, guest_fingerprint_hash")
             .eq("hold_status", "active")
             .gt("expires_at", nowIso)
             .lt("start_at", endDate.toISOString())
             .gt("end_at", startDate.toISOString())
             .eq("provider_id", provider_id)
             .is("staff_id", null)
-            .limit(1);
+            .limit(5);
           overlappingHolds = anyoneOverlaps;
         }
 
         if (overlappingHolds && overlappingHolds.length > 0) {
-          return handleApiError(
-            new Error("This time slot is no longer available. Please select another time."),
-            "This time slot is no longer available. Please select another time.",
-            "CONFLICT",
-            409
-          );
+          // If ALL overlapping holds belong to this same guest, cancel them and proceed
+          if (
+            guest_fingerprint_hash &&
+            overlappingHolds.every((h) => h.guest_fingerprint_hash === guest_fingerprint_hash)
+          ) {
+            await supabase
+              .from("booking_holds")
+              .update({ hold_status: "cancelled" })
+              .in("id", overlappingHolds.map((h) => h.id));
+          } else {
+            return handleApiError(
+              new Error("This time slot is no longer available. Please select another time."),
+              "This time slot is no longer available. Please select another time.",
+              "CONFLICT",
+              409
+            );
+          }
         }
 
-        // Location validation
+        // Location validation — at_home address is optional for holds (collected
+        // later in the flow); travel fee is simply skipped when absent.
         if (location_type === "at_salon" && !location_id) {
           return handleApiError(
             new Error("location_id is required for at_salon bookings"),
             "location_id is required for at_salon",
-            "VALIDATION_ERROR",
-            400
-          );
-        }
-        if (location_type === "at_home" && !address) {
-          return handleApiError(
-            new Error("address is required for at_home bookings"),
-            "address is required for at_home",
             "VALIDATION_ERROR",
             400
           );

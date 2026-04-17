@@ -22,8 +22,9 @@ interface DashboardStats {
   total_providers: number;
   total_bookings: number;
   /**
-   * Platform net rollup: booking take + subscription net + ads net (same formula as GET /api/admin/finance/summary `total_platform_take_net`).
-   * Ledger totals use a rolling window (see `metrics_notes.ledger_window_months` when present).
+   * Platform revenue rollup aligned with GET /api/admin/finance/summary `platform_revenue.total`
+   * (booking take + subs + ads + service fees + paid wallet topups).
+   * Ledger-backed lines use a rolling window (see `metrics_notes.ledger_window_months` when present).
    */
   total_revenue: number;
   pending_approvals: number;

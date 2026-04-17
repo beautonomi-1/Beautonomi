@@ -154,7 +154,7 @@ export async function GET(request: NextRequest) {
       }
 
       const tipsEligible = staffRow.tips_enabled !== false;
-      const commissionEligible = staffRow.commission_enabled === true;
+      const commissionEligible = staffRow.commission_enabled !== false;
 
       results.push({
         team_member_id: staffRow.id,

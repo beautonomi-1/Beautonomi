@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
 import { Gift, Copy } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
@@ -75,36 +74,23 @@ function GiftCardsSection() {
 
   if (isLoading) {
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-      >
+      <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
         <LoadingTimeout loadingMessage="Loading gift cards..." />
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3 }}
-      className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
-    >
+    <div className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6">
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-xl font-semibold tracking-tighter text-gray-900">
           Beautonomi gift credit
         </h2>
-        <Link href="/gift-card">
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
-          >
-            Buy gift card
-          </motion.button>
+        <Link
+          href="/gift-card"
+          className="inline-block bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl text-center"
+        >
+          Buy gift card
         </Link>
       </div>
 
@@ -114,14 +100,11 @@ function GiftCardsSection() {
           <p className="text-base font-light mb-4 text-gray-600">
             You don&apos;t have any gift cards yet.
           </p>
-          <Link href="/gift-card/purchase">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
-            >
-              Purchase your first gift card
-            </motion.button>
+          <Link
+            href="/gift-card/purchase"
+            className="inline-block bg-gradient-to-r from-primary to-primary-hover hover:from-primary-hover hover:to-primary text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl text-center"
+          >
+            Purchase your first gift card
           </Link>
         </div>
       ) : (
@@ -161,7 +144,7 @@ function GiftCardsSection() {
           ))}
         </div>
       )}
-    </motion.div>
+    </div>
   );
 }
 

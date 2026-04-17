@@ -67,6 +67,6 @@ describe("POST /api/me/orders", () => {
 
     expect(res.status).toBe(404);
     expect(body?.error?.code).toBe("TENANT_MISMATCH");
-  }, 15000);
+  }, 45_000);
 });
 

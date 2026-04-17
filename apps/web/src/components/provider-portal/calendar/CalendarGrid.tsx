@@ -11,6 +11,7 @@ import {
 import { useCalendarPreferences } from "@/lib/settings/calendarPreferences";
 import { DragGhostOverlay } from "@/components/provider-portal/DragDropCalendar";
 import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } from "@/lib/provider-portal/types";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 import { HOUR_HEIGHT, TIME_COLUMN_WIDTH, UNASSIGNED_ID } from "./constants";
 import {
@@ -76,6 +77,8 @@ function CalendarGridComponent({
 
   const { preferences } = useCalendarPreferences();
   const useMangomintMode = isMangomintModeEnabled();
+  const { format: providerFormatMoney } = useProviderMoneyFormat();
+  const stableFormatPrice = useCallback((n: number) => providerFormatMoney(n), [providerFormatMoney]);
 
   const timeSlots = useMemo(() => generateTimeSlots(startHour, endHour), [startHour, endHour]);
   const isMultiStaffView = view === "day";
@@ -276,6 +279,7 @@ function CalendarGridComponent({
     appointments,
     selectedDate,
     startHour,
+    endHour,
     showCurrentTime,
     currentTimeTop,
     firstAvailableTop,
@@ -307,9 +311,9 @@ function CalendarGridComponent({
     };
   }, [isMultiStaffView, displayMembers.length, selectedDate.getTime(), view]);
 
-  // Preferences-derived values
-  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
-  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
+  // Preferences-derived values — only used for visual emphasis, not for "Closed" labeling
+  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 0) : 0;
+  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 23) : 23;
   const highContrast = useMangomintMode && !!preferences.highContrast;
 
   // Pre-compute staff header booking counts
@@ -399,6 +403,7 @@ function CalendarGridComponent({
                     <StaffColumn
                       key={member.id}
                       member={member}
+                      teamMembers={teamMembers}
                       date={selectedDate}
                       appointments={getAppointmentsForStaff(member.id, selectedDate)}
                       blocks={getBlocksForStaff(member.id, selectedDate)}
@@ -415,6 +420,7 @@ function CalendarGridComponent({
                       onAppointmentClick={handleAppointmentClick}
                       onTimeSlotClick={handleTimeSlotClick}
                       onTimeBlockClick={onTimeBlockClick}
+                      formatPrice={stableFormatPrice}
                     />
                   ))
                 : dates.map((date, idx) => (
@@ -438,6 +444,7 @@ function CalendarGridComponent({
                       onAppointmentClick={handleAppointmentClick}
                       onTimeSlotClick={handleTimeSlotClick}
                       onTimeBlockClick={onTimeBlockClick}
+                      formatPrice={stableFormatPrice}
                     />
                   ))}
               {showCurrentTime && <CurrentTimeIndicator ref={currentTimeRef} top={currentTimeTop} />}
@@ -477,6 +484,13 @@ export const CalendarGrid = memo(CalendarGridComponent, (prev, next) => {
   if (prev.view !== next.view) return false;
   if (prev.startHour !== next.startHour) return false;
   if (prev.endHour !== next.endHour) return false;
+  if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+
+  if (prev.teamMembers !== next.teamMembers) {
+    const prevWh = prev.teamMembers.map((m) => JSON.stringify(m.working_hours ?? {})).join("|");
+    const nextWh = next.teamMembers.map((m) => JSON.stringify(m.working_hours ?? {})).join("|");
+    if (prevWh !== nextWh) return false;
+  }
 
   const prevTb = (prev.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");
   const nextTb = (next.timeBlocks ?? []).map((t) => `${t.id}-${t.date}-${t.start_time}-${t.team_member_id ?? ""}`).join(",");

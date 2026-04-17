@@ -35,7 +35,6 @@ import { InlineSearch } from "@/components/InlineSearch";
 import { FadeIn } from "@/components/FadeIn";
 import type { PublicProviderCard } from "@/types/api";
 import {
-  TAB_CONTENT_PADDING_BOTTOM,
   HOME_SECTION_MARGIN_BOTTOM,
   HOME_SECTION_HEADER_MARGIN_BOTTOM,
   HOME_SECTION_HEADER_MARGIN_TOP,
@@ -43,6 +42,7 @@ import {
 } from "@/constants/layout";
 import { Colors } from "@/constants/colors";
 import { HomeSkeleton } from "@/components/Skeleton";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 
 const GAP = 16;
 
@@ -144,15 +144,6 @@ const styles = StyleSheet.create({
   navTabExplore: {},
   navTabLabel: { marginTop: 3, fontSize: 11 },
   navTabLabelExplore: { marginTop: 3, fontSize: 11 },
-  navNewBadge: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: "center",
-    marginTop: 2,
-  },
-  navNewBadgeText: { fontSize: 8, color: Colors.white, fontWeight: "700" },
   navCenterSpacer: {
     flex: 1,
     minWidth: 0,
@@ -194,7 +185,6 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.white,
   },
   mainScrollContent: {
-    paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
     paddingTop: 16,
   },
   sectionHeaderRow: {
@@ -426,6 +416,7 @@ export default function HomeScreen() {
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
   const { cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const [activeCategory, setActiveCategory] = useState("All");
   const [saveAddressModalVisible, setSaveAddressModalVisible] = useState(false);
   const [pendingAddressSelection, setPendingAddressSelection] = useState<AddressPickerSelection | null>(null);
@@ -441,15 +432,17 @@ export default function HomeScreen() {
   const effectiveLat = selectedAddress?.latitude ?? coords?.latitude;
   const effectiveLng = selectedAddress?.longitude ?? coords?.longitude;
 
-  const searchContextCategorySlug =
+  const activeCategorySlug =
     activeCategory === "All"
       ? undefined
-      : globalCategories.find((c) => c.name === activeCategory)?.slug;
+      : globalCategories.find((c) => c.name === activeCategory)?.slug ?? activeCategory.toLowerCase();
+
+  const searchContextCategorySlug = activeCategorySlug;
 
   const { data, loading, refreshing, error, refetch } = useHomeData(
     effectiveLat,
     effectiveLng,
-    activeCategory
+    activeCategorySlug
   );
 
   const handleCategoryPress = useCallback((cat: string) => {
@@ -603,9 +596,6 @@ export default function HomeScreen() {
               <Text style={[styles.navTabLabelExplore, { color: Colors.gray[500], fontWeight: "500" }]}>
                 Explore
               </Text>
-              <View style={styles.navNewBadge}>
-                <Text style={styles.navNewBadgeText}>NEW</Text>
-              </View>
             </TouchableOpacity>
           </View>
 
@@ -699,7 +689,7 @@ export default function HomeScreen() {
 
         <ScrollView
           style={styles.mainScroll}
-          contentContainerStyle={styles.mainScrollContent}
+          contentContainerStyle={[styles.mainScrollContent, { paddingBottom: tabScrollPaddingBottom }]}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
           }

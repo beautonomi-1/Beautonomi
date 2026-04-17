@@ -11,6 +11,8 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import { ensurePlanOptionHasBarePlanId } from "@/lib/subscription/extract-subscription-plan-uuid";
+import { getDisplayFeatureBulletsForSubscriptionPlans } from "@/lib/subscription/pricing-plan-display-features";
 
 export async function GET(request: NextRequest) {
   try {
@@ -43,66 +45,103 @@ export async function GET(request: NextRequest) {
       .from("subscription_plans")
       .select("*")
       .eq("is_active", true)
-      .order("amount", { ascending: true });
+      .order("display_order", { ascending: true, nullsFirst: false });
 
     if (error) {
-      console.warn("Error fetching plans, returning defaults:", error);
-      return successResponse([
-        {
-          id: "free",
-          name: "Free",
-          amount: 0,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["50 bookings/month", "4 staff members", "3 locations"],
-          limits: { max_bookings: 50, max_staff: 4, max_locations: 3 },
-          is_popular: false,
-        },
-        {
-          id: "starter",
-          name: "Starter",
-          amount: 199,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["50 bookings/month", "3 staff members", "Online booking"],
-          limits: { max_bookings: 50, max_staff: 3, max_locations: 1 },
-          is_popular: false,
-        },
-        {
-          id: "professional",
-          name: "Professional",
-          amount: 499,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["Unlimited bookings", "10 staff members", "Reports & analytics"],
-          limits: { max_bookings: null, max_staff: 10, max_locations: 3 },
-          is_popular: true,
-        },
-        {
-          id: "business",
-          name: "Business",
-          amount: 999,
-          currency: lastResortCurrency,
-          interval: "month",
-          features: ["Unlimited everything", "Priority support", "Custom branding"],
-          limits: { max_bookings: null, max_staff: null, max_locations: null },
-          is_popular: false,
-        },
-      ]);
+      console.error("Error fetching subscription plans:", error);
+      return handleApiError(error, "Failed to load subscription plans");
     }
 
-    const result = (plans || []).map((p: any) => ({
-      id: p.id,
-      name: p.name,
-      amount: Number(p.amount || 0),
-      currency: p.currency || lastResortCurrency,
-      interval: p.interval || "month",
-      features: p.features || [],
-      limits: p.limits || { max_bookings: null, max_staff: null, max_locations: null },
-      is_popular: p.is_popular || false,
-    }));
+    const planRows = (plans || []) as { id: string }[];
+    const featureMap = await getDisplayFeatureBulletsForSubscriptionPlans(
+      supabaseAdmin,
+      effectiveTenantId,
+      planRows.map((p) => p.id)
+    );
 
-    return successResponse(result);
+    const result = (plans || []).flatMap((p: any) => {
+      const features = featureMap.get(p.id) ?? [];
+      const description =
+        typeof p.description === "string" && p.description.trim() ? p.description.trim() : null;
+      const limits = p.limits || { max_bookings: null, max_staff: null, max_locations: null };
+      const options: any[] = [];
+
+      if (p.is_free) {
+        options.push({
+          id: `${p.id}:free`,
+          plan_id: p.id,
+          name: p.name,
+          description,
+          amount: 0,
+          price: 0,
+          currency: p.currency || lastResortCurrency,
+          interval: "month",
+          billing_period: "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: true,
+        });
+        return options;
+      }
+
+      if (p.price_monthly != null) {
+        options.push({
+          id: `${p.id}:monthly`,
+          plan_id: p.id,
+          name: p.name,
+          description,
+          amount: Number(p.price_monthly),
+          price: Number(p.price_monthly),
+          currency: p.currency || lastResortCurrency,
+          interval: "month",
+          billing_period: "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: false,
+        });
+      }
+      if (p.price_yearly != null) {
+        options.push({
+          id: `${p.id}:yearly`,
+          plan_id: p.id,
+          name: p.name,
+          description,
+          amount: Number(p.price_yearly),
+          price: Number(p.price_yearly),
+          currency: p.currency || lastResortCurrency,
+          interval: "year",
+          billing_period: "yearly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: false,
+        });
+      }
+
+      if (options.length === 0) {
+        options.push({
+          id: p.id,
+          plan_id: p.id,
+          name: p.name,
+          description,
+          amount: Number(p.amount || 0),
+          price: Number(p.amount || 0),
+          currency: p.currency || lastResortCurrency,
+          interval: p.interval || "month",
+          billing_period: p.interval === "year" ? "yearly" : "monthly",
+          features,
+          limits,
+          is_popular: p.is_popular || false,
+          is_free: Number(p.amount || 0) === 0,
+        });
+      }
+
+      return options;
+    });
+
+    return successResponse(result.map(ensurePlanOptionHasBarePlanId));
   } catch (error) {
     console.error("Error fetching subscription plans:", error);
     return handleApiError(error, "Failed to load subscription plans");

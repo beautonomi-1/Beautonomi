@@ -8,6 +8,7 @@ import { requireAdminSection,
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * PATCH /api/admin/promotions/[id]
@@ -33,7 +34,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
@@ -100,21 +101,39 @@ export async function PATCH(
       return handleApiError(updateError, "Failed to update promotion");
     }
 
+    const row = updatedPromotion as Record<string, any>;
+
     // Transform response to match frontend format
     const transformedPromotion = {
-      ...updatedPromotion,
-      type: updatedPromotion.type === 'fixed' ? 'fixed_amount' : updatedPromotion.type, // Map 'fixed' to 'fixed_amount' for frontend
-      start_date: updatedPromotion.valid_from,
-      end_date: updatedPromotion.valid_until,
-      min_purchase: updatedPromotion.min_purchase_amount,
-      max_discount: updatedPromotion.max_discount_amount,
-      used_count: updatedPromotion.usage_count,
-      applicable_to: updatedPromotion.applicable_categories?.length > 0 
+      ...row,
+      type: row.type === 'fixed' ? 'fixed_amount' : row.type, // Map 'fixed' to 'fixed_amount' for frontend
+      start_date: row.valid_from,
+      end_date: row.valid_until,
+      min_purchase: row.min_purchase_amount,
+      max_discount: row.max_discount_amount,
+      used_count: row.usage_count,
+      applicable_to: row.applicable_categories?.length > 0 
         ? "category" 
-        : updatedPromotion.applicable_providers?.length > 0 
+        : row.applicable_providers?.length > 0 
         ? "provider" 
         : "all",
     };
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.promotion.update",
+      entity_type: "promotion",
+      entity_id: id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      after_json: updateData,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(transformedPromotion);
   } catch (error) {
@@ -132,7 +151,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
     const { id } = await params;
@@ -159,6 +178,21 @@ export async function DELETE(
     if (deleteError) {
       return handleApiError(deleteError, "Failed to delete promotion");
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.promotion.delete",
+      entity_type: "promotion",
+      entity_id: id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({ success: true });
   } catch (error) {

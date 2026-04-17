@@ -7,8 +7,7 @@ import BackButton from "../components/back-button";
 import Breadcrumb from "../components/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
-import { Star, Edit, Trash2, Loader2, MessageSquare } from "lucide-react";
+import { Star, Edit, Trash2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import EmptyState from "@/components/ui/empty-state";
 import {
@@ -30,6 +29,8 @@ interface Review {
   comment: string | null;
   photos: string[] | null;
   is_verified: boolean;
+  provider_response?: string | null;
+  provider_response_at?: string | null;
   created_at: string;
   updated_at: string;
   bookings: {
@@ -61,7 +62,7 @@ export default function ReviewsPage() {
   const loadReviews = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ data: { reviews: Review[] } }>("/api/me/reviews", { cache: "no-store" });
+      const response = await fetcher.get<{ data: { reviews: Review[] } }>("/api/me/reviews", { staleTimeMs: 30_000 });
       setReviews(response.data.reviews);
     } catch (error) {
       console.error("Failed to load reviews:", error);
@@ -130,10 +131,7 @@ export default function ReviewsPage() {
             ]}
           />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+          <div
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
@@ -142,7 +140,7 @@ export default function ReviewsPage() {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : reviews.length === 0 ? (
               <EmptyState
@@ -153,10 +151,8 @@ export default function ReviewsPage() {
             ) : (
               <div className="space-y-4">
                 {reviews.map((review) => (
-                  <motion.div
+                  <div
                     key={review.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
                     className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6"
                   >
                     <div className="flex items-start justify-between mb-4">
@@ -272,11 +268,22 @@ export default function ReviewsPage() {
                     {review.comment && (
                       <p className="text-gray-700 mt-4">{review.comment}</p>
                     )}
-                  </motion.div>
+                    {review.provider_response && (
+                      <div className="mt-4 rounded-xl border-l-4 border-pink-400 bg-pink-50/50 p-4">
+                        <p className="text-xs font-semibold text-pink-600 mb-1">Provider reply</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{review.provider_response}</p>
+                        {review.provider_response_at && (
+                          <p className="text-xs text-gray-400 mt-2">
+                            {new Date(review.provider_response_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

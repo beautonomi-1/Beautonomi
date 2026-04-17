@@ -65,7 +65,12 @@ export async function GET(request: NextRequest) {
           )
         `)
         .eq('provider_id', providerId)
-        .in('status', ['completed', 'confirmed', 'arrived', 'started'])
+        // §Release-audit 2026-04: previous list included 'arrived' and
+        // 'started', which are not members of the booking_status enum — the
+        // Postgres in-clause silently excluded them, so mid-service product
+        // usage never showed up in sales reports. Use the real lifecycle
+        // states that indicate the booking actually happened.
+        .in('status', ['completed', 'confirmed', 'in_progress', 'checked_in'])
         .gte('scheduled_at', fromDate.toISOString())
         .lte('scheduled_at', toDate.toISOString()),
       supabaseAdmin

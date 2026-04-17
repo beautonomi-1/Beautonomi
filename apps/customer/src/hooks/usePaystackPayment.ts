@@ -83,12 +83,27 @@ export function usePaystackPayment() {
           save_card: params.save_card ?? false,
         });
 
-        const result = await WebBrowser.openBrowserAsync(data.authorization_url, {
+        await WebBrowser.openBrowserAsync(data.authorization_url, {
           presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         });
 
+        let paymentConfirmed = false;
+        if (params.booking_id) {
+          const MAX_POLL = 8;
+          for (let i = 0; i < MAX_POLL; i++) {
+            await new Promise((r) => setTimeout(r, 2000));
+            try {
+              const check = await api.get<{ status?: string; payment_status?: string }>(
+                `/api/me/bookings/${encodeURIComponent(params.booking_id)}`,
+              );
+              const ps = (check.data as { payment_status?: string } | null)?.payment_status;
+              if (ps && ps !== "pending") { paymentConfirmed = true; break; }
+            } catch { /* ignore poll error */ }
+          }
+        }
+
         return {
-          success: result.type === "dismiss" || result.type === "cancel",
+          success: paymentConfirmed,
           dismissed: true,
           reference: data.reference,
         };

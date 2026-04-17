@@ -104,11 +104,17 @@ async function getProviderSubscriptionTier(
   features: any;
   isFree: boolean;
 } | null> {
-  // Try to get active subscription
-  const { data: subscription } = await supabase
+  // Try to get active subscription (include rows with null expires_at for lifetime/free plans).
+  // Also include past_due subscriptions within a 3-day grace period so providers don't
+  // immediately lose access on a single failed charge retry.
+  const nowIso = new Date().toISOString();
+  const graceCutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: subscription, error: subscriptionError } = await supabase
     .from("provider_subscriptions")
     .select(`
       plan_id,
+      status,
+      updated_at,
       plan:subscription_plans(
         id,
         name,
@@ -117,9 +123,32 @@ async function getProviderSubscriptionTier(
       )
     `)
     .eq("provider_id", providerId)
-    .eq("status", "active")
-    .gte("expires_at", new Date().toISOString())
+    .in("status", ["active", "past_due"])
+    // Null expires_at = never expires (lifetime / free rows); do not use expires_at.gte alone.
+    .or(`expires_at.gte.${nowIso},expires_at.is.null`)
+    .order("status", { ascending: true })
     .maybeSingle();
+
+  if (subscriptionError) {
+    console.error("getProviderSubscriptionTier: provider_subscriptions query failed", subscriptionError);
+    return null;
+  }
+
+  // For past_due: only allow if within 3-day grace period from when status changed
+  if (subscription?.status === "past_due") {
+    const updatedAt = (subscription as any).updated_at;
+    if (updatedAt && updatedAt < graceCutoff) {
+      // Past grace period — treat as no subscription
+    } else if (subscription?.plan) {
+      const plan = subscription.plan as any;
+      return {
+        planId: plan.id,
+        planName: plan.name,
+        features: plan.features || {},
+        isFree: plan.is_free || false,
+      };
+    }
+  }
 
   if (subscription?.plan) {
     const plan = subscription.plan as any;
@@ -219,23 +248,22 @@ export async function checkStaffSmsNotificationsFeatureAccess(
 }
 
 /**
- * Resolves a boolean flag from plan features. If the key is missing, returns true (legacy plans).
- * If the key is an object, uses `enabled` when set; if `enabled` is omitted, returns true so
- * objects like `{ max_forms: 5 }` still allow access unless explicitly disabled.
+ * Resolves a boolean flag from plan features (fail-closed: deny unless explicitly allowed).
  */
 export function resolvePlanFeatureEnabled(
   features: Record<string, unknown> | null | undefined,
   key: string
 ): boolean {
-  if (!features || typeof features !== "object") return true;
+  if (!features || typeof features !== "object") return false;
   const node = features[key];
-  if (node === undefined || node === null) return true;
+  if (node === undefined || node === null) return false;
+  if (typeof node === "boolean") return node;
   if (typeof node === "object" && node !== null) {
     const o = node as { enabled?: boolean };
-    if (o.enabled === undefined) return true;
+    if (o.enabled === undefined) return false;
     return o.enabled === true;
   }
-  return true;
+  return false;
 }
 
 /**
@@ -247,7 +275,7 @@ export async function isProviderSubscriptionFeatureEnabled(
 ): Promise<boolean> {
   const supabase = await getSupabaseServer();
   const tier = await getProviderSubscriptionTier(supabase, providerId);
-  if (!tier) return true;
+  if (!tier) return false;
   return resolvePlanFeatureEnabled(tier.features as Record<string, unknown>, featureKey);
 }
 
@@ -616,7 +644,7 @@ export async function getProviderFeatureAccess(
         enabled: false,
         apiAccess: false,
       },
-      isFree: true,
+      isFree: false,
     };
   }
 

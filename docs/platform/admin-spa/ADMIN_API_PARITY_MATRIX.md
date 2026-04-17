@@ -10,7 +10,7 @@
 
 **Status key:** `Draft` | `In review` | `Reviewed` | `Deprecated (product approved)`
 
-**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (96 routes, 2026-04-05), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **261** API rows, 2026-04-08 — see §8 Implementation Delta).
+**Seed:** Generated from `apps/web/src/components/admin/AdminShell.tsx` (`navGroups`), `apps/web/src/app/admin/**/page.tsx` (108 routes, 2026-04-11), and targeted greps for `"/api/admin` usage. For the **Vite admin SPA**, use [`ADMIN_SPA_AUDIT_INVENTORY.md`](./ADMIN_SPA_AUDIT_INVENTORY.md) (route inverse map + page→API summary). Reconcile with `docs/admin-api-route-taxonomy.csv` after `node docs/scripts/generate-admin-route-taxonomy.mjs` (latest regen: **297** API rows, 2026-04-11 — see §8 Implementation Delta).
 
 ---
 
@@ -26,7 +26,7 @@
 
 | Theme | Finding | Target (see contract guidelines) |
 |-------|---------|-----------------------------------|
-| **Inventory** | **259** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
+| **Inventory** | **332** admin `route.ts` handlers; full list in `docs/admin-api-route-taxonomy.csv` | Regenerate CSV when adding routes; CI blocks orphan files. |
 | **Response envelope** | Mix of `{ data, error }` (`successResponse` / `errorResponse`) and **raw** `NextResponse.json` (`{ tickets }`, `{ error: string }`, `{ success: true }`, etc.) | New/changed handlers use standard envelope; migrate legacy when touching. |
 | **List shape** | Some lists nest `{ data: rows, meta }` **inside** envelope `data` (e.g. users); others return domain keys at root **without** envelope | Standard: `data: { items, meta }` + outer envelope. |
 | **Pagination** | `page`+`limit` (`getPaginationParams`) vs `offset`+`limit`; default limits vary (20–100) | Standard query params + `meta`; document per row until migrated. |
@@ -51,6 +51,7 @@
 | `integrations_dev` | Integrations & dev | `admin_integrations` | `ADMIN_SECTION_INTEGRATIONS_DEV` |
 | `operations` | Operations | `admin_operations` | `ADMIN_SECTION_OPERATIONS` |
 | `platform_config` | Platform config | `admin_platform_config` | `ADMIN_SECTION_PLATFORM_CONFIG` |
+| `provider_ops` | Provider Ops | `admin_operations`, `admin_support` | `ADMIN_SECTION_PROVIDER_OPS` |
 
 Superadmin may access all sections. Sidebar also uses `superadminOnly` on: **Tenant domains**, **Team permissions**. **Market Coverage** (`/admin/service-zones`) uses the **Operations** section (same as `requireAdminSection(ADMIN_SECTION_OPERATIONS)` on `/api/admin/service-zones/*`).
 
@@ -93,7 +94,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 12 | `/admin/staff` | W1 | providers_operations | Y | `GET /api/admin/staff`, `PATCH .../:id`, `POST .../:id/reset-password` | |
 | 13 | `/admin/bookings` | W1 | providers_operations | Y | `GET /api/admin/bookings`, `POST .../bulk`, export | **SPA (pattern wave):** cards + tabs + bulk + CSV via **`adminApi.downloadBlob`** / `downloadAdminBlob`; RBAC via `ADMIN_SECTION_PROVIDERS_OPERATIONS` (legacy Next page used `superadmin`-only guard — SPA aligns with API). |
 | 14 | `/admin/bookings/[id]` | W1 | providers_operations | N | `GET/PATCH /api/admin/bookings/:id`, `POST .../cancel`, `.../refund` | **SPA:** detail + PATCH + cancel/refund modals; customer/provider deep links → legacy until rows 9–10 / 36–37 migrate. |
-| 15 | `/admin/reviews` | W1 | providers_operations | Y | `GET/PATCH/DELETE /api/admin/reviews`, export | |
+| 15 | `/admin/reviews` | W1 | providers_operations | Y | `GET/PATCH/DELETE /api/admin/reviews`, `GET /api/admin/provider-client-ratings`, export | Provider→customer star ratings (`provider_client_ratings`); SPA Reviews tab uses both. |
 | 16 | `/admin/disputes` | W1 | providers_operations | Y | `GET /api/admin/disputes`, `PATCH .../:id` | **SPA (pattern wave):** list + client search + resolve modal; same RBAC note as bookings vs legacy `superadmin` guard. |
 | 17 | `/admin/user-reports` | W1 | providers_operations | Y | `GET /api/admin/user-reports`, `PATCH .../:id` | |
 | 18 | `/admin/refunds` | W1 | providers_operations | Y | `GET /api/admin/refunds`, `POST .../:id` | |
@@ -131,7 +132,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 50 | `/admin/gamification/point-rules` | W4 | marketing_comms | Y | `GET/PATCH /api/admin/gamification/point-rules` | |
 | 51 | `/admin/gamification/badges` | W4 | marketing_comms | Y | `GET/POST/PATCH/DELETE .../gamification/badges`, `PUT .../gamification/backfill/initialize` | |
 | 52 | `/admin/gift-cards` | W4 | marketing_comms | Y | `GET/POST/PATCH /api/admin/gift-cards` | |
-| 53 | `/admin/notifications` | W4 | marketing_comms | Y | `GET/POST/PUT/DELETE .../notifications/templates`, logs, `POST .../send`, `GET .../users/search` | |
+| 53 | `/admin/notifications` | W4 | marketing_comms | Y | `GET/POST/PUT/DELETE .../notifications/templates`, logs, `POST .../send`, `POST .../notifications/test`, `GET .../users/search` | |
 | 54 | `/admin/broadcast` | W4 | marketing_comms | Y | `GET/POST/PATCH /api/admin/broadcast` (+ related) | |
 | 55 | `/admin/automations` | W4 | marketing_comms | Y | `GET/POST /api/admin/automations` | |
 | 56 | `/admin/notification-templates` | W4 | marketing_comms | Y | Template CRUD under `/api/admin/notification-templates` | |
@@ -143,7 +144,7 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 62 | `/admin/mapbox` | W4 | integrations_dev | Y | `GET/PUT /api/admin/mapbox/config`, legacy zones tab | |
 | 63 | `/admin/iso-codes` | W4 | integrations_dev | Y | `GET/PUT/POST/DELETE /api/admin/iso-codes/*` | |
 | 64 | `/admin/settings/integrations/analytics` | W4 | integrations_dev | R | — | Client redirect → amplitude page |
-| 65 | `/admin/service-zones` | W4 | operations | Y (`admin_operations` + superadmin; APIs: `ADMIN_SECTION_OPERATIONS`) | `GET/POST/PATCH/DELETE .../service-zones`, map layers, include/exclude, publish, areas/search | |
+| 65 | `/admin/service-zones` | W4 | operations | Y (`admin_operations` + superadmin; APIs: `ADMIN_SECTION_OPERATIONS`) | `GET/POST/PATCH/DELETE .../service-zones`, map layers, include/exclude, publish, `POST .../areas/resolve-point`, areas/search | |
 | 66 | `/admin/system-health` | W4 | operations | Y | `GET /api/admin/system-health` | |
 | 67 | `/admin/monitoring` | W4 | operations | Y | `GET /api/admin/monitoring` | |
 | 68 | `/admin/security` | W4 | operations | Y | Security admin API family | |
@@ -153,28 +154,42 @@ Use this table as the **index** for deep-dive sub-tables (§5). **AuthZ column**
 | 72 | `/admin/settings/app-version` | W5 | platform_config | Y | `GET/PATCH /api/admin/app-version` | |
 | 73 | `/admin/settings/feature-flags` | W5 | platform_config | Y | Via `@/lib/feature-flags` → `GET/POST/PATCH/DELETE /api/admin/feature-flags` | **Parallel** to control-plane flags UI |
 | 74 | `/admin/settings/team-permissions` | W5 | platform_config | Y (superadmin only) | `GET /api/admin/settings/section-permissions`, `PUT` same (matrix editor) | |
+| 74b | `/admin/settings/admin-team` | W5 | platform_config | Y (superadmin only) | `GET/POST /api/admin/settings/admin-team`, `PATCH/DELETE /api/admin/settings/admin-team/[id]` | List platform admins, invite by email, change role, deactivate, remove access |
 | 75 | `/admin/custom-fields` | W5 | platform_config | Y | `GET/POST/PATCH/DELETE /api/admin/custom-fields` | |
-| 76 | `/admin/control-plane` | W5 | platform_config | N | — | Server redirect → overview |
+| 76 | `/admin/control-plane` | W5 | platform_config | N | — | Redirect → `/admin/control-plane/overview` (no SPA page needed) |
 | 77 | `/admin/control-plane/overview` | W5 | platform_config | Y | — | Card hub only |
-| 78 | `/admin/control-plane/feature-flags` | W5 | platform_config | N | `GET /api/admin/feature-flags`, `POST /api/admin/control-plane/flags-preview` | |
-| 79 | `/admin/control-plane/integrations` | W5 | platform_config | N | — | Hub (links only) |
-| 80 | `/admin/control-plane/integrations/sumsub` | W5 | platform_config | N | `GET/PUT .../control-plane/integrations/sumsub` | |
-| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | N | `GET/PUT .../gemini` | |
-| 82 | `/admin/control-plane/integrations/aura` | W5 | platform_config | N | `GET/PUT .../aura` | |
-| 83 | `/admin/control-plane/modules/ads` | W5 | platform_config | N | `GET/PUT .../modules/ads`, packs CRUD | |
-| 84 | `/admin/control-plane/modules/on-demand` | W5 | platform_config | N | `GET/PUT .../on-demand` | |
-| 85 | `/admin/control-plane/modules/ai` | W5 | platform_config | N | `GET/PUT .../modules/ai` | |
-| 86 | `/admin/control-plane/modules/ai/templates` | W5 | platform_config | N | Templates CRUD under `.../ai/templates` | |
-| 87 | `/admin/control-plane/modules/ai/entitlements` | W5 | platform_config | N | `GET/POST .../entitlements` | |
-| 88 | `/admin/control-plane/modules/ai/usage` | W5 | platform_config | N | `GET .../usage` | |
-| 89 | `/admin/control-plane/modules/ranking` | W5 | platform_config | N | `GET/PUT .../ranking`, `POST /api/admin/ranking/recompute` | |
-| 90 | `/admin/control-plane/modules/ranking/scores` | W5 | platform_config | N | `GET /api/admin/ranking/scores`, recompute | |
-| 91 | `/admin/control-plane/modules/distance` | W5 | platform_config | N | `GET/PUT .../distance` | |
-| 92 | `/admin/control-plane/modules/safety` | W5 | platform_config | N | `GET/PUT .../safety` | |
-| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | N | `GET /api/admin/safety/logs` | |
-| 94 | `/admin/control-plane/maintenance` | W5 | platform_config | N | `GET/PATCH /api/admin/maintenance` | |
-| 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | N | `GET /api/admin/maintenance-notify` | |
-| 96 | `/admin/control-plane/audit-log` | W5 | platform_config | N | `GET /api/admin/control-plane/config-change-log` | |
+| 78 | `/admin/control-plane/feature-flags` | W5 | platform_config | Y | `GET /api/admin/feature-flags`, `POST /api/admin/control-plane/flags-preview` | List + resolver preview |
+| 79 | `/admin/control-plane/integrations` | W5 | platform_config | Y | — | Card hub (links to sumsub/gemini/aura/mapbox/settings/amplitude) |
+| 80 | `/admin/control-plane/integrations/sumsub` | W5 | platform_config | Y | `GET/PUT .../control-plane/integrations/sumsub` | |
+| 81 | `/admin/control-plane/integrations/gemini` | W5 | platform_config | Y | `GET/PUT .../gemini` | |
+| 82 | `/admin/control-plane/integrations/aura` | W5 | platform_config | Y | `GET/PUT .../aura` | |
+| 83 | `/admin/control-plane/modules/ads` | W5 | platform_config | Y | `GET/PUT .../modules/ads`, `GET/POST/DELETE .../modules/ads/packs` | |
+| 84 | `/admin/control-plane/modules/on-demand` | W5 | platform_config | Y | `GET/PUT .../on-demand` | |
+| 85 | `/admin/control-plane/modules/ai` | W5 | platform_config | Y | `GET/PUT .../modules/ai` | |
+| 86 | `/admin/control-plane/modules/ai/templates` | W5 | platform_config | Y | `GET/POST/PATCH/DELETE .../ai/templates`, `.../ai/templates/[id]` | Full CRUD |
+| 87 | `/admin/control-plane/modules/ai/entitlements` | W5 | platform_config | Y | `GET/POST .../entitlements` | |
+| 88 | `/admin/control-plane/modules/ai/usage` | W5 | platform_config | Y | `GET .../usage` | |
+| 89 | `/admin/control-plane/modules/ranking` | W5 | platform_config | Y | `GET/PUT .../ranking`, `POST /api/admin/ranking/recompute` | Weights editor + full recompute |
+| 90 | `/admin/control-plane/modules/ranking/scores` | W5 | platform_config | Y | `GET /api/admin/ranking/scores` | Provider score table + per-provider recompute |
+| 91 | `/admin/control-plane/modules/distance` | W5 | platform_config | Y | `GET/PUT .../distance` | |
+| 92 | `/admin/control-plane/modules/safety` | W5 | platform_config | Y | `GET/PUT .../safety` | |
+| 93 | `/admin/control-plane/safety-logs` | W5 | platform_config | Y | `GET /api/admin/safety/logs` | Read-only, filtered by event type |
+| 94 | `/admin/control-plane/maintenance` | W5 | platform_config | Y | `GET/PATCH /api/admin/maintenance` | Per-scope config + enable/disable + countdown |
+| 95 | `/admin/control-plane/maintenance/sign-ups` | W5 | platform_config | Y | `GET /api/admin/maintenance-notify` | Read-only list + CSV export, filtered by scope |
+| 96 | `/admin/control-plane/audit-log` | W5 | platform_config | Y | `GET /api/admin/control-plane/config-change-log` | Paginated, filtered by area + record key |
+| 96.1 | `/admin/control-plane/tenant-reset` | W5 | superadmin | Y | `GET /api/admin/tenants`, `POST /api/admin/compliance/reset-tenant` | Superadmin-only tenant "clean slate": wipes transactional data (bookings, payments, ledger, orders, reviews, conversations, notifications) while preserving structural spine. Multi-field confirmation (phrase, slug, reason ≥ 20 chars, irreversible ack); supports `dry_run` + `allow_default_tenant` guards. Writes immutable `compliance_purge_audit_log` row on live runs. |
+| 97 | `/admin/provider-ops` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/dashboard` | Ops dashboard: stalled/dropped signups, KPIs, lead pipeline, recent activity |
+| 98 | `/admin/provider-ops/tracker` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/tracker`, `GET .../tracker/stats` | Onboarding tracker: real-time signup progress, stall detection, filters by status/step |
+| 99 | `/admin/provider-ops/tracker/[userId]` | W5 | provider_ops | N | `GET .../tracker/:userId`, `PATCH .../draft`, `POST .../note`, `PATCH .../assign`, `POST .../submit` | Detail + admin-assisted onboarding: view/edit draft, add notes, submit on behalf |
+| 100 | `/admin/provider-ops/leads` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads` | Lead inbox: list, search, filter by stage/source/country |
+| 101 | `/admin/provider-ops/leads/new` | W5 | provider_ops | N | `POST /api/admin/provider-ops/leads`, `POST /api/mapbox/geocode`, `GET .../categories` | Lead creation form: geocoding, category multi-select, phone E.164, duplicate check |
+| 102 | `/admin/provider-ops/leads/[id]` | W5 | provider_ops | N | `GET/PATCH .../leads/:id`, `PATCH .../stage`, `PATCH .../assign`, `GET/POST .../activities` | Lead detail: timeline, stage change, assignment, notes, create-account action |
+| 103 | `/admin/provider-ops/pipeline` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/leads`, `GET .../pipeline/stats`, `PATCH .../leads/:id/stage` | Kanban pipeline board with drag-and-drop stage transitions |
+| 104 | `/admin/provider-ops/activation` | W5 | provider_ops | Y | `GET /api/admin/provider-ops/activation-queue`, `PATCH /api/admin/providers/:id/status` | Activation queue: providers pending approval, activation gates, approve action |
+| 105 | `/admin/provider-ops/reports` | W5 | provider_ops | Y | `GET .../reports/funnel`, `GET .../reports/step-dropoff` | Funnel metrics, step drop-off analysis, lead pipeline, admin productivity |
+| 106 | `/admin/provider-ops/settings` | W5 | provider_ops | Y | `GET/PATCH /api/admin/provider-ops/settings` | Stall/drop-off thresholds, auto-assignment, SLA rules |
+| 107 | `/admin/provider-ops/providers/[id]` | W5 | provider_ops | N | `GET /api/admin/provider-ops/providers/:id/lifecycle` | Unified lifecycle view: lead → signup → onboarding → activation timeline |
+| 108 | `/admin/provider-ops/duplicates` | W5 | provider_ops | N | `GET /api/admin/provider-ops/dedup-check`, `GET .../duplicates` | Duplicate review queue: match/dismiss potential duplicates |
 
 ---
 
@@ -264,3 +279,9 @@ Record the test **id** in the **Client method** column. **Envelope:** fixtures M
 | 2026-04-07 | §8 dashboard API + SPA decision-support delta |
 | 2026-04-05 | §8 Waves 2–5 SPA batch delta; link to `ADMIN_WAVES_2_TO_5_PROGRESS_REPORT.md`; test strategy §2.7 envelope note |
 | 2026-04-06 | **SPA sweep:** W1 list/detail read routes, W3 content surfaces, W4 marketing/integrations/ops lists, W5 control-plane `*` legacy bridge, **payout** mutation parity in SPA; `/admin/broadcast` SPA = **history** only (compose stays legacy). |
+| 2026-04-11 | **Platform fixes batch:** Feature flags `enabled` field fix (was `is_enabled`); logout server sign-out route + await sequencing; admin-team `last_sign_in_at` removed (not in `users` table); referral-sources tenant bypass with `supabaseAdmin`; team-permissions draft-reset-on-refetch fix + unsaved-changes indicator; platform-fees label clarified; slot-conflict hold cleared on back-navigate; service-zones full CRUD (`POST`, `PATCH`, archive); Mapbox config edit form; Amplitude edit form; **Paystack** API key management (`GET`/`PATCH /api/admin/integrations/paystack`) + `PaystackConfigPage` + nav entry; `FinanceOverviewPage` dead import fixed; `ProvidersListPage` Details link + improved description. Taxonomy: `+1` route (`integrations/paystack`). |
+| 2026-04-11 | **Provider Ops Hub:** New `ADMIN_SECTION_PROVIDER_OPS` section (`admin_operations`, `admin_support`). **27 new API routes** under `/api/admin/provider-ops/*` (leads CRUD, pipeline, tracker, assisted onboarding, activation queue, reports, comms, dedup, settings, automations). **12 new UI pages** under `/admin/provider-ops/*`. Migration `460_provider_ops_hub.sql` adds `provider_leads`, `provider_lead_categories`, `provider_lead_activities`, `provider_lead_communications`, `provider_lead_tasks`, `provider_onboarding_tracking` tables + admin RLS on `provider_onboarding_drafts`. `providers` table gains `onboarding_state` + `lead_id`. Self-serve onboarding hooks (`POST /api/provider/onboarding`, `PUT /api/provider/onboarding/draft`) updated with tracking + lead matching. All routes use `resolveAdminApiTenantId` for tenant scoping. Taxonomy regen: **294** rows. §4 rows 97–108. |
+| 2026-04-13 | Taxonomy: `+2` routes (`/api/admin/notifications/test`, `/api/admin/service-zones/areas/resolve-point`); §4 rows 53 & 65 API notes (SPA already calls both). Root **pnpm** override `jsdom@24.1.3` so `isomorphic-dompurify` does not pull `jsdom@29` against pinned `undici@6.24.0` (fixes `undici/lib/handler/wrap-handler.js` missing during Next collect page data). |
+| 2026-04-13 | Taxonomy: `+15` routes for WhatsApp WASender integration (`/api/admin/integrations/wasender`, `/api/admin/whatsapp/bulk`, `bulk/[batchId]`, `bulk/[batchId]/cancel|pause|resume`, `send`, `sessions`, `sessions/[id]`, `sessions/[id]/connect|disconnect|qr`, `templates`, `templates/[id]`, `verify-number`). §1.1 inventory **329**. |
+| 2026-04-15 | Taxonomy: `+1` route (`GET /api/admin/provider-client-ratings`); §4 row 15 reviews API note. §1.1 inventory **330**. |
+| 2026-04-16 | Taxonomy: `+2` routes (`GET /api/admin/analytics/fx-rate`, `POST /api/admin/compliance/reset-tenant`); §4 row 96.1 tenant-reset page. §1.1 inventory **332**. |

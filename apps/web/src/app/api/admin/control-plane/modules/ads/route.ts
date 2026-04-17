@@ -3,6 +3,7 @@ import { requireAdminSection, successResponse, handleApiError  } from "@/lib/sup
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { writeConfigChangeLog } from "@/lib/config/config-change-log";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const ENVS = ["production", "staging", "development"];
 
@@ -51,7 +52,7 @@ export async function PUT(request: NextRequest) {
       .eq("environment", environment)
       .maybeSingle();
 
-    const payload = {
+    const payload: Record<string, any> = {
       environment,
       enabled: body.enabled ?? false,
       model: body.model ?? null,
@@ -60,6 +61,15 @@ export async function PUT(request: NextRequest) {
       cost_per_impression_ratio: body.cost_per_impression_ratio != null ? Number(body.cost_per_impression_ratio) : null,
       updated_at: new Date().toISOString(),
     };
+    if (body.available_models !== undefined) {
+      const validModels = ["cpc_budget", "impression_pack", "time_based"];
+      payload.available_models = Array.isArray(body.available_models)
+        ? body.available_models.filter((m: string) => validModels.includes(m))
+        : validModels;
+    }
+    if (body.default_model !== undefined) {
+      payload.default_model = body.default_model ?? "time_based";
+    }
 
     const { data: after, error } = await supabase
       .from("ads_module_config")
@@ -75,6 +85,23 @@ export async function PUT(request: NextRequest) {
       recordKey: `ads.${environment}`,
       before: before as Record<string, any> | null,
       after: after as Record<string, any> | null,
+    });
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.control_plane.ads.update",
+      entity_type: "ads_module_config",
+      module: "platform_config",
+      risk_level: "high",
+      retention_tier: "access",
+      status: "succeeded",
+      before_json: before as Record<string, any> | null,
+      after_json: after as Record<string, any> | null,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+      superadmin_bypass_used: user.role === "superadmin",
     });
 
     return successResponse(after);

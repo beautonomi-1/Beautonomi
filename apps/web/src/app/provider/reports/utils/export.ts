@@ -611,12 +611,20 @@ export function formatReportDataForExport(
       return [
         { Metric: "Total Products", Value: data.totalProducts || 0 },
         { Metric: "Stock Value", Value: fm((data.totalStockValue || 0), currencyCode) },
-        ...((data.lowStockProducts as ReportRow[]) || (data.allProducts as ReportRow[]) || []).map((p) => ({
-          Product: p.name ?? p.productName,
-          Stock: p.quantity || 0,
-          "Retail Price": fm(((p.retail_price as number) || 0), currencyCode),
-          Value: fm((((p.quantity as number) || 0) * ((p.retail_price as number) || 0)), currencyCode),
-        })),
+        ...((data.lowStockProducts as ReportRow[]) || (data.allProducts as ReportRow[]) || []).map((p) => {
+          const qty = Number((p.quantity as number) ?? (p.stock_quantity as number) ?? 0);
+          const lineRetail =
+            typeof p.retail_line_value === "number"
+              ? p.retail_line_value
+              : qty * Number((p.price as number) ?? (p.retail_price as number) ?? 0);
+          const displayPrice = Number((p.price as number) ?? (p.retail_price as number) ?? 0);
+          return {
+            Product: p.name ?? p.productName,
+            Stock: qty,
+            "Retail Price": fm(displayPrice, currencyCode),
+            Value: fm(lineRetail, currencyCode),
+          };
+        }),
       ];
 
     case "commission":

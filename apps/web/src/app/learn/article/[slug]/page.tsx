@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { marked } from "marked";
 import { ChevronRight } from "lucide-react";
 import { getLearnArticle } from "@/lib/data/getLearnArticle";
+import { sanitizeLearnArticleHtml } from "@/lib/html/learn-article-html";
 import { getPublicSiteOriginFromHeaders } from "@/lib/seo/public-site-origin";
 import { getHreflangAlternateUrls } from "@/lib/seo/host-config";
 import { LearnBreadcrumb } from "../../components/learn-breadcrumb";
@@ -89,7 +90,7 @@ function processArticleBody(body: string, contentFormat: string): { html: string
       `<div class="learn-embed-video"><iframe${attrs}>${inner}</iframe></div>`,
   );
 
-  return { html: withEmbeds, toc: tocOut };
+  return { html: sanitizeLearnArticleHtml(withEmbeds), toc: tocOut };
 }
 
 export default async function LearnArticlePage({ params }: { params: Params }) {

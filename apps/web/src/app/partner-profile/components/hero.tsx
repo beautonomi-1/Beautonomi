@@ -9,7 +9,7 @@ import ShareModal from "@/app/home/components/share-modal";
 import Image1 from "./../../../../public/images/pexels-steinportraits-1898555.jpg";
 import Image2 from "./../../../../public/images/pexels-rdne-7035446.jpg";
 import Image4 from "./../../../../public/images/pexels-alipazani-2878375 - Copy (1).jpg";
-import Image5 from "./../../../../public/images/pexels-cottonbro-3998404 (1).jpg";
+import Image5 from "./../../../../public/images/pexels-olly-774909 (1).jpg";
 import Image6 from "./../../../../public/images/pexels-rdne-6724431.jpg";
 import SaveArrow from "../../../../public/images/save-arrow.svg";
 import HeartIcon from "./../../../../public/images/heart.svg";

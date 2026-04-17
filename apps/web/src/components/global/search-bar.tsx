@@ -24,11 +24,11 @@ import { useServiceAvailability } from "@/hooks/useServiceAvailability";
 import { useUserLocation } from "@/hooks/useUserLocation";
 import { toast } from "sonner";
 
-import Hair from "./../../.././public/images/hair-cut.png";
-import Nails from "./../../../public/images/care.png";
-import Massage from "./../../../public/images/massage.png";
-import Eyebrows from "./../../../public/images/hair-removal.png";
-import Barbering from "./../../../public/images/barbershop.png";
+import Hair from "./../../../public/images/hairstylist_6672954.svg";
+import Nails from "./../../../public/images/nail-art.svg";
+import Massage from "./../../../public/images/massage.svg";
+import Eyebrows from "./../../../public/images/mascara.svg";
+import Barbering from "./../../../public/images/barbershop.svg";
 
 const categories = [
   {

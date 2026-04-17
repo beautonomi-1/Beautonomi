@@ -1,30 +1,21 @@
-"use client";
-import React, { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import AccountSettingsPage from "./components/account-setting";
-import AuthGuard from "@/components/auth/auth-guard";
+import { Suspense } from "react";
+import AccountSettingsClient from "./account-settings-client";
 
-function AccountSettingsGate() {
-  const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect");
-  return (
-    <AuthGuard redirectTo={redirect ?? undefined}>
-      <AccountSettingsPage />
-    </AuthGuard>
-  );
-}
-
-export default function AccountSettingsPageWrapper() {
+export default function AccountSettingsPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-10">
-          <div className="h-8 w-40 bg-gray-100 rounded animate-pulse mb-6" />
-          <div className="h-40 rounded-2xl bg-gray-50 animate-pulse" />
+        <div className="min-h-[50vh] max-w-5xl mx-auto px-4 py-10 md:px-6">
+          <div className="mb-8 h-9 w-48 max-w-full rounded bg-gray-200/80 animate-pulse" />
+          <div className="mb-6 space-y-3 rounded-2xl border border-gray-100 bg-gray-50/90 p-6 md:p-8">
+            <div className="mx-auto h-20 w-20 rounded-full bg-gray-200/70 animate-pulse" />
+            <div className="mx-auto h-4 w-40 rounded bg-gray-200/60 animate-pulse" />
+            <div className="h-3 w-full max-w-md mx-auto rounded bg-gray-100 animate-pulse" />
+          </div>
         </div>
       }
     >
-      <AccountSettingsGate />
+      <AccountSettingsClient />
     </Suspense>
   );
 }

@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Share,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -29,13 +31,16 @@ function isWithinReturnWindow(order: ProductOrder): boolean {
   return days <= RETURN_WINDOW_DAYS;
 }
 
-const STATUS_TIMELINE = [
-  { key: "pending", label: "Order Placed", icon: "receipt-outline" },
-  { key: "confirmed", label: "Confirmed", icon: "checkmark-circle-outline" },
-  { key: "processing", label: "Processing", icon: "construct-outline" },
-  { key: "shipped", label: "Shipped / Ready", icon: "airplane-outline" },
-  { key: "delivered", label: "Delivered / Collected", icon: "checkmark-done-circle-outline" },
-];
+function getStatusTimeline(fulfillmentType?: string) {
+  const isCollection = fulfillmentType === "collection" || fulfillmentType === "pickup";
+  return [
+    { key: "pending", label: "Order Placed", icon: "receipt-outline" },
+    { key: "confirmed", label: "Confirmed", icon: "checkmark-circle-outline" },
+    { key: "processing", label: "Processing", icon: "construct-outline" },
+    { key: isCollection ? "ready_for_collection" : "shipped", label: isCollection ? "Ready for Collection" : "Shipped", icon: isCollection ? "storefront-outline" : "airplane-outline" },
+    { key: "delivered", label: isCollection ? "Collected" : "Delivered", icon: "checkmark-done-circle-outline" },
+  ];
+}
 
 function formatDate(date: string | null) {
   if (!date) return null;
@@ -50,9 +55,10 @@ function formatDate(date: string | null) {
   });
 }
 
-function getTimelineIndex(status: string): number {
+function getTimelineIndex(status: string, fulfillmentType?: string): number {
   if (status === "cancelled" || status === "refunded") return -1;
-  const idx = STATUS_TIMELINE.findIndex((s) => s.key === status);
+  const timeline = getStatusTimeline(fulfillmentType);
+  const idx = timeline.findIndex((s) => s.key === status);
   if (status === "ready_for_collection") return 3;
   return idx;
 }
@@ -64,14 +70,28 @@ export default function ProductOrderDetailScreen() {
   const { fetchOrderDetail } = useProductOrders();
   const [order, setOrder] = useState<ProductOrder | null>(null);
   const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(600, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      setErrorMsg("Order ID is missing");
+      return;
+    }
     (async () => {
       setLoading(true);
-      const result = await fetchOrderDetail(id);
-      if (result.data) setOrder(result.data);
+      setErrorMsg(null);
+      try {
+        const result = await fetchOrderDetail(id);
+        if (result.data) {
+          setOrder(result.data);
+        } else {
+          setErrorMsg(result.error || "Order not found");
+        }
+      } catch {
+        setErrorMsg("Unable to load order. Please check your connection.");
+      }
       setLoading(false);
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- fetch when id changes
@@ -88,7 +108,7 @@ export default function ProductOrderDetailScreen() {
   if (!order) {
     return (
       <SafeAreaView style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff" }}>
-        <Text style={{ fontSize: 16, color: "#6B7280" }}>Order not found</Text>
+        <Text style={{ fontSize: 16, color: "#6B7280" }}>{errorMsg || "Order not found"}</Text>
         <TouchableOpacity onPress={() => router.back()} style={{ marginTop: 16 }}>
           <Text style={{ color: PRIMARY, fontWeight: "600" }}>Go back</Text>
         </TouchableOpacity>
@@ -97,7 +117,8 @@ export default function ProductOrderDetailScreen() {
   }
 
   const isCancelled = order.status === "cancelled" || order.status === "refunded";
-  const currentIdx = getTimelineIndex(order.status);
+  const statusTimeline = getStatusTimeline((order as { fulfillment_type?: string }).fulfillment_type);
+  const currentIdx = getTimelineIndex(order.status, (order as { fulfillment_type?: string }).fulfillment_type);
   const fb = getTenantDefaultCurrency();
   const cur = order.currency;
   const fmt = (amount: number) => formatMoney(amount, cur ?? fb);
@@ -123,6 +144,49 @@ export default function ProductOrderDetailScreen() {
           <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>{order.order_number}</Text>
           <Text style={{ fontSize: 12, color: "#9CA3AF" }}>{formatDate(order.created_at)}</Text>
         </View>
+        {/*
+          §Customer-launch (audit 2026-04): web exposes a JSON receipt
+          endpoint (/api/me/orders/[id]/receipt) but mobile had no way to
+          surface/share one. Provide a native share action that builds a
+          text receipt from the already-fetched order so customers can
+          AirDrop / email / message it like a booking receipt.
+        */}
+        <TouchableOpacity
+          onPress={async () => {
+            try {
+              const lines = [
+                `Beautonomi Order`,
+                `Order #${order.order_number}`,
+                order.created_at ? `Placed: ${formatDate(order.created_at)}` : null,
+                order.provider?.business_name ? `Seller: ${order.provider.business_name}` : null,
+                `Status: ${order.status}`,
+                ``,
+                ...(order.items ?? []).map((it) => {
+                  const variant = it.product_variant?.option_values
+                    ? ` · ${Object.values(it.product_variant.option_values).join(", ")}`
+                    : "";
+                  return `• ${it.product_name}${variant} — ${it.quantity} × ${fmt(Number(it.unit_price ?? 0))}`;
+                }),
+                ``,
+                `Subtotal: ${fmt(Number(order.subtotal ?? 0))}`,
+                Number(order.delivery_fee ?? 0) > 0 ? `Delivery: ${fmt(Number(order.delivery_fee ?? 0))}` : null,
+                Number(order.tax_amount ?? 0) > 0 ? `Tax: ${fmt(Number(order.tax_amount ?? 0))}` : null,
+                `Total: ${fmt(Number(order.total_amount ?? 0))}`,
+              ].filter(Boolean);
+              await Share.share({
+                message: lines.join("\n"),
+                title: `Order ${order.order_number}`,
+              });
+            } catch (e) {
+              Alert.alert("Share", e instanceof Error ? e.message : "Couldn't share this receipt.");
+            }
+          }}
+          style={{ padding: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel="Share order receipt"
+        >
+          <Ionicons name="share-outline" size={22} color="#111827" />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -160,11 +224,11 @@ export default function ProductOrderDetailScreen() {
               </View>
             </View>
           ) : (
-            STATUS_TIMELINE.map((step, i) => {
+            statusTimeline.map((step, i) => {
               const completed = i <= currentIdx;
               const isActive = i === currentIdx;
               return (
-                <View key={step.key} style={{ flexDirection: "row", marginBottom: i < STATUS_TIMELINE.length - 1 ? 0 : 0 }}>
+                <View key={step.key} style={{ flexDirection: "row", marginBottom: i < statusTimeline.length - 1 ? 0 : 0 }}>
                   <View style={{ alignItems: "center", width: 32 }}>
                     <View
                       style={{
@@ -182,7 +246,7 @@ export default function ProductOrderDetailScreen() {
                         color={completed ? "#fff" : "#9CA3AF"}
                       />
                     </View>
-                    {i < STATUS_TIMELINE.length - 1 && (
+                    {i < statusTimeline.length - 1 && (
                       <View
                         style={{
                           width: 2,
@@ -267,6 +331,9 @@ export default function ProductOrderDetailScreen() {
               <View style={{ flex: 1, marginLeft: 12, justifyContent: "center" }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
                   {item.product_name}
+                  {item.product_variant?.option_values && Object.keys(item.product_variant.option_values).length > 0 && (
+                    <Text style={{ fontWeight: "400", color: "#9CA3AF" }}> · {Object.values(item.product_variant.option_values).join(", ")}</Text>
+                  )}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#9CA3AF" }}>
                   {item.quantity} x {fmt(Number(item.unit_price))}
@@ -324,18 +391,18 @@ export default function ProductOrderDetailScreen() {
           </Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
             <Text style={{ fontSize: 14, color: "#6B7280" }}>Subtotal</Text>
-            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal))}</Text>
+            <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.subtotal ?? 0))}</Text>
           </View>
-          {Number(order.delivery_fee) > 0 && (
+          {Number(order.delivery_fee ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Delivery</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee))}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.delivery_fee ?? 0))}</Text>
             </View>
           )}
-          {Number(order.tax_amount) > 0 && (
+          {Number(order.tax_amount ?? 0) > 0 && (
             <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
               <Text style={{ fontSize: 14, color: "#6B7280" }}>Tax</Text>
-              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount))}</Text>
+              <Text style={{ fontSize: 14, color: "#111827" }}>{fmt(Number(order.tax_amount ?? 0))}</Text>
             </View>
           )}
           <View
@@ -350,10 +417,28 @@ export default function ProductOrderDetailScreen() {
           >
             <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Total</Text>
             <Text style={{ fontSize: 18, fontWeight: "700", color: PRIMARY }}>
-              {fmt(Number(order.total_amount))}
+              {fmt(Number(order.total_amount ?? 0))}
             </Text>
           </View>
         </View>
+
+        {/* Provider */}
+        {order.provider && (
+          <TouchableOpacity
+            onPress={() => router.push({ pathname: "/(app)/partner-profile", params: { slug: order.provider.slug } } as never)}
+            style={{ backgroundColor: "#fff", padding: contentPadding, marginBottom: 12, flexDirection: "row", alignItems: "center" }}
+            activeOpacity={0.7}
+          >
+            <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "700", color: "#6B7280" }}>{(order.provider.business_name ?? "P").charAt(0).toUpperCase()}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 12, color: "#9CA3AF" }}>Sold by</Text>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>{order.provider.business_name}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#9CA3AF" />
+          </TouchableOpacity>
+        )}
 
         {/* Return request action: only when delivered/ready_for_collection and within return window */}
         {["delivered", "ready_for_collection"].includes(order.status) && isWithinReturnWindow(order) && (

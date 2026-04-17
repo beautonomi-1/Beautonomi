@@ -3,11 +3,14 @@
 import { useEffect, useState, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Plus, AlertCircle, Wallet } from "lucide-react";
+import { CheckCircle, Calendar, MapPin, Clock, Mail, Phone, Download, Share2, Plus, AlertCircle, Wallet, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
+import { toast } from "sonner";
 import { getGoogleCalendarUrl, getOutlookCalendarUrl, downloadICS } from "@/lib/calendar/ics";
-import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import BeautonomiHeader from "@/components/layout/beautonomi-header";
 import { useRefreshAmplitudeIdentify } from "@/hooks/useAmplitude";
@@ -23,6 +26,22 @@ interface BookingDetails {
   currency: string;
   wallet_amount?: number;
   total_paid?: number;
+  /** Line items for parity with checkout summary (from `/api/me/bookings/[id]`). */
+  subtotal?: number;
+  tax_amount?: number;
+  service_fee_amount?: number;
+  travel_fee?: number;
+  loyalty_discount_amount?: number;
+  membership_discount_amount?: number;
+  promotion_discount_amount?: number;
+  discount_amount?: number;
+  tip_amount?: number;
+  gift_card_amount?: number;
+  tax_rate?: number;
+  loyalty_points_used?: number;
+  outstanding_balance?: number;
+  is_group_booking?: boolean;
+  group_booking_ref?: string | null;
   services: Array<{
     title?: string;
     offering_name?: string;
@@ -30,10 +49,28 @@ interface BookingDetails {
     duration_minutes?: number;
     price: number;
     staff_name?: string;
+    guest_name?: string | null;
+  }>;
+  additional_charges?: Array<{
+    id: string;
+    description?: string;
+    amount: number;
+    currency?: string;
+    status?: string;
+    requested_at?: string;
+    paid_at?: string | null;
   }>;
   addons?: Array<{
     title: string;
+    offering_name?: string;
     price: number;
+    quantity?: number;
+  }>;
+  products?: Array<{
+    product_name?: string;
+    quantity: number;
+    unit_price: number;
+    total_price: number;
   }>;
   address?: {
     line1: string;
@@ -54,7 +91,10 @@ interface BookingDetails {
   special_requests?: string;
   payment_status?: string;
   payment_provider?: string;
+  display_time_zone?: string | null;
+  provider_id?: string;
   provider?: {
+    id?: string;
     business_name: string;
     phone?: string;
     email?: string;
@@ -68,6 +108,12 @@ export default function BookingConfirmationPage() {
   const [booking, setBooking] = useState<BookingDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // §Customer-launch (audit 2026-04): track the terminal error's HTTP status
+  // so we can distinguish "booking exists but I can't see it right now"
+  // (transient / optimistic success UI is fine) from "you're not allowed to
+  // see this booking" (401/403 — showing a green success tick would be a lie
+  // and blocks the user from recovering with a sign-in prompt).
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const referralTracked = useRef(false);
   const refreshIdentify = useRefreshAmplitudeIdentify("client");
 
@@ -108,6 +154,7 @@ export default function BookingConfirmationPage() {
           ? lastErr.message
           : "Failed to load booking details";
       setError(errorMessage);
+      setErrorStatus(lastErr instanceof FetchError ? lastErr.status : null);
       console.error("Error loading booking:", lastErr);
       setIsLoading(false);
     };
@@ -121,26 +168,62 @@ export default function BookingConfirmationPage() {
     referralTracked.current = true;
     fetcher
       .post("/api/me/referrals/track", { booking_id: bookingId })
-      .catch(() => {});
+      .catch((err) => {
+        // Expected when referral rules do not apply (validation / not first booking / no referrer).
+        if (err instanceof FetchError && (err.status === 400 || err.status === 404)) return;
+      });
   }, [bookingId, booking]);
 
   const handleDownloadReceipt = () => {
-    // Open receipt page in new tab for printing/saving as PDF
+    // Same-tab navigation keeps session cookies reliable (new tabs can race auth on some setups).
     const id = searchParams.get("bookingId") || searchParams.get("booking_id");
     if (id) {
-      window.open(`/account-settings/bookings/${id}/receipt`, "_blank");
+      router.push(`/account-settings/bookings/${id}/receipt`);
     } else {
       window.print();
     }
   };
 
-  const handleShare = () => {
-    if (navigator.share && booking) {
-      navigator.share({
-        title: `Booking Confirmation - ${booking.booking_number}`,
-        text: `I've booked ${booking.services.length} service(s) with ${booking.provider?.business_name || "provider"}`,
-        url: window.location.href,
-      });
+  const handleShare = async () => {
+    if (!booking) return;
+    const tz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    const dateLine = formatBookingDateInTimeZone(booking.selected_datetime, tz);
+    const timeLine = formatBookingTimeInTimeZone(booking.selected_datetime, tz);
+    const totalStr = formatCurrency(booking.total_amount, booking.currency);
+    const providerName = booking.provider?.business_name || "the provider";
+    const text = [
+      `Booking #${booking.booking_number} — ${providerName}.`,
+      `${dateLine}, ${timeLine}.`,
+      `${booking.services.length} service(s). Total ${totalStr}.`,
+    ].join(" ");
+    const shareData = {
+      title: `Booking Confirmation - ${booking.booking_number}`,
+      text,
+      url: window.location.href,
+    };
+
+    // §Customer-launch (audit 2026-04): previously the Share button was a
+    // no-op on desktop (navigator.share doesn't exist). We now fall back to
+    // clipboard copy so desktop users get something useful instead of a
+    // dead button.
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share(shareData);
+        return;
+      } catch {
+        // user cancelled or denied – fall through to clipboard
+      }
+    }
+    try {
+      const clip = `${text} ${window.location.href}`;
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(clip);
+        toast.success("Booking link copied to clipboard");
+      } else {
+        toast.info("Copy this link: " + window.location.href);
+      }
+    } catch {
+      toast.error("Couldn't copy the booking link. Try again.");
     }
   };
 
@@ -178,12 +261,48 @@ export default function BookingConfirmationPage() {
   }
 
   if (error || !booking) {
+    // §Customer-launch (audit 2026-04): only show the optimistic "Booking
+    // Confirmed!" tick when the detail fetch failed transiently (e.g. the
+    // booking isn't yet visible to our API user, or a 5xx).  For 401/403 we
+    // cannot truthfully claim success — either the session is missing or
+    // the user doesn't own this booking — so we show an auth/forbidden
+    // error with a sign-in CTA instead.
+    const isAuthError = errorStatus === 401 || errorStatus === 403;
+    if (bookingId && isAuthError) {
+      return (
+        <div className="min-h-screen bg-white">
+          <BeautonomiHeader />
+          <div className="flex items-center justify-center min-h-[60vh] px-4">
+            <div className="text-center max-w-md">
+              <h1 className="text-2xl font-semibold text-gray-900 mb-2">
+                {errorStatus === 401 ? "Please sign in" : "You can't view this booking"}
+              </h1>
+              <p className="text-gray-600 mb-6">
+                {errorStatus === 401
+                  ? "Your session has expired. Sign in to view your booking."
+                  : "This booking belongs to a different account. Sign in with the email you used to book, or head back home."}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <Button
+                  onClick={() => router.push(`/auth?redirect=${encodeURIComponent(`/booking/confirmation?bookingId=${bookingId}`)}`)}
+                  className="bg-primary hover:bg-primary-hover"
+                >
+                  Sign in
+                </Button>
+                <Button variant="outline" onClick={() => router.push("/")}>Go Home</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-white">
         <BeautonomiHeader />
         <div className="flex items-center justify-center min-h-[60vh] px-4">
           <div className="text-center max-w-md">
-            {/* Show success tick when booking was just created but details couldn't load */}
+            {/* Show success tick when booking was just created but details couldn't load transiently */}
             {bookingId ? (
               <>
                 <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 mb-4">
@@ -224,7 +343,9 @@ export default function BookingConfirmationPage() {
     );
   }
 
-  const bookingDate = new Date(booking.selected_datetime);
+  const bookingDateRaw = booking.selected_datetime;
+  const bookingTz = booking.display_time_zone || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const bookingDate = new Date(bookingDateRaw);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -268,6 +389,11 @@ export default function BookingConfirmationPage() {
           <p className="text-sm text-gray-500 mt-2">
             Booking #{booking.booking_number}
           </p>
+          {booking.is_group_booking && booking.group_booking_ref && (
+            <p className="text-sm text-gray-600 mt-2">
+              Group reference: <span className="font-medium text-gray-800">{booking.group_booking_ref}</span>
+            </p>
+          )}
         </motion.div>
 
         {/* Booking Details Card */}
@@ -285,8 +411,8 @@ export default function BookingConfirmationPage() {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-gray-900 mb-1">Date & Time</h3>
-                <p className="text-gray-600">{formatDate(bookingDate)}</p>
-                <p className="text-gray-600">{formatTime(bookingDate.toISOString())}</p>
+                <p className="text-gray-600">{formatBookingDateInTimeZone(bookingDateRaw, bookingTz)}</p>
+                <p className="text-gray-600">{formatBookingTimeInTimeZone(bookingDateRaw, bookingTz)}</p>
               </div>
             </div>
 
@@ -325,6 +451,9 @@ export default function BookingConfirmationPage() {
                     <div key={index} className="flex justify-between items-start">
                       <div className="flex-1">
                         <p className="font-medium text-gray-900">{serviceTitle}</p>
+                        {service.guest_name && (
+                          <p className="text-sm text-gray-600">Guest: {service.guest_name}</p>
+                        )}
                         {service.staff_name && (
                           <p className="text-sm text-gray-600">with {service.staff_name}</p>
                         )}
@@ -346,10 +475,24 @@ export default function BookingConfirmationPage() {
                     {booking.addons.map((addon, index) => (
                       <div key={`addon-${index}`} className="flex justify-between items-start pl-4">
                         <div className="flex-1">
-                          <p className="text-gray-600">+ {addon.title}</p>
+                          <p className="text-gray-600">+ {addon.title || addon.offering_name || "Add-on"}{(addon.quantity ?? 1) > 1 ? ` ×${addon.quantity}` : ""}</p>
                         </div>
                         <p className="font-semibold text-gray-900">
-                          {formatCurrency(addon.price, booking.currency)}
+                          {formatCurrency(addon.price * (addon.quantity ?? 1), booking.currency)}
+                        </p>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {booking.products && booking.products.length > 0 && (
+                  <>
+                    {booking.products.map((product, index) => (
+                      <div key={`product-${index}`} className="flex justify-between items-start pl-4">
+                        <div className="flex-1">
+                          <p className="text-gray-600">{product.product_name || "Product"}{product.quantity > 1 ? ` ×${product.quantity}` : ""}</p>
+                        </div>
+                        <p className="font-semibold text-gray-900">
+                          {formatCurrency(product.total_price, booking.currency)}
                         </p>
                       </div>
                     ))}
@@ -357,6 +500,170 @@ export default function BookingConfirmationPage() {
                 )}
               </div>
             </div>
+
+            {/* Additional charges (post-booking add-ons) */}
+            {booking.additional_charges && booking.additional_charges.length > 0 && (
+              <div className="border-t pt-6">
+                <h3 className="font-semibold text-gray-900 mb-3">Additional charges</h3>
+                <div className="space-y-3">
+                  {booking.additional_charges.map((charge) => {
+                    const cur = charge.currency ?? booking.currency;
+                    const unpaid =
+                      charge.status === "pending" || charge.status === "approved";
+                    return (
+                      <div
+                        key={charge.id}
+                        className={`rounded-lg border p-3 text-sm ${
+                          charge.status === "paid"
+                            ? "bg-green-50 border-green-200"
+                            : unpaid
+                              ? "bg-amber-50 border-amber-200"
+                              : charge.status === "rejected"
+                                ? "bg-gray-50 border-gray-200"
+                                : "bg-gray-50 border-gray-200"
+                        }`}
+                      >
+                        <div className="flex justify-between items-start gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900">{charge.description || "Additional charge"}</p>
+                            <p className="text-gray-600 mt-0.5">{formatCurrency(charge.amount, cur)}</p>
+                            {charge.paid_at && (
+                              <p className="text-xs text-gray-500 mt-1">
+                                Paid on {new Date(charge.paid_at).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          {charge.status && (
+                            <span
+                              className={`shrink-0 px-2 py-0.5 rounded text-xs font-medium capitalize ${
+                                charge.status === "paid"
+                                  ? "bg-green-100 text-green-800"
+                                  : unpaid
+                                    ? "bg-amber-100 text-amber-900"
+                                    : charge.status === "rejected"
+                                      ? "bg-red-100 text-red-800"
+                                      : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {charge.status.replace(/_/g, " ")}
+                            </span>
+                          )}
+                        </div>
+                        {unpaid && bookingId && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="mt-2 w-full sm:w-auto bg-primary hover:bg-primary-hover"
+                            onClick={() =>
+                              router.push(`/account-settings/bookings/${bookingId}/pay-additional/${charge.id}`)
+                            }
+                          >
+                            Pay now
+                          </Button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Price breakdown — matches checkout when fees/taxes/loyalty apply */}
+            {(() => {
+              const sub = booking.subtotal ?? 0;
+              const tax = booking.tax_amount ?? 0;
+              const taxRate = booking.tax_rate ?? 0;
+              const svcFee = booking.service_fee_amount ?? 0;
+              const travel = booking.travel_fee ?? 0;
+              const loyalty = booking.loyalty_discount_amount ?? 0;
+              const loyaltyPtsUsed = booking.loyalty_points_used ?? 0;
+              const membership = booking.membership_discount_amount ?? 0;
+              const promo = booking.promotion_discount_amount ?? 0;
+              const coupon = booking.discount_amount ?? 0;
+              const tip = booking.tip_amount ?? 0;
+              const giftCard = booking.gift_card_amount ?? 0;
+              const hasBreakdown =
+                sub > 0 ||
+                tax > 0 ||
+                svcFee > 0 ||
+                travel > 0 ||
+                loyalty > 0 ||
+                membership > 0 ||
+                promo > 0 ||
+                coupon > 0 ||
+                tip > 0 ||
+                giftCard > 0;
+              if (!hasBreakdown) return null;
+              return (
+                <div className="border-t pt-4 space-y-1.5 text-sm">
+                  <h3 className="font-semibold text-gray-900 mb-2">Summary</h3>
+                  {sub > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Subtotal</span>
+                      <span>{formatCurrency(sub, booking.currency)}</span>
+                    </div>
+                  )}
+                  {travel > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Travel</span>
+                      <span>{formatCurrency(travel, booking.currency)}</span>
+                    </div>
+                  )}
+                  {tax > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>
+                        Tax{taxRate > 0 ? ` (${taxRate}%)` : ""}
+                      </span>
+                      <span>{formatCurrency(tax, booking.currency)}</span>
+                    </div>
+                  )}
+                  {svcFee > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Service fee</span>
+                      <span>{formatCurrency(svcFee, booking.currency)}</span>
+                    </div>
+                  )}
+                  {giftCard > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Gift card</span>
+                      <span>−{formatCurrency(giftCard, booking.currency)}</span>
+                    </div>
+                  )}
+                  {loyalty > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>
+                        Loyalty{loyaltyPtsUsed > 0 ? ` (${loyaltyPtsUsed.toLocaleString()} pts)` : ""}
+                      </span>
+                      <span>−{formatCurrency(loyalty, booking.currency)}</span>
+                    </div>
+                  )}
+                  {membership > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Membership</span>
+                      <span>−{formatCurrency(membership, booking.currency)}</span>
+                    </div>
+                  )}
+                  {promo > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Promotion</span>
+                      <span>−{formatCurrency(promo, booking.currency)}</span>
+                    </div>
+                  )}
+                  {coupon > 0 && (
+                    <div className="flex justify-between text-green-700">
+                      <span>Discount</span>
+                      <span>−{formatCurrency(coupon, booking.currency)}</span>
+                    </div>
+                  )}
+                  {tip > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Tip</span>
+                      <span>{formatCurrency(tip, booking.currency)}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {/* Total */}
             <div className="border-t pt-4 space-y-2">
@@ -380,6 +687,13 @@ export default function BookingConfirmationPage() {
                 <div className="flex justify-between items-center text-sm text-gray-600">
                   <span>Paid via card</span>
                   <span className="font-medium">{formatCurrency(booking.total_paid!, booking.currency)}</span>
+                </div>
+              )}
+              {typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0 && (
+                <div className="mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
+                  <p className="text-sm text-amber-900 font-medium">
+                    Amount due: {formatCurrency(booking.outstanding_balance, booking.currency)}
+                  </p>
                 </div>
               )}
               {booking.payment_provider === "cash" ? (
@@ -425,6 +739,27 @@ export default function BookingConfirmationPage() {
                       <Mail className="w-4 h-4" />
                       {booking.provider.email}
                     </p>
+                  )}
+                  {/*
+                    §Customer-launch (audit 2026-04): deep-link into the
+                    in-app messaging inbox preloaded with this provider +
+                    booking context, so customers can reach the provider
+                    immediately after booking without digging through menus.
+                  */}
+                  {(booking.provider.id || booking.provider_id) && (
+                    <div className="pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          const pid = booking.provider?.id || booking.provider_id;
+                          router.push(`/account-settings/messages?provider=${encodeURIComponent(pid!)}&bookingId=${encodeURIComponent(booking.id)}`);
+                        }}
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Message Provider
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>

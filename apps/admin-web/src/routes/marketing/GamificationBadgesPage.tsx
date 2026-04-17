@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
+import { adminToast } from "@/lib/adminToast";
 
 type BadgeRow = Record<string, unknown> & {
   id?: string;
@@ -27,6 +28,7 @@ type BadgeRow = Record<string, unknown> & {
   tier?: number;
   is_active?: boolean;
   color?: string;
+  icon_url?: string | null;
 };
 
 type Payload = { badges: BadgeRow[]; total: number };
@@ -66,6 +68,7 @@ export function GamificationBadgesPage() {
   const [nReq, setNReq] = useState("{}");
   const [nBen, setNBen] = useState("{}");
   const [nDesc, setNDesc] = useState("");
+  const [nIconUrl, setNIconUrl] = useState("");
 
   const [editId, setEditId] = useState<string | null>(null);
   const [eName, setEName] = useState("");
@@ -74,6 +77,7 @@ export function GamificationBadgesPage() {
   const [eColor, setEColor] = useState("");
   const [eReq, setEReq] = useState("");
   const [eBen, setEBen] = useState("");
+  const [eIconUrl, setEIconUrl] = useState("");
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gamification", "badges"] });
 
@@ -85,6 +89,7 @@ export function GamificationBadgesPage() {
         name: nName.trim(),
         slug: nSlug.trim().toLowerCase().replace(/\s+/g, "-"),
         description: nDesc.trim() || null,
+        icon_url: nIconUrl.trim() || null,
         tier,
         color: nColor.trim(),
         requirements: parseJsonObject(nReq, "Requirements"),
@@ -103,7 +108,10 @@ export function GamificationBadgesPage() {
       setNReq("{}");
       setNBen("{}");
       setNDesc("");
+      setNIconUrl("");
+      adminToast.success("Badge created");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create badge: ${e.message}`),
   });
 
   const patchBadge = useMutation({
@@ -112,12 +120,18 @@ export function GamificationBadgesPage() {
     onSuccess: () => {
       invalidate();
       setEditId(null);
+      adminToast.success("Badge updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update badge: ${e.message}`),
   });
 
   const deleteBadge = useMutation({
     mutationFn: (id: string) => adminApi.deleteJson<unknown>(`/api/admin/gamification/badges/${id}`),
-    onSuccess: () => invalidate(),
+    onSuccess: () => {
+      invalidate();
+      adminToast.success("Badge deleted");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to delete badge: ${e.message}`),
   });
 
   function openEdit(row: BadgeRow) {
@@ -127,6 +141,7 @@ export function GamificationBadgesPage() {
     setESlug(String(row.slug ?? ""));
     setETier(String(row.tier ?? ""));
     setEColor(String(row.color ?? ""));
+    setEIconUrl(String(row.icon_url ?? ""));
     setEReq(JSON.stringify(row.requirements ?? {}, null, 2));
     setEBen(JSON.stringify(row.benefits ?? {}, null, 2));
   }
@@ -138,6 +153,7 @@ export function GamificationBadgesPage() {
       name: eName.trim(),
       slug: eSlug.trim(),
       color: eColor.trim(),
+      icon_url: eIconUrl.trim() || null,
       requirements: parseJsonObject(eReq, "Requirements"),
       benefits: parseJsonObject(eBen, "Benefits"),
     };
@@ -218,6 +234,10 @@ export function GamificationBadgesPage() {
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nDesc} onChange={(e) => setNDesc(e.target.value)} />
             </label>
             <label className="text-sm sm:col-span-2">
+              Icon URL (optional)
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={nIconUrl} onChange={(e) => setNIconUrl(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
               Requirements (JSON object)
               <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={nReq} onChange={(e) => setNReq(e.target.value)} />
             </label>
@@ -259,6 +279,10 @@ export function GamificationBadgesPage() {
               <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eColor} onChange={(e) => setEColor(e.target.value)} />
             </label>
             <label className="text-sm sm:col-span-2">
+              Icon URL
+              <input className="mt-1 w-full rounded border border-gray-300 px-2 py-1" value={eIconUrl} onChange={(e) => setEIconUrl(e.target.value)} />
+            </label>
+            <label className="text-sm sm:col-span-2">
               Requirements
               <textarea className="mt-1 w-full rounded border border-gray-300 px-2 py-1 font-mono text-xs" rows={4} value={eReq} onChange={(e) => setEReq(e.target.value)} />
             </label>
@@ -294,6 +318,7 @@ export function GamificationBadgesPage() {
               <AdminTh>Slug</AdminTh>
               <AdminTh>Tier</AdminTh>
               <AdminTh>Active</AdminTh>
+              <AdminTh>Icon</AdminTh>
               <AdminTh className="min-w-[12rem]">Actions</AdminTh>
             </tr>
           </AdminTableHead>
@@ -306,6 +331,7 @@ export function GamificationBadgesPage() {
                   <AdminTd className="font-mono text-xs">{String(r.slug ?? "")}</AdminTd>
                   <AdminTd>{String(r.tier ?? "")}</AdminTd>
                   <AdminTd>{r.is_active ? "yes" : "no"}</AdminTd>
+                  <AdminTd className="max-w-[12rem] truncate text-xs text-gray-500">{String(r.icon_url ?? "—")}</AdminTd>
                   <AdminTd className="space-x-2 text-sm">
                     <button type="button" className="text-gray-900 underline" onClick={() => openEdit(r)}>
                       Edit

@@ -17,6 +17,21 @@ const updateTimeBlockSchema = z.object({
   notes: z.string().optional(),
 });
 
+function normalizeRecurringPattern(
+  raw: any,
+  anchorDate: string,
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  let frequency: string = raw.frequency ?? raw.pattern ?? "weekly";
+  if (frequency === "biweekly") frequency = "weekly";
+  const anchor = new Date(anchorDate + "T12:00:00");
+  const dow = anchor.getDay();
+  let days: number[] | undefined = raw.days ?? raw.days_of_week;
+  if (!days && frequency === "weekly") days = [dow];
+  const endDate: string | undefined = raw.end_date || undefined;
+  return { frequency, days, end_date: endDate };
+}
+
 /**
  * GET /api/provider/time-blocks/[id]
  * 
@@ -96,7 +111,11 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireRoleInApi(['provider_owner', 'superadmin'], request);
+    const permissionCheck = await requireAnyPermission(["edit_settings", "edit_appointments"], request);
+    if (!permissionCheck.authorized) {
+      return permissionCheck.response!;
+    }
+    const { user } = permissionCheck;
 
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
@@ -119,10 +138,9 @@ export async function PATCH(
       return notFoundResponse("Provider not found");
     }
 
-    // Verify block belongs to provider
     const { data: existingBlock } = await supabase
       .from("time_blocks")
-      .select("id")
+      .select("id, date")
       .eq("id", id)
       .eq("provider_id", providerId)
       .single();
@@ -131,9 +149,8 @@ export async function PATCH(
       return notFoundResponse("Time block not found");
     }
 
-    // Build update data
-    const updateData: Record<string, any> = {};
     const data = validationResult.data;
+    const updateData: Record<string, any> = {};
     if (data.staff_id !== undefined) updateData.staff_id = data.staff_id;
     if (data.blocked_time_type_id !== undefined) updateData.blocked_time_type_id = data.blocked_time_type_id;
     if (data.name !== undefined) updateData.name = data.name;
@@ -141,9 +158,16 @@ export async function PATCH(
     if (data.start_time !== undefined) updateData.start_time = data.start_time;
     if (data.end_time !== undefined) updateData.end_time = data.end_time;
     if (data.is_recurring !== undefined) updateData.is_recurring = data.is_recurring;
-    if (data.recurring_pattern !== undefined) updateData.recurring_pattern = data.recurring_pattern;
     if (data.is_active !== undefined) updateData.is_active = data.is_active;
     if (data.notes !== undefined) updateData.notes = data.notes;
+
+    if (data.recurring_pattern !== undefined || data.is_recurring !== undefined) {
+      const anchorDate = data.date ?? (existingBlock as any).date ?? new Date().toISOString().split("T")[0];
+      const isRec = data.is_recurring ?? false;
+      updateData.recurring_pattern = isRec
+        ? normalizeRecurringPattern(data.recurring_pattern, anchorDate)
+        : null;
+    }
 
     // Update block
     const { data: updatedBlock, error: updateError } = await (supabase

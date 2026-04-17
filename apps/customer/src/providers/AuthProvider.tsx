@@ -182,7 +182,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (timeoutId) clearTimeout(timeoutId);
       subscription.unsubscribe();
     };
-  }, [updateSession, AUTH_SESSION_TIMEOUT_MS]);
+   
+  }, [updateSession]);
 
   useEffect(() => {
     if (!isSentryEnabled()) return;
@@ -336,8 +337,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) return { error: new Error(error.message) };
       if (data.session) {
         updateSession(data.session);
+        return { error: null };
       }
-      return { error: null };
+      return { error: new Error("Login succeeded but no session was returned. Please try again.") };
     },
     [updateSession]
   );

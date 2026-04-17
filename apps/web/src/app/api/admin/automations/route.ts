@@ -40,8 +40,29 @@ export async function GET(request: NextRequest) {
     }
 
     if (type !== "all") {
-      // Map UI types to trigger types
       const triggerTypeMap: Record<string, string[]> = {
+        booking_reminder: ["appointment_reminder"],
+        follow_up: [
+          "booking_completed",
+          "client_inactive",
+          "new_lead",
+          "package_expiring",
+        ],
+        review_request: ["review_request"],
+        win_back: [
+          "client_inactive",
+          "seasonal_promotion",
+        ],
+        birthday: [
+          "client_birthday",
+          "client_anniversary",
+          "visit_milestone",
+        ],
+        marketing_broadcast: [
+          "marketing_broadcast",
+          "holiday",
+          "referral_received",
+        ],
         reminder: ["appointment_reminder"],
         update: ["appointment_rescheduled", "appointment_no_show"],
         booking: [
@@ -60,9 +81,11 @@ export async function GET(request: NextRequest) {
         ],
       };
 
-      const triggerTypes = triggerTypeMap[type] || [];
-      if (triggerTypes.length > 0) {
+      const triggerTypes = triggerTypeMap[type];
+      if (triggerTypes && triggerTypes.length > 0) {
         query = query.in("trigger_type", triggerTypes);
+      } else {
+        query = query.eq("trigger_type", type);
       }
     }
 

@@ -186,6 +186,13 @@ interface PlatformSettings {
       enabled: boolean;
     };
   };
+  twilio?: {
+    account_sid: string;
+    auth_token: string;
+    sms_from: string;
+    whatsapp_from: string;
+    enabled: boolean;
+  };
 }
 
 export default function AdminSettings() {
@@ -437,6 +444,13 @@ export default function AdminSettings() {
               <OneSignalSettings
                 settings={settings?.onesignal}
                 onChange={(updates) => updateSettings("onesignal", updates)}
+              />
+            </div>
+            <div>
+              <h3 className="text-sm font-medium text-gray-500 mb-2">Twilio (SMS &amp; WhatsApp)</h3>
+              <TwilioSettings
+                settings={settings?.twilio}
+                onChange={(updates) => updateSettings("twilio", updates)}
               />
             </div>
             <div>
@@ -763,8 +777,8 @@ function PayoutSettings({
     payout_schedule: (settings?.payout_schedule ?? "weekly") as "daily" | "weekly" | "monthly",
     minimum_payout_amount: settings?.minimum_payout_amount ?? 100,
     payout_hold_days: settings?.payout_hold_days ?? 0,
-    platform_service_fee_type: (settings?.platform_service_fee_type ?? "percentage") as "percentage" | "fixed",
-    platform_service_fee_percentage: settings?.platform_service_fee_percentage ?? 5,
+    platform_service_fee_type: (settings?.platform_service_fee_type ?? "fixed") as "percentage" | "fixed",
+    platform_service_fee_percentage: settings?.platform_service_fee_percentage ?? 0,
     platform_service_fee_fixed: settings?.platform_service_fee_fixed ?? 0,
     commission_enabled: settings?.commission_enabled ?? true,
     platform_commission_percentage: settings?.platform_commission_percentage ?? 20,
@@ -1333,6 +1347,118 @@ function OneSignalSettings({
         />
         <p className="text-xs sm:text-sm text-gray-600 mt-1">
           Safari Web Push ID (for web push notifications)
+        </p>
+      </div>
+    </div>
+  );
+}
+
+interface PlatformSettingsTwilio {
+  account_sid: string;
+  auth_token: string;
+  sms_from: string;
+  whatsapp_from: string;
+  enabled: boolean;
+}
+
+function TwilioSettings({
+  settings,
+  onChange,
+}: {
+  settings: PlatformSettingsTwilio | undefined;
+  onChange: (updates: Partial<PlatformSettingsTwilio>) => void;
+}) {
+  const safeSettings = {
+    account_sid: settings?.account_sid ?? "",
+    auth_token: settings?.auth_token ?? "",
+    sms_from: settings?.sms_from ?? "",
+    whatsapp_from: settings?.whatsapp_from ?? "",
+    enabled: settings?.enabled ?? false,
+  };
+
+  return (
+    <div className="bg-white border rounded-lg p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <div>
+        <h3 className="text-base sm:text-lg font-semibold mb-4">Twilio SMS &amp; WhatsApp</h3>
+        <p className="text-xs sm:text-sm text-gray-600 mb-4">
+          Configure Twilio for outbound SMS and WhatsApp messaging from Provider Ops.
+          Secrets are stored securely in <code className="text-[11px]">platform_secrets</code>.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div>
+          <Label htmlFor="twilio_enabled" className="text-sm sm:text-base">Enable Twilio</Label>
+          <p className="text-xs sm:text-sm text-gray-600 mt-1">
+            Enable SMS and WhatsApp via Twilio for Provider Ops communications
+          </p>
+        </div>
+        <input
+          type="checkbox"
+          id="twilio_enabled"
+          checked={safeSettings.enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked })}
+          className="w-5 h-5"
+        />
+      </div>
+
+      <div>
+        <Label htmlFor="twilio_account_sid" className="text-sm sm:text-base">Account SID *</Label>
+        <Input
+          id="twilio_account_sid"
+          type="password"
+          value={safeSettings.account_sid}
+          onChange={(e) => onChange({ account_sid: e.target.value })}
+          placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          Stored in <code className="text-[11px]">platform_secrets.twilio_account_sid</code>
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="twilio_auth_token" className="text-sm sm:text-base">Auth Token *</Label>
+        <Input
+          id="twilio_auth_token"
+          type="password"
+          value={safeSettings.auth_token}
+          onChange={(e) => onChange({ auth_token: e.target.value })}
+          placeholder="Your Twilio auth token"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          Stored in <code className="text-[11px]">platform_secrets.twilio_auth_token</code>
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="twilio_sms_from" className="text-sm sm:text-base">SMS From Number</Label>
+        <Input
+          id="twilio_sms_from"
+          type="text"
+          value={safeSettings.sms_from}
+          onChange={(e) => onChange({ sms_from: e.target.value })}
+          placeholder="+27xxxxxxxxx"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          Your Twilio phone number for outbound SMS (E.164 format)
+        </p>
+      </div>
+
+      <div>
+        <Label htmlFor="twilio_whatsapp_from" className="text-sm sm:text-base">WhatsApp From Number</Label>
+        <Input
+          id="twilio_whatsapp_from"
+          type="text"
+          value={safeSettings.whatsapp_from}
+          onChange={(e) => onChange({ whatsapp_from: e.target.value })}
+          placeholder="+27xxxxxxxxx or whatsapp:+27xxxxxxxxx"
+          className="mt-1 font-mono text-xs sm:text-sm"
+        />
+        <p className="text-xs sm:text-sm text-gray-600 mt-1">
+          Your Twilio WhatsApp-enabled number. Use Twilio Sandbox for testing.
         </p>
       </div>
     </div>
@@ -2444,7 +2570,7 @@ function TravelFeesSettings({
         {safeSettings.pricing_model === "tiered" && (
           <div className="space-y-3">
             <Label>Default tiers</Label>
-            <p className="text-xs text-gray-500">Fixed fee per distance band (e.g. 0–10 km = R100, 11–50 km = R150). Add tiers in ascending order by max km.</p>
+            <p className="text-xs text-gray-500">Fixed fee per distance band (e.g. 0–10 km = 100, 11–50 km = 150). Add tiers in ascending order by max km.</p>
             <div className="space-y-2">
               {defaultTiers.map((tier, i) => (
                 <div key={i} className="flex items-center gap-2 flex-wrap">

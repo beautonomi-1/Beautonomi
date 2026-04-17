@@ -14,7 +14,6 @@ import { CreditCard, Trash2, Star, ExternalLink, Info, Plus } from "lucide-react
 import { toast } from "sonner";
 import AuthGuard from "@/components/auth/auth-guard";
 import { useAuth } from "@/providers/AuthProvider";
-import { motion } from "framer-motion";
 import GiftCardsSection from "./components/GiftCardsSection";
 
 interface PaymentMethod {
@@ -64,7 +63,7 @@ const PaymentPage = () => {
 
   const loadPaymentSafetyCopy = async () => {
     try {
-      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>("/api/public/payment-safety-copy", { cache: "no-store" });
+      const res = await fetcher.get<{ data: typeof paymentSafetyCopy }>("/api/public/payment-safety-copy", { staleTimeMs: 60_000 });
       if (res?.data) setPaymentSafetyCopy(res.data);
     } catch {
       // use fallback in render
@@ -73,7 +72,7 @@ const PaymentPage = () => {
 
   const loadCouponCount = async () => {
     try {
-      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", { cache: "no-store" });
+      const response = await fetcher.get<{ data: { count: number } }>("/api/me/coupons/count", { staleTimeMs: 30_000 });
       setCouponCount(response.data?.count || 0);
     } catch (error) {
       console.error("Failed to load coupon count:", error);
@@ -105,7 +104,7 @@ const PaymentPage = () => {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", { cache: "no-store" });
+      const response = await fetcher.get<{ data: PaymentMethod[] }>("/api/me/payment-methods", { staleTimeMs: 15_000 });
       setPaymentMethods(response.data || []);
     } catch (err) {
       const errorMessage =
@@ -208,17 +207,14 @@ const PaymentPage = () => {
           />
           
           {/* Page Header - Glass Card Style */}
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mb-6"
           >
             <h1 className="text-2xl md:text-3xl font-semibold tracking-tighter mb-2 text-gray-900">Payments & payouts</h1>
             <p className="text-sm md:text-base text-gray-600 font-light">
               Manage your payment methods, coupons, and gift cards
             </p>
-          </motion.div>
+          </div>
 
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <div className="overflow-x-auto whitespace-nowrap mb-8">
@@ -252,10 +248,7 @@ const PaymentPage = () => {
           <div className="flex flex-col md:flex-row justify-between gap-6">
             <div className="w-full md:w-2/3">
               {/* Payment History Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Your payments</h2>
@@ -263,21 +256,16 @@ const PaymentPage = () => {
                   Keep track of all your payments and refunds.
                 </p>
                 <Link href="/account-settings/bookings">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                  <button type="button"
                     className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl mb-6 md:mb-8 font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                   >
                     View booking payments
-                  </motion.button>
+                  </button>
                 </Link>
-              </motion.div>
+              </div>
 
               {/* Payment Methods Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <div className="flex items-center gap-2 mb-2">
@@ -319,24 +307,18 @@ const PaymentPage = () => {
                       Cards are saved automatically when you pay with a card
                     </p>
                     <Link href="/">
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
+                      <button type="button"
                         className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                       >
                         Book a service to save a card
-                      </motion.button>
+                      </button>
                     </Link>
                   </div>
                 ) : (
                   <div className="mb-6 space-y-3">
-                    {paymentMethods.map((method, index) => (
-                      <motion.div
+                    {paymentMethods.map((method) => (
+                      <div
                         key={method.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 * index }}
-                        whileHover={{ scale: 1.01 }}
                         className="backdrop-blur-sm bg-white/60 border border-white/40 rounded-xl p-4 flex items-center justify-between hover:shadow-lg transition-all"
                       >
                         <div className="flex items-center gap-4">
@@ -380,16 +362,14 @@ const PaymentPage = () => {
                         >
                           <Trash2 className="w-4 h-4" />
                         </Button>
-                      </motion.div>
+                      </div>
                     ))}
                   </div>
                 )}
-                <motion.button
+                <button
                   type="button"
                   onClick={handleAddCard}
                   disabled={addingCard}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.99 }}
                   className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 border-dashed border-gray-300 hover:border-[#FF0077] text-gray-600 hover:text-[#FF0077] transition-all mt-3 disabled:opacity-60"
                 >
                   {addingCard ? (
@@ -400,16 +380,13 @@ const PaymentPage = () => {
                       <span className="text-sm font-medium">Add card</span>
                     </>
                   )}
-                </motion.button>
-              </motion.div>
+                </button>
+              </div>
 
               <GiftCardsSection />
 
               {/* Coupons Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 mb-6"
               >
                 <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">Coupons</h2>
@@ -419,14 +396,12 @@ const PaymentPage = () => {
                 </div>
 
                 {!showCouponInput ? (
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                  <button type="button"
                     onClick={handleAddCouponClick}
                     className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-4 md:px-6 py-2 md:py-3 rounded-xl font-semibold text-sm md:text-base transition-all shadow-lg hover:shadow-xl"
                   >
                     Add coupon
-                  </motion.button>
+                  </button>
                 ) : (
                   <div className="space-y-4">
                     <div className="py-2 relative border border-white/40 rounded-lg backdrop-blur-sm bg-white/60">
@@ -467,15 +442,12 @@ const PaymentPage = () => {
                     </div>
                   </div>
                 )}
-              </motion.div>
+              </div>
             </div>
             
             {/* Sidebar - Info Card (managed by superadmin) */}
             <div className="w-full md:w-1/3">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5 }}
+              <div
                 className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6 sticky top-6"
               >
                 <div className="flex items-center mb-4">
@@ -493,7 +465,7 @@ const PaymentPage = () => {
                   <span>{paymentSafetyCopy?.learn_more_label ?? "Learn more"}</span>
                   <ExternalLink className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                 </Link>
-              </motion.div>
+              </div>
             </div>
           </div>
         </TabsContent>
@@ -502,9 +474,7 @@ const PaymentPage = () => {
           <TabsContent value="payouts">
             <div className="flex flex-col md:flex-row justify-between gap-6">
               <div className="w-full md:w-2/3">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                <div
                   className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6"
                 >
                   <h2 className="text-xl font-semibold tracking-tighter mb-2 text-gray-900">
@@ -515,20 +485,16 @@ const PaymentPage = () => {
                     money via Paystack.
                   </p>
                   <Link href="/provider/settings/payout-accounts">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                    <button type="button"
                       className="bg-gradient-to-r from-[#FF0077] to-[#E6006A] hover:from-[#E6006A] hover:to-[#FF0077] text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-lg hover:shadow-xl"
                     >
                       Set up payouts
-                    </motion.button>
+                    </button>
                   </Link>
-                </motion.div>
+                </div>
               </div>
               <div className="w-full md:w-1/3">
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
+                <div
                   className="backdrop-blur-xl bg-white/80 border border-white/40 rounded-xl p-6"
                 >
                   <h2 className="text-lg font-semibold tracking-tighter mb-4 text-gray-900">Need help?</h2>
@@ -558,7 +524,7 @@ const PaymentPage = () => {
                       </Link>
                     </li>
                   </ul>
-                </motion.div>
+                </div>
               </div>
             </div>
           </TabsContent>

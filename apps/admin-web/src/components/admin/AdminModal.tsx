@@ -1,7 +1,14 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+import { cn } from "@/lib/cn";
+
+const MODAL_MAX: Record<"md" | "lg" | "xl", string> = {
+  md: "max-w-md",
+  lg: "max-w-xl",
+  xl: "max-w-[95vw] sm:max-w-3xl",
+};
 
 /**
- * Confirmations and short forms (UI conventions §7). Backdrop click closes.
+ * Confirmations and short forms (UI conventions §7). Backdrop click and Escape key close.
  */
 export function AdminModal({
   open,
@@ -11,6 +18,7 @@ export function AdminModal({
   children,
   footer,
   labelledBy = "admin-modal-title",
+  size = "md",
 }: {
   open: boolean;
   onClose: () => void;
@@ -19,7 +27,29 @@ export function AdminModal({
   children: ReactNode;
   footer: ReactNode;
   labelledBy?: string;
+  /** Wide dialogs for CMS-style forms (notification templates, rich editors). */
+  size?: "md" | "lg" | "xl";
 }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.activeElement as HTMLElement | null;
+    dialogRef.current?.focus();
+    return () => {
+      prev?.focus();
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
@@ -29,7 +59,12 @@ export function AdminModal({
       onClick={onClose}
     >
       <div
-        className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg"
+        ref={dialogRef}
+        tabIndex={-1}
+        className={cn(
+          "max-h-[85dvh] w-full overflow-y-auto rounded-t-2xl bg-white p-6 shadow-2xl outline-none sm:max-h-[90vh] sm:rounded-2xl sm:shadow-lg",
+          MODAL_MAX[size],
+        )}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

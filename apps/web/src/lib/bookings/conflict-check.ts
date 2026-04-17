@@ -45,6 +45,7 @@ export async function checkBookingConflict(
     .from('booking_services')
     .select(`
       booking_id,
+      staff_id,
       scheduled_start_at,
       scheduled_end_at,
       bookings!inner (
@@ -56,7 +57,7 @@ export async function checkBookingConflict(
       )
     `)
     .eq('staff_id', staffId)
-    .neq('bookings.status', 'cancelled')
+    .not('bookings.status', 'in', '("cancelled","no_show")')
     .lt('scheduled_start_at', effectiveEndAt.toISOString())
     .gt('scheduled_end_at', startAt.toISOString());
 
@@ -67,24 +68,46 @@ export async function checkBookingConflict(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('Error checking booking conflict:', error);
-    // On error, assume conflict exists (fail-safe)
-    return { hasConflict: true };
+    // B6: previously swallowed errors and returned `{ hasConflict: false }`,
+    // which let every booking past conflict detection whenever the DB hiccuped.
+    // Throw so the caller can surface a 5xx and retry rather than silently
+    // issuing a confirmation on top of an existing booking.
+    console.error(
+      '[conflict-check] checkBookingConflict DB error:',
+      error,
+      { staffId, startAt, endAt, excludeBookingId },
+    );
+    throw new Error(
+      `checkBookingConflict DB error for staff ${staffId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
     return { hasConflict: false };
   }
 
-  // Check if conflicts account for their own buffers
-  // For each conflicting booking, add its buffer to the end time
+  // Resolve staff buffer override once (if any) so existing booking buffers
+  // match what the availability engine uses for this staff member.
+  let staffBufferOverride: number | null = null;
+  try {
+    const { data: staffRow } = await supabase
+      .from('provider_staff')
+      .select('buffer_minutes_override')
+      .eq('id', staffId)
+      .maybeSingle();
+    if (staffRow?.buffer_minutes_override != null) {
+      staffBufferOverride = Number(staffRow.buffer_minutes_override);
+    }
+  } catch {
+    // Non-fatal; fall through to offering-level buffer
+  }
+
   const actualConflicts = conflictingServices.filter((cs: any) => {
     const conflictStart = new Date(cs.scheduled_start_at);
     const conflictEnd = new Date(cs.scheduled_end_at);
-    const conflictBuffer = cs.offerings?.buffer_minutes || 15;
+    const conflictBuffer = staffBufferOverride ?? cs.offerings?.buffer_minutes ?? 15;
     const conflictEffectiveEnd = new Date(conflictEnd.getTime() + conflictBuffer * 60000);
 
-    // Check if there's actual overlap
     return startAt < conflictEffectiveEnd && effectiveEndAt > conflictStart;
   });
 
@@ -175,7 +198,7 @@ export async function checkBookingConflictForProvider(
       )
     `)
     .eq('bookings.provider_id', providerId)
-    .neq('bookings.status', 'cancelled')
+    .not('bookings.status', 'in', '("cancelled","no_show")')
     .lt('scheduled_start_at', effectiveEndAt.toISOString())
     .gt('scheduled_end_at', startAt.toISOString());
 
@@ -186,8 +209,14 @@ export async function checkBookingConflictForProvider(
   const { data: conflictingServices, error } = await query;
 
   if (error) {
-    console.error('Error checking provider booking conflict:', error);
-    return { hasConflict: true };
+    console.error(
+      '[conflict-check] checkBookingConflictForProvider DB error:',
+      error,
+      { providerId, startAt, endAt, excludeBookingId },
+    );
+    throw new Error(
+      `checkBookingConflictForProvider DB error for provider ${providerId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   if (!conflictingServices || conflictingServices.length === 0) {
@@ -232,7 +261,7 @@ export async function checkActiveHoldOverlap(
   providerId: string,
   startAt: Date,
   endAt: Date,
-  options: { dbStaffId: string | null }
+  options: { dbStaffId: string | null; excludeHoldId?: string }
 ): Promise<boolean> {
   const nowIso = new Date().toISOString();
 
@@ -245,6 +274,10 @@ export async function checkActiveHoldOverlap(
     .lt('start_at', endAt.toISOString())
     .gt('end_at', startAt.toISOString());
 
+  if (options.excludeHoldId) {
+    q = q.neq('id', options.excludeHoldId);
+  }
+
   if (options.dbStaffId) {
     q = q.or(`staff_id.eq.${options.dbStaffId},staff_id.is.null`);
   }
@@ -252,8 +285,17 @@ export async function checkActiveHoldOverlap(
   const { data, error } = await q.limit(1);
 
   if (error) {
-    console.error('Error checking active booking holds:', error);
-    return true;
+    console.error(
+      '[conflict-check] checkActiveHoldOverlap DB error:',
+      error,
+      { providerId, startAt, endAt, options },
+    );
+    // B6: throw rather than silently returning "no overlap" — swallowing here
+    // let parallel guest holds into the DB even though another hold already
+    // covered the slot.
+    throw new Error(
+      `checkActiveHoldOverlap DB error for provider ${providerId}: ${error.message ?? 'unknown'}`,
+    );
   }
 
   return (data?.length ?? 0) > 0;
@@ -298,8 +340,8 @@ export async function lockBookingServices(
   }
 
   if (error) {
-    console.error('Error locking booking services:', error);
-    throw error;
+    console.error('[conflict-check] lockBookingServices RPC error — falling back to regular conflict check:', error);
+    return await checkBookingConflict(supabase, staffId, startAt, endAt, bufferMinutes);
   }
 
   // If rows were returned, there's a conflict

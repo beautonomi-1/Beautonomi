@@ -14,7 +14,6 @@ import {
   User,
   Phone,
   Mail,
-  MoreVertical,
   Repeat,
   Users,
   Printer,
@@ -49,19 +48,17 @@ import {
 import { mapStatus, extractIconFlags, isMangomintModeEnabled } from "@/lib/scheduling/mangomintAdapter";
 import { getStatusColors, getActiveIcons } from "@/lib/scheduling/visualMapping";
 import { nowInTz, isTodayInTz, resolveTz } from "@/lib/dates/provider-tz";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Building2, PersonStanding, Home, Sparkles, StickyNote, Repeat, Crown,
   FileWarning, Camera, MessageCircle, Users, Wrench, Clock, Bell, MapPin,
   Phone, Mail, CreditCard, Edit, Trash2, Check, X, Printer,
 };
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import {
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+
+
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,9 +66,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Separator } from "@/components/ui/separator";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { DirectionsLink } from "@/components/ui/directions-link";
 import { useOptionalDragDrop, DraggableAppointment, DroppableTimeSlot } from "@/components/provider-portal/DragDropCalendar";
 import { MangomintStatusLegend } from "@/components/calendar/MangomintStatusLegend";
 import {
@@ -259,19 +253,23 @@ const resolveDayHours = (
 ): { open?: string; close?: string; closed: boolean } | null => {
   if (!dayHours || typeof dayHours !== "object") return null;
   const raw = dayHours as Record<string, unknown>;
-  const closedFlag = raw.closed === true || raw.is_open === false;
-  const open =
-    typeof raw.open === "string"
-      ? raw.open
-      : typeof raw.open_time === "string"
-        ? raw.open_time
-        : undefined;
-  const close =
-    typeof raw.close === "string"
-      ? raw.close
-      : typeof raw.close_time === "string"
-        ? raw.close_time
-        : undefined;
+  const hasClosed = raw.closed !== undefined;
+  const hasIsOpen = raw.is_open !== undefined;
+  const closedFlag = hasClosed
+    ? raw.closed === true
+    : hasIsOpen
+      ? raw.is_open === false
+      : false;
+  const open = typeof raw.open === "string" ? raw.open
+    : typeof raw.open_time === "string" ? raw.open_time
+    : typeof raw.start_time === "string" ? raw.start_time
+    : typeof raw.start === "string" ? raw.start
+    : undefined;
+  const close = typeof raw.close === "string" ? raw.close
+    : typeof raw.close_time === "string" ? raw.close_time
+    : typeof raw.end_time === "string" ? raw.end_time
+    : typeof raw.end === "string" ? raw.end
+    : undefined;
   return { open, close, closed: closedFlag };
 };
 
@@ -284,42 +282,43 @@ const parseTimeParts = (time?: string): { hour: number; minute: number } => {
   };
 };
 
-// Check if a time is outside operating hours for a given date (location)
+const timeToMinutesMobile = (t?: string): number => {
+  const { hour, minute } = parseTimeParts(t);
+  return hour * 60 + minute;
+};
+
 const isOutsideOperatingHours = (
   date: Date,
   hour: number,
   locationOperatingHours?: Record<string, { open: string; close: string; closed: boolean }> | null
 ): boolean => {
   if (!locationOperatingHours) return false;
-
-  const dayOfWeek = getDay(date);
-  const dayKey = DAY_NAMES[dayOfWeek];
+  const dayKey = DAY_NAMES[getDay(date)];
   const resolved = resolveDayHours(locationOperatingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutesMobile(resolved.open);
+  const closeMin = timeToMinutesMobile(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
-// Check if a time is outside staff working hours (staff-specific)
 const isOutsideStaffHours = (
   date: Date,
   hour: number,
   staffWorkingHours?: Record<string, { open: string; close: string; closed?: boolean }> | null
 ): boolean => {
   if (!staffWorkingHours || Object.keys(staffWorkingHours).length === 0) return false;
-
-  const dayOfWeek = getDay(date);
-  const dayKey = DAY_NAMES[dayOfWeek];
+  const dayKey = DAY_NAMES[getDay(date)];
   const resolved = resolveDayHours(staffWorkingHours[dayKey]);
   if (!resolved) return false;
   if (resolved.closed) return true;
-
-  const parsed = parseHourRange(resolved.open, resolved.close);
-  if (!parsed) return false;
-  return hour < parsed.openHour || hour >= parsed.closeHour;
+  const openMin = timeToMinutesMobile(resolved.open);
+  const closeMin = timeToMinutesMobile(resolved.close);
+  if (openMin === closeMin) return false;
+  const slotMin = hour * 60;
+  return slotMin < openMin || slotMin >= closeMin;
 };
 
 // Check if slot (date + hour) falls inside any availability block for this staff
@@ -378,6 +377,7 @@ export function CalendarMobileView({
   businessTimezone,
   onRefresh,
 }: CalendarMobileViewProps) {
+  const { format: formatMoney } = useProviderMoneyFormat();
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [layoutMode, setLayoutMode] = useState<MobileLayoutMode>("columns"); // Default to columns view like Mangomint
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -428,8 +428,8 @@ export function CalendarMobileView({
 
   const useMangomintMode = isMangomintModeEnabled();
   const { preferences } = useCalendarPreferences();
-  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 8) : 8;
-  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 20) : 20;
+  const workStart = useMangomintMode ? (preferences.workdayStartHour ?? 0) : 0;
+  const workEnd = useMangomintMode ? (preferences.workdayEndHour ?? 23) : 23;
   const highContrast = useMangomintMode && !!preferences.highContrast;
 
   const timeBlocksByStaffAndDate = useMemo(() => {
@@ -1133,7 +1133,7 @@ export function CalendarMobileView({
                       if (dayBlocks.length === 0) return null;
                       return (
                         <div
-                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          className="absolute inset-x-0 top-0 z-[15] pointer-events-none"
                           style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
                         >
                           {dayBlocks.map((block) => (
@@ -1182,10 +1182,17 @@ export function CalendarMobileView({
                         return aptHour === slotHour;
                       });
                       const { hour } = parseTimeParts(time);
-                      const outsidePreferred = hour < workStart || hour >= workEnd;
-                      const isOutside =
-                        isOutsideOperatingHours(day, hour, locationOperatingHours) ||
-                        outsidePreferred;
+                      // Check if any team member is working this hour — if so,
+                      // don't mark the slot as "Closed" even if the location is
+                      // nominally outside operating hours for this day.
+                      const outsideLocationThisHour = isOutsideOperatingHours(day, hour, locationOperatingHours);
+                      const anyStaffHasHours = teamMembers.some((m) => m.working_hours && Object.keys(m.working_hours).length > 0);
+                      const anyStaffWorking = anyStaffHasHours
+                        ? teamMembers.some(
+                            (m) => !m.working_hours || Object.keys(m.working_hours).length === 0 || !isOutsideStaffHours(day, hour, m.working_hours),
+                          )
+                        : !outsideLocationThisHour;
+                      const isOutside = outsideLocationThisHour && !anyStaffWorking;
                       const slotHcStyle: React.CSSProperties | undefined =
                         isOutside && highContrast
                           ? {
@@ -1279,7 +1286,7 @@ export function CalendarMobileView({
                                   }
                                 }}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1 py-0.5 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md border-l-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
                                 )}
@@ -1316,12 +1323,11 @@ export function CalendarMobileView({
                                     {preferences.showPrices &&
                                       (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                         <span className="ml-0.5 font-semibold">
-                                          · R
-                                          {(
+                                          · {formatMoney(
                                             (apt as { total_amount?: number }).total_amount ??
                                             apt.price ??
                                             0
-                                          ).toFixed(0)}
+                                          )}
                                         </span>
                                       )}
                                   </p>
@@ -1363,7 +1369,8 @@ export function CalendarMobileView({
                                       <CreditCard className="w-2.5 h-2.5 text-gray-600" />
                                     </button>
                                   )}
-                                {onStatusChange && apt.status === "booked" && height > 40 && (
+                                {onStatusChange && apt.status === "booked" && height > 40 &&
+                                  (apt.location_type !== "at_home" || apt.current_stage === "provider_arrived" || apt.arrival_otp_verified || apt.qr_code_verified) && (
                                   <button
                                     type="button"
                                     onClick={(e) => {
@@ -1527,7 +1534,7 @@ export function CalendarMobileView({
                       if (staffBlocks.length === 0) return null;
                       return (
                         <div
-                          className="absolute inset-x-0 top-0 z-[5] pointer-events-none"
+                          className="absolute inset-x-0 top-0 z-[15] pointer-events-none"
                           style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_COLUMNS}px` }}
                         >
                           {staffBlocks.map((block) => (
@@ -1570,14 +1577,14 @@ export function CalendarMobileView({
                       });
                       const { hour } = parseTimeParts(time);
                       const isOutsideLocationHours = isOutsideOperatingHours(selectedDate, hour, locationOperatingHours);
-                      const outsideStaffHours = isOutsideStaffHours(selectedDate, hour, member.working_hours ?? undefined);
+                      const outsideStaffHours = member.working_hours
+                        ? isOutsideStaffHours(selectedDate, hour, member.working_hours)
+                        : false;
                       const inAvailabilityBlock = isSlotInAvailabilityBlock(format(selectedDate, "yyyy-MM-dd"), hour, member.id, availabilityBlocks);
-                      const outsidePreferred = hour < workStart || hour >= workEnd;
-                      const isNonWorking =
-                        isOutsideLocationHours ||
-                        outsideStaffHours ||
-                        inAvailabilityBlock ||
-                        outsidePreferred;
+                      const staffIsWorking = member.working_hours ? !outsideStaffHours : !isOutsideLocationHours;
+                      const businessClosed = isOutsideLocationHours && !staffIsWorking;
+                      const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
+                      const isNonWorking = businessClosed;
                       const slotHcStyle: React.CSSProperties | undefined =
                         isNonWorking && highContrast
                           ? {
@@ -1587,7 +1594,7 @@ export function CalendarMobileView({
                           : undefined;
                       const slotClassName = cn(
                         "h-[60px] border-b-2 border-gray-300 relative z-10 transition-colors group/slot",
-                        slotIdx % 2 === 1 && !isNonWorking ? "bg-gray-100/60" : !isNonWorking ? "bg-white" : null,
+                        slotIdx % 2 === 1 && !isNonWorking && !staffOff ? "bg-gray-100/60" : !isNonWorking && !staffOff ? "bg-white" : null,
                         isNonWorking
                           ? cn(
                               "cursor-not-allowed border-l-[5px] border-l-amber-500",
@@ -1595,13 +1602,22 @@ export function CalendarMobileView({
                                 "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                               highContrast && "bg-gray-900/25",
                             )
-                          : "cursor-pointer hover:bg-blue-50/30"
+                          : staffOff
+                            ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                            : "cursor-pointer hover:bg-blue-50/30"
                       );
                       const slotContent = (
                         <>
                           {isNonWorking && (
                             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                               <span className="text-[9px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1 py-0.5 rounded border border-amber-300 shadow-sm">
+                                Closed
+                              </span>
+                            </div>
+                          )}
+                          {staffOff && !isNonWorking && slotAppointments.length === 0 && (
+                            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                              <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
                                 Off
                               </span>
                             </div>
@@ -1610,7 +1626,7 @@ export function CalendarMobileView({
                           <div className="absolute left-0 right-0 top-1/2 border-t border-dashed border-gray-300 pointer-events-none" />
                           
                           {/* Hover indicator for empty slots */}
-                          {slotAppointments.length === 0 && (
+                          {slotAppointments.length === 0 && !staffOff && (
                             <div className="absolute inset-0 opacity-0 group-hover/slot:opacity-100 transition-opacity pointer-events-none flex items-center justify-center">
                               <Plus className="w-4 h-4 text-gray-300" />
                             </div>
@@ -1656,7 +1672,7 @@ export function CalendarMobileView({
                                   }
                                 }}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
                                   "border-l-[3px]",
                                   apt.status === "cancelled" && useMangomintMode && "opacity-50",
@@ -1697,12 +1713,11 @@ export function CalendarMobileView({
                                       {preferences.showPrices &&
                                         (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                           <span className="ml-0.5 font-semibold">
-                                            · R
-                                            {(
+                                            · {formatMoney(
                                               (apt as { total_amount?: number }).total_amount ??
                                               apt.price ??
                                               0
-                                            ).toFixed(0)}
+                                            )}
                                           </span>
                                         )}
                                     </p>
@@ -1762,7 +1777,7 @@ export function CalendarMobileView({
                                 key={apt.id}
                                 appointment={apt}
                                 className={cn(
-                                  "absolute left-0.5 right-0.5 z-10 rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
+                                  "absolute left-0.5 right-0.5 z-[20] rounded-md px-1.5 py-1 cursor-pointer overflow-hidden",
                                   "transition-all shadow-sm active:scale-[0.98] hover:shadow-md",
                                   "border-l-[3px]",
                                 )}
@@ -1858,7 +1873,7 @@ export function CalendarMobileView({
                 if (singleBlocks.length === 0) return null;
                 return (
                   <div
-                    className="absolute left-[58px] sm:left-[66px] right-0 top-0 z-[5] pointer-events-none"
+                    className="absolute left-[58px] sm:left-[66px] right-0 top-0 z-[15] pointer-events-none"
                     style={{ height: `${timeSlots.length * MOBILE_HOUR_PX_SINGLE}px` }}
                   >
                     {singleBlocks.map((block) => (
@@ -1909,12 +1924,11 @@ export function CalendarMobileView({
                       availabilityBlocks,
                     )
                   : false;
-                const outsidePreferred = hour < workStart || hour >= workEnd;
-                const isNonWorking =
-                  isOutsideLocationHours ||
-                  outsideStaffHours ||
-                  inAvailabilityBlock ||
-                  outsidePreferred;
+                const hasExplicitHours = selectedStaff?.working_hours && Object.keys(selectedStaff.working_hours).length > 0;
+                const staffIsWorking = hasExplicitHours ? !outsideStaffHours : !isOutsideLocationHours;
+                const businessClosed = isOutsideLocationHours && !staffIsWorking;
+                const staffOff = !businessClosed && (outsideStaffHours || inAvailabilityBlock);
+                const isNonWorking = businessClosed;
                 const dateStr = selectedDateStr;
                 const rowHcStyle: React.CSSProperties | undefined =
                   isNonWorking && highContrast
@@ -1933,14 +1947,23 @@ export function CalendarMobileView({
                           "bg-[repeating-linear-gradient(135deg,#f3f4f6_0px,#f3f4f6_6px,#e5e7eb_6px,#e5e7eb_12px)]",
                         highContrast && "bg-gray-900/20",
                       )
-                    : "cursor-pointer hover:bg-gray-50",
+                    : staffOff
+                      ? "cursor-pointer border-l-[3px] border-l-gray-300 bg-[repeating-linear-gradient(135deg,#f9f9f9_0px,#f9f9f9_6px,#f0f0f0_6px,#f0f0f0_12px)]"
+                      : "cursor-pointer hover:bg-gray-50",
                 );
                 const rowContent = (
                   <>
                     {isNonWorking && (
                       <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                         <span className="text-[10px] font-bold uppercase tracking-wide text-amber-900/80 bg-white/90 px-1.5 py-0.5 rounded border border-amber-300 shadow-sm">
-                          Unavailable
+                          Closed
+                        </span>
+                      </div>
+                    )}
+                    {staffOff && !isNonWorking && (
+                      <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+                        <span className="text-[8px] font-medium uppercase tracking-wide text-gray-400 bg-white/80 px-1 py-0.5 rounded">
+                          Off
                         </span>
                       </div>
                     )}
@@ -1997,7 +2020,7 @@ export function CalendarMobileView({
                           ? getActiveIcons(rawFlagsSingle)
                           : [];
                         const endTimeStr = getEndTime(
-                          apt.scheduled_time || "09:00",
+                          apt.scheduled_time || "00:00",
                           apt.duration_minutes || 0,
                         );
                         const singleCardContent = (
@@ -2016,7 +2039,7 @@ export function CalendarMobileView({
                               }
                             }}
                             className={cn(
-                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
                               "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
                               apt.status === "cancelled" && useMangomintMode && "opacity-50",
@@ -2054,12 +2077,11 @@ export function CalendarMobileView({
                                 {preferences.showPrices &&
                                   (apt.price != null || (apt as { total_amount?: number }).total_amount != null) && (
                                     <span className="ml-1 font-semibold">
-                                      · R
-                                      {(
+                                      · {formatMoney(
                                         (apt as { total_amount?: number }).total_amount ??
                                         apt.price ??
                                         0
-                                      ).toFixed(0)}
+                                      )}
                                     </span>
                                   )}
                               </p>
@@ -2078,7 +2100,8 @@ export function CalendarMobileView({
                                       Checkout
                                     </button>
                                   )}
-                                  {onStatusChange && apt.status === "booked" && (
+                                  {onStatusChange && apt.status === "booked" &&
+                                    (apt.location_type !== "at_home" || apt.current_stage === "provider_arrived" || apt.arrival_otp_verified || apt.qr_code_verified) && (
                                     <button
                                       type="button"
                                       onClick={(e) => {
@@ -2131,7 +2154,7 @@ export function CalendarMobileView({
                             key={apt.id}
                             appointment={apt}
                             className={cn(
-                              "absolute left-0 right-0 z-10 rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
+                              "absolute left-0 right-0 z-[20] rounded-lg px-2.5 sm:px-3 py-2 sm:py-2.5 cursor-pointer",
                               "transition-all duration-200 shadow-md hover:shadow-lg active:shadow-xl",
                               "border-l-[3px] sm:border-l-4 active:scale-[0.98]",
                             )}

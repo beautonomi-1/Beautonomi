@@ -30,6 +30,7 @@ function normalizeProvider(p: Record<string, unknown>): PublicProviderCard {
     supports_salon: Boolean(o.supports_salon ?? o.supportsSalon ?? true),
     current_badge: (o.current_badge as PublicProviderCard["current_badge"]) ?? null,
     is_sponsored: Boolean(o.is_sponsored ?? o.isSponsored ?? false),
+    campaign_id: (o.campaign_id ?? o.campaignId ?? null) as string | null | undefined,
   };
 }
 
@@ -58,20 +59,28 @@ export function useHomeData(lat?: number, lng?: number, category?: string) {
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
       setError(null);
-      const params = new URLSearchParams();
-      if (lat != null) params.set("lat", String(lat));
-      if (lng != null) params.set("lng", String(lng));
-      if (category && category !== "All") params.set("category", category.toLowerCase());
-      const qs = params.toString();
-      const res = await api.get<unknown>(`/api/public/home${qs ? `?${qs}` : ""}`);
-      if (res.error) {
-        setError(res.error.message);
-        setData(null);
-      } else {
-        setData(normalize(res.data ?? {}));
+      try {
+        const params = new URLSearchParams();
+        if (lat != null) params.set("lat", String(lat));
+        if (lng != null) params.set("lng", String(lng));
+        if (category && category !== "All") params.set("category", category);
+        const qs = params.toString();
+        const res = await api.get<unknown>(`/api/public/home${qs ? `?${qs}` : ""}`);
+        if (res.error) {
+          setError(res.error.message);
+        } else {
+          try {
+            setData(normalize(res.data ?? {}));
+          } catch (e) {
+            setError(e instanceof Error ? e.message : "Could not load home feed");
+          }
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not load home feed");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      setLoading(false);
-      setRefreshing(false);
     },
     [lat, lng, category]
   );

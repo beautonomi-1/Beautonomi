@@ -83,13 +83,6 @@ export async function GET(request: NextRequest) {
 
     const dashOpts = { transactionTypes: DASHBOARD_REVENUE_TRANSACTION_TYPES };
 
-    // Build location-scoped booking query helper
-    const bookingBaseQuery = () => {
-      let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: false }).eq("provider_id", providerId);
-      if (locationId) q = q.eq("location_id", locationId);
-      return q;
-    };
-
     // Parallel queries for better performance
     const [
       revenueResult,
@@ -107,24 +100,18 @@ export async function GET(request: NextRequest) {
       // Booking counts (parallel queries)
       Promise.all([
         (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-        bookingBaseQuery().gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
-        bookingBaseQuery().gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
+        (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).gte("created_at", lastMonthStart.toISOString()).lte("created_at", lastMonthEnd.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
       ]),
       // Upcoming bookings
       (() => { let q = supabaseAdmin.from("bookings").select("id", { count: "exact", head: true }).eq("provider_id", providerId).eq("status", "confirmed").gt("scheduled_at", now.toISOString()); if (locationId) q = q.eq("location_id", locationId); return q; })(),
-      // Service popularity (simplified query)
-      supabaseAdmin
-        .from("booking_services")
-        .select(`
-          offering_id,
-          price,
-          offerings:offering_id (
-            id,
-            title
-          )
-        `)
-        .eq("offerings.provider_id", providerId)
-        .limit(1000), // Limit to prevent huge queries
+      // Service popularity via RPC (F8) — DB-side aggregate, no app-level row cap.
+      supabaseAdmin.rpc("provider_analytics_by_service", {
+        p_provider_id: providerId,
+        p_from: new Date(0).toISOString(),
+        p_to: now.toISOString(),
+        p_location_id: locationId,
+      }),
       // Customer analytics
       (() => { let q = supabaseAdmin.from("bookings").select("customer_id").eq("provider_id", providerId); if (locationId) q = q.eq("location_id", locationId); return q; })(),
     ]);
@@ -136,32 +123,17 @@ export async function GET(request: NextRequest) {
     const lastMonthRevenue = lastMonthRevenueData.totalRevenue;
 
     // Extract booking counts
-    const [totalBookingsCount, thisMonthBookingsData, lastMonthBookingsData] = bookingsResult;
+    const [totalBookingsCount, thisMonthBookingsCount, lastMonthBookingsCount] = bookingsResult;
     const totalBookings = totalBookingsCount.count || 0;
-    const thisMonthBookings = thisMonthBookingsData.data?.length || 0;
-    const lastMonthBookings = lastMonthBookingsData.data?.length || 0;
+    const thisMonthBookings = thisMonthBookingsCount.count || 0;
+    const lastMonthBookings = lastMonthBookingsCount.count || 0;
     const upcomingBookings = upcomingBookingsResult.count || 0;
 
-    // Process service stats (distinct bookings per offering, not raw line rows)
-    const serviceStats = new Map<string, { name: string; bookingIds: Set<string>; revenue: number }>();
-    if (serviceDataResult.data) {
-      for (const service of serviceDataResult.data) {
-        const offering = service.offerings as any;
-        if (!offering) continue;
-        const key = offering.id;
-        if (!serviceStats.has(key)) {
-          serviceStats.set(key, {
-            name: offering.title || "Service",
-            bookingIds: new Set<string>(),
-            revenue: 0,
-          });
-        }
-        const stat = serviceStats.get(key)!;
-        const bid = (service as { booking_id?: string }).booking_id;
-        if (bid) stat.bookingIds.add(bid);
-        stat.revenue += Number(service.price || 0);
-      }
-    }
+    // provider_analytics_by_service returns { offering_id, offering_title, booking_count, revenue }
+    type ServiceRow = { offering_id: string; offering_title: string; booking_count: number; revenue: number };
+    const serviceRows: ServiceRow[] = Array.isArray(serviceDataResult.data)
+      ? (serviceDataResult.data as ServiceRow[])
+      : [];
 
     // Revenue trends - 12 data points (months for month/year periods; weeks for week period)
     const trendPromises: Promise<{ month: string; revenue: number; bookings: number }>[] = [];
@@ -217,12 +189,66 @@ export async function GET(request: NextRequest) {
       bookingsGrowth = growth.toFixed(1);
     }
 
+    // Fetch tips, expenses (subscriptions & ads), and platform commission for this provider
+    const EXPENSE_TYPES = ["provider_subscription_payment", "provider_ads_payment", "provider_expense"];
+    const TIP_TYPE = "tip";
+    const REFUND_TYPE = "refund";
+
+    let tipsTotal = 0;
+    let tipsThisMonth = 0;
+    let expensesTotal = 0;
+    let expensesThisMonth = 0;
+    let refundsTotal = 0;
+    let platformFeesTotal = 0;
+    let cancellationFeesTotal = 0;
+    let cancellationFeesThisMonth = 0;
+    const CANCELLATION_FEE_TYPE = "cancellation_fee";
+
+    try {
+      const [tipsAllQ, tipsMonthQ, expAllQ, expMonthQ, refAllQ, platFeeQ, cancelAllQ, cancelMonthQ] = await Promise.all([
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", TIP_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).in("transaction_type", EXPENSE_TYPES).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", REFUND_TYPE),
+        supabaseAdmin.from("finance_transactions").select("net").eq("provider_id", providerId).eq("transaction_type", "payment"),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE),
+        supabaseAdmin.from("finance_transactions").select("amount").eq("provider_id", providerId).eq("transaction_type", CANCELLATION_FEE_TYPE).gte("created_at", thisMonthStart.toISOString()).lte("created_at", thisMonthEndDate.toISOString()),
+      ]);
+
+      tipsTotal = (tipsAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      tipsThisMonth = (tipsMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      expensesTotal = (expAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      expensesThisMonth = (expMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      refundsTotal = (refAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      platformFeesTotal = (platFeeQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.net || 0)), 0);
+      cancellationFeesTotal = (cancelAllQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+      cancellationFeesThisMonth = (cancelMonthQ.data ?? []).reduce((s, r) => s + Math.abs(Number(r.amount || 0)), 0);
+    } catch (e) {
+      console.warn("Provider finance breakdown query failed:", e);
+    }
+
     return successResponse({
       revenue: {
         total: totalRevenue,
         thisMonth: thisMonthRevenue,
         lastMonth: lastMonthRevenue,
         growth: revenueGrowth,
+      },
+      earnings_breakdown: {
+        service_earnings: totalRevenue,
+        cancellation_fees: cancellationFeesTotal,
+        cancellation_fees_this_month: cancellationFeesThisMonth,
+        tips: tipsTotal,
+        tips_this_month: tipsThisMonth,
+        refunds: refundsTotal,
+        platform_fees_paid: platformFeesTotal,
+        net_after_refunds: totalRevenue + cancellationFeesTotal + tipsTotal - refundsTotal,
+      },
+      expenses: {
+        total: expensesTotal,
+        this_month: expensesThisMonth,
+        note: "Includes subscription fees, ad campaign payments, and other platform charges",
       },
       bookings: {
         total: totalBookings,
@@ -236,10 +262,10 @@ export async function GET(request: NextRequest) {
         repeat: repeatCustomers,
         new: uniqueCustomers.size - repeatCustomers,
       },
-      services: Array.from(serviceStats.values())
-        .map((s) => ({ name: s.name, count: s.bookingIds.size, revenue: s.revenue }))
+      services: serviceRows
+        .map((s) => ({ name: s.offering_title, count: Number(s.booking_count || 0), revenue: Number(s.revenue || 0) }))
         .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 10), // Top 10 services
+        .slice(0, 10),
       trends: trendsData,
     });
   } catch (error) {

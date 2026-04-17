@@ -13,7 +13,7 @@ export type GroupBookingPolicyFieldsFromDb = {
 };
 
 /**
- * Single source of truth for provider + provider_settings columns used in
+ * Single source of truth for provider columns used in
  * {@link evaluateGroupBookingPolicy}.
  */
 export async function fetchGroupBookingPolicyFieldsFromDb(
@@ -22,20 +22,16 @@ export async function fetchGroupBookingPolicyFieldsFromDb(
 ): Promise<GroupBookingPolicyFieldsFromDb> {
   const { data: provGroup } = await supabase
     .from("providers")
-    .select("online_group_booking_enabled, max_group_size")
+    .select(
+      "online_group_booking_enabled, max_group_size, group_booking_excluded_services, group_booking_locations"
+    )
     .eq("id", providerId)
     .maybeSingle();
 
-  const { data: groupSet } = await supabase
-    .from("provider_settings")
-    .select("group_booking_excluded_services, group_booking_enabled_locations")
-    .eq("provider_id", providerId)
-    .maybeSingle();
-
-  const excluded = (groupSet as { group_booking_excluded_services?: string[] } | null)
+  const excluded = (provGroup as { group_booking_excluded_services?: string[] } | null)
     ?.group_booking_excluded_services;
-  const locs = (groupSet as { group_booking_enabled_locations?: string[] } | null)
-    ?.group_booking_enabled_locations;
+  const locs = (provGroup as { group_booking_locations?: string[] } | null)
+    ?.group_booking_locations;
 
   return {
     onlineGroupBookingEnabled: Boolean(

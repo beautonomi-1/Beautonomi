@@ -1,8 +1,8 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, errorResponse, handleApiError, notFoundResponse } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
+import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchBookingInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
@@ -10,6 +10,7 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 const processRefundSchema = z.object({
   refund_amount: z.number().positive(),
@@ -27,7 +28,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     if (!user) {
       return unauthorizedResponse("Authentication required");
     }
@@ -89,7 +90,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_FINANCE, request);
     if (!user) {
       return unauthorizedResponse("Authentication required");
     }
@@ -118,12 +119,12 @@ export async function POST(
       return notFoundResponse("Transaction not found");
     }
 
-    if (transaction.status === "refunded" || transaction.status === "partially_refunded") {
-      return errorResponse(
-        "Transaction already refunded",
-        "ALREADY_REFUNDED",
-        400
-      );
+    // Only allow refunding successfully charged transactions
+    if (transaction.status !== "success") {
+      const statusMsg = transaction.status === "refunded" || transaction.status === "partially_refunded"
+        ? "Transaction already refunded"
+        : `Cannot refund a transaction with status "${transaction.status}"`;
+      return errorResponse(statusMsg, "INVALID_STATUS", 400);
     }
 
     const { refund_amount, refund_reason, notes } = validationResult.data;
@@ -140,7 +141,7 @@ export async function POST(
       supabase,
       transaction.booking_id,
       tenantId,
-      "id, customer_id, booking_number, currency, tenant_id, provider_id"
+      "id, customer_id, booking_number, currency, tenant_id, provider_id, gift_card_amount"
     );
     if ("error" in loaded) return loaded.error;
 
@@ -150,6 +151,7 @@ export async function POST(
       currency?: string;
       tenant_id?: string | null;
       provider_id?: string | null;
+      gift_card_amount?: number | null;
     };
     const effectiveTenantId = bookingRow.tenant_id ?? tenantId;
     const tenantRegion = effectiveTenantId ? await getTenantRegionConfig(effectiveTenantId) : null;
@@ -164,6 +166,10 @@ export async function POST(
       tenant_id: bookingRow.tenant_id ?? tenantId,
       provider_id: providerId,
     });
+
+    // Period lock guard — prevent backdated writes into closed accounting periods
+    const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
 
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
     const { error: walletError } = await rpc("wallet_credit_admin", {
@@ -215,18 +221,29 @@ export async function POST(
       created_by: user.id,
     });
 
-    await supabase.from("finance_transactions").insert({
-      tenant_id: financeTenantId,
-      booking_id: transaction.booking_id,
-      provider_id: providerId,
-      transaction_type: "refund",
-      amount: -refund_amount,
-      fees: 0,
-      commission: 0,
-      net: -refund_amount,
-      description: `Refund for booking ${bookingNumber}: ${refund_reason}`,
-      created_at: new Date().toISOString(),
-    });
+    // NOTE: finance_transactions row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) via the
+    // booking_refunds insert above. App-side insertion duplicated the ledger
+    // (B1); negative-amount bookkeeping is handled trigger-side.
+
+    // Restore gift card balance if this is a full refund and the booking used a gift card
+    let giftCardRestored = false;
+    const giftCardAmount = Number(bookingRow.gift_card_amount ?? 0);
+    if (isFullRefund && giftCardAmount > 0) {
+      try {
+        const rpcVoid = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
+        const { error: gcError } = await rpcVoid("void_gift_card_redemption", {
+          p_booking_id: transaction.booking_id,
+        });
+        if (gcError) {
+          console.warn("Gift card restoration failed:", gcError);
+        } else {
+          giftCardRestored = true;
+        }
+      } catch (gcErr) {
+        console.warn("Gift card restoration error:", gcErr);
+      }
+    }
 
     await writeAuditLog({
       actor_user_id: user.id,
@@ -234,7 +251,7 @@ export async function POST(
       action: "admin.refund.process",
       entity_type: "payment_transaction",
       entity_id: id,
-      metadata: { refund_amount, refund_reason, notes, wallet_credit: true },
+      metadata: { refund_amount, refund_reason, notes, wallet_credit: true, gift_card_restored: giftCardRestored },
     });
 
     // 4. Notify customer
@@ -255,7 +272,26 @@ export async function POST(
       console.error("Refund notification failed:", notifErr);
     }
 
-    return successResponse(updatedTransaction);
+    // Check if refund pushed provider balance negative (post-payout refund risk)
+    let providerBalanceWarning: string | null = null;
+    if (providerId) {
+      try {
+        const { getAvailablePayoutBalance } = await import("@/lib/provider/available-payout-balance");
+        const { rawBalance } = await getAvailablePayoutBalance(supabase, providerId, {
+          tenantId: effectiveTenantId,
+        });
+        if (rawBalance < -0.01) {
+          providerBalanceWarning = `Provider balance is now negative (${rawBalance.toFixed(2)}). This refund was issued after a payout. Consider clawback from future earnings.`;
+        }
+      } catch (balErr) {
+        console.warn("Failed to check provider balance after refund:", balErr);
+      }
+    }
+
+    return successResponse({
+      ...(updatedTransaction as Record<string, unknown>),
+      ...(providerBalanceWarning ? { provider_balance_warning: providerBalanceWarning } : {}),
+    });
   } catch (error) {
     return handleApiError(error, "Failed to process refund");
   }

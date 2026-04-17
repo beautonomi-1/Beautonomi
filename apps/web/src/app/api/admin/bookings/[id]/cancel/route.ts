@@ -86,6 +86,13 @@ export async function POST(
       metadata: { reason: body.reason ?? null, booking_number: bookingRow.booking_number },
     });
 
+    try {
+      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+      await matchWaitlistOnCancellation(supabase, id);
+    } catch (waitlistErr) {
+      console.error("[admin cancel] waitlist matching failed:", waitlistErr);
+    }
+
     return successResponse(updatedBooking);
   } catch (error) {
     return handleApiError(error, "Failed to cancel booking");

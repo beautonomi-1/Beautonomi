@@ -6,6 +6,7 @@ import { requireAdminSection,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET/PATCH /api/admin/providers/[id]/distance-settings
@@ -64,7 +65,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PROVIDERS_OPERATIONS, request);
 
     const supabase = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -108,6 +109,21 @@ export async function PATCH(
       max_service_distance_km: provider.max_service_distance_km || 10.00,
       is_distance_filter_enabled: provider.is_distance_filter_enabled || false,
     };
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.provider.distance_settings.update",
+      entity_type: "provider",
+      entity_id: id,
+      module: "providers_operations",
+      risk_level: "high",
+      retention_tier: "operational",
+      metadata: updates,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(result);
   } catch (error) {

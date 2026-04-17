@@ -15,6 +15,7 @@ import { GET as getProviderBookings } from "@/app/api/provider/bookings/route";
 import { GET as getProviderTimeBlocks } from "@/app/api/provider/time-blocks/route";
 import { GET as getProviderAvailabilityBlocks } from "@/app/api/provider/availability-blocks/route";
 import { GET as getProviderStaffUnavailability } from "@/app/api/provider/calendar/staff-unavailability/route";
+import { GET as getProviderBookingHolds } from "@/app/api/provider/calendar/booking-holds/route";
 import { expandTimeBlocksForCalendarRange } from "@/components/provider-portal/calendar/expand-time-blocks";
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -204,7 +205,11 @@ export async function fetchCalendarInitial(searchParams: {
     unavailParams.set("date_from", dateFrom);
     unavailParams.set("date_to", dateTo);
 
-    const [staffRes, bookingsRes, blocksRes, availRes, unavailRes] = await Promise.all([
+    const holdsParams = new URLSearchParams();
+    holdsParams.set("date_from", dateFrom);
+    holdsParams.set("date_to", dateTo);
+
+    const [staffRes, bookingsRes, blocksRes, availRes, unavailRes, holdsRes] = await Promise.all([
       getProviderStaff(await createNextRequestFromHeaders("/api/provider/staff")),
       getProviderBookings(
         await createNextRequestFromHeaders(`/api/provider/bookings?${bookingsParams.toString()}`),
@@ -218,6 +223,11 @@ export async function fetchCalendarInitial(searchParams: {
       getProviderStaffUnavailability(
         await createNextRequestFromHeaders(
           `/api/provider/calendar/staff-unavailability?${unavailParams.toString()}`,
+        ),
+      ),
+      getProviderBookingHolds(
+        await createNextRequestFromHeaders(
+          `/api/provider/calendar/booking-holds?${holdsParams.toString()}`,
         ),
       ),
     ]);
@@ -249,6 +259,22 @@ export async function fetchCalendarInitial(searchParams: {
       ) {
         staff = (staffJson as { data: any[] }).data;
       }
+    } else if (!staffRes.ok) {
+      // §Provider-launch (audit 2026-04): previously a failed staff fetch
+      // silently produced an empty staff list with `error: null`, which
+      // left the calendar rendering with no staff columns and no banner.
+      // Surface the server error so the client can show a retry UI and
+      // the provider isn't stuck on an apparently-empty schedule.
+      return {
+        cacheKey,
+        dateFrom,
+        dateTo,
+        appointments: [],
+        teamMembers: [],
+        timeBlocks: [],
+        availabilityBlocks: [],
+        error: apiMessage(staffJson) ?? "Failed to load team members",
+      };
     }
 
     const bookings = bookingsPayload?.data || [];
@@ -265,6 +291,7 @@ export async function fetchCalendarInitial(searchParams: {
     const blocksPayload = (await blocksRes.json()) as { data?: any[] } | null;
     const availPayload = (await availRes.json()) as { data?: AvailabilityBlockRaw[] } | null;
     const unavailPayload = (await unavailRes.json()) as { data?: AvailabilityBlockDisplay[] } | null;
+    const holdsPayload = (await holdsRes.json()) as { data?: AvailabilityBlockDisplay[] } | null;
 
     const timeBlocks = blocksRes.ok
       ? expandTimeBlocksForCalendarRange(mapTimeBlockRows(blocksPayload?.data || []), dateFrom, dateTo)
@@ -272,7 +299,12 @@ export async function fetchCalendarInitial(searchParams: {
     const rawAvail = normalizeAvailabilityBlocksToDisplay(availRes.ok ? availPayload?.data || [] : []);
     const sanitizedAvail = sanitizeAvailabilityBlocks(rawAvail);
     const staffUnavail = unavailRes.ok ? unavailPayload?.data || [] : [];
-    const mergedAvailOverlay = [...staffUnavail, ...sanitizedAvail];
+    const bookingHolds = holdsRes.ok ? holdsPayload?.data || [] : [];
+    // B8: fold active booking_holds into the same overlay list. They carry
+    // `_source: "booking_hold"` / `block_type: "hold"` so the calendar can
+    // render them as ghost slots (see getBlockColors).
+    const sanitizedHolds = sanitizeAvailabilityBlocks(bookingHolds);
+    const mergedAvailOverlay = [...staffUnavail, ...sanitizedAvail, ...sanitizedHolds];
 
     return {
       cacheKey,

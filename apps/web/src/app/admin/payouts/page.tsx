@@ -15,6 +15,7 @@ import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,7 @@ export default function AdminPayouts() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { format: fmtMoney } = useReportCurrency();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedPayout, setSelectedPayout] = useState<Payout | null>(null);
   const [showMarkFailedDialog, setShowMarkFailedDialog] = useState(false);
@@ -279,7 +281,7 @@ export default function AdminPayouts() {
                           )}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                          R {payout.amount.toLocaleString()}
+                          {fmtMoney(payout.amount)}
                         </td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap">{getStatusBadge(payout.status)}</td>
                         <td className="px-4 lg:px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -375,7 +377,7 @@ export default function AdminPayouts() {
                         {getStatusBadge(payout.status)}
                       </div>
                       <div className="text-lg sm:text-xl font-bold text-gray-900 mb-2">
-                        R {payout.amount.toLocaleString()}
+                        {fmtMoney(payout.amount)}
                       </div>
                       {payout.bank_account ? (
                         <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded mb-2">

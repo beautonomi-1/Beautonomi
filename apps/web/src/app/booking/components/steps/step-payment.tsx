@@ -10,9 +10,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { BookingState, type BookingStep } from "../booking-flow";
 import { cn, formatCurrency, formatDate, formatTime } from "@/lib/utils";
-import { initializePayment, chargeSavedCard } from "../../actions/payment-actions";
+import { initializePayment } from "../../actions/payment-actions";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/providers/AuthProvider";
 import { getTravelBuffer } from "@/lib/config/house-call-config";
 import { fetcher } from "@/lib/http/fetcher";
@@ -22,6 +22,8 @@ import { useMultipleFeatureFlags } from "@/hooks/useFeatureFlag";
 import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
+import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
+import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -46,10 +48,26 @@ interface StepPaymentProps {
   bookingState: BookingState;
   updateBookingState: (updates: Partial<BookingState>) => void;
   /** Navigate by step id (works when `?package=` reorders steps). */
-  onNavigateToStep: (step: BookingStep) => void;
+  onNavigateToStep: (step: BookingStep) => void | Promise<void>;
 }
 
 /** Services + add-ons + products + travel fee, minus discounts — tip percentages apply to this (before tax & platform fees). */
+/**
+ * Minimal UUIDv4 generator — avoids taking a runtime dep for a single
+ * client-side idempotency key. Falls back to Math.random when
+ * crypto.randomUUID is unavailable (very old browsers).
+ */
+function generateUuidV4(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function getSubtotalAfterDiscounts(state: BookingState): number {
   let services = 0;
   if (state.isGroupBooking && state.groupParticipants) {
@@ -88,6 +106,11 @@ export default function StepPayment({
   onNavigateToStep,
 }: StepPaymentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Prefer hold created by the new booking flow (bookingState.holdId); fall back
+  // to URL param for bookings started from the old /book/[slug] flow.
+  const holdId = bookingState.holdId || searchParams.get("hold_id")?.trim() || null;
+  const adCampaignId = searchParams.get("campaign_id")?.trim() || null;
   const { user, isLoading: authLoading } = useAuth();
   const [isProcessing, setIsProcessing] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -332,7 +355,9 @@ export default function StepPayment({
           setWalletCurrency(tenantCurrency);
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        setWalletBalance(0);
+      })
       .finally(() => setWalletLoading(false));
   }, [user]);
 
@@ -411,9 +436,12 @@ export default function StepPayment({
     // Note: Minimum booking amount validation will be done server-side
     // We can add client-side validation here if provider info is available
 
-    const bookingDateTime = new Date(bookingState.selectedDate);
-    const [hours, minutes] = bookingState.selectedTimeSlot.split(":").map(Number);
-    bookingDateTime.setHours(hours, minutes, 0, 0);
+    const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+    const bookingDateTime = parseSelectedDatetimeInProviderTz(
+      dateStr,
+      bookingState.selectedTimeSlot!,
+      bookingState.providerTimezone,
+    );
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services
@@ -483,6 +511,20 @@ export default function StepPayment({
       membership_plan_id: bookingState.promotions.membershipPlanId || null,
       use_wallet: (bookingState.useWallet ?? false) || (bookingState.promotions.loyaltyPointsUsed ? true : false),
       loyalty_points_used: bookingState.promotions.loyaltyPointsUsed ?? 0,
+      hold_id: holdId || null,
+      // B11: forward provider form responses and booking custom field values
+      // collected on the new "forms" step. API validates these against the
+      // active provider_forms / custom_field_definitions the same way
+      // /book/continue does.
+      ...(bookingState.providerFormResponses &&
+      Object.keys(bookingState.providerFormResponses).length > 0
+        ? { provider_form_responses: bookingState.providerFormResponses }
+        : {}),
+      ...(bookingState.customFieldValues &&
+      Object.keys(bookingState.customFieldValues).length > 0
+        ? { custom_field_values: bookingState.customFieldValues }
+        : {}),
+      ...(adCampaignId ? { campaign_id: adCampaignId } : {}),
       ...(bookingState.mode === "mobile"
         ? {
             availability_travel_buffer_minutes: getTravelBuffer(
@@ -521,9 +563,21 @@ export default function StepPayment({
       bookingData.subscribe_recurring = { enabled: true, frequency: freq };
     }
 
+    // §15.4-24 (audit 2026-04): client-generated idempotency key so a
+    // retried POST (e.g. due to a mobile network blip after the server
+    // already created the booking) returns the same booking_id +
+    // payment_url instead of creating a duplicate + double-charging.
+    // Reused across this payment attempt; regenerated if the user
+    // abandons and re-enters the flow.
+    const idempotencyKey = bookingState.idempotencyKey ?? generateUuidV4();
+    if (!bookingState.idempotencyKey) {
+      updateBookingState({ idempotencyKey });
+    }
+
     const response = await fetcher.post<{
       data: PublicBookingCreateResult;
     }>("/api/public/bookings", bookingData, {
+      headers: { "Idempotency-Key": idempotencyKey },
       // Server often runs validate + create_booking RPC + Paystack init; 10s default aborts before response.
       timeoutMs: 120000,
     });
@@ -585,13 +639,27 @@ export default function StepPayment({
       try {
         bookingResult = await createBookingDraft();
       } catch (error: any) {
-        // Handle conflict / availability overlap errors (409) — time slot taken since selection
+        const isHoldExpired =
+          error.status === 410 ||
+          error.code === "HOLD_INVALID" ||
+          error.code === "HOLD_EXPIRED";
+        if (isHoldExpired) {
+          updateBookingState({ holdId: null, selectedTimeSlot: null });
+          toast.error(
+            "Your hold expired. Please select your time slot again.",
+            { duration: 6000 }
+          );
+          onNavigateToStep("calendar");
+          return;
+        }
+
         const isAvailabilityConflict =
           error.status === 409 ||
           error.code === "CONFLICT" ||
           error.code === "AVAILABILITY_OVERLAP" ||
           /overlap|unavailable|already booked|conflict/i.test(error.message ?? "");
         if (isAvailabilityConflict) {
+          updateBookingState({ holdId: null, selectedTimeSlot: null });
           toast.error(
             "That time slot was just taken. Please choose another time.",
             { duration: 6000 }
@@ -602,6 +670,15 @@ export default function StepPayment({
         
         toast.error(error.message || "Failed to create booking. Please try again.");
         return;
+      }
+
+      if (adCampaignId && bookingResult.booking_id && bookingState.providerId) {
+        fetcher.post("/api/public/ads/event", {
+          event_type: "book",
+          campaign_id: adCampaignId,
+          provider_id: bookingState.providerId,
+          idempotency_key: `web-book:${adCampaignId}:${bookingResult.booking_id}`,
+        }).catch(() => {});
       }
 
       // Step 2: Process payment based on method
@@ -746,12 +823,12 @@ export default function StepPayment({
                 <div key={participant.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
                   <p className="font-medium text-gray-900 mb-2">{participant.name}</p>
                   {participantServices.map((service) => (
-                    <div key={service.id} className="flex justify-between text-sm ml-4 mb-1">
-                      <span className="text-gray-600">
+                    <div key={service.id} className="flex justify-between gap-2 text-sm ml-4 mb-1">
+                      <span className="min-w-0 truncate text-gray-600">
                         {service.title}
                         {service.staffName && ` - ${service.staffName}`}
                       </span>
-                      <span className="font-medium">{formatCurrency(service.price, totals.currency)}</span>
+                      <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
                     </div>
                   ))}
                   <div className="flex justify-between text-sm font-medium mt-2 ml-4">
@@ -764,27 +841,27 @@ export default function StepPayment({
           ) : (
             // Show services for regular bookings
             bookingState.selectedServices.map((service) => (
-              <div key={service.id} className="flex justify-between text-sm">
-                <span className="text-gray-600">
+              <div key={service.id} className="flex justify-between gap-2 text-sm">
+                <span className="min-w-0 truncate text-gray-600">
                   {service.title}
                   {service.staffName && ` - ${service.staffName}`}
                 </span>
-                <span className="font-medium">{formatCurrency(service.price, totals.currency)}</span>
+                <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(service.price, totals.currency)}</span>
               </div>
             ))
           )}
           {bookingState.selectedAddons.map((addon) => (
-            <div key={addon.id} className="flex justify-between text-sm">
-              <span className="text-gray-600">+ {addon.title}</span>
-              <span className="font-medium">{formatCurrency(addon.price, totals.currency)}</span>
+            <div key={addon.id} className="flex justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-gray-600">+ {addon.title}</span>
+              <span className="flex-shrink-0 font-medium whitespace-nowrap">{formatCurrency(addon.price, totals.currency)}</span>
             </div>
           ))}
           {bookingState.selectedProducts.map((product) => (
-            <div key={product.id} className="flex justify-between text-sm">
-              <span className="text-gray-600">
+            <div key={product.id} className="flex justify-between gap-2 text-sm">
+              <span className="min-w-0 truncate text-gray-600">
                 {product.name} {product.quantity > 1 && `× ${product.quantity}`}
               </span>
-              <span className="font-medium">
+              <span className="flex-shrink-0 font-medium whitespace-nowrap">
                 {formatCurrency(product.price * product.quantity, product.currency || totals.currency)}
               </span>
             </div>
@@ -955,7 +1032,7 @@ export default function StepPayment({
           )}
           {totals.serviceFeeAmount > 0 && (
             <div className="flex justify-between text-sm text-gray-600">
-              <span>Service Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
+              <span>Platform Fee{totals.serviceFeePercentage > 0 ? ` (${totals.serviceFeePercentage}%)` : ''}</span>
               <span>{formatCurrency(totals.serviceFeeAmount, totals.currency)}</span>
             </div>
           )}
@@ -1277,14 +1354,26 @@ export default function StepPayment({
                         ? `${String(card.expiry_month).padStart(2, "0")}/${String(card.expiry_year).slice(-2)}`
                         : null;
 
+                      const selectCard = () => {
+                        setSelectedCardId(card.id);
+                        setUseNewCard(false);
+                      };
+
                       return (
-                        <motion.button
+                        <motion.div
                           key={card.id}
-                          type="button"
+                          role="button"
+                          tabIndex={0}
                           whileHover={{ scale: 1.01 }}
                           whileTap={{ scale: 0.99 }}
-                          onClick={() => { setSelectedCardId(card.id); setUseNewCard(false); }}
-                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left ${
+                          onClick={selectCard}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              selectCard();
+                            }
+                          }}
+                          className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left cursor-pointer ${
                             active
                               ? "border-primary bg-pink-50"
                               : "border-gray-200 hover:border-gray-300 bg-white"
@@ -1320,7 +1409,7 @@ export default function StepPayment({
                             )}
                           </div>
                           {active && <CheckCircle className="w-5 h-5 text-primary flex-shrink-0" />}
-                        </motion.button>
+                        </motion.div>
                       );
                     })}
                   </div>

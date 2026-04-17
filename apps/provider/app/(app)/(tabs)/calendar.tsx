@@ -18,7 +18,7 @@ import {
   NativeSyntheticEvent,
 } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -95,6 +95,7 @@ interface Booking {
 interface StaffMember {
   id: string;
   name: string;
+  working_hours?: Record<string, { open?: string; close?: string; open_time?: string; close_time?: string; closed?: boolean; is_open?: boolean }> | null;
 }
 
 interface TimeBlock {
@@ -110,7 +111,10 @@ interface TimeBlock {
   /** DB id for `availability_blocks` (stable across split day segments). */
   availability_block_id?: string;
   /** Distinguishes overlay rows for tap actions / CRUD. */
-  calendar_overlay_kind?: "availability" | "staff_off" | "time_block";
+  calendar_overlay_kind?: "availability" | "staff_off" | "time_block" | "booking_hold";
+  /** §Provider-launch (audit 2026-04): for booking holds, the originating hold id + expiry. */
+  hold_id?: string;
+  hold_expires_at?: string | null;
   /** From GET /api/provider/time-blocks (`recurring_pattern`); used to expand recurring rows on the client. */
   is_recurring?: boolean;
   is_active?: boolean;
@@ -237,6 +241,12 @@ const STATUS_COLORS: Record<string, ColorTriple> = {
   confirmed: { bg: "#dbeafe", border: "#3b82f6", text: "#1e3a8a" },
   pending: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
   booked: { bg: "#fffbeb", border: "#f59e0b", text: "#78350f" },
+  // §Provider-launch (audit 2026-04): distinct palettes for front-desk
+  // lifecycle statuses so "waiting in the lobby" vs "checked in and seated"
+  // vs "service started" are visually separable on the calendar, matching
+  // the web provider portal.
+  waiting: { bg: "#fef3c7", border: "#d97706", text: "#78350f" },
+  checked_in: { bg: "#e0f2fe", border: "#0284c7", text: "#075985" },
   in_progress: { bg: "#fdf2f8", border: "#ec4899", text: "#831843" },
   started: { bg: "#fdf2f8", border: "#ec4899", text: "#831843" },
   completed: { bg: Colors.gray[100], border: Colors.gray[400], text: Colors.gray[600] },
@@ -284,8 +294,21 @@ const STAFF_TIMEOFF_OVERLAY_COLORS = {
   icon: "calendar-outline",
 };
 
+/**
+ * §Provider-launch (audit 2026-04): ghost slot styling for in-checkout
+ * booking holds. Mirrors the web calendar B8 behaviour so providers see a
+ * faint dashed block where a customer is actively holding a slot and
+ * finalising payment, preventing accidental double-booking.
+ */
+const BOOKING_HOLD_OVERLAY_COLORS = {
+  bg: "#FFF7ED",
+  border: "#FB923C",
+  text: "#9A3412",
+  icon: "hourglass-outline",
+};
+
 const STATUS_ACTIONS = [
-  { key: "confirmed", label: "Confirm" },
+  { key: "booked", label: "Confirm" },
   { key: "started", label: "Start Service" },
   { key: "completed", label: "Complete" },
   { key: "no_show", label: "No Show" },
@@ -323,6 +346,11 @@ function resolveCalendarColorKey(booking: Booking): string {
   const db = booking.db_status;
   if (db === "pending") return "pending";
   if (db === "confirmed") return "confirmed";
+  // §Provider-launch (audit 2026-04): surface lobby-flow DB statuses
+  // (waiting / checked_in) distinctly from "booked"/"confirmed" so the
+  // calendar reflects what's actually happening at reception.
+  if (db === "waiting") return "waiting";
+  if (db === "checked_in") return "checked_in";
   if (db === "in_progress") return "started";
   if (db === "completed") return "completed";
   if (db === "cancelled") return "cancelled";
@@ -371,6 +399,7 @@ function getTimeBlockColors(type: string) {
 }
 
 function getCalendarOverlayColors(block: TimeBlock) {
+  if (block.calendar_overlay_kind === "booking_hold") return BOOKING_HOLD_OVERLAY_COLORS;
   if (block.overlay_source === "staff_unavailability") return STAFF_TIMEOFF_OVERLAY_COLORS;
   return getTimeBlockColors(block.block_type);
 }
@@ -610,19 +639,41 @@ function DatePickerModal({
 
 export default function CalendarScreen() {
   const router = useRouter();
+  // §Provider-launch (audit 2026-04): accept `?date=YYYY-MM-DD` +
+  // `?booking_id=...` deep-link params so push notifications and email
+  // reminders can land the provider on the exact day (and optionally open
+  // the booking detail). Falls back to today + no booking highlight.
+  const searchParams = useLocalSearchParams<{ date?: string; booking_id?: string }>();
+  const deepLinkDate = useMemo(() => {
+    if (typeof searchParams.date !== "string" || !searchParams.date) return null;
+    const parsed = new Date(searchParams.date);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  }, [searchParams.date]);
   const [isFocused, setIsFocused] = useState(true);
   const [secondaryEnabled, setSecondaryEnabled] = useState(false);
-  const { user } = useAuth();
+  useAuth();
   const { provider, selectedLocationId: globalLocationId } = useProvider();
   const { isTablet, screenPadding } = useResponsive();
   const { preferences, updatePreference, resetToDefaults } = useCalendarPreferences();
 
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => deepLinkDate ?? new Date());
+  useEffect(() => {
+    if (deepLinkDate) {
+      setSelectedDate((prev) => (isSameDay(prev, deepLinkDate) ? prev : deepLinkDate));
+    }
+  }, [deepLinkDate]);
+  useEffect(() => {
+    if (typeof searchParams.booking_id === "string" && searchParams.booking_id) {
+      router.push(`/(app)/(tabs)/more/bookings/${searchParams.booking_id}` as never);
+    }
+  }, [searchParams.booking_id, router]);
   const [viewMode, setViewMode] = useState<ViewMode>("day");
   const [layoutMode, setLayoutMode] = useState<LayoutMode>("columns");
   const [selectedStaffIndex, setSelectedStaffIndex] = useState(0);
   const [staffFilter, setStaffFilter] = useState("all");
   const [locationFilter, setLocationFilter] = useState(globalLocationId ?? "all");
+  const [cancelReasonBookingId, setCancelReasonBookingId] = useState<string | null>(null);
+  const [cancelReasonText, setCancelReasonText] = useState("");
 
   useEffect(() => {
     if (globalLocationId) setLocationFilter(globalLocationId);
@@ -670,6 +721,11 @@ export default function CalendarScreen() {
   const fabAnim = useRef(new Animated.Value(0)).current;
   const scrollRef = useRef<ScrollView>(null);
   const hasScrolledToNow = useRef(false);
+  const prevViewModeRef = useRef(viewMode);
+  if (prevViewModeRef.current !== viewMode) {
+    prevViewModeRef.current = viewMode;
+    hasScrolledToNow.current = false;
+  }
   const scrollOffsetRef = useRef({ x: 0, y: 0 });
   const gridContainerRef = useRef<View>(null);
   const draggingRef = useRef(false);
@@ -698,7 +754,7 @@ export default function CalendarScreen() {
     mutate: setBookings,
   } = useApi<Booking[]>(
     `/api/provider/bookings?start_date=${startDate}&end_date=${endDate}&limit=500${locationParam}`,
-    { enabled: isFocused, staleTimeMs: 10_000 },
+    { enabled: isFocused, staleTimeMs: 0 },
   );
 
   const teamUrl = locationFilter !== "all" ? `/api/provider/team?location_id=${encodeURIComponent(locationFilter)}` : "/api/provider/team";
@@ -708,14 +764,31 @@ export default function CalendarScreen() {
     `/api/provider/time-blocks?date_from=${startDate}&date_to=${endDate}${timeBlocksLocationParam}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
-  const availabilityFromIso = `${startDate}T00:00:00.000Z`;
-  const availabilityToIso = `${endDate}T23:59:59.999Z`;
   const { data: availabilityRaw, refresh: refreshAvailabilityBlocks } = useApi<AvailabilityBlockApi[]>(
-    `/api/provider/availability-blocks?from=${encodeURIComponent(availabilityFromIso)}&to=${encodeURIComponent(availabilityToIso)}`,
+    `/api/provider/availability-blocks?from=${encodeURIComponent(startDate)}&to=${encodeURIComponent(endDate)}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
   const { data: staffUnavailSegments, refresh: refreshStaffUnavail } = useApi<AvailabilitySegment[]>(
     `/api/provider/calendar/staff-unavailability?date_from=${encodeURIComponent(startDate)}&date_to=${encodeURIComponent(endDate)}`,
+    { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
+  );
+  // §Provider-launch (audit 2026-04): surface active booking_holds as ghost
+  // slots so providers don't accidentally double-book a slot a customer is
+  // currently finalising payment for. Matches web calendar B8 behaviour.
+  const { data: bookingHoldSegments, refresh: refreshBookingHolds } = useApi<Array<{
+    id: string;
+    date: string;
+    start_time: string;
+    end_time: string;
+    team_member_id: string | null;
+    location_id: string | null;
+    block_type: string;
+    reason?: string | null;
+    _source?: string;
+    hold_id?: string;
+    hold_expires_at?: string | null;
+  }>>(
+    `/api/provider/calendar/booking-holds?date_from=${encodeURIComponent(startDate)}&date_to=${encodeURIComponent(endDate)}`,
     { enabled: isFocused && secondaryEnabled, staleTimeMs: 10_000 },
   );
   const { data: locations } = useApi<ProviderLocation[]>("/api/provider/locations", {
@@ -728,6 +801,7 @@ export default function CalendarScreen() {
     staleTimeMs: 10_000,
   });
   const { execute: patchBooking } = useApiMutation("patch");
+  const { execute: postBookingAction } = useApiMutation("post");
   const { execute: createTimeBlock, loading: creatingBlock } = useApiMutation("post");
   const { execute: deleteAvailabilityBlock } = useApiMutation("delete");
   const { execute: updateAvailabilityBlock, loading: savingAvailabilityEdit } = useApiMutation("put");
@@ -813,25 +887,23 @@ export default function CalendarScreen() {
     [selectedDate, viewMode],
   );
 
-  const scrollToCurrentTime = useCallback(() => {
-    if (!preferences.scrollToNow || hasScrolledToNow.current) return;
-    const now = new Date();
-    const h = getHours(now);
-    const effectiveStart = preferences.workdayStartHour;
-    const offset = Math.max(0, (h - effectiveStart - 1) * SLOT_HEIGHT);
-    scrollRef.current?.scrollTo({ y: offset, animated: false });
-    hasScrolledToNow.current = true;
-  }, [preferences.scrollToNow, preferences.workdayStartHour, SLOT_HEIGHT]);
-
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    const tasks = [refresh()];
-    if (secondaryEnabled) {
-      tasks.push(refreshTimeBlocks(), refreshAvailabilityBlocks(), refreshStaffUnavail());
+    try {
+      const tasks = [refresh()];
+      if (secondaryEnabled) {
+        tasks.push(
+          refreshTimeBlocks(),
+          refreshAvailabilityBlocks(),
+          refreshStaffUnavail(),
+          refreshBookingHolds(),
+        );
+      }
+      await Promise.all(tasks);
+    } finally {
+      setRefreshing(false);
     }
-    await Promise.all(tasks);
-    setRefreshing(false);
-  }, [refresh, refreshTimeBlocks, refreshAvailabilityBlocks, refreshStaffUnavail, secondaryEnabled]);
+  }, [refresh, refreshTimeBlocks, refreshAvailabilityBlocks, refreshStaffUnavail, refreshBookingHolds, secondaryEnabled]);
 
   const weekDays = useMemo(() => {
     const start = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -847,36 +919,85 @@ export default function CalendarScreen() {
   }, [locations, locationFilter]);
 
   function getHoursForDay(day: Date): { startHour: number; endHour: number; isOpen: boolean } {
-    // Always show at least 1 hour before start and 1 hour after end (closed/blocked time visible)
-    if (!operatingHours) {
-      const start = Math.max(0, preferences.workdayStartHour - 1);
-      const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: true };
-    }
     const dayName = DAY_NAMES[day.getDay()] ?? "monday";
-    const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
-    if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
+    let minH = 23;
+    let maxH = 0;
+    let anyOpen = false;
+
+    // Location operating hours
+    if (operatingHours) {
+      const schedule = normalizeOperatingSchedule(operatingHours[dayName]);
+      if (schedule?.isOpen && schedule.openTime != null && schedule.closeTime != null) {
+        anyOpen = true;
+        minH = Math.min(minH, Math.floor(timeStringToMinutes(schedule.openTime) / 60));
+        maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(schedule.closeTime) / 60));
+      }
+    }
+
+    // Staff working hours — expand range for any staff member who works this day,
+    // even if the location itself is nominally closed (e.g. weekends).
+    for (const member of staffList) {
+      if (!member.working_hours) continue;
+      const dayWh = member.working_hours[dayName];
+      if (!dayWh) continue;
+      if (dayWh.closed === true || dayWh.is_open === false) continue;
+      const openStr = dayWh.open ?? dayWh.open_time;
+      const closeStr = dayWh.close ?? dayWh.close_time;
+      if (typeof openStr !== "string" || typeof closeStr !== "string") continue;
+      anyOpen = true;
+      minH = Math.min(minH, Math.floor(timeStringToMinutes(openStr) / 60));
+      maxH = Math.max(maxH, Math.ceil(timeStringToMinutes(closeStr) / 60));
+    }
+
+    if (!anyOpen) {
       const start = Math.max(0, preferences.workdayStartHour - 1);
       const end = Math.min(23, preferences.workdayEndHour + 1);
-      return { startHour: start, endHour: end, isOpen: !!schedule?.isOpen };
+      return { startHour: start, endHour: end, isOpen: false };
     }
-    const openMin = timeStringToMinutes(schedule.openTime);
-    const closeMin = timeStringToMinutes(schedule.closeTime);
-    const sh = Math.max(0, Math.floor(openMin / 60) - 1);
-    const eh = Math.min(23, Math.ceil(closeMin / 60) + 1);
+
+    const sh = Math.max(0, minH - 1);
+    const eh = Math.min(23, maxH + 1);
     return { startHour: sh, endHour: eh, isOpen: true };
   }
 
   const todayHours = getHoursForDay(selectedDate);
-  // Day view uses day-specific hours (with 1hr buffer); week/3day use workday ± 1hr so closed time is visible
-  const startHour =
-    viewMode === "day"
-      ? todayHours.startHour
-      : Math.max(0, preferences.workdayStartHour - 1);
-  const endHour =
-    viewMode === "day"
-      ? todayHours.endHour
-      : Math.min(23, preferences.workdayEndHour + 1);
+  // All views use operating hours; week/3-day merge hours across all visible days
+  const { startHour, endHour } = useMemo(() => {
+    if (viewMode === "day") {
+      return { startHour: todayHours.startHour, endHour: todayHours.endHour };
+    }
+    const count = viewMode === "3day" ? 3 : 7;
+    let minH = 23;
+    let maxH = 0;
+    let hasOpen = false;
+    for (let i = 0; i < count; i++) {
+      const d = viewMode === "week"
+        ? addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), i)
+        : addDays(selectedDate, i);
+      const dh = getHoursForDay(d);
+      if (dh.isOpen) {
+        hasOpen = true;
+        minH = Math.min(minH, dh.startHour);
+        maxH = Math.max(maxH, dh.endHour);
+      }
+    }
+    if (!hasOpen) {
+      const fallback = Math.max(0, preferences.workdayStartHour - 1);
+      const fallbackEnd = Math.min(23, preferences.workdayEndHour + 1);
+      return { startHour: fallback, endHour: fallbackEnd };
+    }
+    return { startHour: minH, endHour: maxH };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, selectedDate, todayHours.startHour, todayHours.endHour, todayHours.isOpen, operatingHours, preferences.workdayStartHour, preferences.workdayEndHour]);
+
+  const scrollToCurrentTime = useCallback(() => {
+    if (!preferences.scrollToNow || hasScrolledToNow.current) return;
+    const now = new Date();
+    const h = getHours(now);
+    const offset = Math.max(0, (h - startHour - 1) * SLOT_HEIGHT);
+    scrollRef.current?.scrollTo({ y: offset, animated: false });
+    hasScrolledToNow.current = true;
+  }, [preferences.scrollToNow, startHour, SLOT_HEIGHT]);
 
   const gridRows = useMemo(() => {
     const rows: { hour: number; minute: number; label: string }[] = [];
@@ -984,6 +1105,24 @@ export default function CalendarScreen() {
       if (seg.date !== dayStr) continue;
       if (!blockMatchesStaff(seg.team_member_id)) continue;
       out.push(availabilitySegmentToTimeBlock(seg));
+    }
+
+    // §Provider-launch: booking holds (customers mid-checkout).
+    for (const seg of bookingHoldSegments ?? []) {
+      if (seg.date !== dayStr) continue;
+      if (!blockMatchesStaff(seg.team_member_id)) continue;
+      out.push({
+        id: seg.id,
+        staff_id: seg.team_member_id,
+        block_type: "booking_hold",
+        title: seg.reason?.trim() || "Booking hold",
+        start_time: seg.start_time,
+        end_time: seg.end_time,
+        date: seg.date,
+        calendar_overlay_kind: "booking_hold",
+        hold_id: seg.hold_id ?? seg.id,
+        hold_expires_at: seg.hold_expires_at ?? null,
+      });
     }
 
     if (preferences.showProcessingAndBuffer && expandedApiTimeBlocks.length > 0) {
@@ -1115,12 +1254,35 @@ export default function CalendarScreen() {
     setSelectedDate((prev) => (direction > 0 ? addDays(prev, amount) : subDays(prev, amount)));
   }
 
-  function handleTapSlot(hour: number, minute: number, day?: Date) {
+  function handleTapSlot(
+    hour: number,
+    minute: number,
+    day?: Date,
+    columnStaffId?: string | null,
+  ) {
     const targetDay = day ?? selectedDate;
     const dateParam = format(targetDay, "yyyy-MM-dd");
     const timeParam = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    // §Provider-launch (audit 2026-04): when a slot is tapped inside a
+    // specific staff column (multi-staff day view), or when a single
+    // location filter is active, carry that context forward so the "New
+    // booking" screen can pre-select staff/location instead of defaulting
+    // to whatever the provider context happened to remember.
+    const params = new URLSearchParams({
+      date: dateParam,
+      time: timeParam,
+      status: preferences.defaultNewAppointmentStatus,
+    });
+    if (columnStaffId && columnStaffId !== "all") {
+      params.set("staff_id", columnStaffId);
+    } else if (staffFilter !== "all") {
+      params.set("staff_id", staffFilter);
+    }
+    if (locationFilter !== "all") {
+      params.set("location_id", locationFilter);
+    }
     router.push(
-      `/(app)/(tabs)/more/bookings/new?date=${dateParam}&time=${timeParam}&status=${preferences.defaultNewAppointmentStatus}` as never,
+      `/(app)/(tabs)/more/bookings/new?${params.toString()}` as never,
     );
   }
 
@@ -1182,10 +1344,31 @@ export default function CalendarScreen() {
   }
 
   async function changeBookingStatus(bookingId: string, newStatus: string) {
+    if (newStatus === "cancelled") {
+      setCancelReasonBookingId(bookingId);
+      setCancelReasonText("");
+      return;
+    }
+    await applyBookingStatus(bookingId, newStatus);
+  }
+
+  async function applyBookingStatus(bookingId: string, newStatus: string, reason?: string) {
     if (bookings) {
       setBookings(bookings.map((b) => (b.id === bookingId ? { ...b, status: newStatus } : b)));
     }
-    const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, { status: newStatus });
+    if (newStatus === "completed") {
+      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/complete-service`, {});
+      if (error) { Alert.alert("Error", error); refresh(); }
+      return;
+    }
+    if (newStatus === "started") {
+      const { error } = await postBookingAction(`/api/provider/bookings/${bookingId}/start-service`, {});
+      if (error) { Alert.alert("Error", error); refresh(); }
+      return;
+    }
+    const body: Record<string, unknown> = { status: newStatus };
+    if (newStatus === "cancelled" && reason) body.cancellation_reason = reason;
+    const { error } = await patchBooking(`/api/provider/bookings/${bookingId}`, body);
     if (error) { Alert.alert("Error", error); refresh(); }
   }
 
@@ -1212,13 +1395,17 @@ export default function CalendarScreen() {
       const minute = Math.round((frac * 60) / inc) * inc;
       const clampedMinute = Math.min(59, Math.max(0, minute));
       const hourClamp = Math.min(23, Math.max(0, hour));
-      const newScheduledAt =
-        format(targetDay, "yyyy-MM-dd") +
-        "T" +
-        String(hourClamp).padStart(2, "0") +
-        ":" +
-        String(clampedMinute).padStart(2, "0") +
-        ":00";
+      // Build a timezone-aware ISO string so the server stores the
+      // correct UTC instant matching the provider's local wall clock.
+      const naiveDateStr = format(targetDay, "yyyy-MM-dd");
+      const naiveTimeStr = `${String(hourClamp).padStart(2, "0")}:${String(clampedMinute).padStart(2, "0")}`;
+      const naive = new Date(`${naiveDateStr}T${naiveTimeStr}:00`);
+      const offsetMin = naive.getTimezoneOffset();
+      const sign = offsetMin <= 0 ? "+" : "-";
+      const absMin = Math.abs(offsetMin);
+      const ohh = String(Math.floor(absMin / 60)).padStart(2, "0");
+      const omm = String(absMin % 60).padStart(2, "0");
+      const newScheduledAt = `${naiveDateStr}T${naiveTimeStr}:00${sign}${ohh}:${omm}`;
 
       let newStaffId: string | undefined = booking.services?.[0]?.staff_id ?? undefined;
       if (targetStaffColumns && targetStaffColumns.length > 0 && targetDayColumnWidth > 0) {
@@ -1233,9 +1420,19 @@ export default function CalendarScreen() {
 
       const durationMinutes = booking.services?.reduce((s, svc) => s + svc.duration_minutes, 0) ?? 60;
       const staffIdsParam = newStaffId ? newStaffId : "";
+      // §Provider-launch (audit 2026-04): include location_id when a
+      // specific location filter is active so multi-location providers
+      // get the correct overlap detection — the check-availability API
+      // supports it but the mobile drag flow was omitting the param,
+      // leading to false "no conflict" reports across locations.
+      const locationIdForCheck =
+        (booking as Booking & { location_id?: string | null }).location_id ??
+        (locationFilter !== "all" ? locationFilter : null);
       const checkUrl =
         `/api/provider/bookings/check-availability?scheduled_at=${encodeURIComponent(newScheduledAt)}&duration_minutes=${durationMinutes}` +
-        (staffIdsParam ? `&staff_ids=${encodeURIComponent(staffIdsParam)}` : "");
+        `&exclude_booking_id=${encodeURIComponent(booking.id)}` +
+        (staffIdsParam ? `&staff_ids=${encodeURIComponent(staffIdsParam)}` : "") +
+        (locationIdForCheck ? `&location_id=${encodeURIComponent(locationIdForCheck)}` : "");
 
       (async () => {
         const res = await api.get<{ available?: boolean; conflicts?: string[] }>(checkUrl);
@@ -1301,6 +1498,20 @@ export default function CalendarScreen() {
   }
 
   function openOverlayBlockMenu(block: TimeBlock) {
+    if (block.calendar_overlay_kind === "booking_hold") {
+      // §Provider-launch: booking holds are transient — they expire once
+      // the customer finishes checkout (or times out). Don't let providers
+      // "edit" or "delete" them from the calendar; they'd collide with the
+      // checkout finalising flow.
+      const expiresText = block.hold_expires_at
+        ? ` Expires ${new Date(block.hold_expires_at).toLocaleTimeString()}.`
+        : "";
+      Alert.alert(
+        "Booking hold",
+        `A customer is currently finalising checkout for this slot.${expiresText} It will clear automatically if they don't complete payment.`,
+      );
+      return;
+    }
     if (block.calendar_overlay_kind === "staff_off") {
       Alert.alert(
         "Team time off",
@@ -1458,6 +1669,43 @@ export default function CalendarScreen() {
       viewMode === "day";
 
     const subTextColor = preferences.highContrast ? Colors.gray[400] : Colors.gray[500];
+    // §Provider-launch (audit 2026-04): drag-to-reschedule claims the
+    // long-press gesture on day view, which used to completely block the
+    // status action menu (Confirm / Start / Complete / No-show / Cancel).
+    // Add an explicit overflow ("⋯") affordance in the corner of the
+    // booking card so the menu is still one tap away even when the card is
+    // drag-enabled. Hidden for very small cards to avoid crowding.
+    const overflowButton =
+      !isSmall && height >= 30 ? (
+        <TouchableOpacity
+          onPress={(e) => {
+            // Don't let the tap bubble into the parent card's onPress
+            // (which would open booking detail) or trigger drag.
+            e?.stopPropagation?.();
+            handleLongPressBooking(booking);
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={{
+            position: "absolute",
+            top: 2,
+            right: 2,
+            zIndex: 20,
+            paddingHorizontal: 4,
+            paddingVertical: 2,
+            borderRadius: 6,
+            backgroundColor: preferences.highContrast ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.06)",
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Booking actions"
+        >
+          <Ionicons
+            name="ellipsis-horizontal"
+            size={12}
+            color={preferences.highContrast ? Colors.white : Colors.gray[700]}
+          />
+        </TouchableOpacity>
+      ) : null;
+
     const blockContent = (
       <>
         {preferences.showAppointmentIcons && isNew && (
@@ -1465,6 +1713,7 @@ export default function CalendarScreen() {
             <Text style={{ fontSize: 7, fontWeight: "700", color: Colors.white }}>NEW</Text>
           </View>
         )}
+        {overflowButton}
         {isSmall ? (
           <Text style={{ fontSize: 10, fontWeight: "600", color: blockTextColor }} numberOfLines={1}>
             {booking.customers?.full_name ?? "Walk-in"}
@@ -1605,21 +1854,43 @@ export default function CalendarScreen() {
     const top = GRID_TOP_PADDING + Math.max(0, (startMin / 60 - startHour) * SLOT_HEIGHT);
     const height = Math.max(((endMin - startMin) / 60) * SLOT_HEIGHT, QUARTER_HEIGHT);
     const interactive = !!block.calendar_overlay_kind;
-    const boxStyle = {
-      position: "absolute" as const,
-      left: 4,
-      right: 4,
-      top,
-      height,
-      zIndex: 5,
-      overflow: "hidden" as const,
-      borderRadius: 6,
-      borderLeftWidth: 3,
-      borderLeftColor: bColors.border,
-      backgroundColor: bColors.bg,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-    };
+    // §Provider-launch (audit 2026-04): ghost booking_holds should read as
+    // tentative slots, matching the web `TimeBlockElement` which uses a
+    // dashed border. Regular time blocks / staff-off / availability still
+    // get the solid accent stripe on the left.
+    const isBookingHold = block.calendar_overlay_kind === "booking_hold";
+    const boxStyle = isBookingHold
+      ? {
+          position: "absolute" as const,
+          left: 4,
+          right: 4,
+          top,
+          height,
+          zIndex: 5,
+          overflow: "hidden" as const,
+          borderRadius: 6,
+          borderWidth: 1,
+          borderStyle: "dashed" as const,
+          borderColor: bColors.border,
+          backgroundColor: bColors.bg,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+        }
+      : {
+          position: "absolute" as const,
+          left: 4,
+          right: 4,
+          top,
+          height,
+          zIndex: 5,
+          overflow: "hidden" as const,
+          borderRadius: 6,
+          borderLeftWidth: 3,
+          borderLeftColor: bColors.border,
+          backgroundColor: bColors.bg,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+        };
     const label = (
       <View style={{ flexDirection: "row", alignItems: "center" }}>
         <Ionicons name={bColors.icon as keyof typeof Ionicons.glyphMap} size={10} color={bColors.text} />
@@ -1657,6 +1928,14 @@ export default function CalendarScreen() {
     const shadeBg = preferences.highContrast ? Colors.gray[700] : Colors.gray[200];
 
     if (!schedule || !schedule.isOpen || schedule.openTime == null || schedule.closeTime == null) {
+      const dayName2 = DAY_NAMES[day.getDay()] ?? "monday";
+      const anyStaffWorks = staffList.some((s) => {
+        const wh = s.working_hours?.[dayName2];
+        if (!wh) return false;
+        const norm = normalizeOperatingSchedule(wh);
+        return norm?.isOpen === true;
+      });
+      if (anyStaffWorks) return null;
       return (
         <View style={{ position: "absolute", left: 0, right: 0, top: GRID_TOP_PADDING, height: totalGridHeight, backgroundColor: shadeBg, opacity: 0.3, zIndex: 1, pointerEvents: "none" }} />
       );
@@ -1713,7 +1992,9 @@ export default function CalendarScreen() {
                 borderTopColor: row.minute === 0 ? Colors.gray[200] : Colors.gray[50],
               }}
               activeOpacity={0.6}
-              onPress={() => handleTapSlot(row.hour, row.minute, day)}
+              onPress={() =>
+                handleTapSlot(row.hour, row.minute, day, blockContext?.staffColumnId ?? null)
+              }
               accessibilityRole="button"
               accessibilityLabel={`Book at ${row.label} on ${format(day, "EEEE, MMMM d")}`}
             />
@@ -1734,6 +2015,32 @@ export default function CalendarScreen() {
         <View style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: 0, zIndex: 10, pointerEvents: "box-none" }}>
           {bookingsForDay.map((b) => renderBookingBlock(b, colWidth, day, dropContext))}
         </View>
+
+        {/*
+          §Provider-launch (audit 2026-04): explicit empty-day copy so the
+          calendar doesn't read as "broken or still loading" when a staff
+          member has a clean diary. Only shown in day view and only when
+          nothing at all would render (no bookings, no blocks).
+        */}
+        {viewMode === "day" && bookingsForDay.length === 0 && dayBlocks.length === 0 && !loading && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: GRID_TOP_PADDING + 40,
+              alignItems: "center",
+              zIndex: 4,
+            }}
+          >
+            <View style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, backgroundColor: Colors.gray[50], borderWidth: 1, borderColor: Colors.gray[200] }}>
+              <Text style={{ fontSize: 12, color: Colors.gray[500] }}>
+                No appointments — tap a slot to add one
+              </Text>
+            </View>
+          </View>
+        )}
 
         {showTimeIndicator && viewMode === "day" && isSameDay(day, new Date()) && (
           <CurrentTimeIndicator
@@ -2091,7 +2398,15 @@ export default function CalendarScreen() {
                                 if (!operatingHours) return null;
                                 const dn = DAY_NAMES[day.getDay()] ?? "monday";
                                 const sc = normalizeOperatingSchedule(operatingHours[dn]);
-                                if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700" }}>CLOSED</Text>;
+                                if (!sc?.isOpen) {
+                                  // Check if any staff member works this day before labelling "CLOSED"
+                                  const anyStaffWorks = staffList.some((m) => {
+                                    const wh = m.working_hours?.[dn];
+                                    if (!wh) return false;
+                                    return wh.closed !== true && wh.is_open !== false;
+                                  });
+                                  if (!anyStaffWorks) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700" }}>CLOSED</Text>;
+                                }
                                 return <Text style={{ fontSize: 9, color: Colors.gray[400] }}>{dayBookings.length} appt{dayBookings.length !== 1 ? "s" : ""}</Text>;
                               })()}
                             </TouchableOpacity>
@@ -2222,7 +2537,14 @@ export default function CalendarScreen() {
                               if (!operatingHours) return null;
                               const dn = DAY_NAMES[day.getDay()] ?? "monday";
                               const sc = normalizeOperatingSchedule(operatingHours[dn]);
-                              if (!sc?.isOpen) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700", marginTop: 1 }}>CLOSED</Text>;
+                              if (!sc?.isOpen) {
+                                const anyStaffWorks = staffList.some((m) => {
+                                  const wh = m.working_hours?.[dn];
+                                  if (!wh) return false;
+                                  return wh.closed !== true && wh.is_open !== false;
+                                });
+                                if (!anyStaffWorks) return <Text style={{ fontSize: 8, color: "#ef4444", fontWeight: "700", marginTop: 1 }}>CLOSED</Text>;
+                              }
                               return null;
                             })()}
                           </View>
@@ -2763,6 +3085,39 @@ export default function CalendarScreen() {
           <ActionButton label="Add Time Block" onPress={handleCreateTimeBlock} loading={creatingBlock} fullWidth />
         </View>
       </BottomSheet>
+      {cancelReasonBookingId && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setCancelReasonBookingId(null)}>
+          <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonBookingId(null)}>
+            <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Cancel booking</Text>
+              <Text style={{ fontSize: 13, color: "#6B7280", marginBottom: 8 }}>Reason for cancellation (optional):</Text>
+              <TextInput
+                value={cancelReasonText}
+                onChangeText={setCancelReasonText}
+                placeholder="e.g. Client requested"
+                multiline
+                style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 72, textAlignVertical: "top", marginBottom: 16 }}
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity onPress={() => setCancelReasonBookingId(null)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
+                  <Text style={{ fontWeight: "600", color: "#374151" }}>Back</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    const bId = cancelReasonBookingId;
+                    const reason = cancelReasonText.trim() || "No reason provided";
+                    setCancelReasonBookingId(null);
+                    applyBookingStatus(bId, "cancelled", reason);
+                  }}
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
+                >
+                  <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </ScreenContainer>
   );
 }

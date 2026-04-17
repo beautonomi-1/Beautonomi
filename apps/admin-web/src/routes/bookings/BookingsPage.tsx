@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
@@ -7,6 +7,7 @@ import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { adminTabButtonClass } from "@/lib/adminUi";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -15,6 +16,7 @@ import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { downloadAdminBlob } from "@/lib/adminCsvDownload";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 
 interface BookingListRow {
   id: string;
@@ -33,12 +35,20 @@ interface BookingListRow {
   services?: { offering_name?: string; name?: string }[];
 }
 
+type BookingsPayload = BookingListRow[] | { bookings: BookingListRow[]; total?: number };
+
+const LIMIT = 50;
+
 export function BookingsPage() {
+  useAdminDocumentTitle("Bookings");
   const { allowed, denied } = useAdminSectionPage(
     ADMIN_SECTION_PROVIDERS_OPERATIONS,
     "Providers & operations access is required for bookings."
   );
   const qc = useQueryClient();
+
+  const [sp, setSp] = useSearchParams();
+  const page = Math.max(0, parseInt(sp.get("page") || "0", 10) || 0);
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [dateFilter, setDateFilter] = useState("");
@@ -50,13 +60,15 @@ export function BookingsPage() {
 
   const filters = { statusFilter, dateFilter };
   const q = useQuery({
-    queryKey: adminQueryKeys.bookings.list(filters),
+    queryKey: adminQueryKeys.bookings.list({ ...filters, page }),
     queryFn: async () => {
       const params = new URLSearchParams();
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (dateFilter) params.set("date", dateFilter);
+      params.set("limit", String(LIMIT));
+      params.set("page", String(page));
       const qs = params.toString();
-      return adminApi.getJson<BookingListRow[]>(`/api/admin/bookings${qs ? `?${qs}` : ""}`, {
+      return adminApi.getJson<BookingsPayload>(`/api/admin/bookings${qs ? `?${qs}` : ""}`, {
         timeoutMs: 60_000,
       });
     },
@@ -67,18 +79,44 @@ export function BookingsPage() {
     mutationFn: async (payload: { booking_ids: string[]; action: "cancel" | "complete" | "export" }) => {
       await adminApi.postJson("/api/admin/bookings/bulk", payload);
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setSelectedIds(new Set());
+      const count = vars.booking_ids.length;
+      const label = vars.action === "cancel" ? "cancelled" : vars.action === "complete" ? "completed" : "exported";
+      adminToast.success(`${count} booking${count !== 1 ? "s" : ""} ${label}`);
     },
+    onError: (e: Error) => adminToast.error(`Bulk action failed: ${e.message}`),
   });
 
+  const allRows = useMemo<BookingListRow[]>(() => {
+    const d = q.data;
+    if (!d) return [];
+    if (Array.isArray(d)) return d;
+    return d.bookings ?? [];
+  }, [q.data]);
+
+  const total = useMemo(() => {
+    const d = q.data;
+    if (!d || Array.isArray(d)) return allRows.length;
+    return d.total ?? allRows.length;
+  }, [q.data, allRows.length]);
+
+  const totalPages = Math.ceil(total / LIMIT);
+
+  function setPage(next: number) {
+    const n = new URLSearchParams(sp);
+    if (next === 0) n.delete("page");
+    else n.set("page", String(next));
+    setSp(n, { replace: true });
+    setSelectedIds(new Set());
+  }
+
   const filtered = useMemo(() => {
-    const list = q.data ?? [];
     const sq = deferredSearch.toLowerCase();
-    if (!sq) return list;
-    return list.filter((b) => (b.booking_number ?? "").toLowerCase().includes(sq));
-  }, [q.data, deferredSearch]);
+    if (!sq) return allRows;
+    return allRows.filter((b) => (b.booking_number ?? "").toLowerCase().includes(sq));
+  }, [allRows, deferredSearch]);
 
   const grouped = useMemo(() => {
     return {
@@ -95,7 +133,7 @@ export function BookingsPage() {
   const visible = grouped[tab as keyof typeof grouped] ?? grouped.all;
 
   const stats = useMemo(() => {
-    const bookings = q.data ?? [];
+    const bookings = allRows;
     return {
       total: bookings.length,
       pending: bookings.filter((b) => b.status === "pending").length,
@@ -176,7 +214,7 @@ export function BookingsPage() {
           <button
             type="button"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900"
-            onClick={() => void exportCsv().catch(() => alert("Export failed"))}
+            onClick={() => void exportCsv().catch(() => adminToast.error("Export failed — please try again"))}
           >
             Export CSV
           </button>
@@ -312,6 +350,9 @@ export function BookingsPage() {
           <span>Select all on this tab</span>
         </div>
 
+        <p className="mb-3 text-xs text-gray-500">
+          Page {page + 1}{totalPages > 1 ? ` of ${totalPages}` : ""} · {total} total
+        </p>
         {visible.length === 0 ? (
           <EmptyState title="No bookings" description="No bookings match these filters." />
         ) : (
@@ -408,6 +449,29 @@ export function BookingsPage() {
               </li>
             ))}
           </ul>
+        )}
+        {totalPages > 1 && (
+          <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-4">
+            <span className="text-sm text-gray-500">Page {page + 1} of {totalPages}</span>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                disabled={page <= 0}
+                onClick={() => setPage(page - 1)}
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-3 py-2 text-sm disabled:opacity-50"
+                disabled={page >= totalPages - 1}
+                onClick={() => setPage(page + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </div>
         )}
       </AdminPanel>
     </div>

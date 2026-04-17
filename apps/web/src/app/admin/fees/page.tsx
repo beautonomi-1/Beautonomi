@@ -507,8 +507,8 @@ function FeeConfigModal({
                           by multiplying this percentage by the transaction amount.
                         </p>
                         <p className="text-xs text-gray-600 mt-2">
-                          <strong>Example:</strong> For a 1.5% fee on a R100 transaction, enter 0.015, 
-                          which results in a R1.50 fee.
+                          <strong>Example:</strong> For a 1.5% fee on a 100 transaction, enter 0.015, 
+                          which results in a 1.50 fee.
                         </p>
                       </div>
                     </PopoverContent>
@@ -555,7 +555,7 @@ function FeeConfigModal({
                           of the transaction size. This is useful when gateways charge a flat fee.
                         </p>
                         <p className="text-xs text-gray-600 mt-2">
-                          <strong>Example:</strong> If the gateway charges R2.50 per transaction, 
+                          <strong>Example:</strong> If the gateway charges 2.50 per transaction, 
                           enter 2.50 here.
                         </p>
                       </div>
@@ -687,8 +687,7 @@ function FeeAdjustmentsTab() {
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [adjustments, setAdjustments] = useState<FeeAdjustment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [, setError] = useState<string | null>(null);
-  const [, setShowModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 50;
@@ -757,11 +756,18 @@ function FeeAdjustmentsTab() {
             </PopoverContent>
           </Popover>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={() => toast.info("Create adjustment coming soon")} variant="outline" disabled>
           <Plus className="w-4 h-4 mr-2" />
           Create Adjustment
         </Button>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={loadAdjustments}>Retry</Button>
+        </div>
+      )}
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
         <div className="flex items-start gap-2">
@@ -887,8 +893,7 @@ function ReconciliationsTab() {
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [reconciliations, setReconciliations] = useState<Reconciliation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [, setError] = useState<string | null>(null);
-  const [, setShowModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const limit = 50;
@@ -972,11 +977,18 @@ function ReconciliationsTab() {
             </PopoverContent>
           </Popover>
         </div>
-        <Button onClick={() => setShowModal(true)}>
+        <Button onClick={() => toast.info("New reconciliation coming soon")} variant="outline" disabled>
           <Plus className="w-4 h-4 mr-2" />
           New Reconciliation
         </Button>
       </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700 flex items-center justify-between">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={loadReconciliations}>Retry</Button>
+        </div>
+      )}
 
       <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
         <div className="flex items-start gap-2">

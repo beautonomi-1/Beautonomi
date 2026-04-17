@@ -11,21 +11,129 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, isAuthError } from "@/lib/api-client";
-import { ScreenFrame } from "@/components/ScreenFrame";
 import { useAuth } from "@/providers/AuthProvider";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
-import { Colors } from "@/constants/colors";
+import { Colors, Shadows } from "@/constants/colors";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 
 type Tab = "providers" | "products" | "posts";
 
 const COLUMN_GAP = 8;
 const COL_COUNT = 2;
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: Colors.white,
+  },
+  errorBanner: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#FEF2F2",
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#FECACA",
+  },
+  errorText: {
+    color: "#991B1B",
+    textAlign: "center",
+    marginBottom: 12,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  retryBtn: {
+    alignSelf: "center",
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  retryBtnText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  tabBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 8,
+    backgroundColor: Colors.gray[50],
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: Colors.gray[200],
+  },
+  loadingPane: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  loadingLabel: {
+    marginTop: 12,
+    fontSize: 14,
+    color: Colors.gray[500],
+  },
+  emptyPane: {
+    flex: 1,
+    minHeight: 320,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+    paddingVertical: 32,
+  },
+  emptyListPane: {
+    flexGrow: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+    paddingVertical: 48,
+    minHeight: 280,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: Colors.gray[900],
+    marginTop: 16,
+    textAlign: "center",
+  },
+  emptyBody: {
+    fontSize: 14,
+    color: Colors.gray[500],
+    marginTop: 8,
+    textAlign: "center",
+    lineHeight: 20,
+    maxWidth: 300,
+  },
+  emptyCta: {
+    marginTop: 20,
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 22,
+    borderRadius: 12,
+  },
+  emptyCtaText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  emptyCtaSecondary: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  emptyCtaSecondaryText: {
+    color: Colors.primary,
+    fontWeight: "600",
+    fontSize: 15,
+  },
+});
 
 export interface SavedTabContentProps {
   /** When false, do not fetch or show "Recently viewed" (e.g. on main Saved tab) */
@@ -34,17 +142,26 @@ export interface SavedTabContentProps {
   screenName?: string;
   /** Initial tab from route params (e.g. tab=posts) */
   initialTab?: Tab;
+  /**
+   * `tabs` — main Saved tab (bottom tab bar). `stack` — e.g. account wishlists (no tab bar; tighter bottom inset).
+   */
+  layoutVariant?: "tabs" | "stack";
 }
 
 export function SavedTabContent({
   showRecentlyViewed = true,
   screenName = "Saved",
   initialTab,
+  layoutVariant = "tabs",
 }: SavedTabContentProps) {
   useScreenTracking(screenName);
   const { user } = useAuth();
   const params = useLocalSearchParams<{ tab?: string }>();
   const { width, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const insets = useSafeAreaInsets();
+  const tabBarScrollPadding = useTabContentPaddingBottom(8);
+  const stackScrollPadding = Math.max(insets.bottom, 8) + 28;
+  const scrollBottomPadding = layoutVariant === "stack" ? stackScrollPadding : tabBarScrollPadding;
   const constraint =
     isTablet || Platform.OS === "web"
       ? { maxWidth: contentMaxWidth, alignSelf: "center" as const, width: "100%" as const }
@@ -209,11 +326,14 @@ export function SavedTabContent({
   }, [activeTab, loadProviders, loadProducts, loadSavedPosts]);
 
   const handleUnsave = useCallback(async (postId: string) => {
-    setSavedPosts((prev) => prev.filter((p) => p.id !== postId));
+    const prev = savedPosts;
+    setSavedPosts((p) => p.filter((x) => x.id !== postId));
     try {
       await api.delete(`/api/explore/saved?post_id=${postId}`);
-    } catch {}
-  }, []);
+    } catch {
+      setSavedPosts(prev);
+    }
+  }, [savedPosts]);
 
   const savedProviderIds = useMemo(() => new Set(saved.map((p: any) => p.id)), [saved]);
   const handleSaveProvider = useCallback(
@@ -300,13 +420,6 @@ export function SavedTabContent({
     }
   }, [newBoardName]);
 
-  const isEmpty =
-    activeTab === "providers"
-      ? saved.length === 0 && (showRecentlyViewed ? recentlyViewed.length === 0 : true)
-      : activeTab === "products"
-        ? savedProducts.length === 0
-      : savedPosts.length === 0;
-
   const emptyTitle =
     activeTab === "providers"
       ? showRecentlyViewed
@@ -323,25 +436,30 @@ export function SavedTabContent({
         ? "Your session may have expired — sign in again to load saved explore posts."
         : "Bookmark posts from Explore to see them here"
       : activeTab === "products"
-        ? "Save products to wishlist to see them here"
-      : undefined;
+        ? "Save products from the shop with the heart icon to see them here."
+        : activeTab === "providers"
+          ? "Tap the heart on a provider profile to save them here."
+          : undefined;
+
+  const showLoadingContent =
+    !refreshing &&
+    ((activeTab === "posts" && postsLoading && savedPosts.length === 0) ||
+      (activeTab !== "posts" && loading));
+
+  const compactTabs = width < 400;
 
   return (
-    <ScreenFrame
-      loading={loading || postsLoading}
-      error={error}
-      onRetry={handleRefresh}
-      empty={{ title: emptyTitle, message: emptySubtitle }}
-      isEmpty={isEmpty && !loading && !postsLoading}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          borderBottomWidth: 1,
-          borderBottomColor: "#e5e7eb",
-          backgroundColor: "#fff",
-        }}
-      >
+    <View style={styles.root}>
+      {error ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity onPress={handleRefresh} style={styles.retryBtn} accessibilityRole="button" accessibilityLabel="Retry">
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
+      <View style={[styles.tabBar, { paddingHorizontal: contentPadding }]}>
         <TabButton
           label="Providers"
           icon="heart-outline"
@@ -349,7 +467,7 @@ export function SavedTabContent({
           onPress={() => setActiveTab("providers")}
         />
         <TabButton
-          label="Saved Posts"
+          label={compactTabs ? "Posts" : "Saved posts"}
           icon="bookmark-outline"
           active={activeTab === "posts"}
           onPress={() => setActiveTab("posts")}
@@ -362,10 +480,22 @@ export function SavedTabContent({
         />
       </View>
 
-      {activeTab === "providers" ? (
+      {showLoadingContent ? (
+        <View style={styles.loadingPane}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingLabel}>Loading…</Text>
+        </View>
+      ) : activeTab === "providers" ? (
         <ScrollView
           style={{ flex: 1 }}
-          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
+          contentContainerStyle={{
+            flexGrow: 1,
+            paddingHorizontal: contentPadding,
+            paddingTop: 16,
+            paddingBottom: scrollBottomPadding,
+            ...constraint,
+          }}
+          keyboardShouldPersistTaps="handled"
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -374,6 +504,21 @@ export function SavedTabContent({
             />
           }
         >
+          {saved.length === 0 && (!showRecentlyViewed || recentlyViewed.length === 0) ? (
+            <View style={styles.emptyPane}>
+              <Ionicons name="heart-outline" size={56} color={Colors.gray[300]} />
+              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+              {emptySubtitle ? <Text style={styles.emptyBody}>{emptySubtitle}</Text> : null}
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/(tabs)/home" as any)}
+                style={styles.emptyCta}
+                accessibilityRole="button"
+                accessibilityLabel="Discover providers"
+              >
+                <Text style={styles.emptyCtaText}>Discover providers</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
           {saved.length > 0 && (
             <View style={{ marginBottom: 24 }}>
               <Text
@@ -514,14 +659,34 @@ export function SavedTabContent({
           data={savedProducts}
           keyExtractor={(item) => item.id}
           numColumns={COL_COUNT}
-          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
-          columnWrapperStyle={{ marginBottom: COLUMN_GAP }}
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            { padding: contentPadding, paddingBottom: scrollBottomPadding, ...constraint },
+            savedProducts.length === 0 ? { flexGrow: 1 } : null,
+          ]}
+          columnWrapperStyle={savedProducts.length > 0 ? { marginBottom: COLUMN_GAP } : undefined}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={handleRefresh}
               tintColor={Colors.primary}
             />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyListPane}>
+              <Ionicons name="bag-outline" size={52} color={Colors.gray[300]} />
+              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{emptySubtitle}</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/(tabs)/shop" as any)}
+                style={styles.emptyCta}
+                accessibilityRole="button"
+                accessibilityLabel="Browse the shop"
+              >
+                <Text style={styles.emptyCtaText}>Browse shop</Text>
+              </TouchableOpacity>
+            </View>
           }
           renderItem={({ item, index }) => (
             <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
@@ -534,8 +699,13 @@ export function SavedTabContent({
           data={savedPosts}
           keyExtractor={(item) => item.id}
           numColumns={COL_COUNT}
-          contentContainerStyle={{ padding: contentPadding, paddingBottom: 48, ...constraint }}
-          columnWrapperStyle={{ marginBottom: COLUMN_GAP }}
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[
+            { padding: contentPadding, paddingBottom: scrollBottomPadding, ...constraint },
+            savedPosts.length === 0 ? { flexGrow: 1 } : null,
+          ]}
+          columnWrapperStyle={savedPosts.length > 0 ? { marginBottom: COLUMN_GAP } : undefined}
           ListHeaderComponent={
             <View style={{ marginBottom: 16 }}>
               <View
@@ -619,6 +789,28 @@ export function SavedTabContent({
           }
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            postsLoading && savedPosts.length > 0 ? (
+              <View style={{ paddingVertical: 20, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+              </View>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyListPane}>
+              <Ionicons name="bookmark-outline" size={52} color={Colors.gray[300]} />
+              <Text style={styles.emptyTitle}>{emptyTitle}</Text>
+              <Text style={styles.emptyBody}>{emptySubtitle}</Text>
+              <TouchableOpacity
+                onPress={() => router.push("/(app)/(tabs)/explore" as any)}
+                style={styles.emptyCta}
+                accessibilityRole="button"
+                accessibilityLabel="Open Explore"
+              >
+                <Text style={styles.emptyCtaText}>Explore inspiration</Text>
+              </TouchableOpacity>
+            </View>
+          }
           renderItem={({ item, index }) => (
             <View style={{ marginRight: index % 2 === 0 ? COLUMN_GAP : 0 }}>
               <SavedPostTile
@@ -780,7 +972,7 @@ export function SavedTabContent({
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
-    </ScreenFrame>
+    </View>
   );
 }
 
@@ -870,28 +1062,35 @@ function TabButton({
   return (
     <TouchableOpacity
       onPress={onPress}
+      activeOpacity={0.85}
+      accessibilityRole="tab"
+      accessibilityState={{ selected: active }}
       style={{
         flex: 1,
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        paddingVertical: 12,
-        borderBottomWidth: 2,
-        borderBottomColor: active ? Colors.primary : "transparent",
+        paddingVertical: 10,
+        paddingHorizontal: 4,
+        borderRadius: 12,
+        backgroundColor: active ? Colors.white : "transparent",
+        ...(active ? Shadows.cardSubtle : {}),
       }}
     >
       <Ionicons
         name={icon}
-        size={18}
-        color={active ? Colors.primary : "#6b7280"}
-        style={{ marginRight: 6 }}
+        size={17}
+        color={active ? Colors.primary : Colors.gray[500]}
+        style={{ marginRight: 5 }}
       />
       <Text
         style={{
-          fontSize: 14,
+          fontSize: 13,
           fontWeight: "600",
-          color: active ? Colors.primary : "#6b7280",
+          color: active ? Colors.primary : Colors.gray[600],
+          flexShrink: 1,
         }}
+        numberOfLines={1}
       >
         {label}
       </Text>

@@ -27,7 +27,7 @@ export function WizardChrome() {
 
   if (loadingDraft) {
     return (
-      <ScreenContainer scrollable={false} reserveTabBarSpace={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <View style={twStyle("flex-1 items-center justify-center py-16")}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={twStyle("mt-4 text-base text-gray-600")}>Loading your progress…</Text>
@@ -39,7 +39,7 @@ export function WizardChrome() {
   const isLast = currentStep === STEPS.length;
 
   return (
-    <ScreenContainer scrollable={false} reserveTabBarSpace={false}>
+    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
       <ScreenHeader
         title={stepMeta?.title ?? "Setup"}
         showBack

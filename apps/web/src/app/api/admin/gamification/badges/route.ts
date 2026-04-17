@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/gamification/badges
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
 
     const body = await request.json();
@@ -103,6 +104,19 @@ export async function POST(request: NextRequest) {
     if (error) {
       throw error;
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.gamification.badge.create",
+      entity_type: "provider_badge",
+      entity_id: badge.id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: { name, slug, tier },
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       badge,

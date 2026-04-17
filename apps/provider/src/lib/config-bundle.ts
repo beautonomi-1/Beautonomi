@@ -12,7 +12,9 @@ function getBackendUrl(): string {
       return "http://localhost:3000";
     }
   }
-  return APP_URL?.trim() || "http://localhost:3000";
+  const url = APP_URL?.trim();
+  if (!url && __DEV__) return "http://localhost:3000";
+  return url || "";
 }
 
 export type Platform = "web" | "customer" | "provider";

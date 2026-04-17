@@ -1,5 +1,6 @@
 import { useCallback, useState, useEffect, useRef } from "react";
-import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable } from "react-native";
+import { View, Text, ScrollView, RefreshControl, TouchableOpacity, Pressable, Alert } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi, useApiMutation } from "@/hooks/useApi";
@@ -125,11 +126,35 @@ function navigateFromNotification(router: ReturnType<typeof useRouter>, n: Notif
     }
     // Generic fallback — open the dashboard so tapping always does something
     router.push("/(app)/(tabs)/dashboard" as never);
+    return;
   }
+
+  // Type-based fallback when no data fields or link are present
+  const nType = (n.type ?? "").toLowerCase();
+  if (nType.includes("booking") || nType.includes("appointment")) {
+    router.push("/(app)/(tabs)/calendar" as never);
+    return;
+  }
+  if (nType.includes("message") || nType.includes("chat")) {
+    router.push("/(app)/(tabs)/more/messaging" as never);
+    return;
+  }
+  if (nType.includes("review")) {
+    router.push("/(app)/(tabs)/more/reviews" as never);
+    return;
+  }
+  if (nType.includes("payment") || nType.includes("payout")) {
+    router.push("/(app)/(tabs)/more/settings/payments" as never);
+    return;
+  }
+
+  router.push("/(app)/(tabs)/dashboard" as never);
 }
 
 export default function NotificationsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const scrollPaddingBottom = Math.max(insets.bottom, 8) + 32;
   const { user } = useAuth();
   const { refresh: refreshCount } = useNotificationsCount();
   const [refreshing, setRefreshing] = useState(false);
@@ -171,7 +196,9 @@ export default function NotificationsScreen() {
 
   const handleMarkAllRead = useCallback(async () => {
     const res = await markAllRead("/api/provider/notifications/mark-all-read", {});
-    if (!res.error) {
+    if (res.error) {
+      Alert.alert("Error", "Could not mark notifications as read.");
+    } else {
       await refresh();
       await refreshCount();
     }
@@ -179,9 +206,12 @@ export default function NotificationsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    await refreshCount();
-    setRefreshing(false);
+    try {
+      await refresh();
+      await refreshCount();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshCount]);
 
   const handleNotificationPress = useCallback(
@@ -200,7 +230,7 @@ export default function NotificationsScreen() {
 
   if (loading && !data) {
     return (
-      <ScreenContainer scrollable={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <ScreenHeader title="Notifications" onBack={() => router.back()} />
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
@@ -211,7 +241,7 @@ export default function NotificationsScreen() {
 
   if (error && !data) {
     return (
-      <ScreenContainer scrollable={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <ScreenHeader title="Notifications" onBack={() => router.back()} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
@@ -221,7 +251,7 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <ScreenContainer>
+    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
       <ScreenHeader
         title="Notifications"
         onBack={() => router.back()}
@@ -263,9 +293,10 @@ export default function NotificationsScreen() {
 
       <ScrollView
         style={twStyle("flex-1")}
-        contentContainerStyle={{ paddingBottom: 100 }}
+        contentContainerStyle={{ paddingBottom: scrollPaddingBottom }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {notifications.length === 0 ? (
           <View style={twStyle("py-12 px-4 items-center")}>

@@ -82,7 +82,29 @@ export async function POST(request: NextRequest) {
       billingPeriod === "yearly"
         ? Number(planData.price_yearly ?? 0)
         : Number(planData.price_monthly ?? 0);
-    if (!amount || amount <= 0) throw new Error("Invalid plan amount");
+    if (!amount || amount <= 0) {
+      const now = new Date();
+      const expiresAt = new Date(now);
+      if (billingPeriod === "yearly") {
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+      } else {
+        expiresAt.setMonth(expiresAt.getMonth() + 1);
+      }
+      await supabase
+        .from("provider_subscriptions")
+        .update({
+          status: "active",
+          started_at: now.toISOString(),
+          expires_at: expiresAt.toISOString(),
+          updated_at: now.toISOString(),
+        })
+        .eq("provider_id", providerId);
+
+      return successResponse({
+        message: "Free plan renewed successfully.",
+        is_free: true,
+      });
+    }
 
     const { data: order, error: orderError } = await supabase
       .from("provider_subscription_orders")

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Keyboard,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useApi } from "@/hooks/useApi";
@@ -33,6 +34,8 @@ const DEBOUNCE_MS = 300;
 
 export default function SearchScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const scrollBottomPad = Math.max(insets.bottom, 8) + 28;
   const [inputValue, setInputValue] = useState("");
   const [query, setQuery] = useState("");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -88,7 +91,7 @@ export default function SearchScreen() {
   };
 
   return (
-    <ScreenContainer scrollable={false}>
+    <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
       <ScreenHeader title="Search" onBack={() => router.back()} />
       <View style={twStyle("px-4 pt-2 pb-4 border-b border-gray-200")}>
         <View style={twStyle("flex-row items-center rounded-xl bg-gray-100 px-4 py-3")}>
@@ -119,7 +122,7 @@ export default function SearchScreen() {
 
       <ScrollView
         style={twStyle("flex-1")}
-        contentContainerStyle={twStyle("px-4 py-2 pb-24")}
+        contentContainerStyle={[twStyle("px-4 py-2"), { paddingBottom: scrollBottomPad }]}
         keyboardShouldPersistTaps="handled"
       >
         {inputValue.trim().length > 0 && inputValue.trim().length < MIN_QUERY_LENGTH && (

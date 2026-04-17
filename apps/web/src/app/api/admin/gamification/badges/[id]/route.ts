@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection, successResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * GET /api/admin/gamification/badges/[id]
@@ -50,7 +51,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
     const { id } = await params;
 
@@ -96,6 +97,19 @@ export async function PATCH(
       throw error;
     }
 
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.gamification.badge.update",
+      entity_type: "provider_badge",
+      entity_id: id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: updateData,
+      ...extractRequestMeta(request),
+    });
+
     return successResponse({
       badge,
       message: 'Badge updated successfully',
@@ -115,7 +129,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
     const supabase = getSupabaseAdmin();
     const { id } = await params;
 
@@ -153,6 +167,18 @@ export async function DELETE(
       }
       throw error;
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.gamification.badge.delete",
+      entity_type: "provider_badge",
+      entity_id: id,
+      module: "marketing_comms",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({
       message: 'Badge deleted successfully',

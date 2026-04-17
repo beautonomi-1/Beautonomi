@@ -4,7 +4,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { SavedTabContent } from "@/components/SavedTabContent";
 import { ScreenFrame } from "@/components/ScreenFrame";
 import { useResponsive } from "@/hooks/useResponsive";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors } from "@/constants/colors";
 
 export default function WishlistsScreen() {
@@ -12,10 +12,11 @@ export default function WishlistsScreen() {
   const initialTab = params.tab === "posts" ? "posts" : "providers";
   const { user, loading } = useAuth();
   const { contentPadding } = useResponsive();
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
 
   if (loading) {
     return (
-      <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
+      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
@@ -25,7 +26,7 @@ export default function WishlistsScreen() {
 
   if (!user) {
     return (
-      <ScreenFrame paddingBottom={TAB_CONTENT_PADDING_BOTTOM}>
+      <ScreenFrame paddingBottom={tabScrollPaddingBottom}>
         <View style={[styles.center, { paddingHorizontal: contentPadding }]}>
           <Text style={styles.title}>Wishlists & saved</Text>
           <Text style={styles.subtitle}>
@@ -52,6 +53,7 @@ export default function WishlistsScreen() {
       showRecentlyViewed={true}
       screenName="Wishlists"
       initialTab={initialTab}
+      layoutVariant="stack"
     />
   );
 }

@@ -8,6 +8,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { fetchProviderInAdminTenant } from "@/lib/tenant/admin-booking-tenant";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { enforcePeriodLock } from "@/lib/finance/period-lock";
 
 /**
  * POST /api/admin/payouts/[id]/mark-paid
@@ -98,6 +99,30 @@ export async function POST(
       );
     }
 
+    // §Release-audit 2026-04: only `processing` payouts can be marked paid.
+    // The `payout_status` enum is `pending | processing | completed | failed`
+    // — there is no "approved" state — so the previous list including
+    // "approved" had a dead branch and a misleading error message. Pending
+    // requests must be approved first (which moves them to processing); we
+    // also reject `failed` because re-paying a failed payout requires a new
+    // request, not a flip from this endpoint.
+    if (payoutData.status !== "processing") {
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message: `Cannot mark payout as paid when status is "${payoutData.status}". Only payouts in the "processing" state (i.e. already approved by an admin) can be marked paid.`,
+            code: "INVALID_STATUS_TRANSITION",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    // Period lock guard — prevent marking payouts paid in locked accounting periods
+    const lockGuard = await enforcePeriodLock(supabase, tenantId, new Date().toISOString());
+    if (lockGuard) return lockGuard;
+
     // Update payout status
     const { data: updatedPayout, error } = await supabase
       .from("payouts")
@@ -147,11 +172,21 @@ export async function POST(
       console.error("Failed to record payout ledger entry:", ledgerErr);
     }
 
-    // Send OneSignal notification to provider
+    try {
+      const { notifyProviderPayoutProcessed } = await import("@/lib/notifications/notification-service");
+      await notifyProviderPayoutProcessed(
+        payoutData.provider_id,
+        Number(payoutData.amount),
+        new Date(),
+        payoutData.payout_number || id,
+      );
+    } catch (templateErr) {
+      console.warn("Template notification failed, falling back to inline:", templateErr);
+    }
+
     try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
-      
-      // Get provider owner
+
       const { data: provider } = await supabase
         .from("providers")
         .select("user_id, business_name")

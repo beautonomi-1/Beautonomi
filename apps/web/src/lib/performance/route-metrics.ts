@@ -89,14 +89,14 @@ class RouteMetrics {
         metric: e.name,
         value: `${e.value.toFixed(1)}${e.type === "timing" ? "ms" : ""}`,
       }));
-      // eslint-disable-next-line no-console
+       
       console.groupCollapsed(
         `%c[perf] ${entries.length} metrics`,
         "color:#888",
       );
-      // eslint-disable-next-line no-console
+       
       console.table(summary);
-      // eslint-disable-next-line no-console
+       
       console.groupEnd();
       return;
     }

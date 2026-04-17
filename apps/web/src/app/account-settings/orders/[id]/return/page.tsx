@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import Link from "next/link";
-import { ChevronLeft, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface OrderItem {
   id: string;
@@ -100,7 +100,7 @@ export default function RequestReturnPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-pink-500" />
+        <p className="text-sm text-gray-500">Loading…</p>
       </div>
     );
   }
@@ -260,10 +260,7 @@ export default function RequestReturnPage() {
             className="w-full rounded-xl bg-pink-600 py-4 font-bold text-white transition-colors hover:bg-pink-700 disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {submitting ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Submitting...
-              </>
+              "Submitting…"
             ) : (
               "Submit Return Request"
             )}

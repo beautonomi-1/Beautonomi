@@ -8,6 +8,7 @@ import {
 } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * DELETE /api/admin/explore/comments/[id]
@@ -18,7 +19,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_CONTENT_CATALOG, request);
     const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
     const { id: commentId } = await params;
@@ -43,6 +44,21 @@ export async function DELETE(
 
     const { error: delErr } = await supabaseAdmin.from("explore_comments").delete().eq("id", commentId);
     if (delErr) return handleApiError(delErr, "Failed to delete comment");
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.explore.comment.delete",
+      entity_type: "explore_comment",
+      entity_id: commentId,
+      module: "content_catalog",
+      risk_level: "high",
+      retention_tier: "operational",
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return successResponse({ deleted: true, id: commentId });
   } catch (error) {
     return handleApiError(error, "Failed to delete comment");

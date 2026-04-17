@@ -9,8 +9,7 @@ import Breadcrumb from "@/components/ui/breadcrumb";
 import BottomNav from "@/components/layout/bottom-nav";
 import { toast } from "sonner";
 import { usePlatformCurrency } from "@/hooks/usePlatformCurrency";
-import { motion } from "framer-motion";
-import { Gift, Award, History, Loader2, Sparkles, TrendingUp, CreditCard } from "lucide-react";
+import { Gift, Award, History, Sparkles, TrendingUp, CreditCard } from "lucide-react";
 import EmptyState from "@/components/ui/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -56,7 +55,7 @@ export default function LoyaltyPage() {
   const load = async () => {
     try {
       setIsLoading(true);
-      const res = await fetcher.get<{ data: LoyaltyData }>("/api/me/loyalty", { cache: "no-store" });
+      const res = await fetcher.get<{ data: LoyaltyData }>("/api/me/loyalty", { staleTimeMs: 15_000 });
       setLoyaltyData(res.data);
     } catch (e) {
       toast.error("Failed to load loyalty points");
@@ -83,10 +82,7 @@ export default function LoyaltyPage() {
           />
           <BackButton href="/account-settings" />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+          <div
             className="mt-6"
           >
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
@@ -95,15 +91,12 @@ export default function LoyaltyPage() {
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : loyaltyData ? (
               <div className="space-y-6">
                 {/* How you earn & How to redeem */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.05 }}
+                <div
                   className="backdrop-blur-2xl bg-white/80 border border-[#FF0077]/20 shadow-xl rounded-2xl p-5 md:p-6"
                 >
                   <h2 className="text-lg font-semibold text-gray-900 mb-4">How rewards work</h2>
@@ -131,13 +124,10 @@ export default function LoyaltyPage() {
                       </div>
                     </div>
                   </div>
-                </motion.div>
+                </div>
 
                 {/* Points Balance Card */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.1 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <div className="flex items-center gap-3 mb-6">
@@ -176,14 +166,11 @@ export default function LoyaltyPage() {
                       Book and complete an appointment to start earning points — they’re added automatically.
                     </p>
                   )}
-                </motion.div>
+                </div>
 
                 {/* Next Milestone Card */}
                 {loyaltyData.next_milestone && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
+                  <div
                     className="backdrop-blur-2xl bg-gradient-to-br from-[#FF0077]/10 to-[#E6006A]/10 border border-[#FF0077]/20 shadow-2xl rounded-2xl p-6 md:p-8"
                   >
                     <div className="flex items-center gap-3 mb-4">
@@ -231,15 +218,12 @@ export default function LoyaltyPage() {
                         </div>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
                 {/* Available Milestones */}
                 {loyaltyData.available_milestones.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
+                  <div
                     className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                   >
                     <h2 className="text-xl font-semibold tracking-tighter text-gray-900 mb-6">
@@ -274,15 +258,12 @@ export default function LoyaltyPage() {
                         );
                       })}
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
                 {/* Redeem Points Button */}
                 {loyaltyData.points_balance > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.35 }}
+                  <div
                     className="backdrop-blur-2xl bg-gradient-to-br from-[#FF0077]/10 to-[#E6006A]/10 border border-[#FF0077]/20 shadow-2xl rounded-2xl p-6 md:p-8"
                   >
                     <div className="flex items-center justify-between">
@@ -302,14 +283,11 @@ export default function LoyaltyPage() {
                         Redeem Points
                       </Button>
                     </div>
-                  </motion.div>
+                  </div>
                 )}
 
                 {/* Points History */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
+                <div
                   className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8"
                 >
                   <div className="flex items-center gap-3 mb-6">
@@ -365,7 +343,7 @@ export default function LoyaltyPage() {
                       ))}
                     </div>
                   )}
-                </motion.div>
+                </div>
               </div>
             ) : (
               <EmptyState
@@ -378,7 +356,7 @@ export default function LoyaltyPage() {
                 }}
               />
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

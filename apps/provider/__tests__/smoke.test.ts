@@ -1,6 +1,5 @@
 /**
- * Minimal smoke test for the Provider app (runs without React Native/Expo runtime).
- * RN render tests live in smoke.test.tsx / smoke.rn.test.tsx; they are excluded from default Jest (see jest.config.js).
+ * Minimal node smoke test. RN render tests: `smoke.test.tsx` (jest-expo + test Babel in `jest.config.js`).
  */
 describe("Provider app – smoke (node)", () => {
   it("runs in Jest", () => {

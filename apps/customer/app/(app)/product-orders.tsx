@@ -138,7 +138,7 @@ function OrderCard({ order, onPress }: { order: ProductOrder; onPress: () => voi
 export default function ProductOrdersScreen() {
   const router = useRouter();
   const { contentMaxWidth, isTablet, contentPadding } = useResponsive();
-  const { orders, loading, fetchOrders } = useProductOrders();
+  const { orders, loading, error: loadError, fetchOrders } = useProductOrders();
   const [refreshing, setRefreshing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
 
@@ -149,8 +149,11 @@ export default function ProductOrdersScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchOrders(statusFilter ?? undefined);
-    setRefreshing(false);
+    try {
+      await fetchOrders(statusFilter ?? undefined);
+    } finally {
+      setRefreshing(false);
+    }
   }, [fetchOrders, statusFilter]);
 
   const handleFilterChange = useCallback(
@@ -164,7 +167,7 @@ export default function ProductOrdersScreen() {
   const FILTER_TABS = [
     { key: null, label: "All" },
     { key: "pending", label: "Pending" },
-    { key: "confirmed", label: "Active" },
+    { key: "confirmed,processing,ready_for_collection,shipped", label: "Active" },
     { key: "delivered", label: "Completed" },
     { key: "cancelled", label: "Cancelled" },
   ];
@@ -224,6 +227,19 @@ export default function ProductOrdersScreen() {
       {loading && !refreshing ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={PRIMARY} />
+        </View>
+      ) : loadError ? (
+        <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>
+          <Ionicons name="alert-circle-outline" size={56} color="#EF4444" />
+          <Text style={{ fontSize: 16, fontWeight: "600", color: "#374151", marginTop: 12 }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            onPress={() => fetchOrders(statusFilter ?? undefined)}
+            style={{ marginTop: 20, paddingHorizontal: 28, paddingVertical: 12, borderRadius: 12, backgroundColor: PRIMARY }}
+          >
+            <Text style={{ color: "#fff", fontSize: 14, fontWeight: "600" }}>Retry</Text>
+          </TouchableOpacity>
         </View>
       ) : orders.length === 0 ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center", padding: contentPadding }}>

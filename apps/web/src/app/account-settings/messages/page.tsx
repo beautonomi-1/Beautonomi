@@ -260,7 +260,7 @@ export default function Component() {
       setError(null);
       const response = await fetcher.get<{ data: Conversation[]; error: { message: string; code?: string } | null }>("/api/me/conversations", {
         timeoutMs: 15000,
-        cache: "no-store",
+        staleTimeMs: 15_000,
       });
       
       // The API returns { data: Conversation[], error: null } format via successResponse()

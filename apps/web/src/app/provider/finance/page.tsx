@@ -30,13 +30,17 @@ interface EarningsData {
   total_earnings: number;
   pending_payouts: number;
   available_balance: number;
-  /** Days after an earning before it counts toward withdrawable balance (platform settings). */
   payout_hold_days?: number;
   minimum_payout_amount?: number;
   this_month: number;
   last_month: number;
   growth_percentage: number;
   bookings_earnings_total?: number;
+  bookings_earnings_this_period?: number;
+  product_sales_earnings_total?: number;
+  product_sales_earnings_this_period?: number;
+  platform_fees_deducted?: number;
+  platform_fees_deducted_this_period?: number;
   gift_card_sales_this_period?: number;
   membership_sales_this_period?: number;
   travel_fees_total?: number;
@@ -44,6 +48,12 @@ interface EarningsData {
   refunds_total?: number;
   walk_in_additional_charges_total?: number;
   walk_in_additional_charges_this_period?: number;
+  tips_total?: number;
+  tips_this_period?: number;
+  cancellation_fees_total?: number;
+  cancellation_fees_this_period?: number;
+  additional_charges_total?: number;
+  additional_charges_this_period?: number;
 }
 
 interface Transaction {
@@ -465,19 +475,38 @@ export default function ProviderFinance() {
         </div>
 
         {/* Revenue Streams */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Service Earnings</p>
             <p className="text-2xl font-semibold">
-              {fmt(earnings.bookings_earnings_total || 0)}
+              {fmt(earnings.bookings_earnings_this_period ?? earnings.bookings_earnings_total ?? 0)}
             </p>
+            <p className="text-xs text-gray-500 mt-1">From bookings &amp; appointments</p>
           </div>
+          {(earnings.product_sales_earnings_total ?? 0) > 0 && (
+            <div className="bg-white border rounded-lg p-6">
+              <p className="text-sm text-gray-600 mb-2">Product Sales</p>
+              <p className="text-2xl font-semibold text-indigo-600">
+                {fmt(earnings.product_sales_earnings_this_period ?? earnings.product_sales_earnings_total ?? 0)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Online product orders (incl. tax &amp; shipping)</p>
+            </div>
+          )}
+          {(earnings.platform_fees_deducted ?? 0) > 0 && (
+            <div className="bg-white border rounded-lg p-6">
+              <p className="text-sm text-gray-600 mb-2">Platform Fees Deducted</p>
+              <p className="text-2xl font-semibold text-orange-600">
+                {fmt(earnings.platform_fees_deducted_this_period ?? earnings.platform_fees_deducted ?? 0)}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Commission retained by platform</p>
+            </div>
+          )}
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Travel Fees</p>
             <p className="text-2xl font-semibold text-purple-600">
               {fmt(earnings.travel_fees_this_period || 0)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">Travel component (also inside service earnings)</p>
+            <p className="text-xs text-gray-500 mt-1">Travel component (included in service earnings)</p>
           </div>
           <div className="bg-white border rounded-lg p-6">
             <p className="text-sm text-gray-600 mb-2">Gift Card Sales</p>
@@ -503,6 +532,27 @@ export default function ProviderFinance() {
               {fmt(earnings.walk_in_additional_charges_this_period ?? earnings.walk_in_additional_charges_total ?? 0)}
             </p>
             <p className="text-xs text-gray-500 mt-1">Cash/card at salon (not in payout balance)</p>
+          </div>
+          <div className="bg-white border rounded-lg p-6">
+            <p className="text-sm text-gray-600 mb-2">Tips</p>
+            <p className="text-2xl font-semibold text-emerald-600">
+              {fmt(earnings.tips_this_period || 0)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Tips from customers</p>
+          </div>
+          <div className="bg-white border rounded-lg p-6">
+            <p className="text-sm text-gray-600 mb-2">Cancellation Fees</p>
+            <p className="text-2xl font-semibold text-amber-600">
+              {fmt(earnings.cancellation_fees_this_period || 0)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Fees from booking cancellations</p>
+          </div>
+          <div className="bg-white border rounded-lg p-6">
+            <p className="text-sm text-gray-600 mb-2">Additional Charges</p>
+            <p className="text-2xl font-semibold text-blue-600">
+              {fmt(earnings.additional_charges_this_period || 0)}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">Extra charges added to bookings</p>
           </div>
         </div>
 

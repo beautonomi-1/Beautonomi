@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { useSavedAddresses, type SavedAddress } from "@/hooks/useSavedAddresses";
 import { Button } from "@/components/ui/button";
 import { Plus, Edit, Trash2, MapPin, Star, Sparkles } from "lucide-react";
@@ -82,10 +81,7 @@ export default function SavedAddressesPage() {
     <AuthGuard>
       <div className="min-h-screen bg-zinc-50/50">
         <div className="w-full max-w-5xl mx-auto px-4 md:px-6 lg:px-8 py-4 md:py-6 lg:py-8">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, ease: "easeOut" }}
+          <div
             className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 md:p-8 mt-8 mb-12"
           >
             <BackButton href="/account-settings" />
@@ -97,17 +93,12 @@ export default function SavedAddressesPage() {
             />
 
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 mt-4 md:mt-6">
-              <motion.h1
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+              <h1
                 className="text-2xl md:text-3xl font-semibold tracking-tighter text-gray-900"
               >
                 Saved Addresses
-              </motion.h1>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+              </h1>
+              <div
               >
                 <Button
                   onClick={handleCreate}
@@ -116,14 +107,11 @@ export default function SavedAddressesPage() {
                   <Plus className="w-4 h-4 mr-2" />
                   Add Address
                 </Button>
-              </motion.div>
+              </div>
             </div>
 
             {addresses.length === 0 ? (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+              <div
                 className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-lg rounded-2xl p-12 text-center"
               >
                 <div className="flex justify-center mb-6">
@@ -135,9 +123,7 @@ export default function SavedAddressesPage() {
                 <p className="text-gray-600 mb-6 font-light">
                   Save addresses for faster checkout
                 </p>
-                <motion.div
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                <div
                 >
                   <Button
                     onClick={handleCreate}
@@ -146,18 +132,13 @@ export default function SavedAddressesPage() {
                     <Plus className="w-4 h-4 mr-2" />
                     Add Your First Address
                   </Button>
-                </motion.div>
-              </motion.div>
+                </div>
+              </div>
             ) : (
               <div className="space-y-4">
-                {addresses.map((address, index) => (
-                  <motion.div
+                {addresses.map((address) => (
+                  <div
                     key={address.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 * index, duration: 0.4, ease: "easeOut" }}
-                    whileHover={{ scale: 1.01, y: -2 }}
-                    whileTap={{ scale: 0.98 }}
                     className="backdrop-blur-xl bg-white/80 border border-white/40 shadow-lg rounded-xl p-5 md:p-6 hover:shadow-xl transition-all"
                   >
                     <div className="flex justify-between items-start">
@@ -240,7 +221,7 @@ export default function SavedAddressesPage() {
                         </Button>
                       </div>
                     </div>
-                  </motion.div>
+                  </div>
                 ))}
               </div>
             )}
@@ -276,7 +257,7 @@ export default function SavedAddressesPage() {
                 </DialogContent>
               </Dialog>
             )}
-          </motion.div>
+          </div>
         </div>
       </div>
     </AuthGuard>

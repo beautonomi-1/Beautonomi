@@ -24,6 +24,8 @@
     "test:agent": "node scripts/test-agent.js",
     "test:health": "node scripts/health-check.js",
     "test:errors": "node scripts/test-runner.js --verbose",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "typecheck": "tsc --noEmit",
     "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
     "analyze": "ANALYZE=true next build",
@@ -39,6 +41,7 @@
     "@beautonomi/admin-access": "workspace:*",
     "@beautonomi/i18n": "workspace:*",
     "@beautonomi/phone": "workspace:*",
+    "@beautonomi/shipping": "workspace:*",
     "@beautonomi/ui-tokens": "workspace:*",
     "@beautonomi/utils": "workspace:*",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
@@ -60,6 +63,7 @@
     "@radix-ui/react-switch": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.1",
     "@radix-ui/react-tooltip": "^1.2.8",
+    "@sentry/core": "10.39.0",
     "@sentry/nextjs": "^10.39.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.47.10",
@@ -79,7 +83,7 @@
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.18.1",
     "marked": "^15.0.12",
-    "next": "16.2.2",
+    "next": "16.2.3",
     "pdfkit": "^0.15.0",
     "qrcode": "^1.5.4",
     "quill": "^2.0.3",
@@ -90,6 +94,7 @@
     "react-quill": "^2.0.0",
     "react-remove-scroll": "^2.7.2",
     "recharts": "^2.14.0",
+    "sanitize-html": "^2.17.2",
     "sharp": "^0.33.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "^2.5.4",
@@ -99,6 +104,7 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^15.0.0",
+    "@playwright/test": "^1.49.0",
     "@testing-library/jest-dom": "^6.4.2",
     "@testing-library/react": "^14.2.1",
     "@types/node": "^22.10.5",
@@ -111,7 +117,7 @@
     "chokidar": "^3.6.0",
     "cross-env": "^10.1.0",
     "eslint": "^9.18.0",
-    "eslint-config-next": "16.2.2",
+    "eslint-config-next": "16.2.3",
     "eslint-plugin-unused-imports": "^4.4.1",
     "jsdom": "^24.0.0",
     "postcss": "^8.4.49",
@@ -128,5 +134,11 @@
     "not dead",
     "iOS >= 12",
     "Safari >= 12"
-  ]
+  ],
+  "optionalDependencies": {
+    "@opentelemetry/api": "^1.9.1",
+    "@opentelemetry/auto-instrumentations-node": "^0.72.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.215.0",
+    "@opentelemetry/sdk-node": "^0.215.0"
+  }
 }

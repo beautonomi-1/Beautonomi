@@ -64,11 +64,10 @@ export function EditWorkHoursDialog({
         `/api/provider/time-blocks?staff_id=${staffMember.id}&date_from=${format(today, "yyyy-MM-dd")}&date_to=${format(nextWeek, "yyyy-MM-dd")}`
       );
 
-      // Initialize default hours (9 AM - 5 PM)
       const defaultHours: WorkHours = {};
       DAYS.forEach((day) => {
         defaultHours[day.key] = {
-          enabled: day.key !== "sunday", // Sunday disabled by default
+          enabled: true,
           start: "09:00",
           end: "17:00",
         };
@@ -77,11 +76,10 @@ export function EditWorkHoursDialog({
       setWorkHours(defaultHours);
     } catch (error) {
       console.error("Failed to load work hours:", error);
-      // Set default hours on error
       const defaultHours: WorkHours = {};
       DAYS.forEach((day) => {
         defaultHours[day.key] = {
-          enabled: day.key !== "sunday",
+          enabled: true,
           start: "09:00",
           end: "17:00",
         };

@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import RoleGuard from "@/components/auth/RoleGuard";
+import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
+import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invariants";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -45,6 +47,7 @@ type ProviderBookingDetail = Booking & {
   qr_code_verified?: boolean;
   arrival_otp_pending?: boolean;
   qr_arrival_pending?: boolean;
+  display_time_zone?: string | null;
 };
 import { toast } from "sonner";
 import Link from "next/link";
@@ -127,6 +130,8 @@ export default function ProviderBookingDetail() {
   const [chargeAmount, setChargeAmount] = useState<string>("");
   const [isRequestingCharge, setIsRequestingCharge] = useState(false);
   const [conflictError, setConflictError] = useState<string | null>(null);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancellationReason, setCancellationReason] = useState("");
 
   // Reschedule state
   const [showReschedule, setShowReschedule] = useState(false);
@@ -180,6 +185,10 @@ export default function ProviderBookingDetail() {
   const [arrivalPinInput, setArrivalPinInput] = useState("");
   const [isVerifyingArrival, setIsVerifyingArrival] = useState(false);
   const [isResendingArrivalOtp, setIsResendingArrivalOtp] = useState(false);
+  // P8 (audit 2026-04): tracks in-flight manual notification sends from
+  // the provider detail page (see `handleResendNotification` /
+  // `handleSendCancellationNotice`).
+  const [isNotifying, setIsNotifying] = useState(false);
   const [backupArrivalQr, setBackupArrivalQr] = useState<QRCodeData | null>(null);
   const [qrArrivalCodeInput, setQrArrivalCodeInput] = useState("");
   const [qrPasteJson, setQrPasteJson] = useState("");
@@ -302,6 +311,29 @@ export default function ProviderBookingDetail() {
     try {
       setIsUpdating(true);
       setConflictError(null);
+
+      if (newStatus === "started") {
+        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/start-service`, {});
+        setBooking({ ...booking, status: "in_progress" as Booking["status"], ...res.booking });
+        toast.success("Service started");
+        loadBooking();
+        return;
+      }
+
+      if (newStatus === "completed") {
+        const res = await fetcher.post<{ booking: ProviderBookingDetail }>(`/api/provider/bookings/${bookingId}/complete-service`, {});
+        setBooking({ ...booking, status: "completed" as Booking["status"], ...res.booking });
+        toast.success("Service completed");
+        loadBooking();
+        setShowProviderCompletionModal(true);
+        return;
+      }
+
+      if (newStatus === "cancelled") {
+        setShowCancelDialog(true);
+        return;
+      }
+
       const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
         `/api/provider/bookings/${bookingId}`,
         {
@@ -318,13 +350,50 @@ export default function ProviderBookingDetail() {
       
       setBooking({ ...booking, status: newStatus as Booking["status"], ...response.booking });
       toast.success("Booking status updated");
-      loadBooking(); // Reload to get latest version
+      loadBooking();
     } catch (error) {
       if (error instanceof FetchError && error.status === 409) {
         setConflictError("This booking was modified by another user. Please refresh and try again.");
         toast.error("Conflict detected. Please refresh and try again.");
       } else {
-        toast.error("Failed to update booking status");
+        const msg = error instanceof Error ? error.message : "Failed to update booking status";
+        toast.error(msg);
+      }
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleConfirmCancel = async () => {
+    if (!booking) return;
+    try {
+      setIsUpdating(true);
+      setConflictError(null);
+      const response = await fetcher.patch<{ booking: ProviderBookingDetail; conflict?: boolean }>(
+        `/api/provider/bookings/${bookingId}`,
+        {
+          status: "cancelled",
+          cancellation_reason: cancellationReason || "No reason provided",
+          version: booking.version,
+        }
+      );
+      if (response.conflict) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+        return;
+      }
+      setBooking({ ...booking, status: "cancelled" as Booking["status"], ...response.booking });
+      toast.success("Booking cancelled");
+      setShowCancelDialog(false);
+      setCancellationReason("");
+      loadBooking();
+    } catch (error) {
+      if (error instanceof FetchError && error.status === 409) {
+        setConflictError("This booking was modified by another user. Please refresh and try again.");
+        toast.error("Conflict detected. Please refresh and try again.");
+      } else {
+        const msg = error instanceof Error ? error.message : "Failed to cancel booking";
+        toast.error(msg);
       }
     } finally {
       setIsUpdating(false);
@@ -392,8 +461,11 @@ export default function ProviderBookingDetail() {
     const ta = booking.total_amount ?? 0;
     const walletAmt = Number((booking as unknown as Record<string, unknown>).wallet_amount ?? 0);
     const giftCardAmt = Number((booking as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-    // Subtract wallet and gift card credits already applied so we don't ask provider to collect what's already been paid
-    const outstandingAmt = ta - tp - walletAmt - giftCardAmt + tr;
+    const outstandingAmt = computeBookingOutstandingDisplay({
+      totalAmount: ta, totalPaid: tp, totalRefunded: tr,
+      walletAmount: walletAmt, giftCardAmount: giftCardAmt,
+      unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: booking.payment_status,
+    });
     const paymentAmount = Number(outstandingAmt.toFixed(2));
     if (paymentAmount <= 0) {
       toast.error(
@@ -518,19 +590,19 @@ export default function ProviderBookingDetail() {
     const totalPaidLocal = b.total_paid ?? 0;
     const totalRefundedLocal = b.total_refunded ?? 0;
     const totalAmountLocal = b.total_amount ?? 0;
-      const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
-      const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-    const outstandingLocal = totalAmountLocal - totalPaidLocal - walletLocal - giftLocal + totalRefundedLocal;
+    const walletLocal = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
+    const giftLocal = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
+    const outstandingLocal = computeBookingOutstandingDisplay({
+      totalAmount: totalAmountLocal, totalPaid: totalPaidLocal, totalRefunded: totalRefundedLocal,
+      walletAmount: walletLocal, giftCardAmount: giftLocal,
+      unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+    });
     const chargeAmount = Number(outstandingLocal.toFixed(2));
     const isStartedLocal = ["started", "in_progress"].includes(b.status);
     const canMarkPaidLocal = chargeAmount > 0 && (b.status === "completed" || isStartedLocal);
 
     if (chargeAmount <= 0) {
-      toast.error(
-        outstandingLocal < 0
-          ? "This booking has no remaining balance to collect (it may be overpaid). Refresh if you just recorded a payment elsewhere."
-          : "There is no remaining balance on this booking."
-      );
+      toast.error("There is no remaining balance on this booking.");
       return;
     }
     if (!canMarkPaidLocal) {
@@ -651,7 +723,11 @@ export default function ProviderBookingDetail() {
       const ta = b.total_amount ?? 0;
       const walletCalc = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
       const giftCalc = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-      const outstandingCalc = ta - tp - walletCalc - giftCalc + tr;
+      const outstandingCalc = computeBookingOutstandingDisplay({
+        totalAmount: ta, totalPaid: tp, totalRefunded: tr,
+        walletAmount: walletCalc, giftCardAmount: giftCalc,
+        unpaidAdditionalCharges: unpaidChargesTotal, paymentStatus: b.payment_status,
+      });
 
       try {
         await providerApi.updateSale(saleId, {
@@ -796,6 +872,70 @@ export default function ProviderBookingDetail() {
     }
   };
 
+  /**
+   * P8 (audit 2026-04): manually fire provider → customer notifications
+   * via the existing REST routes. These were previously only callable from
+   * the WaitingRoom server actions; the detail page had no UI.
+   */
+  const handleResendNotification = async (
+    type: "confirmation" | "reminder",
+  ) => {
+    setIsNotifying(true);
+    try {
+      const res = await fetcher.post(
+        `/api/provider/bookings/${bookingId}/notify-resend`,
+        { type },
+      );
+      const r = (res ?? {}) as { sent?: boolean; error?: string };
+      if (r.sent) {
+        toast.success(
+          type === "confirmation"
+            ? "Confirmation re-sent to customer."
+            : "Reminder sent to customer.",
+        );
+      } else {
+        toast.error(r.error || "Notification could not be sent.");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof FetchError
+          ? err.message
+          : "Failed to send notification",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
+  const handleSendCancellationNotice = async () => {
+    setIsNotifying(true);
+    try {
+      // Infer the cancellation_type the server expects. `no_show` and
+      // `late_cancel` are meaningful for refund/fee accounting — we route
+      // the detail page's generic button to `normal` unless the booking is
+      // already marked `no_show`, matching the validator contract.
+      const cancellation_type = isNoShow ? "no_show" : "normal";
+      const res = await fetcher.post(
+        `/api/provider/bookings/${bookingId}/notify-cancellation`,
+        { cancellation_type },
+      );
+      const r = (res ?? {}) as { sent?: boolean; error?: string };
+      if (r.sent) {
+        toast.success("Cancellation notice sent to customer.");
+      } else {
+        toast.error(r.error || "Cancellation notice could not be sent.");
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof FetchError
+          ? err.message
+          : "Failed to send cancellation notice",
+      );
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const submitVerifyQrBody = async (body: {
     verification_code?: string;
     qr_data?: string;
@@ -858,8 +998,17 @@ export default function ProviderBookingDetail() {
 
   const b = booking;
 
+  const unpaidChargesTotal = useMemo(
+    () => additionalCharges
+      .filter((ac) => ac.status !== "paid" && ac.status !== "rejected")
+      .reduce((sum, ac) => sum + Number(ac.amount ?? 0), 0),
+    [additionalCharges],
+  );
+
   const isActive = ["pending", "booked", "confirmed"].includes(b.status);
   const isStarted = ["started", "in_progress"].includes(b.status);
+  const isCancelled = b.status === "cancelled";
+  const isNoShow = b.status === "no_show";
   const isAtHome = b.location_type === "at_home";
   const canStartJourney =
     isAtHome &&
@@ -877,9 +1026,15 @@ export default function ProviderBookingDetail() {
   const totalAmount = b.total_amount ?? 0;
   const walletAmountApplied = Number((b as unknown as Record<string, unknown>).wallet_amount ?? 0);
   const giftCardAmountApplied = Number((b as unknown as Record<string, unknown>).gift_card_amount ?? 0);
-  // Outstanding balance correctly subtracts wallet and gift card credits so providers
-  // don't see a phantom balance after split-payment bookings.
-  const outstanding = totalAmount - totalPaid - walletAmountApplied - giftCardAmountApplied + totalRefunded;
+  const outstanding = computeBookingOutstandingDisplay({
+    totalAmount,
+    totalPaid,
+    totalRefunded,
+    walletAmount: walletAmountApplied,
+    giftCardAmount: giftCardAmountApplied,
+    unpaidAdditionalCharges: unpaidChargesTotal,
+    paymentStatus: b.payment_status,
+  });
   const netPaidAfterRefunds = totalPaid - totalRefunded;
   const maxRefundable = Math.max(0, netPaidAfterRefunds);
   const canMarkPaid = outstanding > 0 && (b.status === "completed" || isStarted);
@@ -925,21 +1080,53 @@ export default function ProviderBookingDetail() {
             <h1 className="text-3xl font-semibold mb-2">
               Booking #{booking.booking_number}
             </h1>
-            <span
-              className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                booking.status === "confirmed"
-                  ? "bg-green-100 text-green-800"
-                  : booking.status === "pending"
-                  ? "bg-yellow-100 text-yellow-800"
-                  : booking.status === "cancelled"
-                  ? "bg-red-100 text-red-800"
-                  : "bg-blue-100 text-blue-800"
-              }`}
-            >
-              {booking.status}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                  booking.status === "confirmed"
+                    ? "bg-green-100 text-green-800"
+                    : booking.status === "pending"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : booking.status === "cancelled"
+                    ? "bg-red-100 text-red-800"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+              >
+                {booking.status}
+              </span>
+              {(booking as any).booking_source === "walk_in" && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">Walk-in</span>
+              )}
+              {(booking as any).group_booking_ref && (
+                <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">Group</span>
+              )}
+            </div>
           </div>
+          <a
+            href={`/api/provider/bookings/${bookingId}/receipt/pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-indigo-600 hover:text-indigo-800 hover:underline"
+          >
+            View Receipt PDF
+          </a>
         </div>
+
+        {booking.status === "cancelled" && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+            <h3 className="text-sm font-semibold text-red-800 mb-1">Booking Cancelled</h3>
+            {(booking as any).cancellation_reason && (
+              <p className="text-sm text-red-700">
+                <span className="font-medium">Reason:</span> {(booking as any).cancellation_reason}
+              </p>
+            )}
+            {(booking as any).cancelled_at && (
+              <p className="text-xs text-red-500 mt-1">
+                Cancelled on {new Date((booking as any).cancelled_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           {/* Customer Info */}
@@ -983,7 +1170,7 @@ export default function ProviderBookingDetail() {
                   </a>
                 </div>
               )}
-              {booking.status === "completed" && bookingId && (
+              {(booking.status === "completed" || booking.status === "no_show") && bookingId && (
                 <div className="pt-2 border-t">
                   <CustomerRatingButton
                     bookingId={String(bookingId)}
@@ -1006,12 +1193,7 @@ export default function ProviderBookingDetail() {
                 <div>
                   <p className="text-sm text-gray-600">Date</p>
                   <p className="font-medium">
-                    {new Date(booking.scheduled_at).toLocaleDateString("en-US", {
-                      weekday: "long",
-                      year: "numeric",
-                      month: "long",
-                      day: "numeric",
-                    })}
+                    {formatBookingDateInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
                 </div>
               </div>
@@ -1020,10 +1202,7 @@ export default function ProviderBookingDetail() {
                 <div>
                   <p className="text-sm text-gray-600">Time</p>
                   <p className="font-medium">
-                    {new Date(booking.scheduled_at).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatBookingTimeInTimeZone(booking.scheduled_at, booking.display_time_zone)}
                   </p>
                 </div>
               </div>
@@ -1470,7 +1649,7 @@ export default function ProviderBookingDetail() {
             <div className="flex justify-between">
               <span className="text-gray-600">Subtotal</span>
               <span className="font-medium">
-                {booking.currency} {(booking.subtotal?.toFixed(2)) ?? "0.00"}
+                {booking.currency} {Math.max(0, (booking.subtotal ?? 0) - (booking.travel_fee ?? 0)).toFixed(2)}
               </span>
             </div>
             {booking.travel_fee != null && booking.travel_fee > 0 && (
@@ -1659,6 +1838,26 @@ export default function ProviderBookingDetail() {
               <span className="text-gray-600">Total</span>
               <span className="font-medium">{formatMoney(totalAmount)}</span>
             </div>
+            {Number((booking as any).discount_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">
+                  Discount{(booking as any).discount_code ? ` (${(booking as any).discount_code})` : ""}
+                </span>
+                <span className="font-medium text-green-600">−{formatMoney(Number((booking as any).discount_amount))}</span>
+              </div>
+            )}
+            {Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0) > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Travel fee</span>
+                <span className="font-medium">{formatMoney(Number((booking as any).travel_fee ?? (booking as any).travel_fee_amount ?? 0))}</span>
+              </div>
+            )}
+            {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600">Deposit required</span>
+                <span className="font-medium">{formatMoney(Number((booking as any).deposit_amount ?? 0))}</span>
+              </div>
+            )}
             {walletAmountApplied > 0 && (
               <div className="flex justify-between text-sm">
                 <span className="text-gray-600">Wallet credit</span>
@@ -1710,13 +1909,25 @@ export default function ProviderBookingDetail() {
                 <CheckCircle2 className="w-4 h-4 mr-2" />
                 Confirm
               </Button>
-              <Button
-                onClick={() => handleStatusChange("started")}
-                disabled={isUpdating}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
-              >
-                Start Service
-              </Button>
+              {isAtHome ? (
+                (isArrived || booking.arrival_otp_verified || booking.qr_code_verified) && (
+                  <Button
+                    onClick={() => handleStatusChange("started")}
+                    disabled={isUpdating}
+                    className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+                  >
+                    Start Service
+                  </Button>
+                )
+              ) : (
+                <Button
+                  onClick={() => handleStatusChange("started")}
+                  disabled={isUpdating}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 min-h-[44px] text-sm sm:text-base"
+                >
+                  Start Service
+                </Button>
+              )}
             </>
           )}
           {isStarted && (
@@ -1827,6 +2038,51 @@ export default function ProviderBookingDetail() {
           )}
         </div>
 
+        {/* P8 (audit 2026-04): provider-initiated customer notifications.
+            These call the `/api/provider/bookings/[id]/notify-*` REST routes
+            directly so the detail page has UI parity with the WaitingRoom
+            server actions. */}
+        <div className="rounded-lg border p-4">
+          <div className="mb-3">
+            <h3 className="text-sm font-semibold text-gray-900">
+              Customer Notifications
+            </h3>
+            <p className="text-xs text-gray-600 mt-1">
+              Manually send confirmation, reminder or cancellation emails /
+              push to the customer.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button
+              variant="outline"
+              disabled={isNotifying}
+              onClick={() => handleResendNotification("confirmation")}
+              className="flex-1 min-h-[44px]"
+            >
+              <Mail className="w-4 h-4 mr-2" />
+              Resend Confirmation
+            </Button>
+            <Button
+              variant="outline"
+              disabled={isNotifying}
+              onClick={() => handleResendNotification("reminder")}
+              className="flex-1 min-h-[44px]"
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Send Reminder
+            </Button>
+            <Button
+              variant="outline"
+              disabled={isNotifying || !(isCancelled || isNoShow)}
+              onClick={() => handleSendCancellationNotice()}
+              className="flex-1 min-h-[44px]"
+            >
+              <XCircle className="w-4 h-4 mr-2" />
+              Cancellation Notice
+            </Button>
+          </div>
+        </div>
+
         {/* Notes */}
         <div className="rounded-lg border p-4">
           <div className="flex items-center justify-between mb-2">
@@ -1921,6 +2177,40 @@ export default function ProviderBookingDetail() {
                 </Button>
                 <Button variant="outline" onClick={() => setShowMarkPaid(false)} className="flex-1">
                   Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cancel Booking Dialog */}
+        {showCancelDialog && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full space-y-4">
+              <h3 className="text-lg font-semibold text-red-700">Cancel Booking</h3>
+              <p className="text-sm text-gray-600">
+                This action cannot be undone. Please provide a reason for cancellation.
+              </p>
+              <div>
+                <label className="text-sm font-medium mb-1 block">Cancellation reason</label>
+                <textarea
+                  className="w-full border rounded-md p-2 text-sm min-h-[80px]"
+                  value={cancellationReason}
+                  onChange={(e) => setCancellationReason(e.target.value)}
+                  placeholder="Enter the reason for cancellation..."
+                />
+              </div>
+              <div className="flex gap-3">
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmCancel}
+                  disabled={isUpdating}
+                  className="flex-1"
+                >
+                  {isUpdating ? "Cancelling..." : "Confirm Cancellation"}
+                </Button>
+                <Button variant="outline" onClick={() => { setShowCancelDialog(false); setCancellationReason(""); }} className="flex-1">
+                  Back
                 </Button>
               </div>
             </div>

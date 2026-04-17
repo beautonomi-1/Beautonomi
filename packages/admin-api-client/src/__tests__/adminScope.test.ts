@@ -10,6 +10,8 @@ describe("adminScope", () => {
   it("detects scoped paths", () => {
     expect(isScopedAdminCustomizationPath("/api/admin/settings")).toBe(true);
     expect(isScopedAdminCustomizationPath("/api/admin/providers")).toBe(false);
+    expect(isScopedAdminCustomizationPath("/api/admin/maintenance")).toBe(true);
+    expect(isScopedAdminCustomizationPath("/api/admin/maintenance-notify")).toBe(false);
   });
 
   it("withAdminScopeUrl is no-op on server", () => {

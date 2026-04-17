@@ -37,11 +37,10 @@ export async function createAutoBooking(
     return { success: false, error: 'No available slots' };
   }
 
-  // Use the first available slot
+  // Use the first available slot.
+  // `date` is "YYYY-MM-DD" and `time` is "HH:MM" — both in UTC.
   const selectedSlot = availableSlots[0];
-  const slotDate = new Date(selectedSlot.date);
-  const [hours, minutes] = selectedSlot.time.split(':').map(Number);
-  slotDate.setHours(hours, minutes, 0, 0);
+  const slotDate = new Date(`${selectedSlot.date}T${selectedSlot.time}:00Z`);
 
   // Get service details
   if (!entry.service_id) {
@@ -50,7 +49,7 @@ export async function createAutoBooking(
 
   const { data: service } = await supabase
     .from('offerings')
-    .select('id, duration_minutes, price, currency, provider_id')
+    .select('id, duration_minutes, buffer_minutes, price, currency, provider_id')
     .eq('id', entry.service_id)
     .single();
 
@@ -75,9 +74,10 @@ export async function createAutoBooking(
     staffId = staff.id;
   }
 
-  // Calculate end time
   const durationMinutes = Number(service.duration_minutes) || 60;
+  const bufferMinutes = Number((service as any).buffer_minutes || 0);
   const endTime = new Date(slotDate.getTime() + durationMinutes * 60000);
+  const lockEndTime = new Date(slotDate.getTime() + (durationMinutes + bufferMinutes) * 60000);
 
   // Create booking draft
   const adminSupabase = getSupabaseAdmin();
@@ -113,7 +113,7 @@ export async function createAutoBooking(
         p_booking_services: bookingServicesData as unknown[],
         p_staff_id: staffId,
         p_start_at: slotDate.toISOString(),
-        p_end_at: endTime.toISOString(),
+        p_end_at: lockEndTime.toISOString(),
         p_entitlement_id: null,
         p_entitlement_customer_id: null,
       }

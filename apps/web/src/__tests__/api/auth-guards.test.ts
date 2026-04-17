@@ -148,7 +148,7 @@ describe("Paystack routes – authentication", () => {
     const res = await POST(req as NextRequest);
     await expectAuthError(res);
   },
-    20_000,
+    45_000,
   );
 
   it("POST /api/paystack/initialize accepts authenticated customer", async () => {

@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import type mapboxgl from "mapbox-gl";
 import { fetchMapboxPublicMapConfig } from "@/lib/mapbox/fetch-public-map-config";
+import { attachMapResize } from "@/lib/mapbox/attach-map-resize";
 
 const DEFAULT_MAP_STYLE = "mapbox://styles/mapbox/streets-v12";
 
@@ -26,6 +27,7 @@ export default function ServiceZoneMap({
 }: ServiceZoneMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const detachMapResizeRef = useRef<(() => void) | null>(null);
   const mbRef = useRef<typeof mapboxgl | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [publicToken, setPublicToken] = useState<string>("");
@@ -68,6 +70,15 @@ export default function ServiceZoneMap({
     }
   }, [type, coordinates, radiusKm, mapLoaded]);
 
+  useEffect(() => {
+    return () => {
+      detachMapResizeRef.current?.();
+      detachMapResizeRef.current = null;
+      map.current?.remove();
+      map.current = null;
+    };
+  }, []);
+
   const initializeMap = async () => {
     if (!mapContainer.current || !publicToken) return;
 
@@ -90,6 +101,9 @@ export default function ServiceZoneMap({
         : [28.0473, -26.2041], // Default to Johannesburg
       zoom: 12,
     });
+
+    detachMapResizeRef.current?.();
+    detachMapResizeRef.current = attachMapResize(map.current, mapContainer.current);
 
     map.current.on("load", () => {
       setMapLoaded(true);

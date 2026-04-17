@@ -6,8 +6,15 @@ import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 import { fetcher } from "@/lib/http/fetcher";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Store, Plus, Search, Package } from "lucide-react";
+import { Store, Plus, Search, Package, ExternalLink } from "lucide-react";
 import Image from "next/image";
+import { displayRetailPriceMin } from "@/lib/provider-portal/product-inventory-metrics";
+import { toast } from "sonner";
+
+interface ProductVariantRow {
+  quantity?: number;
+  retail_price?: number;
+}
 
 interface Product {
   id: string;
@@ -16,10 +23,39 @@ interface Product {
   category: string | null;
   retail_price: number;
   quantity: number;
+  effective_quantity?: number;
+  has_variants?: boolean;
+  variants?: ProductVariantRow[];
+  track_stock_quantity?: boolean;
+  low_stock_level?: number;
   image_urls: string[];
   is_active: boolean;
   retail_sales_enabled: boolean;
   created_at: string;
+}
+
+function productStockQty(p: Product): number {
+  if (typeof p.effective_quantity === "number") return p.effective_quantity;
+  if (p.has_variants && p.variants?.length) {
+    return p.variants.reduce((s, v) => s + (Number(v.quantity) || 0), 0);
+  }
+  return Number(p.quantity) || 0;
+}
+
+function productListRetail(p: Product): { from: boolean; amount: number } {
+  if (p.has_variants && p.variants?.length) {
+    const amount = displayRetailPriceMin({
+      has_variants: true,
+      retail_price: p.retail_price,
+      quantity: p.quantity,
+      product_variants: p.variants.map((v) => ({
+        quantity: v.quantity,
+        retail_price: v.retail_price,
+      })),
+    });
+    return { from: true, amount };
+  }
+  return { from: false, amount: Number(p.retail_price) || 0 };
 }
 
 export default function ProviderProductsPage() {
@@ -38,7 +74,7 @@ export default function ProviderProductsPage() {
         setProducts(res.data.products ?? []);
       }
     } catch {
-      /* handled by loading state */
+      toast.error("Failed to load products");
     }
     setLoading(false);
   }, []);
@@ -59,8 +95,16 @@ export default function ProviderProductsPage() {
 
   const retailCount = products.filter((p) => p.retail_sales_enabled).length;
   const internalCount = products.filter((p) => !p.retail_sales_enabled).length;
-  const lowStockCount = products.filter((p) => p.quantity <= 5 && p.quantity > 0).length;
-  const outOfStockCount = products.filter((p) => p.quantity === 0).length;
+  const lowStockCount = products.filter((p) => {
+    if (p.track_stock_quantity === false) return false;
+    const q = productStockQty(p);
+    const low = Number(p.low_stock_level) || 5;
+    return q > 0 && q <= low;
+  }).length;
+  const outOfStockCount = products.filter((p) => {
+    if (p.track_stock_quantity === false) return false;
+    return productStockQty(p) === 0;
+  }).length;
 
   return (
     <div className="space-y-6 min-w-0 max-w-full overflow-x-hidden">
@@ -83,19 +127,19 @@ export default function ProviderProductsPage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Total Products</p>
-          <p className="text-2xl font-bold text-gray-900">{products.length}</p>
+          <p className="text-lg font-bold text-gray-900">{products.length}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">For Sale (Retail)</p>
-          <p className="text-2xl font-bold text-pink-600">{retailCount}</p>
+          <p className="text-lg font-bold text-pink-600">{retailCount}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Internal Only</p>
-          <p className="text-2xl font-bold text-gray-600">{internalCount}</p>
+          <p className="text-lg font-bold text-gray-600">{internalCount}</p>
         </div>
         <div className="bg-white rounded-xl border p-4">
           <p className="text-xs text-gray-500">Low / Out of Stock</p>
-          <p className="text-2xl font-bold text-red-600">
+          <p className="text-lg font-bold text-red-600">
             {lowStockCount + outOfStockCount}
           </p>
         </div>
@@ -130,10 +174,15 @@ export default function ProviderProductsPage() {
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Stock</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Status</th>
                 <th className="text-left px-4 py-3 font-medium text-gray-500">Sale Type</th>
+                <th className="text-right px-4 py-3 font-medium text-gray-500">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((p) => (
+              {filtered.map((p) => {
+                const qty = productStockQty(p);
+                const low = Number(p.low_stock_level) || 5;
+                const retail = productListRetail(p);
+                return (
                 <tr key={p.id} className="border-b hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -157,18 +206,27 @@ export default function ProviderProductsPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-gray-600">{p.category ?? "—"}</td>
-                  <td className="px-4 py-3 font-semibold">{formatMoney(Number(p.retail_price))}</td>
+                  <td className="px-4 py-3 font-semibold">
+                    {retail.from ? (
+                      <span className="inline-flex flex-wrap items-center gap-1">
+                        <span className="text-xs font-normal text-gray-500">From</span>
+                        {formatMoney(retail.amount)}
+                      </span>
+                    ) : (
+                      formatMoney(retail.amount)
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={
-                        p.quantity === 0
+                        qty === 0
                           ? "text-red-600 font-semibold"
-                          : p.quantity <= 5
+                          : qty <= low
                           ? "text-amber-600 font-medium"
                           : "text-gray-700"
                       }
                     >
-                      {p.quantity === 0 ? "Out of stock" : p.quantity}
+                      {qty === 0 ? "Out of stock" : qty}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -183,8 +241,17 @@ export default function ProviderProductsPage() {
                       <Badge variant="outline">Internal</Badge>
                     )}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    <Link
+                      href={`/provider/catalogue/products?edit=${p.id}`}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-indigo-600 hover:text-indigo-800 transition-colors"
+                    >
+                      Edit <ExternalLink className="w-3 h-3" />
+                    </Link>
+                  </td>
                 </tr>
-              ))}
+              );
+              })}
             </tbody>
           </table>
           </div>

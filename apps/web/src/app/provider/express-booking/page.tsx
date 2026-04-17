@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { FetchError } from "@/lib/http/fetcher";
 import { RADIX_SELECT_ANY } from "@/lib/ui/select-radix-sentinels";
 import { copyTextToClipboard } from "@/lib/browser/clipboard";
 
@@ -31,13 +32,19 @@ export default function ExpressBookingLinksPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedLink, setSelectedLink] = useState<ExpressBookingLink | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
 
   const loadLinks = useCallback(async () => {
     try {
       setIsLoading(true);
+      setSubscriptionRequired(false);
       const data = await providerApi.listExpressBookingLinks();
       setLinks(data);
     } catch (error) {
+      if (error instanceof FetchError && (error.status === 403 || error.code === "SUBSCRIPTION_REQUIRED")) {
+        setSubscriptionRequired(true);
+        return;
+      }
       console.error("Failed to load express booking links:", error);
       toast.error("Failed to load express booking links");
     } finally {
@@ -92,6 +99,27 @@ export default function ExpressBookingLinksPage() {
 
   if (isLoading) {
     return <LoadingTimeout loadingMessage="Loading express booking links..." />;
+  }
+
+  if (subscriptionRequired) {
+    return (
+      <div>
+        <PageHeader
+          title="Express Booking Links"
+          subtitle="Create quick booking links for specific services or team members"
+        />
+        <SectionCard className="p-12">
+          <EmptyState
+            title="Subscription Required"
+            description="Express Booking Links are available on a paid plan. Upgrade your subscription to create and manage booking links."
+            action={{
+              label: "Upgrade Subscription",
+              onClick: () => { window.location.href = "/provider/subscription"; },
+            }}
+          />
+        </SectionCard>
+      </div>
+    );
   }
 
   return (

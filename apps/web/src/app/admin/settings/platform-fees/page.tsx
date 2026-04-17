@@ -119,7 +119,7 @@ export default function PlatformFeesPage() {
             Platform Fees Control
           </h1>
           <p className="text-sm sm:text-base text-gray-600">
-            Configure platform service fees charged to customers
+            Configure platform fees charged to customers at checkout
           </p>
         </div>
 
@@ -127,10 +127,10 @@ export default function PlatformFeesPage() {
           <div className="flex items-center justify-between border-b pb-4">
             <div>
               <Label htmlFor="show_service_fee_to_customer" className="text-sm sm:text-base">
-                Show Service Fee to Customers
+                Show Platform Fee to Customers
               </Label>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Display the platform service fee to customers during checkout
+                Display the platform fee to customers during checkout
               </p>
             </div>
             <input
@@ -166,7 +166,7 @@ export default function PlatformFeesPage() {
 
           <div>
             <Label htmlFor="platform_service_fee_type" className="text-sm sm:text-base">
-              Service Fee Type *
+              Platform Fee Type *
             </Label>
             <select
               id="platform_service_fee_type"
@@ -182,14 +182,14 @@ export default function PlatformFeesPage() {
               <option value="fixed">Fixed Amount</option>
             </select>
             <p className="text-xs sm:text-sm text-gray-600 mt-1">
-              Choose whether the service fee is a percentage of the booking total or a fixed amount
+              Choose whether the platform fee is a percentage of the booking total or a fixed amount
             </p>
           </div>
 
           {settings.platform_service_fee_type === "percentage" ? (
             <div>
               <Label htmlFor="platform_service_fee_percentage" className="text-sm sm:text-base">
-                Service Fee Percentage *
+                Platform Fee Percentage *
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <Input
@@ -209,13 +209,13 @@ export default function PlatformFeesPage() {
                 <span className="text-sm text-gray-600">%</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Percentage of booking total charged to customers (e.g., 5% for a R100 booking = R5 fee)
+                Percentage of booking total charged to customers (e.g., 5% of a {currencyCode} 100 booking = {currencyCode} 5 platform fee)
               </p>
             </div>
           ) : (
             <div>
               <Label htmlFor="platform_service_fee_fixed" className="text-sm sm:text-base">
-                Service Fee Fixed Amount *
+                Platform Fee Fixed Amount *
               </Label>
               <div className="flex items-center gap-2 mt-1">
                 <Input
@@ -234,16 +234,16 @@ export default function PlatformFeesPage() {
                 <span className="text-xs sm:text-sm text-gray-600">{currencyCode}</span>
               </div>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                Fixed amount charged to customers per booking (e.g., R10 per booking)
+                Fixed platform fee charged to customers per booking (e.g., {currencyCode} 10 per booking)
               </p>
             </div>
           )}
 
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <p className="text-xs sm:text-sm text-blue-800">
-              <strong>Note:</strong> Platform service fees are separate from provider commissions. 
-              Service fees are charged to customers, while commissions are deducted from provider payouts. 
-              Changes to these settings will apply to all new bookings.
+              <strong>Note:</strong> Platform fee is customer-paid at checkout. Provider commission is a separate
+              setting and defaults to disabled unless explicitly enabled in payout settings.
+              Changes to these settings apply to new bookings.
             </p>
           </div>
         </div>

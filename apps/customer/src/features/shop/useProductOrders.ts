@@ -48,11 +48,13 @@ export interface ProductOrder {
 export interface OrderItem {
   id: string;
   product_id: string;
+  product_variant_id?: string | null;
   product_name: string;
   product_image_url: string | null;
   quantity: number;
   unit_price: number;
   total_price: number;
+  product_variant?: { id: string; option_values?: Record<string, string> } | null;
 }
 
 export function useProductOrders() {

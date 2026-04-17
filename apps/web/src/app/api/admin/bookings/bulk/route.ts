@@ -94,6 +94,17 @@ export async function POST(request: NextRequest) {
       metadata: { booking_ids, action, reason, count: booking_ids.length },
     });
 
+    if (action === "cancel") {
+      try {
+        const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+        await Promise.allSettled(
+          booking_ids.map((bid: string) => matchWaitlistOnCancellation(supabase, bid))
+        );
+      } catch (waitlistErr) {
+        console.error("[admin bulk cancel] waitlist matching failed:", waitlistErr);
+      }
+    }
+
     return successResponse({
       success: true,
       results,

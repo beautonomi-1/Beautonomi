@@ -45,6 +45,7 @@ export function TeamPermissionsMatrixPage() {
   const qc = useQueryClient();
   const [draft, setDraft] = useState<Record<AdminSection, UserRole[]> | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
 
   const q = useQuery({
     queryKey: adminQueryKeys.sectionPermissions(),
@@ -54,13 +55,17 @@ export function TeamPermissionsMatrixPage() {
         { timeoutMs: 30_000 }
       ),
     enabled: allowed,
+    // Disable background refetch while user has unsaved changes
+    refetchOnWindowFocus: !isDirty,
+    staleTime: 30_000,
   });
 
   const matrix = q.data?.sectionRoles;
 
+  // Only initialise draft once when data first loads; never overwrite with background refetch
   useEffect(() => {
-    if (matrix) setDraft(cloneMatrix(matrix));
-  }, [matrix]);
+    if (matrix && draft === null) setDraft(cloneMatrix(matrix));
+  }, [matrix, draft]);
 
   const save = useMutation({
     mutationFn: async (sectionRoles: Record<AdminSection, UserRole[]>) => {
@@ -70,6 +75,7 @@ export function TeamPermissionsMatrixPage() {
     },
     onSuccess: async () => {
       setSaveMsg("Saved.");
+      setIsDirty(false);
       adminToast.success("Team permissions saved");
       await qc.invalidateQueries({ queryKey: adminQueryKeys.sectionPermissions() });
     },
@@ -89,6 +95,7 @@ export function TeamPermissionsMatrixPage() {
       const nextRoles = has ? cur.filter((r) => r !== role) : [...cur, role];
       return { ...d, [section]: nextRoles };
     });
+    setIsDirty(true);
     setSaveMsg(null);
   }
 
@@ -106,6 +113,18 @@ export function TeamPermissionsMatrixPage() {
   if (q.error) {
     if (isAdminApiAuthFailure(q.error)) return <PermissionDenied />;
     return <AdminRetryBlock message={q.error.message} onRetry={() => void q.refetch()} />;
+  }
+
+  // Guard against brief flash before useEffect seeds draft from query data
+  if (!draft) {
+    return (
+      <div className="space-y-6">
+        <AdminPageHeader title="Team permissions" />
+        <AdminPanel>
+          <AdminPageSkeleton rows={4} />
+        </AdminPanel>
+      </div>
+    );
   }
 
   return (
@@ -127,6 +146,9 @@ export function TeamPermissionsMatrixPage() {
         >
           {save.isPending ? "Saving…" : "Save changes"}
         </button>
+        {isDirty && !save.isPending && (
+          <span className="text-sm text-amber-600 font-medium">Unsaved changes</span>
+        )}
         {saveMsg ? <span className="text-sm text-gray-600">{saveMsg}</span> : null}
       </div>
       <AdminPanel className="overflow-x-auto">

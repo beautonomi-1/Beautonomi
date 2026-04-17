@@ -20,24 +20,108 @@ export interface FeatureFlag {
   tenant_id?: string | null;
 }
 
+/**
+ * Optional context used to evaluate advanced flag targeting.
+ * When provided, rollout_percent, platforms_allowed, and roles_allowed
+ * are respected server-side (matching mobile/web bundle behaviour).
+ */
+export interface FeatureFlagCheckContext {
+  /** Platform identifier: "web" | "ios" | "android" | "admin" */
+  platform?: string;
+  /** Caller's role (used against roles_allowed column). */
+  role?: string;
+  /** App semver string (used against min_app_version column). */
+  appVersion?: string;
+  /**
+   * Stable identifier for rollout bucketing (e.g. user ID or session ID).
+   * When omitted, rollout_percent is not applied (flag is treated as fully on).
+   */
+  bucketId?: string;
+}
+
 type FlagRowDb = {
   feature_key: string;
   enabled: boolean;
   tenant_id: string | null;
+  rollout_percent?: number | null;
+  platforms_allowed?: string[] | null;
+  roles_allowed?: string[] | null;
+  min_app_version?: string | null;
 };
+
+// ─── Rollout bucketing ────────────────────────────────────────────────────────
+
+/** Stable 0–99 bucket for a given feature + bucketId pair (deterministic, no DB). */
+function getBucket(featureKey: string, bucketId: string): number {
+  let hash = 5381;
+  const str = `${featureKey}:${bucketId}`;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+    hash = hash >>> 0; // keep unsigned 32-bit
+  }
+  return hash % 100;
+}
+
+/** Returns true if the flag row passes all advanced targeting for the given context. */
+function passesContext(row: FlagRowDb, ctx: FeatureFlagCheckContext | undefined): boolean {
+  if (!row.enabled) return false;
+  if (!ctx) return true;
+
+  // Platform filter
+  if (ctx.platform && row.platforms_allowed && row.platforms_allowed.length > 0) {
+    if (!row.platforms_allowed.includes(ctx.platform)) return false;
+  }
+
+  // Role filter
+  if (ctx.role && row.roles_allowed && row.roles_allowed.length > 0) {
+    if (!row.roles_allowed.includes(ctx.role)) return false;
+  }
+
+  // Semver min_app_version: simple dot-separated numeric comparison
+  if (ctx.appVersion && row.min_app_version) {
+    const parse = (v: string) => v.split(".").map(Number);
+    const caller = parse(ctx.appVersion);
+    const required = parse(row.min_app_version);
+    const maxLen = Math.max(caller.length, required.length);
+    for (let i = 0; i < maxLen; i++) {
+      const c = caller[i] ?? 0;
+      const r = required[i] ?? 0;
+      if (c < r) return false;
+      if (c > r) break;
+    }
+  }
+
+  // Rollout percent
+  if (ctx.bucketId && row.rollout_percent != null && row.rollout_percent < 100) {
+    const bucket = getBucket(row.feature_key, ctx.bucketId);
+    if (bucket >= row.rollout_percent) return false;
+  }
+
+  return true;
+}
+
+function resolveRowFromMatches(
+  matches: FlagRowDb[],
+  tenantId: string | null | undefined,
+  ctx: FeatureFlagCheckContext | undefined
+): boolean {
+  // Tenant row takes precedence over global row (same key)
+  if (tenantId) {
+    const tenantRow = matches.find((r) => r.tenant_id === tenantId);
+    if (tenantRow) return passesContext(tenantRow, ctx);
+  }
+  const globalRow = matches.find((r) => r.tenant_id == null);
+  return globalRow ? passesContext(globalRow, ctx) : false;
+}
 
 function enabledForKeyFromRows(
   rows: FlagRowDb[],
   featureKey: string,
-  tenantId: string | null | undefined
+  tenantId: string | null | undefined,
+  ctx?: FeatureFlagCheckContext
 ): boolean {
   const matches = rows.filter((r) => r.feature_key === featureKey);
-  if (tenantId) {
-    const t = matches.find((r) => r.tenant_id === tenantId);
-    if (t) return Boolean(t.enabled);
-  }
-  const g = matches.find((r) => r.tenant_id == null);
-  return g ? Boolean(g.enabled) : false;
+  return resolveRowFromMatches(matches, tenantId, ctx);
 }
 
 /**
@@ -60,8 +144,6 @@ async function getSupabaseClient() {
             );
           } catch {
             // The `setAll` method was called from a Server Component.
-            // This can be ignored if you have proxy refreshing cookies
-            // user sessions.
           }
         },
       },
@@ -70,16 +152,25 @@ async function getSupabaseClient() {
 }
 
 /**
- * Check if a feature is enabled (server-side). Uses service role for reads (RLP-safe).
- * When tenantId is set, a tenant-specific row overrides the global row for that key.
+ * Check if a feature is enabled (server-side). Uses service role for reads (RLS-safe).
+ *
+ * When `tenantId` is set, a tenant-specific row overrides the global row for that key.
+ * When `ctx` is provided, rollout_percent, platforms_allowed, roles_allowed, and
+ * min_app_version are enforced — matching the behaviour of the mobile/web public bundle.
+ * Without `ctx`, only `enabled` and tenant override are checked (legacy behaviour preserved).
  */
 export async function isFeatureEnabledServer(
   featureKey: string,
-  tenantId?: string | null
+  tenantId?: string | null,
+  ctx?: FeatureFlagCheckContext
 ): Promise<boolean> {
   try {
     const supabase = getSupabaseAdmin();
-    let q = supabase.from("feature_flags").select("enabled, tenant_id").eq("feature_key", featureKey);
+    let q = supabase
+      .from("feature_flags")
+      .select("feature_key, enabled, tenant_id, rollout_percent, platforms_allowed, roles_allowed, min_app_version")
+      .eq("feature_key", featureKey);
+
     if (tenantId) {
       q = q.or(`tenant_id.is.null,tenant_id.eq.${tenantId}`);
     } else {
@@ -93,12 +184,7 @@ export async function isFeatureEnabledServer(
       return false;
     }
 
-    if (tenantId) {
-      const tenantRow = data.find((r) => r.tenant_id === tenantId);
-      if (tenantRow) return Boolean(tenantRow.enabled);
-    }
-    const globalRow = data.find((r) => r.tenant_id == null);
-    return globalRow ? Boolean(globalRow.enabled) : false;
+    return resolveRowFromMatches(data as FlagRowDb[], tenantId, ctx);
   } catch (error) {
     console.error(`Error checking feature flag ${featureKey}:`, error);
     return false;
@@ -110,7 +196,8 @@ export async function isFeatureEnabledServer(
  */
 export async function checkMultipleFeaturesServer(
   featureKeys: string[],
-  tenantId?: string | null
+  tenantId?: string | null,
+  ctx?: FeatureFlagCheckContext
 ): Promise<Record<string, boolean>> {
   if (featureKeys.length === 0) return {};
 
@@ -119,7 +206,7 @@ export async function checkMultipleFeaturesServer(
 
     let q = supabase
       .from("feature_flags")
-      .select("feature_key, enabled, tenant_id")
+      .select("feature_key, enabled, tenant_id, rollout_percent, platforms_allowed, roles_allowed, min_app_version")
       .in("feature_key", featureKeys);
 
     if (tenantId) {
@@ -138,7 +225,7 @@ export async function checkMultipleFeaturesServer(
     const rows = (data ?? []) as FlagRowDb[];
     const result: Record<string, boolean> = {};
     featureKeys.forEach((key) => {
-      result[key] = enabledForKeyFromRows(rows, key, tenantId);
+      result[key] = enabledForKeyFromRows(rows, key, tenantId, ctx);
     });
 
     return result;
@@ -150,13 +237,11 @@ export async function checkMultipleFeaturesServer(
 
 /**
  * Get all feature flags (server-side, admin only)
- * @returns Promise<FeatureFlag[]>
  */
 export async function getAllFeatureFlagsServer(): Promise<FeatureFlag[]> {
   try {
     const supabase = await getSupabaseClient();
 
-    // Check if user is superadmin
     const {
       data: { user },
     } = await supabase.auth.getUser();
@@ -184,9 +269,6 @@ export async function getAllFeatureFlagsServer(): Promise<FeatureFlag[]> {
 
 /**
  * Check if user has a specific permission (server-side)
- * @param userRole - The user's role
- * @param permissionKey - The permission key to check
- * @returns Promise<boolean>
  */
 export async function hasPermissionServer(
   userRole: string,

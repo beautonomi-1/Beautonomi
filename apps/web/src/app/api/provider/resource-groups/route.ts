@@ -38,8 +38,8 @@ export async function GET(request: NextRequest) {
     }
 
     const groupIds = (groups || []).map((g: { id: string }) => g.id);
-    let resourceCountByGroup: Record<string, number> = {};
-    let resourceIdsByGroup: Record<string, string[]> = {};
+    const resourceCountByGroup: Record<string, number> = {};
+    const resourceIdsByGroup: Record<string, string[]> = {};
 
     if (groupIds.length > 0) {
       const { data: resourcesInGroups } = await supabase

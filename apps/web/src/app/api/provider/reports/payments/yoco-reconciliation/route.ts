@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     const withBooking = payments.filter((p) => p.appointment_id);
     const yocoIdsWithBooking = withBooking.map((p) => p.yoco_payment_id);
 
-    let syncedSet = new Set<string>();
+    const syncedSet = new Set<string>();
     if (yocoIdsWithBooking.length > 0) {
       let bpSyncQuery = supabaseAdmin
         .from("booking_payments")

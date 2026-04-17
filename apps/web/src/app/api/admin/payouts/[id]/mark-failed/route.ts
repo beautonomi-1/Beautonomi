@@ -149,6 +149,17 @@ export async function POST(
     });
 
     try {
+      const { notifyProviderPayoutFailed } = await import("@/lib/notifications/notification-service");
+      await notifyProviderPayoutFailed(
+        payoutData.provider_id,
+        Number(payoutData.amount),
+        validationResult.data.failure_reason,
+      );
+    } catch (templateErr) {
+      console.warn("Template notification failed, falling back to inline:", templateErr);
+    }
+
+    try {
       const { sendToUser } = await import("@/lib/notifications/onesignal");
       const { data: provider } = await supabase
         .from("providers")

@@ -67,12 +67,11 @@ export default function CustomFieldsPage() {
     try {
       setIsLoading(true);
       const response = await fetcher
-        .get<{ data?: { fields?: CustomField[] } }>("/api/admin/custom-fields")
-        .catch(() => ({ data: { fields: [] } }));
+        .get<{ data?: { fields?: CustomField[] } }>("/api/admin/custom-fields");
       setFields(response.data?.fields ?? []);
     } catch (error) {
       console.error("Failed to load custom fields:", error);
-      // Don't show error if endpoint doesn't exist yet
+      toast.error("Failed to load custom fields");
       setFields([]);
     } finally {
       setIsLoading(false);

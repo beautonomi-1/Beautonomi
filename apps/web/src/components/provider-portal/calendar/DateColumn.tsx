@@ -7,7 +7,7 @@ import type { Appointment, TeamMember, TimeBlock, AvailabilityBlockDisplay } fro
 import { GestureLayer } from "./GestureLayer";
 import { BookingBlock } from "./BookingBlock";
 import { TimeBlockElement } from "./TimeBlockElement";
-import { toDateStr, type CalendarBlock } from "./utils";
+import { toDateStr, mergeTeamWorkingHoursForCalendar, type CalendarBlock } from "./utils";
 
 interface DateColumnProps {
   date: Date;
@@ -28,6 +28,7 @@ interface DateColumnProps {
   onAppointmentClick: (apt: Appointment) => void;
   onTimeSlotClick: (date: Date, time: string, staffId: string) => void;
   onTimeBlockClick?: (block: TimeBlock) => void;
+  formatPrice?: (amount: number) => string;
 }
 
 function DateColumnComponent({
@@ -49,9 +50,23 @@ function DateColumnComponent({
   onAppointmentClick,
   onTimeSlotClick,
   onTimeBlockClick,
+  formatPrice,
 }: DateColumnProps) {
   const dateStr = format(date, "yyyy-MM-dd");
-  const staffId = teamMembers[0]?.id || "";
+  // In week/3-day view each column is a date, not a staff member.
+  // Use a sentinel so the DnD layer can detect "date column" drops
+  // and preserve the booking's original staff rather than reassigning.
+  const staffId = teamMembers.length === 1 ? teamMembers[0].id : "__date_column__";
+
+  // Merge all team members' working hours for this day so the GestureLayer
+  // can tell whether ANY staff member is available — prevents marking a
+  // weekend day as "Closed" when at least one staff member has a shift.
+  // When no staff has explicit working hours, return undefined so GestureLayer
+  // falls back to location hours (staff without hours follow location schedule).
+  const mergedStaffHours = useMemo(
+    () => mergeTeamWorkingHoursForCalendar(teamMembers),
+    [teamMembers],
+  );
 
   const dateAppointments = useMemo(
     () => appointments.filter((a) => toDateStr(a.scheduled_date || "") === dateStr),
@@ -96,6 +111,7 @@ function DateColumnComponent({
         workStart={workStart}
         workEnd={workEnd}
         locationOperatingHours={locationOperatingHours}
+        staffWorkingHours={mergedStaffHours}
         onTimeSlotClick={onTimeSlotClick}
       />
 
@@ -121,6 +137,7 @@ function DateColumnComponent({
           showPrices={showPrices}
           onClick={onAppointmentClick}
           variant="week"
+          formatPrice={formatPrice}
         />
       ))}
     </div>
@@ -146,6 +163,7 @@ export const DateColumn = memo(DateColumnComponent, (prev, next) => {
   if (prev.onAppointmentClick !== next.onAppointmentClick) return false;
   if (prev.onTimeSlotClick !== next.onTimeSlotClick) return false;
   if (prev.locationOperatingHours !== next.locationOperatingHours) return false;
+  if (prev.teamMembers !== next.teamMembers) return false;
 
   return true;
 });

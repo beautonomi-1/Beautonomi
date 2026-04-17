@@ -14,6 +14,7 @@ export default function ReportsLayout() {
       <Stack.Screen name="gift-cards" />
       <Stack.Screen name="packages" />
       <Stack.Screen name="business" />
+      <Stack.Screen name="detail/[reportId]" />
     </Stack>
   );
 }

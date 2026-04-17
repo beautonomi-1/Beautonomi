@@ -147,23 +147,7 @@ export async function POST(
       provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
     });
 
-    // Refunds always credit the customer's wallet (platform policy: same as admin refunds)
-    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
-      p_user_id: booking.customer_id,
-      p_amount: amount,
-      p_currency: booking.currency || lastResortCurrency,
-      p_description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId.slice(0, 8)}: ${reason}`,
-      p_reference_id: bookingId,
-      p_reference_type: "booking_refund",
-      p_tenant_id: walletTenantId,
-    });
-
-    if (walletError) {
-      console.error("Wallet credit failed:", walletError);
-      return errorResponse("Failed to credit customer wallet", "WALLET_ERROR", 500);
-    }
-
-    // Create refund record (triggers update_booking_payment_status)
+    // Create refund record FIRST (audit trail before money moves)
     const { data: refund, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -183,21 +167,49 @@ export async function POST(
       return errorResponse("Failed to create refund record", "REFUND_ERROR", 500);
     }
 
-    const { error: financeErr } = await supabaseAdmin.from("finance_transactions").insert({
-      tenant_id: walletTenantId,
-      booking_id: bookingId,
-      provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
-      transaction_type: "refund",
-      amount: -amount,
-      fees: 0,
-      commission: 0,
-      net: -amount,
-      description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId}: ${reason}`,
-      created_at: new Date().toISOString(),
+    // Credit wallet AFTER refund row exists (ensures audit trail on retry)
+    const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
+      p_user_id: booking.customer_id,
+      p_amount: amount,
+      p_currency: booking.currency || lastResortCurrency,
+      p_description: `Refund for booking ${booking.booking_number || booking.ref_number || bookingId.slice(0, 8)}: ${reason}`,
+      p_reference_id: bookingId,
+      p_reference_type: "booking_refund",
+      p_tenant_id: walletTenantId,
     });
-    if (financeErr) {
-      // Wallet and booking_refunds already applied; do not fail the request (avoid retry double-credit).
-      console.error("Provider refund: finance ledger insert failed after wallet credit:", financeErr);
+
+    if (walletError) {
+      console.error("Wallet credit failed after refund record created:", walletError);
+      // Mark the refund as failed so it can be retried
+      await supabaseAdmin
+        .from("booking_refunds")
+        .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
+        .eq("id", (refund as { id: string }).id);
+      return errorResponse("Failed to credit customer wallet. Refund recorded for retry.", "WALLET_ERROR", 500);
+    }
+
+    // NOTE: finance_transactions ledger row is written by trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) keyed by
+    // `source_refund_id`. A second app-side insert here was the B1 double-count
+    // bug — it produced two rows per wallet refund because the unique index on
+    // `source_refund_id` is partial (IS NOT NULL) and a manual insert with
+    // `source_refund_id = NULL` never conflicted.
+
+    // Record booking event for audit trail
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "refunded",
+        event_data: {
+          refund_id: (refund as { id: string }).id,
+          amount,
+          reason,
+          refund_method: "store_credit",
+        },
+        created_by: user.id,
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create refund booking event:", eventErr);
     }
 
     // Note: Booking payment status is updated by database trigger on booking_refunds

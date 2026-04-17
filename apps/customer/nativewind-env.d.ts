@@ -30,9 +30,11 @@ declare module "react-native" {
   interface PressableProps {
     className?: string;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface FlatListProps<ItemT> {
     className?: string;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface SectionListProps<ItemT, SectionT> {
     className?: string;
   }

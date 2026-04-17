@@ -6,6 +6,7 @@ import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
+import { useAdminDocumentTitle } from "@/hooks/useAdminDocumentTitle";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
@@ -27,6 +28,7 @@ type BroadcastEnvelope = {
 };
 
 export function BroadcastHistoryPage() {
+  useAdminDocumentTitle("Broadcast History");
   const { allowed, denied } = useAdminSectionPage(ADMIN_SECTION_MARKETING_COMMS, "Marketing access is required.");
   const [sp, setSp] = useSearchParams();
   const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
@@ -102,18 +104,44 @@ export function BroadcastHistoryPage() {
           <AdminTableHead>
             <tr>
               <AdminTh>Channel</AdminTh>
-              <AdminTh>Created</AdminTh>
-              <AdminTh>Summary</AdminTh>
+              <AdminTh>Subject / Title</AdminTh>
+              <AdminTh>Recipients</AdminTh>
+              <AdminTh>Status</AdminTh>
+              <AdminTh>Sent at</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
             {rows.map((r) => {
               const row = r as Record<string, unknown>;
+              const statusColors: Record<string, string> = {
+                sent: "bg-green-100 text-green-800",
+                delivered: "bg-green-100 text-green-800",
+                failed: "bg-red-100 text-red-800",
+                partial: "bg-amber-100 text-amber-800",
+                pending: "bg-gray-100 text-gray-700",
+                scheduled: "bg-blue-100 text-blue-800",
+              };
+              const status = String(row.status ?? row.delivery_status ?? "—");
+              const statusClass = statusColors[status] ?? "bg-gray-100 text-gray-700";
+              const subject =
+                String(row.subject ?? row.title ?? row.message_preview ?? row.body ?? "—").slice(0, 80);
+              const recipientCount =
+                row.recipient_count ?? row.total_recipients ?? row.sent_count ?? "—";
               return (
                 <tr key={String(row.id ?? "")}>
-                  <AdminTd>{String(row.channel ?? "")}</AdminTd>
-                  <AdminTd className="text-xs">{String(row.created_at ?? "").slice(0, 19)}</AdminTd>
-                  <AdminTd className="max-w-md truncate text-xs">{JSON.stringify(row).slice(0, 120)}…</AdminTd>
+                  <AdminTd>
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium capitalize text-gray-700">
+                      {String(row.channel ?? "—")}
+                    </span>
+                  </AdminTd>
+                  <AdminTd className="max-w-xs truncate text-xs text-gray-700">{subject}</AdminTd>
+                  <AdminTd className="tabular-nums text-xs">{String(recipientCount)}</AdminTd>
+                  <AdminTd>
+                    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${statusClass}`}>{status}</span>
+                  </AdminTd>
+                  <AdminTd className="text-xs text-gray-500">
+                    {String(row.sent_at ?? row.created_at ?? "").slice(0, 16).replace("T", " ")}
+                  </AdminTd>
                 </tr>
               );
             })}

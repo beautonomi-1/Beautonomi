@@ -1,7 +1,7 @@
 /**
- * Fetch config bundle from backend (customer app). Uses APP_URL – no auth required for public bundle.
+ * Fetch config bundle from backend (customer app). Uses getBackendUrl() – no auth required for public bundle.
  */
-import { APP_URL, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
+import { getBackendUrl, withWebApiTenantHeaders, DEFAULT_REGION_CURRENCY } from "@/config/public-env";
 import { getDeviceRegionCountryIso } from "@/lib/device-default-country-dial";
 
 export type Platform = "web" | "customer" | "provider";
@@ -73,32 +73,8 @@ let cached: PublicConfigBundle | null = null;
 let cacheTime = 0;
 const CACHE_MS = 5 * 60 * 1000;
 
-export async function fetchConfigBundle(params?: {
-  platform?: Platform;
-  environment?: Environment;
-  appVersion?: string | null;
-}): Promise<PublicConfigBundle> {
-  const platform = params?.platform ?? "customer";
-  const environment = params?.environment ?? (__DEV__ ? "development" : "production");
-  if (cached && Date.now() - cacheTime < CACHE_MS) return cached;
-  const url = `${APP_URL.replace(/\/$/, "")}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
-  try {
-    const res = await fetch(
-      url,
-      withWebApiTenantHeaders({
-        headers: { "X-Active-Market-Country": getDeviceRegionCountryIso() },
-      }),
-    );
-    const data = (await res.json()) as PublicConfigBundle;
-    if (data?.meta) {
-      cached = data;
-      cacheTime = Date.now();
-      return data;
-    }
-  } catch {
-    // fallback
-  }
-  cached = {
+function defaultStubBundle(environment: Environment, platform: Platform): PublicConfigBundle {
+  return {
     meta: { env: environment, platform, version: null, fetched_at: new Date().toISOString() },
     amplitude: {},
     third_party: {},
@@ -123,6 +99,40 @@ export async function fetchConfigBundle(params?: {
       safety: {},
     },
   };
+}
+
+export async function fetchConfigBundle(params?: {
+  platform?: Platform;
+  environment?: Environment;
+  appVersion?: string | null;
+}): Promise<PublicConfigBundle> {
+  const platform = params?.platform ?? "customer";
+  const environment = params?.environment ?? (__DEV__ ? "development" : "production");
+  if (cached && Date.now() - cacheTime < CACHE_MS) return cached;
+  const base = getBackendUrl();
+  if (!base) {
+    cached = defaultStubBundle(environment, platform);
+    cacheTime = Date.now();
+    return cached as PublicConfigBundle;
+  }
+  const url = `${base.replace(/\/$/, "")}/api/public/config-bundle?platform=${platform}&environment=${environment}`;
+  try {
+    const res = await fetch(
+      url,
+      withWebApiTenantHeaders({
+        headers: { "X-Active-Market-Country": getDeviceRegionCountryIso() },
+      }),
+    );
+    const data = (await res.json()) as PublicConfigBundle;
+    if (data?.meta) {
+      cached = data;
+      cacheTime = Date.now();
+      return data;
+    }
+  } catch {
+    // fallback
+  }
+  cached = defaultStubBundle(environment, platform);
   cacheTime = Date.now();
   return cached as PublicConfigBundle;
 }

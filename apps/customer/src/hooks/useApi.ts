@@ -83,7 +83,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
       const requestPromise =
         inflight ??
         (async () => {
-          const result = await api.get<T>(path);
+          const result = await api.get<T>(path, timeoutMs > 0 ? { timeout: timeoutMs } : undefined);
           if (result.error) {
             return { data: null, error: getApiErrorMessage(result.error, "Request failed") };
           }
@@ -123,7 +123,7 @@ export function useApi<T>(path: string, options: UseApiOptions = {}): UseApiResu
     } finally {
       if (mountedRef.current && id === requestIdRef.current) setLoading(false);
     }
-  }, [cacheKey, path, enabled, staleTimeMs]);
+  }, [cacheKey, path, enabled, staleTimeMs, timeoutMs]);
 
   useEffect(() => {
     mountedRef.current = true;

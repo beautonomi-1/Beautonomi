@@ -7,6 +7,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { twStyle } from "@/lib/twStyle";
 
 interface ChannelPrefs {
@@ -20,12 +21,15 @@ interface NotifPreferences {
   booking_cancellations: ChannelPrefs;
   booking_reminders: ChannelPrefs;
   new_reviews: ChannelPrefs;
+  review_responses: ChannelPrefs;
   client_messages: ChannelPrefs;
   payment_received: ChannelPrefs;
   payout_updates: ChannelPrefs;
   waitlist_notifications: ChannelPrefs;
   system_updates: ChannelPrefs;
   marketing: ChannelPrefs;
+  booking_alert_sound?: boolean;
+  unsubscribe_marketing?: boolean;
   quiet_hours_enabled?: boolean;
   quiet_hours_start?: string;
   quiet_hours_end?: string;
@@ -38,6 +42,7 @@ const PREF_LABELS: Record<string, { label: string; icon: string }> = {
   booking_cancellations: { label: "Cancellations", icon: "close-circle-outline" },
   booking_reminders: { label: "Booking Reminders", icon: "alarm-outline" },
   new_reviews: { label: "New Reviews", icon: "star-outline" },
+  review_responses: { label: "Review Responses", icon: "chatbubbles-outline" },
   client_messages: { label: "Client Messages", icon: "chatbubble-outline" },
   payment_received: { label: "Payment Received", icon: "card-outline" },
   payout_updates: { label: "Payout Updates", icon: "wallet-outline" },
@@ -53,7 +58,7 @@ const SECTIONS = [
   },
   {
     title: "Communication",
-    keys: ["client_messages", "new_reviews", "waitlist_notifications"],
+    keys: ["client_messages", "new_reviews", "review_responses", "waitlist_notifications"],
   },
   { title: "Payments", keys: ["payment_received", "payout_updates"] },
   { title: "Other", keys: ["system_updates", "marketing"] },
@@ -64,12 +69,15 @@ const DEFAULT_PREFS: NotifPreferences = {
   booking_cancellations: { email: true, sms: true, push: true },
   booking_reminders: { email: true, sms: true, push: true },
   new_reviews: { email: true, sms: false, push: true },
+  review_responses: { email: true, sms: false, push: true },
   client_messages: { email: true, sms: true, push: true },
   payment_received: { email: true, sms: false, push: true },
   payout_updates: { email: true, sms: true, push: true },
   waitlist_notifications: { email: true, sms: false, push: true },
   system_updates: { email: true, sms: false, push: false },
   marketing: { email: true, sms: false, push: false },
+  booking_alert_sound: true,
+  unsubscribe_marketing: false,
   quiet_hours_enabled: false,
   quiet_hours_start: "22:00",
   quiet_hours_end: "07:00",
@@ -83,7 +91,7 @@ const DIGEST_OPTIONS = [
 ];
 
 export default function NotificationPreferencesScreen() {
-  const { data: prefs, loading, refresh } =
+  const { data: prefs, loading, error: loadError, refresh } =
     useApi<NotifPreferences>("/api/provider/notification-preferences");
   const { execute: savePrefs, loading: saving } = useApiMutation("patch");
   const { execute: testNotif, loading: testing } = useApiMutation("post");
@@ -167,6 +175,15 @@ export default function NotificationPreferencesScreen() {
 
   if (loading && !prefs) return <LoadingState />;
 
+  if (loadError && !prefs) {
+    return (
+      <ScreenContainer>
+        <ScreenHeader title="Notification Preferences" showBack subtitle="Control how you receive alerts" />
+        <ErrorState message={typeof loadError === "string" ? loadError : "Failed to load preferences"} onRetry={refresh} />
+      </ScreenContainer>
+    );
+  }
+
   return (
     <ScreenContainer>
       <ScreenHeader
@@ -187,6 +204,34 @@ export default function NotificationPreferencesScreen() {
         </Text>
         <Ionicons name="chevron-forward" size={16} color="#6366f1" />
       </TouchableOpacity>
+
+      {/* Booking alert sound */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-emerald-50")}>
+              <Ionicons name="volume-high-outline" size={18} color="#10b981" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                Booking Alert Sound
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Play a sound and vibrate when a new booking arrives
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.booking_alert_sound !== false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, booking_alert_sound: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#6ee7b7" }}
+            thumbColor={local.booking_alert_sound !== false ? "#10b981" : "#f4f4f5"}
+          />
+        </View>
+      </View>
 
       {/* Quiet hours */}
       <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
@@ -248,6 +293,34 @@ export default function NotificationPreferencesScreen() {
             )}
           </TouchableOpacity>
         ))}
+      </View>
+
+      {/* Unsubscribe from marketing */}
+      <View style={twStyle("mb-4 rounded-2xl border border-gray-100 bg-white p-4")}>
+        <View style={twStyle("flex-row items-center justify-between")}>
+          <View style={twStyle("flex-row flex-1 items-center")}>
+            <View style={twStyle("h-9 w-9 items-center justify-center rounded-lg bg-red-50")}>
+              <Ionicons name="mail-unread-outline" size={18} color="#ef4444" />
+            </View>
+            <View style={twStyle("ml-3 flex-1")}>
+              <Text style={twStyle("text-sm font-medium text-gray-900")}>
+                Unsubscribe from Marketing
+              </Text>
+              <Text style={twStyle("text-xs text-gray-500")}>
+                Stop all promotional emails and messages
+              </Text>
+            </View>
+          </View>
+          <Switch
+            value={local.unsubscribe_marketing ?? false}
+            onValueChange={(v) => {
+              setLocal((p) => ({ ...p, unsubscribe_marketing: v }));
+              setDirty(true);
+            }}
+            trackColor={{ false: "#d1d5db", true: "#fca5a5" }}
+            thumbColor={local.unsubscribe_marketing ? "#ef4444" : "#f4f4f5"}
+          />
+        </View>
       </View>
 
       {/* Channel preferences */}

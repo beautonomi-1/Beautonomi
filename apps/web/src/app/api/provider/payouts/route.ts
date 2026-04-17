@@ -203,7 +203,7 @@ export async function POST(request: NextRequest) {
         payout_method: "bank_transfer",
         payout_account_details: Object.keys(payoutAccountDetails).length > 0 ? payoutAccountDetails : {},
         platform_fee_amount: 0,
-        platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 15),
+        platform_fee_percentage: Number(payoutSettings.platform_commission_percentage ?? 0),
         net_amount: numAmount,
         scheduled_at: now.toISOString(),
       })

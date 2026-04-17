@@ -411,6 +411,7 @@ export default function AdminReviews() {
                 setShowModerateDialog(true);
               }}
               onDelete={handleDelete}
+              onRefresh={loadReviews}
             />
           </TabsContent>
           <TabsContent value="visible" className="space-y-4">
@@ -423,6 +424,7 @@ export default function AdminReviews() {
                 setShowModerateDialog(true);
               }}
               onDelete={handleDelete}
+              onRefresh={loadReviews}
             />
           </TabsContent>
           <TabsContent value="hidden" className="space-y-4">
@@ -435,6 +437,7 @@ export default function AdminReviews() {
                 setShowModerateDialog(true);
               }}
               onDelete={handleDelete}
+              onRefresh={loadReviews}
             />
           </TabsContent>
           <TabsContent value="flagged" className="space-y-4">
@@ -447,6 +450,7 @@ export default function AdminReviews() {
                 setShowModerateDialog(true);
               }}
               onDelete={handleDelete}
+              onRefresh={loadReviews}
             />
             </TabsContent>
             </Tabs>
@@ -513,10 +517,12 @@ function ReviewList({
   reviews,
   onModerate,
   onDelete,
+  onRefresh,
 }: {
   reviews: Review[];
   onModerate: (review: Review, action: "hide" | "flag" | "edit") => void;
   onDelete: (reviewId: string) => void;
+  onRefresh?: () => void;
 }) {
   if (reviews.length === 0) {
     return (
@@ -595,8 +601,14 @@ function ReviewList({
                 ) : (
                   <DropdownMenuItem
                     onClick={async () => {
-                      await fetcher.patch(`/api/admin/reviews/${review.id}`, { is_visible: true });
-                      window.location.reload();
+                      try {
+                        await fetcher.patch(`/api/admin/reviews/${review.id}`, { is_visible: true });
+                        toast.success("Review is now visible");
+                        onRefresh?.();
+                      } catch (err) {
+                        console.error("Failed to show review:", err);
+                        toast.error("Failed to show review");
+                      }
                     }}
                   >
                     <Eye className="w-4 h-4 mr-2" />

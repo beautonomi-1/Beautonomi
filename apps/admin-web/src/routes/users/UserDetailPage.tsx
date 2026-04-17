@@ -17,6 +17,7 @@ import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 import { adminToolbarButtonClass } from "@/lib/adminUi";
+import { adminToast } from "@/lib/adminToast";
 import {
   AdminDataTable,
   AdminTableBody,
@@ -65,6 +66,12 @@ type WalletTxRow = {
   created_at?: string;
 };
 
+type WalletTxResponse = {
+  wallet?: { balance: number; currency: string } | null;
+  data?: WalletTxRow[];
+  meta?: { page: number; limit: number; total: number; has_more: boolean };
+};
+
 type UserDetail = Record<string, unknown> & {
   stats?: Record<string, unknown>;
   addresses?: Record<string, unknown>[];
@@ -106,6 +113,9 @@ export function UserDetailPage() {
   const [impersonateReason, setImpersonateReason] = useState("");
   const [roleDraft, setRoleDraft] = useState<ManageableUserRole | "">("");
   const [exportErr, setExportErr] = useState<string | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState("");
+  const [topUpReason, setTopUpReason] = useState("");
+  const [showTopUp, setShowTopUp] = useState(false);
 
   const q = useQuery({
     queryKey: adminQueryKeys.userDetail(id),
@@ -125,7 +135,7 @@ export function UserDetailPage() {
   const walletTxQ = useQuery({
     queryKey: adminQueryKeys.userWalletTransactions(id),
     queryFn: () =>
-      adminApi.getJson<WalletTxRow[]>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
+      adminApi.getJson<WalletTxResponse>(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
         timeoutMs: 60_000,
       }),
     enabled: allowed && !!id,
@@ -134,10 +144,16 @@ export function UserDetailPage() {
   const patch = useMutation({
     mutationFn: (body: Record<string, unknown>) =>
       adminApi.patchJson(`/api/admin/users/${encodeURIComponent(id)}`, body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+      if ("is_active" in vars) {
+        adminToast.success((vars as Record<string, unknown>).is_active ? "User activated" : "User deactivated");
+      } else {
+        adminToast.success("User updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update user: ${e.message}`),
   });
 
   const passwordPut = useMutation({
@@ -148,7 +164,9 @@ export function UserDetailPage() {
     onSuccess: () => {
       setNewPassword("");
       setConfirmPassword("");
+      adminToast.success("Password updated successfully");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update password: ${e.message}`),
   });
 
   const rolePut = useMutation({
@@ -157,7 +175,9 @@ export function UserDetailPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.users.all() });
+      adminToast.success("User role updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update role: ${e.message}`),
   });
 
   const impersonatePost = useMutation({
@@ -166,6 +186,32 @@ export function UserDetailPage() {
         `/api/admin/users/${encodeURIComponent(id)}/impersonate`,
         { reason }
       ),
+    onSuccess: () => adminToast.info("Impersonation session started"),
+    onError: (e: Error) => adminToast.error(`Impersonation failed: ${e.message}`),
+  });
+
+  const walletTopUp = useMutation({
+    mutationFn: (payload: { amount: number; reason: string }) =>
+      adminApi.postJson(`/api/admin/users/${encodeURIComponent(id)}/wallet-transactions`, {
+        type: "credit",
+        amount: payload.amount,
+        description: payload.reason,
+      }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userWalletTransactions(id) });
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.userDetail(id) });
+      setTopUpAmount("");
+      setTopUpReason("");
+      setShowTopUp(false);
+      adminToast.success("Wallet topped up successfully");
+    },
+    onError: (e: Error) => adminToast.error(`Wallet top-up failed: ${e.message}`),
+  });
+
+  const loyaltyQ = useQuery({
+    queryKey: adminQueryKeys.userLoyalty(id),
+    queryFn: () => adminApi.getJson<Record<string, unknown>>(`/api/admin/users/${encodeURIComponent(id)}/loyalty`, { timeoutMs: 30_000 }),
+    enabled: allowed && !!id,
   });
 
   const data = q.data;
@@ -189,6 +235,17 @@ export function UserDetailPage() {
       setRoleDraft("");
     }
   }, [data?.role]);
+
+  const customerRatingRows = useMemo(() => {
+    if (!data || str(data.role) !== "customer") return [];
+    const keys: [string, string][] = [
+      ["customer_review_rating_avg", "Avg from written reviews (providers rating customer)"],
+      ["customer_review_rating_count", "Written review count"],
+      ["customer_booking_rating_avg", "Avg from booking ratings"],
+      ["customer_booking_rating_count", "Booking rating count"],
+    ];
+    return keys.map(([k, label]) => ({ k, label, v: data[k] }));
+  }, [data]);
 
   if (denied) return denied;
   if (!id) return <AdminRetryBlock message="Missing user id" onRetry={() => {}} />;
@@ -222,17 +279,6 @@ export function UserDetailPage() {
 
   const displayName = str(data.full_name) || str(data.email) || id;
   const role = str(data.role);
-
-  const customerRatingRows = useMemo(() => {
-    if (role !== "customer") return [];
-    const keys: [string, string][] = [
-      ["customer_review_rating_avg", "Avg from written reviews (providers rating customer)"],
-      ["customer_review_rating_count", "Written review count"],
-      ["customer_booking_rating_avg", "Avg from booking ratings"],
-      ["customer_booking_rating_count", "Booking rating count"],
-    ];
-    return keys.map(([k, label]) => ({ k, label, v: data[k] }));
-  }, [role, data]);
 
   return (
     <div className="space-y-6">
@@ -587,7 +633,7 @@ export function UserDetailPage() {
               <h3 className="mt-6 text-sm font-semibold text-gray-900">Recent transactions</h3>
               {walletTxQ.isLoading ? (
                 <p className="mt-2 text-sm text-gray-500">Loading ledger…</p>
-              ) : (walletTxQ.data ?? []).length === 0 ? (
+              ) : (walletTxQ.data?.data ?? []).length === 0 ? (
                 <p className="mt-2 text-sm text-gray-500">No wallet movements yet.</p>
               ) : (
                 <AdminDataTable className="mt-3">
@@ -601,7 +647,7 @@ export function UserDetailPage() {
                     </tr>
                   </AdminTableHead>
                   <AdminTableBody>
-                    {(walletTxQ.data ?? []).map((tx) => (
+                    {(walletTxQ.data?.data ?? []).map((tx) => (
                       <tr key={str(tx.id)}>
                         <AdminTd>
                           {tx.created_at ? new Date(String(tx.created_at)).toLocaleString() : "—"}
@@ -646,6 +692,93 @@ export function UserDetailPage() {
           )}
         </AdminPanel>
       </div>
+
+      {/* Wallet Top-Up */}
+      <AdminPanel>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-gray-900">Wallet top-up</h2>
+          <button
+            type="button"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+            onClick={() => setShowTopUp((v) => !v)}
+          >
+            {showTopUp ? "Cancel" : "Top Up Wallet"}
+          </button>
+        </div>
+        {showTopUp && (
+          <div className="mt-4 space-y-3">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <label className="block text-sm text-gray-700">Amount (R)</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={topUpAmount}
+                  onChange={(e) => setTopUpAmount(e.target.value)}
+                  placeholder="e.g. 100.00"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="block text-sm text-gray-700">Reason</label>
+                <input
+                  type="text"
+                  value={topUpReason}
+                  onChange={(e) => setTopUpReason(e.target.value)}
+                  placeholder="e.g. Goodwill credit, refund"
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg bg-gray-900 px-4 py-2 text-sm text-white disabled:opacity-50"
+              disabled={walletTopUp.isPending || !topUpAmount || parseFloat(topUpAmount) <= 0}
+              onClick={() => {
+                const amount = parseFloat(topUpAmount);
+                if (!isNaN(amount) && amount > 0) {
+                  walletTopUp.mutate({ amount, reason: topUpReason.trim() || "Admin top-up" });
+                }
+              }}
+            >
+              {walletTopUp.isPending ? "Processing…" : "Credit Wallet"}
+            </button>
+            {walletTopUp.isSuccess && (
+              <p className="text-sm text-green-700">✓ Wallet credited successfully.</p>
+            )}
+            {walletTopUp.error && (
+              <p className="text-sm text-red-600">{walletTopUp.error.message}</p>
+            )}
+          </div>
+        )}
+      </AdminPanel>
+
+      {/* Loyalty Points */}
+      <AdminPanel>
+        <h2 className="text-lg font-semibold text-gray-900">Loyalty points</h2>
+        {loyaltyQ.isLoading ? (
+          <p className="mt-2 text-sm text-gray-400">Loading…</p>
+        ) : loyaltyQ.data ? (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {[
+                { label: "Balance", value: String(loyaltyQ.data.balance ?? loyaltyQ.data.points ?? "—") },
+                { label: "Tier / Level", value: String(loyaltyQ.data.tier ?? loyaltyQ.data.level ?? "—") },
+                { label: "Lifetime Earned", value: String(loyaltyQ.data.lifetime_earned ?? loyaltyQ.data.total_earned ?? "—") },
+                { label: "Lifetime Redeemed", value: String(loyaltyQ.data.lifetime_redeemed ?? loyaltyQ.data.total_redeemed ?? "—") },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 p-3">
+                  <div className="text-xs text-gray-500">{label}</div>
+                  <div className="mt-1 text-xl font-bold text-gray-900">{value}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-sm text-gray-500">No loyalty data available.</p>
+        )}
+      </AdminPanel>
 
       <AdminPanel>
         <h2 className="text-lg font-semibold text-gray-900">Support tickets</h2>

@@ -69,12 +69,19 @@ export async function POST(request: NextRequest) {
     const body = createSchema.parse(await request.json());
     const { data: provider } = await supabase
       .from("providers")
-      .select("id")
+      .select("id, accepts_custom_requests")
       .eq("id", body.provider_id)
       .eq("tenant_id", tenantId)
       .maybeSingle();
     if (!provider?.id) {
       return errorResponse("Provider not available in this market", "TENANT_MISMATCH", 404);
+    }
+    if ((provider as { accepts_custom_requests?: boolean | null }).accepts_custom_requests === false) {
+      return errorResponse(
+        "This provider is not accepting custom service requests",
+        "CUSTOM_REQUESTS_DISABLED",
+        403,
+      );
     }
 
     const preferredIso = body.preferred_start_at ? new Date(body.preferred_start_at).toISOString() : null;

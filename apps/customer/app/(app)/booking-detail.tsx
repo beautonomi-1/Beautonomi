@@ -43,28 +43,50 @@ import {
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 
-function formatDate(s: string) {
+const DEFAULT_TZ = "Africa/Johannesburg";
+
+function formatDate(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  try {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleDateString("en-US", {
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  }
 }
-function formatTime(s: string) {
+function formatTime(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleTimeString("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
+  try {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: tz || DEFAULT_TZ,
+    });
+  } catch {
+    return parsed.toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }
 }
 
 function formatDateForCalendar(d: Date): string {
-  return d.toISOString().replace(/[-:]/g, "").split(".")[0];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
 function parseValidDate(value: unknown): Date | null {
@@ -74,12 +96,12 @@ function parseValidDate(value: unknown): Date | null {
 }
 
 function getGoogleCalendarUrl(params: { title: string; description: string; location: string; start: Date; end: Date }): string {
-  const startStr = formatDateForCalendar(params.start) + "Z";
-  const endStr = formatDateForCalendar(params.end) + "Z";
+  const startStr = formatDateForCalendar(params.start);
+  const endStr = formatDateForCalendar(params.end);
   const q = new URLSearchParams({
     action: "TEMPLATE",
     text: params.title,
-    dates: `${startStr.replace("Z", "")}/${endStr.replace("Z", "")}`,
+    dates: `${startStr}/${endStr}`,
     location: params.location,
     details: params.description,
   });
@@ -102,6 +124,9 @@ export default function BookingDetailScreen() {
   const [cancelling, setCancelling] = useState(false);
   const [icsLoading, setIcsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<"tracking" | "receipt" | "details">("tracking");
+  const [cancelReasonModalOpen, setCancelReasonModalOpen] = useState(false);
+  const [cancelReasonText, setCancelReasonText] = useState("");
+  const cancelPendingRef = useRef<{ version?: number } | null>(null);
   const [resendCooldownUntil, setResendCooldownUntil] = useState<number | null>(null);
   const [showFallbackInput, setShowFallbackInput] = useState(false);
   const [fallbackOtp, setFallbackOtp] = useState("");
@@ -112,6 +137,7 @@ export default function BookingDetailScreen() {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [payRemainingLoading, setPayRemainingLoading] = useState(false);
   const hasLoadedOnce = useRef(false);
+  const referralPostedBookingIds = useRef<Set<string>>(new Set());
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     if (!id) return;
@@ -150,6 +176,18 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     load();
   }, [id, load]);
+
+  // Referral conversion (same as web confirmation): once per booking id per session; ignore expected 400/404.
+  useEffect(() => {
+    if (!id || !booking) return;
+    if (referralPostedBookingIds.current.has(id)) return;
+    referralPostedBookingIds.current.add(id);
+    void api.post("/api/me/referrals/track", { booking_id: id }).then((res) => {
+      if (!res.error) return;
+      const st = (res.error as { status?: number }).status;
+      if (st === 400 || st === 404) return;
+    });
+  }, [id, booking]);
 
   // Refetch when screen gains focus after initial load (e.g. return from in-app browser after paying additional charge)
   useFocusEffect(
@@ -339,7 +377,7 @@ export default function BookingDetailScreen() {
           ? "You are inside the late-cancellation window."
           : "You are within the normal cancellation window.");
     } catch {
-      // Keep default message if preview fails (matches web fallback)
+      message += "\n\n(Could not load refund estimate. You can still cancel.)";
     }
 
     Alert.alert("Cancel Booking", message, [
@@ -347,38 +385,47 @@ export default function BookingDetailScreen() {
       {
         text: "Cancel Booking",
         style: "destructive",
-        onPress: async () => {
-          setCancelling(true);
-          haptic.medium();
-          try {
-            const version = typeof booking.version === "number" ? booking.version : undefined;
-            const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
-              reason: "Customer request",
-              ...(version !== undefined ? { version } : {}),
-            });
-            if (res.error) {
-              const st = (res.error as { status?: number }).status;
-              if (st === 409) {
-                Alert.alert(
-                  "Could not cancel",
-                  "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
-                );
-                load();
-              } else {
-                Alert.alert("Error", res.error.message || "Failed to cancel");
-              }
-            } else {
-              haptic.success();
-              load();
-            }
-          } catch (e) {
-            Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
-          } finally {
-            setCancelling(false);
-          }
+        onPress: () => {
+          const version = typeof booking.version === "number" ? booking.version : undefined;
+          cancelPendingRef.current = { version };
+          setCancelReasonText("");
+          setCancelReasonModalOpen(true);
         },
       },
     ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking, id, load]);
+
+  const submitCancellation = useCallback(async (reason: string) => {
+    setCancelReasonModalOpen(false);
+    setCancelling(true);
+    haptic.medium();
+    try {
+      const pending = cancelPendingRef.current;
+      const res = await api.post<{ booking?: unknown }>(`/api/me/bookings/${id}/cancel`, {
+        reason: reason.trim() || "Customer request",
+        ...(pending?.version !== undefined ? { version: pending.version } : {}),
+      });
+      if (res.error) {
+        const st = (res.error as { status?: number }).status;
+        if (st === 409) {
+          Alert.alert(
+            "Could not cancel",
+            "This booking was modified. We refreshed your details — please try again if you still want to cancel.",
+          );
+          load();
+        } else {
+          Alert.alert("Error", res.error.message || "Failed to cancel");
+        }
+      } else {
+        haptic.success();
+        load();
+      }
+    } catch (e) {
+      Alert.alert("Error", getApiErrorMessage(e as Error, "Failed to cancel"));
+    } finally {
+      setCancelling(false);
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load is stable
   }, [booking, id]);
 
@@ -387,13 +434,23 @@ export default function BookingDetailScreen() {
     haptic.light();
     const provider = booking.provider;
     if (provider?.slug) {
+      const serviceIds = (booking.services ?? [])
+        .map((s: any) => s.offering_id)
+        .filter(Boolean)
+        .join(",");
+      const staffId = (booking.services ?? []).find((s: any) => s.staff_id)?.staff_id;
+      const rescheduleParams: Record<string, string> = {
+        slug: provider.slug,
+        reschedule_booking_id: booking.id,
+      };
+      if (serviceIds) rescheduleParams.service_ids = serviceIds;
+      else if (booking.services?.[0]?.offering_id) rescheduleParams.service_id = booking.services[0].offering_id;
+      if (staffId) rescheduleParams.staff_id = staffId;
+      if ((booking as any).location_type) rescheduleParams.location_type = (booking as any).location_type;
+      if ((booking as any).location_id) rescheduleParams.location_id = (booking as any).location_id;
       router.push({
         pathname: "/(app)/book",
-        params: {
-          slug: provider.slug,
-          service_id: booking.services?.[0]?.offering_id ?? "",
-          reschedule_booking_id: booking.id,
-        },
+        params: rescheduleParams,
       });
     } else {
       openInBrowser();
@@ -405,11 +462,16 @@ export default function BookingDetailScreen() {
   const needsPayment =
     booking &&
     !isCashBooking &&
-    (booking.status === "pending" || booking.payment_status === "pending") &&
+    booking.status === "pending" &&
+    booking.payment_status === "pending" &&
     booking.total_amount > 0;
 
   const handlePay = async () => {
-    if (!booking || !user?.email) return;
+    if (!booking) return;
+    if (!user?.email) {
+      Alert.alert("Email required", "Please add an email to your account before making a payment.");
+      return;
+    }
     const result = await pay({
       booking_id: booking.id,
       amount: booking.total_amount,
@@ -583,8 +645,8 @@ export default function BookingDetailScreen() {
   const provider = booking.provider;
   const location = booking.location;
   const services = booking.services ?? booking.booking_services ?? [];
-  const isActive = ["pending", "confirmed", "started", "in_progress"].includes(booking.status);
-  const canCancel = isActive && booking.status !== "started" && booking.status !== "in_progress";
+  const isActive = ["pending", "confirmed", "started", "in_progress", "waiting", "checked_in"].includes(booking.status);
+  const canCancel = isActive && !["started", "in_progress", "waiting", "checked_in"].includes(booking.status);
   const bookingRef = booking.booking_number || (booking.id ? booking.id.slice(0, 8).toUpperCase() : "");
   const helpUrl = (onDemandConfig?.ui_copy as Record<string, string> | undefined)?.waiting_help_url?.trim();
 
@@ -612,8 +674,12 @@ export default function BookingDetailScreen() {
                 <Ionicons name="checkmark-circle" size={24} color="#16a34a" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>Booking confirmed {formatTime(booking.selected_datetime)}</Text>
-                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>Your booking with {provider?.business_name || "your provider"} is confirmed.</Text>
+                <Text style={{ fontWeight: "600", color: Colors.gray[900] }}>
+                  {booking.status === "pending" ? "Booking pending" : booking.status === "waiting" ? "Checked in — waiting" : booking.status === "checked_in" ? "You're checked in" : booking.status === "in_progress" || booking.status === "started" ? "Service in progress" : "Booking confirmed"} {formatTime(booking.selected_datetime, booking.display_time_zone)}
+                </Text>
+                <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>
+                  {booking.status === "pending" ? `Awaiting confirmation from ${provider?.business_name || "your provider"}.` : booking.status === "waiting" ? "The provider will be with you shortly." : booking.status === "checked_in" ? "You've arrived. The provider knows you're here." : `Your booking with ${provider?.business_name || "your provider"} is confirmed.`}
+                </Text>
               </View>
             </View>
             {helpUrl ? (
@@ -659,11 +725,13 @@ export default function BookingDetailScreen() {
                     ? "Service in progress"
                     : booking.status === "cancelled"
                       ? "Booking cancelled"
-                      : isProviderArrived
-                        ? "Provider has arrived"
-                        : isProviderEnRoute
-                          ? "Provider on the way"
-                          : "Your visit is confirmed"}
+                      : booking.status === "no_show"
+                        ? "Marked as no-show"
+                        : isProviderArrived
+                          ? "Provider has arrived"
+                          : isProviderEnRoute
+                            ? "Provider on the way"
+                            : "Your visit is confirmed"}
               </Text>
               <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 12 }}>
                 <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: Colors.primaryLight, alignItems: "center", justifyContent: "center", marginRight: 12, marginBottom: 12 }}>
@@ -885,8 +953,8 @@ export default function BookingDetailScreen() {
             {/* Scheduled time */}
             <View style={{ borderRadius: 16, backgroundColor: Colors.gray[50], padding: 16, marginBottom: 16 }}>
               <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 4 }}>Scheduled for</Text>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime)}</Text>
-              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime)}</Text>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900] }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginTop: 2 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
               {provider?.business_name ? (
                 <Text style={{ fontSize: 14, color: Colors.gray[500], marginTop: 8 }}>at {provider.business_name}</Text>
               ) : null}
@@ -901,12 +969,14 @@ export default function BookingDetailScreen() {
               {booking.subtotal != null && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Subtotal</Text>
-                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.subtotal).toFixed(2)}</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Math.max(0, Number(booking.subtotal) - Number((booking as any).travel_fee || 0)).toFixed(2)}</Text>
                 </View>
               )}
               {booking.tax_amount > 0 && (
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
-                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Tax</Text>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                    Tax{Number((booking as any).tax_rate || 0) > 0 ? ` (${Number((booking as any).tax_rate)}%)` : ""}
+                  </Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number(booking.tax_amount).toFixed(2)}</Text>
                 </View>
               )}
@@ -914,6 +984,29 @@ export default function BookingDetailScreen() {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Discount</Text>
                   <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number(booking.discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).loyalty_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>
+                    Loyalty
+                    {Number((booking as any).loyalty_points_used || 0) > 0
+                      ? ` (${Number((booking as any).loyalty_points_used).toLocaleString()} pts)`
+                      : ""}
+                  </Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).loyalty_discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).membership_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Membership</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).membership_discount_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).promotion_discount_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Promotion</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).promotion_discount_amount).toFixed(2)}</Text>
                 </View>
               )}
               {Number((booking as any).service_fee_amount) > 0 && (
@@ -926,6 +1019,12 @@ export default function BookingDetailScreen() {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
                   <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Travel fee</Text>
                   <Text style={{ fontSize: 14, color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).travel_fee).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).gift_card_amount) > 0 && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[500] }}>Gift card</Text>
+                  <Text style={{ fontSize: 14, color: "#16a34a" }}>-{booking.currency} {Number((booking as any).gift_card_amount).toFixed(2)}</Text>
                 </View>
               )}
               {Number((booking as any).tip_amount) > 0 && (
@@ -944,11 +1043,28 @@ export default function BookingDetailScreen() {
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>Total</Text>
                 <Text style={{ fontSize: 16, fontWeight: "700", color: Colors.gray[900] }}>{booking.currency} {Number(booking.total_amount || 0).toFixed(2)}</Text>
               </View>
+              {/* Deposit context */}
+              {(booking as any).deposit_required && (booking as any).payment_option === "deposit" && Number((booking as any).deposit_amount || 0) > 0 && (
+                <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>
+                    Deposit{(booking as any).deposit_percentage ? ` (${(booking as any).deposit_percentage}%)` : ""}
+                  </Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>
+                    {booking.currency} {Number((booking as any).deposit_amount).toFixed(2)}
+                  </Text>
+                </View>
+              )}
               {/* Wallet credit applied — only shown when wallet was used */}
               {Number((booking as any).wallet_amount || 0) > 0 && (
                 <View style={{ marginTop: 6, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <Text style={{ fontSize: 13, color: "#059669" }}>Wallet credit applied</Text>
                   <Text style={{ fontSize: 13, fontWeight: "600", color: "#059669" }}>-{booking.currency} {Number((booking as any).wallet_amount).toFixed(2)}</Text>
+                </View>
+              )}
+              {Number((booking as any).wallet_amount || 0) > 0 && Number((booking as any).total_paid || 0) > 0 && (
+                <View style={{ marginTop: 4, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <Text style={{ fontSize: 13, color: Colors.gray[600] }}>Paid via card</Text>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: Colors.gray[700] }}>{booking.currency} {Number((booking as any).total_paid).toFixed(2)}</Text>
                 </View>
               )}
               {booking.payment_status && (
@@ -998,36 +1114,82 @@ export default function BookingDetailScreen() {
             )}
             {(() => {
               const charges = booking?.additional_charges ?? [];
-              const unpaidCharges = charges.filter((c: any) => c.status === "pending" || c.status === "approved");
-              if (unpaidCharges.length === 0) return null;
+              if (charges.length === 0) return null;
               return (
                 <View style={{ marginBottom: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.gray[50], padding: 12 }}>
                   <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Additional charges</Text>
-                  {unpaidCharges.map((c: any) => (
-                    <View key={c.id} style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 8, borderBottomWidth: unpaidCharges.length > 1 ? 1 : 0, borderBottomColor: Colors.gray[100] }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
-                        <Text style={{ fontSize: 13, color: Colors.gray[500] }}>{booking.currency} {Number(c.amount || 0).toFixed(2)}</Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => {
-                          haptic.light();
-                          router.push({
-                            pathname: "/(app)/in-app-browser",
-                            params: {
-                              url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
-                              title: "Pay additional charge",
-                            },
-                          } as never);
+                  {charges.map((c: any, idx: number) => {
+                    const unpaid = c.status === "pending" || c.status === "approved";
+                    const cur = (c.currency as string | undefined) || booking.currency;
+                    const statusRaw = typeof c.status === "string" ? c.status : "";
+                    const statusLabel = statusRaw.replace(/_/g, " ");
+                    return (
+                      <View
+                        key={String(c.id ?? idx)}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 8,
+                          borderBottomWidth: idx < charges.length - 1 ? 1 : 0,
+                          borderBottomColor: Colors.gray[100],
                         }}
-                        style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
-                        accessibilityRole="button"
-                        accessibilityLabel="Pay additional charge"
                       >
-                        <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
+                        <View style={{ flex: 1, marginRight: 8 }}>
+                          <Text style={{ fontSize: 14, color: Colors.gray[800] }}>{c.description || "Additional charge"}</Text>
+                          <Text style={{ fontSize: 13, color: Colors.gray[500] }}>
+                            {cur} {Number(c.amount || 0).toFixed(2)}
+                          </Text>
+                          {c.paid_at ? (
+                            <Text style={{ fontSize: 12, color: Colors.gray[400], marginTop: 2 }}>
+                              Paid on {new Date(c.paid_at).toLocaleDateString()}
+                            </Text>
+                          ) : null}
+                        </View>
+                        {unpaid ? (
+                          <TouchableOpacity
+                            onPress={() => {
+                              haptic.light();
+                              router.push({
+                                pathname: "/(app)/in-app-browser",
+                                params: {
+                                  url: encodeURIComponent(`${APP_URL}/account-settings/bookings/${booking.id}/pay-additional/${c.id}`),
+                                  title: "Pay additional charge",
+                                },
+                              } as never);
+                            }}
+                            style={{ backgroundColor: Colors.primary, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8 }}
+                            accessibilityRole="button"
+                            accessibilityLabel="Pay additional charge"
+                          >
+                            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.white }}>Pay</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 6,
+                              borderRadius: 8,
+                              backgroundColor:
+                                c.status === "paid" ? "#DCFCE7" : c.status === "rejected" ? "#FEE2E2" : Colors.gray[100],
+                            }}
+                          >
+                            <Text
+                              style={{
+                                fontSize: 12,
+                                fontWeight: "600",
+                                textTransform: "capitalize",
+                                color:
+                                  c.status === "paid" ? "#15803d" : c.status === "rejected" ? "#B91C1C" : Colors.gray[700],
+                              }}
+                            >
+                              {statusLabel || "—"}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               );
             })()}
@@ -1036,18 +1198,46 @@ export default function BookingDetailScreen() {
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], marginRight: 12 }}
                 onPress={() => {
                   haptic.light();
+                  const cur = booking.currency || "ZAR";
+                  const paymentExtras: string[] = [];
+                  if (booking.is_group_booking && booking.group_booking_ref) {
+                    paymentExtras.push(`Group reference: ${booking.group_booking_ref}`);
+                  }
+                  if (Number(booking.tax_amount) > 0) {
+                    paymentExtras.push(`Tax: ${cur} ${Number(booking.tax_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).tip_amount) > 0) {
+                    paymentExtras.push(`Tip: ${cur} ${Number((booking as any).tip_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).gift_card_amount) > 0) {
+                    paymentExtras.push(`Gift card: -${cur} ${Number((booking as any).gift_card_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).loyalty_discount_amount) > 0) {
+                    paymentExtras.push(`Loyalty: -${cur} ${Number((booking as any).loyalty_discount_amount).toFixed(2)}`);
+                  }
+                  if (Number((booking as any).wallet_amount) > 0) {
+                    paymentExtras.push(`Wallet: -${cur} ${Number((booking as any).wallet_amount).toFixed(2)}`);
+                  }
+                  if (typeof booking.outstanding_balance === "number" && booking.outstanding_balance > 0) {
+                    paymentExtras.push(`Outstanding: ${cur} ${Number(booking.outstanding_balance).toFixed(2)}`);
+                  }
                   const lines = [
                     `Beautonomi Booking`,
                     `Booking #${booking.booking_number || booking.id?.slice(0, 8) || ""}`,
                     ``,
                     `Provider: ${provider?.business_name || "N/A"}`,
-                    `Date: ${formatDate(booking.selected_datetime)}`,
-                    `Time: ${formatTime(booking.selected_datetime)}`,
+                    `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
+                    `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                     `Status: ${booking.status}`,
                     ``,
-                    ...(services || []).map((svc: any) => `• ${svc.offering_name || svc.service_name || "Service"} – ${booking.currency} ${Number(svc.price || 0).toFixed(2)}`),
+                    ...(services || []).map((svc: any) => {
+                      const title = svc.offering_name || svc.service_name || "Service";
+                      const guest = svc.guest_name ? ` (${String(svc.guest_name)})` : "";
+                      return `• ${title}${guest} – ${cur} ${Number(svc.price || 0).toFixed(2)}`;
+                    }),
+                    ...(paymentExtras.length > 0 ? ["", ...paymentExtras] : []),
                     ``,
-                    `Total: ${booking.currency} ${Number(booking.total_amount || 0).toFixed(2)}`,
+                    `Total: ${cur} ${Number(booking.total_amount || 0).toFixed(2)}`,
                     ``,
                     `View: ${APP_URL}/account-settings/bookings/${booking.id}`,
                   ];
@@ -1060,7 +1250,35 @@ export default function BookingDetailScreen() {
                 <Text style={{ marginLeft: 8, fontWeight: "500", color: Colors.gray[700] }}>Share</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                onPress={() => { haptic.light(); Linking.openURL(`${APP_URL}/account-settings/bookings/${booking.id}?print=1`); }}
+                onPress={async () => {
+                  // §Customer-launch (audit 2026-04): receipt downloads used
+                  // to just deep-link to the web app's print page, which is
+                  // not logged in outside the Expo app. Mint a short-lived
+                  // HMAC-signed URL against the authenticated API and open
+                  // the PDF directly in the system viewer.
+                  haptic.light();
+                  try {
+                    const res = await api.post<{ url?: string }>(
+                      `/api/bookings/${booking.id}/receipt/signed-url`,
+                      {},
+                    );
+                    const url = res.data?.url;
+                    if (res.error || !url) {
+                      Alert.alert(
+                        "Download receipt",
+                        (res.error as { message?: string })?.message ??
+                          "Could not generate receipt. Please try again.",
+                      );
+                      return;
+                    }
+                    await Linking.openURL(url);
+                  } catch {
+                    Alert.alert(
+                      "Download receipt",
+                      "Something went wrong while preparing the receipt.",
+                    );
+                  }
+                }}
                 style={{ flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200] }}
                 accessibilityRole="button"
                 accessibilityLabel="Download"
@@ -1085,15 +1303,15 @@ export default function BookingDetailScreen() {
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
             <View style={{ flex: 1 }}>
               <Text style={{ fontSize: 18, fontWeight: "600", color: Colors.gray[900] }}>{provider?.business_name || "Provider"}</Text>
-              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime)}</Text>
-              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime)}</Text>
+              <Text style={{ color: Colors.gray[600], marginTop: 4 }}>{formatDate(booking.selected_datetime, booking.display_time_zone)}</Text>
+              <Text style={{ color: Colors.gray[500], fontSize: 14 }}>{formatTime(booking.selected_datetime, booking.display_time_zone)}</Text>
             </View>
             <View
               style={{
                 paddingHorizontal: 12,
                 paddingVertical: 4,
                 borderRadius: 9999,
-                backgroundColor: booking.status === "confirmed" ? "#DCFCE7" : booking.status === "cancelled" ? "#FEE2E2" : booking.status === "completed" ? "#DBEAFE" : "#FEF3C7",
+                backgroundColor: booking.status === "confirmed" ? "#DCFCE7" : booking.status === "cancelled" || booking.status === "no_show" ? "#FEE2E2" : booking.status === "completed" ? "#DBEAFE" : booking.status === "in_progress" || booking.status === "started" ? "#EDE9FE" : booking.status === "waiting" || booking.status === "checked_in" ? "#E0F2FE" : "#FEF3C7",
               }}
             >
               <Text
@@ -1101,10 +1319,10 @@ export default function BookingDetailScreen() {
                   fontSize: 12,
                   fontWeight: "600",
                   textTransform: "capitalize",
-                  color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : "#B45309",
+                  color: booking.status === "confirmed" ? "#15803d" : booking.status === "cancelled" || booking.status === "no_show" ? "#B91C1C" : booking.status === "completed" ? "#1D4ED8" : booking.status === "in_progress" || booking.status === "started" ? "#7C3AED" : booking.status === "waiting" || booking.status === "checked_in" ? "#0369A1" : "#B45309",
                 }}
               >
-                {booking.status}
+                {booking.status === "no_show" ? "No show" : booking.status === "in_progress" || booking.status === "started" ? "In progress" : booking.status === "checked_in" ? "Checked in" : booking.status}
               </Text>
             </View>
           </View>
@@ -1133,6 +1351,47 @@ export default function BookingDetailScreen() {
                   </View>
                   <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
                     {booking.currency} {price.toFixed(2)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Add-ons */}
+        {Array.isArray((booking as any).addons) && (booking as any).addons.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Add-ons</Text>
+            {((booking as any).addons as Record<string, unknown>[]).map((addon, i) => {
+              const addonName = String(addon.offering_name ?? addon.addon_name ?? "Add-on");
+              const qty = Number(addon.quantity ?? 1);
+              const price = Number(addon.price ?? 0);
+              return (
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{addonName}{qty > 1 ? ` x${qty}` : ""}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                    {booking.currency} {(price * qty).toFixed(2)}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
+        {/* Products */}
+        {Array.isArray((booking as any).products) && (booking as any).products.length > 0 && (
+          <View style={{ marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Products</Text>
+            {((booking as any).products as Record<string, unknown>[]).map((prod, i) => {
+              const prodName = String(prod.product_name ?? "Product");
+              const qty = Number(prod.quantity ?? 1);
+              const unitPrice = Number(prod.unit_price ?? 0);
+              const totalPrice = Number(prod.total_price ?? unitPrice * qty);
+              return (
+                <View key={i} style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.gray[100] }}>
+                  <Text style={{ fontSize: 14, color: Colors.gray[800], flex: 1 }}>{prodName}{qty > 1 ? ` x${qty}` : ""}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: "500", color: Colors.gray[900] }}>
+                    {booking.currency} {totalPrice.toFixed(2)}
                   </Text>
                 </View>
               );
@@ -1372,6 +1631,54 @@ export default function BookingDetailScreen() {
           </TouchableOpacity>
         )}
 
+        {/*
+          §Customer-launch (audit 2026-04): previously the only way to
+          contact a provider from a booking was to back out to the
+          partner profile or open the web site. Add a native CTA so
+          customers can ask about confirmation, arrival, follow-up, etc.
+          directly from the booking context (mirrors the "Message
+          Provider" button we added on the web confirmation page).
+        */}
+        {provider?.id && booking.status !== "cancelled" && (
+          <TouchableOpacity
+            onPress={() => {
+              haptic.light();
+              router.push({
+                pathname: "/(app)/chat",
+                params: {
+                  provider_id: provider.id,
+                  provider_name: provider.business_name || "Provider",
+                  booking_id: booking.id,
+                },
+              });
+            }}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              paddingVertical: 14,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: Colors.primary,
+              backgroundColor: `${Colors.primary}0D`,
+              marginBottom: 12,
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Message ${provider.business_name || "provider"}`}
+            accessibilityHint="Start a chat with the provider about this booking"
+          >
+            <Ionicons
+              name="chatbubble-ellipses-outline"
+              size={18}
+              color={Colors.primary}
+              style={{ marginRight: 8 }}
+            />
+            <Text style={{ fontWeight: "600", color: Colors.primary }}>
+              Message Provider
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Share / Download actions */}
         <View style={{ flexDirection: "row", marginBottom: 12 }}>
           <TouchableOpacity
@@ -1382,8 +1689,8 @@ export default function BookingDetailScreen() {
                 `Booking #${booking.booking_number || booking.id.slice(0, 8)}`,
                 ``,
                 `Provider: ${provider?.business_name || "N/A"}`,
-                `Date: ${formatDate(booking.selected_datetime)}`,
-                `Time: ${formatTime(booking.selected_datetime)}`,
+                `Date: ${formatDate(booking.selected_datetime, booking.display_time_zone)}`,
+                `Time: ${formatTime(booking.selected_datetime, booking.display_time_zone)}`,
                 `Status: ${booking.status}`,
                 ``,
                 ...services.map(
@@ -1487,6 +1794,56 @@ export default function BookingDetailScreen() {
             >
               <Text style={{ color: Colors.gray[600], fontWeight: "500", fontSize: 15 }}>Maybe later</Text>
             </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Cancel reason modal */}
+      <Modal visible={cancelReasonModalOpen} transparent animationType="fade" onRequestClose={() => setCancelReasonModalOpen(false)}>
+        <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonModalOpen(false)}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Why are you cancelling?</Text>
+            {["Change of plans", "Found another provider", "Scheduling conflict", "Other"].map((reason) => (
+              <TouchableOpacity
+                key={reason}
+                onPress={() => {
+                  if (reason === "Other") {
+                    setCancelReasonText("");
+                  } else {
+                    setCancelReasonText(reason);
+                  }
+                }}
+                style={{
+                  paddingVertical: 12, paddingHorizontal: 14, borderRadius: 10, marginBottom: 6,
+                  backgroundColor: cancelReasonText === reason ? Colors.primaryLight : "#F3F4F6",
+                }}
+              >
+                <Text style={{ fontSize: 14, color: cancelReasonText === reason ? Colors.primary : "#374151" }}>{reason}</Text>
+              </TouchableOpacity>
+            ))}
+            {!["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+              <TextInput
+                value={cancelReasonText}
+                onChangeText={setCancelReasonText}
+                placeholder="Tell us why (optional)"
+                multiline
+                style={{ borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 10, padding: 12, fontSize: 14, minHeight: 64, textAlignVertical: "top", marginTop: 6, marginBottom: 16 }}
+              />
+            )}
+            {["Change of plans", "Found another provider", "Scheduling conflict"].includes(cancelReasonText) && (
+              <View style={{ marginBottom: 16 }} />
+            )}
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity onPress={() => setCancelReasonModalOpen(false)} style={{ flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: "#D1D5DB", alignItems: "center" }}>
+                <Text style={{ fontWeight: "600", color: "#374151" }}>Back</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => submitCancellation(cancelReasonText)}
+                style={{ flex: 1, paddingVertical: 12, borderRadius: 10, backgroundColor: "#DC2626", alignItems: "center" }}
+              >
+                <Text style={{ fontWeight: "600", color: "#fff" }}>Cancel booking</Text>
+              </TouchableOpacity>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>

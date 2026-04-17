@@ -8,10 +8,16 @@ import {
   handleApiError,
   getProviderIdForUser,
   normalizePhoneToE164,
+  errorResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
+import {
+  parseAddressFromBody,
+  upsertCustomerDefaultAddress,
+  CustomerHomeAddressLockedError,
+} from "@/lib/provider-portal/user-default-address";
 
 /**
  * Helper function to create a walk-in email
@@ -350,35 +356,6 @@ export async function POST(request: NextRequest) {
         // For constraint violations, just log and continue
       }
 
-      // Create address if provided
-      if (body.address && body.address.line1 && body.address.city) {
-        const addressData = {
-          user_id: customerId,
-          address_line1: body.address.line1,
-          address_line2: body.address.line2 || null,
-          city: body.address.city,
-          state: body.address.state || null,
-          postal_code: body.address.postal_code || null,
-          country: body.address.country || "ZA",
-          is_default: true,
-        };
-
-        // Unset other defaults first
-        await supabaseAdmin
-          .from("user_addresses")
-          .update({ is_default: false })
-          .eq("user_id", customerId)
-          .eq("is_default", true);
-
-        const { error: addressError } = await supabaseAdmin
-          .from("user_addresses")
-          .insert(addressData);
-
-        if (addressError) {
-          console.error("Error creating address:", addressError);
-          // Don't fail, just log the error
-        }
-      }
     } else {
       // User exists, update their profile if needed
       const userUpdates: Record<string, any> = {};
@@ -407,43 +384,18 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Update or create address if provided
-      if (body.address && body.address.line1 && body.address.city) {
-        const { data: existingAddress } = await supabaseAdmin
-          .from("user_addresses")
-          .select("id")
-          .eq("user_id", customerId)
-          .eq("is_default", true)
-          .maybeSingle();
+    }
 
-        const addressData = {
-          user_id: customerId,
-          address_line1: body.address.line1,
-          address_line2: body.address.line2 || null,
-          city: body.address.city,
-          state: body.address.state || null,
-          postal_code: body.address.postal_code || null,
-          country: body.address.country || "ZA",
-          is_default: true,
-        };
-
-        if (existingAddress) {
-          await supabaseAdmin
-            .from("user_addresses")
-            .update(addressData)
-            .eq("id", existingAddress.id);
-        } else {
-          await supabaseAdmin
-            .from("user_addresses")
-            .update({ is_default: false })
-            .eq("user_id", customerId)
-            .eq("is_default", true);
-
-          await supabaseAdmin
-            .from("user_addresses")
-            .insert(addressData);
-        }
+    try {
+      const ap = parseAddressFromBody(body);
+      if (ap) {
+        await upsertCustomerDefaultAddress(supabaseAdmin, customerId, ap);
       }
+    } catch (addrErr) {
+      if (addrErr instanceof CustomerHomeAddressLockedError) {
+        return errorResponse(addrErr.message, addrErr.code, 403);
+      }
+      console.error("Error saving client address (create route):", addrErr);
     }
 
     // Now add to provider_clients table

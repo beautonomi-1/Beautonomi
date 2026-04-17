@@ -1,10 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireAdminSection,
-  successResponse,
-  handleApiError,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+import { requireSuperadmin, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 
 /**
  * POST /api/admin/gods-eye/retention
@@ -13,7 +9,7 @@ import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const admin = getSupabaseAdmin();
     const { data, error } = await admin.rpc("purge_old_provider_location_events");
     if (error) throw error;

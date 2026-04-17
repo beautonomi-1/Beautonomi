@@ -165,10 +165,21 @@ export function OnboardingWizardProvider({ children }: { children: ReactNode }) 
   const persistDraft = useCallback(async (data: Partial<OnboardingFormData>, step: number) => {
     setSavingDraft(true);
     try {
-      await api.post("/api/provider/onboarding/draft", {
+      const res = await api.post("/api/provider/onboarding/draft", {
         draft_data: data,
         current_step: step,
       });
+      if (res.error) {
+        try {
+          await AsyncStorage.setItem(
+            LOCAL_DRAFT_KEY,
+            JSON.stringify({ draft_data: data, current_step: step }),
+          );
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       try {
         await AsyncStorage.removeItem(LOCAL_DRAFT_KEY);
       } catch {

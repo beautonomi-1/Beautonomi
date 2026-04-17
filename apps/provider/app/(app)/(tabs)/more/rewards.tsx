@@ -63,8 +63,11 @@ export function RewardsPointsContent() {
   );
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const points = data?.points ?? { total: 0, lifetime: 0, current_tier: 0 };

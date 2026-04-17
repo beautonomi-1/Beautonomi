@@ -92,8 +92,10 @@ export async function GET(request: NextRequest) {
     }
 
     const slug = encodeURIComponent(provider.slug || provider.id);
-    const bookingUrl = `${baseUrl}/book/${slug}`;
-    const embedUrl = `${bookingUrl}?embed=1`;
+    // Canonical booking URL (F23): /booking?slug=...
+    // `/book/[slug]` is kept only for `?embed=1` and multi-service deep links.
+    const bookingUrl = `${baseUrl}/booking?slug=${slug}`;
+    const embedUrl = `${baseUrl}/book/${slug}?embed=1`;
 
     return successResponse({
       id: provider.id,
@@ -203,13 +205,14 @@ export async function PATCH(request: NextRequest) {
     }
 
     const slug = encodeURIComponent(provider.slug || provider.id);
-    const bookingUrl = `${baseUrl}/book/${slug}`;
+    const bookingUrl = `${baseUrl}/booking?slug=${slug}`;
+    const embedUrl = `${baseUrl}/book/${slug}?embed=1`;
 
     return successResponse({
       id: provider.id,
       slug: provider.slug || provider.id,
       url: bookingUrl,
-      embed_url: `${bookingUrl}?embed=1`,
+      embed_url: embedUrl,
       script_url: `${baseUrl}/embed/booking-button.js`,
       is_active: provider.online_booking_enabled ?? true,
     });

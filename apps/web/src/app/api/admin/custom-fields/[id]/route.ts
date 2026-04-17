@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { successResponse, handleApiError, requireAdminSection  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PLATFORM_CONFIG } from "@/lib/admin-sections";
 import { z } from "zod";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const updateCustomFieldSchema = z.object({
   name: z.string().min(1).optional(),
@@ -58,7 +59,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { id } = await params;
     const body = await request.json();
     const validated = updateCustomFieldSchema.parse(body);
@@ -107,6 +108,19 @@ export async function PUT(
       throw error;
     }
 
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.custom_field.update",
+      entity_type: "custom_field",
+      entity_id: id,
+      module: "platform_config",
+      risk_level: "medium",
+      retention_tier: "routine",
+      metadata: validated,
+      ...extractRequestMeta(request),
+    });
+
     return successResponse({ field });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -143,7 +157,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_PLATFORM_CONFIG, request);
     const { id } = await params;
     const adminSupabase = getSupabaseAdmin();
 
@@ -155,6 +169,18 @@ export async function DELETE(
     if (error) {
       throw error;
     }
+
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role ?? "superadmin",
+      action: "admin.custom_field.delete",
+      entity_type: "custom_field",
+      entity_id: id,
+      module: "platform_config",
+      risk_level: "medium",
+      retention_tier: "routine",
+      ...extractRequestMeta(request),
+    });
 
     return successResponse({ message: "Custom field deleted successfully" });
   } catch (error) {

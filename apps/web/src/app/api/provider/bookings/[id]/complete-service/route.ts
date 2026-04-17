@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError, errorResponse } from "@/lib/supabase/api-helpers";
+import { assertProviderUserCanAccessBookingBranch } from "@/lib/provider-booking/booking-branch-access";
 import type { Booking } from "@/types/beautonomi";
 import { awardPointsForBooking, checkProviderMilestones } from "@/lib/services/provider-gamification";
 import { getTenantRegionConfig } from "@/lib/regions/config";
@@ -65,6 +66,18 @@ export async function POST(
       return notFoundResponse("Booking not found");
     }
 
+    const supabaseAdminBranch = getSupabaseAdmin();
+    const branchAccess = await assertProviderUserCanAccessBookingBranch(
+      supabaseAdminBranch,
+      user.id,
+      user.role,
+      providerId,
+      (booking as { location_id?: string | null }).location_id ?? null
+    );
+    if (branchAccess.allowed === false) {
+      return errorResponse(branchAccess.message, "FORBIDDEN", 403);
+    }
+
     const bookingData = booking as any;
     const bookingTenantId = (bookingData as { tenant_id?: string | null }).tenant_id ?? null;
     const { data: prow } = await supabase
@@ -79,8 +92,11 @@ export async function POST(
     const tenantRegion = await getTenantRegionConfig(effectiveTenantId);
     const lastResortCurrency = tenantRegion?.defaultCurrency ?? LAST_RESORT_CURRENCY;
 
-    // Check if service is in progress
-    if (bookingData.status !== "in_progress" && bookingData.current_stage !== "service_started") {
+    // Check if service is in progress — require consistent status + stage
+    const validForCompletion =
+      bookingData.status === "in_progress" ||
+      bookingData.current_stage === "service_started";
+    if (!validForCompletion) {
       return errorResponse("Service must be started before completing", "INVALID_STATUS", 400);
     }
 
@@ -100,19 +116,30 @@ export async function POST(
       console.error("Error creating booking event:", eventError);
     }
 
-    // Update booking
-    const { error: updateError } = await supabase
+    // Update booking with version bump
+    const currentVersion = (bookingData as { version?: number }).version || 0;
+    const { data: updatedRows, error: updateError } = await supabase
       .from("bookings")
       .update({
         status: "completed",
         current_stage: "service_completed",
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        version: currentVersion + 1,
       })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("version", currentVersion)
+      .select("id");
 
     if (updateError) {
       throw updateError;
+    }
+    if (!updatedRows?.length) {
+      return errorResponse(
+        "Booking was modified by another user. Please refresh and try again.",
+        "CONFLICT",
+        409
+      );
     }
 
     // Fetch updated booking

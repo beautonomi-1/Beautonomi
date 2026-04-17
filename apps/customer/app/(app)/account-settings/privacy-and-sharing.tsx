@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { View, Text, Switch, ActivityIndicator, TouchableOpacity, Linking } from "react-native";
+import { View, Text, Switch, ActivityIndicator, TouchableOpacity, Linking, Alert } from "react-native";
 import { router } from "expo-router";
 import { api } from "@/lib/api-client";
 import { ScreenFrame } from "@/components/ScreenFrame";
@@ -86,9 +86,11 @@ export default function PrivacyAndSharingScreen() {
         });
         if (res.error) {
           setSettings(previous);
+          Alert.alert("Error", res.error.message || "Could not update setting. Please try again.");
         }
       } catch {
         setSettings(previous);
+        Alert.alert("Error", "Could not update setting. Please try again.");
       } finally {
         setSavingKey(null);
       }

@@ -58,6 +58,7 @@ export default function ExplorePostScreen() {
   const [captionExpanded, setCaptionExpanded] = useState(false);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [sending, setSending] = useState(false);
   const [liking, setLiking] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -70,23 +71,30 @@ export default function ExplorePostScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const [postRes, commentsRes, listRes] = await Promise.all([
         api.get<ExplorePost>(`/api/explore/posts/${id}`),
         api.get<ExploreComment[]>(`/api/explore/posts/${id}/comments`),
         api.get<ExplorePost[] | { data?: ExplorePost[] }>(`/api/explore/posts?limit=13`),
       ]);
+      if (postRes.error) {
+        setLoadError(true);
+        setPost(null);
+        return;
+      }
       const postData = postRes.data as any;
       const loadedPost = postData?.data ?? postData ?? null;
       setPost(loadedPost);
-      const commentsData = commentsRes.data as any;
+      const commentsData = commentsRes.error ? [] : commentsRes.data as any;
       const list = Array.isArray(commentsData) ? commentsData : commentsData?.data ?? [];
       setComments(list);
-      const rawList = listRes.data as ExplorePost[] | { data?: ExplorePost[] } | undefined;
+      const rawList = listRes.error ? [] : listRes.data as ExplorePost[] | { data?: ExplorePost[] } | undefined;
       const items = Array.isArray(rawList) ? rawList : rawList?.data ?? [];
       const related = items.filter((p) => p.id !== id).slice(0, 12);
       setRelatedPosts(related);
     } catch {
+      setLoadError(true);
       setPost(null);
       setComments([]);
       setRelatedPosts([]);
@@ -105,29 +113,41 @@ export default function ExplorePostScreen() {
 
   const toggleLike = useCallback(async () => {
     if (!post || liking) return;
+    if (!user) {
+      Alert.alert("Sign in to like", "Create an account or sign in to like posts.", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign in", onPress: () => router.replace("/(auth)/login") },
+      ]);
+      return;
+    }
     setLiking(true);
     haptic.light();
+    const prevLiked = post.is_liked;
+    const prevCount = post.like_count;
+    setPost((p) => p ? { ...p, is_liked: !prevLiked, like_count: prevLiked ? Math.max(0, p.like_count - 1) : p.like_count + 1 } : null);
     try {
-      if (post.is_liked) {
-        await api.delete(`/api/explore/events?post_id=${post.id}&event_type=like`);
-        setPost((p) => (p ? { ...p, is_liked: false, like_count: Math.max(0, p.like_count - 1) } : null));
-      } else {
-        await api.post("/api/explore/events", {
-          post_id: post.id,
-          event_type: "like",
-          idempotency_key: `like-${post.id}-${user?.id || "anon"}-${Date.now()}`,
-        });
-        setPost((p) => (p ? { ...p, is_liked: true, like_count: p.like_count + 1 } : null));
+      const res = prevLiked
+        ? await api.delete(`/api/explore/events?post_id=${post.id}&event_type=like`)
+        : await api.post("/api/explore/events", {
+            post_id: post.id,
+            event_type: "like",
+            idempotency_key: `like-${post.id}-${user.id}-${Date.now()}`,
+          });
+      if (res.error) {
+        setPost((p) => p ? { ...p, is_liked: prevLiked, like_count: prevCount } : null);
+      } else if (!prevLiked) {
         const useNativeDriver = Platform.OS !== "web";
         Animated.sequence([
           Animated.spring(heartAnim, { toValue: 1, useNativeDriver, speed: 20, bounciness: 12 }),
           Animated.timing(heartAnim, { toValue: 0, duration: 500, useNativeDriver, delay: 300 }),
         ]).start();
       }
-    } catch {} finally {
+    } catch {
+      setPost((p) => p ? { ...p, is_liked: prevLiked, like_count: prevCount } : null);
+    } finally {
       setLiking(false);
     }
-  }, [post, liking, user, heartAnim]);
+  }, [post, liking, user, heartAnim, router]);
 
   const toggleSave = useCallback(async () => {
     if (!post || saving) return;
@@ -141,14 +161,16 @@ export default function ExplorePostScreen() {
     setSaving(true);
     haptic.light();
     try {
-      if (post.is_saved) {
-        await api.delete(`/api/explore/saved?post_id=${post.id}`);
-        setPost((p) => (p ? { ...p, is_saved: false } : null));
-      } else {
-        await api.post("/api/explore/saved", { post_id: post.id });
-        setPost((p) => (p ? { ...p, is_saved: true } : null));
+      const wasSaved = post.is_saved;
+      const res = wasSaved
+        ? await api.delete(`/api/explore/saved?post_id=${post.id}`)
+        : await api.post("/api/explore/saved", { post_id: post.id });
+      if (!res.error) {
+        setPost((p) => (p ? { ...p, is_saved: !wasSaved } : null));
       }
-    } catch {} finally {
+    } catch {
+      /* network error — state unchanged */
+    } finally {
       setSaving(false);
     }
   }, [post, saving, user, router]);
@@ -161,6 +183,11 @@ export default function ExplorePostScreen() {
     haptic.light();
     try {
       const res = await api.post<ExploreComment>(`/api/explore/posts/${id}/comments`, { body: text });
+      if (res.error) {
+        setInput(text);
+        Alert.alert("Error", "Could not post comment. Please try again.");
+        return;
+      }
       const newComment = (res.data as any)?.data ?? res.data;
       if (newComment) {
         setComments((prev) => [
@@ -174,6 +201,7 @@ export default function ExplorePostScreen() {
       }
     } catch {
       setInput(text);
+      Alert.alert("Error", "Could not post comment. Please try again.");
     } finally {
       setSending(false);
     }
@@ -250,13 +278,15 @@ export default function ExplorePostScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={{ flex: 1, backgroundColor: "#fff", alignItems: "center", justifyContent: "center", padding: contentPadding }}>
-          <Ionicons name="image-outline" size={48} color="#D1D5DB" />
-          <Text style={{ color: "#6B7280", fontSize: 16, marginTop: 12 }}>Post not found</Text>
+          <Ionicons name={loadError ? "cloud-offline-outline" : "image-outline"} size={48} color="#D1D5DB" />
+          <Text style={{ color: "#6B7280", fontSize: 16, marginTop: 12 }}>
+            {loadError ? "Failed to load post" : "Post not found"}
+          </Text>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={loadError ? () => load() : () => router.back()}
             style={{ backgroundColor: Colors.primary, paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, marginTop: 16 }}
           >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Go back</Text>
+            <Text style={{ color: "#fff", fontWeight: "600" }}>{loadError ? "Retry" : "Go back"}</Text>
           </TouchableOpacity>
         </View>
       </>

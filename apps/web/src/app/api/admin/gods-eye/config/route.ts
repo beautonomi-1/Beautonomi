@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireAdminSection,
+import {
+  requireSuperadmin,
   successResponse,
   handleApiError,
   errorResponse,
- } from "@/lib/supabase/api-helpers";
-import { ADMIN_SECTION_OVERVIEW } from "@/lib/admin-sections";
+} from "@/lib/supabase/api-helpers";
 import { z } from "zod";
 
 const configKey = "default";
@@ -36,7 +36,7 @@ export type GodsEyeConfig = {
  */
 export async function GET(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const supabase = await getSupabaseServer(request);
     const { data, error } = await supabase
       .from("gods_eye_tracking_config")
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
  */
 export async function PATCH(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OVERVIEW, request);
+    await requireSuperadmin(request);
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const parse = patchSchema.safeParse(body);

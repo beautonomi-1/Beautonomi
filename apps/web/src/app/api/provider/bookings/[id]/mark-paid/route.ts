@@ -46,9 +46,11 @@ export async function POST(
       reference 
     } = body;
 
-    if (!payment_method || !['cash', 'card', 'mobile', 'bank_transfer', 'other'].includes(payment_method)) {
+    const validPaymentMethods = ['cash', 'card', 'bank_transfer', 'other'];
+    const effectivePaymentMethod = payment_method === 'mobile' ? 'other' : payment_method;
+    if (!payment_method || !validPaymentMethods.includes(effectivePaymentMethod)) {
       return errorResponse(
-        "Valid payment_method is required (cash, card, mobile, bank_transfer, other)",
+        "Valid payment_method is required (cash, card, bank_transfer, other)",
         "VALIDATION_ERROR",
         400
       );
@@ -57,7 +59,7 @@ export async function POST(
     // Verify booking exists and belongs to provider
     const { data: booking, error: bookingError } = await supabase
       .from("bookings")
-      .select("id, tenant_id, total_amount, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
+      .select("id, status, tenant_id, total_amount, total_refunded, payment_status, provider_id, customer_id, booking_number, ref_number, total_paid, wallet_amount, gift_card_amount, tip_amount, travel_fee, tax_amount, service_fee_amount, booking_source, location_id, location_type")
       .eq("id", bookingId)
       .eq("provider_id", providerId)
       .single();
@@ -71,6 +73,24 @@ export async function POST(
       (booking as { tenant_id?: string | null }).tenant_id,
     );
     if (bookingMarketMismatch) return bookingMarketMismatch;
+
+    const bookingStatus = (booking as { status?: string }).status ?? "";
+    if (["cancelled", "refunded", "no_show"].includes(bookingStatus)) {
+      return errorResponse(
+        `Cannot record payment for a booking with status "${bookingStatus}"`,
+        "INVALID_STATUS",
+        400
+      );
+    }
+    // Guard: only allow marking paid on confirmed/in_progress/completed bookings
+    const validPaymentStatuses = ["confirmed", "in_progress", "completed"];
+    if (bookingStatus && !validPaymentStatuses.includes(bookingStatus)) {
+      return errorResponse(
+        `Cannot record payment for a booking with status "${bookingStatus}"`,
+        "INVALID_STATUS",
+        400
+      );
+    }
 
     const { format: formatMoney } = await getTenantMoneyFormatter(
       (booking as { tenant_id?: string | null }).tenant_id ?? tenantId,
@@ -111,69 +131,59 @@ export async function POST(
       }
     }
 
-    // Check if already fully paid.
-    // Remaining balance must account for wallet credit already applied at booking time
-    // (wallet_amount reduces what the customer still owes via card/cash/other).
     const currentTotalPaid = booking.total_paid || 0;
+    const totalRefunded = Number((booking as any).total_refunded || 0);
     const walletAlreadyApplied = Number((booking as any).wallet_amount || 0);
     const giftCardAlreadyApplied = Number((booking as any).gift_card_amount || 0);
     const bookingTotal = booking.total_amount || 0;
-    const remainingBalance = bookingTotal - currentTotalPaid - walletAlreadyApplied - giftCardAlreadyApplied;
+    const effectivePaid = Math.max(0, currentTotalPaid - totalRefunded);
+    const remainingBalance = bookingTotal - effectivePaid - walletAlreadyApplied - giftCardAlreadyApplied;
     
-    if (currentTotalPaid >= bookingTotal) {
+    if (remainingBalance <= 0) {
       return errorResponse(
-        "Booking is already fully paid",
+        "Booking is already fully paid (including wallet/gift card credits)",
         "ALREADY_PAID",
         400
       );
     }
 
-    // Use provided amount or remaining balance (to avoid overpayment)
-    // If amount is provided and it's the full total, use it
-    // Otherwise, use the remaining balance
     let paymentAmount: number;
     if (amount) {
-      // If user explicitly provided an amount, use it (but warn if it exceeds remaining)
-      paymentAmount = amount;
-      if (paymentAmount > remainingBalance) {
-        console.warn(`Payment amount (${paymentAmount}) exceeds remaining balance (${remainingBalance}). Using provided amount.`);
+      if (amount > remainingBalance) {
+        paymentAmount = remainingBalance;
+        console.warn(`Clamped payment amount from ${amount} to remaining balance ${remainingBalance} to prevent overpayment.`);
+      } else {
+        paymentAmount = amount;
       }
     } else {
-      // Default to remaining balance to complete the payment
       paymentAmount = remainingBalance;
     }
 
     if (paymentAmount <= 0) {
       return errorResponse(
-        "Payment amount must be greater than 0",
-        "VALIDATION_ERROR",
+        "No balance due — booking is already settled via wallet or gift card credits",
+        "ALREADY_PAID",
         400
       );
     }
 
-    // Determine payment provider based on method
     let paymentProvider = 'other';
-    if (payment_method === 'cash') {
+    if (effectivePaymentMethod === 'cash') {
       paymentProvider = 'cash';
-    } else if (payment_method === 'card') {
-      paymentProvider = 'yoco'; // Yoco card terminal or manual terminal
+    } else if (effectivePaymentMethod === 'card') {
+      paymentProvider = 'yoco';
     }
 
-    // Create payment record using a database function to properly handle enum types
-    // The status column is an enum, and there may be triggers that also need enum values
-    // Using RPC ensures proper type casting
     let payment: any = null;
     let paymentError: any = null;
-    
-    // Try using a database function first (if it exists). `booking_payments.tenant_id` is enforced
-    // by DB triggers after migration 381 (or must be set on direct insert below).
+
     try {
       const { data: rpcPayment, error: rpcError } = await supabaseAdmin.rpc(
         'create_booking_payment',
         {
           p_booking_id: bookingId,
           p_amount: paymentAmount,
-          p_payment_method: payment_method,
+          p_payment_method: effectivePaymentMethod,
           p_payment_provider: paymentProvider,
           p_status: 'completed',
           p_notes: notes || `Payment received via ${payment_method}`,
@@ -181,37 +191,31 @@ export async function POST(
           p_reference: reference || null,
         }
       );
-      
+
       if (!rpcError && rpcPayment) {
         payment = Array.isArray(rpcPayment) ? rpcPayment[0] : rpcPayment;
       } else if (rpcError && !rpcError.message?.includes('function') && !rpcError.message?.includes('does not exist')) {
         paymentError = rpcError;
       }
     } catch {
-      // RPC function doesn't exist or failed, continue to fallback
       console.log("RPC function not available, using direct insert");
     }
-    
-    // Fallback: Direct insert (may fail due to enum, but we'll handle it)
+
     if (!payment && !paymentError) {
       const bookingTenantId = (booking as { tenant_id?: string | null }).tenant_id;
       const paymentData: any = {
         booking_id: bookingId,
         amount: paymentAmount,
-        payment_method,
+        payment_method: effectivePaymentMethod,
         payment_provider: paymentProvider,
-        status: 'completed', // Explicitly set status to 'completed' so trigger counts it
+        status: 'completed',
         notes: notes || `Payment received via ${payment_method}`,
         created_by: user.id,
         ...(bookingTenantId ? { tenant_id: bookingTenantId } : {}),
       };
 
       if (reference) {
-        paymentData.reference = reference;
-        // Yoco: store payment_provider_id so webhook idempotency skips duplicate booking_payment
-        if (paymentProvider === 'yoco') {
-          paymentData.payment_provider_id = reference;
-        }
+        paymentData.payment_provider_id = reference;
       }
       
       // Try insert with status
@@ -303,6 +307,23 @@ export async function POST(
       );
     }
 
+    // Record booking event for audit trail
+    try {
+      await supabaseAdmin.from("booking_events").insert({
+        booking_id: bookingId,
+        event_type: "payment_received",
+        event_data: {
+          payment_id: payment.id,
+          amount: paymentAmount,
+          payment_method,
+          reference: reference || null,
+        },
+        created_by: user.id,
+      });
+    } catch (eventErr) {
+      console.warn("Failed to create payment booking event:", eventErr);
+    }
+
     // Verify payment was created with correct status and amount
     if (payment.status !== 'completed') {
       console.warn(`Payment created with status '${payment.status}' instead of 'completed'. Attempting to fix...`);
@@ -350,143 +371,15 @@ export async function POST(
       }
     }
 
-    // Note: Booking payment status will be automatically updated by database trigger.
-    // In addition to the trigger, we insert finance_transactions directly here so that:
-    //   (a) commission uses the live platform_settings rate (not the hardcoded 15% in the trigger SQL)
-    //   (b) walk-in bookings correctly record 0% commission
-    //   (c) all payment types (cash, Yoco, bank transfer) are fully visible in the ledger
-    try {
-      const { resolveTenantIdForFinanceLedger } = await import("@/lib/finance/resolve-tenant-id-for-ledger");
-      const { percentOf, subtractMoney } = await import("@beautonomi/utils");
-
-      const financeTenantId = await resolveTenantIdForFinanceLedger(supabaseAdmin, {
-        tenant_id: (booking as any).tenant_id ?? tenantId,
-        provider_id: providerId,
-      });
-
-      // Read live commission rate from platform_settings
-      const { data: settingsRow } = await (supabaseAdmin.from("platform_settings") as any)
-        .select("settings")
-        .eq("is_active", true)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      const payoutSettings = (settingsRow as any)?.settings?.payouts || {};
-      const commissionEnabled = payoutSettings.commission_enabled !== false;
-      // Walk-in bookings: no platform commission (provider collects directly)
-      const isWalkIn = (booking as any).booking_source === "walk_in" || payment_method === "cash";
-      const commissionRate = (!isWalkIn && commissionEnabled)
-        ? (payoutSettings.platform_commission_percentage ?? 0)
-        : 0;
-
-      // Commission base = total minus pass-through items (tip, travel, tax, service fee)
-      const tipAmt = Number((booking as any).tip_amount || 0);
-      const travelAmt = Number((booking as any).travel_fee || 0);
-      const taxAmt = Number((booking as any).tax_amount || 0);
-      const serviceFeeAmt = Number((booking as any).service_fee_amount || 0);
-      const commissionBase = Math.max(0, paymentAmount - tipAmt - travelAmt - taxAmt - serviceFeeAmt);
-      const platformCommission = commissionRate > 0 ? percentOf(commissionBase, commissionRate) : 0;
-      const providerEarnings = subtractMoney(commissionBase, platformCommission) + travelAmt + tipAmt;
-
-      const ledgerNow = new Date().toISOString();
-      const bookingRef = (booking as any).booking_number || bookingId;
-
-      // Idempotency: skip if a payment row for this booking already exists
-      const { data: existingPaymentRow } = await supabaseAdmin
-        .from("finance_transactions")
-        .select("id")
-        .eq("booking_id", bookingId)
-        .eq("transaction_type", "payment")
-        .maybeSingle();
-
-      if (!existingPaymentRow) {
-        await supabaseAdmin.from("finance_transactions").insert([
-          {
-            booking_id: bookingId,
-            provider_id: providerId,
-            tenant_id: financeTenantId,
-            transaction_type: "payment",
-            amount: commissionBase,
-            fees: 0,
-            commission: platformCommission,
-            net: platformCommission,
-            description: `Payment for booking ${bookingRef} (${payment_method})`,
-            created_at: ledgerNow,
-          },
-          {
-            booking_id: bookingId,
-            provider_id: providerId,
-            tenant_id: financeTenantId,
-            transaction_type: "provider_earnings",
-            amount: providerEarnings,
-            fees: 0,
-            commission: 0,
-            net: providerEarnings,
-            description: `Provider earnings for booking ${bookingRef} (${payment_method})`,
-            created_at: ledgerNow,
-          },
-          ...(tipAmt > 0
-            ? [{
-                booking_id: bookingId,
-                provider_id: providerId,
-                tenant_id: financeTenantId,
-                transaction_type: "tip",
-                amount: tipAmt,
-                fees: 0,
-                commission: 0,
-                net: tipAmt,
-                description: `Tip for booking ${bookingRef}`,
-                created_at: ledgerNow,
-              }]
-            : []),
-          ...(taxAmt > 0
-            ? [{
-                booking_id: bookingId,
-                provider_id: providerId,
-                tenant_id: financeTenantId,
-                transaction_type: "tax",
-                amount: taxAmt,
-                fees: 0,
-                commission: 0,
-                net: 0,
-                description: `Tax for booking ${bookingRef}`,
-                created_at: ledgerNow,
-              }]
-            : []),
-          ...(travelAmt > 0
-            ? [{
-                booking_id: bookingId,
-                provider_id: providerId,
-                tenant_id: financeTenantId,
-                transaction_type: "travel_fee",
-                amount: travelAmt,
-                fees: 0,
-                commission: 0,
-                net: travelAmt,
-                description: `Travel fee for booking ${bookingRef}`,
-                created_at: ledgerNow,
-              }]
-            : []),
-          ...(serviceFeeAmt > 0
-            ? [{
-                booking_id: bookingId,
-                provider_id: providerId,
-                tenant_id: financeTenantId,
-                transaction_type: "service_fee",
-                amount: serviceFeeAmt,
-                fees: 0,
-                commission: 0,
-                net: serviceFeeAmt,
-                description: `Service fee for booking ${bookingRef}`,
-                created_at: ledgerNow,
-              }]
-            : []),
-        ]);
-      }
-    } catch (ledgerErr) {
-      console.error("[mark-paid] finance_transactions insert failed:", ledgerErr);
-    }
+    // Finance ledger entries are created automatically by the DB trigger
+    // (create_finance_ledger_from_payment) when booking_payments rows are inserted.
+    // The trigger (migration 458) handles:
+    //   - proportional commission based on actual payment amount
+    //   - per-payment idempotency via source_payment_id
+    //   - booking-level items (tip/tax/travel/service_fee) only once per booking
+    //   - live commission rate from platform_settings
+    //   - correct handling of 'online', 'walk_in', and 'provider' booking sources
+    // No app-level finance_transactions creation needed here.
 
     // Create notification for customer (will be sent via OneSignal)
     try {

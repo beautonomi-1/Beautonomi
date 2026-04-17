@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,9 +17,9 @@ export async function GET(request: NextRequest) {
     if (!providerId) return notFoundResponse("Provider not found");
     const sp = request.nextUrl.searchParams;
     const locationId = sp.get("location_id") || null;
-    const fromDate = sp.get("from") ? new Date(sp.get("from")!) : subDays(new Date(), 30);
-    const toDate = sp.get("to") ? new Date(sp.get("to")!) : new Date();
-    const endIso = new Date(toDate.getTime() + 86400000).toISOString();
+    const fromDate = sp.get("from") ? startOfDay(new Date(sp.get("from")!)) : startOfDay(subDays(new Date(), 30));
+    const toDate = sp.get("to") ? endOfDay(new Date(sp.get("to")!)) : endOfDay(new Date());
+    const endIso = toDate.toISOString();
 
     const { data: txns } = await supabaseAdmin
       .from("finance_transactions")
@@ -42,12 +42,14 @@ export async function GET(request: NextRequest) {
     let totalRefunded = 0;
     const methodMap = new Map<string, { amount: number; count: number }>();
 
+    let cancellationFeesTotal = 0;
+    let tipsCollected = 0;
+    const recentRefundList: { date: string; amount: number; reason?: string; booking_ref?: string }[] = [];
+
     all.forEach((t: any) => {
       const val = Number(t.net ?? t.amount ?? 0);
       if (t.transaction_type === "provider_earnings") {
         if (val >= 0) totalCollected += val;
-        else totalRefunded += Math.abs(val);
-        // Only attribute provider_earnings to payment methods so breakdown matches totals.
         const method = (t.metadata as any)?.payment_method || "other";
         const existing = methodMap.get(method) || { amount: 0, count: 0 };
         if (val > 0) {
@@ -55,6 +57,19 @@ export async function GET(request: NextRequest) {
           existing.count += 1;
         }
         methodMap.set(method, existing);
+      } else if (t.transaction_type === "refund") {
+        const refundAmt = Math.abs(Number(t.amount ?? 0));
+        totalRefunded += refundAmt;
+        recentRefundList.push({
+          date: t.created_at,
+          amount: refundAmt,
+          reason: (t.metadata as any)?.reason || undefined,
+          booking_ref: t.booking_id || undefined,
+        });
+      } else if (t.transaction_type === "cancellation_fee") {
+        cancellationFeesTotal += Math.abs(val);
+      } else if (t.transaction_type === "tip") {
+        tipsCollected += Math.abs(val);
       }
     });
 
@@ -75,12 +90,16 @@ export async function GET(request: NextRequest) {
     return successResponse({
       total_collected: totalCollected,
       total_refunded: totalRefunded,
-      net_revenue: totalCollected - totalRefunded,
+      cancellation_fees: cancellationFeesTotal,
+      tips_collected: tipsCollected,
+      net_revenue: totalCollected + cancellationFeesTotal - totalRefunded,
       by_method: Array.from(methodMap.entries())
         .map(([method, data]) => ({ method, ...data }))
         .sort((a, b) => b.amount - a.amount),
       recent_payouts: recentPayouts,
-      recent_refunds: [],
+      recent_refunds: recentRefundList
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, 10),
     });
   } catch (error) {
     console.error("Error in payments report:", error);

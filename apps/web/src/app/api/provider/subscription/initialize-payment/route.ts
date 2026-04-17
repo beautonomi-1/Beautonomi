@@ -15,9 +15,10 @@ import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resourceTenantMatchesHostTenant } from "@/lib/bookings/resolve-payment-tenant";
+import { extractSubscriptionPlanUuid } from "@/lib/subscription/extract-subscription-plan-uuid";
 
 const initializePaymentSchema = z.object({
-  plan_id: z.string().uuid('Plan ID is required'),
+  plan_id: z.string().min(1, 'Plan ID is required'),
   billing_period: z.enum(["monthly", "yearly"]).default("monthly"),
   in_app: z.boolean().optional(),
 });
@@ -59,7 +60,10 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
-    const { plan_id, billing_period, in_app } = initializePaymentSchema.parse(body);
+    const parsed = initializePaymentSchema.parse(body);
+    const plan_id = extractSubscriptionPlanUuid(parsed.plan_id);
+    const billing_period = parsed.billing_period;
+    const in_app = parsed.in_app;
 
     // Get subscription plan
     const { data: plan, error: planError } = await supabase
@@ -73,7 +77,11 @@ export async function POST(request: NextRequest) {
     }
 
     if ((plan as any).is_free) {
-      throw new Error("Payment initialization not needed for free plans");
+      return errorResponse(
+        "This is a free plan. Use the upgrade endpoint instead of payment initialization.",
+        "FREE_PLAN",
+        400,
+      );
     }
 
     const amount =

@@ -91,3 +91,9 @@ export {
   providerBookingPaymentNudgeSessionKey,
 } from "./provider-excellence-nudges";
 export { getCustomerEtaUiParts } from "./customer-tracking-eta";
+export {
+  calculateBookingTotals,
+  type BookingPricingInput,
+  type BookingPricingResult,
+} from "./booking/calculateBookingPricing";
+export { mapToBookingStatusEnum } from "./booking/mapToBookingStatusEnum";

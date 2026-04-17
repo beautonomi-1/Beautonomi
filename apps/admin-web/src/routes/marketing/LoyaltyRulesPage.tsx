@@ -19,6 +19,7 @@ import {
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { AdminModal } from "@/components/admin/AdminModal";
+import { adminToast } from "@/lib/adminToast";
 
 type LoyaltyRule = {
   id: string;
@@ -100,7 +101,9 @@ export function LoyaltyRulesPage() {
       setPpu("");
       setRedemption("");
       setCurrency("");
+      adminToast.success("Loyalty rule created");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create rule: ${e.message}`),
   });
 
   const patchRule = useMutation({
@@ -109,7 +112,9 @@ export function LoyaltyRulesPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyRules() });
       setEditRule(null);
+      adminToast.success("Loyalty rule updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update rule: ${e.message}`),
   });
 
   const createMilestone = useMutation({
@@ -128,7 +133,9 @@ export function LoyaltyRulesPage() {
       setMThreshold("");
       setMReward("");
       setMCurrency("");
+      adminToast.success("Milestone created");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create milestone: ${e.message}`),
   });
 
   const patchMilestone = useMutation({
@@ -137,18 +144,28 @@ export function LoyaltyRulesPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() });
       setEditMilestone(null);
+      adminToast.success("Milestone updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to update milestone: ${e.message}`),
   });
 
   const deleteMilestone = useMutation({
     mutationFn: (id: string) => adminApi.deleteJson<unknown>(`/api/admin/loyalty/milestones/${id}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() });
+      adminToast.success("Milestone deleted");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to delete milestone: ${e.message}`),
   });
 
   const toggleMilestone = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       adminApi.putJson<unknown>(`/api/admin/loyalty/milestones/${id}`, { is_active }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() }),
+    onSuccess: (_d, vars) => {
+      void qc.invalidateQueries({ queryKey: adminQueryKeys.loyaltyMilestones() });
+      adminToast.success(vars.is_active ? "Milestone activated" : "Milestone deactivated");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to toggle milestone: ${e.message}`),
   });
 
   function openEditRule(r: LoyaltyRule) {

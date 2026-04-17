@@ -18,6 +18,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { LoadingState } from "@/components/ui/LoadingState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { twStyle } from "@/lib/twStyle";
 
@@ -42,7 +43,7 @@ export default function BookingLinkScreen() {
   const [dirty, setDirty] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const { data: link, loading, refresh } = useApi<BookingLink>(
+  const { data: link, loading, error: loadError, refresh } = useApi<BookingLink>(
     "/api/provider/booking-link"
   );
   const { execute: updateLink, loading: saving } = useApiMutation<any>("patch");
@@ -109,6 +110,14 @@ export default function BookingLinkScreen() {
       <ScreenContainer>
         <ScreenHeader title="Booking Link" showBack />
         <LoadingState message="Loading..." />
+      </ScreenContainer>
+    );
+
+  if (loadError && !link)
+    return (
+      <ScreenContainer>
+        <ScreenHeader title="Booking Link" showBack />
+        <ErrorState message="Could not load booking link. Please try again." onRetry={refresh} />
       </ScreenContainer>
     );
 

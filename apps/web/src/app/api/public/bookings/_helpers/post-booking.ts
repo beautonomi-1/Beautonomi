@@ -4,6 +4,7 @@ import {
   EVENT_BOOKING_CONFIRMED,
   EVENT_BOOKING_HOLD_CREATED,
 } from "@/lib/analytics/amplitude/types";
+import { safely } from "@/lib/monitoring/route-metrics";
 import type { PublicBookingValidatedBody } from "@/lib/public-booking/booking-draft-schema";
 import type { BookingDraft } from "@/types/beautonomi";
 import type { ValidatedBookingData } from "./validate-booking";
@@ -22,111 +23,123 @@ export interface PostBookingInput {
 
 // ─── Main function ────────────────────────────────────────────────────────────
 
+const POST_EFFECT_METRIC = "booking_post_effects_failure_total";
+
 /**
- * Execute post-booking side effects that should not block the booking
- * response (cache invalidation, waitlist matching, analytics).
- *
- * All errors are swallowed so a failed side-effect never breaks the booking.
+ * Execute post-booking side effects that should not block the booking response.
+ * Every side effect is wrapped in `safely(...)` so failures are visible in metrics
+ * + Sentry without breaking the booking.
  */
 export async function postBookingEffects(input: PostBookingInput): Promise<void> {
   const { supabase, draft, validatedDraft, v, booking, savedPaymentMethodId } = input;
+  const tagsBase = { provider_id: draft.provider_id, booking_id: booking?.id ?? null };
 
-  // ── Invalidate availability cache ────────────────────────────────────────
-  try {
-    const { invalidateAvailabilityCache } = await import(
-      "@/lib/availability/cache-invalidation"
-    );
-    const bookedDate = new Date(draft.selected_datetime).toISOString().split("T")[0];
-    const firstStaffId = draft.services[0]?.staff_id;
-    if (firstStaffId) {
-      await invalidateAvailabilityCache(supabase, firstStaffId, bookedDate);
-    }
-  } catch (error) {
-    console.error("Error invalidating availability cache:", error);
-  }
+  await safely(
+    async () => {
+      const { invalidateAvailabilityCache } = await import(
+        "@/lib/availability/cache-invalidation"
+      );
+      const bookedDate = new Date(draft.selected_datetime).toISOString().split("T")[0];
+      const firstStaffId = draft.services[0]?.staff_id;
+      if (firstStaffId) {
+        await invalidateAvailabilityCache(supabase, firstStaffId, bookedDate);
+      }
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "invalidateAvailabilityCache" } },
+  );
 
-  // ── Waitlist matching (background, non-blocking) ─────────────────────────
-  Promise.resolve().then(async () => {
-    try {
-      const { findWaitlistMatches } = await import("@/lib/waitlist/matching");
-      const { processWaitlistMatches } = await import("@/lib/waitlist/auto-booking");
+  // Waitlist matching runs detached from the await chain so it cannot extend TTFB,
+  // but is still wrapped in safely() so failures are still observable.
+  Promise.resolve().then(() =>
+    safely(
+      async () => {
+        const { findWaitlistMatches } = await import("@/lib/waitlist/matching");
+        const { processWaitlistMatches } = await import("@/lib/waitlist/auto-booking");
+        const matches = await findWaitlistMatches(supabase, draft.provider_id);
+        await processWaitlistMatches(supabase, matches.slice(0, 5), draft.provider_id);
+      },
+      { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "waitlistMatch" } },
+    ),
+  );
 
-      const matches = await findWaitlistMatches(supabase, draft.provider_id);
-      await processWaitlistMatches(supabase, matches.slice(0, 5), draft.provider_id);
-    } catch (error) {
-      console.error("Error checking waitlist after booking creation:", error);
-    }
-  });
+  await safely(
+    async () => {
+      const { notifyProviderNewBooking } = await import(
+        "@/lib/notifications/notification-service"
+      );
+      await notifyProviderNewBooking(booking.id, ["push"]);
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyProviderNewBooking" } },
+  );
 
-  // ── Notify provider of new booking (push / template) ──────────────────────
-  try {
-    const { notifyProviderNewBooking } = await import("@/lib/notifications/notification-service");
-    await notifyProviderNewBooking(booking.id, ["push"]);
-  } catch (notifError) {
-    console.error("Error notifying provider of new booking:", notifError);
-  }
+  await safely(
+    async () => {
+      const { notifyBookingConfirmed } = await import(
+        "@/lib/notifications/notification-service"
+      );
+      await notifyBookingConfirmed(booking.id, ["push", "email"]);
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "notifyBookingConfirmed" } },
+  );
 
-  // ── Notify customer that their booking is confirmed ────────────────────────
-  try {
-    const { notifyBookingConfirmed } = await import("@/lib/notifications/notification-service");
-    await notifyBookingConfirmed(booking.id, ["push", "email"]);
-  } catch (notifError) {
-    console.error("Error sending booking confirmation to customer:", notifError);
-  }
+  void safely(
+    async () => {
+      const m = await import(
+        "@/lib/subscriptions/subscription-limit-notifications"
+      );
+      await m.maybeNotifyProviderSubscriptionLimits(draft.provider_id);
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "subscriptionLimitNotification" } },
+  );
 
-  void import("@/lib/subscriptions/subscription-limit-notifications")
-    .then((m) => m.maybeNotifyProviderSubscriptionLimits(draft.provider_id))
-    .catch((e) => console.warn("Subscription usage notification:", e));
+  await safely(
+    async () => {
+      const userId = v.customerId || null;
+      const holdId = validatedDraft.hold_id;
 
-  // ── Amplitude analytics ──────────────────────────────────────────────────
-  try {
-    const userId = v.customerId || null;
-    const holdId = validatedDraft.hold_id;
+      if (holdId) {
+        await trackServer(
+          EVENT_BOOKING_HOLD_CREATED,
+          {
+            portal: "client",
+            provider_id: draft.provider_id,
+            hold_id: holdId,
+            service_ids: draft.services.map((s) => s.offering_id),
+            scheduled_at: draft.selected_datetime,
+          },
+          userId,
+        );
+      }
 
-    if (holdId) {
+      const pm = validatedDraft.payment_method || "card";
+      const paymentMethodLabel =
+        pm === "cash"
+          ? "cash"
+          : pm === "giftcard"
+            ? "gift_card"
+            : savedPaymentMethodId
+              ? "saved_card"
+              : "new_card";
+
+      const total = Number(v.totalAmount);
       await trackServer(
-        EVENT_BOOKING_HOLD_CREATED,
+        EVENT_BOOKING_CONFIRMED,
         {
           portal: "client",
           provider_id: draft.provider_id,
-          hold_id: holdId,
+          booking_id: booking.id,
+          total_amount: v.totalAmount,
+          currency: v.currency,
           service_ids: draft.services.map((s) => s.offering_id),
-          scheduled_at: draft.selected_datetime,
+          location_type: draft.location_type,
+          payment_method: paymentMethodLabel,
+          payment_pending_redirect: input.paymentUrl != null,
+          revenue: Number.isFinite(total) ? total : undefined,
+          price: Number.isFinite(total) ? total : undefined,
         },
-        userId
+        userId,
       );
-    }
-
-    const pm = validatedDraft.payment_method || "card";
-    const paymentMethodLabel =
-      pm === "cash"
-        ? "cash"
-        : pm === "giftcard"
-          ? "gift_card"
-          : savedPaymentMethodId
-            ? "saved_card"
-            : "new_card";
-
-    const total = Number(v.totalAmount);
-    await trackServer(
-      EVENT_BOOKING_CONFIRMED,
-      {
-        portal: "client",
-        provider_id: draft.provider_id,
-        booking_id: booking.id,
-        total_amount: v.totalAmount,
-        currency: v.currency,
-        service_ids: draft.services.map((s) => s.offering_id),
-        location_type: draft.location_type,
-        payment_method: paymentMethodLabel,
-        payment_pending_redirect: input.paymentUrl != null,
-        /** Amplitude revenue / LTV analysis (same currency as `currency`) */
-        revenue: Number.isFinite(total) ? total : undefined,
-        price: Number.isFinite(total) ? total : undefined,
-      },
-      userId
-    );
-  } catch (amplitudeError) {
-    console.error("[Amplitude] Failed to track booking event:", amplitudeError);
-  }
+    },
+    { metric: POST_EFFECT_METRIC, tags: { ...tagsBase, op: "amplitudeTrack" } },
+  );
 }

@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const limit = Math.min(parseInt(searchParams.get("limit") ?? "5", 10), 20);
     const locationId = searchParams.get("location_id");
+    const fromParam = searchParams.get("from") || searchParams.get("start_date");
+    const toParam = searchParams.get("to") || searchParams.get("end_date");
 
     let bookingServicesQuery = supabaseAdmin
       .from("booking_services")
@@ -28,13 +30,19 @@ export async function GET(request: NextRequest) {
         id,
         price,
         offering_id,
-        bookings!inner (id, provider_id, status, location_id),
+        bookings!inner (id, provider_id, status, location_id, scheduled_at),
         offerings:offering_id (title)
       `,
       )
       .eq("bookings.provider_id", providerId)
       .not("bookings.status", "in", "(cancelled,no_show)");
 
+    if (fromParam) {
+      bookingServicesQuery = bookingServicesQuery.gte("bookings.scheduled_at", new Date(fromParam).toISOString());
+    }
+    if (toParam) {
+      bookingServicesQuery = bookingServicesQuery.lte("bookings.scheduled_at", new Date(toParam).toISOString());
+    }
     if (locationId) {
       bookingServicesQuery = bookingServicesQuery.eq("bookings.location_id", locationId);
     }

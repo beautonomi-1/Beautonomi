@@ -7,6 +7,7 @@ import { requireAdminSection,
   notFoundResponse,
  } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_OPERATIONS } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 import { z } from "zod";
 
 const patchSchema = z.object({
@@ -111,7 +112,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
+    const { user } = await requireAdminSection(ADMIN_SECTION_OPERATIONS, request);
     const supabase = await getSupabaseServer(request);
     const { id } = await params;
     const body = await request.json();
@@ -184,6 +185,15 @@ export async function PATCH(
       .single();
 
     if (error) throw error;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id, actor_role: user.role,
+      action: "admin.service_zone.update", entity_type: "platform_zone",
+      entity_id: id, module: "operations", risk_level: "medium",
+      retention_tier: "operational", status: "succeeded",
+      ip_address: reqMeta.ip_address, user_agent: reqMeta.user_agent,
+    });
 
     return successResponse(zone);
   } catch (error) {

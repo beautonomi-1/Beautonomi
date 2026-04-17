@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { getGoogleCalendarUrl } from "@/lib/calendar/ics";
 import type { Booking } from "@/types/beautonomi";
+import { formatBookingDateInTimeZone, formatBookingTimeInTimeZone } from "@/lib/bookings/display-datetime";
 
 /** Booking as returned from GET /api/me/bookings/:id (includes expanded provider, location, etc.) */
 type BookingDetail = Booking & {
@@ -29,6 +30,7 @@ type BookingDetail = Booking & {
   location_name?: string;
   provider?: { id?: string; business_name?: string; slug?: string; phone?: string; email?: string };
   outstanding_balance?: number;
+  display_time_zone?: string | null;
 };
 import { toast } from "sonner";
 import OrderDetailsDynamic from "@/app/checkout/components/order-details-dynamic";
@@ -219,23 +221,14 @@ export default function BookingDetailPage() {
     }
   };
 
+  const bookingTz = booking?.display_time_zone ?? undefined;
+
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
+    return formatBookingDateInTimeZone(dateString, bookingTz);
   };
 
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true,
-    });
+    return formatBookingTimeInTimeZone(dateString, bookingTz);
   };
 
   if (isLoading) {
@@ -564,7 +557,7 @@ export default function BookingDetailPage() {
           <div className="flex justify-between">
             <span className="text-gray-600">Subtotal</span>
             <span className="font-medium">
-              {booking.currency} {booking.subtotal.toFixed(2)}
+              {booking.currency} {Math.max(0, booking.subtotal - (booking.travel_fee || 0)).toFixed(2)}
             </span>
           </div>
           {booking.tip_amount > 0 && (

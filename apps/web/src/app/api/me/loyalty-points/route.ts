@@ -51,7 +51,8 @@ export async function GET(request: NextRequest) {
 
       available_balance = Number(balanceData) || 0;
       redemption_rate = Number(config?.redemption_rate) || 10;
-      min_redemption_points = Number(config?.min_redemption_points) ?? 50;
+      const parsedMinRedemption = Number(config?.min_redemption_points);
+      min_redemption_points = Number.isFinite(parsedMinRedemption) ? parsedMinRedemption : 50;
 
       const { data: balanceSummary } = await supabase
         .from("loyalty_points_balance")
@@ -186,7 +187,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const conversion_display = `${redemption_rate} points = R1 discount`;
+    const currencySymbol = currency === "ZAR" ? "R" : currency;
+    const conversion_display = `${redemption_rate} points = ${currencySymbol}1 discount`;
     const can_redeem_currency = redemption_rate > 0 ? available_balance / redemption_rate : 0;
 
     return successResponse({

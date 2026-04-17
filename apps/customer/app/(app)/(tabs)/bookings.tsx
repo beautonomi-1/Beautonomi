@@ -15,7 +15,7 @@ import { useBookings } from "@/features/bookings/useBookings";
 import { haptic } from "@/lib/haptics";
 import { AnimatedPressable } from "@/components/AnimatedPressable";
 import type { Booking } from "@/types/api";
-import { TAB_CONTENT_PADDING_BOTTOM } from "@/constants/layout";
+import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
@@ -49,10 +49,15 @@ function formatTime(s: string) {
   });
 }
 
-const STATUS_STYLES: Record<string, { bg: string; text: string }> = {
+const STATUS_STYLES: Record<string, { bg: string; text: string; label?: string }> = {
   confirmed: { bg: "#DCFCE7", text: "#15803D" },
   pending: { bg: "#FEF9C3", text: "#A16207" },
+  pending_payment: { bg: "#FEF3C7", text: "#92400E", label: "Pending Payment" },
   cancelled: { bg: "#FEE2E2", text: "#B91C1C" },
+  completed: { bg: "#DBEAFE", text: "#1E40AF" },
+  started: { bg: "#E0E7FF", text: "#3730A3" },
+  in_progress: { bg: "#E0E7FF", text: "#3730A3", label: "In Progress" },
+  no_show: { bg: "#F3F4F6", text: "#6B7280", label: "No Show" },
 };
 
 /** Empty list per tab — matches web account-settings bookings behavior; search = provider discovery (parity with web `/search`). */
@@ -103,8 +108,9 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
     (booking as unknown as Record<string, unknown>).provider_name as string | undefined ||
     booking.services?.[0]?.offering_name ||
     "Beauty Service";
-  const statusStyle = STATUS_STYLES[booking.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
-  const statusLabel = booking.status.charAt(0).toUpperCase() + booking.status.slice(1);
+  const statusEntry = STATUS_STYLES[booking.status] ?? { bg: Colors.gray[100], text: Colors.gray[700] };
+  const statusStyle = statusEntry;
+  const statusLabel = statusEntry.label || booking.status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
   return (
     <AnimatedPressable
@@ -160,6 +166,7 @@ function BookingCard({ booking, onPress }: { booking: Booking; onPress: () => vo
 
 export default function BookingsScreen() {
   useScreenTracking("Bookings");
+  const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const { user } = useAuth();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const [tab, setTab] = useState<BookingsTabType>("upcoming");
@@ -295,7 +302,7 @@ export default function BookingsScreen() {
           contentContainerStyle={{
             paddingHorizontal: contentPadding,
             paddingTop: contentPadding,
-            paddingBottom: TAB_CONTENT_PADDING_BOTTOM,
+            paddingBottom: tabScrollPaddingBottom,
           }}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
@@ -319,7 +326,7 @@ export default function BookingsScreen() {
             ) : null
           }
           ListEmptyComponent={
-            <EmptyBookingsTab tab={tab} />
+            error ? null : <EmptyBookingsTab tab={tab} />
           }
         />
       )}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Download, Printer, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { fetcher } from "@/lib/http/fetcher";
+import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import Link from "next/link";
@@ -48,6 +48,7 @@ interface Receipt {
   }>;
   subtotal: number;
   tax: number;
+  tax_rate?: number;
   /** Platform / service fee */
   fees: number;
   travel_fee?: number;
@@ -58,6 +59,21 @@ interface Receipt {
   total: number;
   currency?: string;
   payment_status: string;
+  amount_paid?: number;
+  balance_due?: number;
+  deposit_required?: boolean;
+  deposit_amount?: number;
+  deposit_percentage?: number;
+  payment_option?: string;
+  additional_charges?: Array<{
+    id: string;
+    description: string;
+    amount: number;
+    status: string;
+    paid_at?: string | null;
+  }>;
+  receipt_header?: string | null;
+  receipt_footer?: string | null;
 }
 
 export default function ReceiptPage() {
@@ -70,6 +86,7 @@ export default function ReceiptPage() {
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     loadReceipt();
@@ -78,14 +95,31 @@ export default function ReceiptPage() {
   const loadReceipt = async () => {
     try {
       setIsLoading(true);
-      const response = await fetcher.get<{ receipt: Receipt }>(
+      setErrorMessage(null);
+      const response = await fetcher.get<{ receipt: Receipt } | Receipt>(
         `/api/bookings/${bookingId}/receipt`,
         { cache: "no-store" }
       );
-      setReceipt(response.receipt);
+      // Handle both `{ receipt: {...} }` and flat receipt shapes
+      const receiptData = (response as { receipt?: Receipt }).receipt ?? (response as Receipt);
+      setReceipt(receiptData?.booking_number ? receiptData : null);
     } catch (error) {
       console.error("Failed to load receipt:", error);
-      toast.error("Failed to load receipt");
+      if (error instanceof FetchError) {
+        if (error.status === 403) {
+          setErrorMessage("You don't have permission to view this receipt.");
+          toast.error("Access denied");
+        } else if (error.status === 404) {
+          setErrorMessage("Receipt not found. The booking may not exist or has been removed.");
+          toast.error("Receipt not found");
+        } else {
+          setErrorMessage(error.message || "Something went wrong loading the receipt.");
+          toast.error("Failed to load receipt");
+        }
+      } else {
+        setErrorMessage("An unexpected error occurred. Please try again.");
+        toast.error("Failed to load receipt");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -102,10 +136,27 @@ export default function ReceiptPage() {
     }).format(amount);
   };
 
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!receipt) return;
-    window.open(`/api/bookings/${bookingId}/receipt/pdf`, "_blank");
-    toast.success("PDF receipt download started.");
+    try {
+      const response = await fetch(`/api/bookings/${bookingId}/receipt/pdf`);
+      if (!response.ok) {
+        throw new Error("Failed to generate PDF");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `receipt-${receipt.booking_number || bookingId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success("PDF receipt downloaded.");
+    } catch (error) {
+      console.error("Failed to download PDF:", error);
+      toast.error("Failed to download receipt. Please try again.");
+    }
   };
 
   const formatDate = (dateString: string) => {
@@ -128,7 +179,7 @@ export default function ReceiptPage() {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="text-center">
-          <p className="text-gray-500">Receipt not found</p>
+          <p className="text-gray-500">{errorMessage || "Receipt not found"}</p>
           <Link href={`/account-settings/bookings/${bookingId}`}>
             <Button variant="outline" className="mt-4">
               Back to Booking
@@ -163,6 +214,9 @@ export default function ReceiptPage() {
 
         <Card className="print:shadow-none print:border-0">
           <CardHeader className="text-center border-b pb-4">
+            {receipt.receipt_header && (
+              <p className="text-sm text-gray-500 whitespace-pre-line mb-2">{receipt.receipt_header}</p>
+            )}
             <CardTitle className="text-3xl">Receipt</CardTitle>
             <p className="text-gray-600 mt-2">Booking #{receipt.booking_number}</p>
           </CardHeader>
@@ -170,13 +224,13 @@ export default function ReceiptPage() {
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <h3 className="font-semibold mb-2">Customer</h3>
-                <p className="text-sm">{receipt.customer.full_name || "N/A"}</p>
-                <p className="text-sm text-gray-600">{receipt.customer.email}</p>
+                <p className="text-sm">{receipt.customer?.full_name || "N/A"}</p>
+                <p className="text-sm text-gray-600">{receipt.customer?.email || ""}</p>
               </div>
               <div>
                 <h3 className="font-semibold mb-2">Provider</h3>
-                <p className="text-sm">{receipt.provider.business_name}</p>
-                {receipt.provider.owner_email && (
+                <p className="text-sm">{receipt.provider?.business_name || "Provider"}</p>
+                {receipt.provider?.owner_email && (
                   <p className="text-sm text-gray-600">{receipt.provider.owner_email}</p>
                 )}
               </div>
@@ -243,7 +297,7 @@ export default function ReceiptPage() {
               </div>
               {receipt.tax > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span>Tax</span>
+                  <span>Tax{receipt.tax_rate ? ` (${receipt.tax_rate}%)` : ""}</span>
                   <span>{formatCurrency(receipt.tax)}</span>
                 </div>
               )}
@@ -273,7 +327,7 @@ export default function ReceiptPage() {
               )}
               {receipt.discount > 0 && (
                 <div className="flex justify-between text-sm text-green-600">
-                  <span>Discount</span>
+                  <span>Discount{receipt.discount_reason ? ` (${receipt.discount_reason})` : ""}</span>
                   <span>-{formatCurrency(receipt.discount)}</span>
                 </div>
               )}
@@ -281,7 +335,51 @@ export default function ReceiptPage() {
                 <span>Total</span>
                 <span>{formatCurrency(receipt.total)}</span>
               </div>
+              {receipt.deposit_required && receipt.payment_option === "deposit" && (
+                <div className="pt-2 border-t border-dashed space-y-1">
+                  <div className="flex justify-between text-sm">
+                    <span>Deposit{receipt.deposit_percentage ? ` (${receipt.deposit_percentage}%)` : ""}</span>
+                    <span>{formatCurrency(receipt.deposit_amount || 0)}</span>
+                  </div>
+                </div>
+              )}
+              {(receipt.amount_paid ?? 0) > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span>Amount Paid</span>
+                  <span>{formatCurrency(receipt.amount_paid!)}</span>
+                </div>
+              )}
+              {(receipt.balance_due ?? 0) > 0 && (
+                <div className="flex justify-between text-sm font-semibold text-red-700">
+                  <span>Balance Due</span>
+                  <span>{formatCurrency(receipt.balance_due!)}</span>
+                </div>
+              )}
             </div>
+
+            {(receipt.additional_charges?.length ?? 0) > 0 && (
+              <div className="border-t pt-4">
+                <h3 className="font-semibold mb-2 text-sm">Additional Charges</h3>
+                <div className="space-y-2">
+                  {receipt.additional_charges!.map((charge) => (
+                    <div key={charge.id}>
+                      <div className="flex justify-between text-sm">
+                        <span>{charge.description}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{formatCurrency(charge.amount)}</span>
+                          <Badge variant="outline" className={`text-xs ${charge.status === "paid" ? "bg-green-50 text-green-700 border-green-200" : ""}`}>
+                            {charge.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      {charge.paid_at && (
+                        <p className="text-xs text-gray-500 mt-0.5">Paid on {new Date(charge.paid_at).toLocaleDateString()}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="border-t pt-4">
               <div className="flex items-center gap-2">
@@ -298,12 +396,17 @@ export default function ReceiptPage() {
                   {receipt.payment_status === "paid" && (
                     <CheckCircle2 className="w-3 h-3 mr-1" />
                   )}
-                  {receipt.payment_status.charAt(0).toUpperCase() +
-                    receipt.payment_status.slice(1)}
+                  {(receipt.payment_status || "pending").charAt(0).toUpperCase() +
+                    (receipt.payment_status || "pending").slice(1)}
                 </Badge>
               </div>
             </div>
           </CardContent>
+          {receipt.receipt_footer && (
+            <div className="border-t px-6 py-4 text-center text-xs text-gray-500 whitespace-pre-line">
+              {receipt.receipt_footer}
+            </div>
+          )}
         </Card>
       </div>
     </AuthGuard>

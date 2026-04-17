@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 
     const { data: allStaffWithUser } = await supabase
       .from("provider_staff")
-      .select("id, role, is_active, users(role)");
+      .select("id, user_id, role, is_active, users(role)");
 
     const allStaff = (allStaffWithUser || []) as StaffRow[];
     const stats = {
@@ -91,6 +91,11 @@ export async function GET(request: NextRequest) {
       by_user_role: {
         provider_owner: allStaff.filter((s) => (Array.isArray(s.users) ? s.users[0] : s.users)?.role === "provider_owner").length,
         provider_staff: allStaff.filter((s) => (Array.isArray(s.users) ? s.users[0] : s.users)?.role === "provider_staff").length,
+        /** users.role is still "customer" but an active staff row exists — provider APIs treat them as provider_staff */
+        customer_with_staff_login: allStaff.filter((s) => {
+          const r = (Array.isArray(s.users) ? s.users[0] : s.users)?.role;
+          return r === "customer" && s.user_id;
+        }).length,
         no_account: allStaff.filter((s) => !(Array.isArray(s.users) ? s.users[0] : s.users)?.role).length,
       },
     };

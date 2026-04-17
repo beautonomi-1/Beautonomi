@@ -49,6 +49,9 @@ export const BillingPage = lazy(() =>
 export const TaxesPage = lazy(() =>
   import("@/routes/finance/TaxesPage").then((m) => ({ default: m.TaxesPage }))
 );
+export const PeriodLocksPage = lazy(() =>
+  import("@/routes/finance/PeriodLocksPage").then((m) => ({ default: m.PeriodLocksPage }))
+);
 export const ProviderSubscriptionsPage = lazy(() =>
   import("@/routes/finance/ProviderSubscriptionsPage").then((m) => ({ default: m.ProviderSubscriptionsPage }))
 );
@@ -57,6 +60,9 @@ export const SubscriptionMetricsPage = lazy(() =>
 );
 export const PlansListPage = lazy(() =>
   import("@/routes/finance/PlansListPage").then((m) => ({ default: m.PlansListPage }))
+);
+export const WalletReconciliationPage = lazy(() =>
+  import("@/routes/finance/WalletReconciliationPage").then((m) => ({ default: m.WalletReconciliationPage }))
 );
 export const PlatformFeesPage = lazy(() =>
   import("@/routes/settings/PlatformFeesPage").then((m) => ({ default: m.PlatformFeesPage }))
@@ -100,6 +106,9 @@ export const ApiKeysListPage = lazy(() =>
 export const AmplitudeConfigPage = lazy(() =>
   import("@/routes/integrations/AmplitudeConfigPage").then((m) => ({ default: m.AmplitudeConfigPage }))
 );
+export const PaystackConfigPage = lazy(() =>
+  import("@/routes/integrations/PaystackConfigPage").then((m) => ({ default: m.PaystackConfigPage }))
+);
 export const PromotionsListPage = lazy(() =>
   import("@/routes/marketing/PromotionsListPage").then((m) => ({ default: m.PromotionsListPage }))
 );
@@ -132,6 +141,9 @@ export const CustomFieldsListPage = lazy(() =>
 );
 export const ReferralsSettingsPage = lazy(() =>
   import("@/routes/settings/ReferralsSettingsPage").then((m) => ({ default: m.ReferralsSettingsPage }))
+);
+export const TenantsListPage = lazy(() =>
+  import("@/routes/settings/TenantsListPage").then((m) => ({ default: m.TenantsListPage }))
 );
 export const TenantDomainsListPage = lazy(() =>
   import("@/routes/settings/TenantDomainsListPage").then((m) => ({ default: m.TenantDomainsListPage }))
@@ -183,6 +195,9 @@ export const CpAuditLogPage = lazy(() =>
 );
 export const CompliancePurgePage = lazy(() =>
   import("@/routes/control-plane/CompliancePurgePage").then((m) => ({ default: m.CompliancePurgePage }))
+);
+export const TenantResetPage = lazy(() =>
+  import("@/routes/control-plane/TenantResetPage").then((m) => ({ default: m.TenantResetPage }))
 );
 export const CpMaintenancePage = lazy(() =>
   import("@/routes/control-plane/CpControlPlaneOps").then((m) => ({ default: m.CpMaintenancePage }))
@@ -249,6 +264,12 @@ export const NotificationTemplatesListPage = lazy(() =>
 export const NotificationsConfigPage = lazy(() =>
   import("@/routes/marketing/NotificationsConfigPage").then((m) => ({ default: m.NotificationsConfigPage }))
 );
+export const SmsTemplatesListPage = lazy(() =>
+  import("@/routes/marketing/SmsTemplatesListPage").then((m) => ({ default: m.SmsTemplatesListPage }))
+);
+export const EmailTemplatesListPage = lazy(() =>
+  import("@/routes/marketing/EmailTemplatesListPage").then((m) => ({ default: m.EmailTemplatesListPage }))
+);
 export const AutomationsListPage = lazy(() =>
   import("@/routes/marketing/AutomationsListPage").then((m) => ({ default: m.AutomationsListPage }))
 );
@@ -266,6 +287,9 @@ export const IsoCodesPage = lazy(() =>
 );
 export const ServiceZonesListPage = lazy(() =>
   import("@/routes/ops/ServiceZonesListPage").then((m) => ({ default: m.ServiceZonesListPage }))
+);
+export const ServiceZoneDetailPage = lazy(() =>
+  import("@/routes/ops/ServiceZoneDetailPage").then((m) => ({ default: m.ServiceZoneDetailPage }))
 );
 export const ContentHubPage = lazy(() =>
   import("@/routes/content/ContentHubPage").then((m) => ({ default: m.ContentHubPage }))
@@ -288,9 +312,85 @@ export const GlobalCategoriesPage = lazy(() =>
 export const ContentResourcesPage = lazy(() =>
   import("@/routes/content/ContentResourcesPage").then((m) => ({ default: m.ContentResourcesPage }))
 );
+export const ContentFaqsPage = lazy(() =>
+  import("@/routes/content/ContentFaqsPage").then((m) => ({ default: m.ContentFaqsPage }))
+);
+export const ContentAboutUsPage = lazy(() =>
+  import("@/routes/content/ContentAboutUsPage").then((m) => ({ default: m.ContentAboutUsPage }))
+);
+export const ContentPagesPage = lazy(() =>
+  import("@/routes/content/ContentPagesPage").then((m) => ({ default: m.ContentPagesPage }))
+);
+export const ContentFeaturedCitiesPage = lazy(() =>
+  import("@/routes/content/ContentFeaturedCitiesPage").then((m) => ({ default: m.ContentFeaturedCitiesPage }))
+);
+export const ContentAppLinksPage = lazy(() =>
+  import("@/routes/content/ContentAppLinksPage").then((m) => ({ default: m.ContentAppLinksPage }))
+);
 export const ReferralSourcesPage = lazy(() =>
   import("@/routes/providers/ReferralSourcesPage").then((m) => ({ default: m.ReferralSourcesPage }))
 );
 export const AddonsListPage = lazy(() =>
   import("@/routes/ecommerce/AddonsListPage").then((m) => ({ default: m.AddonsListPage }))
+);
+export const AdminTeamPage = lazy(() =>
+  import("@/routes/settings/AdminTeamPage").then((m) => ({ default: m.AdminTeamPage }))
+);
+
+export const AdsListPage = lazy(() =>
+  import("@/routes/marketing/AdsListPage").then((m) => ({ default: m.AdsListPage }))
+);
+export const AdsCampaignDetailPage = lazy(() =>
+  import("@/routes/marketing/AdsCampaignDetailPage").then((m) => ({ default: m.AdsCampaignDetailPage }))
+);
+export const AnalyticsGeoPage = lazy(() =>
+  import("@/routes/AnalyticsGeoPage").then((m) => ({ default: m.AnalyticsGeoPage }))
+);
+export const ProviderOpsDashboardPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsDashboardPage").then((m) => ({ default: m.ProviderOpsDashboardPage }))
+);
+export const ProviderOpsLeadsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadsPage").then((m) => ({ default: m.ProviderOpsLeadsPage }))
+);
+export const ProviderOpsLeadDetailPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadDetailPage").then((m) => ({ default: m.ProviderOpsLeadDetailPage }))
+);
+export const ProviderOpsLeadNewPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLeadNewPage").then((m) => ({ default: m.ProviderOpsLeadNewPage }))
+);
+export const ProviderOpsTrackerPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsTrackerPage").then((m) => ({ default: m.ProviderOpsTrackerPage }))
+);
+export const ProviderOpsTrackerDetailPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsTrackerDetailPage").then((m) => ({ default: m.ProviderOpsTrackerDetailPage }))
+);
+export const ProviderOpsPipelinePage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsPipelinePage").then((m) => ({ default: m.ProviderOpsPipelinePage }))
+);
+export const ProviderOpsDuplicatesPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsDuplicatesPage").then((m) => ({ default: m.ProviderOpsDuplicatesPage }))
+);
+export const ProviderOpsActivationPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsActivationPage").then((m) => ({ default: m.ProviderOpsActivationPage }))
+);
+export const ProviderOpsReportsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsReportsPage").then((m) => ({ default: m.ProviderOpsReportsPage }))
+);
+export const ProviderOpsSettingsPage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsSettingsPage").then((m) => ({ default: m.ProviderOpsSettingsPage }))
+);
+export const ProviderOpsLifecyclePage = lazy(() =>
+  import("@/routes/provider-ops/ProviderOpsLifecyclePage").then((m) => ({ default: m.ProviderOpsLifecyclePage }))
+);
+export const WhatsAppSessionsPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppSessionsPage").then((m) => ({ default: m.WhatsAppSessionsPage }))
+);
+export const WhatsAppTemplatesPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppTemplatesPage").then((m) => ({ default: m.WhatsAppTemplatesPage }))
+);
+export const WhatsAppBatchDetailPage = lazy(() =>
+  import("@/routes/whatsapp/WhatsAppBatchDetailPage").then((m) => ({ default: m.WhatsAppBatchDetailPage }))
+);
+export const CpIntegrationWasenderPage = lazy(() =>
+  import("@/routes/control-plane/CpIntegrationWasenderPage").then((m) => ({ default: m.CpIntegrationWasenderPage }))
 );

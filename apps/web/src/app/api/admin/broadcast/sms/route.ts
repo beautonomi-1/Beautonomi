@@ -4,6 +4,7 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse  } 
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /**
  * POST /api/admin/broadcast/sms
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest) {
       const { data: users } = await supabase
         .from("users")
         .select("id")
-        .eq("role", "customer");
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId);
       userIds = users?.map((u: { id: string }) => u.id) ?? [];
     } else if (recipient_type === "all_providers") {
       const { data: providers } = await supabase
@@ -67,7 +69,11 @@ export async function POST(request: NextRequest) {
         },
       },
       ["sms"],
-      appType ? { appType } : undefined
+      {
+        ...(appType ? { appType } : {}),
+        supabaseClient: supabase,
+        tenantId,
+      }
     );
 
     if (!result.success) {
@@ -90,6 +96,21 @@ export async function POST(request: NextRequest) {
       console.error("Error logging broadcast:", logError);
       // Don't fail the request if logging fails
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.broadcast.sms",
+      entity_type: "broadcast",
+      module: "marketing",
+      risk_level: "high",
+      retention_tier: "routine",
+      status: "succeeded",
+      metadata: { recipient_type, recipient_count: userIds.length },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       success: true,

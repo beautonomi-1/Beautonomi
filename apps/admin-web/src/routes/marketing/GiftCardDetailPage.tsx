@@ -8,9 +8,17 @@ import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
 import { PermissionDenied } from "@/components/ui/PermissionDenied";
+import {
+  AdminDataTable,
+  AdminTableBody,
+  AdminTableHead,
+  AdminTd,
+  AdminTh,
+} from "@/components/admin/AdminDataTable";
 import { AdminPageSkeleton } from "@/components/admin/AdminPageSkeleton";
 import { AdminRetryBlock } from "@/components/admin/AdminRetryBlock";
 import { adminSpaTo } from "@/lib/adminSpaPath";
+import { adminToast } from "@/lib/adminToast";
 import { useTenantFeatureFlags, TENANT_PAYMENT_FEATURE_KEYS } from "@/hooks/useTenantFeatureFlags";
 import { useEffect, useState } from "react";
 
@@ -58,10 +66,18 @@ export function GiftCardDetailPage() {
   const patch = useMutation({
     mutationFn: (body: { balance?: number; is_active?: boolean; expires_at?: string | null }) =>
       adminApi.patchJson<unknown>(`/api/admin/gift-cards/${id}`, body),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.giftCardDetail(id) });
       void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gift-cards"] });
+      if ("is_active" in vars) {
+        adminToast.success(vars.is_active ? "Gift card activated" : "Gift card deactivated");
+      } else if ("balance" in vars) {
+        adminToast.success("Balance updated");
+      } else {
+        adminToast.success("Gift card updated");
+      }
     },
+    onError: (e: Error) => adminToast.error(`Failed to update gift card: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -163,11 +179,42 @@ export function GiftCardDetailPage() {
         {err ? <p className="mt-2 text-sm text-red-600">{err}</p> : null}
       </AdminPanel>
       <AdminPanel>
-        <h2 className="mb-2 text-sm font-semibold text-gray-900">Redemptions ({redemptions.length})</h2>
+        <h2 className="mb-3 text-sm font-semibold text-gray-900">Redemptions ({redemptions.length})</h2>
         {redemptions.length === 0 ? (
-          <p className="text-sm text-gray-600">None in this tenant.</p>
+          <p className="text-sm text-gray-600">No redemptions recorded for this gift card.</p>
         ) : (
-          <pre className="max-h-64 overflow-auto rounded bg-gray-50 p-3 text-xs">{JSON.stringify(redemptions, null, 2)}</pre>
+          <AdminDataTable>
+            <AdminTableHead>
+              <tr>
+                <AdminTh>User / Email</AdminTh>
+                <AdminTh>Amount</AdminTh>
+                <AdminTh>Booking / Order</AdminTh>
+                <AdminTh>Redeemed at</AdminTh>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {redemptions.map((r, i) => {
+                const row = r as Record<string, unknown>;
+                return (
+                  <tr key={String(row.id ?? i)}>
+                    <AdminTd className="text-xs">
+                      {String(row.user_email ?? row.email ?? row.user_id ?? "—")}
+                    </AdminTd>
+                    <AdminTd className="tabular-nums text-xs">
+                      {String(row.amount ?? row.redeemed_amount ?? "—")}
+                      {row.currency ? ` ${String(row.currency)}` : ""}
+                    </AdminTd>
+                    <AdminTd className="font-mono text-xs text-gray-500">
+                      {String(row.booking_id ?? row.order_id ?? "—").slice(0, 16)}
+                    </AdminTd>
+                    <AdminTd className="text-xs text-gray-500">
+                      {String(row.redeemed_at ?? row.created_at ?? "—").slice(0, 16).replace("T", " ")}
+                    </AdminTd>
+                  </tr>
+                );
+              })}
+            </AdminTableBody>
+          </AdminDataTable>
         )}
       </AdminPanel>
     </div>

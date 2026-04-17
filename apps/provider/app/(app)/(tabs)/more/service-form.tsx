@@ -57,6 +57,12 @@ interface Service {
   team_member_commission_enabled?: boolean;
   tax_rate?: number;
   is_active?: boolean;
+  // §Provider-launch (audit 2026-04): web/ServiceCreateEditDialog already
+  // persists these "Extra Time" fields so services with cleanup or
+  // transition buffers block the calendar correctly. Adding them on
+  // mobile keeps the two clients at feature parity.
+  extra_time_enabled?: boolean;
+  extra_time_duration?: number;
 }
 
 function FormField({
@@ -112,6 +118,8 @@ const defaultForm = {
   teamMemberIds: [] as string[],
   teamMemberCommissionEnabled: false,
   isActive: true,
+  extraTimeEnabled: false,
+  extraTimeDuration: "15",
 };
 
 export default function ServiceFormScreen() {
@@ -173,6 +181,8 @@ export default function ServiceFormScreen() {
         teamMemberIds: service.team_member_ids ?? [],
         teamMemberCommissionEnabled: service.team_member_commission_enabled ?? false,
         isActive: service.is_active !== false,
+        extraTimeEnabled: service.extra_time_enabled ?? false,
+        extraTimeDuration: String(service.extra_time_duration ?? 15),
       });
     } else if (!serviceId) {
       setForm({ ...defaultForm });
@@ -241,6 +251,8 @@ export default function ServiceFormScreen() {
       team_member_ids: form.teamMemberIds,
       team_member_commission_enabled: form.teamMemberCommissionEnabled,
       is_active: form.isActive,
+      extra_time_enabled: form.extraTimeEnabled,
+      extra_time_duration: form.extraTimeEnabled ? parseInt(form.extraTimeDuration, 10) || 0 : 0,
     };
 
     if (isEdit && serviceId) {
@@ -494,6 +506,34 @@ export default function ServiceFormScreen() {
                 />
               </>
             )}
+
+            {/*
+              §Provider-launch (audit 2026-04): extra (buffer) time field
+              brings mobile to parity with web's ServiceCreateEditDialog
+              "Extra Time" toggle + duration selector.  Without this the
+              calendar booked back-to-back slots with no cleanup buffer.
+            */}
+            <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
+              <View style={twStyle("flex-1 pr-3")}>
+                <Text style={twStyle("text-sm font-medium text-gray-700")}>Extra (buffer) time</Text>
+                <Text style={twStyle("mt-0.5 text-xs text-gray-500")}>
+                  Block time after the service for cleanup or transition.
+                </Text>
+              </View>
+              <Switch
+                value={form.extraTimeEnabled}
+                onValueChange={(v) => setForm((p) => ({ ...p, extraTimeEnabled: v }))}
+              />
+            </View>
+            {form.extraTimeEnabled ? (
+              <FormField
+                label="Extra time (minutes)"
+                value={form.extraTimeDuration}
+                onChangeText={(t) => setForm((p) => ({ ...p, extraTimeDuration: t.replace(/[^0-9]/g, "") }))}
+                placeholder="15"
+                keyboardType="numeric"
+              />
+            ) : null}
 
             <View style={twStyle("mb-3 flex-row items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-4 py-3")}>
               <Text style={twStyle("text-sm font-medium text-gray-700")}>Team commission</Text>

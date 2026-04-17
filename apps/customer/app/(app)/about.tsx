@@ -1,24 +1,44 @@
-import { View, ActivityIndicator, StyleSheet } from "react-native";
+import { useState } from "react";
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity } from "react-native";
 import { WebView } from "react-native-webview";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
-import { APP_URL } from "@/config/public-env";
+import { getBackendUrl } from "@/config/public-env";
 import { Colors } from "@/constants/colors";
 
 export default function AboutScreen() {
   useScreenTracking("About Us");
+  const base = getBackendUrl().replace(/\/$/, "");
+  const [webError, setWebError] = useState<string | null>(null);
 
   return (
     <View style={styles.container}>
-      <WebView
-        source={{ uri: `${APP_URL}/about` }}
-        style={styles.webview}
-        startInLoadingState
-        renderLoading={() => (
-          <View style={styles.loading}>
-            <ActivityIndicator size="large" color={Colors.primary} />
+      {base ? (
+        webError ? (
+          <View style={styles.errorWrap}>
+            <Text style={styles.errorText}>{webError}</Text>
+            <TouchableOpacity onPress={() => setWebError(null)} accessibilityRole="button">
+              <Text style={styles.retry}>Retry</Text>
+            </TouchableOpacity>
           </View>
-        )}
-      />
+        ) : (
+          <WebView
+            source={{ uri: `${base}/about` }}
+            style={styles.webview}
+            startInLoadingState
+            onError={(e) => setWebError(e.nativeEvent.description || "Could not load page")}
+            onHttpError={(e) => setWebError(`HTTP ${e.nativeEvent.statusCode}`)}
+            renderLoading={() => (
+              <View style={styles.loading}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+              </View>
+            )}
+          />
+        )
+      ) : (
+        <View style={styles.errorWrap}>
+          <Text style={styles.errorText}>App URL is not configured.</Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -36,4 +56,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#fff",
   },
+  errorWrap: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  errorText: { color: Colors.gray[600], textAlign: "center" },
+  retry: { marginTop: 16, color: Colors.primary, fontWeight: "600", fontSize: 16 },
 });

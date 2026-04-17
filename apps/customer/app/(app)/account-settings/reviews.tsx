@@ -57,6 +57,7 @@ export default function ReviewsScreen() {
             {list.map((r: any, index: number) => {
               const provider = r.providers ?? r.provider;
               const booking = r.bookings ?? r.booking;
+              const resolvedBookingId = r.booking_id ?? booking?.id;
               return (
                 <View key={r.id} style={{ backgroundColor: Colors.gray[50], borderRadius: 12, padding: 16, marginTop: index === 0 ? 0 : 12 }}>
                   <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
@@ -86,23 +87,34 @@ export default function ReviewsScreen() {
                           ))}
                         </View>
                       )}
+                      {r.provider_response ? (
+                        <View style={{ marginTop: 12, backgroundColor: Colors.primaryLight, borderRadius: 10, padding: 12, borderLeftWidth: 3, borderLeftColor: Colors.primary }}>
+                          <Text style={{ fontSize: 12, fontWeight: "600", color: Colors.primary, marginBottom: 4 }}>Provider reply</Text>
+                          <Text style={{ fontSize: 13, color: Colors.gray[700], lineHeight: 19 }}>{r.provider_response}</Text>
+                          {r.provider_response_at && (
+                            <Text style={{ fontSize: 11, color: Colors.gray[400], marginTop: 4 }}>{formatDateSafe(r.provider_response_at)}</Text>
+                          )}
+                        </View>
+                      ) : null}
                     </View>
-                    <TouchableOpacity
-                      onPress={() =>
-                        router.push({
-                          pathname: "/(app)/review-write",
-                          params: {
-                            bookingId: r.booking_id,
-                            reviewId: r.id,
-                            rating: String(r.rating),
-                            comment: r.comment || "",
-                          },
-                        })
-                      }
-                      style={{ marginLeft: 8 }}
-                    >
-                      <Text style={{ color: Colors.primary, fontWeight: "500" }}>Edit</Text>
-                    </TouchableOpacity>
+                    {resolvedBookingId ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          router.push({
+                            pathname: "/(app)/review-write",
+                            params: {
+                              bookingId: resolvedBookingId,
+                              reviewId: r.id,
+                              rating: String(r.rating),
+                              comment: r.comment || "",
+                            },
+                          })
+                        }
+                        style={{ marginLeft: 8 }}
+                      >
+                        <Text style={{ color: Colors.primary, fontWeight: "500" }}>Edit</Text>
+                      </TouchableOpacity>
+                    ) : null}
                   </View>
                 </View>
               );

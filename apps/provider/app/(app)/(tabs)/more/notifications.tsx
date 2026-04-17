@@ -329,8 +329,11 @@ export default function NotificationsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([refresh(), refreshCount()]);
-    setRefreshing(false);
+    try {
+      await Promise.all([refresh(), refreshCount()]);
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, refreshCount]);
 
   const unreadCount = notifications?.filter((n) => isUnread(n)).length ?? 0;

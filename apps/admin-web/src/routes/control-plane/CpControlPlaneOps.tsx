@@ -13,6 +13,7 @@ import {
   AdminTd,
   AdminTh,
 } from "@/components/admin/AdminDataTable";
+import { datetimeLocalToIsoOrNull, isoToDatetimeLocalValue } from "@/lib/maintenance-datetime";
 
 type MaintenanceScope = "public_site" | "provider_web" | "customer_app" | "provider_app";
 const MAINTENANCE_SCOPES: MaintenanceScope[] = [
@@ -386,18 +387,9 @@ export function CpMaintenancePage() {
                   <input
                     type="datetime-local"
                     className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm"
-                    value={
-                      maintenance[scope].countdown_end_at
-                        ? (() => {
-                            const d = new Date(maintenance[scope].countdown_end_at!);
-                            const pad = (n: number) => n.toString().padStart(2, "0");
-                            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                          })()
-                        : ""
-                    }
+                    value={isoToDatetimeLocalValue(maintenance[scope].countdown_end_at)}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      updateScope(scope, { countdown_end_at: v ? new Date(v).toISOString() : null });
+                      updateScope(scope, { countdown_end_at: datetimeLocalToIsoOrNull(e.target.value) });
                     }}
                   />
                 </CpField>

@@ -97,6 +97,14 @@ export async function POST(
           ["push"],
           { appType: "provider" }
         );
+        await supabase.from("notifications").insert({
+          user_id: providerData.user_id,
+          type: "system",
+          title: "Payout Approved",
+          message: `Your payout request of ${amountFormatted} has been approved and is being processed.`,
+          data: { payout_id: id, amount: payoutRow.amount },
+          action_url: "/provider/payouts",
+        });
       }
     } catch (notifError) {
       console.error("Error sending notification:", notifError);

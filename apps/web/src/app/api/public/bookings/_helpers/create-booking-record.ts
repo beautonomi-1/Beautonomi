@@ -47,6 +47,7 @@ export async function createBookingRecord(
     service_fee_paid_by: "customer",
     tip_amount: v.tipAmount,
     tax_amount: v.taxAmount,
+    tax_rate: v.taxRate ?? null,
     discount_amount: v.packageDiscountAmount + v.promoDiscountAmount,
     discount_code: v.promoCode || null,
     promotion_discount_amount: v.promoDiscountAmount,
@@ -160,11 +161,13 @@ export async function createBookingRecord(
     await adminSupabase.from("bookings").update(atHomePatch).eq("id", bookingId);
   }
 
-  const loyaltyPointsUsed = Number(validatedDraft.loyalty_points_used ?? 0);
-  if (loyaltyPointsUsed > 0) {
+  if (v.loyaltyPointsRedeemed > 0) {
     await adminSupabase
       .from("bookings")
-      .update({ loyalty_points_used: loyaltyPointsUsed })
+      .update({
+        loyalty_points_used: v.loyaltyPointsRedeemed,
+        loyalty_discount_amount: v.loyaltyDiscountAmount,
+      })
       .eq("id", bookingId);
   }
 
@@ -205,6 +208,7 @@ export async function createBookingRecord(
           offering_id: off.id,
           staff_id: primaryService?.staff_id ?? null,
           duration_minutes: Number(off.duration_minutes),
+          buffer_minutes: Number(off.buffer_minutes || 0),
           price: Number(off.price),
           currency: v.currency,
         });

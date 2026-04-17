@@ -5,6 +5,7 @@ import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
 import { z } from "zod";
 import { fetchScopedListMerged, resolveAdminTenantContext } from "@/lib/tenant/scoped-overrides";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isBlankHtmlContent, sanitizePricingFeatureHtml } from "@/lib/html/pricing-feature-html";
 
 const pricingPlanSchema = z.object({
   id: z.string().uuid().optional(),
@@ -39,8 +40,11 @@ async function syncPricingPlanFeatures(
   features: string[]
 ): Promise<void> {
   await supabase.from("pricing_plan_features").delete().eq("plan_id", planId);
-  if (features.length === 0) return;
-  const rows = features.map((feature_text, display_order) => ({
+  const cleaned = features
+    .map((t) => sanitizePricingFeatureHtml(String(t ?? "")))
+    .filter((t) => !isBlankHtmlContent(t));
+  if (cleaned.length === 0) return;
+  const rows = cleaned.map((feature_text, display_order) => ({
     plan_id: planId,
     feature_text,
     display_order,

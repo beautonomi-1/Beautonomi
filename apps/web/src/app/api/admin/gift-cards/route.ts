@@ -6,6 +6,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { z } from "zod";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 const createGiftCardSchema = z.object({
   code: z.string().min(1, "Code is required"),
@@ -80,7 +81,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
+    const { user: admin } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
 
     const supabaseAdmin = getSupabaseAdmin();
     const tenantId = await resolveAdminApiTenantId(request);
@@ -124,6 +125,22 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: admin.id,
+      actor_role: admin.role,
+      action: "admin.gift_card.create",
+      entity_type: "gift_card",
+      entity_id: giftCard.id,
+      module: "marketing",
+      risk_level: "critical",
+      retention_tier: "operational",
+      status: "succeeded",
+      after_json: { code: code.toUpperCase(), initial_balance, currency: resolvedCurrency },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({ gift_card: giftCard });
   } catch (error) {

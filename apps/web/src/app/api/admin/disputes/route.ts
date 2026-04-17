@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_PROVIDERS_OPERATIONS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
@@ -90,10 +90,11 @@ export async function GET(request: NextRequest) {
 
     const { count } = await countQuery;
 
-    // Get statistics
+    // Get statistics (tenant-scoped via booking join)
     const { data: stats } = await supabase
       .from("booking_disputes")
-      .select("status, opened_by, resolution");
+      .select("status, opened_by, resolution, booking:bookings!inner(tenant_id)")
+      .eq("booking.tenant_id", tenantId);
 
     const statistics = {
       total: stats?.length || 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { requireAdminSection } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_FINANCE } from "@/lib/admin-sections";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
 
 /** Table/schema cache errors when the table does not exist yet (migration not applied). */
 function isTableMissingError(e: unknown): boolean {
@@ -124,6 +125,22 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.fee_config.create",
+      entity_type: "payment_gateway_fee_config",
+      entity_id: data.id,
+      module: "finance",
+      risk_level: "critical",
+      retention_tier: "financial",
+      status: "succeeded",
+      after_json: { gateway_name, fee_type, fee_percentage, fee_fixed_amount, currency },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
+
     return NextResponse.json({ data, error: null });
   } catch (error: unknown) {
     console.error("Error creating fee config:", error);
@@ -161,6 +178,22 @@ export async function PATCH(request: NextRequest) {
       .single();
 
     if (error) throw error;
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.fee_config.update",
+      entity_type: "payment_gateway_fee_config",
+      entity_id: id,
+      module: "finance",
+      risk_level: "critical",
+      retention_tier: "financial",
+      status: "succeeded",
+      after_json: updates,
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return NextResponse.json({ data, error: null });
   } catch (error: unknown) {

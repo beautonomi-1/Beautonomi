@@ -89,12 +89,18 @@ export async function POST(
       );
     }
 
-    if (p.status !== "pending" && p.status !== "processing") {
+    // §Release-audit 2026-04: the `payout_status` enum is
+    // `pending | processing | completed | failed` (no "approved" state),
+    // because the approve route flips status straight to `processing`.
+    // We therefore only need to allow `processing` here. The previous
+    // `"approved" || "processing"` guard had a dead branch which made the
+    // error message misleading ("must be approved" was never a real state).
+    if (p.status !== "processing") {
       return NextResponse.json(
         {
           data: null,
           error: {
-            message: `Cannot initiate transfer for payout in status "${p.status}"`,
+            message: `Cannot initiate transfer for payout in status "${p.status}". The payout must first be approved (which moves it to "processing") before a Paystack transfer can be initiated.`,
             code: "INVALID_STATE",
           },
         },
@@ -185,6 +191,47 @@ export async function POST(
         transfer_code: paystack.data.transfer_code,
       },
     });
+
+    try {
+      const { sendToUser } = await import("@/lib/notifications/onesignal");
+      const tenantRegionForFormat = await getTenantRegionConfig(tenantId);
+      const fmtCurrency = tenantRegionForFormat?.defaultCurrency ?? LAST_RESORT_CURRENCY;
+      const { formatCurrency } = await import("@/lib/utils");
+      const amountFormatted = formatCurrency(Number(p.amount || 0), p.currency || fmtCurrency);
+
+      const { data: provider } = await supabase
+        .from("providers")
+        .select("user_id")
+        .eq("id", p.provider_id)
+        .single();
+
+      if (provider) {
+        const provUserId = (provider as { user_id?: string }).user_id;
+        if (provUserId) {
+          await sendToUser(
+            provUserId,
+            {
+              title: "Payout Transfer Initiated",
+              message: `Your payout of ${amountFormatted} is being transferred to your bank account.`,
+              data: { type: "payout_transfer_initiated", payout_id: id },
+              url: "/provider/finance",
+            },
+            ["push"],
+            { appType: "provider" }
+          );
+          await supabase.from("notifications").insert({
+            user_id: provUserId,
+            type: "system",
+            title: "Payout Transfer Initiated",
+            message: `Your payout of ${amountFormatted} is being transferred to your bank account.`,
+            data: { payout_id: id, amount: p.amount, transfer_code: paystack.data.transfer_code },
+            action_url: "/provider/payouts",
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Error sending transfer notification:", notifErr);
+    }
 
     return NextResponse.json({ data: { payout: updatedPayout, transfer: paystack.data }, error: null });
   } catch (error: unknown) {

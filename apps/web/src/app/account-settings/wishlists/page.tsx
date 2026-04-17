@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { toast } from "sonner";
 import Breadcrumb from "../components/breadcrumb";
 import BackButton from "../components/back-button";
 import { useAuth } from "@/providers/AuthProvider";
@@ -91,7 +92,7 @@ const Page = () => {
     (providerId: string, inWishlist: boolean) => {
       if (inWishlist) {
         fetcher
-          .get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" })
+          .get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { staleTimeMs: 30_000 })
           .then((res) => {
             const d = (res as any)?.data ?? res;
             setSavedProviders(Array.isArray(d) ? d : d?.data ?? []);
@@ -107,73 +108,77 @@ const Page = () => {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
+      const stale = { staleTimeMs: 30_000 };
+      setDataLoading(true);
+      setDataError(null);
+      setSavedPostsLoading(true);
+
       try {
-        setDataLoading(true);
-        setDataError(null);
-        
-        // Load wishlists
-        try {
-          const wl = await fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", { cache: "no-store" });
-          setWishlists(wl.data || []);
-        } catch (wlErr) {
+        const [
+          wlRes,
+          provRes,
+          prodRes,
+          savedRes,
+          collRes,
+        ] = await Promise.allSettled([
+          fetcher.get<{ data: WishlistSummary[] }>("/api/me/wishlists", stale),
+          fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", stale),
+          fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", stale),
+          fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
+            "/api/explore/saved?limit=50",
+            stale
+          ),
+          fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", stale),
+        ]);
+
+        if (wlRes.status === "fulfilled") {
+          setWishlists(wlRes.value.data || []);
+        } else {
+          const wlErr = wlRes.reason;
           console.error("Error loading wishlists:", wlErr);
           const wlErrorMessage =
             wlErr instanceof FetchTimeoutError
               ? "Request timed out. Please try again."
               : wlErr instanceof FetchError
-              ? wlErr.message
-              : "Failed to load wishlists";
+                ? wlErr.message
+                : "Failed to load wishlists";
           setDataError(wlErrorMessage);
           setWishlists([]);
         }
 
-        // Load saved providers from all wishlists
-        try {
-          const providers = await fetcher.get<{ data: PublicProviderCard[] }>("/api/me/wishlists/providers", { cache: "no-store" });
-          console.log("Wishlist page - Received providers:", {
-            count: providers.data?.length || 0,
-            sample: providers.data?.slice(0, 1),
-          });
-          setSavedProviders(providers.data || []);
-        } catch (providersErr) {
-          console.error("Error loading saved providers:", providersErr);
+        if (provRes.status === "fulfilled") {
+          setSavedProviders(provRes.value.data || []);
+        } else {
+          console.error("Error loading saved providers:", provRes.reason);
           setSavedProviders([]);
         }
 
-        // Load saved products from all wishlists
-        try {
-          const products = await fetcher.get<{ data: SavedProduct[] }>("/api/me/wishlists/products", { cache: "no-store" });
-          setSavedProducts(products.data || []);
-        } catch (productsErr) {
-          console.error("Error loading saved products:", productsErr);
+        if (prodRes.status === "fulfilled") {
+          setSavedProducts(prodRes.value.data || []);
+        } else {
+          console.error("Error loading saved products:", prodRes.reason);
           setSavedProducts([]);
         }
 
-        // Load saved posts for unified Saved experience
-        try {
-          setSavedPostsLoading(true);
-          const savedRes = await fetcher.get<{ data: ExplorePost[]; next_cursor?: string; has_more?: boolean }>(
-            "/api/explore/saved?limit=50",
-            { cache: "no-store" }
-          );
-          const body = (savedRes as any)?.data ?? savedRes;
-          const list = Array.isArray(body) ? body : body?.data ?? [];
+        if (savedRes.status === "fulfilled") {
+          const savedResValue = savedRes.value as { data?: ExplorePost[] | { data?: ExplorePost[] } };
+          const body = savedResValue?.data ?? savedResValue;
+          const list = Array.isArray(body) ? body : (body as { data?: ExplorePost[] })?.data ?? [];
           setSavedPosts(list);
-        } catch (savedErr) {
-          console.error("Error loading saved posts:", savedErr);
+        } else {
+          console.error("Error loading saved posts:", savedRes.reason);
           setSavedPosts([]);
-        } finally {
-          setSavedPostsLoading(false);
         }
 
-        // Load explore boards (collections)
-        try {
-          const collRes = await fetcher.get<{ data: ExploreCollectionSummary[] }>("/api/explore/collections", { cache: "no-store" });
-          const collBody = (collRes as any)?.data ?? collRes;
-          const collList = Array.isArray(collBody) ? collBody : collBody?.data ?? [];
+        if (collRes.status === "fulfilled") {
+          const collRaw = collRes.value as {
+            data?: ExploreCollectionSummary[] | { data?: ExploreCollectionSummary[] };
+          };
+          const collBody = collRaw?.data ?? collRaw;
+          const collList = Array.isArray(collBody) ? collBody : (collBody as { data?: ExploreCollectionSummary[] })?.data ?? [];
           setCollections(collList);
-        } catch (collErr) {
-          console.error("Error loading boards:", collErr);
+        } else {
+          console.error("Error loading boards:", collRes.reason);
           setCollections([]);
         }
       } catch (err) {
@@ -182,10 +187,11 @@ const Page = () => {
           err instanceof FetchTimeoutError
             ? "Request timed out. Please try again."
             : err instanceof FetchError
-            ? err.message
-            : "Failed to load data";
+              ? err.message
+              : "Failed to load data";
         setDataError(errorMessage);
       } finally {
+        setSavedPostsLoading(false);
         setDataLoading(false);
       }
     };
@@ -266,7 +272,7 @@ const Page = () => {
 
       {dataLoading ? (
         <div className="py-12">
-          <LoadingTimeout loadingMessage="Loading your saved providers..." />
+          <LoadingTimeout loadingMessage="Loading your saved items…" />
         </div>
       ) : dataError ? (
         <EmptyState
@@ -306,7 +312,7 @@ const Page = () => {
                       const created = res?.data ?? res;
                       setCollections((prev) => [...prev, { id: created.id, name: created.name, slug: created.slug, post_count: 0 }]);
                     })
-                    .catch(() => {})
+                    .catch(() => { toast.error("Failed to create board. Please try again."); })
                     .finally(() => setIsCreatingBoard(false));
                 }}
                 disabled={isCreatingBoard}
@@ -340,7 +346,7 @@ const Page = () => {
               {savedPostsLoading ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="bg-gray-100 rounded-2xl animate-pulse aspect-[4/5]" />
+                    <div key={i} className="bg-gray-100 rounded-2xl aspect-[4/5]" />
                   ))}
                 </div>
               ) : (

@@ -90,9 +90,14 @@ export function BookingTile({
   const servicesAndProducts = [...serviceNames, ...productNames].slice(0, 3);
   const servicesProductsLabel = servicesAndProducts.length > 0 ? servicesAndProducts.join(" + ") : "—";
 
+  const bkTotalPaid = (booking as any).total_paid || 0;
+  const bkTotalRefunded = (booking as any).total_refunded || 0;
+  const bkWallet = Number((booking as any).wallet_amount || 0);
+  const bkGift = Number((booking as any).gift_card_amount || 0);
+  const bkEffectivePaid = Math.max(0, bkTotalPaid - bkTotalRefunded) + bkWallet + bkGift;
   const paid =
     (booking as any).payment_status === "paid" ||
-    ((booking as any).total_paid || 0) >= (booking.total_amount || 0);
+    bkEffectivePaid >= (booking.total_amount || 0);
 
   const runQuickAction = async (fn: () => Promise<boolean>) => {
     const ok = await fn();

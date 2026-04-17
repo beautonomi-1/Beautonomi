@@ -40,6 +40,7 @@ import {
   Monitor,
   Coins,
   PiggyBank,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useProviderSidebar } from "@/contexts/ProviderSidebarContext";
@@ -57,7 +58,7 @@ const navigationSections = [
     items: [
       { icon: LayoutDashboard, label: "Dashboard", href: "/provider/dashboard", permission: undefined }, // Always accessible
       { icon: Calendar, label: "Calendar", href: "/provider/calendar", badge: "Hot", permission: "view_calendar" as keyof StaffPermissions },
-      { icon: CalendarCheck, label: "Appointments", href: "/provider/appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: CalendarCheck, label: "Bookings", href: "/provider/bookings", permission: "view_calendar" as keyof StaffPermissions },
     ],
   },
   {
@@ -65,6 +66,7 @@ const navigationSections = [
     items: [
       { icon: Clock, label: "Waitlist", href: "/provider/waitlist", permission: "view_calendar" as keyof StaffPermissions },
       { icon: Repeat, label: "Recurring", href: "/provider/recurring-appointments", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: UsersRound, label: "Group Bookings", href: "/provider/group-bookings", permission: "view_calendar" as keyof StaffPermissions },
       { icon: Monitor, label: "Front desk", href: "/provider/front-desk", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UserCheck, label: "Waiting Room", href: "/provider/waiting-room", permission: "view_calendar" as keyof StaffPermissions },
       { icon: UsersRound, label: "Clients", href: "/provider/clients", permission: "view_clients" as keyof StaffPermissions },
@@ -74,8 +76,11 @@ const navigationSections = [
     title: "Schedule",
     items: [
       { icon: Calendar, label: "Schedule", href: "/provider/schedule", permission: "view_calendar" as keyof StaffPermissions },
+      { icon: Clock, label: "Operating Hours", href: "/provider/settings/operating-hours", permission: "edit_settings" as keyof StaffPermissions },
+      { icon: CalendarRange, label: "Shifts", href: "/provider/team/shifts", permission: "view_team" as keyof StaffPermissions },
       { icon: CalendarRange, label: "Time Blocks", href: "/provider/time-blocks", permission: "view_calendar" as keyof StaffPermissions },
       { icon: CalendarOff, label: "Days Off", href: "/provider/team/days-off", permission: "view_team" as keyof StaffPermissions },
+      { icon: CalendarOff, label: "Closed Periods", href: "/provider/settings/appointment-activity/closed-periods", permission: "edit_settings" as keyof StaffPermissions },
     ],
   },
   {
@@ -107,6 +112,12 @@ const navigationSections = [
     items: [
       { icon: Tag, label: "Sales", href: "/provider/sales", permission: "view_sales" as keyof StaffPermissions },
       { icon: Wallet, label: "Finance", href: "/provider/finance", permission: "view_sales" as keyof StaffPermissions },
+      // §Provider-launch (audit 2026-04): the /provider/payments list page
+      // already exists (transactions tied to bookings/orders), but had no
+      // sidebar entry — so providers had no way to reach it except by typing
+      // the URL. Group it with Finance/Payouts so the transaction history is
+      // discoverable alongside other money surfaces.
+      { icon: CreditCard, label: "Payments", href: "/provider/payments", permission: "view_sales" as keyof StaffPermissions },
       { icon: Coins, label: "Payouts", href: "/provider/payouts", permission: "view_sales" as keyof StaffPermissions },
       { icon: BarChart3, label: "Analytics", href: "/provider/analytics", permission: "view_reports" as keyof StaffPermissions },
       { icon: BarChart3, label: "Reports", href: "/provider/reports", permission: "view_reports" as keyof StaffPermissions },
@@ -159,7 +170,7 @@ const isActiveRoute = (pathname: string, href: string) => {
     return pathname === "/provider/team" || pathname === "/provider/team/"
       || (pathname.startsWith("/provider/team/") && !pathname.startsWith("/provider/team/members")
         && !pathname.startsWith("/provider/team/days-off") && !pathname.startsWith("/provider/team/my-earnings")
-        && !pathname.startsWith("/provider/team/payroll"));
+        && !pathname.startsWith("/provider/team/payroll") && !pathname.startsWith("/provider/team/shifts"));
   }
   if (href === "/provider/team/days-off") {
     return pathname.startsWith("/provider/team/days-off");
@@ -225,14 +236,14 @@ export function ProviderSidebar() {
   const { branding } = usePlatformSettings();
   const { hasPermission, isLoading: permissionsLoading, permissions } = usePermissions();
   
-  // Track if user was a provider (to handle temporary role loss during tab switches)
-  const wasProviderRef = React.useRef<boolean>(false);
+  // Track if user was a provider owner (to handle temporary role loss during tab switches)
+  const wasOwnerRef = React.useRef<boolean>(false);
   React.useEffect(() => {
-    if (role === 'provider_owner' || role === 'provider_staff') {
-      wasProviderRef.current = true;
+    if (role === 'provider_owner') {
+      wasOwnerRef.current = true;
     }
   }, [role]);
-  
+
   // Get platform colors with fallbacks
   const primaryColor = branding?.primary_color || "#FF0077";
   const secondaryColor = branding?.secondary_color || "#4fd1c5";
@@ -243,7 +254,7 @@ export function ProviderSidebar() {
   } as const;
   
   // Determine if user is/was a provider (handles temporary role loss)
-  const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasProviderRef.current;
+  const isProvider = role === 'provider_owner' || role === 'provider_staff' || wasOwnerRef.current;
 
   // Filter navigation sections based on permissions
   // CRITICAL FIX: For provider owners, ALWAYS show all menu items
@@ -251,7 +262,7 @@ export function ProviderSidebar() {
   // Provider owners should have access to everything anyway
   const filteredNavigationSections = React.useMemo(() => {
     // If user is/was a provider owner, show ALL items (no filtering)
-    if (isProvider && (role === 'provider_owner' || wasProviderRef.current)) {
+    if (isProvider && (role === 'provider_owner' || wasOwnerRef.current)) {
       return navigationSections;
     }
     

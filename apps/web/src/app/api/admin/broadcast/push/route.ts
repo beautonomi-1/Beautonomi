@@ -4,6 +4,19 @@ import { requireAdminSection, successResponse, handleApiError, errorResponse  } 
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
 import { sendToUsers } from "@/lib/notifications/onesignal";
+import { writeAuditLog, extractRequestMeta } from "@/lib/audit/audit";
+import {
+  resolveOneSignalCredentials,
+  type OneSignalAppType,
+} from "@/lib/platform/secrets";
+
+function isMissingColumnError(error: unknown, column: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const record = error as Record<string, unknown>;
+  const code = typeof record.code === "string" ? record.code : "";
+  const message = typeof record.message === "string" ? record.message : "";
+  return code === "42703" && message.includes(column);
+}
 
 /**
  * POST /api/admin/broadcast/push
@@ -32,17 +45,39 @@ export async function POST(request: NextRequest) {
 
     // Get user IDs based on recipient type
     if (recipient_type === "all_users") {
-      const { data: users } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from("users")
         .select("id")
-        .eq("role", "customer");
-      userIds = users?.map((u: { id: string }) => u.id) ?? [];
+        .eq("role", "customer")
+        .eq("preferred_home_tenant_id", tenantId);
+      if (usersError) {
+        if (isMissingColumnError(usersError, "preferred_home_tenant_id")) {
+          console.warn(
+            "[broadcast/push] users.preferred_home_tenant_id missing, falling back to role-only customer targeting"
+          );
+          const { data: fallbackUsers, error: fallbackUsersError } = await supabase
+            .from("users")
+            .select("id")
+            .eq("role", "customer");
+          if (fallbackUsersError) {
+            return handleApiError(fallbackUsersError, "Failed to resolve recipients");
+          }
+          userIds = fallbackUsers?.map((u: { id: string }) => u.id) ?? [];
+        } else {
+          return handleApiError(usersError, "Failed to resolve recipients");
+        }
+      } else {
+        userIds = users?.map((u: { id: string }) => u.id) ?? [];
+      }
     } else if (recipient_type === "all_providers") {
-      const { data: providers } = await supabase
+      const { data: providers, error: providerError } = await supabase
         .from("providers")
         .select("user_id")
         .eq("tenant_id", tenantId)
         .not("user_id", "is", null);
+      if (providerError) {
+        return handleApiError(providerError, "Failed to resolve provider recipients");
+      }
       userIds = providers?.map((p: { user_id?: string }) => p.user_id).filter(Boolean) ?? [];
     } else if (recipient_type === "custom" && user_ids && Array.isArray(user_ids)) {
       userIds = user_ids;
@@ -54,7 +89,23 @@ export async function POST(request: NextRequest) {
       return errorResponse("No recipients found", "VALIDATION_ERROR", 400);
     }
 
-    // Send push broadcast
+    const oneSignalAppType: OneSignalAppType | undefined =
+      recipient_type === "all_users"
+        ? "customer"
+        : recipient_type === "all_providers"
+          ? "provider"
+          : undefined;
+
+    const osCreds = await resolveOneSignalCredentials(oneSignalAppType, { tenantId });
+    if (!osCreds.appId || !osCreds.restKey) {
+      return errorResponse(
+        "Push is not configured for this deployment. Set ONESIGNAL_APP_ID and ONESIGNAL_REST_API_KEY (or ONESIGNAL_APP_ID_CUSTOMER / _PROVIDER and matching REST keys), or save OneSignal under Platform settings / Superadmin (global or per-market tenant). Expo / NEXT_PUBLIC_* only configure client apps; the API needs REST keys in env or platform_secrets.",
+        "ONESIGNAL_NOT_CONFIGURED",
+        503
+      );
+    }
+
+    // Send push broadcast (pass request-scoped supabase so device lookup matches this session / RLS)
     const result = await sendToUsers(
       userIds,
       {
@@ -68,11 +119,22 @@ export async function POST(request: NextRequest) {
         },
       },
       ["push"],
-      recipient_type === "all_users" ? { appType: "customer" } : recipient_type === "all_providers" ? { appType: "provider" } : undefined
+      {
+        appType: oneSignalAppType,
+        supabaseClient: supabase,
+        tenantId,
+      }
     );
 
     if (!result.success) {
-      return errorResponse(result.error || "Failed to send broadcast", "BROADCAST_ERROR", 500);
+      const detail = result.error || result.message || "Failed to send broadcast";
+      const notConfigured =
+        typeof detail === "string" && detail.includes("OneSignal API keys not configured");
+      return errorResponse(
+        detail,
+        notConfigured ? "ONESIGNAL_NOT_CONFIGURED" : "BROADCAST_ERROR",
+        notConfigured ? 503 : 500
+      );
     }
 
     // Log broadcast
@@ -92,6 +154,21 @@ export async function POST(request: NextRequest) {
       console.error("Error logging broadcast:", logError);
       // Don't fail the request if logging fails
     }
+
+    const reqMeta = extractRequestMeta(request);
+    await writeAuditLog({
+      actor_user_id: user.id,
+      actor_role: user.role,
+      action: "admin.broadcast.push",
+      entity_type: "broadcast",
+      module: "marketing",
+      risk_level: "high",
+      retention_tier: "routine",
+      status: "succeeded",
+      metadata: { recipient_type, recipient_count: userIds.length, title },
+      ip_address: reqMeta.ip_address,
+      user_agent: reqMeta.user_agent,
+    });
 
     return successResponse({
       success: true,

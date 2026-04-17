@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Money } from "@/components/provider-portal/Money";
 import { YocoPaymentDialog } from "@/components/provider-portal/YocoPaymentDialog";
 import { NewSaleDialog } from "@/components/provider-portal/NewSaleDialog";
+import { toast } from "sonner";
 import { Search, Plus, CreditCard, Calendar, User, ShoppingBag } from "lucide-react";
 import Pagination from "@/components/ui/pagination";
 import LoadingTimeout from "@/components/ui/loading-timeout";
@@ -82,6 +83,7 @@ function ProviderSalesContent() {
       setTotalPages(response.total_pages);
     } catch (error) {
       console.error("Failed to load sales:", error);
+      toast.error("Failed to load sales. Please try again.");
     } finally {
       setIsLoading(false);
     }

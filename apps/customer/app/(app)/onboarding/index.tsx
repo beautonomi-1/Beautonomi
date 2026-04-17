@@ -50,6 +50,9 @@ import { consumePostOnboardingHref } from "@/lib/post-onboarding-redirect";
 
 /* ── Constants ── */
 export const ONBOARDING_DONE_KEY = "customer_onboarding_done_v1";
+export function onboardingDoneKey(uid?: string | null): string {
+  return uid ? `${ONBOARDING_DONE_KEY}:${uid}` : ONBOARDING_DONE_KEY;
+}
 const TOTAL_STEPS = 6;
 const PRIMARY = Colors.primary;
 
@@ -126,7 +129,7 @@ function SectionLabel({ children, required }: { children: ReactNode; required?: 
 ──────────────────────────────────────────────────────────── */
 export default function CustomerOnboarding() {
   const insets = useSafeAreaInsets();
-  const { refreshSession } = useAuth();
+  const { refreshSession, user } = useAuth();
   const { pickWithOptions, pickFromCamera, loading: pickLoading } = useImagePicker();
 
   const [step, setStep] = useState(1);
@@ -186,7 +189,7 @@ export default function CustomerOnboarding() {
         const oc = await api.get<{ completed?: boolean }>("/api/me/onboarding/complete");
         if (cancelled) return;
         if (!oc.error && oc.data?.completed === true) {
-          await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+          await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
           const pending = await consumePostOnboardingHref();
           router.replace(pending ? resolvePostLoginHref(pending) : "/(app)/(tabs)/home");
           return;
@@ -238,6 +241,7 @@ export default function CustomerOnboarding() {
     }
     init();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /* ── Step validation ── */
@@ -299,7 +303,12 @@ export default function CustomerOnboarding() {
       });
       if (error) throw error;
       // Use dedicated verify endpoint — reads Supabase's phone_confirmed_at server-side
-      await api.post("/api/me/phone/verify", { phone: normalizeSupabaseAuthPhone(pendingPhoneE164) });
+      const verifyRes = await api.post("/api/me/phone/verify", {
+        phone: normalizeSupabaseAuthPhone(pendingPhoneE164),
+      });
+      if (verifyRes.error) {
+        throw new Error(getApiErrorMessage(verifyRes.error, "Could not verify phone on server."));
+      }
       setPhoneVerified(true);
     } catch (e: unknown) {
       Alert.alert("Verification failed", (e as { message?: string })?.message ?? "Invalid or expired code.");
@@ -327,9 +336,11 @@ export default function CustomerOnboarding() {
   const saveStep = async (): Promise<boolean> => {
     try {
       switch (step) {
-        case 1:
-          await api.patch("/api/me/profile", { preferred_name: preferredName.trim() });
+        case 1: {
+          const res = await api.patch("/api/me/profile", { preferred_name: preferredName.trim() });
+          if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save name"));
           break;
+        }
         case 2:
           if (avatarUri && !avatarUri.startsWith("http")) {
             const fd = new FormData();
@@ -337,12 +348,18 @@ export default function CustomerOnboarding() {
             const res = await api.post<any>("/api/me/avatar", fd as any);
             if (res.error) throw new Error(getApiErrorMessage(res.error, "Upload failed"));
             const url = res.data?.url;
-            if (url) await api.patch("/api/me/profile", { avatar_url: url });
+            if (url) {
+              const patchRes = await api.patch("/api/me/profile", { avatar_url: url });
+              if (patchRes.error) throw new Error(getApiErrorMessage(patchRes.error, "Could not save avatar"));
+            }
           }
           break;
         case 3: {
           const dob = buildDob(dobYear, dobMonth, dobDay);
-          if (dob) await api.patch("/api/me/profile", { date_of_birth: dob });
+          if (dob) {
+            const res = await api.patch("/api/me/profile", { date_of_birth: dob });
+            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save date of birth"));
+          }
           break;
         }
         case 4:
@@ -350,7 +367,7 @@ export default function CustomerOnboarding() {
           break;
         case 5:
           if (!alreadyHasAddress && addressLine1.trim() && city.trim()) {
-            await api.post("/api/me/addresses", {
+            const res = await api.post("/api/me/addresses", {
               label: "Home",
               is_default: true,
               address_line1: addressLine1.trim(),
@@ -359,15 +376,17 @@ export default function CustomerOnboarding() {
               postal_code: postalCode.trim() || null,
               country: country.trim() || "South Africa",
             });
+            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save address"));
             setAlreadyHasAddress(true);
           }
           break;
         case 6:
           if (hairTypes.length > 0 || skinType) {
-            await api.patch("/api/me/beauty-preferences", {
+            const res = await api.patch("/api/me/beauty-preferences", {
               hair_type: hairTypes.length > 0 ? hairTypes : null,
               skin_type: skinType || null,
             });
+            if (res.error) throw new Error(getApiErrorMessage(res.error, "Could not save preferences"));
           }
           break;
       }
@@ -408,12 +427,12 @@ export default function CustomerOnboarding() {
         Alert.alert("Couldn't complete setup", res.error.message || "Please try again.");
         return;
       }
-      await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1");
+      await AsyncStorage.setItem(onboardingDoneKey(user?.id), "1");
       await refreshSession();
       api.post("/api/me/analytics/identify").catch(() => {});
     } catch {
-      // Network/unexpected failure — mark locally so we don't re-prompt on cold start.
-      try { await AsyncStorage.setItem(ONBOARDING_DONE_KEY, "1"); } catch { /* ignore */ }
+      Alert.alert("Network error", "Could not complete setup. Please check your connection and try again.");
+      return;
     } finally {
       setSaving(false);
     }

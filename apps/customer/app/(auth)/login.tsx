@@ -298,23 +298,27 @@ export default function LoginScreen() {
 
   async function handleOAuth(provider: "google" | "apple" | "facebook") {
     setLoading(true);
-    const { error } = await signInWithOAuth(provider);
-    if (error) {
+    try {
+      const { error } = await signInWithOAuth(provider);
+      if (error) {
+        Alert.alert(
+          "Sign in failed",
+          error.message +
+            (error.message.includes("not enabled")
+              ? " Enable this provider in Supabase Dashboard → Authentication → Providers."
+              : ""),
+        );
+        return;
+      }
+      trackLogin(provider);
+      await applyPendingSignupPreferences();
+      logLoginSuccessBreadcrumb(`oauth_${provider}`);
+      await navigateAfterCustomerAuth(params.return_to);
+    } catch {
+      Alert.alert("Sign in failed", "Something went wrong. Please try again.");
+    } finally {
       setLoading(false);
-      Alert.alert(
-        "Sign in failed",
-        error.message +
-          (error.message.includes("not enabled")
-            ? " Enable this provider in Supabase Dashboard → Authentication → Providers."
-            : ""),
-      );
-      return;
     }
-    trackLogin(provider);
-    await applyPendingSignupPreferences();
-    logLoginSuccessBreadcrumb(`oauth_${provider}`);
-    await navigateAfterCustomerAuth(params.return_to);
-    setLoading(false);
   }
 
   async function handleEmailSubmit() {
@@ -335,36 +339,39 @@ export default function LoginScreen() {
       return;
     }
     setLoading(true);
-    const result = isSignup
-      ? await signUpWithEmail(email.trim(), password.trim(), fullName.trim())
-      : await signInWithEmail(email.trim(), password.trim());
-    if (result.error) {
-      setLoading(false);
-      Alert.alert("Error", result.error.message);
-      return;
-    }
-    if (result.requiresConfirmation) {
-      setLoading(false);
-      setIsSignup(false);
+    try {
+      const result = isSignup
+        ? await signUpWithEmail(email.trim(), password.trim(), fullName.trim())
+        : await signInWithEmail(email.trim(), password.trim());
+      if (result.error) {
+        Alert.alert("Error", result.error.message);
+        return;
+      }
+      if (result.requiresConfirmation) {
+        setIsSignup(false);
+        if (isSignup) trackSignUp("email");
+        Alert.alert(
+          "Check your email",
+          "We sent you a confirmation link. Click it to activate your account, then log in below.",
+          [{ text: "OK" }],
+        );
+        return;
+      }
       if (isSignup) trackSignUp("email");
-      Alert.alert(
-        "Check your email",
-        "We sent you a confirmation link. Click it to activate your account, then log in below.",
-        [{ text: "OK" }],
-      );
-      return;
+      else trackLogin("email");
+      await applyPendingSignupPreferences();
+      if (isSignup) {
+        logLoginSuccessBreadcrumb("email_signup");
+        await navigateAfterNewCustomerSignup(params.return_to);
+      } else {
+        logLoginSuccessBreadcrumb("email_password");
+        await navigateAfterCustomerAuth(params.return_to);
+      }
+    } catch {
+      Alert.alert("Error", "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    if (isSignup) trackSignUp("email");
-    else trackLogin("email");
-    await applyPendingSignupPreferences();
-    if (isSignup) {
-      logLoginSuccessBreadcrumb("email_signup");
-      await navigateAfterNewCustomerSignup(params.return_to);
-    } else {
-      logLoginSuccessBreadcrumb("email_password");
-      await navigateAfterCustomerAuth(params.return_to);
-    }
-    setLoading(false);
   }
 
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();

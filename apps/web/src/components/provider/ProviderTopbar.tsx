@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   ChevronDown, 
   Calendar, 
@@ -68,7 +68,7 @@ export function ProviderTopbar() {
       ["/provider/dashboard", "Dashboard"],
       ["/provider/clients", "Clients"],
       ["/provider/bookings", "Bookings"],
-      ["/provider/appointments", "Appointments"],
+      ["/provider/appointments", "Bookings"],
       ["/provider/sales", "Sales"],
       ["/provider/finance", "Finance"],
       ["/provider/analytics", "Analytics"],
@@ -371,6 +371,33 @@ export function ProviderTopbar() {
               <DropdownMenuItem asChild>
                 <Link href="/provider/subscription" className="cursor-pointer">
                   Subscription
+                </Link>
+              </DropdownMenuItem>
+              {/*
+                §Provider-launch (audit 2026-04): the user menu used to
+                skip straight from Subscription to the Help Centre, so
+                providers had no in-portal surface for password/2FA,
+                session management, privacy controls, or data export /
+                deletion requests. These three entries expose the
+                user-scoped /account-settings pages that already exist.
+              */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/account-settings/login-and-security" className="cursor-pointer">
+                  Login & Security
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/account-settings/privacy-and-sharing" className="cursor-pointer">
+                  Privacy & Sharing
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link
+                  href="/account-settings/privacy-and-sharing#data-rights"
+                  className="cursor-pointer"
+                >
+                  Data Rights & Export
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />

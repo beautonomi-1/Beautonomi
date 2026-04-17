@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useApi, useApiMutation } from "@/hooks/useApi";
 import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
@@ -81,8 +82,12 @@ function statusStyle(s: string) {
   return { bg: "bg-gray-100", text: "text-gray-500" };
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
 export default function GroupBookingsScreen() {
   useResponsive();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
@@ -90,13 +95,32 @@ export default function GroupBookingsScreen() {
   const [showAddParticipant, setShowAddParticipant] = useState(false);
   const [participantForm, setParticipantForm] = useState({ name: "", phone: "", email: "" });
   const [showEdit, setShowEdit] = useState(false);
+  // B9: persist the id the edit sheet is operating on so a PATCH never goes
+  // out to `/api/provider/group-bookings/` with an empty id after we clear
+  // `selectedGroup` (which we do so the detail sheet closes under the edit
+  // sheet on iOS).
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ date: "", time: "", duration: "", notes: "", maxParticipants: "" });
+
+  // B10: create path — minimal form. Participants are added from the detail
+  // sheet after the group is created, matching the existing "add participant"
+  // flow.
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    title: "",
+    date: "",
+    time: "",
+    duration: "60",
+    maxParticipants: "10",
+    notes: "",
+  });
 
   const statusParam = filter !== "all" ? `&status=${filter}` : "";
   const { data: groupData, loading, error: groupError, refresh } = useApi<GroupBookingsResponse>(
     `/api/provider/group-bookings?limit=50${statusParam}`
   );
   const { execute: updateGroup, loading: updatingGroup } = useApiMutation("patch");
+  const { execute: createGroup, loading: creatingGroup } = useApiMutation("post");
   const { execute: cancelGroup } = useApiMutation("delete");
   const { execute: addParticipant, loading: addingParticipant } = useApiMutation("post");
   const { execute: removeParticipant } = useApiMutation("delete");
@@ -105,8 +129,11 @@ export default function GroupBookingsScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const filtered = useMemo(() => {
@@ -165,17 +192,33 @@ export default function GroupBookingsScreen() {
       notes: group.notes ?? "",
       maxParticipants: String(group.max_participants ?? ""),
     });
+    // B9: capture the id BEFORE clearing selectedGroup so the PATCH has a
+    // real target even after the detail sheet closes.
+    setEditingGroupId(group.id);
     setSelectedGroup(null);
     setShowEdit(true);
   }
 
   async function handleSaveEdit() {
-    if (!selectedGroup && !showEdit) return;
-    const groupId = selectedGroup?.id;
-    if (!groupId && !editForm.date) return;
+    // B9: refuse to fire a PATCH without an id. Previously this would hit
+    // `/api/provider/group-bookings/` which 404'd the group bookings list
+    // endpoint (no PATCH there), silently losing the edit.
+    if (!editingGroupId) {
+      Alert.alert("Error", "No group booking selected for edit.");
+      return;
+    }
+
+    if (editForm.date && !YMD_RE.test(editForm.date)) {
+      Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (editForm.time && !HHMM_RE.test(editForm.time)) {
+      Alert.alert("Invalid time", "Time must be in HH:MM format.");
+      return;
+    }
 
     const { error } = await updateGroup(
-      `/api/provider/group-bookings/${selectedGroup?.id ?? ""}`,
+      `/api/provider/group-bookings/${encodeURIComponent(editingGroupId)}`,
       {
         scheduled_date: editForm.date || undefined,
         scheduled_time: editForm.time || undefined,
@@ -187,6 +230,66 @@ export default function GroupBookingsScreen() {
     if (error) { Alert.alert("Error", error); return; }
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowEdit(false);
+    setEditingGroupId(null);
+    refresh();
+  }
+
+  // B10: create a new group booking from the mobile provider app. Minimal
+  // required fields (date/time/duration). Service/staff/location can be
+  // filled in later via the edit sheet or the web portal.
+  function openCreate() {
+    const now = new Date();
+    const hh = String(Math.min(23, now.getHours() + 1)).padStart(2, "0");
+    setCreateForm({
+      title: "",
+      date: now.toISOString().slice(0, 10),
+      time: `${hh}:00`,
+      duration: "60",
+      maxParticipants: "10",
+      notes: "",
+    });
+    setShowCreate(true);
+  }
+
+  async function handleCreate() {
+    if (!YMD_RE.test(createForm.date)) {
+      Alert.alert("Invalid date", "Date must be in YYYY-MM-DD format.");
+      return;
+    }
+    if (!HHMM_RE.test(createForm.time)) {
+      Alert.alert("Invalid time", "Time must be in HH:MM format.");
+      return;
+    }
+    const duration = Number(createForm.duration);
+    if (!Number.isFinite(duration) || duration <= 0) {
+      Alert.alert("Invalid duration", "Duration must be greater than 0 minutes.");
+      return;
+    }
+    const maxParticipants = Number(createForm.maxParticipants);
+    if (!Number.isFinite(maxParticipants) || maxParticipants <= 0) {
+      Alert.alert("Invalid max participants", "Max participants must be greater than 0.");
+      return;
+    }
+
+    // Provider-local datetime → ISO. Device tz is acceptable here; the server
+    // stores the scheduled_at as the wall-clock the provider entered (same
+    // contract as the desktop dialog).
+    const iso = new Date(`${createForm.date}T${createForm.time}:00`).toISOString();
+    if (!Number.isFinite(new Date(iso).getTime())) {
+      Alert.alert("Invalid date/time", "Please enter a valid date and time.");
+      return;
+    }
+
+    const { error } = await createGroup("/api/provider/group-bookings", {
+      title: createForm.title.trim() || "Group Session",
+      scheduled_at: iso,
+      duration_minutes: duration,
+      max_participants: maxParticipants,
+      notes: createForm.notes.trim() || undefined,
+    });
+    if (error) { Alert.alert("Error", error); return; }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setShowCreate(false);
     refresh();
   }
 
@@ -243,6 +346,18 @@ export default function GroupBookingsScreen() {
         title="Group Bookings"
         showBack
         subtitle={`${stats.total} sessions`}
+        rightAction={
+          <TouchableOpacity
+            onPress={openCreate}
+            style={twStyle("flex-row items-center rounded-full bg-indigo-600 px-3 py-1.5")}
+            hitSlop={8}
+            accessibilityLabel="Create group booking"
+            accessibilityRole="button"
+          >
+            <Ionicons name="add" size={16} color="#ffffff" style={{ marginRight: 4 }} />
+            <Text style={twStyle("text-xs font-semibold text-white")}>New</Text>
+          </TouchableOpacity>
+        }
       />
 
       <View style={{ flex: 1, minHeight: 0 }}>
@@ -436,6 +551,48 @@ export default function GroupBookingsScreen() {
               )}
             </View>
 
+            {/*
+              §Provider-launch (audit 2026-04): refunds happen on
+              individual participant bookings (there's no group-level
+              refund endpoint). The mobile list previously had no
+              entrypoint at all, so providers had to switch to the web
+              portal.  This routes them to the filtered bookings list
+              where the existing per-booking refund action lives.
+            */}
+            {selectedGroup.status !== "cancelled" ? (
+              <TouchableOpacity
+                style={twStyle("mb-3 flex-row items-center justify-center rounded-lg bg-amber-50 py-2.5")}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const groupId = selectedGroup.id;
+                  setSelectedGroup(null);
+                  Alert.alert(
+                    "Refund participant",
+                    "Refunds are issued against each participant's individual booking. You'll be taken to the bookings list — open the booking you want to refund and use the refund action inside.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Open bookings",
+                        onPress: () => {
+                          router.push({
+                            pathname: "/(app)/(tabs)/more/bookings",
+                            params: { group_booking_id: groupId },
+                          } as never);
+                        },
+                      },
+                    ],
+                  );
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Refund a participant"
+              >
+                <Ionicons name="cash-outline" size={16} color="#b45309" />
+                <Text style={[twStyle("text-sm font-medium text-amber-700"), { marginLeft: 6 }]}>
+                  Refund a participant
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
             {/* Actions */}
             {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
               <View style={twStyle("flex-row")}>
@@ -474,7 +631,14 @@ export default function GroupBookingsScreen() {
       </BottomSheet>
 
       {/* Edit form */}
-      <BottomSheet visible={showEdit} onClose={() => setShowEdit(false)} title="Edit Group Booking">
+      <BottomSheet
+        visible={showEdit}
+        onClose={() => {
+          setShowEdit(false);
+          setEditingGroupId(null);
+        }}
+        title="Edit Group Booking"
+      >
         <View>
           <View style={twStyle("mb-3 flex-row")}>
             <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
@@ -563,6 +727,84 @@ export default function GroupBookingsScreen() {
             keyboardType="email-address"
           />
           <ActionButton label="Add Participant" onPress={handleAddParticipant} loading={addingParticipant} fullWidth />
+        </View>
+      </BottomSheet>
+
+      {/* B10: Create new group booking */}
+      <BottomSheet
+        visible={showCreate}
+        onClose={() => setShowCreate(false)}
+        title="New Group Booking"
+      >
+        <View>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Title</Text>
+          <TextInput
+            style={twStyle("mb-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            value={createForm.title}
+            onChangeText={(t) => setCreateForm((p) => ({ ...p, title: t }))}
+            placeholder="e.g. Bridal Party"
+            placeholderTextColor="#9ca3af"
+          />
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Date *</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={createForm.date}
+                onChangeText={(t) => setCreateForm((p) => ({ ...p, date: t }))}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Time *</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={createForm.time}
+                onChangeText={(t) => setCreateForm((p) => ({ ...p, time: t }))}
+                placeholder="HH:MM"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+          </View>
+          <View style={twStyle("mb-3 flex-row")}>
+            <View style={[twStyle("flex-1"), { marginRight: 12 }]}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Duration (min) *</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={createForm.duration}
+                onChangeText={(t) => setCreateForm((p) => ({ ...p, duration: t }))}
+                keyboardType="number-pad"
+                placeholder="60"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+            <View style={twStyle("flex-1")}>
+              <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Max Participants *</Text>
+              <TextInput
+                style={twStyle("rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+                value={createForm.maxParticipants}
+                onChangeText={(t) => setCreateForm((p) => ({ ...p, maxParticipants: t }))}
+                keyboardType="number-pad"
+                placeholder="10"
+                placeholderTextColor="#9ca3af"
+              />
+            </View>
+          </View>
+          <Text style={twStyle("mb-1 text-sm font-medium text-gray-700")}>Notes</Text>
+          <TextInput
+            style={twStyle("mb-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-base text-gray-900")}
+            value={createForm.notes}
+            onChangeText={(t) => setCreateForm((p) => ({ ...p, notes: t }))}
+            placeholder="Optional notes..."
+            placeholderTextColor="#9ca3af"
+            multiline
+          />
+          <Text style={twStyle("mb-3 text-xs text-gray-500")}>
+            Participants, service, and staff can be assigned after creation
+            from the group detail sheet.
+          </Text>
+          <ActionButton label="Create Group" onPress={handleCreate} loading={creatingGroup} fullWidth />
         </View>
       </BottomSheet>
     </ScreenContainer>

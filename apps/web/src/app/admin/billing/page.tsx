@@ -28,6 +28,7 @@ import { Plus, Search, Download, Send } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 
 interface Provider {
   id: string;
@@ -52,6 +53,8 @@ interface Invoice {
 
 export default function AdminBillingDashboard() {
   const locale = useTenantLocaleTag();
+  const { bundle } = useConfigBundle();
+  const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const [providers, setProviders] = useState<Provider[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -74,8 +77,14 @@ export default function AdminBillingDashboard() {
       
       // Load providers and invoices
       const [providersRes, invoicesRes] = await Promise.all([
-        fetcher.get<{ data: Provider[] }>("/api/admin/providers").catch(() => ({ data: [] })),
-        fetcher.get<{ data: { invoices: Invoice[] } }>("/api/admin/invoices").catch(() => ({ data: { invoices: [] } })),
+        fetcher.get<{ data: Provider[] }>("/api/admin/providers").catch((err) => {
+          console.error("Failed to load providers:", err);
+          return { data: [] as Provider[] };
+        }),
+        fetcher.get<{ data: { invoices: Invoice[] } }>("/api/admin/invoices").catch((err) => {
+          console.error("Failed to load invoices:", err);
+          return { data: { invoices: [] as Invoice[] } };
+        }),
       ]);
 
       setProviders(providersRes.data || []);
@@ -139,7 +148,7 @@ export default function AdminBillingDashboard() {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat(locale, {
       style: "currency",
-      currency: LAST_RESORT_CURRENCY,
+      currency: tenantCurrency,
     }).format(amount);
   };
 

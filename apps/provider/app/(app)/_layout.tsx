@@ -16,11 +16,13 @@ import { RoleGate } from "@/components/RoleGate";
 import { ProviderProvider } from "@/providers/ProviderContext";
 import { NotificationsCountProvider } from "@/providers/NotificationsCountContext";
 import { OnDemandIncomingListener } from "@/components/OnDemandIncomingListener";
+import { BookingAlertListener } from "@/components/BookingAlertListener";
 import { SingularLinkHandler } from "@/components/SingularLinkHandler";
 import { EmailVerificationBanner } from "@/components/EmailVerificationBanner";
 import { ProfileLoadErrorBanner } from "@/components/ProfileLoadErrorBanner";
 import { AccountStatusGuard } from "@/components/AccountStatusGuard";
 import MaintenanceGate from "@/components/MaintenanceGate";
+import { BiometricGate } from "@/components/BiometricGate";
 import { NativePermissionsOnboarding } from "@/components/NativePermissionsOnboarding";
 import {
   authFlowBreadcrumb,
@@ -60,6 +62,7 @@ export default function AppLayout() {
   useEffect(() => {
     if (!__DEV__) return;
     console.log("(app)/_layout auth gate", { authLoading: loading, hasSession: !!session });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id]);
 
   useEffect(() => {
@@ -87,6 +90,13 @@ export default function AppLayout() {
 
   return (
     <MaintenanceGate>
+    {/*
+      §Provider-launch (audit 2026-04): BiometricGate enforces the
+      "Require Face ID / fingerprint" toggle from Settings by actually
+      blocking the authenticated shell until the OS unlock flow
+      succeeds. See src/components/BiometricGate.tsx for details.
+    */}
+    <BiometricGate>
     <AccountStatusGuard>
       <ProviderProvider>
       <RoleGate>
@@ -94,6 +104,7 @@ export default function AppLayout() {
         <Fragment>
         <NativePermissionsOnboarding />
         <OnDemandIncomingListener />
+        <BookingAlertListener />
         <SingularLinkHandler />
         <View style={{ flex: 1 }}>
           <EmailVerificationBanner />
@@ -114,6 +125,7 @@ export default function AppLayout() {
       </RoleGate>
       </ProviderProvider>
     </AccountStatusGuard>
+    </BiometricGate>
     </MaintenanceGate>
   );
 }

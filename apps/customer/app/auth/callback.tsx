@@ -11,7 +11,7 @@ import { Colors } from "@/constants/colors";
 
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string }>();
+  const params = useLocalSearchParams<{ code?: string; error?: string; error_description?: string; token_hash?: string; type?: string }>();
   const [status, setStatus] = useState<"loading" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
@@ -23,6 +23,8 @@ export default function AuthCallbackScreen() {
 
       let error: string | null = null;
       let code: string | null = null;
+      let tokenHash: string | null = null;
+      let type: string | undefined;
       let accessToken: string | null = null;
       let refreshToken: string | null = null;
 
@@ -30,6 +32,8 @@ export default function AuthCallbackScreen() {
         const urlObj = new URL(window.location.href);
         error = urlObj.searchParams.get("error") ?? params.error ?? null;
         code = urlObj.searchParams.get("code") ?? params.code ?? null;
+        tokenHash = urlObj.searchParams.get("token_hash") ?? params.token_hash ?? null;
+        type = urlObj.searchParams.get("type") ?? params.type ?? undefined;
         const hash = urlObj.hash.slice(1);
         if (hash) {
           const hashParams = new URLSearchParams(hash);
@@ -39,6 +43,8 @@ export default function AuthCallbackScreen() {
       } else {
         error = params.error ?? null;
         code = params.code ?? null;
+        tokenHash = params.token_hash ?? null;
+        type = params.type;
       }
 
       if (error) {
@@ -60,6 +66,12 @@ export default function AuthCallbackScreen() {
           const { error: exchangeError } =
             await supabase.auth.exchangeCodeForSession(code);
           if (exchangeError) throw exchangeError;
+        } else if (tokenHash && (type === "signup" || type === "recovery" || type === "email")) {
+          const { error: verifyError } = await supabase.auth.verifyOtp({
+            token_hash: tokenHash,
+            type: type as "signup" | "recovery" | "email",
+          });
+          if (verifyError) throw verifyError;
         } else {
           throw new Error("No authentication data received");
         }
@@ -86,7 +98,7 @@ export default function AuthCallbackScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router, params.code, params.error, params.error_description]);
+  }, [router, params.code, params.error, params.error_description, params.token_hash, params.type]);
 
   if (status === "error") {
     return (

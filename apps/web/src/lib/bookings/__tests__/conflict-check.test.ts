@@ -11,7 +11,7 @@ function createSequentialSupabase(responses: Array<{ data: unknown; error: unkno
 
   const builder = (): any => {
     const b: any = {};
-    for (const m of ["select", "eq", "neq", "lt", "gt"]) {
+    for (const m of ["select", "eq", "neq", "not", "lt", "gt"]) {
       b[m] = () => builder();
     }
     b.then = (onFulfilled: (v: unknown) => unknown) => Promise.resolve(next()).then(onFulfilled);

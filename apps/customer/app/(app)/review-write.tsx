@@ -15,6 +15,7 @@ import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
 import { api } from "@/lib/api-client";
+import { apiBookingReviewPath } from "@/lib/customer-api-paths";
 import { useImagePicker } from "@/hooks/useImagePicker";
 import { useScreenTracking } from "@/hooks/useScreenTracking";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -33,7 +34,7 @@ export default function ReviewWriteScreen() {
       /** Deep-link recovery when opening review without a booking context */
       provider_slug?: string;
     }>();
-  const [rating, setRating] = useState(initRating ? parseInt(initRating, 10) : 5);
+  const [rating, setRating] = useState(initRating ? parseInt(initRating, 10) : 0);
   const [comment, setComment] = useState(initComment || "");
   const [photos, setPhotos] = useState<string[]>([]);
   const [services, setServices] = useState<
@@ -44,9 +45,11 @@ export default function ReviewWriteScreen() {
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(false);
+  /** Set when `/api/me/reviews?booking_id=` returns a review (navigate with bookingId only). */
+  const [hasExistingReview, setHasExistingReview] = useState(false);
   const { pickFromLibrary } = useImagePicker();
 
-  const isEdit = !!reviewId;
+  const isEdit = !!reviewId || hasExistingReview;
 
   const uniqueStaff = useMemo(() => {
     const map = new Map<string, string>();
@@ -61,12 +64,19 @@ export default function ReviewWriteScreen() {
     let cancelled = false;
     const loadContext = async () => {
       setLoadingContext(true);
+      setHasExistingReview(false);
       try {
         const [bookingRes, reviewRes] = await Promise.all([
           api.get<any>(`/api/me/bookings/${bookingId}`),
           api.get<any>(`/api/me/reviews?booking_id=${bookingId}`),
         ]);
         if (cancelled) return;
+
+        if (bookingRes.error) {
+          Alert.alert("Error", "Could not load booking details for review.");
+          setLoadingContext(false);
+          return;
+        }
 
         const bookingRaw = bookingRes.data as Record<string, unknown> | null | undefined;
         const bookingRow =
@@ -91,6 +101,12 @@ export default function ReviewWriteScreen() {
           (reviewRaw?.review as Record<string, unknown> | undefined) ??
           (Array.isArray(reviewRaw?.reviews) ? (reviewRaw?.reviews as Record<string, unknown>[])[0] : undefined);
         if (existingReview) {
+          setHasExistingReview(true);
+          const rv = Number(existingReview.rating);
+          if (Number.isFinite(rv) && rv >= 1 && rv <= 5) setRating(rv);
+          const cm = existingReview.comment;
+          if (typeof cm === "string") setComment(cm);
+
           const existingServices = Array.isArray(existingReview.service_ratings)
             ? (existingReview.service_ratings as Record<string, unknown>[])
             : [];
@@ -129,7 +145,10 @@ export default function ReviewWriteScreen() {
       Alert.alert("Booking required", "Open this screen from a completed booking to leave a review.");
       return;
     }
-    if (rating < 1 || rating > 5) return;
+    if (rating < 1 || rating > 5) {
+      Alert.alert("Rating required", "Please select a star rating before submitting.");
+      return;
+    }
     setLoading(true);
     try {
       const normalizedServiceRatings = services.map((svc) => ({
@@ -147,8 +166,9 @@ export default function ReviewWriteScreen() {
             ? { staff_id: uniqueStaff[0].id, rating }
             : undefined;
 
+      const path = apiBookingReviewPath(bookingId);
       if (isEdit) {
-        const res = await api.patch(`/api/bookings/${bookingId}/review`, {
+        const res = await api.patch(path, {
           rating,
           comment: comment.trim() || undefined,
           photos: photos.length > 0 ? photos : undefined,
@@ -158,7 +178,7 @@ export default function ReviewWriteScreen() {
         if (res.error) Alert.alert("Error", res.error.message || "Failed to update review");
         else router.back();
       } else {
-        const res = await api.post(`/api/bookings/${bookingId}/review`, {
+        const res = await api.post(path, {
           rating,
           comment: comment.trim() || undefined,
           photos: photos.length > 0 ? photos : undefined,
@@ -191,6 +211,10 @@ export default function ReviewWriteScreen() {
         type: "image/jpeg",
       } as any);
       const res = await api.post<any>("/api/me/custom-requests/upload", formData as any);
+      if (res.error) {
+        Alert.alert("Error", "Failed to upload photo");
+        return;
+      }
       const urls = (res.data as any)?.urls ?? [];
       if (urls.length > 0) {
         setPhotos((p) => [...p, ...urls].slice(0, 4));
@@ -322,7 +346,7 @@ export default function ReviewWriteScreen() {
                     {[1, 2, 3, 4, 5].map((r) => (
                       <TouchableOpacity
                         key={`${staff.id}-${r}`}
-                        onPress={() => setStaffRatings({ [staff.id]: r })}
+                        onPress={() => setStaffRatings((prev) => ({ ...prev, [staff.id]: r }))}
                         style={{ padding: 2 }}
                       >
                         <Ionicons name={selected >= r ? "star" : "star-outline"} size={24} color={selected >= r ? "#EAB308" : "#D1D5DB"} />
@@ -334,7 +358,11 @@ export default function ReviewWriteScreen() {
             })}
           </View>
         )}
-        <TouchableOpacity onPress={submit} disabled={loading} style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading ? 0.5 : 1 }}>
+        <TouchableOpacity
+          onPress={submit}
+          disabled={loading || loadingContext || rating < 1}
+          style={{ backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: "center", opacity: loading || loadingContext || rating < 1 ? 0.5 : 1 }}
+        >
           {loading ? <ActivityIndicator color={Colors.white} /> : <Text style={{ color: Colors.white, fontWeight: "600", fontSize: 18 }}>Submit</Text>}
         </TouchableOpacity>
       </ScrollView>

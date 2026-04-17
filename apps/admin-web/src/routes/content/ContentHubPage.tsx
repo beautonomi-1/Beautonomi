@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { BookOpen, Compass, FolderOpen, Globe2, Layers } from "lucide-react";
+import { BookOpen, Compass, FolderOpen, Globe2, Layers, HelpCircle, Info, FileText, MapPin, Link2 } from "lucide-react";
 import { ADMIN_SECTION_CONTENT_CATALOG } from "@beautonomi/admin-access";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
@@ -47,6 +47,41 @@ const CARDS: {
     description: "Platform service categories for onboarding and targeting.",
     icon: Globe2,
     accent: "from-amber-700 to-rose-800",
+  },
+  {
+    to: adminSpaTo("/admin/content/faqs"),
+    label: "FAQs",
+    description: "Frequently asked questions for the customer app.",
+    icon: HelpCircle,
+    accent: "from-cyan-600 to-blue-700",
+  },
+  {
+    to: adminSpaTo("/admin/content/about-us"),
+    label: "About Us",
+    description: "About Us page sections (mission, vision, team).",
+    icon: Info,
+    accent: "from-pink-600 to-rose-800",
+  },
+  {
+    to: adminSpaTo("/admin/content/pages"),
+    label: "CMS Pages",
+    description: "Static content pages such as Terms, Privacy, etc.",
+    icon: FileText,
+    accent: "from-indigo-600 to-violet-800",
+  },
+  {
+    to: adminSpaTo("/admin/content/featured-cities"),
+    label: "Featured Cities",
+    description: "Cities highlighted on the customer landing pages.",
+    icon: MapPin,
+    accent: "from-teal-600 to-emerald-800",
+  },
+  {
+    to: adminSpaTo("/admin/content/app-links"),
+    label: "App Links",
+    description: "Download links for iOS, Android, and web apps.",
+    icon: Link2,
+    accent: "from-orange-600 to-red-800",
   },
 ];
 

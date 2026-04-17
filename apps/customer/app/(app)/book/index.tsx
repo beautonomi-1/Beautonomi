@@ -49,6 +49,7 @@ import {
   getPendingExcludeHoldId,
   setPendingExcludeHoldId,
 } from "@/lib/booking-flow-hold";
+import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import { Skeleton } from "@/components/Skeleton";
 import type {
@@ -76,6 +77,8 @@ export interface SelectedServiceItem {
   buffer_minutes?: number;
   price: number;
   currency: string;
+  /** When false, at-home booking is not allowed for this line. */
+  supports_at_home?: boolean;
 }
 
 const STEP_LABEL_KEYS: Record<Step, string> = {
@@ -296,7 +299,11 @@ function BookingSummaryHeader({ provider, service, variant, selectedServices }: 
     ? items.length === 1 ? items[0].title : `${items.length} services`
     : (variant?.title ?? service?.title);
   const displayPrice = items ? items.reduce((s, i) => s + i.price, 0) : (variant?.price ?? service?.price);
-  const displayDuration = items ? items.reduce((s, i) => s + i.duration_minutes, 0) : (variant?.duration_minutes ?? service?.duration_minutes);
+  const displayDuration = items
+    ? (items.length > 1
+        ? buildSlotParamsFromSelectedServices(items).durationMinutes
+        : items.reduce((s, i) => s + i.duration_minutes, 0))
+    : (variant?.duration_minutes ?? service?.duration_minutes);
   const currency = provider.currency ?? items?.[0]?.currency ?? getTenantDefaultCurrency();
 
   return (
@@ -552,7 +559,7 @@ export default function BookScreen() {
   const [packageIdForCheckout, setPackageIdForCheckout] = useState<string | null>(null);
   /** Retail lines from mixed packages — merged into checkout product cart (parity with customer web). */
   const [selectedPackageProducts, setSelectedPackageProducts] = useState<
-    Array<{ id: string; name: string; price: number; quantity: number; currency: string }>
+    { id: string; name: string; price: number; quantity: number; currency: string }[]
   >([]);
   /** Full package object for UI display — seeded from nav params immediately, enriched after API loads. */
   const [activePackage, setActivePackage] = useState<{
@@ -604,8 +611,8 @@ export default function BookScreen() {
   const appliedPrefillAddonsRef = useRef(false);
   /** Public package shape from API — used with {@link cartMatchesPublicCatalogPackage} when `packageIdForCheckout` is set. */
   const resolvedPackageShapeRef = useRef<{
-    items?: Array<{ type?: string; id?: string; quantity?: number }>;
-    services?: Array<{ id: string }>;
+    items?: { type?: string; id?: string; quantity?: number }[];
+    services?: { id: string }[];
   } | null>(null);
   const prevStepRef = useRef<Step | null>(null);
   /** Which time-of-day section is expanded (matches web collapsible groups). */
@@ -902,7 +909,7 @@ export default function BookScreen() {
               const rawProd = !prodRes.error && prodRes.data != null ? prodRes.data : [];
               const prodList = Array.isArray(rawProd) ? rawProd : [];
               const retail = buildRetailCartRowsFromPublicPackage(
-                pkg as { items?: Array<{ type?: string; id?: string; quantity?: number }> },
+                pkg as { items?: { type?: string; id?: string; quantity?: number }[] },
                 prodList as PublicProductCatalogRow[],
                 applied[0]?.currency ?? getTenantDefaultCurrency()
               );
@@ -1118,6 +1125,16 @@ export default function BookScreen() {
       if (excludeHoldIdForSlots) {
         params.set("excludeHoldId", excludeHoldIdForSlots);
       }
+      if (locationType === "at_home") {
+        const dynamicTravel =
+          travelFeePreview.status === "success"
+            ? (travelFeePreview as { travelTimeMinutes?: number }).travelTimeMinutes
+            : undefined;
+        params.set("travel_buffer_minutes", String(dynamicTravel ? Math.ceil(dynamicTravel) : 30));
+      }
+      if (reschedule_booking_id) {
+        params.set("exclude_booking_id", reschedule_booking_id);
+      }
       const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
         `/api/public/providers/${encodeURIComponent(slug)}/availability?${params}`
       );
@@ -1150,6 +1167,7 @@ export default function BookScreen() {
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
+    travelFeePreview,
   ]);
 
   // Restore snapshot and reload stale data when screen regains focus (handles tab switching)
@@ -1246,6 +1264,12 @@ export default function BookScreen() {
         }
         if (excludeHoldIdForSlots) {
           params.set("excludeHoldId", excludeHoldIdForSlots);
+        }
+        if (locationType === "at_home") {
+          params.set("travel_buffer_minutes", "30");
+        }
+        if (reschedule_booking_id) {
+          params.set("exclude_booking_id", reschedule_booking_id);
         }
         try {
           const res = await api.get<{ slots?: AvailabilitySlot[]; data?: AvailabilitySlot[] }>(
@@ -1353,9 +1377,13 @@ export default function BookScreen() {
     if (step === "time" && selectedDay && selectedStaff) loadSlots();
   }, [step, selectedDay, selectedStaff, loadSlots]);
 
-  // Fetch addons on extras step, or earlier when express prefill includes `addons` (match web booking)
+  // Fetch addons for ALL selected services and union the results
+  const allOfferingIds = useMemo(
+    () => selectedServices.map((s) => s.offeringId).filter(Boolean),
+    [selectedServices],
+  );
   useEffect(() => {
-    if (!slug || !effectiveOfferingId) {
+    if (!slug || allOfferingIds.length === 0) {
       setAddonsList([]);
       return;
     }
@@ -1364,18 +1392,32 @@ export default function BookScreen() {
       setAddonsList([]);
       return;
     }
-    api
-      .get<{ data?: { all_addons?: { id: string; title?: string; name?: string; price: number; duration_minutes?: number; currency?: string; is_recommended?: boolean }[] }; all_addons?: unknown[] }>(
-        `/api/public/providers/${encodeURIComponent(slug)}/services/${effectiveOfferingId}/addons`
-      )
-      .then((res) => {
-        const data = (res.data ?? res) as any;
-        const raw = data?.data?.all_addons ?? data?.all_addons ?? [];
-        const list = Array.isArray(raw) ? raw : [];
-        setAddonsList(list);
-      })
-      .catch(() => setAddonsList([]));
-  }, [step, slug, effectiveOfferingId, addonsParam]);
+    Promise.all(
+      allOfferingIds.map((oid) =>
+        api
+          .get<any>(`/api/public/providers/${encodeURIComponent(slug)}/services/${oid}/addons`)
+          .then((res) => {
+            const data = (res.data ?? res) as any;
+            const raw = data?.data?.all_addons ?? data?.all_addons ?? [];
+            return Array.isArray(raw) ? raw : [];
+          })
+          .catch(() => [] as any[]),
+      ),
+    ).then((results) => {
+      const seen = new Set<string>();
+      const merged: typeof addonsList = [];
+      for (const list of results) {
+        for (const addon of list) {
+          if (!seen.has(addon.id)) {
+            seen.add(addon.id);
+            merged.push(addon);
+          }
+        }
+      }
+      setAddonsList(merged);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, slug, allOfferingIds.join(","), addonsParam]);
 
   useEffect(() => {
     if (appliedPrefillAddonsRef.current) return;
@@ -1476,7 +1518,15 @@ export default function BookScreen() {
             },
           ]
         : [];
-    if (!provider || servicesForHold.length === 0 || !selectedStaff || !selectedSlot) return;
+    if (!provider || servicesForHold.length === 0) return;
+    if (!selectedStaff) {
+      Alert.alert("Select a stylist", "Please choose a staff member before continuing.");
+      return;
+    }
+    if (!selectedSlot) {
+      Alert.alert("Select a time", "Please pick an available time slot before continuing.");
+      return;
+    }
     setCreatingHold(true);
     try {
       const latLng = atHomeCoords;
@@ -1509,6 +1559,15 @@ export default function BookScreen() {
       const endAt = toIsoUtcTimestamp(selectedSlot.end);
       const holdStaffId = holdStaffIdFromSlotAndSelection(selectedStaff, selectedSlot);
 
+      // Release any existing hold before creating a new one
+      if (excludeHoldIdForSlots) {
+        api.post(`/api/public/booking-holds/${excludeHoldIdForSlots}/release`, {}).catch((err) => {
+          console.warn("Failed to release booking hold:", err);
+        });
+      }
+
+      const fingerprint = await getGuestFingerprintHash();
+
       const res = await api.post<{ hold_id?: string; id?: string }>(
         "/api/public/booking-holds",
         {
@@ -1520,6 +1579,8 @@ export default function BookScreen() {
           location_type: locationType,
           location_id: locationType === "at_salon" ? selectedLocation?.id : null,
           address,
+          previous_hold_id: excludeHoldIdForSlots || null,
+          guest_fingerprint_hash: fingerprint,
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),
@@ -1590,6 +1651,7 @@ export default function BookScreen() {
 } finally {
     setCreatingHold(false);
   }
+// eslint-disable-next-line react-hooks/exhaustive-deps
 }, [provider, selectedService, selectedServices, selectedStaff, selectedSlot, locationType, atHomeAddress, atHomeCoords, effectiveOfferingId, effectiveDuration, selectedLocation, selectedVariant, reschedule_booking_id, campaign_id, provider_id, selectedAddonIds, promoParam, giftCardParam, productsParam, packageIdForCheckout, selectedPackageProducts, slug, t]);
 
   const goBack = useCallback(() => {
@@ -2194,7 +2256,7 @@ export default function BookScreen() {
                     {locationType === "at_salon" && <Ionicons name="checkmark-circle" size={22} color={Colors.primary} />}
                   </Pressable>
                 ))}
-                {provider.supports_house_calls && selectedService?.supports_at_home && (
+                {provider.supports_house_calls && (selectedServices.length > 0 ? selectedServices.every((s) => s.supports_at_home !== false) : selectedService?.supports_at_home) && (
                   <Pressable
                     onPress={() => {
                       haptic.light();
@@ -3208,7 +3270,7 @@ export default function BookScreen() {
             }}>
               {(() => {
                 const venueValid = locationType === "at_salon"
-                  ? (selectedLocation != null || salonLocations.length === 0)
+                  ? selectedLocation != null
                   : (Boolean(atHomeAddress.line1.trim()) && Boolean(atHomeAddress.city.trim()));
                 return (
                   <TouchableOpacity

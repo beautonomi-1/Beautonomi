@@ -16,6 +16,7 @@ import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { LoadingState } from "@/components/ui/LoadingState";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
 import { ActionButton } from "@/components/ui/ActionButton";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { AddressAutocomplete } from "@/components/ui/AddressAutocomplete";
@@ -125,6 +126,7 @@ export default function LocationsSettingsScreen() {
   const {
     data: locations,
     loading,
+    error: loadError,
     refresh,
   } = useApi<Location[]>("/api/provider/locations?include_inactive=true");
   const { execute: createLocation, loading: creating } = useApiPost<
@@ -141,8 +143,11 @@ export default function LocationsSettingsScreen() {
   /* ─── handlers ─── */
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   function openAddSheet() {
@@ -281,6 +286,8 @@ export default function LocationsSettingsScreen() {
 
       {loading && !locations ? (
         <LoadingState />
+      ) : loadError && !locations ? (
+        <ErrorState message="Could not load locations. Pull down to retry." onRetry={refresh} />
       ) : !locations || locations.length === 0 ? (
         <EmptyState
           icon="location-outline"

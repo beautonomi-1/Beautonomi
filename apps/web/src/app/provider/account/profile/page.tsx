@@ -7,7 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Camera, Loader2 } from "lucide-react";
+import { Camera, Loader2, MapPin } from "lucide-react";
+import AddressAutocomplete from "@/components/mapbox/AddressAutocomplete";
+import { LocationMapPickerDialog } from "@/components/mapbox/LocationMapPickerDialog";
 import { toast } from "sonner";
 import { fetcher, FetchError } from "@/lib/http/fetcher";
 import { uploadAvatar, validateFileType, validateFileSize, IMAGE_CONSTRAINTS } from "@/lib/supabase/storage-client";
@@ -27,6 +29,8 @@ interface ProfileData {
     state?: string;
     postal_code?: string;
     country: string;
+    latitude?: number;
+    longitude?: number;
   } | null;
   plan?: string;
 }
@@ -44,6 +48,7 @@ export default function ProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -358,22 +363,44 @@ export default function ProfilePage() {
       <SectionCard title="Address">
         <div className="space-y-4">
           <div>
-            <Label htmlFor="address">Address</Label>
-            <Input
-              id="address"
+            <Label htmlFor="provider-profile-address">Address</Label>
+            <AddressAutocomplete
+              inputId="provider-profile-address"
               value={formData.address?.line1 || ""}
-              onChange={(e) => setFormData({ 
-                ...formData, 
-                address: { 
-                  ...formData.address, 
-                  line1: e.target.value,
-                  city: formData.address?.city || "",
-                  state: formData.address?.state || "",
-                  postal_code: formData.address?.postal_code || "",
-                  country: formData.address?.country || "",
-                } as any
-              })}
+              onChange={(addr) => {
+                setFormData({
+                  ...formData,
+                  address: {
+                    line1: addr.address_line1 || "",
+                    city: addr.city || formData.address?.city || "",
+                    state: addr.state || formData.address?.state || "",
+                    postal_code: addr.postal_code || formData.address?.postal_code || "",
+                    country: addr.country || formData.address?.country || "",
+                    latitude: addr.latitude,
+                    longitude: addr.longitude,
+                  } as any,
+                });
+              }}
+              onInputChange={(val) => {
+                setFormData({
+                  ...formData,
+                  address: {
+                    ...formData.address,
+                    line1: val,
+                    city: formData.address?.city || "",
+                    state: formData.address?.state || "",
+                    postal_code: formData.address?.postal_code || "",
+                    country: formData.address?.country || "",
+                  } as any,
+                });
+              }}
+              placeholder="Start typing your address..."
+              country={formData.address?.country?.length === 2 ? formData.address.country : "ZA"}
             />
+            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setMapPickerOpen(true)}>
+              <MapPin className="w-4 h-4 mr-2" />
+              Drop pin on map
+            </Button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
@@ -475,6 +502,27 @@ export default function ProfilePage() {
           </div>
         </div>
       </SectionCard>
+      <LocationMapPickerDialog
+        open={mapPickerOpen}
+        onOpenChange={setMapPickerOpen}
+        initialLatitude={formData.address?.latitude}
+        initialLongitude={formData.address?.longitude}
+        onLocationPicked={(loc) => {
+          setFormData({
+            ...formData,
+            address: {
+              ...formData.address,
+              line1: loc.address_line1 || formData.address?.line1 || "",
+              city: loc.city || formData.address?.city || "",
+              state: loc.state || formData.address?.state || "",
+              postal_code: loc.postal_code || formData.address?.postal_code || "",
+              country: loc.country || formData.address?.country || "",
+              latitude: loc.latitude,
+              longitude: loc.longitude,
+            } as any,
+          });
+        }}
+      />
     </SettingsDetailLayout>
   );
 }

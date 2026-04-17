@@ -36,11 +36,16 @@ export async function GET(request: NextRequest) {
     const { user } = await requireSuperadminPlatform(request);
     if (!user) return forbiddenResponse("Superadmin only");
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase
+    const { searchParams } = new URL(request.url);
+    const includeInactive = searchParams.get("include_inactive") === "true";
+    let query = supabase
       .from("tenants")
-      .select("id, slug, name, region_code, is_active")
-      .eq("is_active", true)
+      .select("id, slug, name, region_code, lifecycle, default_currency, default_language, default_timezone, is_active, created_at, updated_at")
       .order("slug", { ascending: true });
+    if (!includeInactive) {
+      query = query.eq("is_active", true);
+    }
+    const { data, error } = await query;
     if (error) {
       return errorResponse(error.message || "Failed to load tenants", "FETCH_ERROR", 500);
     }

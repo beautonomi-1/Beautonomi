@@ -5,6 +5,7 @@ import { ADMIN_SECTION_MARKETING_COMMS } from "@beautonomi/admin-access";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -67,6 +68,15 @@ export function GiftCardsListPage() {
     enabled: allowed,
   });
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => adminApi.deleteJson(`/api/admin/gift-cards/${id}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: [...adminQueryKeys.root, "gift-cards"] });
+      adminToast.success("Gift card deleted");
+    },
+    onError: (e: Error) => adminToast.error(`Failed to delete gift card: ${e.message}`),
+  });
+
   const create = useMutation({
     mutationFn: () =>
       adminApi.postJson<unknown>("/api/admin/gift-cards", {
@@ -80,7 +90,9 @@ export function GiftCardsListPage() {
       setCCode("");
       setCAmount("");
       setCCurrency("");
+      adminToast.success("Gift card created");
     },
+    onError: (e: Error) => adminToast.error(`Failed to create gift card: ${e.message}`),
   });
 
   const rows = q.data?.gift_cards ?? [];
@@ -194,7 +206,7 @@ export function GiftCardsListPage() {
               <AdminTh>Code</AdminTh>
               <AdminTh>Balance</AdminTh>
               <AdminTh>Active</AdminTh>
-              <AdminTh> </AdminTh>
+              <AdminTh>Actions</AdminTh>
             </tr>
           </AdminTableHead>
           <AdminTableBody>
@@ -204,11 +216,23 @@ export function GiftCardsListPage() {
                 <AdminTd className="tabular-nums">{String(r.balance ?? "")}</AdminTd>
                 <AdminTd>{r.is_active ? "yes" : "no"}</AdminTd>
                 <AdminTd>
-                  {r.id ? (
-                    <Link to={adminSpaTo(`/admin/gift-cards/${r.id}`)} className="text-sm text-gray-900 underline">
-                      Open
-                    </Link>
-                  ) : null}
+                  <div className="flex gap-2">
+                    {r.id ? (
+                      <Link to={adminSpaTo(`/admin/gift-cards/${r.id}`)} className="text-xs text-gray-900 underline">
+                        Open
+                      </Link>
+                    ) : null}
+                    {r.id ? (
+                      <button
+                        type="button"
+                        disabled={deleteMut.isPending}
+                        onClick={() => { if (confirm(`Delete gift card "${String(r.code ?? r.id)}"?`)) deleteMut.mutate(String(r.id)); }}
+                        className="text-xs text-red-600 underline disabled:opacity-50"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
                 </AdminTd>
               </tr>
             ))}

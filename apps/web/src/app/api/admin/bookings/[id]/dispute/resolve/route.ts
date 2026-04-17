@@ -204,24 +204,10 @@ export async function POST(
         created_by: user.id,
       });
 
-      const { error: disputeFinanceErr } = await supabase.from("finance_transactions").insert({
-        tenant_id: disputeWalletTenantId,
-        booking_id: id,
-        provider_id: bookingData.provider_id,
-        transaction_type: "refund",
-        amount: -refundAmt,
-        fees: 0,
-        commission: 0,
-        net: -refundAmt,
-        description: `Dispute resolution refund for booking ${bookingData.booking_number}`,
-        created_at: new Date().toISOString(),
-      });
-      if (disputeFinanceErr) {
-        console.error(
-          "Dispute resolve: finance ledger insert failed after wallet credit:",
-          disputeFinanceErr,
-        );
-      }
+      // NOTE: finance_transactions row is written by trigger
+      // `create_finance_ledger_from_booking_refund` (migration 490) via the
+      // booking_refunds insert above. App-side insertion duplicates the ledger
+      // (B1).
 
       await supabase
         .from("bookings")

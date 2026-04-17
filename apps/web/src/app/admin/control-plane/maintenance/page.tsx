@@ -13,6 +13,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import RoleGuard from "@/components/auth/RoleGuard";
 import type { MaintenanceScope, MaintenanceScopeConfig } from "@/lib/maintenance-types";
 import { MAINTENANCE_SCOPES } from "@/lib/maintenance-types";
+import { datetimeLocalToIsoOrNull, isoToDatetimeLocalValue } from "@/lib/maintenance-datetime";
 
 const SCOPE_LABELS: Record<MaintenanceScope, string> = {
   public_site: "Customer public site (marketing/booking web)",
@@ -154,24 +155,12 @@ export default function MaintenancePage() {
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <Label>Countdown end (optional, UTC)</Label>
+                  <Label>Countdown end (optional, local)</Label>
                   <Input
                     type="datetime-local"
-                    value={
-                      maintenance[scope].countdown_end_at
-                        ? (() => {
-                            const d = new Date(maintenance[scope].countdown_end_at!);
-                            const pad = (n: number) => n.toString().padStart(2, "0");
-                            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-                          })()
-                        : ""
-                    }
+                    value={isoToDatetimeLocalValue(maintenance[scope].countdown_end_at)}
                     onChange={(e) => {
-                      const v = e.target.value;
-                      updateScope(
-                        scope,
-                        { countdown_end_at: v ? new Date(v).toISOString() : null }
-                      );
+                      updateScope(scope, { countdown_end_at: datetimeLocalToIsoOrNull(e.target.value) });
                     }}
                   />
                 </div>

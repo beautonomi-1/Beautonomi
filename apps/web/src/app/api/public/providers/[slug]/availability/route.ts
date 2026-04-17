@@ -47,6 +47,7 @@ export async function GET(
     const minNoticeMinutes = parseInt(searchParams.get("min_notice_minutes") || "0");
     const maxAdvanceDays = parseInt(searchParams.get("max_advance_days") || "365");
     const excludeHoldId = searchParams.get("excludeHoldId")?.trim() || undefined;
+    const excludeBookingId = searchParams.get("exclude_booking_id")?.trim() || undefined;
 
     if (!date) {
       return NextResponse.json(
@@ -187,6 +188,7 @@ export async function GET(
       staffIdParam: staffId,
       activeStaffRows: staffList,
       excludeHoldId,
+      excludeBookingId,
     });
 
     // Filter by min_notice_minutes: exclude any slot that starts before now + lead time

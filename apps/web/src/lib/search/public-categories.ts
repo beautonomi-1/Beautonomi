@@ -1,4 +1,4 @@
-import { getSupabaseServer } from "@/lib/supabase/server";
+import { getSupabasePublicAnon } from "@/lib/supabase/public-anon";
 import type { Category } from "@/types/beautonomi";
 
 /**
@@ -6,7 +6,7 @@ import type { Category } from "@/types/beautonomi";
  */
 export async function getPublicSearchCategories(): Promise<Category[]> {
   try {
-    const supabase = await getSupabaseServer();
+    const supabase = getSupabasePublicAnon();
     const { data, error } = await supabase
       .from("global_service_categories")
       .select(

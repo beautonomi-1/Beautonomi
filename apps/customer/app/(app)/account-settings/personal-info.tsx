@@ -199,8 +199,12 @@ export default function PersonalInfoScreen() {
         const url = (res.data as any)?.url;
         if (url) {
           const patchRes = await api.patch<any>("/api/me/profile", { avatar_url: url });
-          if (!patchRes.error) load();
+          if (patchRes.error) {
+            Alert.alert("Error", "Photo uploaded but profile could not be updated. Please try again.");
+          }
+          load();
         } else {
+          Alert.alert("Upload issue", "Photo uploaded but no URL was returned. Please try again.");
           load();
         }
       }

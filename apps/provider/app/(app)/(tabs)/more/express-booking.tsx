@@ -127,6 +127,13 @@ export default function ExpressBookingScreen() {
   const [prefillAddonsText, setPrefillAddonsText] = useState("");
   const [prefillProductsJson, setPrefillProductsJson] = useState("[]");
 
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newLinkName, setNewLinkName] = useState("");
+  const [newLinkSlug, setNewLinkSlug] = useState("");
+  const [creatingLink, setCreatingLink] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [subscriptionRequired, setSubscriptionRequired] = useState(false);
+
   useEffect(() => {
     if (!prefillModalLink) return;
     const p =
@@ -142,12 +149,13 @@ export default function ExpressBookingScreen() {
   const loadExpressLinks = useCallback(async () => {
     setExpressLinksLoading(true);
     setExpressLinksError(null);
+    setSubscriptionRequired(false);
     let list: ExpressLinkRow[] = [];
     let errorOut: string | null = null;
 
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        const res = await api.get<ExpressLinkRow[] | { data?: ExpressLinkRow[] }>(
+        const res = await api.get<ExpressLinkRow[] | { data?: ExpressLinkRow[]; code?: string }>(
           "/api/provider/express-booking"
         );
         if (!res.error) {
@@ -157,7 +165,16 @@ export default function ExpressBookingScreen() {
           errorOut = null;
           break;
         }
-        const status = (res.error as { status?: number }).status;
+        const errObj = res.error as { status?: number; code?: string; message?: string };
+        const status = errObj.status;
+        if (status === 403) {
+          const bodyCode = errObj.code || (res.data as { code?: string })?.code;
+          if (bodyCode === "SUBSCRIPTION_REQUIRED" || (errObj.message ?? "").toLowerCase().includes("subscription")) {
+            setSubscriptionRequired(true);
+            errorOut = null;
+            break;
+          }
+        }
         errorOut = getApiErrorMessage(res.error, "Failed to load short links");
         if (status === 401 || status === 403) break;
         if (attempt < 1) await new Promise((r) => setTimeout(r, 450));
@@ -179,9 +196,12 @@ export default function ExpressBookingScreen() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    await loadExpressLinks();
-    setRefreshing(false);
+    try {
+      await refresh();
+      await loadExpressLinks();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh, loadExpressLinks]);
 
   async function handleCopyLink() {
@@ -246,6 +266,35 @@ export default function ExpressBookingScreen() {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setPrefillModalLink(null);
     await loadExpressLinks();
+  }
+
+  async function handleCreateExpressLink() {
+    if (!newLinkName.trim() || !newLinkSlug.trim()) {
+      setCreateError("Name and slug are required");
+      return;
+    }
+    setCreatingLink(true);
+    setCreateError(null);
+    try {
+      const res = await api.post<ExpressLinkRow>("/api/provider/express-booking", {
+        name: newLinkName.trim(),
+        slug: newLinkSlug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-"),
+        is_active: true,
+      });
+      if (res.error) {
+        setCreateError(getApiErrorMessage(res.error, "Failed to create express link"));
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setShowCreateForm(false);
+        setNewLinkName("");
+        setNewLinkSlug("");
+        setCreateError(null);
+        await loadExpressLinks();
+      }
+    } catch (e) {
+      setCreateError(getApiErrorMessage(e, "Failed to create express link"));
+    }
+    setCreatingLink(false);
   }
 
   function handleClearPrefill() {
@@ -466,11 +515,122 @@ export default function ExpressBookingScreen() {
             </>
           )}
 
-          <SectionHeader title="Short links" />
-          {expressLinksLoading ? (
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 8, marginBottom: 4 }}>
+            <SectionHeader title="Express Links" />
+            <TouchableOpacity
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                borderRadius: 12,
+                backgroundColor: "#4f46e5",
+                paddingHorizontal: 14,
+                paddingVertical: 8,
+              }}
+              onPress={() => setShowCreateForm(true)}
+              accessibilityLabel="Create new express link"
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={18} color="#fff" />
+              <Text style={{ marginLeft: 4, fontWeight: "600", color: Colors.white, fontSize: 13 }}>New Link</Text>
+            </TouchableOpacity>
+          </View>
+
+          {showCreateForm && (
+            <View style={{ borderRadius: 16, borderWidth: 1, borderColor: "#c7d2fe", backgroundColor: "#f5f3ff", padding: 16, marginBottom: 12 }}>
+              <Text style={{ fontSize: 14, fontWeight: "600", color: "#4338ca", marginBottom: 12 }}>Create Express Link</Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Name</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white, marginBottom: 10 }}
+                placeholder="e.g. Summer Promo"
+                placeholderTextColor="#9ca3af"
+                value={newLinkName}
+                onChangeText={(t) => {
+                  setNewLinkName(t);
+                  if (!newLinkSlug || newLinkSlug === newLinkName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")) {
+                    setNewLinkSlug(t.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""));
+                  }
+                }}
+                autoCapitalize="words"
+              />
+              <Text style={{ fontSize: 13, fontWeight: "500", color: Colors.gray[700], marginBottom: 4 }}>Slug (URL-safe)</Text>
+              <TextInput
+                style={{ borderWidth: 1, borderColor: Colors.gray[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, backgroundColor: Colors.white, marginBottom: 10 }}
+                placeholder="e.g. summer-promo"
+                placeholderTextColor="#9ca3af"
+                value={newLinkSlug}
+                onChangeText={setNewLinkSlug}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {createError && (
+                <View style={{ borderRadius: 8, backgroundColor: "#fef2f2", padding: 10, marginBottom: 10 }}>
+                  <Text style={{ fontSize: 13, color: "#991b1b" }}>{createError}</Text>
+                </View>
+              )}
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, alignItems: "center", borderRadius: 12, backgroundColor: "#4f46e5", paddingVertical: 12, opacity: creatingLink ? 0.6 : 1 }}
+                  onPress={() => void handleCreateExpressLink()}
+                  disabled={creatingLink}
+                  accessibilityLabel="Create express link"
+                  accessibilityRole="button"
+                >
+                  {creatingLink ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <Text style={{ fontWeight: "600", color: Colors.white }}>Create</Text>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], paddingVertical: 12 }}
+                  onPress={() => { setShowCreateForm(false); setCreateError(null); }}
+                  accessibilityLabel="Cancel"
+                  accessibilityRole="button"
+                >
+                  <Text style={{ fontWeight: "500", color: Colors.gray[600] }}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {subscriptionRequired ? (
+            <View
+              style={{
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: "#fde68a",
+                backgroundColor: "#fffbeb",
+                padding: 20,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 8 }}>
+                <Ionicons name="lock-closed-outline" size={20} color="#b45309" />
+                <Text style={{ marginLeft: 8, fontSize: 16, fontWeight: "600", color: "#92400e" }}>
+                  Upgrade Required
+                </Text>
+              </View>
+              <Text style={{ fontSize: 14, color: "#78350f", marginBottom: 12 }}>
+                Express booking links are available on a paid subscription plan. Upgrade to unlock this feature.
+              </Text>
+              <TouchableOpacity
+                style={{
+                  alignSelf: "flex-start",
+                  borderRadius: 12,
+                  backgroundColor: "#4f46e5",
+                  paddingHorizontal: 20,
+                  paddingVertical: 10,
+                }}
+                onPress={() => router.push("/(app)/(tabs)/more/settings/subscription" as never)}
+                accessibilityLabel="Go to subscription page"
+                accessibilityRole="button"
+              >
+                <Text style={{ fontWeight: "600", color: Colors.white }}>View Plans</Text>
+              </TouchableOpacity>
+            </View>
+          ) : expressLinksLoading ? (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 16 }}>
               <ActivityIndicator color={Colors.primary} />
-              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Loading short links…</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Loading express links…</Text>
             </View>
           ) : expressLinksError ? (
             <View style={{ borderRadius: 12, borderWidth: 1, borderColor: "#fecaca", backgroundColor: "#fef2f2", padding: 16 }}>
@@ -478,13 +638,13 @@ export default function ExpressBookingScreen() {
               <TouchableOpacity
                 style={{ marginTop: 12, alignSelf: "flex-start", borderRadius: 12, backgroundColor: "#dc2626", paddingHorizontal: 16, paddingVertical: 8 }}
                 onPress={() => void loadExpressLinks()}
-                accessibilityLabel="Retry loading short links"
+                accessibilityLabel="Retry loading express links"
                 accessibilityRole="button"
               >
                 <Text style={{ fontWeight: "500", color: Colors.white }}>Try again</Text>
               </TouchableOpacity>
             </View>
-          ) : expressLinks.length === 0 ? (
+          ) : expressLinks.length === 0 && !showCreateForm ? (
             <View
               style={{
                 borderRadius: 16,
@@ -495,28 +655,11 @@ export default function ExpressBookingScreen() {
               }}
             >
               <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12 }}>
-                No express short links yet. Create pre-filled links (service, staff, venue) from booking link settings.
+                No express links yet. Tap &quot;New Link&quot; above to create a pre-filled booking link you can share with clients.
               </Text>
-              <TouchableOpacity
-                style={{
-                  alignSelf: "flex-start",
-                  borderRadius: 12,
-                  backgroundColor: "#e0e7ff",
-                  paddingHorizontal: 16,
-                  paddingVertical: 10,
-                }}
-                onPress={() => router.push("/(app)/(tabs)/more/settings/booking-link" as never)}
-                accessibilityLabel="Open booking link settings"
-                accessibilityRole="button"
-              >
-                <Text style={{ fontWeight: "600", color: "#4f46e5" }}>Booking link settings</Text>
-              </TouchableOpacity>
             </View>
           ) : (
             <>
-              <Text style={{ marginBottom: 8, fontSize: 12, color: Colors.gray[500] }}>
-                Pre-filled booking links. Create or edit from in-app booking link settings.
-              </Text>
               <View>
                 {expressLinks.map((el, idx) => {
                       const fullUrl = `${(APP_URL || "").replace(/\/$/, "")}/book/l/${encodeURIComponent(el.slug)}`;

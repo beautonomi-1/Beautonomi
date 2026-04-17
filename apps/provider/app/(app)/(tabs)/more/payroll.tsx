@@ -8,6 +8,7 @@ import {
   Alert,
   Platform,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
@@ -45,6 +46,7 @@ function isPayrollOwnerRole(role: string | null): boolean {
 }
 
 export default function PayrollScreen() {
+  const router = useRouter();
   const { screenPadding } = useResponsive();
   const { role } = useProvider();
   const isOwner = isPayrollOwnerRole(role);
@@ -58,45 +60,72 @@ export default function PayrollScreen() {
   const [periodDate, setPeriodDate] = useState(() => new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
-  const { data, loading, error, refresh } = useApi<PayRun[]>("/api/provider/pay-runs");
+  const { data, loading, error: loadError, refresh } = useApi<PayRun[]>("/api/provider/pay-runs");
   const { execute: approveRun } = useApiMutation("post");
   const { execute: markPaidRun } = useApiMutation("post");
   const { execute: createPayRun, loading: creating } = useApiMutation("post");
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await refresh();
-    setRefreshing(false);
+    try {
+      await refresh();
+    } finally {
+      setRefreshing(false);
+    }
   }, [refresh]);
 
   const payRuns: PayRun[] = Array.isArray(data) ? data : [];
 
   const handleApprove = useCallback(
-    async (run: PayRun) => {
+    (run: PayRun) => {
       if (run.status !== "draft") return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
-      if (err) {
-        Alert.alert("Error", err);
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      Alert.alert(
+        "Approve pay run?",
+        "This will lock the pay run for payment. This cannot be undone.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Approve",
+            onPress: async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const { error: err } = await approveRun(`/api/provider/pay-runs/${run.id}/approve`);
+              if (err) {
+                Alert.alert("Error", err);
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              refresh();
+            },
+          },
+        ]
+      );
     },
     [approveRun, refresh]
   );
 
   const handleMarkPaid = useCallback(
-    async (run: PayRun) => {
+    (run: PayRun) => {
       if (run.status !== "approved") return;
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
-      if (err) {
-        Alert.alert("Error", err);
-        return;
-      }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      refresh();
+      Alert.alert(
+        "Mark as paid?",
+        "Confirm that this pay run has been paid out to staff.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Mark paid",
+            onPress: async () => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              const { error: err } = await markPaidRun(`/api/provider/pay-runs/${run.id}/mark-paid`);
+              if (err) {
+                Alert.alert("Error", err);
+                return;
+              }
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              refresh();
+            },
+          },
+        ]
+      );
     },
     [markPaidRun, refresh]
   );
@@ -137,7 +166,7 @@ export default function PayrollScreen() {
       ? format(periodDate, "MMMM yyyy")
       : `${format(subDays(periodDate, 6), "MMM d")} – ${format(periodDate, "MMM d, yyyy")}`;
 
-  if (loading && !data) {
+  if (loading && !data && !loadError) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
@@ -148,12 +177,12 @@ export default function PayrollScreen() {
     );
   }
 
-  if (error && !data) {
+  if (loadError && !data) {
     return (
       <ScreenContainer scrollable={false}>
         <ScreenHeader title="Payroll" showBack />
         <View style={twStyle("flex-1 justify-center px-4")}>
-          <ErrorState message={error} onRetry={refresh} />
+          <ErrorState message={loadError} onRetry={refresh} />
         </View>
       </ScreenContainer>
     );
@@ -194,7 +223,7 @@ export default function PayrollScreen() {
           <Text style={twStyle("text-sm font-medium text-emerald-900")}>Pay runs</Text>
           <Text style={twStyle("mt-1 text-sm text-emerald-800")}>
             {isOwner
-              ? "Create a run for a period, then approve and mark paid when ready. VAT/PAYE and UIF automation is coming soon—use manual deductions on the web pay run detail for now."
+              ? "Create a run for a period, then tap a draft run to adjust per-staff PAYE, UIF, and manual deductions. Approve and mark paid when ready."
               : "View pay runs for your workplace. Only the business owner can create runs, approve, or mark them paid."}
           </Text>
         </View>
@@ -220,12 +249,19 @@ export default function PayrollScreen() {
           />
         ) : (
           payRuns.map((run) => (
-            <View
+            <TouchableOpacity
               key={run.id}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(`/(app)/(tabs)/more/pay-runs/${run.id}` as never);
+              }}
+              activeOpacity={0.8}
               style={twStyle("mb-3 rounded-2xl border border-gray-200 bg-white p-4")}
+              accessibilityRole="button"
+              accessibilityLabel={`Open pay run for ${formatDate(run.pay_period_start)} through ${formatDate(run.pay_period_end)}, status ${run.status}`}
             >
               <View style={twStyle("flex-row items-start justify-between")}>
-                <View>
+                <View style={twStyle("flex-1")}>
                   <Text style={twStyle("font-semibold text-gray-900")}>
                     {formatDate(run.pay_period_start)} – {formatDate(run.pay_period_end)}
                   </Text>
@@ -251,11 +287,17 @@ export default function PayrollScreen() {
                     </Text>
                   </View>
                 </View>
+                <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
               </View>
               {run.status === "draft" && isOwner && (
                 <TouchableOpacity
-                  onPress={() => handleApprove(run)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleApprove(run);
+                  }}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-emerald-600 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Approve pay run"
                 >
                   <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
                   <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Approve</Text>
@@ -263,14 +305,19 @@ export default function PayrollScreen() {
               )}
               {run.status === "approved" && isOwner && (
                 <TouchableOpacity
-                  onPress={() => handleMarkPaid(run)}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                    handleMarkPaid(run);
+                  }}
                   style={twStyle("mt-3 flex-row items-center justify-center rounded-xl bg-gray-800 py-2.5")}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark pay run as paid"
                 >
                   <Ionicons name="cash-outline" size={18} color="#fff" />
                   <Text style={twStyle("ml-2 text-sm font-semibold text-white")}>Mark as paid</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </TouchableOpacity>
           ))
         )}
       </ScrollView>

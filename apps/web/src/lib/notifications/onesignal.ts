@@ -8,7 +8,11 @@
 import { getSupabaseServer } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { z } from "zod";
-import { resolveOneSignalCredentials, type OneSignalAppType } from "@/lib/platform/secrets";
+import {
+  resolveOneSignalCredentials,
+  type OneSignalAppType,
+  type ResolveOneSignalOptions,
+} from "@/lib/platform/secrets";
 
 // OneSignal API base URL
 const ONESIGNAL_API_BASE = "https://api.onesignal.com";
@@ -56,12 +60,12 @@ export interface NotificationLogEntry {
 /**
  * Verify OneSignal configuration
  */
-export async function verifyOneSignalConfig(): Promise<{
+export async function verifyOneSignalConfig(options?: ResolveOneSignalOptions): Promise<{
   configured: boolean;
   missing: string[];
 }> {
   const missing: string[] = [];
-  const legacy = await resolveOneSignalCredentials(undefined);
+  const legacy = await resolveOneSignalCredentials(undefined, options);
   if (!legacy.appId) {
     missing.push(
       "ONESIGNAL_APP_ID or ONESIGNAL_APP_ID_CUSTOMER or platform_settings.settings.onesignal.app_id"
@@ -145,6 +149,8 @@ export type OneSignalSendOptions = {
   appType?: OneSignalAppType;
   /** When sending to users who are not the current requester (e.g. provider when customer creates request), pass admin client so device lookup is not blocked by RLS. */
   supabaseClient?: any;
+  /** Market tenant: use platform_settings / platform_secrets for this tenant (merged over global), same as admin Settings UI. */
+  tenantId?: string | null;
 };
 
 /**
@@ -182,7 +188,7 @@ async function sendOneSignalNotification(
   options?: OneSignalSendOptions
 ): Promise<SendNotificationResult> {
   const appType = options?.appType;
-  const resolved = await resolveOneSignalCredentials(appType);
+  const resolved = await resolveOneSignalCredentials(appType, { tenantId: options?.tenantId });
   const appId = resolved.appId;
   const restKey = resolved.restKey;
   if (!appId || !restKey) {
@@ -630,6 +636,41 @@ export async function sendTemplateNotification(
       triad
     );
     channelsToSend = [...nonPref, ...allowed];
+  }
+
+  // Quiet hours enforcement: suppress push notifications during quiet hours
+  if (channelsToSend.includes("push") && userIds.length > 0) {
+    try {
+      const supabaseAdmin = getSupabaseAdmin();
+      const { data: profiles } = await supabaseAdmin
+        .from("user_profiles")
+        .select("user_id, notification_preferences")
+        .in("user_id", userIds);
+
+      if (profiles && profiles.length > 0) {
+        const now = new Date();
+        const nowHHMM = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+        const allInQuietHours = profiles.every((p) => {
+          const prefs = p.notification_preferences as Record<string, unknown> | null;
+          if (!prefs?.quiet_hours_enabled) return false;
+          const start = String(prefs.quiet_hours_start ?? "22:00");
+          const end = String(prefs.quiet_hours_end ?? "07:00");
+          if (start <= end) {
+            return nowHHMM >= start && nowHHMM < end;
+          }
+          return nowHHMM >= start || nowHHMM < end;
+        });
+        if (allInQuietHours) {
+          channelsToSend = channelsToSend.filter((c) => c !== "push");
+        }
+      }
+    } catch {
+      // Non-blocking: if quiet hours check fails, send push anyway
+    }
+  }
+
+  if (channelsToSend.length === 0) {
+    return { success: true, notification_id: "suppressed-quiet-hours" };
   }
 
   const notificationPayload: any = {

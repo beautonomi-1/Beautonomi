@@ -12,7 +12,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { motion } from "framer-motion";
 import { fetcher } from "@/lib/http/fetcher";
 
 export type TaxInfoFormData = {
@@ -98,10 +97,7 @@ export default function TaxInfoModal({ isOpen, onClose, onSave, initialData }: T
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
+      <div
         className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
         <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between z-10">
@@ -273,7 +269,7 @@ export default function TaxInfoModal({ isOpen, onClose, onSave, initialData }: T
             </Button>
           </div>
         </form>
-      </motion.div>
+      </div>
     </div>
   );
 }

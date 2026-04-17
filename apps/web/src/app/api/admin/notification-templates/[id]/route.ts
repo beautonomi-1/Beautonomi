@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { getSupabaseServer } from "@/lib/supabase/server";
-import { requireRole, unauthorizedResponse } from "@/lib/auth/requireRole";
+import { unauthorizedResponse } from "@/lib/auth/requireRole";
 import { requireAdminSection, successResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { ADMIN_SECTION_MARKETING_COMMS } from "@/lib/admin-sections";
 import { writeAuditLog } from "@/lib/audit/audit";
@@ -13,7 +13,7 @@ import { resolveAdminApiTenantId } from "@/lib/tenant/admin-request-tenant";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -23,7 +23,7 @@ export async function GET(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
 
     const { data: template, error } = await supabase
       .from("notification_templates")
@@ -47,7 +47,7 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -57,17 +57,38 @@ export async function PATCH(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
 
     const updateData: Record<string, unknown> = {};
     if (body.title !== undefined) updateData.title = body.title;
     if (body.body !== undefined) updateData.body = body.body;
-    if (body.channels !== undefined) updateData.channels = body.channels;
+    if (body.channels !== undefined) {
+      const raw = Array.isArray(body.channels)
+        ? body.channels
+        : typeof body.channels === "string"
+          ? body.channels.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : [];
+      const allowed = ["push", "email", "sms", "live_activities"];
+      const normalized = Array.from(
+        new Set(
+          raw
+            .map((c: string) => (c === "in_app" ? "push" : c))
+            .filter((c: string) => allowed.includes(c)),
+        ),
+      );
+      updateData.channels = normalized.length > 0 ? normalized : ["push"];
+    }
     if (body.email_subject !== undefined) updateData.email_subject = body.email_subject;
     if (body.email_body !== undefined) updateData.email_body = body.email_body;
     if (body.sms_body !== undefined) updateData.sms_body = body.sms_body;
-    if (body.variables !== undefined) updateData.variables = body.variables;
+    if (body.variables !== undefined) {
+      updateData.variables = Array.isArray(body.variables)
+        ? body.variables
+        : typeof body.variables === "string"
+          ? body.variables.split(",").map((s: string) => s.trim()).filter(Boolean)
+          : body.variables;
+    }
     if (body.url !== undefined) updateData.url = body.url;
     if (body.enabled !== undefined) updateData.enabled = body.enabled;
     if (body.description !== undefined) updateData.description = body.description;
@@ -104,7 +125,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { user } = await requireAdminSection(ADMIN_SECTION_MARKETING_COMMS, request);
@@ -114,7 +135,7 @@ export async function DELETE(
 
     const supabase = await getSupabaseServer(request);
     const tenantId = await resolveAdminApiTenantId(request);
-    const { id } = params;
+    const { id } = await params;
 
     const { error } = await supabase
       .from("notification_templates")

@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import {  requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError  } from "@/lib/supabase/api-helpers";
 import { createClient } from "@supabase/supabase-js";
-import { subMonths, startOfDay, endOfDay } from "date-fns";
+import { subMonths, subDays, startOfDay, endOfDay } from "date-fns";
 import { getProviderRevenue, getPreviousPeriodRevenue } from "@/lib/reports/revenue-helpers";
 import { DASHBOARD_REVENUE_TRANSACTION_TYPES } from "@/lib/reports/constants";
 
@@ -44,6 +44,9 @@ export async function GET(request: NextRequest) {
     const toDate = new Date();
 
     switch (period) {
+      case "week":
+        fromDate = subDays(toDate, 7);
+        break;
       case "month":
         fromDate = subMonths(toDate, 1);
         break;
@@ -86,21 +89,32 @@ export async function GET(request: NextRequest) {
       .select("id")
       .eq("provider_id", providerId);
 
-    // Get payments
+    // Get refund data from ledger (finance_transactions) for consistency
     const bookingIds = bookings?.map((b) => b.id) || [];
-    let paymentsQuery = supabaseAdmin
-      .from("payments")
-      .select("id, amount, status, refunded_amount")
+    let refundQuery = supabaseAdmin
+      .from("finance_transactions")
+      .select("amount")
+      .eq("provider_id", providerId)
+      .eq("transaction_type", "refund")
+      .gte("created_at", startOfDay(fromDate).toISOString())
+      .lte("created_at", endOfDay(toDate).toISOString());
+    if (locationId) {
+      refundQuery = refundQuery.eq("location_id", locationId);
+    }
+    const { data: refundRows } = await refundQuery;
+
+    // Get payment counts from booking_payments for stats
+    let paymentsCountQuery = supabaseAdmin
+      .from("booking_payments")
+      .select("id, status", { count: "exact" })
       .gte("created_at", fromDate.toISOString())
       .lte("created_at", toDate.toISOString());
-
     if (bookingIds.length > 0) {
-      paymentsQuery = paymentsQuery.in("booking_id", bookingIds);
+      paymentsCountQuery = paymentsCountQuery.in("booking_id", bookingIds);
     } else {
-      paymentsQuery = paymentsQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
+      paymentsCountQuery = paymentsCountQuery.eq("booking_id", "00000000-0000-0000-0000-000000000000");
     }
-
-    const { data: payments } = await paymentsQuery;
+    const { data: payments } = await paymentsCountQuery;
 
     const periodStart = startOfDay(fromDate);
     const periodEnd = endOfDay(toDate);
@@ -123,9 +137,34 @@ export async function GET(request: NextRequest) {
     const totalStaff = staff?.length || 0;
 
     const totalPayments = payments?.length || 0;
-    const successfulPayments = payments?.filter((p) => p.status === "completed").length || 0;
-    const totalRefunded = payments?.reduce((sum, p) => sum + Number(p.refunded_amount || 0), 0) || 0;
-    const netRevenue = totalRevenue - totalRefunded;
+    const successfulPayments = payments?.filter((p: any) => p.status === "completed" || p.status === "succeeded").length || 0;
+    const totalRefunded = Math.abs(refundRows?.reduce((sum, r) => sum + Number(r.amount || 0), 0) || 0);
+
+    // Cancellation fees: provider-retained income from late cancellations
+    let cancellationFeesTotal = 0;
+    let tipsTotal = 0;
+    let additionalChargesTotal = 0;
+    try {
+      const { data: extraLedgerRows } = await supabaseAdmin
+        .from("finance_transactions")
+        .select("transaction_type, net, amount")
+        .eq("provider_id", providerId)
+        .in("transaction_type", ["cancellation_fee", "tip", "additional_charge", "additional_charge_payment"])
+        .gte("created_at", periodStart.toISOString())
+        .lte("created_at", periodEnd.toISOString());
+      for (const r of extraLedgerRows ?? []) {
+        const row = r as { transaction_type: string; net?: number; amount?: number };
+        if (row.transaction_type === "cancellation_fee") {
+          cancellationFeesTotal += Number(row.net ?? row.amount ?? 0);
+        } else if (row.transaction_type === "tip") {
+          tipsTotal += Math.abs(Number(row.amount ?? row.net ?? 0));
+        } else if (row.transaction_type === "additional_charge" || row.transaction_type === "additional_charge_payment") {
+          additionalChargesTotal += Number(row.net ?? row.amount ?? 0);
+        }
+      }
+    } catch { /* non-critical */ }
+
+    const netRevenue = totalRevenue + cancellationFeesTotal - totalRefunded;
 
     const totalEarningsFromBookings = Array.from(revenueByBooking.values()).reduce((sum, val) => sum + val, 0);
     const bookingsWithEarnings = revenueByBooking.size;
@@ -147,6 +186,9 @@ export async function GET(request: NextRequest) {
     return successResponse({
       period,
       totalRevenue,
+      cancellationFees: cancellationFeesTotal,
+      tipsTotal,
+      additionalChargesTotal,
       netRevenue,
       totalBookings,
       completedBookings,

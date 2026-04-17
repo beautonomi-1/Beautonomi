@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, ScrollView } from "react-native";
+import { View, Text, TouchableOpacity, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { useApi } from "@/hooks/useApi";
@@ -25,9 +25,18 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { data: profile, loading, error, refresh } = useApi<ProviderProfile>("/api/provider/profile");
 
-  const handleSignOut = async () => {
-    await signOut();
-    router.replace("/(auth)/login" as never);
+  const handleSignOut = () => {
+    Alert.alert("Sign out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+          router.replace("/(auth)/login" as never);
+        },
+      },
+    ]);
   };
 
   if (loading && !profile) {

@@ -69,7 +69,7 @@ export default function OnboardingHubScreen() {
 
   if (loading && !data) {
     return (
-      <ScreenContainer scrollable={false} reserveTabBarSpace={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <View style={twStyle("flex-1 items-center justify-center py-12")}>
           <LoadingState />
         </View>
@@ -79,7 +79,7 @@ export default function OnboardingHubScreen() {
 
   if (error && !data) {
     return (
-      <ScreenContainer scrollable={false} reserveTabBarSpace={false}>
+      <ScreenContainer scrollable={false} edges={["top"]} reserveTabBarSpace={false}>
         <ScreenHeader title="Set up" showBack={false} />
         <View style={twStyle("flex-1 justify-center px-4")}>
           <ErrorState message={error} onRetry={refresh} />
@@ -89,7 +89,7 @@ export default function OnboardingHubScreen() {
   }
 
   return (
-    <ScreenContainer noPadding reserveTabBarSpace={false}>
+    <ScreenContainer noPadding edges={["top"]} reserveTabBarSpace={false}>
       <View style={[{ flex: 1 }, tabletCenter]}>
         <LinearGradient
           colors={["#FFF5F9", "#FFFFFF", "#FFFFFF"]}

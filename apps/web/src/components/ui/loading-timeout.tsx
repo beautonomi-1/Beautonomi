@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Home } from "lucide-react";
+import { RefreshCw, Home } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
 
@@ -23,7 +23,7 @@ interface LoadingTimeoutProps {
 /**
  * LoadingTimeout Component
  * 
- * Shows a spinner for up to timeoutMs, then displays a timeout message
+ * Shows loading text for up to timeoutMs, then displays a timeout message
  * with Retry and Home buttons.
  */
 export default function LoadingTimeout({
@@ -108,10 +108,7 @@ export default function LoadingTimeout({
 
   return (
     <div className={`flex flex-col items-center justify-center py-12 ${className}`}>
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      {loadingMessage && (
-        <p className="mt-4 text-sm text-gray-600">{loadingMessage}</p>
-      )}
+      <p className="text-sm text-gray-600">{loadingMessage}</p>
     </div>
   );
 }

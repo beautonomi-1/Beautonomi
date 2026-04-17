@@ -15,6 +15,7 @@ import { ArrowLeft, Check, DollarSign, Loader2, Download, Save } from "lucide-re
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { fetcher } from "@/lib/http/fetcher";
+import { useProviderMoneyFormat } from "@/hooks/use-provider-money-format";
 
 interface PayRunItem {
   id: string;
@@ -72,6 +73,7 @@ export default function PayrollDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { role } = useAuth();
+  const { format: fmt } = useProviderMoneyFormat();
   const isOwner = isPayrollOwnerRole(role);
   const id = params?.id as string;
   const [payRun, setPayRun] = useState<PayRunDetail | null>(null);
@@ -300,19 +302,19 @@ export default function PayrollDetailPage() {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <span className="text-xs text-gray-500">Commission</span>
-                    <p className="text-gray-900">R{Number(item.commission_amount || 0).toFixed(2)}</p>
+                    <p className="text-gray-900">{fmt(Number(item.commission_amount || 0))}</p>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500">Hourly</span>
-                    <p className="text-gray-900">R{Number(item.hourly_amount || 0).toFixed(2)}</p>
+                    <p className="text-gray-900">{fmt(Number(item.hourly_amount || 0))}</p>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500">Salary</span>
-                    <p className="text-gray-900">R{Number(item.salary_amount || 0).toFixed(2)}</p>
+                    <p className="text-gray-900">{fmt(Number(item.salary_amount || 0))}</p>
                   </div>
                   <div>
                     <span className="text-xs text-gray-500">Tips</span>
-                    <p className="text-gray-900">R{Number(item.tips_amount || 0).toFixed(2)}</p>
+                    <p className="text-gray-900">{fmt(Number(item.tips_amount || 0))}</p>
                   </div>
                 </div>
 
@@ -335,7 +337,7 @@ export default function PayrollDetailPage() {
                         }
                       />
                     ) : (
-                      <span className="text-gray-900">R{parseMoney(manualStr).toFixed(2)}</span>
+                      <span className="text-gray-900">{fmt(parseMoney(manualStr))}</span>
                     )}
                   </div>
                   <div className="flex flex-wrap gap-4">
@@ -344,14 +346,14 @@ export default function PayrollDetailPage() {
                         Tax (VAT/PAYE)
                         <ManualEntryHint />
                       </span>
-                      <p className="text-gray-700">R{tax.toFixed(2)}</p>
+                      <p className="text-gray-700">{fmt(tax)}</p>
                     </div>
                     <div>
                       <span className="text-xs text-gray-500">
                         UIF
                         <ManualEntryHint />
                       </span>
-                      <p className="text-gray-700">R{uif.toFixed(2)}</p>
+                      <p className="text-gray-700">{fmt(uif)}</p>
                     </div>
                   </div>
                   {canEditDraft && (
@@ -384,11 +386,11 @@ export default function PayrollDetailPage() {
                 <div className="flex items-center justify-between pt-2 border-t text-sm">
                   <div>
                     <span className="text-xs text-gray-500">Total deductions</span>
-                    <p className="text-red-600">−R{deductionsTotal.toFixed(2)}</p>
+                    <p className="text-red-600">−{fmt(deductionsTotal)}</p>
                   </div>
                   <div className="text-right">
                     <span className="text-xs text-gray-500">Net pay</span>
-                    <p className="font-semibold text-gray-900">R{canEditDraft ? previewNet.toFixed(2) : Number(item.net_pay || 0).toFixed(2)}</p>
+                    <p className="font-semibold text-gray-900">{fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}</p>
                   </div>
                 </div>
               </div>
@@ -426,10 +428,10 @@ export default function PayrollDetailPage() {
                 return (
                   <TableRow key={item.id}>
                     <TableCell className="font-medium">{item.staff_name}</TableCell>
-                    <TableCell className="text-right">R{Number(item.commission_amount || 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">R{Number(item.hourly_amount || 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">R{Number(item.salary_amount || 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">R{Number(item.tips_amount || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right">{fmt(Number(item.commission_amount || 0))}</TableCell>
+                    <TableCell className="text-right">{fmt(Number(item.hourly_amount || 0))}</TableCell>
+                    <TableCell className="text-right">{fmt(Number(item.salary_amount || 0))}</TableCell>
+                    <TableCell className="text-right">{fmt(Number(item.tips_amount || 0))}</TableCell>
                     <TableCell className="text-right">
                       {canEditDraft ? (
                         <Input
@@ -447,11 +449,11 @@ export default function PayrollDetailPage() {
                           }
                         />
                       ) : (
-                        `R${parseMoney(manualStr).toFixed(2)}`
+                        fmt(parseMoney(manualStr))
                       )}
                     </TableCell>
-                    <TableCell className="text-right text-gray-700">R{Number(item.tax_deduction || 0).toFixed(2)}</TableCell>
-                    <TableCell className="text-right text-gray-700">R{Number(item.uif_contribution || 0).toFixed(2)}</TableCell>
+                    <TableCell className="text-right text-gray-700">{fmt(Number(item.tax_deduction || 0))}</TableCell>
+                    <TableCell className="text-right text-gray-700">{fmt(Number(item.uif_contribution || 0))}</TableCell>
                     <TableCell className="min-w-[140px] max-w-[220px]">
                       {canEditDraft ? (
                         <Textarea
@@ -473,7 +475,7 @@ export default function PayrollDetailPage() {
                       )}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      R{canEditDraft ? previewNet.toFixed(2) : Number(item.net_pay || 0).toFixed(2)}
+                      {fmt(canEditDraft ? previewNet : Number(item.net_pay || 0))}
                     </TableCell>
                   </TableRow>
                 );
@@ -483,8 +485,8 @@ export default function PayrollDetailPage() {
         </div>
         <div className="mt-4 pt-4 border-t flex justify-end">
           <div className="text-right">
-            <p className="text-sm text-gray-600">Total gross: R{totalGross.toFixed(2)}</p>
-            <p className="font-semibold">Total net: R{totalNet.toFixed(2)}</p>
+            <p className="text-sm text-gray-600">Total gross: {fmt(totalGross)}</p>
+            <p className="font-semibold">Total net: {fmt(totalNet)}</p>
           </div>
         </div>
       </SectionCard>

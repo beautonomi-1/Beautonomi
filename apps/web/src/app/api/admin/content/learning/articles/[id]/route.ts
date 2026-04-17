@@ -142,6 +142,8 @@ export async function PUT(
   }
 }
 
+export { PUT as PATCH };
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }

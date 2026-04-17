@@ -8,6 +8,7 @@ import {
   Pressable,
   Platform,
   StyleSheet,
+  Alert,
 } from "react-native";
 import { FlashList } from "@shopify/flash-list";
 import { Stack } from "expo-router";
@@ -34,22 +35,28 @@ export default function NotificationsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<"all" | "unread">("all");
+  const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(
     async (isRefresh = false) => {
       if (!user?.id) return;
       if (isRefresh) setRefreshing(true);
       else setLoading(true);
+      setLoadError(false);
       try {
         const unreadOnly = filter === "unread";
         const url = unreadOnly ? "/api/me/notifications?unread_only=true" : "/api/me/notifications";
         const res = await api.get<{ notifications?: Notification[]; data?: { notifications?: Notification[] } }>(url);
+        if (res.error) {
+          setLoadError(true);
+          return;
+        }
         const body = res.data as any;
         const items = body?.notifications ?? body?.data?.notifications ?? [];
         setList(Array.isArray(items) ? items : []);
         if (isRefresh) await refetchUnreadCount();
       } catch {
-        setList([]);
+        setLoadError(true);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -95,21 +102,29 @@ export default function NotificationsScreen() {
 
   const markRead = useCallback(async (id: string) => {
     try {
-      await api.post(`/api/me/notifications/${id}/read`);
+      const res = await api.post(`/api/me/notifications/${id}/read`);
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Could not mark as read.");
+        return;
+      }
       setList((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
       await refetchUnreadCount();
-    } catch {
-      // ignore
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not mark as read.");
     }
   }, [refetchUnreadCount]);
 
   const markAllRead = async () => {
     try {
-      await api.post("/api/me/notifications/mark-all-read");
+      const res = await api.post("/api/me/notifications/mark-all-read");
+      if (res.error) {
+        Alert.alert("Error", res.error.message || "Could not mark all as read.");
+        return;
+      }
       setList((prev) => prev.map((n) => ({ ...n, is_read: true })));
       await refetchUnreadCount();
-    } catch {
-      // ignore
+    } catch (e) {
+      Alert.alert("Error", e instanceof Error ? e.message : "Could not mark all as read.");
     }
   };
 
@@ -187,9 +202,14 @@ export default function NotificationsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={Colors.primary} />}
           ListEmptyComponent={
             <View style={{ paddingVertical: 64, alignItems: "center" }}>
-              <Text style={{ color: Colors.gray[500] }}>
-                {filter === "unread" ? "No unread notifications" : "No notifications"}
+              <Text style={{ color: loadError ? "#B91C1C" : Colors.gray[500] }}>
+                {loadError ? "Failed to load notifications" : filter === "unread" ? "No unread notifications" : "No notifications"}
               </Text>
+              {loadError && (
+                <TouchableOpacity onPress={() => load()} style={{ marginTop: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.primary, borderRadius: 8 }}>
+                  <Text style={{ color: Colors.white, fontWeight: "500" }}>Retry</Text>
+                </TouchableOpacity>
+              )}
             </View>
           }
         />

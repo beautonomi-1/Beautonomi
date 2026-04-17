@@ -3,6 +3,7 @@ import { requireRoleInApi, getProviderIdForUser, notFoundResponse, successRespon
 import { createClient } from "@supabase/supabase-js";
 import { addMinutes } from "date-fns";
 import { resolveWorkingHoursDayForSingleStaffOrSyntheticSolo } from "@/lib/provider-booking/resolve-working-hours-single-staff-or-synthetic";
+import { expandRecurringPattern } from "@/lib/availability/time-utils";
 
 const SLOT_START_H = 6;
 const SLOT_END_H = 22;
@@ -80,6 +81,7 @@ export async function GET(request: NextRequest) {
     const durationMinutes = Math.max(15, Math.min(480, parseInt(sp.get("duration_minutes") || "60", 10)));
     const staffIdsParam = sp.get("staff_ids");
     const locationId = sp.get("location_id");
+    const excludeBookingId = sp.get("exclude_booking_id");
 
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       return handleApiError(new Error("date is required (YYYY-MM-DD)"), "VALIDATION_ERROR", 400);
@@ -88,10 +90,71 @@ export async function GET(request: NextRequest) {
     const staffIds = staffIdsParam ? staffIdsParam.split(",").filter(Boolean) : [];
     const dayKey = dayKeyFromDate(dateStr);
 
-    // Working hours: when single staff or location provided, restrict slots to open/close and exclude breaks
+    // Always check location hours first to determine if the day is open
+    const breakRanges: Array<{ start: number; end: number }> = [];
     let openMin = SLOT_START_H * 60;
     let closeMin = (SLOT_END_H + 1) * 60 - 1;
-    const breakRanges: Array<{ start: number; end: number }> = [];
+    let locationDayClosed = false;
+
+    // Load primary location hours (always)
+    const { data: primaryLocations } = await supabaseAdmin
+      .from("provider_locations")
+      .select("id, working_hours")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .order("is_primary", { ascending: false })
+      .limit(1);
+
+    const primaryLocWh = (primaryLocations?.[0]?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+    if (primaryLocWh) {
+      const isClosed = primaryLocWh.is_open === false || (primaryLocWh as Record<string, unknown>).closed === true;
+      if (isClosed) {
+        locationDayClosed = true;
+      } else if (primaryLocWh.open_time && primaryLocWh.close_time) {
+        const o = parseTimeToMinutes(primaryLocWh.open_time);
+        const c = parseTimeToMinutes(primaryLocWh.close_time);
+        if (o !== null && c !== null && c > o) {
+          openMin = o;
+          closeMin = c;
+        }
+      }
+    }
+
+    if (locationDayClosed) {
+      return successResponse({ slots: [], date: dateStr });
+    }
+
+    // Narrow further by specific location if provided
+    if (locationId && locationId !== primaryLocations?.[0]?.id) {
+      const { data: loc } = await supabaseAdmin
+        .from("provider_locations")
+        .select("id, working_hours")
+        .eq("id", locationId)
+        .eq("provider_id", providerId)
+        .single();
+      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
+      if (wh) {
+        const isClosed = wh.is_open === false || (wh as Record<string, unknown>).closed === true;
+        if (isClosed) {
+          return successResponse({ slots: [], date: dateStr });
+        }
+        if (wh.open_time && wh.close_time) {
+          const o = parseTimeToMinutes(wh.open_time);
+          const c = parseTimeToMinutes(wh.close_time);
+          if (o !== null && c !== null && c > o) {
+            openMin = o;
+            closeMin = c;
+          }
+        }
+        for (const br of wh.breaks ?? []) {
+          const bs = parseTimeToMinutes(br.start);
+          const be = parseTimeToMinutes(br.end);
+          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
+        }
+      }
+    }
+
+    // Single staff: further narrow to staff working hours
     if (staffIds.length === 1) {
       const wh = await resolveWorkingHoursDayForSingleStaffOrSyntheticSolo(
         supabaseAdmin,
@@ -104,29 +167,8 @@ export async function GET(request: NextRequest) {
         const o = parseTimeToMinutes(wh.open_time);
         const c = parseTimeToMinutes(wh.close_time);
         if (o !== null && c !== null && c > o) {
-          openMin = o;
-          closeMin = c;
-        }
-        for (const br of wh.breaks ?? []) {
-          const bs = parseTimeToMinutes(br.start);
-          const be = parseTimeToMinutes(br.end);
-          if (bs !== null && be !== null && be > bs) breakRanges.push({ start: bs, end: be });
-        }
-      }
-    } else if (locationId) {
-      const { data: loc } = await supabaseAdmin
-        .from("provider_locations")
-        .select("id, working_hours")
-        .eq("id", locationId)
-        .eq("provider_id", providerId)
-        .single();
-      const wh = (loc?.working_hours as Record<string, WorkingHoursDay> | null)?.[dayKey];
-      if (wh && wh.is_open !== false && wh.open_time && wh.close_time) {
-        const o = parseTimeToMinutes(wh.open_time);
-        const c = parseTimeToMinutes(wh.close_time);
-        if (o !== null && c !== null && c > o) {
-          openMin = o;
-          closeMin = c;
+          openMin = Math.max(openMin, o);
+          closeMin = Math.min(closeMin, c);
         }
         for (const br of wh.breaks ?? []) {
           const bs = parseTimeToMinutes(br.start);
@@ -151,15 +193,67 @@ export async function GET(request: NextRequest) {
       .gte("scheduled_at", `${dateStr}T00:00:00`)
       .lte("scheduled_at", `${dateStr}T23:59:59`);
     if (locationId) bookingsQuery = bookingsQuery.eq("location_id", locationId);
+    if (excludeBookingId) bookingsQuery = bookingsQuery.neq("id", excludeBookingId);
     const { data: dayBookings } = await bookingsQuery;
 
-    // Fetch time blocks for that day
-    const { data: timeBlocks } = await supabaseAdmin
+    // Fetch time blocks for that day (date-matched)
+    const { data: dateTimeBlocks } = await supabaseAdmin
       .from("time_blocks")
       .select("id, staff_id, date, start_time, end_time, is_active")
       .eq("provider_id", providerId)
       .eq("date", dateStr)
       .eq("is_active", true);
+
+    // Fetch recurring time blocks whose origin date is before today
+    const { data: recurringTimeBlocks } = await supabaseAdmin
+      .from("time_blocks")
+      .select("id, staff_id, date, start_time, end_time, is_active, is_recurring, recurring_pattern")
+      .eq("provider_id", providerId)
+      .eq("is_active", true)
+      .eq("is_recurring", true)
+      .lt("date", dateStr);
+
+    const expandedRecurring = (recurringTimeBlocks || [])
+      .filter((block: any) => {
+        const originDate = new Date(`${block.date}T12:00:00`);
+        const targetDate = new Date(`${dateStr}T12:00:00`);
+        if (targetDate < originDate) return false;
+        if (block.recurring_pattern) {
+          return expandRecurringPattern(block.recurring_pattern, block.date, dateStr);
+        }
+        return targetDate.getDay() === originDate.getDay();
+      })
+      .map((block: any) => ({ ...block, date: dateStr }));
+
+    const timeBlocks = [...(dateTimeBlocks || []), ...expandedRecurring];
+
+    // Fetch staff days off and time off
+    const staffIdsForPto = staffIds.length > 0 ? staffIds : [];
+    let staffDaysOff: string[] = [];
+    if (staffIdsForPto.length > 0) {
+      const { data: daysOffRows } = await supabaseAdmin
+        .from("staff_days_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .eq("date", dateStr)
+        .in("staff_id", staffIdsForPto)
+        .or("is_approved.is.null,is_approved.eq.true");
+      staffDaysOff = (daysOffRows || []).map((r: any) => r.staff_id);
+
+      const { data: timeOffRows } = await supabaseAdmin
+        .from("staff_time_off")
+        .select("staff_id")
+        .eq("provider_id", providerId)
+        .lte("start_date", dateStr)
+        .gte("end_date", dateStr)
+        .in("staff_id", staffIdsForPto)
+        .not("status", "eq", "denied");
+      for (const row of timeOffRows || []) {
+        if (row.staff_id && !staffDaysOff.includes(row.staff_id)) {
+          staffDaysOff.push(row.staff_id);
+        }
+      }
+    }
 
     // Fetch availability_blocks overlapping this day (provider-level breaks/unavailable)
     const startOfDayIso = `${dateStr}T00:00:00`;
@@ -227,6 +321,11 @@ export async function GET(request: NextRequest) {
           : bookingEndDefault;
         blockedIntervals.push({ start, end });
       }
+    }
+
+    // If all requested staff are on PTO/day off, no slots available
+    if (staffIds.length > 0 && staffIds.every((sid) => staffDaysOff.includes(sid))) {
+      return successResponse({ slots: [], date: dateStr });
     }
 
     for (const slot of slotTimes) {

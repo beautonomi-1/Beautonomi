@@ -6,6 +6,7 @@ import { AdminApiError } from "@beautonomi/admin-api-client";
 import { adminApi } from "@/lib/adminClient";
 import { adminQueryKeys } from "@/lib/adminQueryKeys";
 import { isAdminApiAuthFailure } from "@/lib/adminApiError";
+import { adminToast } from "@/lib/adminToast";
 import { useAdminSectionPage } from "@/hooks/useAdminSectionPage";
 import { AdminPageHeader } from "@/components/ui/AdminPageHeader";
 import { AdminPanel } from "@/components/ui/AdminPanel";
@@ -17,11 +18,25 @@ import { AdminModal } from "@/components/admin/AdminModal";
 import { AdminMutationAlert } from "@/components/admin/AdminMutationAlert";
 import { adminSpaTo } from "@/lib/adminSpaPath";
 
+type OfferingEmbed = {
+  id?: string;
+  title?: string;
+  variant_name?: string | null;
+  parent_service_id?: string | null;
+  service_type?: string | null;
+};
+
 interface BookingServiceRow {
   id: string;
   duration_minutes?: number;
   price?: number;
-  offerings?: { id?: string; title?: string } | null;
+  currency?: string;
+  customization?: string | null;
+  guest_name?: string | null;
+  scheduled_start_at?: string | null;
+  scheduled_end_at?: string | null;
+  offerings?: OfferingEmbed | OfferingEmbed[] | null;
+  staff?: { id?: string; name?: string | null; role?: string | null } | { id?: string; name?: string | null; role?: string | null }[] | null;
 }
 
 interface BookingProductRow {
@@ -29,7 +44,38 @@ interface BookingProductRow {
   quantity?: number;
   unit_price?: number;
   total_price?: number;
-  products?: { id?: string; name?: string; retail_price?: number } | null;
+  product_variant_id?: string | null;
+  notes?: string | null;
+  products?: { id?: string; name?: string; retail_price?: number } | { id?: string; name?: string; retail_price?: number }[] | null;
+  product_variant?: {
+    id?: string;
+    option_values?: Record<string, unknown> | unknown;
+  } | { id?: string; option_values?: Record<string, unknown> | unknown }[] | null;
+}
+
+interface BookingAddonRow {
+  id: string;
+  addon_id?: string;
+  addon_name?: string | null;
+  quantity?: number;
+  price?: number;
+}
+
+interface AdditionalChargeRow {
+  id: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  status?: string;
+  requested_at?: string;
+  paid_at?: string | null;
+}
+
+interface TipAllocationRow {
+  id: string;
+  staff_id?: string;
+  amount?: number;
+  staff?: { id?: string; name?: string | null } | { id?: string; name?: string | null }[] | null;
 }
 
 interface BookingDetail {
@@ -42,11 +88,42 @@ interface BookingDetail {
   location_type: string;
   address_line1?: string;
   address_line2?: string;
+  /** @deprecated API may expose legacy alias; prefer address_city */
   city?: string;
+  address_city?: string;
+  address_state?: string;
+  address_postal_code?: string;
   country?: string;
+  address_country?: string;
   total_amount: number;
   currency: string;
+  subtotal?: number | null;
+  travel_fee?: number | null;
+  service_fee_amount?: number | null;
+  service_fee_percentage?: number | null;
+  service_fee_paid_by?: string | null;
+  tip_amount?: number | null;
+  tax_amount?: number | null;
+  tax_rate?: number | null;
+  discount_amount?: number | null;
+  discount_code?: string | null;
+  discount_reason?: string | null;
+  promotion_discount_amount?: number | null;
+  membership_discount_amount?: number | null;
+  loyalty_discount_amount?: number | null;
+  gift_card_amount?: number | null;
+  wallet_amount?: number | null;
+  cancellation_fee?: number | null;
   notes?: string;
+  special_requests?: string | null;
+  admin_notes?: string | null;
+  house_call_instructions?: string | null;
+  cancelled_at?: string | null;
+  cancellation_reason?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  is_group_booking?: boolean | null;
+  package_id?: string | null;
   customer?: {
     id: string;
     full_name: string;
@@ -68,9 +145,81 @@ interface BookingDetail {
     city: string;
     country: string;
   };
+  service_packages?: { id?: string; name?: string } | { id?: string; name?: string }[] | null;
+  group_bookings?: { ref_number?: string | null } | { ref_number?: string | null }[] | null;
   booking_services?: BookingServiceRow[];
   booking_products?: BookingProductRow[];
+  booking_addons?: BookingAddonRow[];
+  additional_charges?: AdditionalChargeRow[];
+  booking_tip_allocations?: TipAllocationRow[];
   payment_transaction?: { status?: string; amount?: number; transaction_id?: string } | null;
+}
+
+function firstRel<T>(x: T | T[] | null | undefined): T | undefined {
+  if (x == null) return undefined;
+  return Array.isArray(x) ? x[0] : x;
+}
+
+function offeringOf(s: BookingServiceRow): OfferingEmbed | undefined {
+  return firstRel(s.offerings as OfferingEmbed | OfferingEmbed[] | null | undefined);
+}
+
+function staffOf(s: BookingServiceRow) {
+  return firstRel(s.staff as { id?: string; name?: string | null; role?: string | null } | undefined);
+}
+
+function productOf(p: BookingProductRow) {
+  return firstRel(p.products as { id?: string; name?: string; retail_price?: number } | undefined);
+}
+
+function variantOf(p: BookingProductRow) {
+  return firstRel(p.product_variant as { id?: string; option_values?: unknown } | undefined);
+}
+
+function serviceLabel(s: BookingServiceRow): string {
+  const o = offeringOf(s);
+  const base = o?.title ?? "Service";
+  const vn = o?.variant_name?.trim();
+  if (vn) return `${base} — ${vn}`;
+  if (o?.service_type === "variant" && o?.title) return o.title;
+  return base;
+}
+
+function variantSubtitle(s: BookingServiceRow): string | null {
+  const o = offeringOf(s);
+  if (!o) return null;
+  if (o.service_type === "variant" && o.parent_service_id) {
+    return "Variant offering";
+  }
+  return null;
+}
+
+function formatVariantOptions(raw: unknown): string {
+  if (raw == null) return "";
+  if (typeof raw === "string") {
+    try {
+      const p = JSON.parse(raw) as unknown;
+      return formatVariantOptions(p);
+    } catch {
+      return raw;
+    }
+  }
+  if (typeof raw === "object" && !Array.isArray(raw)) {
+    const o = raw as Record<string, unknown>;
+    return Object.entries(o)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join(", ");
+  }
+  return String(raw);
+}
+
+function money(currency: string, n: number | null | undefined) {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  return `${currency} ${Number(n).toFixed(2)}`;
+}
+
+function cityField(b: BookingDetail): string {
+  return (b.address_city ?? b.city ?? "").trim();
 }
 
 function toDatetimeLocalValue(iso: string) {
@@ -109,7 +258,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.detail(bookingId) });
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setIsEditing(false);
+      adminToast.success("Booking updated");
     },
+    onError: (e: Error) => adminToast.error(`Failed to save booking: ${e.message}`),
   });
 
   const cancelMutation = useMutation({
@@ -120,7 +271,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setShowCancel(false);
       setCancelReason("");
+      adminToast.success("Booking cancelled");
     },
+    onError: (e: Error) => adminToast.error(`Failed to cancel booking: ${e.message}`),
   });
 
   const refundMutation = useMutation({
@@ -131,7 +284,9 @@ export function BookingDetailPage() {
       void qc.invalidateQueries({ queryKey: adminQueryKeys.bookings.all() });
       setShowRefund(false);
       setRefundReason("");
+      adminToast.success("Refund initiated successfully");
     },
+    onError: (e: Error) => adminToast.error(`Refund failed: ${e.message}`),
   });
 
   if (denied) return denied;
@@ -176,8 +331,15 @@ export function BookingDetailPage() {
   }
 
   const edit = isEditing ? { ...booking, ...editData } : booking;
-  const subtotal = booking.booking_services?.reduce((s, x) => s + (x.price || 0), 0) || 0;
+  const lineServicesSubtotal = booking.booking_services?.reduce((s, x) => s + (x.price || 0), 0) || 0;
+  const subtotal =
+    booking.subtotal != null && !Number.isNaN(Number(booking.subtotal))
+      ? Number(booking.subtotal)
+      : lineServicesSubtotal;
   const productTotal = booking.booking_products?.reduce((s, x) => s + (x.total_price || 0), 0) || 0;
+  const addonTotal = booking.booking_addons?.reduce((s, x) => s + (Number(x.price) || 0) * (x.quantity || 1), 0) || 0;
+  const pkg = firstRel(booking.service_packages ?? undefined);
+  const grp = firstRel(booking.group_bookings ?? undefined);
 
   const startEdit = () => {
     setEditData({ ...booking });
@@ -245,7 +407,7 @@ export function BookingDetailPage() {
                     scheduled_at: editData.scheduled_at,
                     location_type: editData.location_type,
                     address_line1: editData.address_line1,
-                    city: editData.city,
+                    address_city: editData.address_city ?? (editData as BookingDetail).city,
                     notes: editData.notes,
                   })
                 }
@@ -256,6 +418,30 @@ export function BookingDetailPage() {
           )}
         </div>
       </div>
+
+      {(pkg?.name || grp?.ref_number || booking.is_group_booking) ? (
+        <AdminPanel className="border-indigo-100 bg-indigo-50/60">
+          <div className="flex flex-wrap gap-4 text-sm text-indigo-950">
+            {pkg?.name ? (
+              <div>
+                <span className="font-semibold">Package</span>
+                <span className="ml-2">{pkg.name}</span>
+              </div>
+            ) : null}
+            {grp?.ref_number ? (
+              <div>
+                <span className="font-semibold">Group booking</span>
+                <span className="ml-2 font-mono">{grp.ref_number}</span>
+              </div>
+            ) : booking.is_group_booking ? (
+              <div>
+                <span className="font-semibold">Group booking</span>
+                <span className="ml-2 text-indigo-800">Yes</span>
+              </div>
+            ) : null}
+          </div>
+        </AdminPanel>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -312,8 +498,8 @@ export function BookingDetailPage() {
                     <label className="block">
                       <span className="text-gray-600">City</span>
                       <input
-                        value={edit.city ?? ""}
-                        onChange={(e) => setEditData({ ...editData, city: e.target.value })}
+                        value={cityField(edit)}
+                        onChange={(e) => setEditData({ ...editData, address_city: e.target.value })}
                         className="mt-1 w-full rounded border border-gray-300 p-2"
                       />
                     </label>
@@ -339,10 +525,68 @@ export function BookingDetailPage() {
                   <dt className="text-gray-500">Location</dt>
                   <dd className="capitalize">{booking.location_type?.replace("_", " ")}</dd>
                 </div>
+                {booking.location_type === "at_salon" && booking.location ? (
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Salon / branch</dt>
+                    <dd>
+                      <span className="font-medium">{booking.location.name}</span>
+                      <span className="text-gray-600">
+                        {" "}
+                        · {booking.location.address_line1}
+                        {booking.location.city ? `, ${booking.location.city}` : ""}
+                        {booking.location.country ? ` · ${booking.location.country}` : ""}
+                      </span>
+                    </dd>
+                  </div>
+                ) : null}
+                {booking.location_type === "at_home" &&
+                (booking.address_line1 ||
+                  cityField(booking) ||
+                  booking.address_line2 ||
+                  booking.address_country) ? (
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Service address</dt>
+                    <dd className="whitespace-pre-wrap text-gray-800">
+                      {[booking.address_line1, booking.address_line2, cityField(booking), booking.address_state, booking.address_postal_code, booking.address_country ?? booking.country]
+                        .filter((x) => x != null && String(x).trim() !== "")
+                        .join(", ")}
+                    </dd>
+                    {booking.house_call_instructions ? (
+                      <p className="mt-2 text-xs text-gray-600">
+                        <span className="font-medium text-gray-700">Instructions:</span> {booking.house_call_instructions}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {booking.status === "cancelled" && (booking.cancellation_reason || booking.cancelled_at) ? (
+                  <div className="sm:col-span-2 rounded-lg border border-red-100 bg-red-50/80 px-3 py-2">
+                    <dt className="text-xs font-medium text-red-900">Cancellation</dt>
+                    <dd className="mt-1 text-sm text-red-950">
+                      {booking.cancelled_at ? (
+                        <span className="block">{new Date(booking.cancelled_at).toLocaleString()}</span>
+                      ) : null}
+                      {booking.cancellation_reason ? (
+                        <span className="mt-1 block whitespace-pre-wrap">{booking.cancellation_reason}</span>
+                      ) : null}
+                    </dd>
+                  </div>
+                ) : null}
+                {booking.special_requests ? (
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Special requests</dt>
+                    <dd className="whitespace-pre-wrap">{booking.special_requests}</dd>
+                  </div>
+                ) : null}
                 {booking.notes ? (
                   <div className="sm:col-span-2">
                     <dt className="text-gray-500">Notes</dt>
-                    <dd>{booking.notes}</dd>
+                    <dd className="whitespace-pre-wrap">{booking.notes}</dd>
+                  </div>
+                ) : null}
+                {booking.admin_notes ? (
+                  <div className="sm:col-span-2">
+                    <dt className="text-gray-500">Admin notes</dt>
+                    <dd className="whitespace-pre-wrap text-amber-900">{booking.admin_notes}</dd>
                   </div>
                 ) : null}
               </dl>
@@ -350,43 +594,179 @@ export function BookingDetailPage() {
           </AdminPanel>
 
           <AdminPanel>
-            <h2 className="mb-4 text-lg font-semibold">Services & products</h2>
+            <h2 className="mb-4 text-lg font-semibold">Services</h2>
             {booking.booking_services && booking.booking_services.length > 0 ? (
-              <ul className="mb-4 space-y-2">
-                {booking.booking_services.map((s) => (
-                  <li key={s.id} className="flex justify-between rounded border border-gray-100 p-2 text-sm">
-                    <span>{s.offerings?.title ?? "Service"}</span>
-                    <span>
-                      {booking.currency} {s.price?.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {booking.booking_products && booking.booking_products.length > 0 ? (
-              <ul className="space-y-2">
-                {booking.booking_products.map((p) => (
-                  <li key={p.id} className="flex justify-between rounded border border-gray-100 p-2 text-sm">
-                    <span>{p.products?.name ?? "Product"}</span>
-                    <span>
-                      {booking.currency} {p.total_price?.toFixed(2)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-            {!booking.booking_services?.length && !booking.booking_products?.length ? (
-              <p className="text-sm text-gray-500">No line items</p>
-            ) : null}
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[640px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+                      <th className="py-2 pr-3">Service</th>
+                      <th className="py-2 pr-3">Staff</th>
+                      <th className="py-2 pr-3">Slot</th>
+                      <th className="py-2 pr-3">Duration</th>
+                      <th className="py-2 text-right">Price</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {booking.booking_services.map((s) => {
+                      const st = staffOf(s);
+                      const slot =
+                        s.scheduled_start_at && s.scheduled_end_at
+                          ? `${new Date(s.scheduled_start_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })} → ${new Date(s.scheduled_end_at).toLocaleTimeString(undefined, { timeStyle: "short" })}`
+                          : "—";
+                      const sub = variantSubtitle(s);
+                      return (
+                        <tr key={s.id} className="border-b border-gray-100 align-top">
+                          <td className="py-3 pr-3">
+                            <div className="font-medium text-gray-900">{serviceLabel(s)}</div>
+                            {sub ? <div className="text-xs text-gray-500">{sub}</div> : null}
+                            {s.guest_name ? (
+                              <div className="mt-1 text-xs text-gray-600">
+                                Guest: <span className="font-medium">{s.guest_name}</span>
+                              </div>
+                            ) : null}
+                            {s.customization ? (
+                              <div className="mt-1 text-xs text-gray-600">
+                                Customization: <span className="whitespace-pre-wrap">{s.customization}</span>
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="py-3 pr-3 text-gray-700">{st?.name ?? "—"}</td>
+                          <td className="py-3 pr-3 text-xs text-gray-600">{slot}</td>
+                          <td className="py-3 pr-3 tabular-nums text-gray-700">{s.duration_minutes != null ? `${s.duration_minutes} min` : "—"}</td>
+                          <td className="py-3 text-right font-medium tabular-nums">{money(booking.currency, s.price)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No services on this booking.</p>
+            )}
           </AdminPanel>
+
+          {booking.booking_addons && booking.booking_addons.length > 0 ? (
+            <AdminPanel>
+              <h2 className="mb-4 text-lg font-semibold">Add-ons</h2>
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                {booking.booking_addons.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
+                    <span>
+                      {a.addon_name?.trim() || "Add-on"}
+                      {a.quantity != null && a.quantity > 1 ? (
+                        <span className="ml-2 text-gray-500">×{a.quantity}</span>
+                      ) : null}
+                    </span>
+                    <span className="font-medium tabular-nums">{money(booking.currency, Number(a.price) * (a.quantity || 1))}</span>
+                  </li>
+                ))}
+              </ul>
+            </AdminPanel>
+          ) : null}
+
+          <AdminPanel>
+            <h2 className="mb-4 text-lg font-semibold">Retail products</h2>
+            {booking.booking_products && booking.booking_products.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+                      <th className="py-2 pr-3">Product</th>
+                      <th className="py-2 pr-3">Variant</th>
+                      <th className="py-2 pr-3">Qty</th>
+                      <th className="py-2 pr-3">Unit</th>
+                      <th className="py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {booking.booking_products.map((p) => {
+                      const prod = productOf(p);
+                      const pv = variantOf(p);
+                      const opts = formatVariantOptions(pv?.option_values);
+                      return (
+                        <tr key={p.id} className="border-b border-gray-100 align-top">
+                          <td className="py-3 pr-3">
+                            <div className="font-medium">{prod?.name ?? "Product"}</div>
+                            {p.notes ? <div className="mt-1 text-xs text-gray-500">{p.notes}</div> : null}
+                          </td>
+                          <td className="py-3 pr-3 text-xs text-gray-700">{opts || (p.product_variant_id ? "—" : "Default")}</td>
+                          <td className="py-3 pr-3 tabular-nums">{p.quantity ?? 1}</td>
+                          <td className="py-3 pr-3 tabular-nums">{money(booking.currency, p.unit_price)}</td>
+                          <td className="py-3 text-right font-medium tabular-nums">{money(booking.currency, p.total_price)}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">No retail products.</p>
+            )}
+          </AdminPanel>
+
+          {booking.additional_charges && booking.additional_charges.length > 0 ? (
+            <AdminPanel>
+              <h2 className="mb-4 text-lg font-semibold">Additional charges</h2>
+              <ul className="divide-y divide-gray-100 rounded-lg border border-amber-100 bg-amber-50/40">
+                {booking.additional_charges.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-start justify-between gap-2 px-3 py-2 text-sm">
+                    <div>
+                      <div className="font-medium text-gray-900">{c.description ?? "Charge"}</div>
+                      <div className="text-xs text-gray-500">
+                        {c.status}
+                        {c.paid_at ? ` · paid ${new Date(c.paid_at).toLocaleString()}` : c.requested_at ? ` · requested ${new Date(c.requested_at).toLocaleString()}` : null}
+                      </div>
+                    </div>
+                    <span className="shrink-0 font-medium tabular-nums">{money(c.currency || booking.currency, c.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            </AdminPanel>
+          ) : null}
+
+          {booking.booking_tip_allocations && booking.booking_tip_allocations.length > 0 ? (
+            <AdminPanel>
+              <h2 className="mb-4 text-lg font-semibold">Tip allocation</h2>
+              <p className="mb-3 text-xs text-gray-500">
+                When the business splits tips across staff, amounts are recorded per team member. Total tip on the booking:{" "}
+                <strong>{money(booking.currency, booking.tip_amount)}</strong>.
+              </p>
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                {booking.booking_tip_allocations.map((t) => {
+                  const st = firstRel(t.staff);
+                  return (
+                    <li key={t.id} className="flex justify-between gap-2 px-3 py-2 text-sm">
+                      <span>{st?.name ?? t.staff_id ?? "Staff"}</span>
+                      <span className="font-medium tabular-nums">{money(booking.currency, t.amount)}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </AdminPanel>
+          ) : null}
 
           {booking.payment_transaction ? (
             <AdminPanel>
-              <h2 className="mb-2 text-lg font-semibold">Payment</h2>
-              <p className="text-sm text-gray-600">Status: {booking.payment_transaction.status}</p>
-              <p className="text-sm text-gray-600">
-                Amount: {booking.currency} {booking.payment_transaction.amount?.toFixed(2)}
-              </p>
+              <h2 className="mb-2 text-lg font-semibold">Payment transaction</h2>
+              <dl className="space-y-1 text-sm text-gray-700">
+                <div>
+                  <dt className="text-gray-500">Status</dt>
+                  <dd className="font-medium">{booking.payment_transaction.status ?? "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-gray-500">Amount</dt>
+                  <dd className="tabular-nums font-medium">
+                    {booking.currency} {booking.payment_transaction.amount?.toFixed(2)}
+                  </dd>
+                </div>
+                {booking.payment_transaction.transaction_id ? (
+                  <div>
+                    <dt className="text-gray-500">Transaction ID</dt>
+                    <dd className="break-all font-mono text-xs">{booking.payment_transaction.transaction_id}</dd>
+                  </div>
+                ) : null}
+              </dl>
             </AdminPanel>
           ) : null}
         </div>
@@ -414,14 +794,118 @@ export function BookingDetailPage() {
             </Link>
           </AdminPanel>
           <AdminPanel>
-            <h2 className="mb-3 text-lg font-semibold">Totals</h2>
-            <p className="text-sm text-gray-600">Services subtotal: {booking.currency} {subtotal.toFixed(2)}</p>
-            {productTotal > 0 ? (
-              <p className="text-sm text-gray-600">Products: {booking.currency} {productTotal.toFixed(2)}</p>
-            ) : null}
-            <p className="mt-2 font-semibold">
-              Total: {booking.currency} {booking.total_amount?.toFixed(2)}
-            </p>
+            <h2 className="mb-3 text-lg font-semibold">Pricing &amp; fees</h2>
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-600">Subtotal (services)</dt>
+                <dd className="tabular-nums font-medium">{money(booking.currency, subtotal)}</dd>
+              </div>
+              {addonTotal > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Add-ons</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, addonTotal)}</dd>
+                </div>
+              ) : null}
+              {productTotal > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Retail products</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, productTotal)}</dd>
+                </div>
+              ) : null}
+              {(booking.travel_fee ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Travel fee</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.travel_fee)}</dd>
+                </div>
+              ) : null}
+              {(booking.service_fee_amount ?? 0) > 0 || booking.service_fee_percentage != null ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">
+                    Service fee
+                    {booking.service_fee_percentage != null ? ` (${Number(booking.service_fee_percentage).toFixed(2)}%)` : ""}
+                    {booking.service_fee_paid_by ? ` · ${booking.service_fee_paid_by}` : ""}
+                  </dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.service_fee_amount)}</dd>
+                </div>
+              ) : null}
+              {(booking.tax_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">
+                    Tax
+                    {booking.tax_rate != null ? ` (${Number(booking.tax_rate).toFixed(2)}%)` : ""}
+                  </dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.tax_amount)}</dd>
+                </div>
+              ) : null}
+              {(booking.tip_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Tip</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.tip_amount)}</dd>
+                </div>
+              ) : null}
+              {(booking.discount_amount ?? 0) > 0 ? (
+                <div className="space-y-0.5 text-emerald-800">
+                  <div className="flex justify-between gap-2">
+                    <dt>
+                      Discount
+                      {booking.discount_code ? ` (${booking.discount_code})` : ""}
+                    </dt>
+                    <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.discount_amount).toFixed(2)}</dd>
+                  </div>
+                  {booking.discount_reason ? (
+                    <p className="text-xs text-emerald-900/80">{booking.discount_reason}</p>
+                  ) : null}
+                </div>
+              ) : null}
+              {(booking.promotion_discount_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2 text-emerald-800">
+                  <dt>Promotion</dt>
+                  <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.promotion_discount_amount).toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {(booking.membership_discount_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2 text-emerald-800">
+                  <dt>Membership discount</dt>
+                  <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.membership_discount_amount).toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {(booking.loyalty_discount_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2 text-emerald-800">
+                  <dt>Loyalty discount</dt>
+                  <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.loyalty_discount_amount).toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {(booking.gift_card_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Gift card applied</dt>
+                  <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.gift_card_amount).toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {(booking.wallet_amount ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Wallet applied</dt>
+                  <dd className="tabular-nums font-medium">−{booking.currency} {Number(booking.wallet_amount).toFixed(2)}</dd>
+                </div>
+              ) : null}
+              {(booking.cancellation_fee ?? 0) > 0 ? (
+                <div className="flex justify-between gap-2">
+                  <dt className="text-gray-600">Cancellation fee</dt>
+                  <dd className="tabular-nums font-medium">{money(booking.currency, booking.cancellation_fee)}</dd>
+                </div>
+              ) : null}
+            </dl>
+            <div className="mt-4 border-t border-gray-200 pt-3">
+              <div className="flex justify-between gap-2 text-base font-semibold">
+                <span>Total</span>
+                <span className="tabular-nums">{money(booking.currency, booking.total_amount)}</span>
+              </div>
+              {booking.payment_status ? (
+                <p className="mt-2 text-xs text-gray-500">Payment status: {booking.payment_status}</p>
+              ) : null}
+              {booking.payment_method ? (
+                <p className="text-xs text-gray-500">Method: {booking.payment_method}</p>
+              ) : null}
+            </div>
           </AdminPanel>
         </div>
       </div>

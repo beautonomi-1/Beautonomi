@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { requireRoleInApi, getProviderIdForUser, successResponse, notFoundResponse, handleApiError } from "@/lib/supabase/api-helpers";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { subDays } from "date-fns";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 import { MAX_REPORT_DAYS, MAX_BOOKINGS_FOR_REPORT } from "@/lib/reports/constants";
 
 /**
@@ -30,13 +30,13 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     let fromDate = searchParams.get("from")
-      ? new Date(searchParams.get("from")!)
-      : subDays(new Date(), 30);
-    const toDate = searchParams.get("to") ? new Date(searchParams.get("to")!) : new Date();
+      ? startOfDay(new Date(searchParams.get("from")!))
+      : startOfDay(subDays(new Date(), 30));
+    const toDate = searchParams.get("to") ? endOfDay(new Date(searchParams.get("to")!)) : endOfDay(new Date());
 
     const daysDiff = Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24));
     if (daysDiff > MAX_REPORT_DAYS) {
-      fromDate = subDays(toDate, MAX_REPORT_DAYS);
+      fromDate = startOfDay(subDays(toDate, MAX_REPORT_DAYS));
     }
 
     // ── 1. Bookings in period (for payment_status + wallet_amount aggregates) ──

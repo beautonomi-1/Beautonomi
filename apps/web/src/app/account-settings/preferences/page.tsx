@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { motion } from "framer-motion";
 import Breadcrumb from "@/components/ui/breadcrumb";
 import BackButton from "@/components/ui/back-button";
 import BottomNav from "@/components/layout/bottom-nav";
@@ -12,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Edit, Check, X, Globe, Loader2 } from "lucide-react";
+import { Edit, Check, X, Globe } from "lucide-react";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
 type PreferenceField = "language" | "currency" | "timezone" | null;
@@ -202,11 +201,7 @@ const GlobalPreferences: React.FC = () => {
     const currentOptions = getCurrentOptions(field);
     
     return (
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 mb-6"
-      >
+      <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-[#FF0077]/10 to-[#E6006A]/10 rounded-lg">
@@ -221,50 +216,42 @@ const GlobalPreferences: React.FC = () => {
           </div>
           
           {!isEditing ? (
-            <motion.button
+            <button
+              type="button"
               onClick={() => handleEdit(field)}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
               className="flex items-center gap-2 px-4 py-2 text-[#FF0077] hover:bg-[#FF0077]/10 rounded-lg transition-colors font-medium"
             >
               <Edit className="w-4 h-4" />
               <span>Edit</span>
-            </motion.button>
+            </button>
           ) : (
             <div className="flex items-center gap-2">
-              <motion.button
+              <button
+                type="button"
                 onClick={() => handleEdit(field)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
                 className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
                 disabled={isSaving}
               >
                 <X className="w-4 h-4" />
-              </motion.button>
-              <motion.button
+              </button>
+              <button
+                type="button"
                 onClick={() => handleSave(field)}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="p-2 text-[#FF0077] hover:bg-[#FF0077]/10 rounded-lg transition-colors"
+                className="p-2 text-[#FF0077] hover:bg-[#FF0077]/10 rounded-lg transition-colors disabled:opacity-50"
                 disabled={isSaving || !tempValue}
               >
                 {isSaving ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs text-gray-500">Saving…</span>
                 ) : (
                   <Check className="w-4 h-4" />
                 )}
-              </motion.button>
+              </button>
             </div>
           )}
         </div>
 
         {isEditing && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: "auto" }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mt-4"
-          >
+          <div className="mt-4">
             <Select
               value={tempValue}
               onValueChange={setTempValue}
@@ -280,9 +267,9 @@ const GlobalPreferences: React.FC = () => {
                 ))}
               </SelectContent>
             </Select>
-          </motion.div>
+          </div>
         )}
-      </motion.div>
+      </div>
     );
   };
 
@@ -299,19 +286,14 @@ const GlobalPreferences: React.FC = () => {
           />
           <BackButton href="/account-settings" />
 
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-            className="mt-6"
-          >
+          <div className="mt-6">
             <h1 className="text-3xl md:text-4xl font-semibold tracking-tighter text-gray-900 mb-8">
               Global preferences
             </h1>
 
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 text-[#FF0077] animate-spin" />
+                <p className="text-sm text-gray-500">Loading…</p>
               </div>
             ) : (
               <div className="flex flex-col lg:flex-row gap-6">
@@ -325,12 +307,7 @@ const GlobalPreferences: React.FC = () => {
 
                 {/* Sidebar */}
                 <div className="w-full lg:w-1/3">
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 sticky top-6"
-                  >
+                  <div className="backdrop-blur-2xl bg-white/60 border border-white/40 shadow-2xl rounded-2xl p-6 sticky top-6">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="p-3 bg-gradient-to-br from-[#FF0077]/10 to-[#E6006A]/10 rounded-xl">
                         <Globe className="w-6 h-6 text-[#FF0077]" />
@@ -344,11 +321,11 @@ const GlobalPreferences: React.FC = () => {
                         ? "Language and timezone apply to your account. Payout currency follows your provider payout settings."
                         : "Changing your currency updates how you see prices. You can change how you get payments in your payments & payouts preferences."}
                     </p>
-                  </motion.div>
+                  </div>
                 </div>
               </div>
             )}
-          </motion.div>
+          </div>
         </div>
         <BottomNav />
       </div>

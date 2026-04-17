@@ -441,8 +441,8 @@ export async function GET(request: Request) {
             currency: priceInfo?.currency ?? p.currency ?? defaultCurrency,
             is_sponsored: true,
             campaign_id: winnerToCampaign.get(p.id) ?? null,
-            supports_house_calls: false,
-            supports_salon: true,
+            supports_house_calls: supportsHouseCallsMap.get(p.id) ?? false,
+            supports_salon: supportsSalonMap.get(p.id) ?? true,
             ...(distance_km != null ? { distance_km } : {}),
           };
         });

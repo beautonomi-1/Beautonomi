@@ -281,6 +281,13 @@ export async function DELETE(
       throw error;
     }
 
+    try {
+      const { matchWaitlistOnCancellation } = await import("@/lib/waitlist/matching");
+      await matchWaitlistOnCancellation(supabase, id);
+    } catch (waitlistErr) {
+      console.error("[waiting-room cancel] waitlist matching failed:", waitlistErr);
+    }
+
     return successResponse({ success: true });
   } catch (error) {
     return handleApiError(error, "Failed to remove from waiting room");

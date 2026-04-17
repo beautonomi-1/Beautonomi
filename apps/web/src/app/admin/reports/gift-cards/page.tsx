@@ -9,6 +9,7 @@ import { fetcher, FetchError, FetchTimeoutError } from "@/lib/http/fetcher";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import {
   LineChart,
   Line,
@@ -60,6 +61,7 @@ export default function GiftCardReportPage() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<GiftCardMetrics | null>(null);
   const [period, setPeriod] = useState("30d");
+  const { format: fmtMoney } = useReportCurrency();
 
   useEffect(() => {
     loadReport();
@@ -163,8 +165,8 @@ export default function GiftCardReportPage() {
                 <h3 className="font-semibold text-blue-900 mb-1">Accounting Note</h3>
                 <p className="text-sm text-blue-800">{data.accounting.note}</p>
                 <p className="text-xs text-blue-700 mt-2">
-                  <strong>Outstanding Liability:</strong> R {data.accounting.liability.toLocaleString()} | 
-                  <strong> Value Redeemed:</strong> R {data.accounting.recognizedRevenue.toLocaleString()}
+                  <strong>Outstanding Liability:</strong> {fmtMoney(data.accounting.liability)} |
+                  <strong> Value Redeemed:</strong> {fmtMoney(data.accounting.recognizedRevenue)}
                 </p>
               </div>
             </div>
@@ -180,7 +182,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.totalSales.toLocaleString()}
+                {fmtMoney(data.summary.totalSales)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {data.summary.totalOrders} cards sold
@@ -194,7 +196,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.totalRedemptions.toLocaleString()}
+                {fmtMoney(data.summary.totalRedemptions)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">
                 {data.summary.totalRedemptionCount} redemptions
@@ -208,7 +210,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.outstandingLiability.toLocaleString()}
+                {fmtMoney(data.summary.outstandingLiability)}
               </div>
               <p className="text-xs text-muted-foreground mt-1">Unredeemed balance</p>
             </CardContent>
@@ -223,7 +225,7 @@ export default function GiftCardReportPage() {
                 {data.summary.redemptionRate.toFixed(1)}%
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Avg: R {data.summary.averageRedemptionValue.toFixed(2)}
+                Avg: {fmtMoney(data.summary.averageRedemptionValue)}
               </p>
             </CardContent>
           </Card>
@@ -238,7 +240,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.averageSaleValue.toFixed(2)}
+                {fmtMoney(data.summary.averageSaleValue)}
               </div>
             </CardContent>
           </Card>
@@ -249,7 +251,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.totalIssued.toLocaleString()}
+                {fmtMoney(data.summary.totalIssued)}
               </div>
             </CardContent>
           </Card>
@@ -260,7 +262,7 @@ export default function GiftCardReportPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                R {data.summary.totalSalesNet.toLocaleString()}
+                {fmtMoney(data.summary.totalSalesNet)}
               </div>
             </CardContent>
           </Card>
@@ -290,9 +292,9 @@ export default function GiftCardReportPage() {
                   dataKey="date"
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
-                <YAxis tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                <YAxis tickFormatter={(value) => fmtMoney(value)} />
                 <Tooltip
-                  formatter={(value: number) => `R ${value.toLocaleString()}`}
+                  formatter={(value: number) => fmtMoney(value)}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />
                 <Legend />
@@ -335,11 +337,11 @@ export default function GiftCardReportPage() {
                   tickFormatter={(value) => format(new Date(value), "MMM d")}
                 />
                 <YAxis yAxisId="left" tickFormatter={(value) => value.toString()} />
-                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => `R ${value.toLocaleString()}`} />
+                <YAxis yAxisId="right" orientation="right" tickFormatter={(value) => fmtMoney(value)} />
                 <Tooltip
                   formatter={(value: number, name: string) => {
                     if (name === "count") return value;
-                    return `R ${value.toLocaleString()}`;
+                    return fmtMoney(value);
                   }}
                   labelFormatter={(label) => format(new Date(label), "PP")}
                 />

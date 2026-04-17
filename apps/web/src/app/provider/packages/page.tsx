@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import EmptyState from "@/components/ui/empty-state";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
+import { unpackPackagesListPayload } from "@/lib/http/unpack-provider-fetch";
 
 interface PackageItem {
   id: string;
@@ -61,11 +62,9 @@ export default function ProviderPackagesPage() {
     try {
       setIsLoading(true);
       setError(null);
-      const response = await fetcher.get<{ data: { packages: ServicePackage[] } }>(
-        "/api/provider/packages",
-        { timeoutMs: 30000 } // 30 second timeout
-      );
-      setPackages(response.data.packages || []);
+      const response = await fetcher.get<unknown>("/api/provider/packages", { timeoutMs: 30000 });
+      const list = unpackPackagesListPayload(response) as ServicePackage[];
+      setPackages(list);
     } catch (err) {
       setError(err instanceof FetchError ? err.message : "Failed to load packages");
       console.error("Error loading packages:", err);

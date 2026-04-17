@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
+import { useReportCurrency } from "@/app/provider/reports/utils/use-report-export-currency";
 import LoadingTimeout from "@/components/ui/loading-timeout";
 import EmptyState from "@/components/ui/empty-state";
 import { format } from "date-fns";
@@ -72,6 +73,7 @@ export default function AdminAutomationsPage() {
   const [stats, setStats] = useState<AutomationStats | null>(null);
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { format: fmtMoney } = useReportCurrency();
   const [isLoadingAutomations, setIsLoadingAutomations] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -91,6 +93,7 @@ export default function AdminAutomationsPage() {
       setStats(response.data);
     } catch (error) {
       console.error("Failed to load stats:", error);
+      toast.error("Failed to load automation stats");
     }
   };
 
@@ -218,7 +221,7 @@ export default function AdminAutomationsPage() {
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">
-                  R {stats.revenue_from_automations.toLocaleString()}
+                  {fmtMoney(stats.revenue_from_automations)}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   From automation-enabled plans

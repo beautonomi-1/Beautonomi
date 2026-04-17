@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const { data: reviews, error } = await supabase
+    const { data: reviews, error, count } = await supabase
       .from("reviews")
       .select(`
         id,
@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
         service_ratings,
         staff_rating,
         is_verified,
+        provider_response,
+        provider_response_at,
         created_at,
         updated_at,
         bookings (
@@ -86,7 +88,7 @@ export async function GET(request: NextRequest) {
           thumbnail_url,
           avatar_url
         )
-      `)
+      `, { count: "exact" })
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -97,7 +99,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({
       reviews: reviews || [],
-      total: reviews?.length || 0,
+      total: count ?? reviews?.length ?? 0,
     });
   } catch (error) {
     return handleApiError(error, "Failed to fetch reviews");

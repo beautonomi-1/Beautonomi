@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { usePageContent } from "@/hooks/usePageContent";
+import { CmsHtml } from "@/components/cms/CmsHtml";
+import { cmsContentLooksLikeHtml } from "@/lib/html/cms-page-html";
 
 export default function WhyDifferentSection() {
   const { getSectionContent } = usePageContent("become-a-partner");
@@ -19,15 +21,15 @@ export default function WhyDifferentSection() {
             WHY WE&apos;RE DIFFERENT
           </p>
           <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-gray-900 mb-4 sm:mb-6 leading-tight">
-            {whyDifferentTitle.includes('<') ? (
-              <span dangerouslySetInnerHTML={{ __html: whyDifferentTitle }} />
+            {cmsContentLooksLikeHtml(whyDifferentTitle) ? (
+              <CmsHtml html={whyDifferentTitle} className="block" as="span" />
             ) : (
               whyDifferentTitle
             )}
           </h2>
           <p className="text-base sm:text-lg md:text-xl text-gray-600 mb-6 sm:mb-8 leading-relaxed">
-            {whyDifferentDescription.includes('<') ? (
-              <span dangerouslySetInnerHTML={{ __html: whyDifferentDescription }} />
+            {cmsContentLooksLikeHtml(whyDifferentDescription) ? (
+              <CmsHtml html={whyDifferentDescription} className="block" as="span" />
             ) : (
               whyDifferentDescription
             )}
