@@ -58,11 +58,9 @@ const BASE_EXPO_CONFIG = {
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
-      // §Dual-role launch mitigation (2026-04-17): the WrongAppScreen uses
-      // Linking.canOpenURL("provider://") to tell a provider-role user "Open
-      // Partner app" vs "Install Partner app". iOS needs the target scheme to
-      // be declared in LSApplicationQueriesSchemes or canOpenURL always
-      // returns false (silently). Pair with the Android <queries> entry below.
+      // WrongAppScreen: Linking.canOpenURL("provider://") needs the scheme here
+      // (iOS blocks undeclared schemes). Must match plugin `scheme` and
+      // apps/provider `scheme` + android.package com.beautonomi.partner.
       LSApplicationQueriesSchemes: ["provider"],
     },
     entitlements: {
@@ -113,7 +111,7 @@ const BASE_EXPO_CONFIG = {
   },
   plugins: [
     [
-      "./plugins/android-sibling-app-queries",
+      "./plugins/android-sibling-app-queries/app.plugin.js",
       { packageName: "com.beautonomi.partner", scheme: "provider" },
     ],
     [

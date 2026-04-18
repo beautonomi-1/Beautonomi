@@ -44,7 +44,7 @@ const BASE_EXPO_CONFIG = {
   newArchEnabled: true,
   plugins: [
     [
-      "./plugins/android-sibling-app-queries",
+      "./plugins/android-sibling-app-queries/app.plugin.js",
       { packageName: "com.beautonomi", scheme: "customer" },
     ],
     [
@@ -136,11 +136,8 @@ const BASE_EXPO_CONFIG = {
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
-      // §Dual-role launch mitigation (2026-04-17): the WrongAppScreen uses
-      // Linking.canOpenURL("customer://") to tell a customer-role user "Open
-      // Customer app" vs "Install Customer app". iOS silently returns false
-      // for any scheme not in LSApplicationQueriesSchemes. Paired with the
-      // Android <queries> entry injected by android-sibling-app-queries.
+      // WrongAppScreen: Linking.canOpenURL("customer://") needs the scheme here.
+      // Must match plugin `scheme` and apps/customer `scheme` + package com.beautonomi.
       LSApplicationQueriesSchemes: ["customer"],
     },
     entitlements: {
