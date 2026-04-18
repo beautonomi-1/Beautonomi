@@ -80,12 +80,23 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // §15.4-26 (audit 2026-04): CAPTCHA guard for anonymous POSTs. Only
-        // enforced when the TURNSTILE secret is configured AND the caller is
-        // not authenticated (logged-in customers have a separate abuse
-        // surface and rate limiting). Returns 400 when the token is missing
-        // or invalid.
-        const captchaResult = await verifyPublicBookingCaptcha(request, body);
+        // Wave 1.5 (audit 2026-04 final 100/100): CAPTCHA guard for the
+        // public POST surface. Previously the helper auto-bypassed the
+        // check whenever ANY Supabase auth cookie or Bearer header was
+        // present, which trivially defeated the guard via throwaway
+        // accounts. We now do a Supabase-server auth check FIRST and only
+        // skip CAPTCHA when the user is genuinely authenticated against
+        // the auth backend (not just spoofed via headers).
+        let captchaSkipUserId: string | null = null;
+        try {
+          const { data: pre } = await supabase.auth.getUser();
+          captchaSkipUserId = pre?.user?.id ?? null;
+        } catch {
+          captchaSkipUserId = null;
+        }
+        const captchaResult = await verifyPublicBookingCaptcha(request, body, {
+          skipForUserId: captchaSkipUserId,
+        });
         if (captchaResult.ok === false) {
           return errorResponse(
             captchaResult.reason,

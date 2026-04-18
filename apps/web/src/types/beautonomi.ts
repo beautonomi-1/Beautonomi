@@ -530,6 +530,12 @@ export interface AvailabilitySlot {
   staff_id?: string;
   location_id?: string;
   is_available: boolean;
+  /**
+   * §Release-audit 2026-04: every active staff who is free at this wall-clock
+   * time. Emitted only by the "any staff" union path so the hold route can
+   * prefer the same staff the calendar surfaced when multiple are available.
+   */
+  available_staff_ids?: string[];
 }
 
 export interface AvailabilityRequest {

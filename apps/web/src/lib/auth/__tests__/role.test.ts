@@ -65,6 +65,23 @@ describe("getPortalForUser", () => {
   it("returns customer for support_agent role", () => {
     expect(getPortalForUser({ role: "support_agent" })).toBe("customer");
   });
+
+  // §Release-audit 2026-04: when users.role is the transitional
+  // "provider_onboarding" value (legacy seed path or explicit pre-approval
+  // state), the portal must be "provider_onboarding", NOT "customer" — the
+  // previous behaviour caused the mobile customer app to try to run customer
+  // onboarding for a user who belongs in the provider shell.
+  it("returns provider_onboarding when role is provider_onboarding", () => {
+    expect(getPortalForUser({ role: "provider_onboarding" })).toBe(
+      "provider_onboarding"
+    );
+  });
+
+  it("returns provider_onboarding when role is provider_onboarding even with no provider_status", () => {
+    expect(
+      getPortalForUser({ role: "provider_onboarding", provider_status: null })
+    ).toBe("provider_onboarding");
+  });
 });
 
 describe("getDefaultRouteForPortal", () => {

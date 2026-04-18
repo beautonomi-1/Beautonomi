@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getProviderReceiptJson } from "../route";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import {
+  buildReceiptCacheKey,
+  isFinalizedForCache,
+  loadCachedReceiptPdf,
+  saveCachedReceiptPdf,
+} from "@/lib/receipts/pdf-cache";
+
+// Wave 2.5 (audit 2026-04 final 100/100): 60s serverless budget +
+// Supabase Storage-backed cache for finalized receipts. Cold cost is
+// paid once; subsequent downloads are a single storage read.
+export const maxDuration = 60;
 
 /**
  * GET /api/provider/bookings/[id]/receipt/pdf
@@ -83,6 +94,33 @@ export async function GET(
         { error: "Receipt data not found" },
         { status: 404 }
       );
+    }
+
+    // Wave 2.5: serve from cache when booking is finalized.
+    const cacheInput = {
+      bookingId: id,
+      totalAmount: Number(r.total_amount || 0),
+      totalPaid: Number(r.amount_paid || 0),
+      totalRefunded: Number((r as ReceiptData & { total_refunded?: number }).total_refunded || 0),
+      paymentStatus: String(r.payment_status || ""),
+      balanceDue: Number(r.balance_due || 0),
+    };
+    const canCache = isFinalizedForCache(cacheInput);
+    const cacheKey = canCache ? buildReceiptCacheKey(cacheInput) : null;
+    if (cacheKey) {
+      const cached = await loadCachedReceiptPdf(cacheKey);
+      if (cached) {
+        const cachedFilename = r.invoice_number || id;
+        return new NextResponse(new Uint8Array(cached.buffer), {
+          status: 200,
+          headers: {
+            "content-type": "application/pdf",
+            "content-disposition": `attachment; filename="receipt-${cachedFilename}.pdf"`,
+            "cache-control": "private, max-age=300",
+            "x-receipt-pdf-cache": "hit",
+          },
+        });
+      }
     }
 
     const currency = r.currency || "ZAR";
@@ -233,13 +271,18 @@ export async function GET(
       doc.on("end", () => resolve(Buffer.concat(chunks)));
     });
 
+    if (cacheKey) {
+      void saveCachedReceiptPdf(cacheKey, buffer);
+    }
+
     const filename = r.invoice_number || id;
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "content-type": "application/pdf",
         "content-disposition": `attachment; filename="receipt-${filename}.pdf"`,
-        "cache-control": "no-store",
+        "cache-control": canCache ? "private, max-age=300" : "no-store",
+        "x-receipt-pdf-cache": canCache ? "miss-written" : "skip",
       },
     });
   } catch (error) {

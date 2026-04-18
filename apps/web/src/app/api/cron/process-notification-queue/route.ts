@@ -19,6 +19,7 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { verifyCronRequest } from "@/lib/cron-auth";
 
@@ -27,6 +28,17 @@ export const dynamic = "force-dynamic";
 
 const BATCH_LIMIT = 50;
 const LEASE_SECONDS = 120; // worker has 2m to complete; falls back to `failed` on crash
+
+// Wave 3.3 (audit 2026-04 final 100/100): circuit breaker + DLQ alerting.
+// - CIRCUIT_BREAKER_CONSECUTIVE_FAIL: if this many rows fail back-to-back
+//   within a single run we bail out, because continuing to hammer a
+//   downstream provider (OneSignal / Resend / SMS) during an outage just
+//   burns attempts and pushes good rows into the DLQ prematurely.
+// - DLQ_ALERT_THRESHOLD: end-of-run query. If global DLQ depth exceeds
+//   this we emit a Sentry warning tagged `notif.queue.dlq_alert=true`
+//   for pager-worthy on-call visibility.
+const CIRCUIT_BREAKER_CONSECUTIVE_FAIL = 10;
+const DLQ_ALERT_THRESHOLD = 10;
 
 import type { QueuedNotificationRow } from "@/lib/notifications/queued-senders";
 
@@ -148,8 +160,12 @@ export async function GET(request: NextRequest) {
   let delivered = 0;
   let failed = 0;
   let deadLettered = 0;
+  let consecutiveFailures = 0;
+  let circuitOpen = false;
 
   for (const row of rows) {
+    if (circuitOpen) break;
+
     // Claim the row (optimistic: status must still be pending/failed).
     const { data: claimed } = await supabase
       .from("notification_delivery_queue")
@@ -179,6 +195,7 @@ export async function GET(request: NextRequest) {
         })
         .eq("id", row.id);
       delivered += 1;
+      consecutiveFailures = 0;
     } else {
       const nextAttempts = row.attempts + 1;
       const isDead = nextAttempts >= row.max_attempts;
@@ -208,7 +225,63 @@ export async function GET(request: NextRequest) {
           .eq("id", row.id);
         failed += 1;
       }
+
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CIRCUIT_BREAKER_CONSECUTIVE_FAIL) {
+        // Downstream provider looks wedged. Stop burning attempts; the
+        // next cron tick in ~2m will try again with fresh capacity.
+        circuitOpen = true;
+        try {
+          Sentry.captureMessage(
+            `[notif-queue] circuit breaker tripped after ${consecutiveFailures} consecutive delivery failures`,
+            {
+              level: "error",
+              tags: {
+                "notif.queue.circuit_breaker": "true",
+                "notif.queue.last_error_channel": row.channel,
+              },
+              extra: {
+                last_error: result.error?.slice(0, 500),
+                delivered,
+                failed,
+                dead_lettered: deadLettered,
+                batch_size: rows.length,
+              },
+            },
+          );
+        } catch {
+          // ignore sentry failures
+        }
+      }
     }
+  }
+
+  // DLQ depth alert (fires independent of this run's outcome).
+  let dlqDepth: number | null = null;
+  try {
+    const { count } = await supabase
+      .from("notification_delivery_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "dead_letter");
+    dlqDepth = count ?? 0;
+    if (dlqDepth > DLQ_ALERT_THRESHOLD) {
+      Sentry.captureMessage(
+        `[notif-queue] DLQ depth ${dlqDepth} exceeds threshold ${DLQ_ALERT_THRESHOLD}`,
+        {
+          level: "warning",
+          tags: { "notif.queue.dlq_alert": "true" },
+          extra: {
+            dlq_depth: dlqDepth,
+            threshold: DLQ_ALERT_THRESHOLD,
+            last_run_delivered: delivered,
+            last_run_failed: failed,
+            last_run_dead_lettered: deadLettered,
+          },
+        },
+      );
+    }
+  } catch {
+    // ignore DLQ count failures; not operationally blocking
   }
 
   return NextResponse.json({
@@ -217,5 +290,7 @@ export async function GET(request: NextRequest) {
     delivered,
     failed,
     dead_lettered: deadLettered,
+    circuit_breaker_tripped: circuitOpen,
+    dlq_depth: dlqDepth,
   });
 }

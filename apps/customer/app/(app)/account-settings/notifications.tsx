@@ -72,6 +72,16 @@ function ToggleRow({ label, description, value, disabled, saving, onToggle }: To
           disabled={disabled}
           trackColor={{ false: Colors.gray[300], true: Colors.primary }}
           thumbColor={Colors.white}
+          /**
+           * §UX-audit 2026-04: without these a11y props, TalkBack/VoiceOver
+           * announced a bare "switch" without naming the preference, so users
+           * had to rely on the (visually adjacent) label. Bind the toggle to
+           * the row label explicitly.
+           */
+          accessibilityRole="switch"
+          accessibilityLabel={label}
+          accessibilityHint={description ?? undefined}
+          accessibilityState={{ checked: value, disabled: !!disabled }}
         />
       )}
     </View>

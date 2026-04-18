@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, TouchableOpacity, Platform, ActionSheetIOS, Modal, Pressable } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, usePathname } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -21,11 +21,20 @@ const QUICK_ACTION_ITEMS: { label: string; route: string; icon: keyof typeof Ion
 export function AppHeader() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const pathname = usePathname();
   const { screenPadding } = useResponsive();
   const { provider } = useProvider();
   const showLocationSwitcher = (provider?.locations?.length ?? 0) > 0;
   const [quickActionsVisible, setQuickActionsVisible] = useState(false);
   const { totalUnread: unreadCount } = useNotificationsCount();
+
+  // §UI-audit 2026-04: hide the global brand chrome on focus flows
+  // (currently the chat thread) so the conversation partner's name,
+  // avatar and message composer get the full available vertical space.
+  // The screen's own `ScreenHeader` still renders the back button.
+  const isFocusFlow =
+    pathname?.includes("/more/messaging/") && !pathname.endsWith("/messaging");
+  if (isFocusFlow) return null;
 
   const iconSize = 22;
   const iconColor = "#374151";

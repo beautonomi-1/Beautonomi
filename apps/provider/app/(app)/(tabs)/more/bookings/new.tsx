@@ -26,6 +26,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { BottomSheet } from "@/components/ui/BottomSheet";
 import { ChipCombobox } from "@/components/ui/ChipCombobox";
 import { formatDuration, formatCurrency } from "@/lib/format";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
@@ -135,14 +136,18 @@ interface Package {
 type DiscountType = "percentage" | "fixed";
 type PaymentMethod = "cash" | "card" | "online";
 
-function buildScheduledAtWithTz(date: Date, timeStr: string): string {
-  const naive = new Date(`${format(date, "yyyy-MM-dd")}T${timeStr}:00`);
-  const offsetMin = naive.getTimezoneOffset();
-  const sign = offsetMin <= 0 ? "+" : "-";
-  const absMin = Math.abs(offsetMin);
-  const hh = String(Math.floor(absMin / 60)).padStart(2, "0");
-  const mm = String(absMin % 60).padStart(2, "0");
-  return `${format(date, "yyyy-MM-dd")}T${timeStr}:00${sign}${hh}:${mm}`;
+/**
+ * §Release-audit 2026-04: accept the provider's IANA timezone and delegate to
+ * the shared helper so the new-booking flow matches the calendar drag path.
+ * The optional `zone` preserves the pre-fix behaviour when the provider
+ * record hasn't been backfilled with a timezone yet.
+ */
+function buildScheduledAtWithTz(
+  date: Date,
+  timeStr: string,
+  zone?: string | null,
+): string {
+  return buildZonedIsoForWallClock(format(date, "yyyy-MM-dd"), timeStr, zone ?? null);
 }
 
 /* ------------------------------------------------------------------ */
@@ -193,7 +198,8 @@ export default function NewBookingScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ date?: string; time?: string; status?: string; defaultStatus?: string; clientId?: string; client_id?: string; walk_in?: string; staff_id?: string; location_id?: string }>();
   const { isTablet } = useResponsive();
-  const { selectedLocationId: providerLocationId } = useProvider();
+  const { selectedLocationId: providerLocationId, provider: providerProfile } = useProvider();
+  const providerTimezone = providerProfile?.timezone ?? null;
   // §Provider-launch (audit 2026-04): honour an explicit `location_id` query
   // param (carried from the calendar's location filter) over the provider
   // context's remembered location so the new-booking fetches scope to the
@@ -595,7 +601,7 @@ export default function NewBookingScreen() {
     setConflictWarning(null);
 
     try {
-      const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime);
+      const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, providerTimezone);
       const staffIds = selectedServices
         .map((s) => s.staffId)
         .filter((id): id is string => !!id);
@@ -660,7 +666,7 @@ export default function NewBookingScreen() {
             customer_email: newClientEmail.trim() || undefined,
           };
 
-    const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime);
+    const scheduledAt = buildScheduledAtWithTz(selectedDate, selectedTime, providerTimezone);
 
     const payload: Record<string, unknown> = {
       ...clientPayload,

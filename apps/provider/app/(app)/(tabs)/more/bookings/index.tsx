@@ -191,7 +191,13 @@ export default function BookingsListScreen() {
   if (dateParams.end_date) queryParts.push(`end_date=${dateParams.end_date}`);
   if (statusFilter) queryParts.push(`status=${encodeURIComponent(statusFilter)}`);
   if (selectedLocationId) queryParts.push(`location_id=${encodeURIComponent(selectedLocationId)}`);
-  const url = `/api/provider/bookings${queryParts.length ? `?${queryParts.join("&")}` : ""}`;
+  // §UX-audit 2026-04: list order previously relied on the API default,
+  // which flipped between newest-first and oldest-first depending on
+  // query variant. Owners expect chronological upcoming-first so they
+  // can triage the next booking on top of the list.
+  queryParts.push("sort=scheduled_at");
+  queryParts.push("order=asc");
+  const url = `/api/provider/bookings?${queryParts.join("&")}`;
 
   const { data, loading, error, refresh } = useApi<Booking[]>(url);
 
@@ -396,10 +402,14 @@ export default function BookingsListScreen() {
                 onPress={() => setDateRange(opt.value)}
                 style={[
                   twStyle(
-                    `rounded-full px-3.5 py-1.5 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`
+                    `rounded-full px-3.5 py-2 ${active ? "bg-indigo-600" : "border border-gray-200 bg-white"}`
                   ),
+                  // §UI-audit 2026-04: 36px was below HIG's 44pt guidance.
+                  { minHeight: 44, justifyContent: "center" },
                 ]}
+                accessibilityRole="button"
                 accessibilityLabel={`Filter by ${opt.label}`}
+                accessibilityState={{ selected: active }}
               >
                 <Text style={twStyle(`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`)}>
                   {opt.label}
@@ -425,10 +435,13 @@ export default function BookingsListScreen() {
                 onPress={() => setStatusFilter(opt.value)}
                 style={[
                   twStyle(
-                    `rounded-full px-3.5 py-1.5 ${active ? "bg-gray-900" : "border border-gray-100 bg-white"}`
+                    `rounded-full px-3.5 py-2 ${active ? "bg-gray-900" : "border border-gray-100 bg-white"}`
                   ),
+                  { minHeight: 44, justifyContent: "center" },
                 ]}
+                accessibilityRole="button"
                 accessibilityLabel={`Filter by ${opt.label}`}
+                accessibilityState={{ selected: active }}
               >
                 <Text style={twStyle(`text-xs font-medium ${active ? "text-white" : "text-gray-600"}`)}>
                   {opt.label}
@@ -445,7 +458,14 @@ export default function BookingsListScreen() {
         keyExtractor={bookingKeyExtractor}
         renderItem={renderBookingItem}
         contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={Colors.primary}
+            colors={[Colors.primary]}
+          />
+        }
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <EmptyState

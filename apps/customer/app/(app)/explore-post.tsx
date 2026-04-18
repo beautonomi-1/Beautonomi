@@ -351,12 +351,16 @@ export default function ExplorePostScreen() {
                 <Ionicons name="heart" size={72} color="#fff" />
               </Animated.View>
 
+              {/* §UI-audit 2026-04: overlay controls now key off
+                  `insets.top` instead of the old hardcoded `top: 52`,
+                  which crowded the Dynamic Island on newer iPhones and
+                  sat too far down on small Androids. */}
               {/* Back button */}
               <TouchableOpacity
                 onPress={() => router.back()}
                 style={{
                   position: "absolute",
-                  top: 52,
+                  top: insets.top + 8,
                   left: 16,
                   width: 38,
                   height: 38,
@@ -374,7 +378,7 @@ export default function ExplorePostScreen() {
                 onPress={handleShare}
                 style={{
                   position: "absolute",
-                  top: 52,
+                  top: insets.top + 8,
                   right: 16,
                   width: 38,
                   height: 38,
@@ -392,7 +396,7 @@ export default function ExplorePostScreen() {
                 onPress={showMoreOptions}
                 style={{
                   position: "absolute",
-                  top: 52,
+                  top: insets.top + 8,
                   right: 62,
                   width: 38,
                   height: 38,

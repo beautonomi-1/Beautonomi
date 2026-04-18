@@ -351,6 +351,44 @@ export async function validateBooking(
         }
       }
     }
+
+    // §Final-audit 2026-04 (R3): parity assertion between
+    // `group_participants[].service_ids` and `draft.services`.
+    // `servicesSubtotal` below sums only `draft.services`, so if a
+    // client (mobile, third-party) sends participant-only lines without
+    // merging them into `services`, the server would silently undercharge
+    // and promos would validate against the wrong total. Require the
+    // client to flatten participant offerings into `services` first.
+    const participantOfferingIds = (validatedDraft.group_participants as any[])
+      .flatMap((p: any) => p.service_ids ?? p.serviceIds ?? [])
+      .filter((id: unknown): id is string => typeof id === "string");
+    const draftOfferingCounts = new Map<string, number>();
+    for (const s of draft.services) {
+      draftOfferingCounts.set(
+        s.offering_id,
+        (draftOfferingCounts.get(s.offering_id) ?? 0) + 1,
+      );
+    }
+    const participantOfferingCounts = new Map<string, number>();
+    for (const id of participantOfferingIds) {
+      participantOfferingCounts.set(
+        id,
+        (participantOfferingCounts.get(id) ?? 0) + 1,
+      );
+    }
+    for (const [offeringId, participantCount] of participantOfferingCounts) {
+      const draftCount = draftOfferingCounts.get(offeringId) ?? 0;
+      if (draftCount < participantCount) {
+        return handleApiError(
+          new Error(
+            `Group booking line-item mismatch: participant service ${offeringId} count ${participantCount} exceeds draft.services count ${draftCount}`,
+          ),
+          "Group booking is missing line items. Please reload and try again.",
+          "GROUP_LINE_ITEM_MISMATCH",
+          400,
+        );
+      }
+    }
   }
 
   // ── Online group booking policy (server — same DB fields as group-booking-settings API) ──

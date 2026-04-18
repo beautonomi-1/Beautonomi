@@ -99,10 +99,11 @@ function slotOverlapsTimeBlock(
   slotStart: Date,
   slotEnd: Date,
   timeBlock: TimeBlock,
-  date: string
+  date: string,
+  timezone?: string
 ): boolean {
-  const blockStart = combineDateAndTime(date, timeBlock.start_time);
-  const blockEnd = combineDateAndTime(date, timeBlock.end_time);
+  const blockStart = combineDateAndTime(date, timeBlock.start_time, timezone);
+  const blockEnd = combineDateAndTime(date, timeBlock.end_time, timezone);
   return timeRangesOverlap(slotStart, slotEnd, blockStart, blockEnd);
 }
 
@@ -184,10 +185,20 @@ export function calculateAvailableSlots(
     slotInterval?: number; // Default 15 minutes
     avoidGaps?: boolean;
     travelBuffer?: number; // For at-home bookings
+    /**
+     * §Release-audit 2026-04: when provided, each `HH:MM` slot is combined
+     * with `date` in this IANA zone (e.g. `Africa/Johannesburg`) so the
+     * produced `Date` instants correspond to the provider's actual wall
+     * clock. Without it we fall back to the historical UTC behaviour,
+     * which only matched the wall clock when the server ran in UTC — and
+     * caused the "invalid time / slot taken" web booking bug in SAST/+2h
+     * zones when the ISO `Z` label was later re-parsed as provider-local.
+     */
+    timezone?: string;
   } = {}
 ): TimeSlot[] {
   const { staffShifts, timeBlocks, existingBookings, workHoursEnabled = true } = constraints;
-  const { slotInterval = 15, avoidGaps = false, travelBuffer = 0 } = options;
+  const { slotInterval = 15, avoidGaps = false, travelBuffer = 0, timezone } = options;
 
   // Last-resort fallback: no location hours resolved and work_hours_enabled is false.
   // loadAvailabilityConstraints normally resolves location hours into staffShifts
@@ -255,8 +266,8 @@ export function calculateAvailableSlots(
     }
 
     // Convert to Date objects for overlap checking
-    const slotStart = combineDateAndTime(date, slotTime);
-    const slotEnd = combineDateAndTime(date, minutesToTime(slotEndMinutes));
+    const slotStart = combineDateAndTime(date, slotTime, timezone);
+    const slotEnd = combineDateAndTime(date, minutesToTime(slotEndMinutes), timezone);
 
     // Check overlap with blocked segments
     if (slotOverlapsBlockedSegments(slotStart, slotEnd, blockedSegments)) {
@@ -269,7 +280,7 @@ export function calculateAvailableSlots(
 
     // Check overlap with time blocks
     const overlapsBlock = timeBlocks.some((block) =>
-      slotOverlapsTimeBlock(slotStart, slotEnd, block, date)
+      slotOverlapsTimeBlock(slotStart, slotEnd, block, date, timezone)
     );
     if (overlapsBlock) {
       return {

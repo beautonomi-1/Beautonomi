@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getPaystackSecretKey } from "@/lib/payments/paystack-server";
 import { handleChargeSuccess, handleChargeFailed } from "./_handlers/charge-success";
@@ -17,6 +18,38 @@ import { resolveTenantFromRequest } from "@/lib/tenant/resolve-tenant-from-db";
 import { sanitizeWebhookPayload } from "@/lib/payment/webhook-payload-sanitizer";
 
 const MAX_WEBHOOK_BODY_BYTES = 1_000_000; // 1 MB safety cap
+
+/**
+ * Wave 2.2 (audit 2026-04 final 100/100): unified Sentry capture for the
+ * payments webhook surface. Tags every report with
+ * `webhook.handler.failure` so an alert rule can fire when this counter
+ * spikes, which is the canonical money-movement failure signal.
+ */
+function captureWebhookFailure(
+  err: unknown,
+  context: {
+    stage: string;
+    eventType?: string | null;
+    eventId?: string | null;
+    tenantId?: string | null;
+  },
+): void {
+  try {
+    Sentry.captureException(err, {
+      tags: {
+        surface: "payments.webhook",
+        "webhook.handler.failure": "true",
+        webhook_stage: context.stage,
+        ...(context.eventType ? { event_type: context.eventType } : {}),
+        ...(context.eventId ? { event_id: context.eventId } : {}),
+        ...(context.tenantId ? { tenant_id: context.tenantId } : {}),
+      },
+      level: "error",
+    });
+  } catch {
+    // Sentry must never throw out of the webhook path
+  }
+}
 
 /**
  * POST /api/payments/webhook
@@ -59,7 +92,9 @@ export async function POST(request: Request) {
     const sigBuf = Buffer.from(signature, "hex");
     const hashBuf = Buffer.from(hash, "hex");
     if (sigBuf.length !== hashBuf.length || !crypto.timingSafeEqual(sigBuf, hashBuf)) {
-      console.error("Invalid webhook signature");
+      captureWebhookFailure(new Error("Invalid webhook signature"), {
+        stage: "verify_signature",
+      });
       return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
     }
 
@@ -68,7 +103,9 @@ export async function POST(request: Request) {
     const { event: eventType, data } = event;
 
     if (!eventType || !data) {
-      console.error("Invalid webhook payload structure");
+      captureWebhookFailure(new Error("Invalid webhook payload structure"), {
+        stage: "parse_event",
+      });
       return NextResponse.json({ error: "Invalid webhook payload" }, { status: 400 });
     }
 
@@ -103,6 +140,12 @@ export async function POST(request: Request) {
 
       if (leaseError) {
         console.error("try_acquire_webhook_event_lease failed:", leaseError);
+        captureWebhookFailure(leaseError, {
+          stage: "lease_acquire",
+          eventType,
+          eventId: String(eventId),
+          tenantId: paymentWebhookTenantId,
+        });
         // Fall back to legacy insert so webhook processing still runs, but log
         // loudly so operators notice the lease function is missing/broken.
       }
@@ -229,6 +272,15 @@ export async function POST(request: Request) {
       processingError =
         error instanceof Error ? error : new Error(String(error));
       console.error("Error processing webhook:", processingError);
+      // Wave 2.2: this is the canonical handler-failure signal. Tagged
+      // so an alert rule on tag `webhook.handler.failure=true` fires
+      // immediately on every money-movement processing error.
+      captureWebhookFailure(processingError, {
+        stage: "handler",
+        eventType,
+        eventId: eventId ? String(eventId) : null,
+        tenantId: paymentWebhookTenantId,
+      });
 
       // ── 5b. Mark as failed ────────────────────────────────────────────────
       if (eventId) {
@@ -263,6 +315,12 @@ export async function POST(request: Request) {
             "Failed to add to reconciliation queue:",
             reconError,
           );
+          captureWebhookFailure(reconError, {
+            stage: "reconciliation_enqueue",
+            eventType,
+            eventId: eventId ? String(eventId) : null,
+            tenantId: paymentWebhookTenantId,
+          });
         }
       }
 
@@ -286,6 +344,7 @@ export async function POST(request: Request) {
         }
       } catch (error) {
         console.error("Unexpected error in /api/payments/webhook:", error);
+        captureWebhookFailure(error, { stage: "outer_catch" });
         return NextResponse.json(
           { error: "Webhook processing failed" },
           { status: 500 },

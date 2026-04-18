@@ -1,12 +1,24 @@
 /**
- * §15.4 (audit 2026-04) — CAPTCHA guard for public booking creation.
+ * §15.4 (audit 2026-04) — CAPTCHA guard for public booking surfaces.
  *
  * Feature-flagged:
- *   - Enforced only when `TURNSTILE_SECRET_KEY` is set in the env.
- *     Without it, `verifyPublicBookingCaptcha` always returns `{ ok: true }`
- *     so local / preview environments don't need Cloudflare configured.
- *   - Additionally, authenticated callers skip the CAPTCHA — the relevant
- *     threat model is anonymous bot abuse of POST /api/public/bookings.
+ *   - Enforced only when `TURNSTILE_SECRET_KEY` (or `HCAPTCHA_SECRET_KEY`)
+ *     is set in the env. Without it, `verifyPublicBookingCaptcha` always
+ *     returns `{ ok: true }` so local / preview environments don't need
+ *     Cloudflare configured.
+ *
+ * Wave 1.5 (audit 2026-04 final 100/100):
+ *   The previous implementation auto-bypassed CAPTCHA whenever a request
+ *   carried a Supabase auth cookie or `Authorization: Bearer` header.
+ *   That made the guard trivially defeatable: any attacker who creates
+ *   one cheap throwaway account can mint a session and then bot-spam
+ *   booking-create, booking-hold, and OTP endpoints with zero CAPTCHA
+ *   friction. Removed the session-based bypass so CAPTCHA is enforced
+ *   for *every* anonymous-or-quasi-anonymous public surface that calls
+ *   this helper. Callers that genuinely need to skip CAPTCHA for
+ *   first-party logged-in clients should pass `skipForUserId` only when
+ *   they have already verified the user via Supabase server auth — never
+ *   from a raw header.
  *
  * Supported providers (in priority order):
  *   1. Cloudflare Turnstile (`TURNSTILE_SECRET_KEY`)
@@ -23,9 +35,19 @@ export type CaptchaCheckResult =
   | { ok: true }
   | { ok: false; status: number; reason: string };
 
+export interface CaptchaOptions {
+  /**
+   * Optional explicit allow-list: pass an authenticated user UUID that
+   * the caller has already validated server-side via Supabase auth.
+   * NEVER derive this from a raw cookie or Bearer header.
+   */
+  skipForUserId?: string | null;
+}
+
 export async function verifyPublicBookingCaptcha(
   request: NextRequest,
   bodyJson: unknown,
+  options: CaptchaOptions = {},
 ): Promise<CaptchaCheckResult> {
   const turnstileSecret = process.env.TURNSTILE_SECRET_KEY?.trim();
   const hcaptchaSecret = process.env.HCAPTCHA_SECRET_KEY?.trim();
@@ -37,15 +59,13 @@ export async function verifyPublicBookingCaptcha(
     return result;
   }
 
-  // Skip CAPTCHA for authenticated callers. The primary abuse surface is
-  // anonymous bookings; logged-in users are already rate-limited and
-  // identifiable.
-  const authHeader = request.headers.get("authorization");
-  const cookieHeader = request.headers.get("cookie");
-  const hasSbSession =
-    (cookieHeader && /sb[-_:][^=]*auth-token/.test(cookieHeader)) ||
-    (authHeader && authHeader.toLowerCase().startsWith("bearer "));
-  if (hasSbSession) return { ok: true };
+  // Wave 1.5: ONLY skip CAPTCHA when the caller has already verified the
+  // user against Supabase server auth and explicitly passed the user id.
+  // Mere presence of a cookie or Bearer header is not a proof of
+  // identity for an account-creation-friendly Supabase project.
+  if (options.skipForUserId && options.skipForUserId.trim().length > 0) {
+    return { ok: true };
+  }
 
   const headerToken = request.headers.get("x-captcha-token")?.trim();
   const bodyToken =

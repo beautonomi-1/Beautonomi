@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { GET as getReceiptJson } from "../route";
 import { parseReceiptDownloadToken } from "@/lib/receipts/receipt-download-token";
+import {
+  buildReceiptCacheKey,
+  isFinalizedForCache,
+  loadCachedReceiptPdf,
+  saveCachedReceiptPdf,
+} from "@/lib/receipts/pdf-cache";
+
+// Wave 2.5 (audit 2026-04 final 100/100): extend serverless timeout to
+// 60s so large receipts (many services + products + additional charges +
+// long receipt headers/footers) still complete on the Vercel Pro tier.
+// Finalized receipts are cached to Supabase Storage; only the first
+// cold request pays the generation cost. Hobby tier silently ignores
+// this export.
+export const maxDuration = 60;
 
 /**
  * §Customer-launch (audit 2026-04): supports two auth modes:
@@ -116,6 +130,32 @@ export async function GET(
       return NextResponse.json({ error: "Receipt not found" }, { status: 404 });
     }
 
+    // Wave 2.5: try the PDF cache first for finalized receipts.
+    const cacheKeyInput = {
+      bookingId: id,
+      totalAmount: Number(receipt.total || 0),
+      totalPaid: Number(receipt.amount_paid || 0),
+      totalRefunded: Number((receipt as { total_refunded?: number }).total_refunded || 0),
+      paymentStatus: String(receipt.payment_status || ""),
+      balanceDue: Number(receipt.balance_due || 0),
+    };
+    const canCache = isFinalizedForCache(cacheKeyInput);
+    const cacheKey = canCache ? buildReceiptCacheKey(cacheKeyInput) : null;
+    if (cacheKey) {
+      const cached = await loadCachedReceiptPdf(cacheKey);
+      if (cached) {
+        return new NextResponse(new Uint8Array(cached.buffer), {
+          status: 200,
+          headers: {
+            "content-type": "application/pdf",
+            "content-disposition": `attachment; filename="receipt-${receipt.booking_number || id}.pdf"`,
+            "cache-control": "private, max-age=300",
+            "x-receipt-pdf-cache": "hit",
+          },
+        });
+      }
+    }
+
     const currency = receipt.currency || "ZAR";
     const items = [
       ...(receipt.services || []).map((s) => ({
@@ -215,12 +255,20 @@ export async function GET(
       doc.on("end", () => resolve(Buffer.concat(chunks)));
     });
 
+    // Wave 2.5: persist cache on first cold generation for finalized
+    // receipts. Fire-and-forget; failure to write doesn't block the
+    // response.
+    if (cacheKey) {
+      void saveCachedReceiptPdf(cacheKey, buffer);
+    }
+
     return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "content-type": "application/pdf",
         "content-disposition": `attachment; filename="receipt-${receipt.booking_number || id}.pdf"`,
-        "cache-control": "no-store",
+        "cache-control": canCache ? "private, max-age=300" : "no-store",
+        "x-receipt-pdf-cache": canCache ? "miss-written" : "skip",
       },
     });
   } catch (error) {

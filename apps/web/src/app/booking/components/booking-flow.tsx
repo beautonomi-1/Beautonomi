@@ -102,6 +102,22 @@ export interface BookingState {
   }>;
   selectedDate: Date | null;
   selectedTimeSlot: string | null;
+  /**
+   * §Release-audit 2026-04: ISO-8601 UTC instant the availability engine
+   * produced for `selectedTimeSlot`. Preferred over re-deriving the instant
+   * from the HH:MM label + provider TZ at hold / booking time (which caused
+   * the "invalid time / slot taken" bug in non-UTC deployments).
+   */
+  selectedSlotStart?: string | null;
+  /** §Release-audit 2026-04: engine-emitted ISO end instant for the selected slot. */
+  selectedSlotEnd?: string | null;
+  /**
+   * §Release-audit 2026-04: for any-staff slots, the list of active
+   * `provider_staff.id`s who were free at this wall-clock time. Forwarded
+   * to /api/public/booking-holds so the hold resolver prefers the same
+   * staff the calendar surfaced.
+   */
+  selectedSlotAvailableStaffIds?: string[] | null;
   promotions: {
     couponCode?: string;
     couponDiscount?: number;
@@ -723,12 +739,21 @@ export default function BookingFlow() {
     }
 
     try {
-      const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-      const bookingDateTime = parseSelectedDatetimeInProviderTz(
-        dateStr,
-        bookingState.selectedTimeSlot!,
-        bookingState.providerTimezone,
-      );
+      // §Release-audit 2026-04: prefer the engine-emitted ISO start instant
+      // captured at slot selection. Only fall back to deriving the instant
+      // from HH:MM + provider TZ when the calendar didn't capture it (older
+      // persisted drafts from before this release).
+      let bookingDateTime: Date;
+      if (bookingState.selectedSlotStart) {
+        bookingDateTime = new Date(bookingState.selectedSlotStart);
+      } else {
+        const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+        bookingDateTime = parseSelectedDatetimeInProviderTz(
+          dateStr,
+          bookingState.selectedTimeSlot!,
+          bookingState.providerTimezone,
+        );
+      }
 
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {
@@ -737,7 +762,25 @@ export default function BookingFlow() {
       for (const addon of bookingState.selectedAddons) {
         totalMs += (addon.duration ?? 0) * 60000;
       }
-      const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
+      // Prefer the engine ISO end if present + a matching start; otherwise
+      // derive end from the summed cart duration.
+      const endDateTime =
+        bookingState.selectedSlotStart && bookingState.selectedSlotEnd
+          ? new Date(bookingState.selectedSlotEnd)
+          : new Date(bookingDateTime.getTime() + totalMs);
+
+      // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key
+      // per slot-select. Internal retries inside fetcher use the same
+      // key so the server returns the cached response instead of
+      // double-creating a hold.
+      const holdIdemKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
 
       const res = await fetcher.post<{ data?: { hold_id?: string; id?: string } }>(
         "/api/public/booking-holds",
@@ -753,6 +796,10 @@ export default function BookingFlow() {
           location_id: bookingState.selectedLocationId ?? null,
           previous_hold_id: bookingState.holdId || null,
           guest_fingerprint_hash: getGuestFingerprintHash(),
+          // §Release-audit 2026-04: when the slot came from an any-staff
+          // union, forward the engine's list of free staff so the hold
+          // resolver prefers the exact staff the calendar surfaced.
+          preferred_staff_ids: bookingState.selectedSlotAvailableStaffIds ?? null,
           ...(bookingState.mode === "mobile" && bookingState.address?.structuredAddress
             ? {
                 address: {
@@ -766,7 +813,8 @@ export default function BookingFlow() {
                 },
               }
             : {}),
-        }
+        },
+        { headers: { "Idempotency-Key": holdIdemKey } }
       );
       return res?.data?.hold_id ?? res?.data?.id ?? null;
     } catch (err) {
@@ -1251,7 +1299,13 @@ export default function BookingFlow() {
                     if (step === "calendar") {
                       const id = bookingState.holdId;
                       if (id) await releaseHold(id);
-                      updateBookingState({ holdId: null, selectedTimeSlot: null });
+                      updateBookingState({
+                        holdId: null,
+                        selectedTimeSlot: null,
+                        selectedSlotStart: null,
+                        selectedSlotEnd: null,
+                        selectedSlotAvailableStaffIds: null,
+                      });
                     }
                     const idx = activeStepOrder.indexOf(step);
                     if (idx >= 0) setCurrentStepIndex(idx);

@@ -52,8 +52,8 @@
         "EXPO_PUBLIC_DEFAULT_MARKET_HOST": "beautonomi.co.za",
         "EXPO_PUBLIC_MARKET_HOST_OPTIONS": "beautonomi.co.za|South Africa",
         "EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS": "24",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "true",
-        "SENTRY_ALLOW_FAILURE": "true"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "false",
+        "SENTRY_ALLOW_FAILURE": "false"
       },
       "channel": "production"
     }

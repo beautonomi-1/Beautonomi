@@ -134,6 +134,10 @@ export async function POST(
           {
             slotInterval: 15,
             travelBuffer: 0, // Could be enhanced for at-home bookings
+            // Wave 1.3 (audit 2026-04 final 100/100): match the single-
+            // booking surfaces so group reschedule sees the same slot
+            // truth in the provider's wall clock.
+            timezone: groupProviderTz,
           }
         );
 

@@ -123,7 +123,55 @@ export async function GET(request: NextRequest) {
       return successResponse({ date, slots: [] });
     }
 
-    const publicSlots = await computePublicSlugAvailabilitySlots({
+    // §Release-audit 2026-04: load the provider's IANA timezone so slot
+    // instants are correctly anchored to the provider's wall clock rather
+    // than the server's TZ. Without this the engine emits HH:MM as if UTC,
+    // and the booking flow's `parseSelectedDatetimeInProviderTz` then
+    // interprets that HH:MM as provider-local — shifting the instant and
+    // triggering "invalid time / slot taken" in non-UTC deployments.
+    let providerTimeZone: string | null = null;
+    try {
+      const admin = getSupabaseAdmin();
+      const { data: providerRow } = await admin
+        .from("providers")
+        .select("timezone")
+        .eq("id", providerIdForEngine)
+        .maybeSingle();
+      providerTimeZone = (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
+    } catch {
+      // Best-effort: if the lookup fails the engine falls back to legacy
+      // behaviour (UTC interpretation of HH:MM).
+    }
+
+    // Min-notice + max-advance parity with the slug route: shared filters
+    // applied after the engine so `/api/availability` and the slug endpoint
+    // surface the same slots regardless of who consumes the API.
+    const minNoticeMinutes = parseInt(
+      searchParams.get("min_notice_minutes") || searchParams.get("minNoticeMinutes") || "0",
+      10
+    );
+    const maxAdvanceDays = parseInt(
+      searchParams.get("max_advance_days") || searchParams.get("maxAdvanceDays") || "365",
+      10
+    );
+    const effectiveMinNotice =
+      Number.isFinite(minNoticeMinutes) && minNoticeMinutes > 0 ? minNoticeMinutes : 0;
+    const effectiveMaxAdvance =
+      Number.isFinite(maxAdvanceDays) && maxAdvanceDays >= 1 ? maxAdvanceDays : 365;
+
+    // Max-advance guard (mirrors slug route).
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dateObj = new Date(`${date}T00:00:00`);
+    dateObj.setHours(0, 0, 0, 0);
+    const daysFromToday = Math.floor(
+      (dateObj.getTime() - today.getTime()) / (24 * 60 * 60 * 1000)
+    );
+    if (daysFromToday > effectiveMaxAdvance) {
+      return successResponse({ date, slots: [] });
+    }
+
+    let publicSlots = await computePublicSlugAvailabilitySlots({
       supabase,
       providerId: providerIdForEngine,
       date,
@@ -137,13 +185,82 @@ export async function GET(request: NextRequest) {
       activeStaffRows,
       excludeHoldId,
       excludeBookingId,
+      providerTimeZone,
     });
 
-    const slots: TimeSlot[] = availabilitySlotsAsTimeSlots(publicSlots);
+    // §Release-audit 2026-04: min-notice parity. Previously only the slug
+    // route applied this filter, so `/api/availability` surfaced slots that
+    // the hold route immediately rejected — visible as the "booking slot
+    // taken" error when a customer picked the first time of the day.
+    if (effectiveMinNotice > 0) {
+      const cutoff = new Date(Date.now() + effectiveMinNotice * 60 * 1000);
+      publicSlots = publicSlots.filter((s) => new Date(s.start) >= cutoff);
+    }
+
+    // §Release-audit 2026-04: resource filtering parity. When the caller
+    // passed service_ids / service_id we run the same resource-availability
+    // filter as the slug route so required-resource slots are marked/dropped
+    // consistently.
+    const serviceIdParam = searchParams.get("service_id")?.trim() || null;
+    const serviceIdsParam = searchParams.get("service_ids");
+    const orderedOfferingIds =
+      serviceIdsParam
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean) ?? [];
+    const resourceCheckOfferingIds =
+      orderedOfferingIds.length > 0
+        ? orderedOfferingIds
+        : serviceIdParam
+          ? [serviceIdParam]
+          : [];
+
+    if (resourceCheckOfferingIds.length > 0 && publicSlots.length > 0) {
+      const admin = getSupabaseAdmin();
+      const { data: ownedOfferings } = await admin
+        .from("offerings")
+        .select("id")
+        .eq("provider_id", providerIdForEngine)
+        .in("id", resourceCheckOfferingIds);
+      const validOfferingIds = (ownedOfferings || []).map((o: { id: string }) => o.id);
+      if (validOfferingIds.length > 0) {
+        const { data: offeringRes } = await admin
+          .from("offering_resources")
+          .select("resource_id")
+          .in("offering_id", validOfferingIds)
+          .eq("required", true);
+        const resourceIds = [
+          ...new Set((offeringRes || []).map((r: { resource_id: string }) => r.resource_id)),
+        ];
+        if (resourceIds.length > 0) {
+          const { checkResourceAvailability } = await import("@/lib/resources/assignment");
+          const filtered = [] as typeof publicSlots;
+          for (const slot of publicSlots) {
+            const startAt = new Date(slot.start);
+            const endAt = new Date(slot.end);
+            const check = await checkResourceAvailability(admin, resourceIds, startAt, endAt);
+            if (check.available) {
+              filtered.push(slot);
+            } else {
+              filtered.push({ ...slot, is_available: false });
+            }
+          }
+          publicSlots = filtered;
+        }
+      }
+    }
+
+    const slots: TimeSlot[] = availabilitySlotsAsTimeSlots(publicSlots, providerTimeZone);
 
     const response: Record<string, unknown> = {
       date,
       slots,
+      // §Release-audit 2026-04: surface the full public slot shape so the web
+      // booking flow can carry ISO start/end through state instead of
+      // re-deriving an instant from the HH:MM label (which historically
+      // double-translated the timezone).
+      public_slots: publicSlots,
+      provider_timezone: providerTimeZone,
     };
 
     if (authenticatedProviderId) {

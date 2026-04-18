@@ -12,6 +12,9 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useApi } from "@/hooks/useApi";
 import { useAuth } from "@/providers/AuthProvider";
+import { api } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase/client";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
@@ -23,8 +26,8 @@ type SettingsItem = {
   /** Native screen route (all settings are native). */
   mobileRoute?: string;
   isUpgrade?: boolean;
-  /** Special action instead of navigation (e.g. signOut) */
-  action?: "signOut";
+  /** Special action instead of navigation (e.g. signOut, globalSignOut) */
+  action?: "signOut" | "globalSignOut";
   /** Style as destructive (e.g. deactivate) */
   isDestructive?: boolean;
   /** Style as subtle/muted (e.g. delete account – less prominent) */
@@ -154,6 +157,7 @@ const SETTINGS_CATEGORIES: SettingsCategory[] = [
       { title: "Terms of Service", description: "Terms and conditions", href: "/terms-and-condition", mobileRoute: "/(auth)/terms" },
       { title: "Deactivate account", description: "Temporarily disable your account", href: "/account-settings/login-and-security", mobileRoute: "/(app)/(tabs)/more/settings-deactivate-account", isDestructive: true },
       { title: "Sign out", description: "Sign out of your account", href: "#", action: "signOut" as const },
+      { title: "Sign out from all devices", description: "End every active session on your account", href: "#", action: "globalSignOut" as const },
       { title: "Delete account", description: "Permanently delete account and data", href: "/account-settings/privacy-and-sharing", mobileRoute: "/(app)/(tabs)/more/delete-account-info", isSubtle: true },
     ],
   },
@@ -187,11 +191,47 @@ export default function SettingsAccountHubScreen() {
     ]);
   }, [signOut, router]);
 
+  // Wave 2.4 (audit 2026-04 final 100/100): global sign-out — revokes
+  // every refresh token for this provider across all devices.
+  const handleGlobalSignOut = useCallback(() => {
+    const goToLogin = () => router.replace("/(auth)/login" as never);
+    const perform = async () => {
+      try {
+        const res = await api.post<{ ok?: boolean }>("/api/auth/sign-out-global", {});
+        if (res.error) {
+          Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
+          return;
+        }
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          // non-fatal - server already revoked refresh tokens
+        }
+        goToLogin();
+      } catch (e) {
+        Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));
+      }
+    };
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert(
+      "Sign out from all devices?",
+      "This will end every active session across all your phones, tablets and browsers. You'll need to log in again everywhere. Use this if you suspect someone else accessed your account.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Sign out everywhere", style: "destructive", onPress: () => void perform() },
+      ],
+    );
+  }, [router]);
+
   const handleItemPress = useCallback(
     (item: SettingsItem) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       if (item.action === "signOut") {
         handleSignOut();
+        return;
+      }
+      if (item.action === "globalSignOut") {
+        handleGlobalSignOut();
         return;
       }
       // §Provider-launch (audit 2026-04): the dynamically-injected
@@ -207,7 +247,7 @@ export default function SettingsAccountHubScreen() {
         router.push(item.mobileRoute as never);
       }
     },
-    [router, handleSignOut]
+    [router, handleSignOut, handleGlobalSignOut]
   );
 
   const toggleSection = useCallback((id: string) => {
@@ -288,7 +328,7 @@ export default function SettingsAccountHubScreen() {
                     </Text>
                   </View>
                   {items.map((item, idx) => {
-                    const isSignOut = item.action === "signOut";
+                    const isSignOut = item.action === "signOut" || item.action === "globalSignOut";
                     const isDestructive = item.isDestructive ?? isSignOut;
                     const isSubtle = item.isSubtle ?? false;
                     return (

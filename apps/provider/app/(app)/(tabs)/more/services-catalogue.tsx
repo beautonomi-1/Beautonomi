@@ -180,14 +180,24 @@ export default function ServicesCatalogueScreen() {
         subtitle="Catalogue & pricing"
         onBack={() => router.back()}
         rightAction={
-          <TouchableOpacity
-            onPress={handleAddService}
-            style={twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3")}
-            accessibilityLabel="Add service"
-            accessibilityRole="button"
-          >
-            <Ionicons name="add" size={22} color="#fff" />
-          </TouchableOpacity>
+          <View style={twStyle("flex-row items-center")}>
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(tabs)/more/advanced-pricing" as never)}
+              style={[twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-gray-100 px-3"), { marginRight: 8 }]}
+              accessibilityLabel="Advanced pricing rules"
+              accessibilityRole="button"
+            >
+              <Ionicons name="pricetags-outline" size={18} color="#111827" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleAddService}
+              style={twStyle("h-10 min-w-[44px] flex-row items-center justify-center rounded-full bg-indigo-600 px-3")}
+              accessibilityLabel="Add service"
+              accessibilityRole="button"
+            >
+              <Ionicons name="add" size={22} color="#fff" />
+            </TouchableOpacity>
+          </View>
         }
       />
 

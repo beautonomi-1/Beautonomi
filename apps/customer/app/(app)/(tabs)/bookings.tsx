@@ -19,6 +19,7 @@ import { useTabContentPaddingBottom } from "@/hooks/useTabContentPaddingBottom";
 import { Colors, Shadows } from "@/constants/colors";
 import { BookingCardSkeleton } from "@/components/Skeleton";
 import { supabase } from "@/lib/supabase/client";
+import { getTenantLocaleTag } from "@/lib/locale";
 
 type BookingsTabType = "upcoming" | "past" | "cancelled";
 
@@ -28,10 +29,17 @@ function parseValidDate(value: unknown): Date | null {
   return Number.isFinite(parsed.getTime()) ? parsed : null;
 }
 
+/**
+ * §UX-audit 2026-04: previously locked to "en-US" which produced
+ * American weekday / AM-PM formatting for every tenant regardless of
+ * market (ZA defaults to 24h, en-GB/en-ZA formats differ, etc.). Use
+ * the tenant-aware locale helper so the list matches receipts/payment
+ * screens and never spells Saturday as "Saturday" in a French tenant.
+ */
 function formatDate(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleDateString("en-US", {
+  return parsed.toLocaleDateString(getTenantLocaleTag(), {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -42,10 +50,9 @@ function formatDate(s: string) {
 function formatTime(s: string) {
   const parsed = parseValidDate(s);
   if (!parsed) return "—";
-  return parsed.toLocaleTimeString("en-US", {
+  return parsed.toLocaleTimeString(getTenantLocaleTag(), {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
   });
 }
 
@@ -305,7 +312,14 @@ export default function BookingsScreen() {
             paddingBottom: tabScrollPaddingBottom,
           }}
           refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={refetch} tintColor={Colors.primary} />
+            // §UI-audit 2026-04: added Android `colors` so the spinner
+            // adopts the brand pink (iOS `tintColor` alone is ignored).
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={refetch}
+              tintColor={Colors.primary}
+              colors={[Colors.primary]}
+            />
           }
           accessibilityRole="list"
           accessibilityLabel={`${tab} bookings list`}

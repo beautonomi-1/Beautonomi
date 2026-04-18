@@ -79,9 +79,28 @@ interface TimeSlot {
   reason?: string;
 }
 
+/**
+ * §Release-audit 2026-04: `/api/availability` now also returns the full
+ * public-slug slot shape (ISO start/end + any-staff union metadata). We
+ * index it by HH:MM label so `handleTimeSelect` can persist the engine's
+ * authoritative instant on `BookingState` — avoiding client-side TZ math
+ * and keeping the hold / booking routes in exact agreement with the
+ * calendar.
+ */
+interface PublicSlot {
+  start: string;
+  end: string;
+  staff_id?: string;
+  location_id?: string;
+  is_available: boolean;
+  available_staff_ids?: string[];
+}
+
 interface AvailabilityData {
   date: string;
   slots: TimeSlot[];
+  public_slots?: PublicSlot[];
+  provider_timezone?: string | null;
 }
 
 /** Skeleton pill for loading state */
@@ -228,7 +247,24 @@ export default function StepCalendar({
             ? { reason: "Not all staff are available at this time" }
             : {}),
         }));
-        setAvailability({ date: dateStr, slots: intersected });
+        // §Release-audit 2026-04: preserve the first staff's public_slots so
+        // the calendar can still persist engine-emitted ISO start/end on
+        // selection. The intersection only narrows availability — the
+        // underlying wall-clock instant is identical across staff.
+        const firstPublic = results[0]?.data?.public_slots ?? [];
+        const intersectedPublic: PublicSlot[] = firstPublic.map((p) => ({
+          ...p,
+          is_available: intersected.find((s) => {
+            const isoTimePart = p.start.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
+            return s.time === isoTimePart;
+          })?.available ?? false,
+        }));
+        setAvailability({
+          date: dateStr,
+          slots: intersected,
+          public_slots: intersectedPublic,
+          provider_timezone: results[0]?.data?.provider_timezone ?? null,
+        });
       }
     } catch (error) {
       toast.error(error instanceof FetchError ? error.message : "Failed to load availability");
@@ -278,14 +314,36 @@ export default function StepCalendar({
 
   const handleDateSelect = (date: Date) => {
     setSelectedDate(date);
-    updateBookingState({ selectedDate: date, selectedTimeSlot: null, holdId: null });
+    updateBookingState({
+      selectedDate: date,
+      selectedTimeSlot: null,
+      selectedSlotStart: null,
+      selectedSlotEnd: null,
+      selectedSlotAvailableStaffIds: null,
+      holdId: null,
+    });
   };
 
   const handleTimeSelect = (time: string) => {
+    // §Release-audit 2026-04: look up the authoritative ISO start/end the
+    // engine produced for this label and persist them alongside the HH:MM
+    // string. Hold creation and booking POST prefer these over re-deriving
+    // the instant from the label + provider TZ, which is the root cause of
+    // the "invalid time / slot taken" regression in non-UTC deployments.
+    const publicSlot = availability?.public_slots?.find((p) => {
+      const isoTimePart = p.start.match(/T(\d{2}:\d{2})/)?.[1] ?? "";
+      return isoTimePart === time;
+    }) ?? null;
+    const updates: Partial<BookingState> = {
+      selectedTimeSlot: time,
+      selectedSlotStart: publicSlot?.start ?? null,
+      selectedSlotEnd: publicSlot?.end ?? null,
+      selectedSlotAvailableStaffIds: publicSlot?.available_staff_ids ?? null,
+    };
     if (time !== bookingState.selectedTimeSlot) {
-      updateBookingState({ selectedTimeSlot: time, holdId: null });
+      updateBookingState({ ...updates, holdId: null });
     } else {
-      updateBookingState({ selectedTimeSlot: time });
+      updateBookingState(updates);
     }
   };
 

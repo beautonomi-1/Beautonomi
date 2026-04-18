@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Redirect } from "expo-router";
-import { View, Text, ActivityIndicator } from "react-native";
+import { View, Text, ActivityIndicator, TouchableOpacity } from "react-native";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { WrongAppScreen } from "@/components/WrongAppScreen";
@@ -21,7 +21,30 @@ const PROFILE_COMPLETION_DELAY_MS = 300;
 const PROFILE_COMPLETION_TIMEOUT_MS = 8000;
 const ONBOARDING_STATUS_WARN_MS = 25_000;
 
-type PortalState = "idle" | "loading" | "customer" | "wrong_app";
+type PortalState = "idle" | "loading" | "customer" | "wrong_app" | "error";
+
+/**
+ * §Release-audit 2026-04: classify portal-check failures so the error screen
+ * can show the right CTA. Mirrors the provider app — previously the customer
+ * app would "fail open" to customer on timeout/fallback-failure, which
+ * briefly admitted providers / admins / unknown-role users into the customer
+ * shell.
+ */
+type PortalErrorKind = "timeout" | "unauthorized" | "no_portal" | "network" | "config_missing";
+
+/**
+ * §Release-audit 2026-04: map a raw users.role to the portal label the customer app
+ * cares about. Used when `/api/me/portal` fails but the lightweight `/api/me/role`
+ * responds — lets us still detect wrong-app login instead of flipping to error.
+ */
+function portalFromRole(role: string | undefined | null): string | null {
+  if (!role) return null;
+  if (role === "customer") return "customer";
+  if (role === "provider_owner" || role === "provider_staff") return "provider";
+  if (role === "provider_onboarding") return "provider_onboarding";
+  if (role === "superadmin" || role.startsWith("admin_")) return "admin";
+  return null;
+}
 
 /** Profile completion API response (GET /api/me/profile-completion) */
 type ProfileCompletionItem = { id: string; completed: boolean; required?: boolean };
@@ -57,6 +80,7 @@ function computeGatePhase(args: {
     return "loading_portal";
   }
   if (!hasSession) return "redirect_login";
+  if (portalState === "error") return "screen_portal_error";
   if (portalState === "wrong_app") return "screen_wrong_app";
   if (portalState === "customer" && screenshot) return "redirect_home_screenshot";
   if (portalState === "customer" && customerOnboardingDone === false) return "redirect_onboarding";
@@ -75,6 +99,8 @@ export default function Index() {
   const { session, loading, signOut } = useAuth();
   const [portalState, setPortalState] = useState<PortalState>("idle");
   const [wrongPortal, setWrongPortal] = useState<string | null>(null);
+  const [portalErrorKind, setPortalErrorKind] = useState<PortalErrorKind | null>(null);
+  const [portalRetryKey, setPortalRetryKey] = useState(0);
   const [profileState, setProfileState] = useState<"idle" | "loading" | "complete" | "incomplete" | "error">("idle");
   const [profileCompletionData, setProfileCompletionData] = useState<ProfileCompletion | null>(null);
   /** null = still checking; false = must complete customer onboarding wizard */
@@ -144,18 +170,48 @@ export default function Index() {
       return;
     }
 
+    // §Release-audit 2026-04: previously this fell through to "customer" when
+    // EXPO_PUBLIC_APP_URL was unset, silently admitting any signed-in user to
+    // the customer shell with zero backend verification. In dev `getBackendUrl`
+    // transparently falls back to http://localhost:3000, so a missing env there
+    // is OK; in release builds (no __DEV__) it means the app is misconfigured
+    // and we cannot safely resolve the user's portal — so fail closed with a
+    // clear screen rather than pretend everything is fine.
+    const isDev = typeof __DEV__ !== "undefined" && __DEV__;
     if (!APP_URL?.trim()) {
-      setPortalState("customer");
+      if (isDev) {
+        setPortalState("customer");
+        return;
+      }
+      setPortalErrorKind("config_missing");
+      setPortalState("error");
+      if (isSentryEnabled()) {
+        captureAuthMessage(`${IDX}.missing_app_url`, "fatal");
+      }
       return;
     }
 
     const uid = session.user.id;
     const cached = getCachedPortal(uid);
-    if (cached === "customer") {
+    // §Graceful cross-role entry (2026-04-17): we no longer hard-block
+    // provider-role users from the customer app. Server-side endpoints
+    // (`/api/public/bookings`, `/api/me/*`) accept any authenticated user,
+    // and on web a provider can already book through `/providers/<slug>`.
+    // Match that behaviour on mobile — if the user chose to open the
+    // Customer app, trust them and let them book. Only `admin` is still
+    // steered to the web admin console (it's the right tool, and mobile has
+    // no admin UI to deliver).
+    if (
+      cached === "customer" ||
+      cached === "provider" ||
+      cached === "provider_owner" ||
+      cached === "provider_staff" ||
+      cached === "provider_onboarding"
+    ) {
       setPortalState("customer");
       return;
     }
-    if (cached === "provider" || cached === "admin") {
+    if (cached === "admin") {
       setPortalState("wrong_app");
       setWrongPortal(cached);
       return;
@@ -164,21 +220,81 @@ export default function Index() {
     let cancelled = false;
     let portalTimedOut = false;
     setPortalState("loading");
+    setPortalErrorKind(null);
+
+    const enterError = (kind: PortalErrorKind) => {
+      if (cancelled) return;
+      setPortalErrorKind(kind);
+      setPortalState("error");
+      if (isSentryEnabled()) {
+        authFlowBreadcrumb(`${IDX}.portal_error`, { kind });
+      }
+    };
 
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
       portalTimedOut = true;
-      setPortalState("customer");
+      // §Release-audit 2026-04: was "fail open" — silently treating timeouts
+      // as customer. That briefly admitted providers/admins into the customer
+      // shell when /api/me/portal was slow. Now we fail closed and surface a
+      // retry screen so the user can recover explicitly.
+      enterError("timeout");
     }, PORTAL_TIMEOUT_MS);
 
     const applyPortal = (portal: string) => {
       setCachedPortal(uid, portal);
-      if (portal === "provider" || portal === "admin") {
+      // §Graceful cross-role entry (2026-04-17): previously provider-role
+      // and provider_onboarding users were redirected to a WrongAppScreen.
+      // The policy changed – we trust a verified user who chose to open
+      // the Customer app and let them book. Server endpoints are already
+      // user-scoped, not role-scoped, for all customer surfaces.
+      // `admin` is still steered to the web admin console (no mobile admin UI).
+      if (portal === "admin") {
         setWrongPortal(portal);
         setPortalState("wrong_app");
       } else {
         setPortalState("customer");
       }
+    };
+
+    // §Release-audit 2026-04: last-ditch fallback when `/api/me/portal` keeps failing
+    // (typical Bearer/mobile cause: missing public.users row that the server-side
+    // self-heal in /api/me/portal should now handle, but an older web deploy won't).
+    // We hit the lighter `/api/me/role` once and derive the portal locally. On
+    // exhaustion we now fail-closed rather than defaulting to customer.
+    const fetchRoleFallback = (reason: PortalErrorKind) => {
+      api
+        .get<{ role?: string }>("/api/me/role")
+        .then((res) => {
+          if (cancelled || portalTimedOut) return;
+          if (res.error || !res.data?.role) {
+            const status = (res.error as { status?: number } | undefined)?.status;
+            if (status === 401 || status === 403) {
+              enterError("unauthorized");
+              return;
+            }
+            if (isSentryEnabled()) {
+              authFlowBreadcrumb(`${IDX}.portal_fallback_role_failed`, { reason });
+            }
+            enterError(reason);
+            return;
+          }
+          const derived = portalFromRole(res.data.role);
+          if (!derived) {
+            enterError("no_portal");
+            return;
+          }
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb(`${IDX}.portal_fallback_role_ok`, {
+              role: res.data.role,
+              portal: derived,
+            });
+          }
+          applyPortal(derived);
+        })
+        .catch(() => {
+          if (!cancelled && !portalTimedOut) enterError(reason);
+        });
     };
 
     const fetchPortal = (attempt: number) => {
@@ -192,14 +308,18 @@ export default function Index() {
               setTimeout(() => fetchPortal(attempt + 1), 350 * (attempt + 1));
               return;
             }
-            setPortalState("customer");
+            fetchRoleFallback(status === 401 || status === 403 ? "unauthorized" : "network");
             return;
           }
-          const portal = res.data?.portal ?? "customer";
+          const portal = res.data?.portal;
+          if (!portal) {
+            fetchRoleFallback("no_portal");
+            return;
+          }
           applyPortal(portal);
         })
         .catch(() => {
-          if (!cancelled && !portalTimedOut) setPortalState("customer");
+          if (!cancelled && !portalTimedOut) fetchRoleFallback("network");
         });
     };
 
@@ -214,7 +334,7 @@ export default function Index() {
       clearTimeout(timeoutId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, session?.user?.id]);
+  }, [loading, session?.user?.id, portalRetryKey]);
 
   // Customer onboarding (web + native): server is source of truth before sending users home.
   useEffect(() => {
@@ -259,7 +379,20 @@ export default function Index() {
           if (res.error) {
             if (attempt < 3 && !cancelled) {
               retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
+              return;
             }
+            // §Release-audit 2026-04: retries exhausted. Previously we just
+            // returned, which left `customerOnboardingDone` at `null` forever and
+            // held the whole app on a Loading… spinner until the user force-
+            // closed or signed out. Pick a terminal value so the gate advances:
+            // route to the onboarding screen (idempotent — returning users will
+            // be skipped past it by server guards on that screen).
+            if (isSentryEnabled()) {
+              captureAuthMessage(`${IDX}_onboarding_fetch_exhausted`, "warning", {
+                attempts: attempt + 1,
+              });
+            }
+            setCustomerOnboardingDone(false);
             return;
           }
           setCustomerOnboardingDone(res.data?.completed === true);
@@ -274,7 +407,16 @@ export default function Index() {
           }
           if (attempt < 3 && !cancelled) {
             retryTimer = setTimeout(() => fetchOnboarding(attempt + 1), 2000 * (attempt + 1));
+            return;
           }
+          // §Release-audit 2026-04: terminal fallback for network errors too.
+          if (isSentryEnabled()) {
+            captureAuthMessage(`${IDX}_onboarding_fetch_threw_exhausted`, "warning", {
+              attempts: attempt + 1,
+              message: e instanceof Error ? e.message : String(e),
+            });
+          }
+          if (!cancelled) setCustomerOnboardingDone(false);
         });
     };
 
@@ -387,6 +529,100 @@ export default function Index() {
           signOut();
         }}
       />
+    );
+  }
+
+  // §Release-audit 2026-04: explicit error screen instead of fail-open to customer.
+  if (portalState === "error") {
+    const kind = portalErrorKind ?? "network";
+    const { title, body, primaryLabel, showRetry, showSignOut } = (() => {
+      switch (kind) {
+        case "unauthorized":
+          return {
+            title: "Please sign in again",
+            body: "Your session expired while we were checking your account.",
+            primaryLabel: "Sign in again",
+            showRetry: false,
+            showSignOut: false,
+          };
+        case "timeout":
+          return {
+            title: "Taking longer than expected",
+            body: "We couldn't reach our servers in time. Check your connection and try again.",
+            primaryLabel: "Try again",
+            showRetry: true,
+            showSignOut: true,
+          };
+        case "no_portal":
+          return {
+            title: "We couldn't place your account",
+            body: "Your account is signed in but we couldn't confirm a customer role. Retry or sign out and back in.",
+            primaryLabel: "Try again",
+            showRetry: true,
+            showSignOut: true,
+          };
+        case "config_missing":
+          return {
+            title: "App not configured",
+            body: "This build is missing a required setting (EXPO_PUBLIC_APP_URL). Please reinstall the latest app from the store, or contact support if the problem persists.",
+            primaryLabel: "Sign out",
+            showRetry: false,
+            showSignOut: false,
+          };
+        case "network":
+        default:
+          return {
+            title: "Couldn't verify your account",
+            body: "We had trouble confirming your customer access. Check your connection and try again.",
+            primaryLabel: "Try again",
+            showRetry: true,
+            showSignOut: true,
+          };
+      }
+    })();
+
+    const handlePrimary = () => {
+      clearPortalCache();
+      if (kind === "unauthorized" || kind === "config_missing") {
+        signOut();
+        return;
+      }
+      setPortalState("idle");
+      setPortalErrorKind(null);
+      setPortalRetryKey((k) => k + 1);
+    };
+
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#fff", padding: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: "600", color: "#1f2937", textAlign: "center", marginBottom: 8 }}>
+          {title}
+        </Text>
+        <Text style={{ fontSize: 14, color: "#6b7280", textAlign: "center", marginBottom: 24 }}>
+          {body}
+        </Text>
+        {showRetry || !showSignOut ? (
+          <TouchableOpacity
+            onPress={handlePrimary}
+            style={{ backgroundColor: "#1f2937", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10, marginBottom: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel={primaryLabel}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>{primaryLabel}</Text>
+          </TouchableOpacity>
+        ) : null}
+        {showSignOut ? (
+          <TouchableOpacity
+            onPress={() => {
+              clearPortalCache();
+              signOut();
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+          >
+            <Text style={{ color: "#6b7280", fontSize: 14, textDecorationLine: "underline" }}>Sign out</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
     );
   }
 

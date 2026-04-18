@@ -92,11 +92,30 @@ export function AccountStatusGuard({ children }: { children: React.ReactNode }) 
         console.log("[AccountStatusGuard] GET /api/me/account-status start", userId);
       }
       try {
-        const res = await api.get<AccountStatus>("/api/me/account-status") as {
-          data?: AccountStatus;
-          error?: { message?: string };
-        };
-        if (cancelled) return;
+        /**
+         * §Release-audit 2026-04: retry transient failures so one flaky
+         * 5xx / timeout doesn't let a suspended provider into the
+         * dashboard. 4xx responses are authoritative (not transient),
+         * so we surface those immediately — the user isn't flagged in
+         * the backend, they just lack access.
+         */
+        const MAX_ATTEMPTS = 3;
+        let res: { data?: AccountStatus; error?: { message?: string; status?: number } } | null = null;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+          if (cancelled) return;
+          res = (await api.get<AccountStatus>("/api/me/account-status")) as {
+            data?: AccountStatus;
+            error?: { message?: string; status?: number };
+          };
+          const s = (res.error as { status?: number } | undefined)?.status;
+          const isTransient = !res.data && (s === undefined || s >= 500);
+          if (!isTransient || attempt === MAX_ATTEMPTS) break;
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb(`${GUARD}.retry`, { attempt, status: s });
+          }
+          await new Promise((r) => setTimeout(r, 400 * attempt));
+        }
+        if (cancelled || !res) return;
         const status = res.data;
         if (res.error || !status) {
           if (isSentryEnabled()) {

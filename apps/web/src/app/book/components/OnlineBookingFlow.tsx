@@ -357,6 +357,17 @@ export default function OnlineBookingFlow({
         }
       }
 
+      // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key
+      // per slot-select so retries inside the fetcher don't double-create
+      // the hold and contend the slot with themselves.
+      const holdIdemKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
       const res = await fetcher.post<{ data: { hold_id: string; expires_at: string } }>(
         "/api/public/booking-holds",
         {
@@ -370,7 +381,8 @@ export default function OnlineBookingFlow({
           address: addressPayload,
           previous_hold_id: holdId || null,
           guest_fingerprint_hash: getGuestFingerprintHash(),
-        }
+        },
+        { headers: { "Idempotency-Key": holdIdemKey } }
       );
       const id = (res.data as any)?.hold_id ?? res.data?.hold_id;
       if (id) {

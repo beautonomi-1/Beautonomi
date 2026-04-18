@@ -9,9 +9,12 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import { Image } from "expo-image";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { supabase } from "@/lib/supabase/client";
@@ -37,6 +40,13 @@ const PAGE_SIZE = 50;
 export default function ChatScreen() {
   useScreenTracking("Chat");
   const { contentPadding } = useResponsive();
+  const insets = useSafeAreaInsets();
+  // §UI-audit 2026-04: derive the keyboard offset from the real safe
+  // area top so notched iPhones / iPads don't get their input bar
+  // covered by the keyboard. 44 is the stock native-stack header
+  // height on iOS; adding `insets.top` reproduces `useHeaderHeight`
+  // closely without pulling in `@react-navigation/elements`.
+  const headerHeight = insets.top + 44;
   const params = useLocalSearchParams<{ id?: string; provider_id?: string; provider_name?: string }>();
   const id = params.id;
   const providerId = params.provider_id;
@@ -52,6 +62,7 @@ export default function ChatScreen() {
   const [uploading, setUploading] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | undefined>();
   const [hasMore, setHasMore] = useState(false);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const initialScrollDone = useRef(false);
   const flatListRef = useRef<FlatList>(null);
   const { pickFromLibrary } = useImagePicker();
@@ -94,8 +105,16 @@ export default function ChatScreen() {
 
         setNextCursor(data?.next_cursor);
         setHasMore(data?.has_more ?? false);
-      } catch {
-        if (!cursor) setMessages([]);
+      } catch (err) {
+        // §UI-audit 2026-04: previously a thrown exception silently
+        // cleared messages with no error UI, so the customer saw an
+        // empty thread on network failures. Surface a retryable error.
+        if (!cursor) {
+          setMessages([]);
+          setResolveError(
+            err instanceof Error ? err.message : "Could not load messages",
+          );
+        }
       } finally {
         setLoading(false);
         setLoadingMore(false);
@@ -130,8 +149,18 @@ export default function ChatScreen() {
     return () => { cancelled = true; };
   }, [user, id, providerId]);
 
+  // §UI-audit 2026-04: when `id` changes (e.g. opening a second thread
+  // via a push-notification deep link without unmounting this screen),
+  // clear the previous conversation's messages + cursor and reset the
+  // first-scroll flag so the user never briefly sees the OLD thread
+  // while the new payload is in flight.
   useEffect(() => {
-    if (id) loadMessages();
+    if (!id) return;
+    setMessages([]);
+    setNextCursor(undefined);
+    setHasMore(false);
+    initialScrollDone.current = false;
+    loadMessages();
   }, [id, loadMessages]);
 
   // No conversation id and no provider to resolve: invalid navigation
@@ -388,7 +417,15 @@ export default function ChatScreen() {
     );
   }
 
-  const chatTitle = providerName && !id ? providerName : "Chat";
+  // §UI-audit 2026-04: previously the header title was hardcoded to
+  // "Chat" whenever an `id` was present, which meant after a deep-link
+  // (or an `/api/me/conversations/create` redirect that drops
+  // `provider_name`) the customer lost the partner name. Fall back to
+  // the first non-self sender's `sender_name` as a reasonable proxy.
+  const partnerFromMessages =
+    messages.find((m) => m.sender_id && m.sender_id !== user.id)?.sender_name ?? null;
+  const chatTitle =
+    providerName || partnerFromMessages || "Chat";
 
   if (resolveError && messages.length === 0) {
     return (
@@ -414,7 +451,7 @@ export default function ChatScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1, backgroundColor: Colors.white }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 88 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? headerHeight : 0}
       >
         {loading ? (
           <View style={{ flex: 1 }}>
@@ -507,19 +544,28 @@ export default function ChatScreen() {
                                 {att.name ? `${att.name} — ` : ""}File no longer available (retention policy).
                               </Text>
                             ) : (
-                              <Image
+                              <TouchableOpacity
                                 key={i}
-                                source={{ uri: att.url }}
+                                activeOpacity={0.85}
+                                onPress={() => setPreviewImageUrl(att.url)}
+                                accessibilityRole="imagebutton"
+                                accessibilityLabel="Open image preview"
                                 style={{
-                                  width: 192,
-                                  height: 192,
-                                  borderRadius: 8,
                                   marginBottom: i < attachmentItems.length - 1 ? 8 : 0,
                                 }}
-                                contentFit="cover"
-                                cachePolicy="memory-disk"
-                                transition={200}
-                              />
+                              >
+                                <Image
+                                  source={{ uri: att.url }}
+                                  style={{
+                                    width: 192,
+                                    height: 192,
+                                    borderRadius: 8,
+                                  }}
+                                  contentFit="cover"
+                                  cachePolicy="memory-disk"
+                                  transition={200}
+                                />
+                              </TouchableOpacity>
                             )
                           )}
                         </View>
@@ -545,7 +591,7 @@ export default function ChatScreen() {
               }}
             />
 
-            {/* Input bar */}
+            {/* Input bar — respects the iOS home indicator via `insets.bottom`. */}
             <View
               style={{
                 flexDirection: "row",
@@ -553,8 +599,8 @@ export default function ChatScreen() {
                 borderTopWidth: 1,
                 borderTopColor: Colors.gray[100],
                 paddingHorizontal: 12,
-                paddingVertical: 8,
-                paddingBottom: Platform.OS === "ios" ? 4 : 2,
+                paddingTop: 8,
+                paddingBottom: 8 + insets.bottom,
               }}
             >
               <TouchableOpacity
@@ -604,6 +650,54 @@ export default function ChatScreen() {
           </>
         )}
       </KeyboardAvoidingView>
+
+      {/* Image preview modal (attachments) */}
+      <Modal
+        visible={!!previewImageUrl}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImageUrl(null)}
+      >
+        <Pressable
+          onPress={() => setPreviewImageUrl(null)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.92)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 24,
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Close image preview"
+        >
+          <TouchableOpacity
+            onPress={() => setPreviewImageUrl(null)}
+            style={{
+              position: "absolute",
+              top: insets.top + 12,
+              right: 16,
+              width: 44,
+              height: 44,
+              borderRadius: 22,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.1)",
+            }}
+            accessibilityLabel="Close"
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </TouchableOpacity>
+          {previewImageUrl ? (
+            <Image
+              source={{ uri: previewImageUrl }}
+              style={{ width: "100%", height: "80%" }}
+              contentFit="contain"
+              transition={150}
+            />
+          ) : null}
+        </Pressable>
+      </Modal>
     </>
   );
 }

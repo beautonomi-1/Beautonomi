@@ -110,6 +110,25 @@ const eslintConfig = defineConfig([
       "perf/require-auth-on-route": "error",
     },
   },
+  // §Wave 5.1 observability guardrail: API routes and cron handlers must go
+  // through `@/lib/utils/logger` instead of bare `console.*`. The logger
+  // adds PII redaction + Sentry breadcrumbs; raw console calls skip both
+  // and produce unstructured lines that ops can't filter on. Keeping
+  // this as a warning (not error) to avoid blocking launch on historic
+  // call sites — but every new route is expected to go clean.
+  {
+    files: [
+      "src/app/api/**/route.ts",
+      "src/app/api/**/route.tsx",
+      "src/app/api/cron/**/*.ts",
+    ],
+    rules: {
+      "no-console": [
+        "warn",
+        { allow: ["warn", "error"] },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;

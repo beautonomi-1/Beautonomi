@@ -18,6 +18,7 @@ import {
   NativeSyntheticEvent,
 } from "react-native";
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { api } from "@/lib/api-client";
 import { Ionicons } from "@expo/vector-icons";
@@ -51,6 +52,7 @@ import {
   formatCurrency,
   capitalizeFirst,
 } from "@/lib/format";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
 import { trackCalendarView } from "@/lib/analytics";
 import { supabase } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
@@ -493,11 +495,19 @@ function CurrentTimeIndicator({
   slotHeight,
   endHour,
   totalGridHeight,
+  timeZone,
 }: {
   startHour: number;
   slotHeight: number;
   endHour: number;
   totalGridHeight: number;
+  /**
+   * IANA tz the grid is rendered in (provider business zone). When
+   * set, the "now" line is positioned using the wall-clock H:M in that
+   * zone instead of the device's local time, so providers working from
+   * a different timezone see the correct line.
+   */
+  timeZone?: string | null;
 }) {
   const [now, setNow] = useState(new Date());
 
@@ -506,8 +516,31 @@ function CurrentTimeIndicator({
     return () => clearInterval(interval);
   }, []);
 
-  const h = getHours(now);
-  const m = getMinutes(now);
+  // §UI-audit 2026-04: booking positions use ISO instants rendered in
+  // the provider timezone; if the provider's device is in a different
+  // zone, using `getHours(now)` / `getMinutes(now)` placed the red line
+  // on the wrong vertical offset. Derive H:M in the same zone the grid
+  // is rendered in.
+  let h: number;
+  let m: number;
+  if (timeZone) {
+    try {
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).formatToParts(now);
+      h = Number(parts.find((p) => p.type === "hour")?.value ?? getHours(now));
+      m = Number(parts.find((p) => p.type === "minute")?.value ?? getMinutes(now));
+    } catch {
+      h = getHours(now);
+      m = getMinutes(now);
+    }
+  } else {
+    h = getHours(now);
+    m = getMinutes(now);
+  }
   const rawTop = (h - startHour) * slotHeight + (m / 60) * slotHeight;
   // Always show the line when viewing today: clamp so it stays visible in the grid (offset by grid top padding)
   const GRID_TOP = 8;
@@ -639,6 +672,7 @@ function DatePickerModal({
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   // §Provider-launch (audit 2026-04): accept `?date=YYYY-MM-DD` +
   // `?booking_id=...` deep-link params so push notifications and email
   // reminders can land the provider on the exact day (and optionally open
@@ -1294,11 +1328,19 @@ export default function CalendarScreen() {
     const availableActions = STATUS_ACTIONS.filter((a) => a.key !== booking.status);
     const actionLabels = availableActions.map((a) => a.label);
     if (Platform.OS === "ios") {
+      // §UX-audit 2026-04: previously this used
+      // `actionLabels.indexOf("Cancel") + 1`, which silently evaluates to 0
+      // (the sheet's own dismiss row) whenever the "Cancel booking" action is
+      // not present (e.g. when the booking is already cancelled). That styled
+      // the dismiss row as destructive red. Derive the index from the
+      // `cancelled` key and omit the prop entirely if there's no cancel row.
+      const cancelActionIdx = availableActions.findIndex((a) => a.key === "cancelled");
+      const destructiveButtonIndex = cancelActionIdx >= 0 ? cancelActionIdx + 1 : undefined;
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: ["Cancel", ...actionLabels],
           cancelButtonIndex: 0,
-          destructiveButtonIndex: actionLabels.indexOf("Cancel") + 1,
+          ...(destructiveButtonIndex !== undefined ? { destructiveButtonIndex } : {}),
           title: `${booking.customers?.full_name ?? "Booking"} — ${capitalizeFirst(booking.status)}`,
           message: "Change booking status",
         },
@@ -1395,17 +1437,23 @@ export default function CalendarScreen() {
       const minute = Math.round((frac * 60) / inc) * inc;
       const clampedMinute = Math.min(59, Math.max(0, minute));
       const hourClamp = Math.min(23, Math.max(0, hour));
-      // Build a timezone-aware ISO string so the server stores the
-      // correct UTC instant matching the provider's local wall clock.
+      // §Release-audit 2026-04: build a timezone-aware ISO using the
+      // **provider's** IANA zone (e.g. Africa/Johannesburg), not the
+      // device's. Previously we used `naive.getTimezoneOffset()` which
+      // encoded the phone's zone into the ISO — providers on travel or
+      // running a business in a different zone than their device would
+      // have bookings persisted at the wrong UTC instant, manifesting as
+      // "booking moved to 3am" after a drag. The helper falls back to the
+      // device zone if the provider record has no timezone yet, preserving
+      // the pre-fix behaviour for that legacy case.
       const naiveDateStr = format(targetDay, "yyyy-MM-dd");
       const naiveTimeStr = `${String(hourClamp).padStart(2, "0")}:${String(clampedMinute).padStart(2, "0")}`;
-      const naive = new Date(`${naiveDateStr}T${naiveTimeStr}:00`);
-      const offsetMin = naive.getTimezoneOffset();
-      const sign = offsetMin <= 0 ? "+" : "-";
-      const absMin = Math.abs(offsetMin);
-      const ohh = String(Math.floor(absMin / 60)).padStart(2, "0");
-      const omm = String(absMin % 60).padStart(2, "0");
-      const newScheduledAt = `${naiveDateStr}T${naiveTimeStr}:00${sign}${ohh}:${omm}`;
+      const providerTimezone = provider?.timezone ?? null;
+      const newScheduledAt = buildZonedIsoForWallClock(
+        naiveDateStr,
+        naiveTimeStr,
+        providerTimezone,
+      );
 
       let newStaffId: string | undefined = booking.services?.[0]?.staff_id ?? undefined;
       if (targetStaffColumns && targetStaffColumns.length > 0 && targetDayColumnWidth > 0) {
@@ -1710,41 +1758,76 @@ export default function CalendarScreen() {
       <>
         {preferences.showAppointmentIcons && isNew && (
           <View style={{ position: "absolute", right: -2, top: -2, borderBottomLeftRadius: 6, backgroundColor: "#4f46e6", paddingHorizontal: 4, paddingVertical: 2 }}>
-            <Text style={{ fontSize: 7, fontWeight: "700", color: Colors.white }}>NEW</Text>
+            <Text
+              style={{ fontSize: 9, fontWeight: "700", color: Colors.white }}
+              allowFontScaling={false}
+            >
+              NEW
+            </Text>
           </View>
         )}
         {overflowButton}
+        {/**
+         * §UX-audit 2026-04: raised legibility floor on calendar chips.
+         * Primary name was 10px (below mobile minimums and unusable for
+         * Dynamic Type / high-contrast modes). Locked to 12px with
+         * `allowFontScaling={false}` + a compact 11px for secondary rows
+         * so chips still fit but don't require a magnifier.
+         */}
         {isSmall ? (
-          <Text style={{ fontSize: 10, fontWeight: "600", color: blockTextColor }} numberOfLines={1}>
+          <Text
+            style={{ fontSize: 12, fontWeight: "600", color: blockTextColor }}
+            numberOfLines={1}
+            allowFontScaling={false}
+          >
             {booking.customers?.full_name ?? "Walk-in"}
           </Text>
         ) : (
           <>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <Text style={{ flex: 1, fontSize: 10, fontWeight: "700", color: blockTextColor }} numberOfLines={1}>
+              <Text
+                style={{ flex: 1, fontSize: 12, fontWeight: "700", color: blockTextColor }}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 {booking.customers?.full_name ?? "Walk-in"}
               </Text>
               {preferences.showAppointmentIcons && hasNotes && (
-                <Ionicons name="document-text-outline" size={10} color={preferences.highContrast ? "#fff" : "#6b7280"} />
+                <Ionicons name="document-text-outline" size={12} color={preferences.highContrast ? "#fff" : "#6b7280"} />
               )}
             </View>
             {booking.services?.length > 0 && (
-              <Text style={{ fontSize: 9, color: preferences.highContrast ? Colors.gray[300] : Colors.gray[600] }} numberOfLines={1}>
+              <Text
+                style={{ fontSize: 11, color: preferences.highContrast ? Colors.gray[300] : Colors.gray[600] }}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 {booking.services.map((s) => (s.guest_name ? `${s.name ?? s.offering_name ?? "Service"} (${s.guest_name})` : (s.name ?? s.offering_name ?? "Service"))).join(", ")}
               </Text>
             )}
             {booking.is_group_booking && booking.group_booking_ref && (
-              <Text style={{ marginTop: 2, fontSize: 8, color: subTextColor }} numberOfLines={1}>
+              <Text
+                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 Group: {booking.group_booking_ref}
               </Text>
             )}
             {booking.location_type === "at_home" && (
-              <Text style={{ marginTop: 2, fontSize: 8, color: subTextColor }} numberOfLines={1}>
+              <Text
+                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
+                numberOfLines={1}
+                allowFontScaling={false}
+              >
                 At home
               </Text>
             )}
             {!preferences.compactMode && height >= 55 && (
-              <Text style={{ marginTop: 2, fontSize: 9, color: subTextColor }}>
+              <Text
+                style={{ marginTop: 2, fontSize: 11, color: subTextColor }}
+                allowFontScaling={false}
+              >
                 {formatTime(booking.scheduled_at)}
                 {preferences.showPrices && <> &middot; {formatCurrency(booking.total_amount, booking.currency)}</>}
               </Text>
@@ -2048,6 +2131,7 @@ export default function CalendarScreen() {
             slotHeight={SLOT_HEIGHT}
             endHour={endHour}
             totalGridHeight={totalGridHeight}
+            timeZone={provider?.timezone ?? null}
           />
         )}
       </View>
@@ -2195,15 +2279,24 @@ export default function CalendarScreen() {
             return (
               <TouchableOpacity
                 key={day.toISOString()}
+                // §UI-audit 2026-04: date chip is the primary navigation
+                // on calendar — min tap target now 44×44, weekday label
+                // text bumped to 11px, contrast raised from 0.6→0.82 for
+                // WCAG AA against DARK_HEADER. "Today" gets a brighter
+                // 0.6 ring so it's readable without being selected.
                 style={[
-                  { alignItems: "center", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4 },
-                  isSelected ? { backgroundColor: TEAL_ACCENT } : isToday ? { borderWidth: 1, borderColor: "rgba(255,255,255,0.3)" } : {},
+                  { alignItems: "center", borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, marginRight: 6, minWidth: 52, minHeight: 56 },
+                  isSelected
+                    ? { backgroundColor: TEAL_ACCENT }
+                    : isToday
+                      ? { borderWidth: 1.5, borderColor: "rgba(255,255,255,0.6)" }
+                      : {},
                 ]}
                 onPress={() => { setSelectedDate(day); if (viewMode === "week") setViewMode("day"); hasScrolledToNow.current = false; }}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: isSelected }}
               >
-                <Text style={{ fontSize: 10, fontWeight: "500", color: isSelected ? DARK_HEADER : "rgba(255,255,255,0.6)" }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: isSelected ? DARK_HEADER : "rgba(255,255,255,0.82)" }}>
                   {format(day, "EEE")}
                 </Text>
                 <Text style={{ marginTop: 2, fontSize: 16, fontWeight: "700", color: isSelected ? DARK_HEADER : Colors.white }}>
@@ -2342,7 +2435,7 @@ export default function CalendarScreen() {
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 80, paddingTop: 20 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor="#111" />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Colors.primary} colors={[Colors.primary]} />}
           onLayout={scrollToCurrentTime}
           onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
             scrollOffsetRef.current.y = e.nativeEvent.contentOffset.y;
@@ -2436,6 +2529,7 @@ export default function CalendarScreen() {
                         slotHeight={SLOT_HEIGHT}
                         endHour={endHour}
                         totalGridHeight={totalGridHeight}
+                        timeZone={provider?.timezone ?? null}
                       />
                     </View>
                   )}
@@ -2501,6 +2595,7 @@ export default function CalendarScreen() {
                         slotHeight={SLOT_HEIGHT}
                         endHour={endHour}
                         totalGridHeight={totalGridHeight}
+                        timeZone={provider?.timezone ?? null}
                       />
                     </View>
                   )}
@@ -2574,6 +2669,7 @@ export default function CalendarScreen() {
                       slotHeight={SLOT_HEIGHT}
                       endHour={endHour}
                       totalGridHeight={totalGridHeight}
+                      timeZone={provider?.timezone ?? null}
                     />
                   </View>
                 )}
@@ -2638,7 +2734,11 @@ export default function CalendarScreen() {
       />
 
       {/* ─── Floating Action Button ─── */}
-      <View style={{ position: "absolute", bottom: 24, right: 20, zIndex: 100 }}>
+      {/* §UI-audit 2026-04: `bottom: 24` previously hid the FAB under
+          the iPhone home-indicator area (and tab bar on small phones).
+          Offset by `insets.bottom` + tab bar chrome so it never lands
+          on the system gesture region. */}
+      <View style={{ position: "absolute", bottom: 24 + insets.bottom + 56, right: 20, zIndex: 100 }}>
         {fabOpen && (
           <View style={{ marginBottom: 12 }}>
             {[

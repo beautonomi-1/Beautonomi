@@ -61,14 +61,33 @@ export async function DELETE(
       throw dErr;
     }
 
-    await supabase
-      .from("bookings")
-      .update({
-        group_booking_id: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", part.booking_id)
-      .eq("provider_id", providerId);
+    // §Final-audit 2026-04 (P2 residual): previously this endpoint only
+    // set `bookings.group_booking_id = null`, leaving the child booking
+    // row and its `booking_services` ACTIVE on the calendar. That turned
+    // every removed participant into a "phantom block" — staff was still
+    // marked busy for a person who had dropped out, and
+    // `load-constraints.ts` refused to offer that slot again.
+    //
+    // Correct behavior: cancel the child booking too, which cascades
+    // through the regular cancellation triggers (status → cancelled,
+    // `cancelled_at` stamp, availability freed by load-constraints which
+    // filters `status !== 'cancelled'`). We do NOT delete the booking —
+    // audit trail must be preserved.
+    if (part.booking_id) {
+      await supabase
+        .from("bookings")
+        .update({
+          status: "cancelled",
+          cancelled_at: new Date().toISOString(),
+          cancellation_reason: "Removed from group booking",
+          group_booking_id: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", part.booking_id)
+        .eq("provider_id", providerId)
+        // Do not clobber an already-completed booking.
+        .not("status", "in", "(completed,no_show,cancelled)");
+    }
 
     return successResponse({ success: true });
   } catch (error) {

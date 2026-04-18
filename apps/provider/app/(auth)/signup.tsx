@@ -16,6 +16,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useAuth } from "@/providers/AuthProvider";
@@ -164,6 +165,9 @@ export default function SignupScreen() {
   }
 
   return (
+    // §UX-audit 2026-04: SafeArea top so signup respects notch/status bar
+    // with header hidden.
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#ffffff" }}>
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: "#ffffff" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -419,6 +423,10 @@ export default function SignupScreen() {
             onChangeText={handlePhoneChange}
             keyboardType="phone-pad"
             returnKeyType="done"
+            textContentType="telephoneNumber"
+            autoComplete="tel-national"
+            importantForAutofill="yes"
+            accessibilityLabel="Phone number"
           />
         </View>
         {phoneError ? (
@@ -704,5 +712,6 @@ export default function SignupScreen() {
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

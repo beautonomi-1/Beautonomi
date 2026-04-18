@@ -147,6 +147,14 @@ export interface AvailabilitySlot {
   /** Set when `staff_id=any` — which professional this slot was assigned to. */
   staff_id?: string;
   is_available?: boolean;
+  /**
+   * §Final-audit 2026-04: when the engine returned this slot from an
+   * any-staff union, `available_staff_ids` carries the exact set of
+   * professionals who were free. Forward this to the hold endpoint so
+   * the server resolves to one of the same candidates the client saw —
+   * avoids "that staff just got booked" surprises.
+   */
+  available_staff_ids?: string[];
 }
 
 export interface ExplorePost {

@@ -98,6 +98,14 @@ export async function GET(request: NextRequest) {
     }) => Promise<unknown>,
   }));
 
+  // Wave 3.2 (audit 2026-04 final 100/100): route the re-engagement email
+  // through the durable notification queue so transient OneSignal/email
+  // outages don't silently drop the reminder. In-app bell row is still
+  // inserted directly for instant UX once the user opens the app.
+  const { enqueueNotification } = await import(
+    "@/lib/notifications/enqueue"
+  ).catch(() => ({ enqueueNotification: null as unknown as typeof import("@/lib/notifications/enqueue").enqueueNotification }));
+
   let sent = 0;
   for (const hold of toSend) {
     try {
@@ -113,6 +121,25 @@ export async function GET(request: NextRequest) {
             offering_id: hold.offering_id,
             hold_id: hold.id,
           },
+        });
+      }
+
+      if (enqueueNotification) {
+        await enqueueNotification({
+          channel: "email",
+          templateKey: "abandoned_booking_reminder",
+          recipientUserId: hold.created_by_user_id as string,
+          payload: {
+            subject: "Finish your booking?",
+            body:
+              "Your booking hold expired before checkout. Tap to pick up where you left off.",
+            data: {
+              provider_id: hold.provider_id,
+              offering_id: hold.offering_id,
+              hold_id: hold.id,
+            },
+          },
+          dedupeKey: `abandoned:${hold.id}:email`,
         });
       }
 

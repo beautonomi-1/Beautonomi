@@ -436,12 +436,19 @@ export default function StepPayment({
     // Note: Minimum booking amount validation will be done server-side
     // We can add client-side validation here if provider info is available
 
-    const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-    const bookingDateTime = parseSelectedDatetimeInProviderTz(
-      dateStr,
-      bookingState.selectedTimeSlot!,
-      bookingState.providerTimezone,
-    );
+    // §Release-audit 2026-04: prefer the ISO start that the availability
+    // engine produced when the user selected the slot. Only fall back to
+    // deriving an instant from the HH:MM label + provider TZ when an older
+    // persisted draft is missing `selectedSlotStart` — this eliminates the
+    // "invalid time" rejection on non-UTC servers that double-translated
+    // the wall-clock time.
+    const bookingDateTime = bookingState.selectedSlotStart
+      ? new Date(bookingState.selectedSlotStart)
+      : parseSelectedDatetimeInProviderTz(
+          formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!)),
+          bookingState.selectedTimeSlot!,
+          bookingState.providerTimezone,
+        );
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services

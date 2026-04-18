@@ -68,7 +68,7 @@ export async function GET(
     // Get provider
     const { data: provider, error: providerError } = await supabase
       .from("providers")
-      .select("id")
+      .select("id, timezone")
       .eq("slug", slug)
       .eq("status", "active")
       .eq("tenant_id", tenantId)
@@ -178,6 +178,11 @@ export async function GET(
     const travelBufferMinutes =
       Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
 
+    const providerTimeZone =
+      typeof (provider as { timezone?: string | null }).timezone === "string"
+        ? (provider as { timezone?: string | null }).timezone
+        : null;
+
     let slots = await computePublicSlugAvailabilitySlots({
       supabase,
       providerId: provider.id,
@@ -189,6 +194,7 @@ export async function GET(
       activeStaffRows: staffList,
       excludeHoldId,
       excludeBookingId,
+      providerTimeZone,
     });
 
     // Filter by min_notice_minutes: exclude any slot that starts before now + lead time

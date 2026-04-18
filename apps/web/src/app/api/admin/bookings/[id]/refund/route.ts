@@ -92,7 +92,35 @@ export async function POST(
     const lockGuard = await enforcePeriodLock(supabase, financeTenantId, new Date().toISOString());
     if (lockGuard) return lockGuard;
 
-    // 1. Credit customer wallet (refunds always go to wallet)
+    // §Final-audit 2026-04: order matters.
+    //   Previously: wallet credit → booking_refunds insert. If the
+    //   refund row insert failed (RLS, schema drift, period lock), the
+    //   wallet stayed credited with no matching refund / ledger record,
+    //   and reconciliation silently drifted.
+    //   Now: insert booking_refunds FIRST (status='pending'), then
+    //   credit wallet, then flip refund to 'completed'. Trigger 490 keys
+    //   on `source_refund_id`, so the ledger row only lands once the
+    //   status reaches 'completed'. If the wallet credit fails, the
+    //   `pending` refund is deleted — everything rolls back cleanly.
+    const { data: refund, error: refundError } = await supabase
+      .from("booking_refunds")
+      .insert({
+        booking_id: id,
+        amount,
+        reason: reason || "Admin refund",
+        refund_method: "store_credit",
+        status: "pending",
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (refundError || !refund) {
+      return handleApiError(refundError, "Failed to create refund");
+    }
+
+    const refundId = (refund as { id: string }).id;
+
     const rpc = supabase.rpc.bind(supabase) as unknown as (name: string, args: Record<string, unknown>) => Promise<{ error: unknown }>;
     const { error: walletError } = await rpc("wallet_credit_admin", {
       p_user_id: b.customer_id,
@@ -105,26 +133,20 @@ export async function POST(
     });
 
     if (walletError) {
-      console.error("Wallet credit failed:", walletError);
+      console.error("Wallet credit failed; rolling back refund:", walletError);
+      await supabase.from("booking_refunds").delete().eq("id", refundId);
       return errorResponse("Failed to credit customer wallet", "WALLET_ERROR", 500);
     }
 
-    // 2. Create refund record in booking_refunds (triggers update_booking_payment_status)
-    const { data: refund, error: refundError } = await supabase
+    const { error: completeError } = await supabase
       .from("booking_refunds")
-      .insert({
-        booking_id: id,
-        amount,
-        reason: reason || "Admin refund",
-        refund_method: "store_credit",
-        status: "completed",
-        created_by: user.id,
-      })
-      .select()
-      .single();
-
-    if (refundError || !refund) {
-      return handleApiError(refundError, "Failed to create refund");
+      .update({ status: "completed" })
+      .eq("id", refundId);
+    if (completeError) {
+      console.error("Failed to flip refund to completed after wallet credit:", completeError);
+      // Wallet is credited and refund row exists in 'pending' — a daily
+      // reconciler should catch and complete this. Better than silently
+      // treating as completed.
     }
 
     // NOTE: finance_transactions row is written by trigger
@@ -137,7 +159,7 @@ export async function POST(
       actor_role: (user as { role?: string }).role || "superadmin",
       action: "admin.refund.create",
       entity_type: "refund",
-      entity_id: (refund as { id: string }).id,
+      entity_id: refundId,
       metadata: { booking_id: id, amount, reason, wallet_credit: true },
     });
 

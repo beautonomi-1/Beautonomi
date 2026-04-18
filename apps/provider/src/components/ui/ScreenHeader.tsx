@@ -10,11 +10,16 @@ interface ScreenHeaderProps {
   /** When provided, used instead of router.back() for the back button. Use for cross-tab navigation so tab state stays correct. */
   onBack?: () => void;
   rightAction?: React.ReactNode;
+  /**
+   * Optional content rendered between the back button and the title.
+   * Use for avatars / thumbnails in chat or detail headers.
+   */
+  leadingContent?: React.ReactNode;
 }
 
 const MORE_TAB_HREF = "/(app)/(tabs)/more" as const;
 
-export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction }: ScreenHeaderProps) {
+export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction, leadingContent }: ScreenHeaderProps) {
   const router = useRouter();
   const handleBack =
     onBack ??
@@ -33,7 +38,9 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction }:
         {showBackButton && (
           <TouchableOpacity
             onPress={handleBack}
-            style={{ marginRight: 12, height: 40, width: 40, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: Colors.gray[100] }}
+            // §UI-audit 2026-04: raised from 40x40 to 44x44 to hit the
+            // HIG touch-target minimum without changing visual weight.
+            style={{ marginRight: 12, height: 44, width: 44, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: Colors.gray[100] }}
             hitSlop={8}
             accessibilityLabel="Go back"
             accessibilityRole="button"
@@ -41,6 +48,7 @@ export function ScreenHeader({ title, subtitle, showBack, onBack, rightAction }:
             <Ionicons name="chevron-back" size={20} color="#111" />
           </TouchableOpacity>
         )}
+        {leadingContent}
         <View style={{ flex: 1 }}>
           <Text style={{ fontSize: 24, fontWeight: "700", color: Colors.gray[900] }} numberOfLines={1}>
             {title}

@@ -35,6 +35,8 @@ import { ArrivalQrScannerModal } from "@/components/ArrivalQrScannerModal";
 import * as Haptics from "expo-haptics";
 import { api } from "@/lib/api-client";
 import { twStyle } from "@/lib/twStyle";
+import { buildZonedIsoForWallClock } from "@/lib/tz";
+import { useProvider } from "@/providers/ProviderContext";
 import { Ionicons } from "@expo/vector-icons";
 import { Colors } from "@/constants/colors";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
@@ -291,6 +293,10 @@ export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
   const { data, loading, error, refresh } = useApi<BookingDetail>(`/api/provider/bookings/${id}`);
+  // §Release-audit 2026-04: provider timezone for tz-aware reschedule. Falls
+  // back to device local via buildZonedIsoForWallClock when unavailable.
+  const { provider: providerProfile } = useProvider();
+  const providerTimezone = providerProfile?.timezone ?? null;
   const bookingIdStr = typeof id === "string" ? id : Array.isArray(id) ? id[0] ?? "" : "";
   const { execute: postMutation, loading: mutating } = useApiMutation<{ booking?: BookingDetail; message?: string }>("post");
   const { execute: patchMutation, loading: patchLoading } = useApiMutation<{ booking?: BookingDetail }>("patch");
@@ -1009,13 +1015,14 @@ export default function BookingDetailScreen() {
       return;
     }
     setRescheduling(true);
-    const naiveDt = new Date(`${rescheduleDateStr}T${rescheduleTime}:00`);
-    const offsetMin = naiveDt.getTimezoneOffset();
-    const tzSign = offsetMin <= 0 ? "+" : "-";
-    const absMin = Math.abs(offsetMin);
-    const tzHH = String(Math.floor(absMin / 60)).padStart(2, "0");
-    const tzMM = String(absMin % 60).padStart(2, "0");
-    const newScheduledAt = `${rescheduleDateStr}T${rescheduleTime}:00${tzSign}${tzHH}:${tzMM}`;
+    // §Release-audit 2026-04: use the provider's IANA timezone, not the
+    // device's, so reschedule persists the correct UTC instant even when
+    // the provider's phone is temporarily in a different zone.
+    const newScheduledAt = buildZonedIsoForWallClock(
+      rescheduleDateStr,
+      rescheduleTime,
+      providerTimezone,
+    );
     try {
       const staffIds = (b.services ?? []).map((s: { staff_id?: string | null }) => s.staff_id).filter((sid): sid is string => !!sid);
       const checkParams = new URLSearchParams({

@@ -1,7 +1,6 @@
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { useResponsive } from "@/hooks/useResponsive";
 import { ScreenContainer } from "@/components/ui/ScreenContainer";
 import { ScreenHeader } from "@/components/ui/ScreenHeader";
 import { twStyle } from "@/lib/twStyle";
@@ -22,40 +21,40 @@ const FINANCE_ITEMS = [
 
 export default function FinanceBillingHubScreen() {
   const router = useRouter();
-  const { screenPadding } = useResponsive();
 
   return (
+    // §UX-audit 2026-04: `ScreenContainer` already renders a scrollable
+    // ScrollView with safe-area aware bottom padding. Previously this
+    // screen nested its own ScrollView inside, which produced a
+    // double-scroll with gesture conflicts (momentum could stall, the
+    // inner view would also bounce). Switch to a single scroll layer.
     <ScreenContainer>
       <ScreenHeader
         title="Finance & billing"
         subtitle="Earnings, payroll, invoices & more"
         onBack={() => router.back()}
       />
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingHorizontal: screenPadding, paddingBottom: 100 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {FINANCE_ITEMS.map((item) => (
-          <TouchableOpacity
-            key={item.route}
-            onPress={() => router.push(item.route as never)}
-            style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
-            activeOpacity={0.7}
+      {FINANCE_ITEMS.map((item) => (
+        <TouchableOpacity
+          key={item.route}
+          onPress={() => router.push(item.route as never)}
+          style={twStyle("mb-3 flex-row items-center rounded-2xl border border-gray-200 bg-white p-4")}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.label}. ${item.subtitle}`}
+        >
+          <View
+            style={[twStyle("h-10 w-10 items-center justify-center rounded-2xl"), { backgroundColor: `${item.color}20` }]}
           >
-            <View
-              style={[twStyle("h-10 w-10 items-center justify-center rounded-2xl"), { backgroundColor: `${item.color}20` }]}
-            >
-              <Ionicons name={item.icon} size={22} color={item.color} />
-            </View>
-            <View style={twStyle("ml-3 flex-1")}>
-              <Text style={twStyle("font-semibold text-gray-900")}>{item.label}</Text>
-              <Text style={twStyle("text-xs text-gray-500")}>{item.subtitle}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+            <Ionicons name={item.icon} size={22} color={item.color} />
+          </View>
+          <View style={twStyle("ml-3 flex-1")}>
+            <Text style={twStyle("font-semibold text-gray-900")}>{item.label}</Text>
+            <Text style={twStyle("text-xs text-gray-500")}>{item.subtitle}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color="#9ca3af" />
+        </TouchableOpacity>
+      ))}
     </ScreenContainer>
   );
 }
