@@ -61,6 +61,7 @@ const BASE_EXPO_CONFIG = {
         },
       },
     ],
+    "../../tooling/expo-plugins/withGradleWrapperResilience",
     [
       "expo-local-authentication",
       {

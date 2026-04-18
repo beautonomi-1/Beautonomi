@@ -20,7 +20,8 @@
     "screenshots:android:public": "node ../../tooling/screenshots/scripts/capture.mjs provider public",
     "screenshots:android:auth": "node ../../tooling/screenshots/scripts/capture.mjs provider auth",
     "clean": "npx rimraf node_modules",
-    "ios:credentials-help": "node -e \"console.log('\\nRun: eas credentials --platform ios\\n(Choose production, then complete Build Credentials for both targets.)\\nSee IOS_CREDENTIALS_SETUP.md for full steps.\\n')\""
+    "ios:credentials-help": "node -e \"console.log('\\nRun: eas credentials --platform ios\\n(Choose production, then complete Build Credentials for both targets.)\\nSee IOS_CREDENTIALS_SETUP.md for full steps.\\n')\"",
+    "eas-build-post-install": "node ../../tooling/eas-prefetch-gradle.mjs"
   },
   "dependencies": {
     "@beautonomi/analytics": "workspace:*",
