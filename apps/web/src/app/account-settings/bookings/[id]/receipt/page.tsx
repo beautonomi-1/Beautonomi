@@ -27,7 +27,7 @@ function unwrapReceiptResponse(body: unknown): Receipt | null {
     return (data as { receipt: Receipt }).receipt;
   }
   if ("booking_number" in o) {
-    return o as Receipt;
+    return o as unknown as Receipt;
   }
   return null;
 }
