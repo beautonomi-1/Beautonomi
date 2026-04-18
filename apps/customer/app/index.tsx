@@ -222,8 +222,20 @@ export default function Index() {
     setPortalState("loading");
     setPortalErrorKind(null);
 
+    let portalDeadlineId: ReturnType<typeof setTimeout> | null = null;
+    const clearPortalDeadline = () => {
+      if (portalDeadlineId !== null) {
+        clearTimeout(portalDeadlineId);
+        portalDeadlineId = null;
+      }
+    };
+
     const enterError = (kind: PortalErrorKind) => {
       if (cancelled) return;
+      // Stop the 12s watchdog so it cannot fire after we've already resolved
+      // (success or failure). Otherwise `timeout` overwrites `unauthorized` and
+      // users see "Please sign in again" flash then "Taking longer than expected".
+      clearPortalDeadline();
       setPortalErrorKind(kind);
       setPortalState("error");
       if (isSentryEnabled()) {
@@ -231,7 +243,8 @@ export default function Index() {
       }
     };
 
-    const timeoutId = setTimeout(() => {
+    portalDeadlineId = setTimeout(() => {
+      portalDeadlineId = null;
       if (cancelled) return;
       portalTimedOut = true;
       // §Release-audit 2026-04: was "fail open" — silently treating timeouts
@@ -242,6 +255,7 @@ export default function Index() {
     }, PORTAL_TIMEOUT_MS);
 
     const applyPortal = (portal: string) => {
+      clearPortalDeadline();
       setCachedPortal(uid, portal);
       // §Graceful cross-role entry (2026-04-17): previously provider-role
       // and provider_onboarding users were redirected to a WrongAppScreen.
@@ -331,7 +345,7 @@ export default function Index() {
     return () => {
       cancelled = true;
       clearTimeout(t);
-      clearTimeout(timeoutId);
+      clearPortalDeadline();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalRetryKey]);

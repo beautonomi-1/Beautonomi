@@ -124,8 +124,19 @@ export default function Index() {
     setPortalState("loading");
     setPortalErrorKind(null);
 
+    let portalDeadlineId: ReturnType<typeof setTimeout> | null = null;
+    const clearPortalDeadline = () => {
+      if (portalDeadlineId !== null) {
+        clearTimeout(portalDeadlineId);
+        portalDeadlineId = null;
+      }
+    };
+
     const enterError = (kind: PortalErrorKind) => {
       if (cancelled) return;
+      // Stop the 12s watchdog so it cannot fire after we've already resolved
+      // (success or failure). Otherwise `timeout` overwrites `unauthorized`.
+      clearPortalDeadline();
       setPortalErrorKind(kind);
       setPortalState("error");
       if (isSentryEnabled()) {
@@ -133,7 +144,8 @@ export default function Index() {
       }
     };
 
-    const timeoutId = setTimeout(() => {
+    portalDeadlineId = setTimeout(() => {
+      portalDeadlineId = null;
       if (cancelled) return;
       portalTimedOut = true;
       // §Provider-launch (audit 2026-04): was "fail open" assuming provider.
@@ -144,6 +156,7 @@ export default function Index() {
     }, PORTAL_TIMEOUT_MS);
 
     const applyPortalResult = (portal: string) => {
+      clearPortalDeadline();
       setCachedPortal(uid, portal);
       // §Graceful cross-role entry (2026-04-17): customer-role users are
       // no longer hard-blocked. They're treated like provider_onboarding
@@ -239,7 +252,7 @@ export default function Index() {
     return () => {
       cancelled = true;
       clearTimeout(t);
-      clearTimeout(timeoutId);
+      clearPortalDeadline();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, session?.user?.id, portalRetryKey]);
