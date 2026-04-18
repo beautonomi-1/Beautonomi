@@ -5,6 +5,7 @@ import {
   computePublicSlugAvailabilitySlots,
 } from "@/lib/availability/public-slug-availability-engine";
 import { parseSyntheticProviderStaffId } from "@/lib/availability/load-constraints";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import type { TimeSlot } from "@/lib/availability/types";
 import {
   getProviderIdForUser,
@@ -130,6 +131,7 @@ export async function GET(request: NextRequest) {
     // interprets that HH:MM as provider-local — shifting the instant and
     // triggering "invalid time / slot taken" in non-UTC deployments.
     let providerTimeZone: string | null = null;
+    let providerTimeZoneRaw: string | null = null;
     try {
       const admin = getSupabaseAdmin();
       const { data: providerRow } = await admin
@@ -137,7 +139,22 @@ export async function GET(request: NextRequest) {
         .select("timezone")
         .eq("id", providerIdForEngine)
         .maybeSingle();
-      providerTimeZone = (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
+      providerTimeZoneRaw = (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
+      // §Launch-audit 2026-04-18: reject invalid / legacy offset-style
+      // timezones so the availability engine never throws RangeError on
+      // Intl.DateTimeFormat. `normalizeProviderTimezone` maps common
+      // offset forms (e.g. "GMT+2" → "Etc/GMT-2") and returns null for
+      // unparseable input. When null, the engine falls back to UTC
+      // interpretation of HH:MM, which still keeps slots internally
+      // consistent even if labels drift from the provider's wall clock.
+      providerTimeZone = normalizeProviderTimezone(providerTimeZoneRaw);
+      if (providerTimeZoneRaw && !providerTimeZone) {
+        console.warn(
+          `[availability] provider ${providerIdForEngine} has invalid timezone ` +
+            `"${providerTimeZoneRaw}"; falling back to UTC. ` +
+            `Update providers.timezone to an IANA identifier (e.g. Africa/Johannesburg).`
+        );
+      }
     } catch {
       // Best-effort: if the lookup fails the engine falls back to legacy
       // behaviour (UTC interpretation of HH:MM).

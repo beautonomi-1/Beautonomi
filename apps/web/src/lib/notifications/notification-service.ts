@@ -10,6 +10,7 @@ import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { formatCurrency } from "@/lib/utils";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { formatInTimeZone } from "date-fns-tz";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 /**
  * B13: IANA timezone used when a booking row doesn't carry its provider's
@@ -20,12 +21,23 @@ import { formatInTimeZone } from "date-fns-tz";
  */
 const FALLBACK_NOTIFICATION_TIMEZONE = "UTC";
 
+/**
+ * §Launch-audit 2026-04-18: legacy provider rows can carry offset-style
+ * timezone strings (e.g. "GMT+2"), which throw inside `formatInTimeZone`
+ * because `date-fns-tz` ultimately calls `Intl.DateTimeFormat`. We
+ * canonicalise them to IANA / `Etc/GMT±N` first; if we can't parse the
+ * input we fall back to UTC (matching the historical fallback for a
+ * missing zone) so notification templates still render — just without
+ * the provider-local perspective. Bad data is fixed by supabase
+ * migration 511; this keeps the emitter resilient while ops cleans up.
+ */
 function resolveTimezone(
   tz: string | null | undefined,
 ): string {
-  return typeof tz === "string" && tz.trim().length > 0
-    ? tz.trim()
-    : FALLBACK_NOTIFICATION_TIMEZONE;
+  const normalised = normalizeProviderTimezone(tz);
+  if (normalised) return normalised;
+  const trimmed = typeof tz === "string" ? tz.trim() : "";
+  return trimmed || FALLBACK_NOTIFICATION_TIMEZONE;
 }
 
 /** B13: `toLocaleDateString()` equivalent pinned to the provider timezone. */

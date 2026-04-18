@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { forwardRef, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { BookingState, BookingStep } from "./booking-flow";
@@ -16,13 +16,13 @@ interface BookingActionBarProps {
   onBack: () => void;
 }
 
-export default function BookingActionBar({
+const BookingActionBar = forwardRef<HTMLDivElement, BookingActionBarProps>(function BookingActionBar({
   bookingState,
   currentStep,
   canProceed,
   onNext,
   onBack: _onBack,
-}: BookingActionBarProps) {
+}, ref) {
   const { bundle } = useConfigBundle();
   const tenantCurrency = bundle?.meta?.tenant_region?.default_currency ?? LAST_RESORT_CURRENCY;
   const totals = useMemo(() => {
@@ -88,6 +88,7 @@ export default function BookingActionBar({
 
   return (
     <motion.div
+      ref={ref}
       initial={{ y: 100 }}
       animate={{ y: 0 }}
       className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 shadow-lg"
@@ -184,4 +185,6 @@ export default function BookingActionBar({
       </div>
     </motion.div>
   );
-}
+});
+
+export default BookingActionBar;

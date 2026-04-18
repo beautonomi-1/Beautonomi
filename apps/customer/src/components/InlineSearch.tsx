@@ -33,6 +33,11 @@ interface InlineSearchProps {
   onSearch?: (query: string) => void;
   /** Home category filter — carried into search so results stay in context */
   contextCategorySlug?: string;
+  /**
+   * When the trigger sits in a fixed-size parent (e.g. home toolbar), stretch
+   * the hit target to fill it so alignment matches sibling icon buttons.
+   */
+  fillParent?: boolean;
 }
 
 const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -41,7 +46,7 @@ const ICON_MAP: Record<string, keyof typeof Ionicons.glyphMap> = {
   category: "grid-outline",
 };
 
-export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProps) {
+export function InlineSearch({ onSearch, contextCategorySlug, fillParent }: InlineSearchProps) {
   const [expanded, setExpanded] = useState(false);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
@@ -149,16 +154,30 @@ export function InlineSearch({ onSearch, contextCategorySlug }: InlineSearchProp
     return () => clearTimeout(t);
   }, [expanded]);
 
+  const trigger = (
+    <TouchableOpacity
+      onPress={expand}
+      accessibilityRole="button"
+      accessibilityLabel="Search"
+      accessibilityHint="Tap to open search"
+      style={
+        fillParent
+          ? { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center" }
+          : { padding: 6, minWidth: 40, minHeight: 40, alignItems: "center", justifyContent: "center" }
+      }
+      hitSlop={fillParent ? undefined : { top: 4, bottom: 4, left: 4, right: 4 }}
+    >
+      <Ionicons name="search-outline" size={fillParent ? 22 : 24} color="#374151" />
+    </TouchableOpacity>
+  );
+
   return (
     <>
-      <TouchableOpacity
-        onPress={expand}
-        accessibilityRole="button"
-        accessibilityLabel="Search"
-        accessibilityHint="Tap to open search"
-      >
-        <Ionicons name="search-outline" size={24} color="#333" />
-      </TouchableOpacity>
+      {fillParent ? (
+        <View style={{ flex: 1, alignSelf: "stretch" }}>{trigger}</View>
+      ) : (
+        trigger
+      )}
 
       <Modal
         visible={expanded}

@@ -42,9 +42,69 @@ export function getDateFromISO(isoString: string): string {
 }
 
 /**
+ * §Launch-audit 2026-04-18: some provider records were stored with
+ * non-IANA timezone strings (e.g. "GMT+2", "UTC+02", "+0200"). Passing
+ * those directly to `Intl.DateTimeFormat({ timeZone })` throws a
+ * `RangeError`, which in turn 500s /api/availability and the public
+ * slug availability route. Normalise common offset forms to their
+ * canonical `Etc/GMT±N` equivalents (note the POSIX sign flip — a
+ * positive offset east of UTC maps to `Etc/GMT-N`) and reject anything
+ * we cannot validate by round-tripping through `Intl.DateTimeFormat`.
+ * Callers should treat `null` as "no zone known — fall back to UTC".
+ */
+export function normalizeProviderTimezone(raw: string | null | undefined): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+
+  const attempt = (tz: string): string | null => {
+    try {
+      // Validate by constructing a formatter; invalid zones throw.
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return tz;
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = attempt(trimmed);
+  if (direct) return direct;
+
+  // Accept "GMT+2", "GMT-05:30", "UTC+2", "+02:00", "+02", "-0530".
+  const match = trimmed
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .match(/^(?:GMT|UTC)?([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return null;
+  const sign = match[1];
+  const hours = parseInt(match[2], 10);
+  const mins = match[3] ? parseInt(match[3], 10) : 0;
+  if (!Number.isFinite(hours) || hours > 14 || mins >= 60) return null;
+
+  // Etc/GMT offsets have an inverted sign compared to the usual UTC+N label.
+  // (See https://en.wikipedia.org/wiki/Tz_database#Area) — `Etc/GMT-2` is
+  // two hours *ahead* of UTC (what most users call "GMT+2").
+  // We cannot encode non-zero minutes through the Etc zones, so for
+  // half-hour offsets (e.g. "+05:30") we give up and return null rather
+  // than silently rounding to the nearest hour.
+  if (mins !== 0) return null;
+  const flipped = sign === "+" ? "-" : "+";
+  const etc = `Etc/GMT${flipped}${hours}`;
+  return attempt(etc);
+}
+
+/**
  * Create Date object from date string and time string in a specific timezone.
  * When timezone is provided, the returned Date represents the correct UTC instant
  * for the given wall-clock time in that zone.
+ *
+ * §Launch-audit 2026-04-18: the previous implementation threw `RangeError`
+ * when the stored timezone was not a valid IANA identifier (e.g. "GMT+2"
+ * instead of "Africa/Johannesburg"). That surfaced as a 500 on the
+ * `/api/availability` route and broke the booking flow for any provider
+ * with a legacy offset-style timezone. We now normalise the argument
+ * first and gracefully fall back to UTC when a zone cannot be validated
+ * — a caller-side log (see `/api/availability/route.ts`) flags the bad
+ * config so ops can fix the provider record.
  */
 export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: string): Date {
   const timeParts = timeStr.split(":");
@@ -52,32 +112,38 @@ export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: 
   const minutes = parseInt(timeParts[1], 10);
   const seconds = timeParts[2] ? parseInt(timeParts[2], 10) : 0;
 
-  if (timezone) {
-    const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-    const formatter = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    });
+  const normalised = timezone ? normalizeProviderTimezone(timezone) : null;
 
-    const utcGuess = new Date(iso + "Z");
-    const parts = formatter.formatToParts(utcGuess);
-    const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
-    const wallHour = get("hour") === 24 ? 0 : get("hour");
-    const diffMs =
-      (wallHour - hours) * 3600000 +
-      (get("minute") - minutes) * 60000 +
-      (get("second") - seconds) * 1000;
-    return new Date(utcGuess.getTime() - diffMs);
+  if (normalised) {
+    try {
+      const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+      const formatter = new Intl.DateTimeFormat("en-US", {
+        timeZone: normalised,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      });
+
+      const utcGuess = new Date(iso + "Z");
+      const parts = formatter.formatToParts(utcGuess);
+      const get = (type: string) => parseInt(parts.find((p) => p.type === type)?.value ?? "0", 10);
+      const wallHour = get("hour") === 24 ? 0 : get("hour");
+      const diffMs =
+        (wallHour - hours) * 3600000 +
+        (get("minute") - minutes) * 60000 +
+        (get("second") - seconds) * 1000;
+      return new Date(utcGuess.getTime() - diffMs);
+    } catch {
+      // Defence-in-depth — fall through to the UTC interpretation below.
+    }
   }
 
-  // No timezone provided — treat date + time as UTC to stay consistent
-  // with the rest of the availability engine.
+  // No timezone provided (or invalid) — treat date + time as UTC to stay
+  // consistent with the rest of the availability engine.
   const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`;
   return new Date(iso);
 }

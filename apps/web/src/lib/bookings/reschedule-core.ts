@@ -26,6 +26,7 @@ import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 export type RescheduleActor = "customer" | "provider" | "portal";
 
@@ -196,9 +197,19 @@ export async function executeReschedule(
     .select("timezone")
     .eq("id", booking.provider_id)
     .maybeSingle();
+  // §Launch-audit 2026-04-18: normalise the stored tz before handing it
+  // to `formatInTimeZone`, which would otherwise throw on legacy
+  // offset-style values like "GMT+2" (see supabase migration 511).
+  const rawProviderTz =
+    (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
   const providerTz =
-    ((providerRow as { timezone?: string | null } | null)?.timezone?.trim() ||
-      DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+    normalizeProviderTimezone(rawProviderTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  if (rawProviderTz && !normalizeProviderTimezone(rawProviderTz)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[reschedule-core] provider ${booking.provider_id} has unparseable timezone "${rawProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+    );
+  }
 
   const newDate = formatInTimeZone(newDatetime, providerTz, "yyyy-MM-dd");
   const requestedTime = formatInTimeZone(newDatetime, providerTz, "HH:mm");

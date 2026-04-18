@@ -54,3 +54,59 @@ export function toIsoUtcTimestamp(value: string | number | Date): string {
   }
   return d.toISOString();
 }
+
+/**
+ * §Launch-audit 2026-04-18: shared provider-timezone normaliser used by
+ * the web API, the customer RN app, and the provider RN app.
+ *
+ * Some older `providers.timezone` rows store offset-style strings such
+ * as `"GMT+2"`, `"UTC-05"`, or `"+02:00"`. Passing those directly to
+ * `Intl.DateTimeFormat({ timeZone })` throws a `RangeError`, which
+ * surfaced as 500s on `/api/availability`, broken notification dates,
+ * and wrong-looking clocks in the mobile apps. This helper:
+ *
+ *   1. accepts valid IANA identifiers (e.g. `"Africa/Johannesburg"`)
+ *      verbatim,
+ *   2. converts common offset forms to the POSIX `Etc/GMT±N`
+ *      equivalent — note the sign flip: `GMT+2` → `Etc/GMT-2`, which
+ *      is two hours *ahead* of UTC (the user's "GMT+2"),
+ *   3. rejects sub-hour offsets (e.g. `"+05:30"`) because the `Etc`
+ *      zones can't express them — callers should fix the data instead
+ *      of silently rounding,
+ *   4. returns `null` whenever the input can't be validated by round-
+ *      tripping through `Intl.DateTimeFormat`, so callers can decide
+ *      their own fallback (UTC, regional default, etc.).
+ *
+ * The database-side fix-up is in `supabase/migrations/511_normalize_provider_timezones.sql`.
+ */
+export function normalizeProviderTimezone(
+  raw: string | null | undefined,
+): string | null {
+  const trimmed = raw?.trim();
+  if (!trimmed) return null;
+
+  const attempt = (tz: string): string | null => {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+      return tz;
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = attempt(trimmed);
+  if (direct) return direct;
+
+  const match = trimmed
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .match(/^(?:GMT|UTC)?([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return null;
+  const sign = match[1];
+  const hours = parseInt(match[2], 10);
+  const mins = match[3] ? parseInt(match[3], 10) : 0;
+  if (!Number.isFinite(hours) || hours > 14 || mins >= 60) return null;
+  if (mins !== 0) return null;
+  const flipped = sign === "+" ? "-" : "+";
+  return attempt(`Etc/GMT${flipped}${hours}`);
+}

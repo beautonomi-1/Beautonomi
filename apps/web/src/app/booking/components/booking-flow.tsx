@@ -713,6 +713,42 @@ export default function BookingFlow() {
 
   const [isCreatingHold, setIsCreatingHold] = useState(false);
 
+  /**
+   * §Launch-audit 2026-04-18: the sticky BookingActionBar grows taller
+   * as fees/tax/tip/discount rows appear, so a static `pb-14rem` on the
+   * scroll container was not enough to keep the last few fields of the
+   * venue / your-info / forms steps visible on mobile. A ResizeObserver
+   * on the action bar publishes its measured height to the root
+   * element as `--booking-action-bar-h`; the scroll container then pads
+   * by that value + a small buffer — so the bottom of any step stays
+   * above the action bar regardless of viewport or row count.
+   *
+   * We set the var on `document.documentElement` (not the scroll
+   * container's ref) because the scroll container is re-mounted on each
+   * step change inside `<AnimatePresence mode="wait">`, which would
+   * drop the var mid-transition and cause a one-frame snap-to-default.
+   */
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = actionBarRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const apply = (height: number) => {
+      document.documentElement.style.setProperty(
+        "--booking-action-bar-h",
+        `${Math.ceil(height)}px`,
+      );
+    };
+    apply(node.getBoundingClientRect().height);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) apply(entry.contentRect.height);
+    });
+    ro.observe(node);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--booking-action-bar-h");
+    };
+  }, []);
+
   /** Release an existing hold (best-effort, fire-and-forget). */
   const releaseHold = async (holdId: string) => {
     try {
@@ -1219,8 +1255,17 @@ export default function BookingFlow() {
               opacity: { duration: 0.2 },
             }}
             className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+            style={{
+              // Fallback padding matches the old constants until the
+              // ResizeObserver publishes a measured height (first frame).
+              // `+ 1.5rem` gives the last field a little breathing room
+              // above the action bar; env(safe-area-inset-bottom) is
+              // already part of the action bar's own padding.
+              paddingBottom:
+                "calc(var(--booking-action-bar-h, 14rem) + 1.5rem)",
+            }}
           >
-            <div className="min-h-full pb-[calc(14rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(12rem+env(safe-area-inset-bottom,0px))]">
+            <div className="min-h-full">
               {currentStep === "services" ? (
                 <StepServiceSelection
                   bookingState={bookingState}
@@ -1321,8 +1366,12 @@ export default function BookingFlow() {
         </AnimatePresence>
       </main>
 
-      {/* Sticky Action Bar */}
+      {/* Sticky Action Bar — ref is forwarded to the root motion.div
+          inside the component so ResizeObserver can publish its
+          measured height to `--booking-action-bar-h` (see effect
+          above). */}
       <BookingActionBar
+        ref={actionBarRef}
         bookingState={bookingState}
         currentStep={currentStep}
         canProceed={(canProceed() ?? false) && !isCreatingHold}

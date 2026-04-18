@@ -16,6 +16,14 @@
  * the zone's rules for that specific instant.
  */
 
+/**
+ * §Launch-audit 2026-04-18: imported from the shared utils package so
+ * the web API, the customer RN app, and the provider RN app all agree
+ * on how offset-style provider timezones (e.g. `"GMT+2"`) are
+ * canonicalised. Database-level fix-up lives in supabase migration 511.
+ */
+import { normalizeProviderTimezone } from "@beautonomi/utils";
+
 /** Returns the offset (in minutes, East-positive) of `instant` in `zone`. */
 function getZoneOffsetMinutes(instant: Date, zone: string): number {
   const dtf = new Intl.DateTimeFormat("en-US", {
@@ -70,7 +78,11 @@ export function buildZonedIsoForWallClock(
 ): string {
   const [hh, mm] = timeStr.split(":").map((v) => v.padStart(2, "0"));
   const safeTime = `${hh ?? "00"}:${mm ?? "00"}:00`;
-  if (!zone || !zone.trim()) {
+  // §Launch-audit 2026-04-18: canonicalise offset-style strings so the
+  // Intl offset-probe below succeeds on legacy provider rows that
+  // haven't yet been migrated (see supabase migration 511).
+  const canonicalZone = normalizeProviderTimezone(zone);
+  if (!canonicalZone) {
     const naive = new Date(`${dateStr}T${safeTime}`);
     // getTimezoneOffset returns minutes-West; flip to minutes-East.
     const offset = -naive.getTimezoneOffset();
@@ -80,12 +92,12 @@ export function buildZonedIsoForWallClock(
   try {
     // Candidate: interpret the wall clock as if it were UTC.
     const candidate = new Date(`${dateStr}T${safeTime}Z`);
-    const offsetMinutes = getZoneOffsetMinutes(candidate, zone);
+    const offsetMinutes = getZoneOffsetMinutes(candidate, canonicalZone);
     // The true UTC instant is candidate - offset.
     const trueInstantMs = candidate.getTime() - offsetMinutes * 60_000;
     const trueInstant = new Date(trueInstantMs);
     // Now compute the offset *at that instant* (in case of DST edge cases).
-    const realOffset = getZoneOffsetMinutes(trueInstant, zone);
+    const realOffset = getZoneOffsetMinutes(trueInstant, canonicalZone);
     return `${dateStr}T${safeTime}${formatOffset(realOffset)}`;
   } catch {
     // Fall back to device local if the zone is invalid at runtime.

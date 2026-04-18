@@ -19,6 +19,7 @@ import {
   getMinutes,
   type Day,
 } from "date-fns";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 export const DEFAULT_TZ = "Africa/Johannesburg";
 const YMD_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -59,11 +60,24 @@ function buildLocalDateFromYmd(
   return date;
 }
 
-/** Resolve the effective timezone string, falling back to Africa/Johannesburg. */
+/**
+ * Resolve the effective timezone string, falling back to Africa/Johannesburg.
+ *
+ * §Launch-audit 2026-04-18: legacy provider rows can have offset-style
+ * timezones like "GMT+2" or "+02:00". Previously `isValidTimezone`
+ * would reject these and we'd silently fall back to Africa/Johannesburg
+ * — catastrophic for a New York provider stored as "GMT-05". We now
+ * first try `normalizeProviderTimezone` to canonicalise common offset
+ * forms into `Etc/GMT±N` (POSIX sign flipped), and only fall back to
+ * the regional default when the input is truly unparseable.
+ */
 export function resolveTz(tz: string | undefined | null): string {
   const trimmed = tz?.trim();
   if (!trimmed) return DEFAULT_TZ;
-  return isValidTimezone(trimmed) ? trimmed : DEFAULT_TZ;
+  if (isValidTimezone(trimmed)) return trimmed;
+  const normalised = normalizeProviderTimezone(trimmed);
+  if (normalised) return normalised;
+  return DEFAULT_TZ;
 }
 
 /**

@@ -220,6 +220,10 @@ export function availabilitySlotsAsTimeSlots(
   slots: AvailabilitySlot[],
   providerTimeZone?: string | null,
 ): TimeSlot[] {
+  // §Launch-audit 2026-04-18: the caller now pre-normalises the zone via
+  // `normalizeProviderTimezone`, so a non-null value is guaranteed to be a
+  // valid IANA id. Keep the try/catch as defence-in-depth in case an
+  // older caller still passes a raw DB value.
   const tz = providerTimeZone?.trim();
   return slots.map((s) => {
     if (tz) {

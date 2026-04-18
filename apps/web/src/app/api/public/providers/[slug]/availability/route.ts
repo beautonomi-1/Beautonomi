@@ -7,6 +7,7 @@ import {
   type OfferingTimingSlice,
 } from "@/lib/booking-slot-math/blocked-window-minutes";
 import { computePublicSlugAvailabilitySlots } from "@/lib/availability/public-slug-availability-engine";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 /**
  * GET /api/public/providers/[slug]/availability
@@ -178,10 +179,22 @@ export async function GET(
     const travelBufferMinutes =
       Number.isFinite(travelBufferParam) && travelBufferParam >= 0 ? Math.min(360, travelBufferParam) : 0;
 
-    const providerTimeZone =
+    // §Launch-audit 2026-04-18: providers.timezone has historically
+    // accepted non-IANA values ("GMT+2", "UTC-5"). Normalise before
+    // handing to the engine so Intl.DateTimeFormat never throws and
+    // /api/public/providers/[slug]/availability stays in lockstep with
+    // /api/availability — the two routes MUST agree on slot instants.
+    const rawProviderTimeZone =
       typeof (provider as { timezone?: string | null }).timezone === "string"
         ? (provider as { timezone?: string | null }).timezone
         : null;
+    const providerTimeZone = normalizeProviderTimezone(rawProviderTimeZone);
+    if (rawProviderTimeZone && !providerTimeZone) {
+      console.warn(
+        `[public-availability] provider ${provider.id} has invalid timezone ` +
+          `"${rawProviderTimeZone}"; falling back to UTC.`
+      );
+    }
 
     let slots = await computePublicSlugAvailabilitySlots({
       supabase,

@@ -42,10 +42,23 @@ import {
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
   getCustomerEtaUiParts,
+  normalizeProviderTimezone,
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
+
+/**
+ * §Launch-audit 2026-04-18: canonicalise legacy offset-style zones
+ * (e.g. "GMT+2") before handing to `toLocaleDateString`/`toLocaleTimeString`.
+ * Without this the RN JS engine's `Intl` throws and we fall back to the
+ * device's own clock, which was showing customers confusingly-shifted
+ * times for providers with non-IANA zone values. See supabase
+ * migration 511 for the database-side fix-up.
+ */
+function resolveBookingTimezone(tz?: string | null): string {
+  return normalizeProviderTimezone(tz) ?? DEFAULT_TZ;
+}
 
 function formatDate(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
@@ -56,7 +69,7 @@ function formatDate(s: string, tz?: string | null) {
       year: "numeric",
       month: "long",
       day: "numeric",
-      timeZone: tz || DEFAULT_TZ,
+      timeZone: resolveBookingTimezone(tz),
     });
   } catch {
     return parsed.toLocaleDateString("en-US", {
@@ -75,7 +88,7 @@ function formatTime(s: string, tz?: string | null) {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
-      timeZone: tz || DEFAULT_TZ,
+      timeZone: resolveBookingTimezone(tz),
     });
   } catch {
     return parsed.toLocaleTimeString("en-US", {

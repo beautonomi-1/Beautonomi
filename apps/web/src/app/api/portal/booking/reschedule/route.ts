@@ -8,6 +8,7 @@ import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
@@ -164,9 +165,17 @@ export async function POST(request: NextRequest) {
       .select('timezone')
       .eq('id', booking.provider_id)
       .maybeSingle();
+    // §Launch-audit 2026-04-18: normalise offset-style zones before
+    // feeding Intl/date-fns-tz. See migration 511.
+    const rawPortalTz =
+      (portalProviderRow as { timezone?: string | null } | null)?.timezone ?? null;
     const portalProviderTz =
-      ((portalProviderRow as { timezone?: string | null } | null)?.timezone?.trim() ||
-        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+      normalizeProviderTimezone(rawPortalTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    if (rawPortalTz && !normalizeProviderTimezone(rawPortalTz)) {
+      console.warn(
+        `[portal-reschedule] provider ${booking.provider_id} has unparseable timezone "${rawPortalTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+      );
+    }
 
     const newDate = formatInTimeZone(newDatetime, portalProviderTz, "yyyy-MM-dd");
     const requestedTime = formatInTimeZone(newDatetime, portalProviderTz, "HH:mm");

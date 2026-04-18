@@ -7,6 +7,7 @@ import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -186,9 +187,18 @@ export async function POST(
       .select('timezone')
       .eq('id', booking.provider_id)
       .maybeSingle();
+    // §Launch-audit 2026-04-18: normalise legacy offset-style zones (e.g.
+    // "GMT+2") before handing to `formatInTimeZone`, otherwise Intl throws
+    // and the reschedule 500s. See supabase migration 511.
+    const rawProviderTz =
+      (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
     const providerTz =
-      ((providerRow as { timezone?: string | null } | null)?.timezone?.trim() ||
-        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+      normalizeProviderTimezone(rawProviderTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    if (rawProviderTz && !normalizeProviderTimezone(rawProviderTz)) {
+      console.warn(
+        `[reschedule] provider ${booking.provider_id} has unparseable timezone "${rawProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+      );
+    }
 
     // B5: derive the target calendar date and HH:mm in the provider's tz
     // (not UTC, not the Node server's local tz). The previous code compared
