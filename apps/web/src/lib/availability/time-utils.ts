@@ -3,6 +3,9 @@
  * Helper functions for time calculations and conversions
  */
 
+import { fromZonedTime } from "date-fns-tz";
+import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+
 /**
  * Parse time string (HH:MM:SS or HH:MM) to minutes since midnight
  */
@@ -52,19 +55,21 @@ export function getDateFromISO(isoString: string): string {
  * we cannot validate by round-tripping through `Intl.DateTimeFormat`.
  * Callers should treat `null` as "no zone known — fall back to UTC".
  */
+/** True when `tz` is accepted as an IANA time zone id by `Intl` (runtime validation). */
+export function isValidIanaTimeZoneId(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function normalizeProviderTimezone(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim();
   if (!trimmed) return null;
 
-  const attempt = (tz: string): string | null => {
-    try {
-      // Validate by constructing a formatter; invalid zones throw.
-      new Intl.DateTimeFormat("en-US", { timeZone: tz });
-      return tz;
-    } catch {
-      return null;
-    }
-  };
+  const attempt = (tz: string): string | null => (isValidIanaTimeZoneId(tz) ? tz : null);
 
   const direct = attempt(trimmed);
   if (direct) return direct;
@@ -142,10 +147,15 @@ export function combineDateAndTime(dateStr: string, timeStr: string, timezone?: 
     }
   }
 
-  // No timezone provided (or invalid) — treat date + time as UTC to stay
-  // consistent with the rest of the availability engine.
-  const iso = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}Z`;
-  return new Date(iso);
+  // No usable IANA zone: do **not** treat wall-clock as UTC — that shifts
+  // customer confirmation (+2h in ZA when e.g. 03:00 was meant as local).
+  // Match {@link parseSelectedDatetimeInProviderTz} / marketplace default.
+  const isoLocal = `${dateStr}T${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  try {
+    return fromZonedTime(isoLocal, DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+  } catch {
+    return new Date(`${isoLocal}Z`);
+  }
 }
 
 /**

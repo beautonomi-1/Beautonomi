@@ -7,6 +7,8 @@ import {
   getProviderIdForUser,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 
 /**
  * GET /api/provider/settings/business-details
@@ -188,6 +190,58 @@ export async function PATCH(request: NextRequest) {
       };
 
       updates.social_media_links = socialMediaLinks;
+    }
+
+    const { data: existingProvider, error: existingProviderError } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .single();
+    if (existingProviderError) {
+      throw existingProviderError;
+    }
+
+    let locRow: {
+      country: string | null;
+      city: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    } | null = null;
+
+    const { data: primaryLocRow } = await supabase
+      .from("provider_locations")
+      .select("country, city, latitude, longitude")
+      .eq("provider_id", providerId)
+      .eq("is_primary", true)
+      .maybeSingle();
+    if (primaryLocRow) {
+      locRow = primaryLocRow as typeof locRow;
+    } else {
+      const { data: firstLocRow } = await supabase
+        .from("provider_locations")
+        .select("country, city, latitude, longitude")
+        .eq("provider_id", providerId)
+        .limit(1)
+        .maybeSingle();
+      if (firstLocRow) {
+        locRow = firstLocRow as typeof locRow;
+      }
+    }
+
+    const mergedForInference = {
+      country: locRow?.country ?? null,
+      city: locRow?.city ?? null,
+      latitude: locRow?.latitude ?? null,
+      longitude: locRow?.longitude ?? null,
+    };
+
+    const timezoneCandidate =
+      body.timezone !== undefined ? (updates.timezone ?? null) : existingProvider?.timezone ?? null;
+    if (!normalizeProviderTimezone(timezoneCandidate)) {
+      const inferred = inferProviderTimezoneFromLocation(mergedForInference);
+      if (inferred) {
+        updates.timezone = inferred;
+      }
     }
 
     const { data: provider, error } = await supabase

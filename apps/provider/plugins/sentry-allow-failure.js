@@ -3,8 +3,10 @@ const fs = require("fs");
 const path = require("path");
 
 const SENTRY_PHASE_NAME = "Upload Debug Symbols to Sentry";
+const BUNDLE_PHASE_NAME = "Bundle React Native code and images";
 const SOURCE_ENV_LINE =
   'source "${SRCROOT}/.xcode.env" 2>/dev/null || true';
+// Set in script body so child scripts (e.g. sentry-xcode-debug-files.sh) see it; EAS/pnpm run from ios/ and require.resolve fails.
 const EXPORT_CLI_PATH_LINE =
   'export SENTRY_CLI_PACKAGE_PATH="${SRCROOT}/../node_modules/@sentry/cli"';
 
@@ -21,8 +23,9 @@ function findXcodeProjectName(iosRoot) {
   return null;
 }
 
-/** Find the start index of the Sentry phase script content (after shellScript = ") in pbx. Returns index or null. */
+/** Find the start index of the Sentry phase script content (after shellScript = ") in pbx. Returns { scriptIdx } or null. */
 function findSentryScriptIndex(pbx) {
+  // 1) Try by phase name (Expo/Sentry add "Upload Debug Symbols to Sentry")
   const phaseMarker = `name = "${SENTRY_PHASE_NAME}"`;
   let idx = pbx.indexOf(phaseMarker);
   if (idx !== -1) {
@@ -32,8 +35,33 @@ function findSentryScriptIndex(pbx) {
       return idx + scriptMatch.index + scriptMatch[0].length;
     }
   }
+  // 2) Fallback: find any shellScript that runs the Sentry debug-files script
   const sentryScriptMarker = "sentry-xcode-debug-files";
   idx = pbx.indexOf(sentryScriptMarker);
+  if (idx !== -1) {
+    const before = pbx.slice(0, idx);
+    const scriptOpen = before.lastIndexOf('shellScript = "');
+    if (scriptOpen !== -1) {
+      const contentStart = scriptOpen + 'shellScript = "'.length;
+      return contentStart;
+    }
+  }
+  return null;
+}
+
+/** Find shellScript start for "Bundle React Native code and images" (Sentry wraps via sentry-xcode.sh). */
+function findBundleScriptIndex(pbx) {
+  const phaseMarker = `name = "${BUNDLE_PHASE_NAME}"`;
+  let idx = pbx.indexOf(phaseMarker);
+  if (idx !== -1) {
+    const afterPhase = pbx.slice(idx);
+    const scriptMatch = afterPhase.match(/shellScript\s*=\s*"/);
+    if (scriptMatch) {
+      return idx + scriptMatch.index + scriptMatch[0].length;
+    }
+  }
+  const sentryMarker = "sentry-xcode.sh";
+  idx = pbx.indexOf(sentryMarker);
   if (idx !== -1) {
     const before = pbx.slice(0, idx);
     const scriptOpen = before.lastIndexOf('shellScript = "');
@@ -44,83 +72,103 @@ function findSentryScriptIndex(pbx) {
   return null;
 }
 
+function prependSourceEnvToPhase(pbx, scriptIdx) {
+  const restHead = pbx.slice(scriptIdx, scriptIdx + 180);
+  if (restHead.includes("${SRCROOT}/.xcode.env")) {
+    return pbx;
+  }
+  const before = pbx.slice(0, scriptIdx);
+  const after = pbx.slice(scriptIdx);
+  const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  const toInsert = esc(SOURCE_ENV_LINE) + "\\n" + esc(EXPORT_CLI_PATH_LINE) + "\\n";
+  return before + toInsert + after;
+}
+
 /**
- * 1) Injects SENTRY_ALLOW_FAILURE=true into ios/.xcode.env.
- * 2) Prepends sourcing of .xcode.env to the "Upload Debug Symbols to Sentry" Xcode phase script
- *    so the phase actually sees it (EAS env is not passed to Run Script phases).
- * This allows the build to succeed when dSYM upload fails (e.g. no SENTRY_AUTH_TOKEN).
+ * Apply .xcode.env and pbxproj changes. Used by the config plugin and by local test.
+ * @param {string} iosRoot - Path to ios folder
+ * @param {string} [projectName] - Xcode project name (e.g. "customer"); if omitted, discovered from iosRoot
+ */
+function applySentryAllowFailure(iosRoot, projectName) {
+  const envPath = path.join(iosRoot, ".xcode.env");
+  const lines = [
+    // EAS `env` is not passed to Xcode Run Script phases; sentry-xcode.sh checks this literal `true`.
+    "export SENTRY_DISABLE_AUTO_UPLOAD=true",
+    "export SENTRY_ALLOW_FAILURE=true",
+    // So the "Upload Debug Symbols to Sentry" phase can find @sentry/cli when run from ios/ (EAS/pnpm).
+    'export SENTRY_CLI_PACKAGE_PATH="${SRCROOT}/../node_modules/@sentry/cli"',
+    // Node require.resolve('@sentry/cli/package.json') runs from ios/; pnpm layout needs NODE_PATH to resolve it.
+    'export NODE_PATH="${SRCROOT}/../node_modules"',
+  ];
+  let content = "";
+  if (fs.existsSync(envPath)) {
+    content = fs.readFileSync(envPath, "utf8");
+  }
+  let changed = false;
+  const keyForLine = (line) => {
+    if (line.includes("SENTRY_DISABLE_AUTO_UPLOAD")) return "SENTRY_DISABLE_AUTO_UPLOAD";
+    if (line.includes("SENTRY_ALLOW_FAILURE")) return "SENTRY_ALLOW_FAILURE";
+    if (line.includes("SENTRY_CLI_PACKAGE_PATH")) return "SENTRY_CLI_PACKAGE_PATH";
+    if (line.includes("NODE_PATH")) return "NODE_PATH";
+    return null;
+  };
+  for (const line of lines) {
+    const key = keyForLine(line);
+    if (!key || content.includes(key)) continue;
+    const suffix = content.trimEnd() ? "\n" + line + "\n" : line + "\n";
+    content = content.trimEnd() + suffix;
+    changed = true;
+  }
+  if (changed) {
+    fs.writeFileSync(envPath, content, "utf8");
+  }
+
+  const resolvedName = projectName || findXcodeProjectName(iosRoot);
+  if (!resolvedName) return;
+  const pbxPath = path.join(iosRoot, resolvedName + ".xcodeproj", "project.pbxproj");
+  if (!fs.existsSync(pbxPath)) {
+    return;
+  }
+  let pbx = fs.readFileSync(pbxPath, "utf8");
+  let modified = false;
+  const bundleIdx = findBundleScriptIndex(pbx);
+  if (bundleIdx != null) {
+    const next = prependSourceEnvToPhase(pbx, bundleIdx);
+    if (next !== pbx) {
+      pbx = next;
+      modified = true;
+    }
+  }
+  const dsymIdx = findSentryScriptIndex(pbx);
+  if (dsymIdx != null) {
+    const next = prependSourceEnvToPhase(pbx, dsymIdx);
+    if (next !== pbx) {
+      pbx = next;
+      modified = true;
+    }
+  }
+  if (modified) {
+    fs.writeFileSync(pbxPath, pbx, "utf8");
+  }
+}
+
+/**
+ * 1) Injects SENTRY_DISABLE_AUTO_UPLOAD, SENTRY_ALLOW_FAILURE, and CLI path into ios/.xcode.env.
+ * 2) Prepends sourcing of .xcode.env to the Sentry-related Run Script phases so variables are visible
+ *    (EAS `env` is not passed to Xcode script phases). Required for sentry-xcode.sh (bundle) and
+ *    sentry-xcode-debug-files.sh (dSYM) when SENTRY_AUTH_TOKEN is absent.
  */
 function withSentryAllowFailure(config) {
   return withDangerousMod(config, [
     "ios",
     async (config) => {
       const iosRoot = config.modRequest.platformProjectRoot;
-
-      // 1) Ensure .xcode.env exports SENTRY_ALLOW_FAILURE and SENTRY_CLI_PACKAGE_PATH
-      const envPath = path.join(iosRoot, ".xcode.env");
-      const linesToAdd = [
-        "export SENTRY_ALLOW_FAILURE=true",
-        'export SENTRY_CLI_PACKAGE_PATH="${SRCROOT}/../node_modules/@sentry/cli"',
-        'export NODE_PATH="${SRCROOT}/../node_modules"',
-      ];
-      let content = "";
-      if (fs.existsSync(envPath)) {
-        content = fs.readFileSync(envPath, "utf8");
-      }
-      let changed = false;
-      if (!content.includes("SENTRY_ALLOW_FAILURE")) {
-        const line = linesToAdd[0];
-        const suffix = content.trimEnd() ? "\n" + line + "\n" : line + "\n";
-        content = content.trimEnd() + suffix;
-        changed = true;
-      }
-      if (!content.includes("SENTRY_CLI_PACKAGE_PATH")) {
-        const line = linesToAdd[1];
-        const suffix = content.trimEnd() ? "\n" + line + "\n" : line + "\n";
-        content = content.trimEnd() + suffix;
-        changed = true;
-      }
-      if (!content.includes("NODE_PATH")) {
-        const line = linesToAdd[2];
-        const suffix = content.trimEnd() ? "\n" + line + "\n" : line + "\n";
-        content = content.trimEnd() + suffix;
-        changed = true;
-      }
-      if (changed) {
-        fs.writeFileSync(envPath, content, "utf8");
-      }
-
-      // 2) Prepend source .xcode.env to the Sentry phase script so it sees the var
-      const projectName = config.slug || config.name || findXcodeProjectName(iosRoot);
-      if (!projectName) return config;
-      const pbxPath = path.join(iosRoot, projectName + ".xcodeproj", "project.pbxproj");
-      if (!fs.existsSync(pbxPath)) {
-        return config;
-      }
-      let pbx = fs.readFileSync(pbxPath, "utf8");
-      const scriptIdx = findSentryScriptIndex(pbx);
-      if (scriptIdx == null) {
-        return config;
-      }
-      const restOfScript = pbx.slice(scriptIdx, scriptIdx + 500);
-      if (
-        restOfScript.includes(".xcode.env") &&
-        restOfScript.includes("source ") &&
-        restOfScript.includes("SENTRY_CLI_PACKAGE_PATH")
-      ) {
-        return config;
-      }
-      const insertPoint = scriptIdx;
-      const before = pbx.slice(0, insertPoint);
-      const after = pbx.slice(insertPoint);
-      const esc = (s) => s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      const toInsert =
-        esc(SOURCE_ENV_LINE) + "\\n" + esc(EXPORT_CLI_PATH_LINE) + "\\n";
-      pbx = before + toInsert + after;
-      fs.writeFileSync(pbxPath, pbx, "utf8");
+      const projectName = config.slug || config.name || null;
+      applySentryAllowFailure(iosRoot, projectName);
       return config;
     },
   ]);
 }
 
 module.exports = withSentryAllowFailure;
+module.exports.applySentryAllowFailure = applySentryAllowFailure;

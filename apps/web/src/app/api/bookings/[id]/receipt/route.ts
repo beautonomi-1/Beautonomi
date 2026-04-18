@@ -9,6 +9,8 @@ import { computeBookingOutstandingDisplay } from "@/lib/bookings/display-invaria
 type BookingServiceRow = {
   price?: number | null;
   guest_name?: string | null;
+  offerings?: { title?: string | null; price?: number | null } | null;
+  offering?: { title?: string | null; price?: number | null } | null;
   /**
    * B14: immutable tax snapshot captured at booking time
    * (F17 / migration 493). Shape: `{ code, rate, inclusive, jurisdiction, source, resolved_at }`.
@@ -23,7 +25,6 @@ type BookingServiceRow = {
     source?: string | null;
     resolved_at?: string | null;
   } | null;
-  offerings?: { title?: string | null; price?: number | null } | null;
 };
 
 type BookingAddonRow = {
@@ -115,7 +116,12 @@ export async function GET(
           currency,
           guest_name,
           tax_snapshot,
-          offerings:offerings!booking_services_offering_id_fkey(id, title, price, duration_minutes)
+          offering:offerings(
+            id,
+            title,
+            price,
+            duration_minutes
+          )
         ),
         booking_addons:booking_addons(
           id,
@@ -274,13 +280,14 @@ export async function GET(
       customer: booking.customer,
       provider: booking.provider,
       services: booking.booking_services?.map((bs: BookingServiceRow) => {
-        const title = bs.offerings?.title || "Service";
+        const title = (bs.offering?.title ?? bs.offerings?.title) || "Service";
+        const offeringPrice = bs.offering?.price ?? bs.offerings?.price;
         const guest = bs.guest_name?.trim();
         return {
           name: guest ? `${title} (${guest})` : title,
           quantity: 1,
-          price: bs.price || bs.offerings?.price || 0,
-          total: bs.price || bs.offerings?.price || 0,
+          price: bs.price ?? offeringPrice ?? 0,
+          total: bs.price ?? offeringPrice ?? 0,
           // B14: forward the immutable tax snapshot stamped at booking
           // creation so clients render the real VAT line (rate + inclusive
           // flag) even if the provider's current tax settings have changed.

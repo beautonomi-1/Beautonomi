@@ -1,4 +1,4 @@
-const { withAndroidManifest } = require("@expo/config-plugins");
+const { withAndroidManifest } = require("expo/config-plugins");
 
 /**
  * Android 11+ WrongAppScreen / sibling deep links: declare <queries> (peer

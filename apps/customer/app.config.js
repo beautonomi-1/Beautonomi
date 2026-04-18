@@ -182,6 +182,8 @@ const BASE_EXPO_CONFIG = {
         organization: "beautonomi",
       },
     ],
+    // After Sentry: ensure EAS env for uploads reaches Run Script phases (see plugin header).
+    "./plugins/sentry-allow-failure",
   ],
   extra: {
     eas: { projectId: "434ef972-0597-4d93-9c09-ff7b9e11b149" },
