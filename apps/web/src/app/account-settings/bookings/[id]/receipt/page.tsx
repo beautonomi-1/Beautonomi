@@ -15,6 +15,23 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { useTenantLocaleTag } from "@/hooks/useTenantLocaleTag";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 
+/** Normalize `/api/bookings/.../receipt` JSON (flat `{ receipt }` vs `{ data: { receipt } }`). */
+function unwrapReceiptResponse(body: unknown): Receipt | null {
+  if (!body || typeof body !== "object") return null;
+  const o = body as Record<string, unknown>;
+  if ("receipt" in o && o.receipt && typeof o.receipt === "object") {
+    return o.receipt as Receipt;
+  }
+  const data = o.data;
+  if (data && typeof data === "object" && "receipt" in (data as object)) {
+    return (data as { receipt: Receipt }).receipt;
+  }
+  if ("booking_number" in o) {
+    return o as unknown as Receipt;
+  }
+  return null;
+}
+
 interface Receipt {
   booking_number: string;
   booking_date: string;
@@ -96,12 +113,12 @@ export default function ReceiptPage() {
     try {
       setIsLoading(true);
       setErrorMessage(null);
-      const response = await fetcher.get<{ receipt: Receipt } | Receipt>(
-        `/api/bookings/${bookingId}/receipt`,
-        { cache: "no-store" }
-      );
-      // Handle both `{ receipt: {...} }` and flat receipt shapes
-      const receiptData = (response as { receipt?: Receipt }).receipt ?? (response as Receipt);
+      // staleTimeMs: 0 — never reuse a cached GET; receipt + auth must be fresh.
+      const response = await fetcher.get<unknown>(`/api/bookings/${bookingId}/receipt`, {
+        cache: "no-store",
+        staleTimeMs: 0,
+      });
+      const receiptData = unwrapReceiptResponse(response);
       setReceipt(receiptData?.booking_number ? receiptData : null);
     } catch (error) {
       console.error("Failed to load receipt:", error);

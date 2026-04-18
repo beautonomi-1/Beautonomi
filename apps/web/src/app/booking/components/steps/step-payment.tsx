@@ -23,7 +23,7 @@ import { useConfigBundle } from "@/providers/ConfigBundleProvider";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { subscribeRecurringEligible } from "@/lib/recurring/subscribe-recurring-eligibility";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
-import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
+import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
 
 type PublicBookingCreateResult = {
   booking_id: string;
@@ -442,13 +442,13 @@ export default function StepPayment({
     // persisted draft is missing `selectedSlotStart` — this eliminates the
     // "invalid time" rejection on non-UTC servers that double-translated
     // the wall-clock time.
-    const bookingDateTime = bookingState.selectedSlotStart
-      ? new Date(bookingState.selectedSlotStart)
-      : parseSelectedDatetimeInProviderTz(
-          formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!)),
-          bookingState.selectedTimeSlot!,
-          bookingState.providerTimezone,
-        );
+    const dateYmd = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+    const bookingDateTime = reconcileBookingInstantWithSlotLabel(
+      bookingState.selectedSlotStart,
+      dateYmd,
+      bookingState.selectedTimeSlot!,
+      bookingState.providerTimezone,
+    );
 
     // For group bookings, create services array from all participants
     // For regular bookings, use selected services

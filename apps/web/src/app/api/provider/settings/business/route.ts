@@ -9,6 +9,8 @@ import {
   notFoundResponse,
 } from "@/lib/supabase/api-helpers";
 import { requirePermission } from "@/lib/auth/requirePermission";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
+import { inferProviderTimezoneFromLocation } from "@/lib/regions/infer-provider-timezone";
 
 /**
  * GET /api/provider/settings/business
@@ -257,6 +259,78 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
+    const { data: existingProvider, error: existingProviderError } = await supabase
+      .from("providers")
+      .select("timezone")
+      .eq("id", providerId)
+      .single();
+    if (existingProviderError) {
+      throw existingProviderError;
+    }
+
+    const hasAddress =
+      body.address_line1 !== undefined ||
+      body.city !== undefined ||
+      body.state !== undefined ||
+      body.postal_code !== undefined ||
+      body.country !== undefined;
+
+    let locRow: {
+      id: string;
+      country: string | null;
+      city: string | null;
+      latitude: number | null;
+      longitude: number | null;
+    } | null = null;
+
+    const { data: primaryLocRow } = await supabase
+      .from("provider_locations")
+      .select("id, country, city, latitude, longitude")
+      .eq("provider_id", providerId)
+      .eq("is_primary", true)
+      .maybeSingle();
+    if (primaryLocRow?.id) {
+      locRow = primaryLocRow as typeof locRow;
+    } else {
+      const { data: firstLocRow } = await supabase
+        .from("provider_locations")
+        .select("id, country, city, latitude, longitude")
+        .eq("provider_id", providerId)
+        .limit(1)
+        .maybeSingle();
+      if (firstLocRow?.id) {
+        locRow = firstLocRow as typeof locRow;
+      }
+    }
+
+    if (hasAddress && locRow?.id) {
+      const locUpdates: Record<string, any> = {};
+      if (body.address_line1 !== undefined) locUpdates.address_line1 = body.address_line1;
+      if (body.city !== undefined) locUpdates.city = body.city;
+      if (body.state !== undefined) locUpdates.state = body.state;
+      if (body.postal_code !== undefined) locUpdates.postal_code = body.postal_code;
+      if (body.country !== undefined) locUpdates.country = body.country;
+      if (Object.keys(locUpdates).length > 0) {
+        await supabase.from("provider_locations").update(locUpdates).eq("id", locRow.id);
+      }
+    }
+
+    const mergedForInference = {
+      country: body.country !== undefined ? body.country : locRow?.country ?? null,
+      city: body.city !== undefined ? body.city : locRow?.city ?? null,
+      latitude: locRow?.latitude ?? null,
+      longitude: locRow?.longitude ?? null,
+    };
+
+    const timezoneCandidate =
+      body.timezone !== undefined ? (updates.timezone ?? null) : existingProvider?.timezone ?? null;
+    if (!normalizeProviderTimezone(timezoneCandidate)) {
+      const inferred = inferProviderTimezoneFromLocation(mergedForInference);
+      if (inferred) {
+        updates.timezone = inferred;
+      }
+    }
+
     const { data: provider, error } = await supabase
       .from("providers")
       .update(updates)
@@ -266,45 +340,6 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       throw error;
-    }
-
-    // Address: update primary or first provider_location if address fields sent
-    const hasAddress =
-      body.address_line1 !== undefined ||
-      body.city !== undefined ||
-      body.state !== undefined ||
-      body.postal_code !== undefined ||
-      body.country !== undefined;
-    if (hasAddress) {
-      let locId: string | null = null;
-      const { data: primaryLoc } = await supabase
-        .from("provider_locations")
-        .select("id")
-        .eq("provider_id", providerId)
-        .eq("is_primary", true)
-        .maybeSingle();
-      if (primaryLoc?.id) locId = primaryLoc.id;
-      else {
-        const { data: firstLoc } = await supabase
-          .from("provider_locations")
-          .select("id")
-          .eq("provider_id", providerId)
-          .limit(1)
-          .maybeSingle();
-        if (firstLoc?.id) locId = firstLoc.id;
-      }
-
-      if (locId) {
-        const locUpdates: Record<string, any> = {};
-        if (body.address_line1 !== undefined) locUpdates.address_line1 = body.address_line1;
-        if (body.city !== undefined) locUpdates.city = body.city;
-        if (body.state !== undefined) locUpdates.state = body.state;
-        if (body.postal_code !== undefined) locUpdates.postal_code = body.postal_code;
-        if (body.country !== undefined) locUpdates.country = body.country;
-        if (Object.keys(locUpdates).length > 0) {
-          await supabase.from("provider_locations").update(locUpdates).eq("id", locId);
-        }
-      }
     }
 
     return successResponse(provider);

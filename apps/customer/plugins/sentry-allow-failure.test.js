@@ -9,11 +9,23 @@ const os = require("os");
 const { applySentryAllowFailure } = require("./sentry-allow-failure.js");
 
 const SENTRY_PHASE_NAME = "Upload Debug Symbols to Sentry";
+const BUNDLE_PHASE_NAME = "Bundle React Native code and images";
 
 const FAKE_PBXPROJ = `// !$*UTF8*$!
 {
 	archiveVersion = 1;
 	objects = {
+		BUNDLE999 = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 255;
+			files = ();
+			inputPaths = ();
+			name = "${BUNDLE_PHASE_NAME}";
+			outputPaths = ();
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/bin/sh sentry-xcode.sh ./scripts/react-native-xcode.sh";
+		};
 		ABC123 = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 255;
@@ -51,6 +63,12 @@ function runTest() {
     process.exit(1);
   }
   const envContent = fs.readFileSync(envPath, "utf8");
+  if (!envContent.includes("SENTRY_DISABLE_AUTO_UPLOAD")) {
+    console.error("FAIL: .xcode.env missing SENTRY_DISABLE_AUTO_UPLOAD");
+    console.error(envContent);
+    cleanup();
+    process.exit(1);
+  }
   if (!envContent.includes("export SENTRY_ALLOW_FAILURE=true")) {
     console.error("FAIL: .xcode.env missing SENTRY_ALLOW_FAILURE");
     console.error(envContent);
@@ -83,13 +101,26 @@ function runTest() {
     cleanup();
     process.exit(1);
   }
-  console.log("PASS: project.pbxproj Sentry phase prefixed with source .xcode.env");
+  // pbxproj escapes quotes in shellScript; match the stable path substring instead.
+  const sourceMatches = (pbxContent.match(/\$\{SRCROOT\}\/\.xcode\.env/g) || []).length;
+  if (sourceMatches !== 2) {
+    console.error("FAIL: expected .xcode.env source in both bundle and dSYM phases, got", sourceMatches);
+    cleanup();
+    process.exit(1);
+  }
+  console.log("PASS: project.pbxproj bundle + dSYM phases prefixed with source .xcode.env");
 
+  const envAfterFirst = fs.readFileSync(envPath, "utf8");
   applySentryAllowFailure(iosRoot, "customer");
   const pbxContent2 = fs.readFileSync(pbxPath, "utf8");
-  const count = (pbxContent2.match(/\.xcode\.env/g) || []).length;
-  if (count > 1) {
-    console.error("FAIL: idempotency - source .xcode.env appeared multiple times");
+  const envAfterSecond = fs.readFileSync(envPath, "utf8");
+  if (pbxContent !== pbxContent2) {
+    console.error("FAIL: idempotency - second run changed project.pbxproj");
+    cleanup();
+    process.exit(1);
+  }
+  if (envAfterFirst !== envAfterSecond) {
+    console.error("FAIL: idempotency - second run changed .xcode.env");
     cleanup();
     process.exit(1);
   }

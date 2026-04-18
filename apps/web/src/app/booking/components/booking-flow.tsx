@@ -21,7 +21,7 @@ import { fetcher } from "@/lib/http/fetcher";
 import { toast } from "sonner";
 import { getGuestFingerprintHash } from "@/lib/public-booking/guest-fingerprint";
 import { formatLocalDateYYYYMMDD } from "@/lib/dates/format-local-date-yyyymmdd";
-import { parseSelectedDatetimeInProviderTz } from "@/lib/bookings/parse-selected-datetime-in-provider-tz";
+import { reconcileBookingInstantWithSlotLabel } from "@/lib/bookings/reconcile-booking-instant-with-slot-label";
 import {
   BOOKING_STATE_STORAGE_KEY,
   clearBookingFlowStorage,
@@ -779,17 +779,13 @@ export default function BookingFlow() {
       // captured at slot selection. Only fall back to deriving the instant
       // from HH:MM + provider TZ when the calendar didn't capture it (older
       // persisted drafts from before this release).
-      let bookingDateTime: Date;
-      if (bookingState.selectedSlotStart) {
-        bookingDateTime = new Date(bookingState.selectedSlotStart);
-      } else {
-        const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-        bookingDateTime = parseSelectedDatetimeInProviderTz(
-          dateStr,
-          bookingState.selectedTimeSlot!,
-          bookingState.providerTimezone,
-        );
-      }
+      const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+      const bookingDateTime = reconcileBookingInstantWithSlotLabel(
+        bookingState.selectedSlotStart,
+        dateStr,
+        bookingState.selectedTimeSlot!,
+        bookingState.providerTimezone,
+      );
 
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {

@@ -122,6 +122,7 @@ const BASE_EXPO_CONFIG = {
         organization: "beautonomi",
       },
     ],
+    "./plugins/sentry-allow-failure",
   ],
   splash: {
     image: "./assets/splash-icon.png",

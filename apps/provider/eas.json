@@ -16,7 +16,8 @@
         "image": "latest"
       },
       "env": {
-        "APP_ENV": "development"
+        "APP_ENV": "development",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "channel": "development"
     },
@@ -31,7 +32,8 @@
         "image": "latest"
       },
       "env": {
-        "APP_ENV": "preview"
+        "APP_ENV": "preview",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "channel": "preview"
     },
@@ -52,8 +54,7 @@
         "EXPO_PUBLIC_DEFAULT_MARKET_HOST": "beautonomi.co.za",
         "EXPO_PUBLIC_MARKET_HOST_OPTIONS": "beautonomi.co.za|South Africa",
         "EXPO_PUBLIC_MARKET_OVERRIDE_TTL_HOURS": "24",
-        "SENTRY_DISABLE_AUTO_UPLOAD": "false",
-        "SENTRY_ALLOW_FAILURE": "false"
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       },
       "channel": "production"
     }
