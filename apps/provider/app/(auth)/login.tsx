@@ -15,6 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Colors } from "@/constants/colors";
 import { BeautonomiLogo } from "@/components/ui/BeautonomiLogo";
 import { useResponsive } from "@/hooks/useResponsive";
@@ -306,6 +307,10 @@ export default function LoginScreen() {
   }
 
   return (
+    // §UX-audit 2026-04: auth stack hides the native header, so without
+    // a SafeAreaView on this screen the logo/title on notched devices
+    // tucks under the status bar. Mirror `forgot-password.tsx`.
+    <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: "#ffffff" }}>
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: "#ffffff" }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -524,6 +529,10 @@ export default function LoginScreen() {
                     value={phone}
                     onChangeText={handlePhoneChange}
                     keyboardType="phone-pad"
+                    textContentType="telephoneNumber"
+                    autoComplete="tel-national"
+                    importantForAutofill="yes"
+                    accessibilityLabel="Phone number"
                   />
                 </View>
                 {phoneError ? (
@@ -973,5 +982,6 @@ export default function LoginScreen() {
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

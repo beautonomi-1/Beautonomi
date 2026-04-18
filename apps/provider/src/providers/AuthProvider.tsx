@@ -25,6 +25,7 @@ import {
 } from "@/lib/sentry";
 import { clearApiCache } from "@/lib/api-response-cache";
 import { clearPortalCache } from "@/lib/portal-cache";
+import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
   normalizeSupabaseAuthPhone,
   normalizeSupabaseSmsOtpToken,
@@ -103,26 +104,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     timeoutId = setTimeout(done, AUTH_SESSION_TIMEOUT_MS);
 
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!mounted) return;
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      updateSession(s);
-      setLoading(false);
-      if (isSentryEnabled()) {
-        authFlowBreadcrumb("auth_initial_get_session", { hasSession: !!s });
-      }
-      if (s?.user) scheduleRetentionSyncOnSession();
-    }).catch((err) => {
-      console.warn("[AUTH] getSession failed", err);
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      done();
-    });
+    /**
+     * §Release-audit 2026-04: previously a single transient failure
+     * (e.g. Secure Store decrypt race, network blip on cold start) would
+     * drop us to the login screen despite a valid cached session. Retry
+     * up to 3 times before giving up.
+     */
+    const MAX_ATTEMPTS = 3;
+    const attemptGetSession = (attempt: number): void => {
+      supabase.auth
+        .getSession()
+        .then(({ data: { session: s } }) => {
+          if (!mounted) return;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          updateSession(s);
+          setLoading(false);
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb("auth_initial_get_session", {
+              hasSession: !!s,
+              attempt,
+            });
+          }
+          if (s?.user) scheduleRetentionSyncOnSession();
+        })
+        .catch((err) => {
+          if (!mounted) return;
+          console.warn(`[AUTH] getSession failed (attempt ${attempt})`, err);
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb("auth_initial_get_session_error", {
+              attempt,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+          if (attempt < MAX_ATTEMPTS) {
+            const delay = 400 * attempt;
+            setTimeout(() => {
+              if (mounted) attemptGetSession(attempt + 1);
+            }, delay);
+            return;
+          }
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          done();
+        });
+    };
+    attemptGetSession(1);
 
     const {
       data: { subscription },
@@ -356,20 +387,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (__DEV__) {
       console.log("[AUTH] signOut start");
     }
+    // §Release-audit 2026-04: always run local cleanup — even when
+    // supabase.auth.signOut() throws (e.g. network offline) — so the
+    // biometric lock, portal cache, and API cache never survive into a
+    // different user's session on the same device.
     try {
       await supabase.auth.signOut();
-      clearApiCache();
-      clearPortalCache();
-      if (__DEV__) {
-        console.log("[AUTH] signOut supabase done, calling updateSession(null)");
-      }
-      updateSession(null);
     } catch (e) {
       console.warn("[AUTH] signOut error", e);
-      clearApiCache();
-      clearPortalCache();
-      updateSession(null);
     }
+    clearApiCache();
+    clearPortalCache();
+    await Promise.allSettled([clearBiometricPreference()]);
+    if (__DEV__) {
+      console.log("[AUTH] signOut cleanup done, calling updateSession(null)");
+    }
+    updateSession(null);
   }, [updateSession]);
 
   const isEmailVerified = !!(session?.user as { email_confirmed_at?: string } | undefined)?.email_confirmed_at;

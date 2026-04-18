@@ -32,9 +32,26 @@ export async function pickFirstStaffForNullStaffLines(args: {
   locationId: string | null;
   bookingServicesData: BookingServiceLine[];
   offeringBufferMinutesById: Map<string, number>;
+  /**
+   * §Release-audit 2026-04: the any-staff union in the public slug engine
+   * returns every staff who was free at the surfaced wall-clock time in
+   * `available_staff_ids`. When the client passes those through, we iterate
+   * them FIRST (in the same order the engine sorted them) so the hold's
+   * resolved staff matches the one the calendar presented. Without this,
+   * two concurrent holds at the same time could race on the earliest-id
+   * staffer and one would be incorrectly rejected even though another
+   * team member was free.
+   */
+  preferredStaffIds?: string[] | null;
 }): Promise<PickAnyStaffResult> {
-  const { supabaseAdmin, providerId, locationId, bookingServicesData, offeringBufferMinutesById } =
-    args;
+  const {
+    supabaseAdmin,
+    providerId,
+    locationId,
+    bookingServicesData,
+    offeringBufferMinutesById,
+    preferredStaffIds,
+  } = args;
 
   const { data: staffRows } = await supabaseAdmin
     .from("provider_staff")
@@ -43,10 +60,14 @@ export async function pickFirstStaffForNullStaffLines(args: {
     .eq("is_active", true)
     .order("id", { ascending: true });
 
-  const candidateIds = (staffRows ?? []).map((r: { id: string }) => r.id);
-  if (candidateIds.length === 0) {
+  const activeIds = (staffRows ?? []).map((r: { id: string }) => r.id);
+  if (activeIds.length === 0) {
     return { ok: false, reason: "no_team_members" };
   }
+  const activeIdSet = new Set(activeIds);
+  const preferred = (preferredStaffIds ?? []).filter((id) => activeIdSet.has(id));
+  const remaining = activeIds.filter((id) => !preferred.includes(id));
+  const candidateIds = [...preferred, ...remaining];
 
   for (const cid of candidateIds) {
     const withStaff = bookingServicesData.map((s) => ({ ...s, staff_id: cid }));

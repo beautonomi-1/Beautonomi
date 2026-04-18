@@ -15,6 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { Image } from "expo-image";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -26,6 +27,7 @@ import { Colors } from "@/constants/colors";
 import { RADIUS_INPUT, RADIUS_CARD, RADIUS_BUTTON } from "@/constants/layout";
 import { APP_URL } from "@/config/public-env";
 import { api } from "@/lib/api-client";
+import { haptic } from "@/lib/haptics";
 import { trackLogin, trackSignUp } from "@/lib/analytics";
 import { changeLanguage } from "@/lib/i18n";
 import {
@@ -108,6 +110,24 @@ function validatePhoneDigits(digits: string, countryCode: string): string | null
   return null;
 }
 
+/**
+ * §Release-audit 2026-04: Supabase returns one of several messages when a
+ * signInWithOtp call is made with `shouldCreateUser: false` and the user
+ * doesn't yet exist. Normalise the check so both phone and email login
+ * flows can funnel new users to signup instead of a terse red error.
+ */
+function isUserNotFoundOtpError(message: string | undefined | null): boolean {
+  if (!message) return false;
+  const m = message.toLowerCase();
+  return (
+    m.includes("user not found") ||
+    m.includes("signups not allowed") ||
+    m.includes("signup is disabled") ||
+    m.includes("otp is disabled") ||
+    (m.includes("should_create_user") && m.includes("false"))
+  );
+}
+
 export default function LoginScreen() {
   useScreenTracking("Login");
   const params = useLocalSearchParams<{
@@ -176,6 +196,26 @@ export default function LoginScreen() {
   const [emailOtpCode, setEmailOtpCode] = useState("");
   const [pendingEmailOtp, setPendingEmailOtp] = useState("");
 
+  // §UX-audit 2026-04: inline "code sent" feedback + resend cooldown so
+  // users who miss the SMS don't have to restart the flow with a fresh
+  // number. Cooldown is a simple seconds counter ticked in useEffect.
+  const [otpResendIn, setOtpResendIn] = useState(0); // seconds remaining
+  const [emailOtpResendIn, setEmailOtpResendIn] = useState(0);
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [resendingEmailOtp, setResendingEmailOtp] = useState(false);
+
+  useEffect(() => {
+    if (otpResendIn <= 0) return;
+    const id = setInterval(() => setOtpResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [otpResendIn]);
+
+  useEffect(() => {
+    if (emailOtpResendIn <= 0) return;
+    const id = setInterval(() => setEmailOtpResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [emailOtpResendIn]);
+
   const fullPhone = `${countryCode}${stripLeadingZero(phoneNumber.replace(/\D/g, ""))}`.trim();
   const selectedCountry = COUNTRY_CODES.find((c) => c.code === countryCode);
   const filteredCountries = countrySearch
@@ -208,17 +248,79 @@ export default function LoginScreen() {
     try {
       const { error } = await signInWithOtp(e164);
       if (error) {
+        // §Release-audit 2026-04: Supabase signInWithOtp uses
+        // `shouldCreateUser: false` on the login screen, so "user not
+        // found" / "signups not allowed" are the expected error when a
+        // new customer tries to sign in by phone. Offer a path to signup
+        // instead of a blanket red Alert that dead-ends them.
+        if (isUserNotFoundOtpError(error.message)) {
+          const refParam = typeof params.ref === "string" ? params.ref.trim() : undefined;
+          Alert.alert(
+            "No account for this number",
+            "We couldn't find a customer account linked to this phone. Would you like to create one?",
+            [
+              { text: "Try another number", style: "cancel" },
+              {
+                text: "Sign up",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(auth)/signup",
+                    params: refParam ? { ref: refParam, phone: e164 } : { phone: e164 },
+                  } as never),
+              },
+            ],
+          );
+          return;
+        }
         Alert.alert("Error", error.message);
         return;
       }
       setPendingPhone(e164);
       setOtpSent(true);
-      Alert.alert(
-        "Check your phone",
-        `We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code (valid about ${Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} ${Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60) === 1 ? "minute" : "minutes"}).`,
-      );
+      setToken("");
+      // §UX-audit 2026-04: replaced the blocking "Check your phone" Alert
+      // with an inline success state (banner above the OTP input) and
+      // start the 30s resend cooldown. Less jarring, faster to act on.
+      setOtpResendIn(30);
+      haptic.success();
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleResendOtp() {
+    if (otpResendIn > 0 || resendingOtp) return;
+    const phoneToSend = pendingPhone || fullPhone;
+    if (!phoneToSend) return;
+    setResendingOtp(true);
+    try {
+      const { error } = await signInWithOtp(phoneToSend);
+      if (error) {
+        Alert.alert("Couldn't resend", error.message);
+        return;
+      }
+      setOtpResendIn(30);
+      haptic.light();
+    } finally {
+      setResendingOtp(false);
+    }
+  }
+
+  async function handleResendEmailOtp() {
+    if (emailOtpResendIn > 0 || resendingEmailOtp) return;
+    const emailToSend = pendingEmailOtp || email.trim();
+    if (!emailToSend) return;
+    setResendingEmailOtp(true);
+    try {
+      const { error } = await signInWithOtpEmail(emailToSend);
+      if (error) {
+        Alert.alert("Couldn't resend", error.message);
+        return;
+      }
+      setEmailOtpResendIn(30);
+      haptic.light();
+    } finally {
+      setResendingEmailOtp(false);
     }
   }
 
@@ -261,13 +363,38 @@ export default function LoginScreen() {
     try {
       const { error } = await signInWithOtpEmail(trimmed);
       if (error) {
+        // §Release-audit 2026-04: same UX as phone — email OTP also uses
+        // `shouldCreateUser: false`, so convert the "no user" response
+        // into a "Create account?" prompt that keeps the typed email.
+        if (isUserNotFoundOtpError(error.message)) {
+          const refParam = typeof params.ref === "string" ? params.ref.trim() : undefined;
+          Alert.alert(
+            "No account for this email",
+            "We couldn't find a customer account for this email. Would you like to create one?",
+            [
+              { text: "Try another email", style: "cancel" },
+              {
+                text: "Sign up",
+                onPress: () =>
+                  router.push({
+                    pathname: "/(auth)/signup",
+                    params: refParam ? { ref: refParam, email: trimmed } : { email: trimmed },
+                  } as never),
+              },
+            ],
+          );
+          return;
+        }
         Alert.alert("Error", error.message);
         return;
       }
       setPendingEmailOtp(trimmed);
       setEmailOtpSent(true);
       setEmailOtpCode("");
-      Alert.alert("Check your email", `We sent you a ${SUPABASE_AUTH_OTP_LENGTH}-digit verification code.`);
+      // §UX-audit 2026-04: inline banner + resend cooldown instead of
+      // blocking "Check your email" alert.
+      setEmailOtpResendIn(30);
+      haptic.success();
     } finally {
       setLoading(false);
     }
@@ -389,6 +516,14 @@ export default function LoginScreen() {
   };
 
   return (
+    // §UI-audit 2026-04: the auth layout hides the native header, so
+    // without `SafeAreaView edges={["top","left","right"]}` the hero
+    // title crowded the status bar / notch on iOS. Wrap the existing
+    // KeyboardAvoidingView so keyboard logic is unchanged.
+    <SafeAreaView
+      edges={["top", "left", "right"]}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+    >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.gray[50] }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -462,8 +597,32 @@ export default function LoginScreen() {
               {t("auth.verifyCode")}
             </Text>
             <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code from your SMS
+              Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+              <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>{pendingPhone}</Text>
             </Text>
+            {/* §UX-audit 2026-04: inline success banner — replaces the Alert.alert. */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                backgroundColor: "#ECFDF5",
+                borderColor: "#A7F3D0",
+                borderWidth: 1,
+                borderRadius: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 12,
+              }}
+              accessibilityRole="alert"
+              accessibilityLabel={`We sent a ${SUPABASE_AUTH_OTP_LENGTH}-digit code to ${pendingPhone}`}
+            >
+              <Ionicons name="checkmark-circle" size={18} color="#059669" />
+              <Text style={{ flex: 1, color: "#065F46", fontSize: 13, lineHeight: 18 }}>
+                Code sent. Valid for about{" "}
+                {Math.max(1, Math.round(SUPABASE_AUTH_SMS_OTP_EXPIRY_SECONDS / 60))} min.
+              </Text>
+            </View>
             <OtpDigitRow
               value={token}
               onChange={setToken}
@@ -496,16 +655,42 @@ export default function LoginScreen() {
                 <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Verify</Text>
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => { setOtpSent(false); setToken(""); setPendingPhone(""); }}
-              disabled={loading}
-              style={{ paddingVertical: 8 }}
-              accessibilityLabel="Use different number"
-            >
-              <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>
-                Use different number
-              </Text>
-            </TouchableOpacity>
+
+            {/* §UX-audit 2026-04: resend + cooldown row. */}
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 4 }}>
+              <TouchableOpacity
+                onPress={() => void handleResendOtp()}
+                disabled={loading || resendingOtp || otpResendIn > 0}
+                style={{ paddingVertical: 8, minHeight: 44, justifyContent: "center" }}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  otpResendIn > 0
+                    ? `Resend code in ${otpResendIn} seconds`
+                    : "Resend verification code"
+                }
+                accessibilityState={{ disabled: loading || resendingOtp || otpResendIn > 0 }}
+              >
+                {resendingOtp ? (
+                  <ActivityIndicator size="small" color={Colors.gray[500]} />
+                ) : (
+                  <Text style={{ fontSize: 14, color: otpResendIn > 0 ? Colors.gray[400] : PRIMARY, fontWeight: "600" }}>
+                    {otpResendIn > 0 ? `Resend in ${otpResendIn}s` : "Resend code"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <Text style={{ color: Colors.gray[300] }}>·</Text>
+              <TouchableOpacity
+                onPress={() => { setOtpSent(false); setToken(""); setPendingPhone(""); setOtpResendIn(0); }}
+                disabled={loading}
+                style={{ paddingVertical: 8, minHeight: 44, justifyContent: "center" }}
+                accessibilityRole="button"
+                accessibilityLabel="Use different number"
+              >
+                <Text style={{ fontSize: 14, color: Colors.gray[600] }}>
+                  Use different number
+                </Text>
+              </TouchableOpacity>
+            </View>
           </>
         ) : showEmailForm ? (
           <>
@@ -569,6 +754,8 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 autoCapitalize="none"
                 autoComplete="email"
+                textContentType="emailAddress"
+                importantForAutofill="yes"
                 accessibilityLabel="Email address"
               />
             </View>
@@ -599,6 +786,8 @@ export default function LoginScreen() {
                     onChangeText={setPassword}
                     secureTextEntry={!showPassword}
                     autoComplete={isSignup ? "new-password" : "current-password"}
+                    textContentType={isSignup ? "newPassword" : "password"}
+                    importantForAutofill="yes"
                     accessibilityLabel="Password"
                   />
                   <TouchableOpacity
@@ -617,8 +806,29 @@ export default function LoginScreen() {
                   Verification code
                 </Text>
                 <Text style={{ fontSize: 12, color: Colors.gray[500], marginBottom: 12 }}>
-                  Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to {pendingEmailOtp || email.trim()}
+                  Enter the {SUPABASE_AUTH_OTP_LENGTH}-digit code sent to{" "}
+                  <Text style={{ fontWeight: "600", color: Colors.gray[700] }}>
+                    {pendingEmailOtp || email.trim()}
+                  </Text>
                 </Text>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    backgroundColor: "#ECFDF5",
+                    borderColor: "#A7F3D0",
+                    borderWidth: 1,
+                    borderRadius: 12,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    marginBottom: 12,
+                  }}
+                  accessibilityRole="alert"
+                >
+                  <Ionicons name="checkmark-circle" size={18} color="#059669" />
+                  <Text style={{ flex: 1, color: "#065F46", fontSize: 13 }}>Code sent. Check your inbox.</Text>
+                </View>
                 <OtpDigitRow
                   value={emailOtpCode}
                   onChange={setEmailOtpCode}
@@ -646,17 +856,44 @@ export default function LoginScreen() {
                 >
                   {loading ? <ActivityIndicator color="white" /> : <Text style={{ color: "#fff", fontSize: 16, fontWeight: "700" }}>Verify</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => {
-                    setEmailOtpSent(false);
-                    setEmailOtpCode("");
-                    setPendingEmailOtp("");
-                  }}
-                  disabled={loading}
-                  style={{ paddingVertical: 8 }}
-                >
-                  <Text style={{ textAlign: "center", fontSize: 14, color: "#6B7280" }}>Use a different email</Text>
-                </TouchableOpacity>
+
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                  <TouchableOpacity
+                    onPress={() => void handleResendEmailOtp()}
+                    disabled={loading || resendingEmailOtp || emailOtpResendIn > 0}
+                    style={{ paddingVertical: 8, minHeight: 44, justifyContent: "center" }}
+                    accessibilityRole="button"
+                    accessibilityLabel={
+                      emailOtpResendIn > 0
+                        ? `Resend code in ${emailOtpResendIn} seconds`
+                        : "Resend verification code"
+                    }
+                    accessibilityState={{ disabled: loading || resendingEmailOtp || emailOtpResendIn > 0 }}
+                  >
+                    {resendingEmailOtp ? (
+                      <ActivityIndicator size="small" color={Colors.gray[500]} />
+                    ) : (
+                      <Text style={{ fontSize: 14, color: emailOtpResendIn > 0 ? Colors.gray[400] : PRIMARY, fontWeight: "600" }}>
+                        {emailOtpResendIn > 0 ? `Resend in ${emailOtpResendIn}s` : "Resend code"}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                  <Text style={{ color: Colors.gray[300] }}>·</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEmailOtpSent(false);
+                      setEmailOtpCode("");
+                      setPendingEmailOtp("");
+                      setEmailOtpResendIn(0);
+                    }}
+                    disabled={loading}
+                    style={{ paddingVertical: 8, minHeight: 44, justifyContent: "center" }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Use a different email"
+                  >
+                    <Text style={{ fontSize: 14, color: Colors.gray[600] }}>Use a different email</Text>
+                  </TouchableOpacity>
+                </View>
               </>
             )}
 
@@ -838,6 +1075,10 @@ export default function LoginScreen() {
                 onChangeText={handlePhoneChange}
                 keyboardType="phone-pad"
                 accessibilityLabel="Phone number"
+                textContentType="telephoneNumber"
+                autoComplete="tel-national"
+                returnKeyType="send"
+                importantForAutofill="yes"
               />
             </View>
             {phoneError ? (
@@ -1096,5 +1337,6 @@ export default function LoginScreen() {
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

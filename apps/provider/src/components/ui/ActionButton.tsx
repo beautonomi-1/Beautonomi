@@ -6,7 +6,16 @@ import { Colors } from "@/constants/colors";
 interface ActionButtonProps {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "secondary" | "danger" | "outline" | "ghost";
+  /**
+   * §UX-audit 2026-04: variant naming was misleading — `primary` rendered
+   * as `Colors.gray[900]` (black) and `secondary` was a random indigo
+   * (`#4f46e5`) that didn't exist anywhere else in the design language.
+   * Kept those for backward compat and added `brand` (true brand pink
+   * from `Colors.primary`) so marquee CTAs (onboarding complete, publish
+   * listing, book now) can pop. Callers can opt in without disrupting
+   * the many screens that relied on the muted black primary.
+   */
+  variant?: "primary" | "brand" | "secondary" | "danger" | "outline" | "ghost";
   size?: "sm" | "md" | "lg";
   loading?: boolean;
   disabled?: boolean;
@@ -19,6 +28,7 @@ interface ActionButtonProps {
 
 const variantBg: Record<string, ViewStyle> = {
   primary: { backgroundColor: Colors.gray[900] },
+  brand: { backgroundColor: Colors.primary },
   secondary: { backgroundColor: "#4f46e5" },
   danger: { backgroundColor: "#dc2626" },
   outline: { borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white },
@@ -27,6 +37,7 @@ const variantBg: Record<string, ViewStyle> = {
 
 const variantTextColor: Record<string, string> = {
   primary: Colors.white,
+  brand: Colors.white,
   secondary: Colors.white,
   danger: Colors.white,
   outline: Colors.gray[900],

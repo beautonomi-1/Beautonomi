@@ -1251,6 +1251,16 @@ export default function OnlineBookingFlowNew({
         )
           ? bookingData.selectedPackage.id.trim()
           : undefined;
+      // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key
+      // per slot-select so internal retries don't double-create the hold.
+      const holdIdemKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
       const res = await fetcher.post<{ data: { hold_id: string } }>("/api/public/booking-holds", {
         provider_id: provider.id,
         staff_id: staffIdForHold,
@@ -1264,7 +1274,7 @@ export default function OnlineBookingFlowNew({
         previous_hold_id: holdId || null,
         guest_fingerprint_hash: getGuestFingerprintHash(),
         ...(pkgForHold ? { package_id: pkgForHold } : {}),
-      });
+      }, { headers: { "Idempotency-Key": holdIdemKey } });
       const id = (res as any)?.data?.hold_id ?? (res as any)?.hold_id;
       if (id) {
         setHoldId(id);

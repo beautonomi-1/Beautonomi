@@ -17,13 +17,22 @@ import {
   incrementHoldRateLimit,
 } from "@/lib/rate-limit/hold-creation";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import { handleApiError, successResponse } from "@/lib/supabase/api-helpers";
+import { getSupabaseServer } from "@/lib/supabase/server";
+import { handleApiError, successResponse, errorResponse } from "@/lib/supabase/api-helpers";
+import { verifyPublicBookingCaptcha } from "@/lib/security/captcha";
+import {
+  extractIdempotencyKey,
+  lookupIdempotentResponse,
+  rememberIdempotentResponse,
+} from "@/lib/http/idempotency";
 import { evaluateMarketAvailabilityFromRequest } from "@/lib/tenant/market-availability";
 import { requirePublicTenant } from "@/lib/tenant/require-public-tenant";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { calculateTravelFeeForHold } from "@/lib/travel/calculateTravelFeeForHold";
 import { zPublicBookingStaffIdOptional } from "@/lib/public-booking/zod-public-staff-id";
+
+const PUBLIC_BOOKING_HOLDS_ENDPOINT = "POST /api/public/booking-holds";
 
 const createHoldSchema = z.object({
   provider_id: z.string().uuid("Invalid provider ID"),
@@ -65,6 +74,14 @@ const createHoldSchema = z.object({
   /** `service_packages.id` — stored on hold metadata for checkout / edit-booking restore */
   package_id: z.string().uuid().optional().nullable(),
   primary_package_id: z.string().uuid().optional().nullable(),
+  /**
+   * §Release-audit 2026-04: when the slot came from an any-staff union,
+   * the availability engine emitted the list of staff who were free at
+   * this wall-clock time. Passing them here preserves the calendar's
+   * choice through the hold resolver so concurrent bookings against the
+   * same "anyone" timeslot deterministically pick different staff.
+   */
+  preferred_staff_ids: z.array(z.string().uuid()).optional().nullable(),
 });
 
 const HOLD_EXPIRY_MINUTES = 20;
@@ -146,6 +163,49 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        // Wave 2.1 (audit 2026-04 final 100/100): server-side idempotency
+        // for booking-holds. Prevents duplicate hold rows + spurious slot
+        // contention when a flaky network causes the mobile/web client to
+        // retry the same request. The hold-creation flow already does
+        // generous internal de-dup (cancel-on-fingerprint, exclusion
+        // constraint), but a UUID-keyed cached replay is the only way to
+        // give the *client* a deterministic 200 response on retry.
+        const holdIdempotencyKey = extractIdempotencyKey(request, body);
+        if (holdIdempotencyKey) {
+          const cached = await lookupIdempotentResponse(
+            PUBLIC_BOOKING_HOLDS_ENDPOINT,
+            holdIdempotencyKey,
+          );
+          if (cached) return cached.toResponse();
+        }
+
+        // Wave 1.5 (audit 2026-04 final 100/100): CAPTCHA guard for
+        // anonymous booking-holds. Previously this surface had no CAPTCHA
+        // at all, so a single attacker IP could mint thousands of holds
+        // and starve the calendar (the booking-create CAPTCHA was useless
+        // because the slot was already locked by the unprotected hold).
+        // We do a real Supabase-server auth check first; only verified
+        // logged-in users skip the captcha — never anyone with a mere
+        // cookie / Bearer header.
+        let holdCaptchaSkipUserId: string | null = null;
+        try {
+          const sbServer = await getSupabaseServer();
+          const { data: pre } = await sbServer.auth.getUser();
+          holdCaptchaSkipUserId = pre?.user?.id ?? null;
+        } catch {
+          holdCaptchaSkipUserId = null;
+        }
+        const holdCaptcha = await verifyPublicBookingCaptcha(request, body, {
+          skipForUserId: holdCaptchaSkipUserId,
+        });
+        if (holdCaptcha.ok === false) {
+          return errorResponse(
+            holdCaptcha.reason,
+            "CAPTCHA_REQUIRED",
+            holdCaptcha.status,
+          );
+        }
+
         const {
           provider_id,
           staff_id: bodyStaffId,
@@ -160,6 +220,7 @@ export async function POST(request: NextRequest) {
           resource_ids,
           package_id: bodyPackageId,
           primary_package_id: bodyPrimaryPackageId,
+          preferred_staff_ids: bodyPreferredStaffIds,
         } = parsed.data;
         const packageIdForHold =
           (bodyPackageId?.trim() || bodyPrimaryPackageId?.trim()) || undefined;
@@ -441,6 +502,7 @@ export async function POST(request: NextRequest) {
               scheduled_end_at: s.scheduled_end_at,
             })),
             offeringBufferMinutesById,
+            preferredStaffIds: bodyPreferredStaffIds ?? undefined,
           });
           if (picked.ok) {
             for (const s of bookingServicesSnapshot) {
@@ -669,10 +731,20 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        return successResponse({
+        const successBody = {
           hold_id: hold.id,
           expires_at: hold.expires_at,
-        });
+        };
+        if (holdIdempotencyKey) {
+          // Match successResponse shape so a replay returns the same
+          // envelope a fresh call would produce.
+          await rememberIdempotentResponse(
+            PUBLIC_BOOKING_HOLDS_ENDPOINT,
+            holdIdempotencyKey,
+            { status: 200, body: { data: successBody, error: null } },
+          );
+        }
+        return successResponse(successBody);
       } catch (error) {
         return handleApiError(error, "Failed to create booking hold");
       }

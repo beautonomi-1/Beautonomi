@@ -7,6 +7,7 @@ import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 import { trackServer } from "@/lib/analytics/amplitude/server";
@@ -186,9 +187,18 @@ export async function POST(
       .select('timezone')
       .eq('id', booking.provider_id)
       .maybeSingle();
+    // §Launch-audit 2026-04-18: normalise legacy offset-style zones (e.g.
+    // "GMT+2") before handing to `formatInTimeZone`, otherwise Intl throws
+    // and the reschedule 500s. See supabase migration 511.
+    const rawProviderTz =
+      (providerRow as { timezone?: string | null } | null)?.timezone ?? null;
     const providerTz =
-      ((providerRow as { timezone?: string | null } | null)?.timezone?.trim() ||
-        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+      normalizeProviderTimezone(rawProviderTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    if (rawProviderTz && !normalizeProviderTimezone(rawProviderTz)) {
+      console.warn(
+        `[reschedule] provider ${booking.provider_id} has unparseable timezone "${rawProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+      );
+    }
 
     // B5: derive the target calendar date and HH:mm in the provider's tz
     // (not UTC, not the Node server's local tz). The previous code compared
@@ -222,6 +232,11 @@ export async function POST(
       {
         slotInterval: 15,
         travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
+        // Wave 1.3 (audit 2026-04 final 100/100): without this option the
+        // calculator falls back to UTC, which silently shifts every slot by
+        // the provider's UTC offset and rejected valid slots in SAST/+2h.
+        // See reschedule-core.ts for the single canonical implementation.
+        timezone: providerTz,
       }
     );
 
@@ -269,9 +284,21 @@ export async function POST(
     }
 
     if (lockError) {
-      console.warn(
-        "[reschedule] check_reschedule_slot_conflict unavailable — falling back to optimistic lock only",
+      // §Final-audit 2026-04: previously we silently fell back to the
+      // optimistic row lock here, which means a provider whose DB is
+      // missing migration 503 (or a transient RPC failure) can silently
+      // double-book via reschedule. That is exactly B5. Fail closed: if
+      // the slot conflict RPC is unusable, reject the reschedule with a
+      // retryable error and log loudly for ops.
+      console.error(
+        "[reschedule] check_reschedule_slot_conflict unavailable — FAILING CLOSED to prevent double-book",
         lockError,
+      );
+      return handleApiError(
+        new Error("Slot conflict check unavailable"),
+        "We could not confirm that slot is free right now. Please try again in a moment.",
+        "SLOT_CHECK_UNAVAILABLE",
+        503,
       );
     } else if (conflictCheck?.conflict) {
       return handleApiError(

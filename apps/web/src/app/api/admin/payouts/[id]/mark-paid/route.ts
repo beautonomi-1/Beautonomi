@@ -123,6 +123,60 @@ export async function POST(
     const lockGuard = await enforcePeriodLock(supabase, tenantId, new Date().toISOString());
     if (lockGuard) return lockGuard;
 
+    // Wave 1.4 (audit 2026-04 final 100/100): MONEY-SAFE ORDERING.
+    //
+    // Previously: flip `payouts.status='completed'` first, then attempt
+    // `recordPayoutLedger`. If the ledger insert failed (transient DB
+    // error, period-lock race, network blip, etc.) we logged and
+    // swallowed it — leaving the payout marked paid but with no
+    // `finance_transactions` row of type 'payout'. That drift broke
+    // `getAvailablePayoutBalance` (the next payout could pay the same
+    // money twice) and silently failed reconciliation.
+    //
+    // New ordering: write the ledger row first. If the ledger fails we
+    // refuse the status flip (safe: payout stays in `processing`, admin
+    // can retry — `recordPayoutLedger` is idempotent on `payout_id`). If
+    // the status flip later fails we've already recorded the liability
+    // reduction; the next retry is a no-op insert + the status flip.
+    try {
+      await recordPayoutLedger(supabase, {
+        id: payoutData.id,
+        provider_id: payoutData.provider_id,
+        net_amount: payoutData.net_amount,
+        amount: payoutData.amount,
+        payout_number: payoutData.payout_number,
+      });
+    } catch (ledgerErr) {
+      console.error(
+        "[admin/payouts/mark-paid] Refusing status flip — finance ledger insert failed:",
+        ledgerErr,
+      );
+      try {
+        const { captureException } = await import("@sentry/nextjs");
+        captureException(ledgerErr, {
+          tags: {
+            surface: "admin.payouts.mark_paid",
+            payout_id: id,
+            provider_id: payoutData.provider_id,
+          },
+          level: "error",
+        });
+      } catch {
+        // Sentry is best effort
+      }
+      return NextResponse.json(
+        {
+          data: null,
+          error: {
+            message:
+              "Failed to record payout in the finance ledger. The payout has NOT been marked paid. Please retry; if the problem persists, contact engineering.",
+            code: "LEDGER_WRITE_FAILED",
+          },
+        },
+        { status: 500 }
+      );
+    }
+
     // Update payout status
     const { data: updatedPayout, error } = await supabase
       .from("payouts")
@@ -158,19 +212,6 @@ export async function POST(
       entity_id: id,
       metadata: { provider_id: payoutData.provider_id, amount: payoutData.amount },
     });
-
-    const updatedRow = updatedPayout as PayoutRow;
-    try {
-      await recordPayoutLedger(supabase, {
-        id: updatedRow.id,
-        provider_id: updatedRow.provider_id,
-        net_amount: updatedRow.net_amount,
-        amount: updatedRow.amount,
-        payout_number: updatedRow.payout_number,
-      });
-    } catch (ledgerErr) {
-      console.error("Failed to record payout ledger entry:", ledgerErr);
-    }
 
     try {
       const { notifyProviderPayoutProcessed } = await import("@/lib/notifications/notification-service");

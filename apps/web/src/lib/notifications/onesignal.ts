@@ -772,5 +772,139 @@ export async function sendTemplateNotification(
     return { success: true, message: "No external channels enabled for recipients (preferences)" };
   }
 
-  return await sendOneSignalNotification(notificationPayload, options);
+  const directResult = await sendOneSignalNotification(notificationPayload, options);
+
+  // Wave 3.2 (audit 2026-04 final 100/100): durable retry safety net.
+  // For critical transactional and reminder templates, if the direct
+  // send did NOT succeed we enqueue a durable row per (user × channel)
+  // so the notification-queue cron will retry with exponential backoff
+  // and eventually DLQ on permanent failure. Silent drops of these
+  // templates previously cost us customers; the queue cron is the
+  // single place that guarantees eventual delivery.
+  //
+  // Non-critical templates (marketing, promotions, broad fan-outs) do
+  // not fan into the queue — the failure cost there is low and the
+  // queue volume is high.
+  if (
+    !directResult.success &&
+    userIds.length > 0 &&
+    CRITICAL_TRANSACTIONAL_TEMPLATES.has(templateKey)
+  ) {
+    try {
+      const { enqueueNotification } = await import("@/lib/notifications/enqueue");
+      const bookingId =
+        (variables as { booking_id?: string })?.booking_id ?? null;
+      await Promise.all(
+        userIds.flatMap((userId) =>
+          channelsToSend
+            .filter((ch): ch is "email" | "sms" | "push" =>
+              ch === "email" || ch === "sms" || ch === "push",
+            )
+            .map((channel) =>
+              enqueueNotification({
+                channel,
+                templateKey,
+                recipientUserId: userId,
+                bookingId,
+                payload: buildQueuePayload(channel, {
+                  title,
+                  body,
+                  emailSubject,
+                  emailBody,
+                  smsBody,
+                  data: { template_key: templateKey, ...variables },
+                  url: templateUrl || undefined,
+                }),
+                dedupeKey: `fallback:${templateKey}:${userId}:${channel}:${bookingId ?? "none"}`,
+              }),
+            ),
+        ),
+      );
+    } catch (enqueueErr) {
+      // Never let a retry-queue write break the original response.
+      // eslint-disable-next-line no-console
+      console.error(
+        "[sendTemplateNotification] failed to enqueue durable retry",
+        enqueueErr,
+      );
+    }
+  }
+
+  return directResult;
+}
+
+// Wave 3.2: templates that MUST eventually reach the recipient. On direct
+// send failure we fan-out into notification_delivery_queue for retry.
+const CRITICAL_TRANSACTIONAL_TEMPLATES = new Set<string>([
+  // Booking lifecycle (customer + provider)
+  "booking_confirmed",
+  "booking_cancelled",
+  "booking_cancelled_by_customer",
+  "booking_cancelled_by_provider",
+  "booking_cancelled_emergency",
+  "booking_rescheduled",
+  "booking_time_changed",
+  "booking_date_changed",
+  "provider_booking_request",
+  "provider_booking_cancelled",
+  "provider_booking_rescheduled",
+  "provider_booking_time_changed",
+  "provider_booking_date_changed",
+  // Reminders
+  "booking_reminder_24h",
+  "booking_reminder_2h",
+  // Payments + refunds
+  "payment_successful",
+  "payment_failed",
+  "payment_pending",
+  "payment_method_expired",
+  "partial_payment_received",
+  "refund_processed",
+  "invoice_generated",
+  "receipt_sent",
+  // Provider payouts
+  "provider_payout_processed",
+  "provider_payout_scheduled",
+  "provider_payout_failed",
+  // Abandoned booking re-engagement
+  "abandoned_booking_reminder",
+  // Security/critical user flows
+  "password_reset",
+  "email_verification",
+  "otp_verification",
+]);
+
+function buildQueuePayload(
+  channel: "email" | "sms" | "push",
+  ctx: {
+    title: string;
+    body: string;
+    emailSubject: string;
+    emailBody: string;
+    smsBody: string;
+    data: Record<string, unknown>;
+    url?: string;
+  },
+): Record<string, unknown> {
+  if (channel === "email") {
+    return {
+      subject: ctx.emailSubject || ctx.title,
+      html: ctx.emailBody || ctx.body,
+      body: ctx.emailBody || ctx.body,
+      data: ctx.data,
+    };
+  }
+  if (channel === "sms") {
+    return {
+      body: ctx.smsBody || ctx.body,
+      data: ctx.data,
+    };
+  }
+  // push
+  return {
+    title: ctx.title,
+    message: ctx.body,
+    url: ctx.url,
+    data: ctx.data,
+  };
 }

@@ -1,8 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import * as Sentry from "@sentry/nextjs";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
 import { subtractMoney } from "@beautonomi/utils";
 import { clearCustomerCartForProvider } from "@/lib/orders/product-order-lifecycle";
 import { ensurePackageEntitlementsFromProductOrder } from "@/lib/orders/ensure-package-entitlements-from-product-order";
+import { logger } from "@/lib/utils/logger";
 
 type RecordProductOrderPaymentInput = {
   supabase: SupabaseClient;
@@ -15,6 +17,24 @@ type RecordProductOrderPaymentInput = {
 };
 
 export async function recordProductOrderPayment(
+  input: RecordProductOrderPaymentInput,
+): Promise<{ ok: boolean; duplicate: boolean }> {
+  return Sentry.startSpan(
+    {
+      name: "finance.recordProductOrderPayment",
+      op: "finance.ledger.write",
+      attributes: {
+        "finance.product_order_id": input.productOrderId,
+        "finance.provider": input.provider,
+        "finance.source": input.source,
+        "finance.amount": input.amountMajor,
+      },
+    },
+    () => recordProductOrderPaymentInner(input),
+  );
+}
+
+async function recordProductOrderPaymentInner(
   input: RecordProductOrderPaymentInput,
 ): Promise<{ ok: boolean; duplicate: boolean }> {
   const { supabase, productOrderId, reference, amountMajor, feesMajor = 0, source, provider } = input;
@@ -93,7 +113,11 @@ export async function recordProductOrderPayment(
   try {
     await ensurePackageEntitlementsFromProductOrder(supabase, productOrderId);
   } catch (e) {
-    console.error("[recordProductOrderPayment] ensurePackageEntitlementsFromProductOrder", e);
+    logger.error(
+      "recordProductOrderPayment.ensurePackageEntitlements.failed",
+      e,
+      { productOrderId },
+    );
   }
 
   await (supabase.from("finance_transactions") as any).insert([

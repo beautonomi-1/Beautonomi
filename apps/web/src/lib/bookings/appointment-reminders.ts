@@ -50,7 +50,8 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
           ),
           providers!inner(
             id,
-            business_name
+            business_name,
+            time_zone
           ),
           booking_services(
             id,
@@ -95,16 +96,25 @@ export async function sendAppointmentReminders(config: ReminderConfig = DEFAULT_
         const services = (booking.booking_services || []).map((bs: any) => bs.offering?.title || "Service").join(", ");
 
         const scheduledDate = new Date(booking.scheduled_at);
-        const dateStr = scheduledDate.toLocaleDateString("en-US", {
+        // §Final-audit 2026-04 (B13 residual fix): render reminder date/time
+        // in the PROVIDER's IANA timezone so customers see the same wall
+        // clock they will be greeted with. Previously these rendered in the
+        // Next.js server's locale/timezone, which drifted for any provider
+        // outside that region.
+        const providerTz =
+          (provider?.time_zone as string | null | undefined) || "Africa/Johannesburg";
+        const dateStr = scheduledDate.toLocaleDateString("en-ZA", {
           weekday: "long",
           year: "numeric",
           month: "long",
           day: "numeric",
+          timeZone: providerTz,
         });
-        const timeStr = scheduledDate.toLocaleTimeString("en-US", {
+        const timeStr = scheduledDate.toLocaleTimeString("en-ZA", {
           hour: "2-digit",
           minute: "2-digit",
           hour12: true,
+          timeZone: providerTz,
         });
 
         // Create notification record
@@ -312,7 +322,8 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
         ),
         providers!inner(
           id,
-          business_name
+          business_name,
+          time_zone
         ),
         booking_services(
           id,
@@ -334,16 +345,20 @@ export async function sendBookingReminder(bookingId: string, hoursBefore: number
     const services = (booking.booking_services || []).map((bs: any) => bs.offering?.title || "Service").join(", ");
 
     const scheduledDate = new Date(booking.scheduled_at);
-    const dateStr = scheduledDate.toLocaleDateString("en-US", {
+    const providerTz =
+      (provider?.time_zone as string | null | undefined) || "Africa/Johannesburg";
+    const dateStr = scheduledDate.toLocaleDateString("en-ZA", {
       weekday: "long",
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: providerTz,
     });
-    const timeStr = scheduledDate.toLocaleTimeString("en-US", {
+    const timeStr = scheduledDate.toLocaleTimeString("en-ZA", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
+      timeZone: providerTz,
     });
 
     // Create notification

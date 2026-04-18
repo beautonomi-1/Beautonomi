@@ -76,9 +76,29 @@ export default function AuthCallbackScreen() {
           throw new Error("No authentication data received");
         }
 
-        await supabase.auth.updateUser({
-          data: { role: "provider_owner" },
-        });
+        // §Final-audit 2026-04: previously this unconditionally set
+        // `user_metadata.role = "provider_owner"` on every callback —
+        // including password-recovery / email-verification /
+        // already-provider flows — silently mutating the role of an
+        // account that might be a customer who reused their email here,
+        // and overwriting `provider_staff` for staff members too.
+        //
+        // Only seed the role for BRAND-NEW authentications that have no
+        // role yet. The DB-side `ensurePublicUserRowExists` is the true
+        // authoritative role owner; we use auth metadata purely as a
+        // portal hint.
+        try {
+          const { data: u } = await supabase.auth.getUser();
+          const existingRole =
+            (u.user?.user_metadata as { role?: string } | undefined)?.role ?? null;
+          if (!existingRole) {
+            await supabase.auth.updateUser({
+              data: { role: "provider_owner" },
+            });
+          }
+        } catch {
+          // Non-fatal — server route will self-heal the DB row.
+        }
 
         if (!cancelled) {
           if (isWeb && window.opener) {

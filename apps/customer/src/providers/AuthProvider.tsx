@@ -30,6 +30,7 @@ import {
 } from "@/lib/supabase-sms-otp";
 import { clearApiCache } from "@/lib/api-response-cache";
 import { clearPortalCache } from "@/lib/portal-cache";
+import { clearBiometricPreference } from "@/hooks/useBiometricAuth";
 import {
   authFlowBreadcrumb,
   clearSentryUser,
@@ -123,29 +124,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     timeoutId = setTimeout(done, AUTH_SESSION_TIMEOUT_MS);
 
-    supabase.auth
-      .getSession()
-      .then(({ data: { session: s } }) => {
-        if (!mounted) return;
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        updateSession(s);
-        setLoading(false);
-        if (isSentryEnabled()) {
-          authFlowBreadcrumb("auth_initial_get_session", { hasSession: !!s });
-        }
-        if (s?.user) scheduleRetentionSyncOnSession();
-      })
-      .catch((err) => {
-        console.warn("[AUTH] getSession failed", err);
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        done();
-      });
+    /**
+     * §Release-audit 2026-04: a single transient getSession() failure at
+     * cold boot would previously drop us straight to the login screen (the
+     * catch branch just called `done()` with no session). On flaky
+     * networks this showed users a login form even though they had a
+     * valid cached session on device. Retry with exponential-ish backoff
+     * so we only surface "no session" after we're confident it's real.
+     */
+    const MAX_ATTEMPTS = 3;
+    const attemptGetSession = (attempt: number): void => {
+      supabase.auth
+        .getSession()
+        .then(({ data: { session: s } }) => {
+          if (!mounted) return;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          updateSession(s);
+          setLoading(false);
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb("auth_initial_get_session", {
+              hasSession: !!s,
+              attempt,
+            });
+          }
+          if (s?.user) scheduleRetentionSyncOnSession();
+        })
+        .catch((err) => {
+          if (!mounted) return;
+          console.warn(`[AUTH] getSession failed (attempt ${attempt})`, err);
+          if (isSentryEnabled()) {
+            authFlowBreadcrumb("auth_initial_get_session_error", {
+              attempt,
+              message: err instanceof Error ? err.message : String(err),
+            });
+          }
+          if (attempt < MAX_ATTEMPTS) {
+            const delay = 400 * attempt;
+            setTimeout(() => {
+              if (mounted) attemptGetSession(attempt + 1);
+            }, delay);
+            return;
+          }
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          done();
+        });
+    };
+    attemptGetSession(1);
 
     const {
       data: { subscription },
@@ -371,18 +401,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    // §Release-audit 2026-04: centralised cleanup that runs whether or not
+    // supabase.signOut() throws, so we never end up in a half-signed-out
+    // state (session gone, preferences kept). Order matters slightly — we
+    // clear auth first so any in-flight API call can short-circuit, then
+    // tear down caches and per-user preferences.
     try {
       await supabase.auth.signOut();
-      clearApiCache();
-      clearPortalCache();
-      await clearCustomerUserCaches();
-      updateSession(null);
     } catch {
-      clearApiCache();
-      clearPortalCache();
-      await clearCustomerUserCaches();
-      updateSession(null);
+      // Swallow — even if Supabase fails we still want to proceed with
+      // local cleanup so the UI lands on a fresh login screen.
     }
+    clearApiCache();
+    clearPortalCache();
+    await Promise.allSettled([
+      clearCustomerUserCaches(),
+      clearBiometricPreference(),
+    ]);
+    updateSession(null);
   }, [updateSession]);
 
   return (

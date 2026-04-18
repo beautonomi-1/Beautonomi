@@ -12,6 +12,7 @@ import {
   Share,
   Platform,
   Modal,
+  KeyboardAvoidingView,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,6 +32,7 @@ import { getApiErrorMessage } from "@/lib/api-error";
 import { supabase } from "@/lib/supabase/client";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Clipboard from "expo-clipboard";
+import * as WebBrowser from "expo-web-browser";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
 import {
   ARRIVAL_PIN_CUSTOMER_HEADING,
@@ -40,10 +42,23 @@ import {
   ARRIVAL_PIN_PLACEHOLDER,
   ARRIVAL_PIN_TOAST_CUSTOMER_INCOMPLETE,
   getCustomerEtaUiParts,
+  normalizeProviderTimezone,
 } from "@beautonomi/utils";
 import QRCode from "react-native-qrcode-svg";
 
 const DEFAULT_TZ = "Africa/Johannesburg";
+
+/**
+ * §Launch-audit 2026-04-18: canonicalise legacy offset-style zones
+ * (e.g. "GMT+2") before handing to `toLocaleDateString`/`toLocaleTimeString`.
+ * Without this the RN JS engine's `Intl` throws and we fall back to the
+ * device's own clock, which was showing customers confusingly-shifted
+ * times for providers with non-IANA zone values. See supabase
+ * migration 511 for the database-side fix-up.
+ */
+function resolveBookingTimezone(tz?: string | null): string {
+  return normalizeProviderTimezone(tz) ?? DEFAULT_TZ;
+}
 
 function formatDate(s: string, tz?: string | null) {
   const parsed = parseValidDate(s);
@@ -54,7 +69,7 @@ function formatDate(s: string, tz?: string | null) {
       year: "numeric",
       month: "long",
       day: "numeric",
-      timeZone: tz || DEFAULT_TZ,
+      timeZone: resolveBookingTimezone(tz),
     });
   } catch {
     return parsed.toLocaleDateString("en-US", {
@@ -73,7 +88,7 @@ function formatTime(s: string, tz?: string | null) {
       hour: "2-digit",
       minute: "2-digit",
       hour12: true,
-      timeZone: tz || DEFAULT_TZ,
+      timeZone: resolveBookingTimezone(tz),
     });
   } catch {
     return parsed.toLocaleTimeString("en-US", {
@@ -504,10 +519,67 @@ export default function BookingDetailScreen() {
         Alert.alert("Error", getApiErrorMessage(res.error || { message: "Could not start payment" }, "Pay remaining balance"));
         return;
       }
-      router.push({
-        pathname: "/(app)/in-app-browser",
-        params: { url: encodeURIComponent(url), title: "Pay remaining balance" },
-      } as never);
+
+      // §Final-audit 2026-04: previously this always routed to the
+      // `/in-app-browser` WebView screen. `react-native-webview` is not
+      // supported on Expo web export, so customers hitting the PWA/web
+      // build could not complete pay-remaining. Use `WebBrowser` on
+      // native (same shell as the primary checkout) and a direct
+      // `Linking.openURL` fallback on web, then poll the booking until
+      // `outstanding_balance` clears.
+      if (Platform.OS === "web") {
+        try {
+          window.open(url, "_blank", "noopener,noreferrer");
+        } catch {
+          Linking.openURL(url).catch(() => {});
+        }
+      } else {
+        try {
+          await WebBrowser.openBrowserAsync(url, {
+            presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
+          });
+        } catch {
+          Linking.openURL(url).catch(() => {});
+        }
+      }
+
+      const MAX_ATTEMPTS = 10;
+      const POLL_INTERVAL_MS = 2000;
+      let cleared = false;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        try {
+          const check = await api.get<{
+            payment_status?: string;
+            outstanding_balance?: number;
+          }>(`/api/me/bookings/${encodeURIComponent(id)}`);
+          const checkData = (check.data ?? null) as
+            | { payment_status?: string; outstanding_balance?: number }
+            | null;
+          if (
+            checkData?.payment_status === "paid" ||
+            (typeof checkData?.outstanding_balance === "number" &&
+              checkData.outstanding_balance <= 0)
+          ) {
+            cleared = true;
+            break;
+          }
+        } catch {
+          // ignore poll errors
+        }
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
+        }
+      }
+
+      if (cleared) {
+        haptic.success();
+        await load();
+      } else {
+        Alert.alert(
+          "Payment pending",
+          "We haven't confirmed your payment yet. If you completed the payment, it may take a moment to process.",
+        );
+      }
     } catch (e) {
       Alert.alert("Error", getApiErrorMessage(e as Error, "Pay remaining balance"));
     } finally {
@@ -1799,7 +1871,15 @@ export default function BookingDetailScreen() {
       </Modal>
 
       {/* Cancel reason modal */}
+      {/* §UI-audit 2026-04: wrapped in KeyboardAvoidingView so the
+          multiline "Tell us why" textarea (and the destructive CTA
+          below it) stay above the keyboard on iOS. Previously on
+          smaller phones the keyboard covered the Cancel button. */}
       <Modal visible={cancelReasonModalOpen} transparent animationType="fade" onRequestClose={() => setCancelReasonModalOpen(false)}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
         <Pressable style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center" }} onPress={() => setCancelReasonModalOpen(false)}>
           <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: "#fff", borderRadius: 16, padding: 20, marginHorizontal: 24, width: 320 }}>
             <Text style={{ fontSize: 16, fontWeight: "700", color: "#111827", marginBottom: 12 }}>Why are you cancelling?</Text>
@@ -1846,6 +1926,7 @@ export default function BookingDetailScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

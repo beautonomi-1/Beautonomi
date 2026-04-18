@@ -102,6 +102,22 @@ export interface BookingState {
   }>;
   selectedDate: Date | null;
   selectedTimeSlot: string | null;
+  /**
+   * §Release-audit 2026-04: ISO-8601 UTC instant the availability engine
+   * produced for `selectedTimeSlot`. Preferred over re-deriving the instant
+   * from the HH:MM label + provider TZ at hold / booking time (which caused
+   * the "invalid time / slot taken" bug in non-UTC deployments).
+   */
+  selectedSlotStart?: string | null;
+  /** §Release-audit 2026-04: engine-emitted ISO end instant for the selected slot. */
+  selectedSlotEnd?: string | null;
+  /**
+   * §Release-audit 2026-04: for any-staff slots, the list of active
+   * `provider_staff.id`s who were free at this wall-clock time. Forwarded
+   * to /api/public/booking-holds so the hold resolver prefers the same
+   * staff the calendar surfaced.
+   */
+  selectedSlotAvailableStaffIds?: string[] | null;
   promotions: {
     couponCode?: string;
     couponDiscount?: number;
@@ -697,6 +713,42 @@ export default function BookingFlow() {
 
   const [isCreatingHold, setIsCreatingHold] = useState(false);
 
+  /**
+   * §Launch-audit 2026-04-18: the sticky BookingActionBar grows taller
+   * as fees/tax/tip/discount rows appear, so a static `pb-14rem` on the
+   * scroll container was not enough to keep the last few fields of the
+   * venue / your-info / forms steps visible on mobile. A ResizeObserver
+   * on the action bar publishes its measured height to the root
+   * element as `--booking-action-bar-h`; the scroll container then pads
+   * by that value + a small buffer — so the bottom of any step stays
+   * above the action bar regardless of viewport or row count.
+   *
+   * We set the var on `document.documentElement` (not the scroll
+   * container's ref) because the scroll container is re-mounted on each
+   * step change inside `<AnimatePresence mode="wait">`, which would
+   * drop the var mid-transition and cause a one-frame snap-to-default.
+   */
+  const actionBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = actionBarRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const apply = (height: number) => {
+      document.documentElement.style.setProperty(
+        "--booking-action-bar-h",
+        `${Math.ceil(height)}px`,
+      );
+    };
+    apply(node.getBoundingClientRect().height);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) apply(entry.contentRect.height);
+    });
+    ro.observe(node);
+    return () => {
+      ro.disconnect();
+      document.documentElement.style.removeProperty("--booking-action-bar-h");
+    };
+  }, []);
+
   /** Release an existing hold (best-effort, fire-and-forget). */
   const releaseHold = async (holdId: string) => {
     try {
@@ -723,12 +775,21 @@ export default function BookingFlow() {
     }
 
     try {
-      const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
-      const bookingDateTime = parseSelectedDatetimeInProviderTz(
-        dateStr,
-        bookingState.selectedTimeSlot!,
-        bookingState.providerTimezone,
-      );
+      // §Release-audit 2026-04: prefer the engine-emitted ISO start instant
+      // captured at slot selection. Only fall back to deriving the instant
+      // from HH:MM + provider TZ when the calendar didn't capture it (older
+      // persisted drafts from before this release).
+      let bookingDateTime: Date;
+      if (bookingState.selectedSlotStart) {
+        bookingDateTime = new Date(bookingState.selectedSlotStart);
+      } else {
+        const dateStr = formatLocalDateYYYYMMDD(new Date(bookingState.selectedDate!));
+        bookingDateTime = parseSelectedDatetimeInProviderTz(
+          dateStr,
+          bookingState.selectedTimeSlot!,
+          bookingState.providerTimezone,
+        );
+      }
 
       let totalMs = 0;
       for (const svc of bookingState.selectedServices) {
@@ -737,7 +798,25 @@ export default function BookingFlow() {
       for (const addon of bookingState.selectedAddons) {
         totalMs += (addon.duration ?? 0) * 60000;
       }
-      const endDateTime = new Date(bookingDateTime.getTime() + totalMs);
+      // Prefer the engine ISO end if present + a matching start; otherwise
+      // derive end from the summed cart duration.
+      const endDateTime =
+        bookingState.selectedSlotStart && bookingState.selectedSlotEnd
+          ? new Date(bookingState.selectedSlotEnd)
+          : new Date(bookingDateTime.getTime() + totalMs);
+
+      // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key
+      // per slot-select. Internal retries inside fetcher use the same
+      // key so the server returns the cached response instead of
+      // double-creating a hold.
+      const holdIdemKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
 
       const res = await fetcher.post<{ data?: { hold_id?: string; id?: string } }>(
         "/api/public/booking-holds",
@@ -753,6 +832,10 @@ export default function BookingFlow() {
           location_id: bookingState.selectedLocationId ?? null,
           previous_hold_id: bookingState.holdId || null,
           guest_fingerprint_hash: getGuestFingerprintHash(),
+          // §Release-audit 2026-04: when the slot came from an any-staff
+          // union, forward the engine's list of free staff so the hold
+          // resolver prefers the exact staff the calendar surfaced.
+          preferred_staff_ids: bookingState.selectedSlotAvailableStaffIds ?? null,
           ...(bookingState.mode === "mobile" && bookingState.address?.structuredAddress
             ? {
                 address: {
@@ -766,7 +849,8 @@ export default function BookingFlow() {
                 },
               }
             : {}),
-        }
+        },
+        { headers: { "Idempotency-Key": holdIdemKey } }
       );
       return res?.data?.hold_id ?? res?.data?.id ?? null;
     } catch (err) {
@@ -1171,8 +1255,17 @@ export default function BookingFlow() {
               opacity: { duration: 0.2 },
             }}
             className="absolute inset-0 overflow-y-auto overflow-x-hidden overscroll-y-contain"
+            style={{
+              // Fallback padding matches the old constants until the
+              // ResizeObserver publishes a measured height (first frame).
+              // `+ 1.5rem` gives the last field a little breathing room
+              // above the action bar; env(safe-area-inset-bottom) is
+              // already part of the action bar's own padding.
+              paddingBottom:
+                "calc(var(--booking-action-bar-h, 14rem) + 1.5rem)",
+            }}
           >
-            <div className="min-h-full pb-[calc(14rem+env(safe-area-inset-bottom,0px))] sm:pb-[calc(12rem+env(safe-area-inset-bottom,0px))]">
+            <div className="min-h-full">
               {currentStep === "services" ? (
                 <StepServiceSelection
                   bookingState={bookingState}
@@ -1251,7 +1344,13 @@ export default function BookingFlow() {
                     if (step === "calendar") {
                       const id = bookingState.holdId;
                       if (id) await releaseHold(id);
-                      updateBookingState({ holdId: null, selectedTimeSlot: null });
+                      updateBookingState({
+                        holdId: null,
+                        selectedTimeSlot: null,
+                        selectedSlotStart: null,
+                        selectedSlotEnd: null,
+                        selectedSlotAvailableStaffIds: null,
+                      });
                     }
                     const idx = activeStepOrder.indexOf(step);
                     if (idx >= 0) setCurrentStepIndex(idx);
@@ -1267,8 +1366,12 @@ export default function BookingFlow() {
         </AnimatePresence>
       </main>
 
-      {/* Sticky Action Bar */}
+      {/* Sticky Action Bar — ref is forwarded to the root motion.div
+          inside the component so ResizeObserver can publish its
+          measured height to `--booking-action-bar-h` (see effect
+          above). */}
       <BookingActionBar
+        ref={actionBarRef}
         bookingState={bookingState}
         currentStep={currentStep}
         canProceed={(canProceed() ?? false) && !isCreatingHold}

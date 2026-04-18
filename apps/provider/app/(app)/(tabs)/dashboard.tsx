@@ -163,7 +163,13 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
   const maxRevenue = Math.max(...data.map((d) => d.revenue), 1);
   const totalRevenue = data.reduce((s, d) => s + d.revenue, 0);
   const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // §UX-audit 2026-04: `new Date().toISOString().slice(0, 10)` returns
+  // the UTC calendar date, which is wrong for any provider whose local
+  // date differs from UTC (ZA is +02:00 — so every night between 22:00
+  // and 00:00 local, "today" highlighted the wrong bar). Build the
+  // date string from the device's local Y/M/D instead.
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   const dayLabels = data.map((d) => {
     if (!d.day) return "?";
@@ -186,16 +192,25 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
         style={{ flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", height: 120 }}
         accessibilityLabel="Weekly revenue bar chart"
       >
-        {data.map((day, index) => {
+        {data.map((day) => {
           const barHeight = Math.max(
             (day.revenue / maxRevenue) * 100,
             day.revenue > 0 ? 6 : 2,
           );
-          const isToday = day.day === todayStr || index === data.length - 1;
+          // §UX-audit 2026-04: previously this also treated the last-index
+          // bar as today as a safety net, which was wrong whenever the
+          // backend returned a week that wasn't anchored on today (or
+          // timezones shifted the comparison). Rely solely on the
+          // authoritative date string.
+          const isToday = day.day === todayStr;
           return (
             <View key={day.day} style={{ flex: 1, alignItems: "center", paddingHorizontal: 2 }}>
               {day.revenue > 0 && (
-                <Text style={{ marginBottom: 4, fontSize: 9, fontWeight: "500", color: Colors.gray[400] }}>
+                <Text
+                  style={{ marginBottom: 4, fontSize: 11, fontWeight: "500", color: Colors.gray[500] }}
+                  numberOfLines={1}
+                  allowFontScaling={false}
+                >
                   {formatCurrency(day.revenue).replace(/\.00$/, "")}
                 </Text>
               )}
@@ -215,7 +230,7 @@ function WeeklyRevenueChart({ data }: { data: WeeklyRevenue[] }) {
 
       <View style={{ marginTop: 8, flexDirection: "row", justifyContent: "space-between" }}>
         {dayLabels.map((label, i) => {
-          const isToday = data[i]?.day === todayStr || i === data.length - 1;
+          const isToday = data[i]?.day === todayStr;
           return (
             <View key={`${label}-${i}`} style={{ flex: 1, alignItems: "center" }}>
               <Text style={{ fontSize: 10, fontWeight: isToday ? "700" : "400", color: isToday ? Colors.gray[900] : Colors.gray[400] }}>
@@ -679,9 +694,15 @@ export default function DashboardScreen() {
         </View>
       )}
 
+      {/*
+        Wave 4.3 (audit 2026-04 final 100/100): provider mobile front-desk
+        quick actions. Walk-in + product-sale now surface on the home
+        screen so a provider can take a front-desk customer or a retail
+        sale in two taps, matching the web portal's front-desk parity.
+      */}
       <View style={{ marginBottom: 16, flexDirection: "row" }}>
         <TouchableOpacity
-          style={{ minHeight: 48, flex: 1, marginRight: 12, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900] }}
+          style={{ minHeight: 48, flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: Colors.gray[900] }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             router.push("/(app)/(tabs)/more/bookings/new" as any);
@@ -691,20 +712,35 @@ export default function DashboardScreen() {
           accessibilityRole="button"
         >
           <Ionicons name="add-circle-outline" size={18} color="#fff" />
-          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>New Booking</Text>
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.white }}>New</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={{ minHeight: 48, flex: 1, marginRight: 8, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            const today = new Date();
+            const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+            router.push(`/(app)/(tabs)/more/bookings/new?date=${dateStr}&walk_in=true` as any);
+          }}
+          activeOpacity={0.7}
+          accessibilityLabel="Record a walk-in booking"
+          accessibilityRole="button"
+        >
+          <Ionicons name="walk-outline" size={18} color="#111" />
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Walk-in</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={{ minHeight: 48, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", borderRadius: 12, borderWidth: 1, borderColor: Colors.gray[200], backgroundColor: Colors.white }}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.push("/(app)/(tabs)/calendar" as any);
+            router.push("/(app)/(tabs)/more/walk-in-sale" as any);
           }}
           activeOpacity={0.7}
-          accessibilityLabel="View schedule"
+          accessibilityLabel="Start a product sale"
           accessibilityRole="button"
         >
-          <Ionicons name="calendar-outline" size={18} color="#111" />
-          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Schedule</Text>
+          <Ionicons name="pricetag-outline" size={18} color="#111" />
+          <Text style={{ marginLeft: 8, fontWeight: "600", color: Colors.gray[900] }}>Sale</Text>
         </TouchableOpacity>
       </View>
 

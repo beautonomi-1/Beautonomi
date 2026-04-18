@@ -4,11 +4,13 @@
  * Refunds always credit the customer's wallet (platform policy).
  */
 
+import * as Sentry from "@sentry/nextjs";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getTenantRegionConfig } from "@/lib/regions/config";
 import type { CancellationPolicy } from "./cancellation-policy";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { resolveTenantIdForFinanceLedger } from "@/lib/finance/resolve-tenant-id-for-ledger";
+import { logger } from "@/lib/utils/logger";
 
 export interface RefundResult {
   success: boolean;
@@ -120,6 +122,34 @@ export async function processBookingRefund(
   options: ProcessBookingRefundOptions,
   _paymentReference?: string
 ): Promise<RefundResult> {
+  return Sentry.startSpan(
+    {
+      name: "finance.processBookingRefund",
+      op: "finance.refund.write",
+      attributes: {
+        "finance.booking_id": bookingId,
+        "finance.is_late_cancellation": options.isLateCancellation,
+        "finance.booking_total": bookingTotal,
+      },
+    },
+    () =>
+      processBookingRefundInner(
+        bookingId,
+        bookingTotal,
+        currency,
+        policy,
+        options,
+      ),
+  );
+}
+
+async function processBookingRefundInner(
+  bookingId: string,
+  bookingTotal: number,
+  currency: string,
+  policy: CancellationPolicy,
+  options: ProcessBookingRefundOptions,
+): Promise<RefundResult> {
   const supabaseAdmin = getSupabaseAdmin();
 
   try {
@@ -145,7 +175,11 @@ export async function processBookingRefund(
       .single();
 
     if (bookingError || !booking?.customer_id) {
-      console.error("Booking not found for refund:", bookingId, bookingError);
+      logger.error(
+        "processBookingRefund.booking_lookup_failed",
+        bookingError ?? undefined,
+        { bookingId },
+      );
       return { success: false, error: "Booking or customer not found" };
     }
 
@@ -177,7 +211,10 @@ export async function processBookingRefund(
       .single();
 
     if (refundError) {
-      console.error("Error creating refund record:", refundError);
+      logger.error("processBookingRefund.refund_insert_failed", refundError, {
+        bookingId,
+        refundAmount,
+      });
       return { success: false, error: "Failed to create refund record" };
     }
 
@@ -193,8 +230,15 @@ export async function processBookingRefund(
     });
 
     if (walletError) {
-      console.error("Wallet credit failed after refund record created:", walletError);
-      // Mark the refund as failed so it can be retried
+      logger.error(
+        "processBookingRefund.wallet_credit_failed",
+        walletError,
+        {
+          bookingId,
+          refundId: (refundRecord as { id: string }).id,
+          refundAmount,
+        },
+      );
       await supabaseAdmin
         .from("booking_refunds")
         .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
@@ -216,7 +260,13 @@ export async function processBookingRefund(
         },
       });
     } catch (eventErr) {
-      console.warn("Failed to create refund booking event:", eventErr);
+      logger.warn("processBookingRefund.event_insert_failed", {
+        bookingId,
+        error:
+          eventErr instanceof Error
+            ? eventErr.message
+            : String(eventErr),
+      });
     }
 
     // NOTE: finance_transactions ledger row is written by the AFTER INSERT/UPDATE
@@ -233,7 +283,10 @@ export async function processBookingRefund(
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Failed to process refund";
-    console.error("Error processing refund:", error);
+    logger.error("processBookingRefund.unhandled", error, {
+      bookingId,
+      bookingTotal,
+    });
     return { success: false, error: message };
   }
 }

@@ -40,7 +40,7 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.12",
+  version: "1.0.13",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
@@ -54,10 +54,16 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "205",
+    buildNumber: "206",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
+      // §Dual-role launch mitigation (2026-04-17): the WrongAppScreen uses
+      // Linking.canOpenURL("provider://") to tell a provider-role user "Open
+      // Partner app" vs "Install Partner app". iOS needs the target scheme to
+      // be declared in LSApplicationQueriesSchemes or canOpenURL always
+      // returns false (silently). Pair with the Android <queries> entry below.
+      LSApplicationQueriesSchemes: ["provider"],
     },
     entitlements: {
       "aps-environment": isProduction ? "production" : "development",
@@ -82,7 +88,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 205,
+    versionCode: 206,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",
@@ -106,6 +112,10 @@ const BASE_EXPO_CONFIG = {
     output: "single",
   },
   plugins: [
+    [
+      "./plugins/android-sibling-app-queries",
+      { packageName: "com.beautonomi.partner", scheme: "provider" },
+    ],
     [
       "expo-build-properties",
       {

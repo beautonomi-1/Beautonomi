@@ -117,7 +117,26 @@ export async function PATCH(request: NextRequest) {
       updates.business_name = body.businessName;
     }
     if (body.timezone !== undefined) {
-      updates.timezone = body.timezone;
+      // §Launch-audit 2026-04-18: see business/route.ts — validate IANA
+      // to prevent `/api/availability` 500s.
+      const raw = String(body.timezone).trim();
+      if (raw) {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: raw });
+          updates.timezone = raw;
+        } catch {
+          return handleApiError(
+            new Error(
+              `Invalid IANA timezone "${raw}". Expected a value like "Africa/Johannesburg".`,
+            ),
+            "Invalid timezone",
+            "INVALID_TIMEZONE",
+            400,
+          );
+        }
+      } else {
+        updates.timezone = null;
+      }
     }
     if (body.timeFormat !== undefined) {
       updates.time_format = body.timeFormat;

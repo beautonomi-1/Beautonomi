@@ -11,7 +11,7 @@ export const POLICY_VERSION = "2026-04-07.1";
 
 export const STORAGE_KEY = "beautonomi_cookie_consent_v1";
 
-/** Optional first-party mirror for middleware / future server reads (non-HttpOnly). */
+/** Optional first-party mirror for the Next 16 proxy / future server reads (non-HttpOnly). */
 export const CONSENT_COOKIE_NAME = "bn_cookie_consent";
 
 /** Max age ~400 days (common CMP pattern). */

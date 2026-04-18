@@ -6,6 +6,7 @@ import { rescheduleGroupBooking, isPrimaryContact, getGroupBooking } from "@/lib
 import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints";
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
@@ -84,10 +85,19 @@ export async function POST(
           .eq('id', firstService.staff_id)
           .maybeSingle();
         const groupProviderIdForParity = staffProviderRow?.provider_id as string | undefined;
+        // §Launch-audit 2026-04-18: normalise offset-style zones (see
+        // supabase migration 511) so Intl doesn't throw a RangeError.
+        const rawGroupProviderTz =
+          ((staffProviderRow as unknown as { providers?: { timezone?: string | null } | null })?.providers
+            ?.timezone ?? null) as string | null;
         const groupProviderTz =
-          (((staffProviderRow as unknown as { providers?: { timezone?: string | null } | null })?.providers
-            ?.timezone ?? null) as string | null)?.trim() ||
+          normalizeProviderTimezone(rawGroupProviderTz) ??
           DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+        if (rawGroupProviderTz && !normalizeProviderTimezone(rawGroupProviderTz)) {
+          console.warn(
+            `[group-reschedule] provider ${groupProviderIdForParity ?? "(unknown)"} has unparseable timezone "${rawGroupProviderTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+          );
+        }
 
         // B5: compute date + HH:mm in the provider's business timezone, not UTC.
         const newDate = formatInTimeZone(newDatetime, groupProviderTz, "yyyy-MM-dd");
@@ -134,6 +144,10 @@ export async function POST(
           {
             slotInterval: 15,
             travelBuffer: 0, // Could be enhanced for at-home bookings
+            // Wave 1.3 (audit 2026-04 final 100/100): match the single-
+            // booking surfaces so group reschedule sees the same slot
+            // truth in the provider's wall clock.
+            timezone: groupProviderTz,
           }
         );
 

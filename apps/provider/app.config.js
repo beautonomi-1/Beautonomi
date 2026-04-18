@@ -37,12 +37,16 @@ const BASE_EXPO_CONFIG = {
   runtimeVersion: {
     policy: "appVersion",
   },
-  version: "1.0.12",
+  version: "1.0.13",
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   newArchEnabled: true,
   plugins: [
+    [
+      "./plugins/android-sibling-app-queries",
+      { packageName: "com.beautonomi", scheme: "customer" },
+    ],
     [
       "expo-build-properties",
       {
@@ -128,10 +132,16 @@ const BASE_EXPO_CONFIG = {
     supportsTablet: true,
     bundleIdentifier: "com.beautonomi.partner",
     appleTeamId: "QW33CYPQX5",
-    buildNumber: "205",
+    buildNumber: "206",
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
       ITSAppUsesNonExemptEncryption: false,
+      // §Dual-role launch mitigation (2026-04-17): the WrongAppScreen uses
+      // Linking.canOpenURL("customer://") to tell a customer-role user "Open
+      // Customer app" vs "Install Customer app". iOS silently returns false
+      // for any scheme not in LSApplicationQueriesSchemes. Paired with the
+      // Android <queries> entry injected by android-sibling-app-queries.
+      LSApplicationQueriesSchemes: ["customer"],
     },
     entitlements: {
       "aps-environment": isProduction ? "production" : "development",
@@ -156,7 +166,7 @@ const BASE_EXPO_CONFIG = {
       "android.permission.POST_NOTIFICATIONS",
       "com.google.android.gms.permission.AD_ID",
     ],
-    versionCode: 205,
+    versionCode: 206,
     edgeToEdgeEnabled: true,
     predictiveBackGestureEnabled: false,
     softwareKeyboardLayoutMode: "resize",

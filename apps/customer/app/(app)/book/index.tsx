@@ -17,6 +17,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router, useFocusEffect } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { useSelectedAddress } from "@/providers/SelectedAddressProvider";
 import { api } from "@/lib/api-client";
@@ -51,6 +52,7 @@ import {
 } from "@/lib/booking-flow-hold";
 import { getGuestFingerprintHash } from "@/lib/guest-fingerprint";
 import { getTenantDefaultCurrency } from "@/lib/config-bundle";
+import { getTenantLocaleTag } from "@/lib/locale";
 import { Skeleton } from "@/components/Skeleton";
 import type {
   PublicProviderDetail,
@@ -249,7 +251,13 @@ function formatTimeSafe(value: unknown): string {
   if (typeof value !== "string" || !value) return "—";
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return "—";
-  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: true });
+  // §UI-audit 2026-04: previously hardcoded to `en-US`, which surfaced
+  // AM/PM time even for tenants that render 24-hour by default (e.g.
+  // en-ZA). Use the same tenant-locale resolver as bookings.tsx.
+  return parsed.toLocaleTimeString(getTenantLocaleTag(), {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /* ─── Step Progress Indicator ─── */
@@ -399,6 +407,10 @@ function DateCell({ date, isSelected, isToday, disabled, onPress }: {
 export default function BookScreen() {
   useScreenTracking("Book");
   const { t } = useTranslation();
+  // §UX-audit 2026-04: previously every sticky bottom bar and floating
+  // header on this screen hard-coded `paddingBottom: 28` / `paddingTop: 52`,
+  // so CTAs rendered under the home indicator on notched devices.
+  const insets = useSafeAreaInsets();
   const anyStaffMember = useMemo<StaffMember>(
     () => ({
       id: ANY_STAFF_BOOKING_ID,
@@ -1168,6 +1180,7 @@ export default function BookScreen() {
     selectedServices,
     excludeHoldIdForSlots,
     travelFeePreview,
+    reschedule_booking_id,
   ]);
 
   // Restore snapshot and reload stale data when screen regains focus (handles tab switching)
@@ -1317,6 +1330,7 @@ export default function BookScreen() {
     maxAdvanceDays,
     selectedServices,
     excludeHoldIdForSlots,
+    reschedule_booking_id,
   ]);
 
   const joinWaitlist = useCallback(async () => {
@@ -1568,6 +1582,30 @@ export default function BookScreen() {
 
       const fingerprint = await getGuestFingerprintHash();
 
+      // §Final-audit 2026-04: forward the engine's `available_staff_ids`
+      // when the slot came from an any-staff union so the hold resolver
+      // prefers the exact staff the calendar surfaced. Mirrors the web
+      // canonical flow (see apps/web/src/app/booking/components/booking-flow.tsx).
+      const preferredStaffIds =
+        selectedSlot?.available_staff_ids && selectedSlot.available_staff_ids.length > 0
+          ? selectedSlot.available_staff_ids
+          : null;
+
+      // Wave 2.1 (audit 2026-04 final 100/100): UUIDv4 idempotency key per
+      // user-initiated hold attempt. Any internal retry (network blip,
+      // session refresh) re-sends the same key so the server returns the
+      // cached response instead of creating a second hold and double-
+      // contending the slot. Generate inline using crypto.randomUUID with
+      // a Math.random fallback to avoid pulling a new dependency.
+      const holdIdempotencyKey =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+              const r = (Math.random() * 16) | 0;
+              const v = c === "x" ? r : (r & 0x3) | 0x8;
+              return v.toString(16);
+            });
+
       const res = await api.post<{ hold_id?: string; id?: string }>(
         "/api/public/booking-holds",
         {
@@ -1581,11 +1619,15 @@ export default function BookScreen() {
           address,
           previous_hold_id: excludeHoldIdForSlots || null,
           guest_fingerprint_hash: fingerprint,
+          preferred_staff_ids: preferredStaffIds,
           ...(packageIdForCheckout
             ? { package_id: packageIdForCheckout, primary_package_id: packageIdForCheckout }
             : {}),
         },
-        { timeout: 120_000 }
+        {
+          timeout: 120_000,
+          headers: { "Idempotency-Key": holdIdempotencyKey },
+        }
       );
 
       const holdData = (res.data ?? {}) as { hold_id?: string; id?: string };
@@ -1671,7 +1713,7 @@ export default function BookScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
           {/* Custom header skeleton */}
-          <View style={{ flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 12, backgroundColor: "#fff" }}>
+          <View style={{ flexDirection: "row", alignItems: "center", paddingTop: insets.top + 12, paddingHorizontal: contentPadding, paddingBottom: 12, backgroundColor: "#fff" }}>
             <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginRight: 12 }} />
             <Skeleton width="40%" height={18} />
           </View>
@@ -1771,7 +1813,7 @@ export default function BookScreen() {
       <View style={{ flex: 1, backgroundColor: "#fff" }} accessibilityLabel={t("booking.bookAppointment")} accessibilityRole="none">
         {/* ═══ Custom Header ═══ */}
         <View style={{
-          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 8,
+          flexDirection: "row", alignItems: "center", paddingTop: insets.top + 8, paddingHorizontal: contentPadding, paddingBottom: 8,
           backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#F3F4F6",
         }}>
           <TouchableOpacity
@@ -3234,7 +3276,7 @@ export default function BookScreen() {
           {/* ═══ Sticky Bottom CTA ═══ */}
           {step === "service" && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
@@ -3265,7 +3307,7 @@ export default function BookScreen() {
           )}
           {step === "venue" && (selectedService || selectedServices.length > 0) && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               {(() => {
@@ -3294,7 +3336,7 @@ export default function BookScreen() {
           )}
           {step === "staff" && staff.length > 0 && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
@@ -3316,7 +3358,7 @@ export default function BookScreen() {
           )}
           {step === "date" && staff.length > 0 && selectedStaff && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
@@ -3338,7 +3380,7 @@ export default function BookScreen() {
           )}
           {step === "time" && selectedSlot && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity
@@ -3357,7 +3399,7 @@ accessibilityLabel={t("booking.nextAddExtras")}
           )}
           {step === "addons" && (
             <View style={{
-              paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+              paddingHorizontal: contentPadding, paddingTop: 12, paddingBottom: 12 + Math.max(insets.bottom, 8),
               borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
             }}>
               <TouchableOpacity

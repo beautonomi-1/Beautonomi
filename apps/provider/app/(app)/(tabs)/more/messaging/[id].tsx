@@ -21,7 +21,7 @@ import { LoadingState } from "@/components/ui/LoadingState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { CustomOfferSheet } from "@/components/CustomOfferSheet";
 import { formatTime, formatCurrency, formatDateTime } from "@/lib/format";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "@/lib/supabase/client";
 import { Colors } from "@/constants/colors";
 import * as Haptics from "expo-haptics";
@@ -86,11 +86,10 @@ interface ConversationDetail {
   messages: Message[];
 }
 
-const initialScrollDone = { current: false };
-
 export default function ChatScreen() {
   const router = useRouter();
   const { screenPadding } = useResponsive();
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const conversationId = typeof id === "string" ? id : Array.isArray(id) ? id[0] : undefined;
 
@@ -98,6 +97,13 @@ export default function ChatScreen() {
   const [showCustomOfferSheet, setShowCustomOfferSheet] = useState(false);
   const [uploading, setUploading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  // §UI-audit 2026-04: `initialScrollDone` used to be a module-level
+  // mutable object shared across every mount, so switching between two
+  // threads with the same message count never re-ran scroll-to-bottom.
+  // It is now a per-mount ref that resets whenever `conversationId`
+  // changes, together with the `scrollKey` trick that re-runs the
+  // scroll effect on thread change even if the length is identical.
+  const initialScrollDoneRef = useRef(false);
 
   const {
     data: conversation,
@@ -132,20 +138,23 @@ export default function ChatScreen() {
     markRead(`/api/provider/conversations/${conversationId}/mark-read`, {});
   }, [conversationId, conversation?.id, conversation, markRead]);
 
-  // Scroll to bottom on initial load and when new messages arrive
+  // Reset the "first scroll" flag whenever we switch threads so the
+  // initial scroll-to-bottom runs again for the new conversation even
+  // if its message count happens to equal the previous one.
   useEffect(() => {
-    if (allMessages.length > 0) {
-      const t = setTimeout(
-        () =>
-          flatListRef.current?.scrollToEnd({
-            animated: initialScrollDone.current,
-          }),
-        100
-      );
-      initialScrollDone.current = true;
-      return () => clearTimeout(t);
-    }
-  }, [allMessages.length]);
+    initialScrollDoneRef.current = false;
+  }, [conversationId]);
+
+  useEffect(() => {
+    if (allMessages.length === 0) return;
+    const animated = initialScrollDoneRef.current;
+    const t = setTimeout(
+      () => flatListRef.current?.scrollToEnd({ animated }),
+      100,
+    );
+    initialScrollDoneRef.current = true;
+    return () => clearTimeout(t);
+  }, [conversationId, allMessages.length]);
 
   // Supabase Realtime: live incoming messages and read receipt updates
   useEffect(() => {
@@ -381,10 +390,45 @@ export default function ChatScreen() {
 
   return (
     <SafeAreaView style={twStyle("flex-1 bg-white")} edges={["top"]}>
+      {/* §UI-audit 2026-04: single focus header (AppHeader is hidden
+          on this route). Added a customer avatar next to the title so
+          the thread clearly identifies the other party. */}
       <View style={twStyle("border-b border-gray-100 px-4")}>
         <ScreenHeader
           title={conversation?.customer_name ?? "Chat"}
           showBack
+          leadingContent={
+            conversation?.customer_avatar_url ? (
+              <Image
+                source={{ uri: conversation.customer_avatar_url }}
+                style={{ width: 36, height: 36, borderRadius: 18, marginRight: 10 }}
+                contentFit="cover"
+                transition={120}
+              />
+            ) : conversation?.customer_name ? (
+              <View
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  marginRight: 10,
+                  backgroundColor: Colors.gray[100],
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ fontSize: 14, fontWeight: "700", color: Colors.gray[700] }}>
+                  {conversation.customer_name
+                    .split(" ")
+                    .map((p) => p[0])
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </Text>
+              </View>
+            ) : null
+          }
           rightAction={
             <View style={twStyle("flex-row items-center")}>
               <TouchableOpacity
@@ -638,7 +682,17 @@ export default function ChatScreen() {
               }}
             />
 
-            <View style={twStyle("border-t border-gray-100 px-3 py-2 flex-row items-end")}>
+            {/* §UI-audit 2026-04: bottom safe-area is now part of the
+                input row itself (inside KeyboardAvoidingView) so the
+                composer stays above the home indicator whether or not
+                the keyboard is open. The trailing SafeAreaView below
+                was ineffective because it rendered outside KAV. */}
+            <View
+              style={[
+                twStyle("border-t border-gray-100 px-3 flex-row items-end"),
+                { paddingTop: 8, paddingBottom: 8 + insets.bottom },
+              ]}
+            >
               <TouchableOpacity
                 onPress={handleAttachImage}
                 disabled={sending || uploading}
@@ -688,7 +742,6 @@ export default function ChatScreen() {
           </>
         )}
       </KeyboardAvoidingView>
-      <SafeAreaView edges={["bottom"]} />
       <CustomOfferSheet
         visible={showCustomOfferSheet}
         onClose={() => setShowCustomOfferSheet(false)}

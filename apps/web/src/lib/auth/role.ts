@@ -4,8 +4,10 @@
  * Use for server-side routing (/portal page, proxy) and for /api/me/portal.
  */
 
+import type { User as AuthUser } from "@supabase/supabase-js";
 import type { UserRole } from "@/types/beautonomi";
 import { getProviderIdForUser } from "@/lib/supabase/api-helpers";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 export type Portal = "customer" | "provider" | "admin" | "provider_onboarding";
 
@@ -17,6 +19,74 @@ export interface UserRoleResult {
   role: UserRole;
   provider_id: string | null;
   provider_status: ProviderStatus;
+}
+
+/**
+ * §Release-audit 2026-04: self-heal a missing `public.users` row for a Bearer/mobile caller,
+ * mirroring the upsert that `requireRoleInApi` performs for Bearer tokens. Returns true if
+ * the row now exists with a role (newly inserted or already present), false if the heal failed.
+ *
+ * This exists so routes like `/api/me/portal` that don't go through `requireRoleInApi` (they
+ * accept any authenticated user and derive portal from role) still handle the phone-only /
+ * pre-trigger signup case without returning 401 forever.
+ */
+export async function ensurePublicUserRowExists(authUser: AuthUser): Promise<boolean> {
+  try {
+    const admin = getSupabaseAdmin();
+    const { data: existing } = await admin
+      .from("users")
+      .select("id, role")
+      .eq("id", authUser.id)
+      .maybeSingle();
+    if (existing?.role) return true;
+
+    const placeholderEmail = authUser.email ?? `${authUser.id}@phone.local`;
+    const metadata = (authUser.user_metadata ?? {}) as Record<string, unknown>;
+    const { data: upserted, error: upsertError } = await admin
+      .from("users")
+      .upsert(
+        {
+          id: authUser.id,
+          email: placeholderEmail,
+          full_name:
+            (metadata.full_name as string | undefined) ??
+            (metadata.name as string | undefined) ??
+            null,
+          phone: (metadata.phone as string | undefined) ?? null,
+          role: "customer" as UserRole,
+        },
+        { onConflict: "id" }
+      )
+      .select("id, role")
+      .single();
+
+    if (upsertError || !upserted?.role) {
+      console.error("[auth.role] ensurePublicUserRowExists upsert failed", {
+        user_id: authUser.id,
+        error: upsertError?.message ?? "empty upsert result",
+      });
+      return false;
+    }
+
+    await admin
+      .from("user_wallets")
+      .upsert(
+        { user_id: authUser.id, currency: "ZAR" },
+        { onConflict: "user_id", ignoreDuplicates: true }
+      );
+
+    console.info("[auth.role] self-healed public.users row", {
+      user_id: authUser.id,
+      via: "ensurePublicUserRowExists",
+    });
+    return true;
+  } catch (err) {
+    console.error("[auth.role] ensurePublicUserRowExists threw", {
+      user_id: authUser.id,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
 }
 
 /**
@@ -76,6 +146,14 @@ export function getPortalForUser(params: {
 
   if (role === "superadmin" || role?.startsWith("admin_")) return "admin";
   if (role === "customer") return "customer";
+
+  // §Release-audit 2026-04: DB can store role = "provider_onboarding" directly
+  // (legacy / explicit seed path). Previously this fell through to `"customer"`,
+  // which produced a wrong-app loop on mobile: the portal route returned
+  // "customer", so the provider app flipped to WrongApp, and the customer app
+  // then tried to gate them through customer onboarding. Map it to the
+  // dedicated portal so both apps can route them to provider get-started.
+  if (role === "provider_onboarding") return "provider_onboarding";
 
   if (role === "provider_owner" || role === "provider_staff") {
     if (provider_status === "active") return "provider";

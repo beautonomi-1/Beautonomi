@@ -1,9 +1,25 @@
 import { formatInTimeZone } from "date-fns-tz";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 
 function parseInstant(input: Date | string): Date {
   if (input instanceof Date) return input;
   return new Date(input);
+}
+
+/**
+ * §Launch-audit 2026-04-18: legacy provider rows can store offset-style
+ * timezones (e.g. "GMT+2"), which throw inside `formatInTimeZone` because
+ * `date-fns-tz` ultimately hands them to `Intl.DateTimeFormat`. We
+ * canonicalise to an IANA / Etc zone before formatting; on failure we
+ * fall back to the platform default rather than surfacing a crash to
+ * the UI / email template.
+ */
+function safeTimezone(timeZone: string | null | undefined): string {
+  const normalised = normalizeProviderTimezone(timeZone);
+  if (normalised) return normalised;
+  const trimmed = timeZone?.trim();
+  return trimmed || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
 }
 
 /**
@@ -17,7 +33,7 @@ export function formatBookingDateInTimeZone(
   if (scheduledAt == null) return "";
   const d = parseInstant(scheduledAt);
   if (Number.isNaN(d.getTime())) return "";
-  const tz = (timeZone && timeZone.trim()) || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const tz = safeTimezone(timeZone);
   try {
     return formatInTimeZone(d, tz, "EEEE, MMMM d, yyyy");
   } catch {
@@ -35,7 +51,7 @@ export function formatBookingTimeInTimeZone(
   if (scheduledAt == null) return "";
   const d = parseInstant(scheduledAt);
   if (Number.isNaN(d.getTime())) return "";
-  const tz = (timeZone && timeZone.trim()) || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  const tz = safeTimezone(timeZone);
   try {
     return formatInTimeZone(d, tz, "h:mm a");
   } catch {
@@ -44,9 +60,9 @@ export function formatBookingTimeInTimeZone(
 }
 
 /**
- * Resolve display timezone: prefer explicit provider timezone, else default SA.
+ * Resolve display timezone: prefer explicit provider timezone
+ * (normalised if it arrived as an offset-style string), else default SA.
  */
 export function resolveBookingDisplayTimeZone(providerTimezone?: string | null): string {
-  const t = providerTimezone?.trim();
-  return t || DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+  return safeTimezone(providerTimezone);
 }

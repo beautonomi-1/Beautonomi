@@ -5,6 +5,22 @@ import * as SecureStore from "expo-secure-store";
 
 const BIOMETRIC_ENABLED_KEY = "biometric_auth_enabled";
 
+/**
+ * §Release-audit 2026-04: the biometric preference was stored under a
+ * single global key and never cleared on sign-out. That meant another
+ * user signing in on the same device inherited the previous user's
+ * "biometric enabled" state in Settings. Call this from the auth layer
+ * whenever a session ends so the next user starts clean.
+ */
+export async function clearBiometricPreference(): Promise<void> {
+  if (Platform.OS === "web") return;
+  try {
+    await SecureStore.deleteItemAsync(BIOMETRIC_ENABLED_KEY);
+  } catch {
+    // Best-effort only — storage may be locked / unavailable.
+  }
+}
+
 interface BiometricAuthState {
   /** Whether the device supports biometric auth */
   isAvailable: boolean;

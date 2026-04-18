@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, memo } from "react";
+import { useCallback, useEffect, useState, memo, useMemo } from "react";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import {
   View,
@@ -100,13 +100,14 @@ const styles = StyleSheet.create({
   addressBarChevron: { marginLeft: 8 },
   navRow: {
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     borderBottomWidth: 1,
     borderBottomColor: Colors.gray[100],
     position: "relative",
+    minHeight: 52,
   },
   navLeftGroup: {
     flexDirection: "row",
@@ -119,23 +120,21 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 6,
   },
-  // Absolutely positioned so Home/Explore are always centred in the full row width,
-  // regardless of how wide the left (logo) and right (icons) groups are.
+  // Centered in the row; horizontal insets reserve space for logo (left) and toolbar
+  // (right) so labels never render under the icon column on narrow phones.
   navCenterGroup: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    top: 0,
+    bottom: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    // Pointer events pass through to the left/right groups beneath this layer.
     pointerEvents: "box-none",
   },
   navTab: {
     alignItems: "center",
     flexDirection: "column",
     paddingBottom: 4,
-    paddingHorizontal: 10,
   },
   navTabActive: {
     borderBottomWidth: 2,
@@ -153,20 +152,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flexShrink: 0,
     zIndex: 1,
-    gap: 2,
+    gap: 8,
   },
   navIconBtn: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.gray[50],
     alignItems: "center",
     justifyContent: "center",
-  },
-  navSearchMargin: {
-    marginRight: 4,
-    minWidth: 36,
-    minHeight: 36,
-    justifyContent: "center",
-    alignItems: "center",
   },
   categoryRow: {
     paddingVertical: 12,
@@ -415,7 +409,7 @@ export default function HomeScreen() {
   const { coords, loading: locationLoading } = useLocation();
   const { selectedAddress, setSelectedAddress } = useSelectedAddress();
   const { addresses, reload: reloadAddresses } = useAddresses(!!user);
-  const { cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  const { width: windowWidth, cardWidth, contentPadding, contentMaxWidth, isTablet } = useResponsive();
   const tabScrollPaddingBottom = useTabContentPaddingBottom();
   const [activeCategory, setActiveCategory] = useState("All");
   const [saveAddressModalVisible, setSaveAddressModalVisible] = useState(false);
@@ -438,6 +432,20 @@ export default function HomeScreen() {
       : globalCategories.find((c) => c.name === activeCategory)?.slug ?? activeCategory.toLowerCase();
 
   const searchContextCategorySlug = activeCategorySlug;
+
+  /** Keeps Home / Explore centred while reserving fixed bands for logo + 3 toolbar icons (no overlap on small screens). */
+  const navCenterInset = useMemo(() => {
+    const TOOLBAR_BTN = 40;
+    const TOOLBAR_GAP = 8;
+    const logoReserve = 48;
+    const rightReserve = 3 * TOOLBAR_BTN + 2 * TOOLBAR_GAP;
+    return {
+      left: contentPadding + logoReserve,
+      right: contentPadding + rightReserve,
+    };
+  }, [contentPadding]);
+
+  const navTabPadH = windowWidth < 360 ? 6 : 10;
 
   const { data, loading, refreshing, error, refetch } = useHomeData(
     effectiveLat,
@@ -567,16 +575,16 @@ export default function HomeScreen() {
               onPress={() => router.push("/(app)/(tabs)/home")}
               accessibilityRole="image"
               accessibilityLabel="Beautonomi logo"
-              style={{ padding: 4 }}
+              style={{ padding: 8, marginLeft: -4, borderRadius: 12 }}
             >
               <Image source={require("../../../assets/favicon.png")} style={styles.navLogo} />
             </TouchableOpacity>
           </View>
 
-          {/* Center: Home / Explore — absolutely positioned so it is truly screen-centred */}
-          <View style={styles.navCenterGroup}>
+          {/* Center: Home / Explore — inset so tabs never sit under the right toolbar */}
+          <View style={[styles.navCenterGroup, navCenterInset]}>
             <TouchableOpacity
-              style={[styles.navTab, styles.navTabActive]}
+              style={[styles.navTab, styles.navTabActive, { paddingHorizontal: navTabPadH }]}
               accessibilityRole="button"
               accessibilityLabel="Home tab"
               accessibilityState={{ selected: true }}
@@ -585,7 +593,7 @@ export default function HomeScreen() {
               <Text style={[styles.navTabLabel, { color: Colors.primary, fontWeight: "600" }]}>Home</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.navTab}
+              style={[styles.navTab, { paddingHorizontal: navTabPadH }]}
               onPress={() => router.push("/(app)/(tabs)/explore")}
               accessibilityRole="button"
               accessibilityLabel="Explore tab"
@@ -599,10 +607,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Right: search · wishlist · notifications — uniform icon buttons */}
+          {/* Right: search · wishlist · notifications — uniform toolbar chips */}
           <View style={styles.navRightGroup}>
-            <View style={styles.navSearchMargin}>
-              <InlineSearch contextCategorySlug={searchContextCategorySlug} />
+            <View style={styles.navIconBtn}>
+              <InlineSearch fillParent contextCategorySlug={searchContextCategorySlug} />
             </View>
             <TouchableOpacity
               onPress={() => {
@@ -614,7 +622,7 @@ export default function HomeScreen() {
               accessibilityHint="Open saved providers, products, and posts"
               style={styles.navIconBtn}
             >
-              <Ionicons name="heart-outline" size={22} color="#333" />
+              <Ionicons name="heart-outline" size={22} color="#374151" />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -626,7 +634,7 @@ export default function HomeScreen() {
               accessibilityHint="Show recent notifications"
               style={styles.navIconBtn}
             >
-              <Ionicons name="notifications-outline" size={22} color="#333" />
+              <Ionicons name="notifications-outline" size={22} color="#374151" />
               {unreadCount > 0 ? (
                 <View
                   style={{

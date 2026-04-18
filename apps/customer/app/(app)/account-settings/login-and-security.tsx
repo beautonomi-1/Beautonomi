@@ -210,6 +210,45 @@ export default function LoginAndSecurityScreen() {
     else await biometric.disable();
   };
 
+  const [signingOutGlobal, setSigningOutGlobal] = useState(false);
+
+  const handleGlobalSignOut = () => {
+    Alert.alert(
+      "Sign out from all devices?",
+      "This will sign you out everywhere — phone, tablet, browsers — and require you to log in again on each device. Use this if you suspect someone else may have accessed your account.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign out everywhere",
+          style: "destructive",
+          onPress: async () => {
+            setSigningOutGlobal(true);
+            try {
+              const res = await api.post<{ ok?: boolean }>(
+                "/api/auth/sign-out-global",
+                {},
+              );
+              if (res.error) {
+                Alert.alert("Error", res.error.message ?? "Could not sign out everywhere. Please try again.");
+                return;
+              }
+              try {
+                await supabase.auth.signOut();
+              } catch {
+                // best effort - server-side global signout already revoked tokens
+              }
+              router.replace("/(auth)/login");
+            } catch (e) {
+              Alert.alert("Error", getApiErrorMessage(e, "Could not sign out everywhere"));
+            } finally {
+              setSigningOutGlobal(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const currentEmail = profile?.email ?? user?.email ?? "";
   const currentPhone = profile?.phone ?? user?.phone ?? "";
   const parsedPhone = parsePhoneToCountryAndNational(currentPhone, getDeviceDefaultCountryDial());
@@ -498,6 +537,37 @@ export default function LoginAndSecurityScreen() {
                 <Text style={{ color: Colors.white, fontWeight: "600" }}>
                   {updating ? "Updating..." : "Update password"}
                 </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Wave 2.4 (audit 2026-04 final 100/100): global sign-out */}
+            <View style={{ marginTop: 32 }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: Colors.gray[900], marginBottom: 8 }}>Active sessions</Text>
+              <Text style={{ fontSize: 14, color: Colors.gray[600], marginBottom: 12, lineHeight: 20 }}>
+                Sign out from this app and every other phone, tablet or browser where your Beautonomi account is signed in.
+              </Text>
+              <TouchableOpacity
+                onPress={handleGlobalSignOut}
+                disabled={signingOutGlobal}
+                style={{
+                  borderWidth: 1,
+                  borderColor: Colors.gray[300],
+                  backgroundColor: Colors.white,
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: 12,
+                  alignItems: "center",
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Sign out from all devices"
+              >
+                {signingOutGlobal ? (
+                  <ActivityIndicator size="small" color={Colors.gray[700]} />
+                ) : (
+                  <Text style={{ color: Colors.gray[900], fontWeight: "600", fontSize: 16 }}>
+                    Sign out from all devices
+                  </Text>
+                )}
               </TouchableOpacity>
             </View>
 

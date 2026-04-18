@@ -6,7 +6,7 @@ const CSRF_HEADER = "x-csrf-token";
 const SECRET = process.env.CSRF_SECRET || process.env.CRON_SECRET || "";
 
 // Client bundles import `getCsrfHeaders` from this module; env secrets are not
-// available in the browser, so only warn on the server (Node / middleware).
+// available in the browser, so only warn on the server (Node / Next 16 proxy).
 if (
   !SECRET &&
   process.env.NODE_ENV === "production" &&

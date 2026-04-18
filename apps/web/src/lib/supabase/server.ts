@@ -9,7 +9,7 @@
  * - API routes (/app/api/**)
  * - Server Components
  * - Server Actions
- * - Middleware
+ * - Proxy (`src/proxy.ts`) — Next 16 replacement for the deprecated `middleware.ts`
  */
 
 import { createServerClient } from '@supabase/ssr';

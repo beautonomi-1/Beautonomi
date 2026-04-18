@@ -9,6 +9,8 @@ import { getTenantRegionConfig } from "@/lib/regions/config";
 import { resolveTenantIdWithZaFallback } from "@/lib/tenant/resolve-tenant-from-db";
 import { LAST_RESORT_CURRENCY } from "@/lib/regions/last-resort-currency";
 import { fetchScopedSingle } from "@/lib/tenant/scoped-overrides";
+import { checkPayoutRequestRateLimit } from "@/lib/rate-limit/payout-request";
+import { applyRateLimitHeaders } from "@/lib/rate-limit/headers";
 
 /**
  * GET /api/provider/payouts
@@ -82,6 +84,23 @@ export async function POST(request: NextRequest) {
     }
     const { user } = permissionCheck;
 
+    // Wave 2.4 (audit 2026-04 final 100/100): per-user payout rate limit
+    // (5/min, 30/hour). Catches accidental retry storms and contains
+    // damage from a leaked token before it reaches the balance/INSERT
+    // hot path. Keyed on user.id, IP fallback for safety.
+    const payoutRl = await checkPayoutRequestRateLimit(request, user.id);
+    if (!payoutRl.allowed) {
+      const r = errorResponse(
+        "You've made too many payout requests recently. Please wait a moment and try again.",
+        "RATE_LIMIT_EXCEEDED",
+        429,
+      );
+      return applyRateLimitHeaders(r, {
+        remaining: 0,
+        retryAfterSeconds: payoutRl.retryAfterSeconds,
+      });
+    }
+
     const supabase = await getSupabaseServer(request);
     const body = await request.json();
     const { amount, bank_account_id, notes } = body;
@@ -128,10 +147,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { availableBalance } = await getAvailablePayoutBalance(getSupabaseAdmin(), providerId, {
-      holdDays,
-      tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
-    });
+    const { availableBalance, rawBalance, hasNegativeBalance } = await getAvailablePayoutBalance(
+      getSupabaseAdmin(),
+      providerId,
+      {
+        holdDays,
+        tenantId: (prow as { tenant_id?: string | null } | null)?.tenant_id ?? null,
+      },
+    );
+
+    // §Final-audit 2026-04 (R4): if a post-payout refund has left the
+    // provider in the red, block NEW payout requests and surface the
+    // drift loudly. Previously the negative balance was computed and
+    // silently floored to 0 — the provider could still request a
+    // payout the moment new earnings arrived, even though the platform
+    // was owed money from the prior refund. Ops must first reconcile
+    // the negative balance (either wait for it to clear organically or
+    // issue a manual adjustment) before new payouts resume.
+    if (hasNegativeBalance) {
+      console.error(
+        "[payouts.create] provider has negative raw balance; blocking payout request",
+        { providerId, rawBalance, availableBalance },
+      );
+      try {
+        await getSupabaseAdmin()
+          .from("reconciliation_gate_runs")
+          .insert({
+            window_start: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+            window_end: new Date().toISOString(),
+            status: "drifted",
+            drift_rows: 1,
+            drift_summary: {
+              kind: "negative_provider_balance",
+              provider_id: providerId,
+              raw_balance: rawBalance,
+            },
+            notes: "Payout request blocked due to negative provider balance (R4)",
+          });
+      } catch (logErr) {
+        console.warn("[payouts.create] failed to log reconciliation drift", logErr);
+      }
+      return errorResponse(
+        "Your account is currently under reconciliation. Our finance team will be in touch shortly.",
+        "NEGATIVE_BALANCE",
+        409,
+      );
+    }
 
     const availableRounded = Math.round(availableBalance * 100) / 100;
     const requestRounded = Math.round(numAmount * 100) / 100;

@@ -8,6 +8,7 @@ import { loadAvailabilityConstraints } from "@/lib/availability/load-constraints
 import { calculateAvailableSlots } from "@/lib/availability/calculate-slots";
 import { HOUSE_CALL_CONFIG } from "@/lib/config/house-call-config";
 import { DEFAULT_BOOKING_DISPLAY_TIMEZONE } from "@/lib/bookings/display-invariants";
+import { normalizeProviderTimezone } from "@/lib/availability/time-utils";
 import { formatInTimeZone } from "date-fns-tz";
 import { z } from "zod";
 
@@ -164,9 +165,17 @@ export async function POST(request: NextRequest) {
       .select('timezone')
       .eq('id', booking.provider_id)
       .maybeSingle();
+    // §Launch-audit 2026-04-18: normalise offset-style zones before
+    // feeding Intl/date-fns-tz. See migration 511.
+    const rawPortalTz =
+      (portalProviderRow as { timezone?: string | null } | null)?.timezone ?? null;
     const portalProviderTz =
-      ((portalProviderRow as { timezone?: string | null } | null)?.timezone?.trim() ||
-        DEFAULT_BOOKING_DISPLAY_TIMEZONE);
+      normalizeProviderTimezone(rawPortalTz) ?? DEFAULT_BOOKING_DISPLAY_TIMEZONE;
+    if (rawPortalTz && !normalizeProviderTimezone(rawPortalTz)) {
+      console.warn(
+        `[portal-reschedule] provider ${booking.provider_id} has unparseable timezone "${rawPortalTz}" — falling back to ${DEFAULT_BOOKING_DISPLAY_TIMEZONE}`,
+      );
+    }
 
     const newDate = formatInTimeZone(newDatetime, portalProviderTz, "yyyy-MM-dd");
     const requestedTime = formatInTimeZone(newDatetime, portalProviderTz, "HH:mm");
@@ -195,6 +204,9 @@ export async function POST(request: NextRequest) {
       {
         slotInterval: 15,
         travelBuffer: booking.location_type === 'at_home' ? HOUSE_CALL_CONFIG.DEFAULT_TRAVEL_BUFFER_MINUTES : 0,
+        // Wave 1.3 (audit 2026-04 final 100/100): match the customer
+        // surface so portal users see the same slot truth in their tz.
+        timezone: portalProviderTz,
       }
     );
 
@@ -209,7 +221,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // B5: DB-level lock against cross-booking contention on (staff, slot).
+    // Wave 1.3 (audit 2026-04 final 100/100): DB-level lock against cross-
+    // booking contention on (staff, slot). Previously this surface caught
+    // the RPC error and continued, silently fail-OPEN — meaning a missing
+    // migration or transient DB error let portal users double-book past the
+    // last layer of defence. The customer surface fails closed; portal must
+    // too. See reschedule-core.ts for the canonical pattern.
+    type PortalConflictResult = { conflict: boolean };
+    let portalLockError: unknown = null;
+    let portalConflictCheck: PortalConflictResult | null = null;
     try {
       const { data: conflictRow, error: conflictErr } = await (
         adminSupabase.rpc as any
@@ -220,19 +240,35 @@ export async function POST(request: NextRequest) {
         p_new_start: newDatetime.toISOString(),
         p_total_minutes: totalDuration,
       });
-      if (!conflictErr) {
-        const c = Array.isArray(conflictRow) ? conflictRow[0] : conflictRow;
-        if (c && (c as { conflict?: boolean }).conflict) {
-          return handleApiError(
-            new Error("Slot locked by concurrent booking"),
-            "That time just became unavailable. Please pick another slot.",
-            "SLOT_CONTENDED",
-            409,
-          );
-        }
+      if (conflictErr) {
+        portalLockError = conflictErr;
+      } else {
+        portalConflictCheck = Array.isArray(conflictRow)
+          ? (conflictRow[0] as PortalConflictResult | null)
+          : ((conflictRow as PortalConflictResult | null) ?? null);
       }
     } catch (err) {
-      console.warn("[portal reschedule] slot conflict RPC missing", err);
+      portalLockError = err;
+    }
+
+    if (portalLockError) {
+      console.error(
+        "[portal reschedule] check_reschedule_slot_conflict unavailable — FAILING CLOSED to prevent double-book",
+        portalLockError,
+      );
+      return handleApiError(
+        new Error("Slot conflict check unavailable"),
+        "We could not confirm that slot is free right now. Please try again in a moment.",
+        "SLOT_CHECK_UNAVAILABLE",
+        503,
+      );
+    } else if (portalConflictCheck?.conflict) {
+      return handleApiError(
+        new Error("Slot locked by concurrent booking"),
+        "That time just became unavailable. Please pick another slot.",
+        "SLOT_CONTENDED",
+        409,
+      );
     }
 
     // Optimistic lock: read current version, then update with eq('version', ...) to

@@ -28,13 +28,36 @@ import { twStyle } from "@/lib/twStyle";
 import { E164PhoneField } from "@/components/E164PhoneField";
 import { validateE164Phone } from "@/lib/phone-country-codes";
 
+// The list endpoint (GET /api/provider/group-bookings) maps participants to
+// { client_name, client_email, client_phone, service_name, checked_in,
+//   checked_in_time, checked_out, checked_out_time, price, ... }
+// while the participant-create endpoint historically returned
+// { customer_name, customer_email, customer_phone, status, paid, ... }.
+// We accept both shapes here and normalise in the row renderer so mobile
+// never crashes when the backend tweaks the payload.
 interface Participant {
   id: string;
-  customer_name: string;
+  // Historic / create-endpoint shape
+  customer_name?: string;
   customer_phone?: string;
   customer_email?: string;
-  status: string;
-  paid: boolean;
+  // List-endpoint shape
+  client_name?: string;
+  client_phone?: string;
+  client_email?: string;
+  participant_name?: string;
+  participant_phone?: string;
+  participant_email?: string;
+  status?: string;
+  paid?: boolean;
+  // Check-in/out (list endpoint uses _time suffix, DB uses _at)
+  checked_in?: boolean;
+  checked_in_time?: string | null;
+  checked_in_at?: string | null;
+  checked_out?: boolean;
+  checked_out_time?: string | null;
+  checked_out_at?: string | null;
+  service_name?: string | null;
 }
 
 interface GroupBooking {
@@ -124,6 +147,13 @@ export default function GroupBookingsScreen() {
   const { execute: cancelGroup } = useApiMutation("delete");
   const { execute: addParticipant, loading: addingParticipant } = useApiMutation("post");
   const { execute: removeParticipant } = useApiMutation("delete");
+  // Wave 4.1 (audit 2026-04 final 100/100): provider mobile check-in / out
+  // parity with web. Check-in endpoint:
+  //   POST /api/provider/group-bookings/:id/participants/:pid/check-in
+  // Check-out endpoint:
+  //   POST /api/provider/group-bookings/:id/participants/:pid/check-out
+  const { execute: checkInParticipant } = useApiMutation("post");
+  const { execute: checkOutParticipant } = useApiMutation("post");
 
   const groups = useMemo(() => groupData?.data ?? [], [groupData?.data]);
 
@@ -322,9 +352,42 @@ export default function GroupBookingsScreen() {
     refresh();
   }
 
+  async function handleCheckIn(participant: Participant) {
+    if (!selectedGroup) return;
+    const { error } = await checkInParticipant(
+      `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-in`,
+      {},
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    refresh();
+  }
+
+  async function handleCheckOut(participant: Participant) {
+    if (!selectedGroup) return;
+    const { error } = await checkOutParticipant(
+      `/api/provider/group-bookings/${selectedGroup.id}/participants/${participant.id}/check-out`,
+      {},
+    );
+    if (error) {
+      Alert.alert("Error", error);
+      return;
+    }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    refresh();
+  }
+
   async function handleRemoveParticipant(participant: Participant) {
     if (!selectedGroup) return;
-    Alert.alert("Remove Participant", `Remove ${participant.customer_name}?`, [
+    const displayName =
+      participant.customer_name ||
+      participant.client_name ||
+      participant.participant_name ||
+      "this participant";
+    Alert.alert("Remove Participant", `Remove ${displayName}?`, [
       { text: "Cancel", style: "cancel" },
       {
         text: "Remove",
@@ -525,29 +588,94 @@ export default function GroupBookingsScreen() {
                   <Text style={twStyle("text-center text-xs text-gray-400")}>No participants yet</Text>
                 </View>
               ) : (
-                (selectedGroup.participants ?? []).map((p) => (
-                  <View key={p.id} style={twStyle("mb-1.5 flex-row items-center rounded-lg bg-gray-50 p-3")}>
-                    <Avatar name={p.customer_name} size="sm" />
-                    <View style={twStyle("ml-2 flex-1")}>
-                      <Text style={twStyle("text-sm font-medium text-gray-900")}>{p.customer_name}</Text>
-                      {p.customer_phone && (
-                        <Text style={twStyle("text-xs text-gray-400")}>{p.customer_phone}</Text>
-                      )}
-                    </View>
-                    <View style={twStyle("flex-row items-center")}>
-                      <View style={[twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
-                        <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-green-700" : "text-amber-700"}`)}>
-                          {p.paid ? "Paid" : "Unpaid"}
-                        </Text>
+                (selectedGroup.participants ?? []).map((p) => {
+                  const displayName =
+                    p.customer_name ||
+                    p.client_name ||
+                    p.participant_name ||
+                    "Guest";
+                  const displayPhone =
+                    p.customer_phone || p.client_phone || p.participant_phone;
+                  const checkedIn =
+                    p.checked_in === true ||
+                    !!p.checked_in_time ||
+                    !!p.checked_in_at;
+                  const checkedOut =
+                    p.checked_out === true ||
+                    !!p.checked_out_time ||
+                    !!p.checked_out_at;
+                  const isCheckedIn = checkedIn && !checkedOut;
+                  const isCheckedOut = checkedOut;
+                  const canCheckInOut =
+                    selectedGroup.status !== "completed" &&
+                    selectedGroup.status !== "cancelled";
+                  return (
+                    <View key={p.id} style={twStyle("mb-1.5 rounded-lg bg-gray-50 p-3")}>
+                      <View style={twStyle("flex-row items-center")}>
+                        <Avatar name={displayName} size="sm" />
+                        <View style={twStyle("ml-2 flex-1")}>
+                          <Text style={twStyle("text-sm font-medium text-gray-900")}>{displayName}</Text>
+                          {p.service_name ? (
+                            <Text style={twStyle("text-xs text-gray-500")}>{p.service_name}</Text>
+                          ) : null}
+                          {displayPhone && (
+                            <Text style={twStyle("text-xs text-gray-400")}>{displayPhone}</Text>
+                          )}
+                        </View>
+                        <View style={twStyle("flex-row items-center")}>
+                          <View style={[twStyle(`rounded-full px-2 py-0.5 ${p.paid ? "bg-green-50" : "bg-amber-50"}`), { marginRight: 8 }]}>
+                            <Text style={twStyle(`text-[10px] font-medium ${p.paid ? "text-green-700" : "text-amber-700"}`)}>
+                              {p.paid ? "Paid" : "Unpaid"}
+                            </Text>
+                          </View>
+                          {canCheckInOut && (
+                            <TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={8}>
+                              <Ionicons name="close-circle" size={18} color="#ef4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
-                      {selectedGroup.status !== "completed" && selectedGroup.status !== "cancelled" && (
-                        <TouchableOpacity onPress={() => handleRemoveParticipant(p)} hitSlop={8}>
-                          <Ionicons name="close-circle" size={18} color="#ef4444" />
-                        </TouchableOpacity>
+                      {canCheckInOut && (
+                        <View style={twStyle("mt-2 flex-row")}>
+                          {!isCheckedIn && !isCheckedOut ? (
+                            <TouchableOpacity
+                              onPress={() => handleCheckIn(p)}
+                              style={[
+                                twStyle("flex-1 flex-row items-center justify-center rounded-md bg-blue-50 py-2"),
+                                { marginRight: 8 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Check in ${p.customer_name}`}
+                            >
+                              <Ionicons name="log-in-outline" size={14} color="#1d4ed8" style={{ marginRight: 4 }} />
+                              <Text style={twStyle("text-xs font-semibold text-blue-700")}>Check in</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {isCheckedIn ? (
+                            <TouchableOpacity
+                              onPress={() => handleCheckOut(p)}
+                              style={[
+                                twStyle("flex-1 flex-row items-center justify-center rounded-md bg-green-50 py-2"),
+                                { marginRight: 8 },
+                              ]}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Check out ${p.customer_name}`}
+                            >
+                              <Ionicons name="log-out-outline" size={14} color="#15803d" style={{ marginRight: 4 }} />
+                              <Text style={twStyle("text-xs font-semibold text-green-700")}>Check out</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                          {isCheckedOut ? (
+                            <View style={twStyle("flex-1 flex-row items-center justify-center rounded-md bg-gray-100 py-2")}>
+                              <Ionicons name="checkmark-done-outline" size={14} color="#4b5563" style={{ marginRight: 4 }} />
+                              <Text style={twStyle("text-xs font-semibold text-gray-600")}>Completed</Text>
+                            </View>
+                          ) : null}
+                        </View>
                       )}
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
 

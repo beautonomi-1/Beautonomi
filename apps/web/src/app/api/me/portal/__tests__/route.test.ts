@@ -1,5 +1,7 @@
 /**
  * GET /api/me/portal: requires auth, returns role, portal, provider_id, provider_status.
+ * §Release-audit 2026-04: covers the new self-heal path that upserts a missing
+ * `public.users` row before returning 401 (mobile/Bearer resilience).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -8,6 +10,7 @@ import { MOCK_USERS } from "@/__tests__/helpers/mock-supabase";
 
 const mockRequireAuthInApi = vi.fn();
 const mockGetUserRoleServer = vi.fn();
+const mockEnsurePublicUserRowExists = vi.fn();
 
 vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/supabase/api-helpers")>();
@@ -19,9 +22,11 @@ vi.mock("@/lib/supabase/api-helpers", async (importOriginal) => {
 
 vi.mock("@/lib/auth/role", () => ({
   getUserRoleServer: (...args: any[]) => mockGetUserRoleServer(...args),
+  ensurePublicUserRowExists: (...args: any[]) => mockEnsurePublicUserRowExists(...args),
   getPortalForUser: (params: { role: string; provider_status?: string | null }) => {
     if (params.role === "superadmin") return "admin";
     if (params.role === "customer") return "customer";
+    if (params.role === "provider_onboarding") return "provider_onboarding";
     if (params.role === "provider_owner" || params.role === "provider_staff") {
       return params.provider_status === "active" ? "provider" : "provider_onboarding";
     }
@@ -33,9 +38,14 @@ vi.mock("@/lib/supabase/server", () => ({
   getSupabaseServer: vi.fn().mockResolvedValue({}),
 }));
 
+function authUserLike(id: string, email = "test@example.com") {
+  return { id, email, user_metadata: {} };
+}
+
 describe("GET /api/me/portal", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockEnsurePublicUserRowExists.mockResolvedValue(false);
   });
 
   it(
@@ -54,7 +64,7 @@ describe("GET /api/me/portal", () => {
   );
 
   it("returns 200 with customer portal for customer role", async () => {
-    mockRequireAuthInApi.mockResolvedValue(undefined);
+    mockRequireAuthInApi.mockResolvedValue({ user: authUserLike(MOCK_USERS.customer.id) });
     mockGetUserRoleServer.mockResolvedValue({
       userId: MOCK_USERS.customer.id,
       role: "customer",
@@ -74,10 +84,13 @@ describe("GET /api/me/portal", () => {
       provider_status: null,
     });
     expect(body.error).toBeNull();
+    expect(mockEnsurePublicUserRowExists).not.toHaveBeenCalled();
   });
 
   it("returns 200 with provider portal and provider_id for provider_owner active", async () => {
-    mockRequireAuthInApi.mockResolvedValue(undefined);
+    mockRequireAuthInApi.mockResolvedValue({
+      user: authUserLike(MOCK_USERS.provider_owner.id),
+    });
     const providerId = "prov-0000-0000-0000-000000000001";
     mockGetUserRoleServer.mockResolvedValue({
       userId: MOCK_USERS.provider_owner.id,
@@ -99,7 +112,9 @@ describe("GET /api/me/portal", () => {
   });
 
   it("returns 200 with admin portal for superadmin", async () => {
-    mockRequireAuthInApi.mockResolvedValue(undefined);
+    mockRequireAuthInApi.mockResolvedValue({
+      user: authUserLike(MOCK_USERS.superadmin.id),
+    });
     mockGetUserRoleServer.mockResolvedValue({
       userId: MOCK_USERS.superadmin.id,
       role: "superadmin",
@@ -117,9 +132,57 @@ describe("GET /api/me/portal", () => {
     expect(body.error).toBeNull();
   });
 
-  it("returns 401 when getUserRoleServer returns null (profile not found)", async () => {
-    mockRequireAuthInApi.mockResolvedValue(undefined);
+  // §Release-audit 2026-04: new self-heal behaviour
+  it("self-heals missing public.users row and returns portal on retry", async () => {
+    mockRequireAuthInApi.mockResolvedValue({
+      user: authUserLike(MOCK_USERS.customer.id, "newbie@example.com"),
+    });
+    mockGetUserRoleServer
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        userId: MOCK_USERS.customer.id,
+        role: "customer",
+        provider_id: null,
+        provider_status: null,
+      });
+    mockEnsurePublicUserRowExists.mockResolvedValue(true);
+
+    const { GET } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/portal");
+    const res = await GET(req);
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body.data.portal).toBe("customer");
+    expect(body.data.role).toBe("customer");
+    expect(mockEnsurePublicUserRowExists).toHaveBeenCalledOnce();
+    expect(mockGetUserRoleServer).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns 401 when self-heal fails and role still cannot be resolved", async () => {
+    mockRequireAuthInApi.mockResolvedValue({
+      user: authUserLike(MOCK_USERS.customer.id, "newbie@example.com"),
+    });
     mockGetUserRoleServer.mockResolvedValue(null);
+    mockEnsurePublicUserRowExists.mockResolvedValue(false);
+
+    const { GET } = await import("../route");
+    const req = new NextRequest("http://localhost/api/me/portal");
+    const res = await GET(req);
+
+    expect(res.status).toBe(401);
+    expect(mockEnsurePublicUserRowExists).toHaveBeenCalledOnce();
+    // getUserRoleServer called only once because heal failed (no retry)
+    expect(mockGetUserRoleServer).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns 401 when getUserRoleServer returns null (profile not found) and self-heal silently fails", async () => {
+    mockRequireAuthInApi.mockResolvedValue({
+      user: authUserLike(MOCK_USERS.customer.id),
+    });
+    mockGetUserRoleServer.mockResolvedValue(null);
+    mockEnsurePublicUserRowExists.mockResolvedValue(false);
+
     const { GET } = await import("../route");
     const req = new NextRequest("http://localhost/api/me/portal");
     const res = await GET(req);

@@ -11,6 +11,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useResponsive } from "@/hooks/useResponsive";
 import { supabase } from "@/lib/supabase/client";
@@ -65,6 +66,10 @@ export default function ForgotPasswordScreen() {
   };
 
   return (
+    // §UI-audit 2026-04: replaced the hardcoded `paddingTop: 60` with
+    // a real top safe-area edge so the back button lives below the
+    // notch on every device size.
+    <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: Colors.white }}>
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.white }}
       behavior={Platform.OS === "ios" ? "padding" : "padding"}
@@ -74,7 +79,7 @@ export default function ForgotPasswordScreen() {
         style={{ flex: 1 }}
         contentContainerStyle={{
           padding: contentPadding,
-          paddingTop: 60,
+          paddingTop: 24,
           paddingBottom: 220,
           ...(formNarrow ? { alignItems: "center" as const } : {}),
         }}
@@ -131,6 +136,8 @@ export default function ForgotPasswordScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoComplete="email"
+              textContentType="emailAddress"
+              importantForAutofill="yes"
               returnKeyType="done"
               onSubmitEditing={handleReset}
               accessibilityLabel="Email input"
@@ -157,5 +164,6 @@ export default function ForgotPasswordScreen() {
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

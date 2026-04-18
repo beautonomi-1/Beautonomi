@@ -15,6 +15,7 @@ import {
   FlatList,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/providers/AuthProvider";
@@ -114,15 +115,45 @@ export default function SignupScreen() {
   useScreenTracking("Signup");
   const { t } = useTranslation();
   const { signUpWithEmail, signInWithOAuth } = useAuth();
-  const params = useLocalSearchParams<{ ref?: string; return_to?: string }>();
+  const params = useLocalSearchParams<{
+    ref?: string;
+    return_to?: string;
+    /** §Release-audit 2026-04: optional prefill passed from the login
+     *  screen when a user attempts OTP login with an unknown email/phone. */
+    email?: string;
+    phone?: string;
+  }>();
+
+  // §Release-audit 2026-04: if login redirected here because the phone had
+  // no account, try to split the E.164 into country dial code + local
+  // digits. Falls back to device default if we can't match a known dial.
+  const prefillPhoneFromE164 = (value: string | undefined) => {
+    if (!value) return { cc: null as string | null, digits: "" };
+    const e164 = value.trim();
+    if (!e164.startsWith("+")) return { cc: null, digits: e164.replace(/\D/g, "") };
+    const digits = e164.replace(/\D/g, "");
+    const match = COUNTRY_CODES.find((c) => digits.startsWith(c.code.replace("+", "")));
+    if (!match) return { cc: null, digits };
+    return {
+      cc: match.code,
+      digits: digits.slice(match.code.replace("+", "").length),
+    };
+  };
+  const initialPhonePrefill = prefillPhoneFromE164(
+    typeof params.phone === "string" ? params.phone : undefined,
+  );
 
   const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    typeof params.email === "string" ? params.email.trim() : "",
+  );
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [phone, setPhone] = useState("");
-  const [countryCode, setCountryCode] = useState(getDeviceDefaultCountryDial);
+  const [phone, setPhone] = useState(initialPhonePrefill.digits);
+  const [countryCode, setCountryCode] = useState(
+    initialPhonePrefill.cc ?? getDeviceDefaultCountryDial(),
+  );
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [countrySearch, setCountrySearch] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -135,22 +166,38 @@ export default function SignupScreen() {
   const [showLanguagePicker, setShowLanguagePicker] = useState(false);
   const [showSignupSourcePicker, setShowSignupSourcePicker] = useState(false);
 
-  // Capture ref from route params or from initial/deep-link URL (e.g. customer://signup?ref=CODE)
+  // Capture ref from route params, the cold-start URL, AND warm deep-link
+  // events (user tapping a referral link while the app is in the foreground).
+  // §Final-audit 2026-04: previously only cold-start URLs were captured —
+  // any warm link delivered via `Linking.addEventListener("url", …)` was
+  // dropped and the referrer lost their credit.
   useEffect(() => {
-    const fromParams = params.ref?.trim();
-    if (fromParams) {
-      setReferralCode(fromParams);
-      AsyncStorage.setItem(REFERRAL_REF_KEY, fromParams).catch(() => {});
-      return;
-    }
+    let cancelled = false;
+    const captureRef = (candidate: string | null | undefined) => {
+      const trimmed = candidate?.trim();
+      if (!trimmed) return false;
+      if (cancelled) return false;
+      setReferralCode(trimmed);
+      AsyncStorage.setItem(REFERRAL_REF_KEY, trimmed).catch(() => {});
+      return true;
+    };
+
+    if (captureRef(params.ref)) return;
+
     Linking.getInitialURL().then((url) => {
-      if (!url) return;
-      const ref = parseRefFromUrl(url);
-      if (ref) {
-        setReferralCode(ref);
-        AsyncStorage.setItem(REFERRAL_REF_KEY, ref).catch(() => {});
-      }
+      if (!url || cancelled) return;
+      captureRef(parseRefFromUrl(url));
     });
+
+    const sub = Linking.addEventListener("url", (ev) => {
+      if (!ev?.url || cancelled) return;
+      captureRef(parseRefFromUrl(ev.url));
+    });
+
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
   }, [params.ref]);
 
   const emailRef = useRef<TextInput>(null);
@@ -280,6 +327,10 @@ export default function SignupScreen() {
   };
 
   return (
+    <SafeAreaView
+      edges={["top", "left", "right"]}
+      style={{ flex: 1, backgroundColor: Colors.gray[50] }}
+    >
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: Colors.gray[50] }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -455,6 +506,8 @@ export default function SignupScreen() {
             keyboardType="email-address"
             autoCapitalize="none"
             autoComplete="email"
+            textContentType="emailAddress"
+            importantForAutofill="yes"
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
             accessibilityLabel="Email address"
@@ -488,6 +541,8 @@ export default function SignupScreen() {
             onChangeText={(v) => { setPassword(v); setErrors((p) => ({ ...p, password: "" })); }}
             secureTextEntry={!showPassword}
             autoComplete="new-password"
+            textContentType="newPassword"
+            passwordRules="minlength: 8;"
             returnKeyType="next"
             onSubmitEditing={() => confirmRef.current?.focus()}
             accessibilityLabel="Password"
@@ -562,6 +617,8 @@ export default function SignupScreen() {
             value={confirmPassword}
             onChangeText={(v) => { setConfirmPassword(v); setErrors((p) => ({ ...p, confirmPassword: "" })); }}
             secureTextEntry={!showPassword}
+            autoComplete="new-password"
+            textContentType="newPassword"
             returnKeyType="next"
             onSubmitEditing={() => phoneRef.current?.focus()}
             accessibilityLabel="Confirm password"
@@ -615,6 +672,9 @@ export default function SignupScreen() {
             keyboardType="phone-pad"
             returnKeyType="done"
             accessibilityLabel="Phone number, optional"
+            textContentType="telephoneNumber"
+            autoComplete="tel-national"
+            importantForAutofill="yes"
           />
         </View>
         {(phoneError || errors.phone) ? (
@@ -951,5 +1011,6 @@ export default function SignupScreen() {
         </Pressable>
       </Modal>
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

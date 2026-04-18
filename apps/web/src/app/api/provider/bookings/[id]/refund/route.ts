@@ -122,16 +122,22 @@ export async function POST(
       );
     }
 
-    // Get current payment totals from booking (auto-updated by trigger)
+    // §Final-audit 2026-04: include wallet + gift card collected in the
+    // refund cap, matching the admin route. `total_paid` only counts
+    // gateway payments (trigger `update_booking_payment_status`), so a
+    // booking paid entirely in wallet previously could not be refunded
+    // by the provider — the cap was $0.
     const { data: bookingData } = await supabase
       .from("bookings")
-      .select("total_paid, total_refunded")
+      .select("total_paid, total_refunded, wallet_amount, gift_card_amount")
       .eq("id", bookingId)
       .single();
 
     const totalPaid = bookingData?.total_paid || 0;
+    const walletPaid = (bookingData as { wallet_amount?: number } | null)?.wallet_amount || 0;
+    const giftPaid = (bookingData as { gift_card_amount?: number } | null)?.gift_card_amount || 0;
     const totalRefunded = bookingData?.total_refunded || 0;
-    const availableForRefund = totalPaid - totalRefunded;
+    const availableForRefund = totalPaid + walletPaid + giftPaid - totalRefunded;
 
     // Validate refund amount
     if (amount > availableForRefund) {
@@ -147,7 +153,14 @@ export async function POST(
       provider_id: (booking as { provider_id?: string | null }).provider_id ?? null,
     });
 
-    // Create refund record FIRST (audit trail before money moves)
+    // Wave 1.2 (audit 2026-04 final 100/100): money-safe ordering.
+    //
+    // Insert as `pending` first. The ledger trigger
+    // `create_finance_ledger_from_booking_refund` (migration 490) only
+    // posts to finance_transactions when status='completed', so the
+    // ledger row will not exist if wallet credit fails. The booking
+    // payment status trigger `update_booking_payment_status` only counts
+    // `completed` refunds, so the booking is also untouched until success.
     const { data: refund, error: refundError } = await supabaseAdmin
       .from("booking_refunds")
       .insert({
@@ -155,7 +168,7 @@ export async function POST(
         amount,
         reason,
         refund_method: "store_credit",
-        status: "completed",
+        status: "pending",
         notes: notes || "Provider refund – credited to customer wallet",
         created_by: user.id,
       })
@@ -167,7 +180,12 @@ export async function POST(
       return errorResponse("Failed to create refund record", "REFUND_ERROR", 500);
     }
 
-    // Credit wallet AFTER refund row exists (ensures audit trail on retry)
+    const refundId = (refund as { id: string }).id;
+
+    // Now move the money. Wallet credit is the only side-effect that can
+    // fail here; if it fails we mark the refund row as `failed` and
+    // return 5xx without ever flipping it to `completed`, so the ledger
+    // trigger never fires.
     const { error: walletError } = await (supabaseAdmin.rpc as any)("wallet_credit_admin", {
       p_user_id: booking.customer_id,
       p_amount: amount,
@@ -179,21 +197,40 @@ export async function POST(
     });
 
     if (walletError) {
-      console.error("Wallet credit failed after refund record created:", walletError);
-      // Mark the refund as failed so it can be retried
+      console.error("Wallet credit failed; marking refund failed:", walletError);
       await supabaseAdmin
         .from("booking_refunds")
-        .update({ status: "failed", notes: `Wallet credit failed: ${walletError.message}` })
-        .eq("id", (refund as { id: string }).id);
-      return errorResponse("Failed to credit customer wallet. Refund recorded for retry.", "WALLET_ERROR", 500);
+        .update({
+          status: "failed",
+          notes: `Wallet credit failed: ${walletError.message}`,
+        })
+        .eq("id", refundId);
+      return errorResponse(
+        "Failed to credit customer wallet. Refund recorded as failed; please retry.",
+        "WALLET_ERROR",
+        500,
+      );
     }
 
-    // NOTE: finance_transactions ledger row is written by trigger
-    // `create_finance_ledger_from_booking_refund` (migration 490) keyed by
-    // `source_refund_id`. A second app-side insert here was the B1 double-count
-    // bug — it produced two rows per wallet refund because the unique index on
-    // `source_refund_id` is partial (IS NOT NULL) and a manual insert with
-    // `source_refund_id = NULL` never conflicted.
+    // Wallet credited successfully — finalise the refund. The status flip
+    // to `completed` triggers (a) the finance_transactions reversal row
+    // via 490 and (b) the booking.payment_status recalculation via 126.
+    const { error: finalizeErr } = await supabaseAdmin
+      .from("booking_refunds")
+      .update({ status: "completed" })
+      .eq("id", refundId);
+
+    if (finalizeErr) {
+      // Wallet was credited but we couldn't finalise. Surface a 500 so
+      // ops can re-finalise with a manual UPDATE; the wallet credit is
+      // idempotent on `p_reference_id` so a retry will not double-pay.
+      console.error("Refund finalize failed after wallet credit:", finalizeErr);
+      return errorResponse(
+        "Refund credited to wallet but failed to finalise; please re-trigger.",
+        "FINALIZE_ERROR",
+        500,
+      );
+    }
 
     // Record booking event for audit trail
     try {
@@ -201,7 +238,7 @@ export async function POST(
         booking_id: bookingId,
         event_type: "refunded",
         event_data: {
-          refund_id: (refund as { id: string }).id,
+          refund_id: refundId,
           amount,
           reason,
           refund_method: "store_credit",
@@ -212,10 +249,12 @@ export async function POST(
       console.warn("Failed to create refund booking event:", eventErr);
     }
 
-    // Note: Booking payment status is updated by database trigger on booking_refunds
-    // The trigger update_booking_payment_status() recalculates totals and status
+    // Wave 1.2 fully_refunded fix: include wallet + gift card + loyalty
+    // in the cap, matching availableForRefund. Previous calc used only
+    // gateway totalPaid, marking wallet/gift-paid bookings non-refundable.
     const newTotalRefunded = totalRefunded + amount;
-    const isFullyRefunded = newTotalRefunded >= totalPaid;
+    const totalPaidAllSources = totalPaid + walletPaid + giftPaid;
+    const isFullyRefunded = newTotalRefunded >= totalPaidAllSources;
 
     // Notify customer that refund was added to wallet
     const bookingRef = booking.ref_number || booking.booking_number || bookingId.slice(0, 8).toUpperCase();

@@ -15,6 +15,7 @@ import {
 import { Image } from "expo-image";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, Stack, router } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "@/providers/AuthProvider";
 import { api } from "@/lib/api-client";
 import { getApiErrorMessage } from "@/lib/api-error";
@@ -480,6 +481,11 @@ export default function BookCheckoutScreen() {
   useScreenTracking("Book Checkout");
   const { t } = useTranslation();
   const { contentPadding, contentMaxWidth, isTablet } = useResponsive();
+  // §UX-audit 2026-04: sticky footer + floating header were using
+  // magic `paddingBottom: 28` / `paddingTop: 52` constants which
+  // clipped behind the home indicator / dynamic island on modern
+  // devices. Drive padding from the live insets instead.
+  const insets = useSafeAreaInsets();
   const constraint = (isTablet || Platform.OS === "web") ? { maxWidth: Math.min(500, contentMaxWidth), alignSelf: "center" as const, width: "100%" as const } : {};
   const {
     hold_id,
@@ -562,6 +568,14 @@ export default function BookCheckoutScreen() {
   const [loyaltyDiscountAmount, setLoyaltyDiscountAmount] = useState(0);
   const [loyaltyValidating, setLoyaltyValidating] = useState(false);
   const [loyaltyError, setLoyaltyError] = useState<string | null>(null);
+  // Wave 4.2 (audit 2026-04 final 100/100): customer mobile membership
+  // discount parity with web. When the customer has an active
+  // user_memberships row against this provider, the server's
+  // validate-booking path applies discount_percent. We surface that
+  // same discount here so the customer sees the reduced total BEFORE
+  // submitting, matching the web checkout breakdown exactly.
+  const [membershipPlanName, setMembershipPlanName] = useState<string | null>(null);
+  const [membershipDiscountPercent, setMembershipDiscountPercent] = useState(0);
   const [tipAmount, setTipAmount] = useState(0);
   const [tipCustomInput, setTipCustomInput] = useState("");
   const [isSlotExpired, setIsSlotExpired] = useState(false);
@@ -1073,7 +1087,23 @@ export default function BookCheckoutScreen() {
   const prePromoTotal = subtotal + addonsSubtotal + travelFee + productsSubtotal;
   const effectivePromoDiscount = Math.min(appliedPromoDiscount, prePromoTotal);
   const subtotalAfterPromo = Math.max(0, prePromoTotal - effectivePromoDiscount);
-  const subtotalAfterLoyalty = Math.max(0, subtotalAfterPromo - loyaltyDiscountAmount);
+  // Wave 4.2: membership discount applies after coupon/gift, before
+  // loyalty & tax. Mirrors web booking-flow.tsx calc.
+  const membershipDiscountAmount =
+    membershipDiscountPercent > 0
+      ? Math.min(
+          Math.round(((subtotalAfterPromo * membershipDiscountPercent) / 100) * 100) / 100,
+          subtotalAfterPromo,
+        )
+      : 0;
+  const subtotalAfterMembership = Math.max(
+    0,
+    subtotalAfterPromo - membershipDiscountAmount,
+  );
+  const subtotalAfterLoyalty = Math.max(
+    0,
+    subtotalAfterMembership - loyaltyDiscountAmount,
+  );
 
   // Tax: only when provider has set a non-zero tax rate (applied after promo + loyalty discount)
   const taxRatePercent = hold?.tax_rate_percent ?? 0;
@@ -1096,7 +1126,7 @@ export default function BookCheckoutScreen() {
     ? Math.max(0, subtotalAfterLoyalty + tipAmount + serviceFeeAmount)
     : Math.max(0, subtotalAfterLoyalty + taxAmount + tipAmount + serviceFeeAmount);
 
-  const bookingSubtotalForLoyalty = subtotalAfterPromo;
+  const bookingSubtotalForLoyalty = subtotalAfterMembership;
   const maxRedeemablePointsOnBooking = useMemo(() => {
     if (bookingSubtotalForLoyalty <= 0) return 0;
     const maxDiscount = (bookingSubtotalForLoyalty * maxRedemptionPercentage) / 100;
@@ -1213,6 +1243,55 @@ export default function BookCheckoutScreen() {
     setLoyaltyPointsInput("");
     setLoyaltyError(null);
   }, [subtotalAfterPromo]);
+
+  // Wave 4.2: load membership discount for this provider once the hold
+  // is resolved. Same endpoint the web customer uses (/api/me/membership).
+  useEffect(() => {
+    if (!user || !hold?.provider_id) {
+      setMembershipDiscountPercent(0);
+      setMembershipPlanName(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await api.get<{
+          data?: {
+            provider_memberships?: Array<{
+              provider_id: string;
+              plan_name?: string;
+              discount_percent?: number;
+            }>;
+          };
+        }>("/api/me/membership");
+        if (cancelled || res.error) return;
+        const raw = res.data as { data?: Record<string, unknown> } | Record<string, unknown>;
+        const d =
+          ((raw as { data?: Record<string, unknown> }).data ?? raw) as {
+            provider_memberships?: Array<{
+              provider_id: string;
+              plan_name?: string;
+              discount_percent?: number;
+            }>;
+          };
+        const match = (d?.provider_memberships ?? []).find(
+          (m) => m.provider_id === hold.provider_id,
+        );
+        if (match && (match.discount_percent ?? 0) > 0) {
+          setMembershipDiscountPercent(Number(match.discount_percent) || 0);
+          setMembershipPlanName(match.plan_name ?? "Member discount");
+        } else {
+          setMembershipDiscountPercent(0);
+          setMembershipPlanName(null);
+        }
+      } catch {
+        // Membership is optional; never block checkout.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, hold?.provider_id]);
 
   useEffect(() => {
     if (!user) {
@@ -1684,15 +1763,34 @@ export default function BookCheckoutScreen() {
         let confirmedBookingStatus: string | undefined;
         let paymentConfirmed = false;
         if (bookingId) {
+          // §Final-audit 2026-04: poll BOTH `status` and `payment_status`
+          // to avoid false-positive confirms (booking can flip to
+          // `confirmed` via a non-payment path) and false-negatives
+          // (gateway marked paid but status still `pending_payment` until
+          // the webhook completes). Completion requires payment_status in
+          // {paid, partially_paid} OR a non-pending booking status.
           const MAX_ATTEMPTS = 10;
           const POLL_INTERVAL_MS = 2000;
           for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
             try {
-              const check = await api.get<{ status?: string; id?: string }>(
-                `/api/me/bookings/${encodeURIComponent(bookingId)}`
-              );
-              const statusVal = (check.data as { status?: string } | null)?.status;
-              if (statusVal && statusVal !== "pending_payment") {
+              const check = await api.get<{
+                status?: string;
+                payment_status?: string;
+                id?: string;
+              }>(`/api/me/bookings/${encodeURIComponent(bookingId)}`);
+              const checkData = (check.data ?? null) as
+                | { status?: string; payment_status?: string }
+                | null;
+              const statusVal = checkData?.status;
+              const paymentStatusVal = checkData?.payment_status;
+              const paidByGateway =
+                paymentStatusVal === "paid" ||
+                paymentStatusVal === "partially_paid";
+              const statusConfirmed =
+                !!statusVal &&
+                statusVal !== "pending_payment" &&
+                statusVal !== "pending";
+              if (paidByGateway || statusConfirmed) {
                 confirmedBookingId = bookingId;
                 confirmedBookingStatus = statusVal;
                 paymentConfirmed = true;
@@ -1745,7 +1843,7 @@ export default function BookCheckoutScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={{ flex: 1, backgroundColor: "#fff" }}>
-          <View style={{ paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 12, flexDirection: "row", alignItems: "center" }}>
+          <View style={{ paddingTop: insets.top + 12, paddingHorizontal: contentPadding, paddingBottom: 12, flexDirection: "row", alignItems: "center" }}>
             <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: "#F3F4F6", marginRight: 12 }} />
             <Skeleton width="40%" height={18} />
           </View>
@@ -1829,7 +1927,7 @@ export default function BookCheckoutScreen() {
       <View style={{ flex: 1, backgroundColor: "#fff" }}>
         {/* ═══ Custom Header ═══ */}
         <View style={{
-          flexDirection: "row", alignItems: "center", paddingTop: 52, paddingHorizontal: contentPadding, paddingBottom: 8,
+          flexDirection: "row", alignItems: "center", paddingTop: insets.top + 8, paddingHorizontal: contentPadding, paddingBottom: 8,
           backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#F3F4F6",
         }}>
           <TouchableOpacity
@@ -2428,7 +2526,7 @@ export default function BookCheckoutScreen() {
 
             {/* ═══ Total ═══ */}
             <View style={{ backgroundColor: "#F9FAFB", borderRadius: 16, padding: contentPadding, marginBottom: 16 }}>
-              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || loyaltyDiscountAmount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
+              {(travelFee > 0 || addonsSubtotal > 0 || productsSubtotal > 0 || appliedPromoDiscount > 0 || loyaltyDiscountAmount > 0 || membershipDiscountAmount > 0 || tipAmount > 0 || taxAmount > 0 || serviceFeeAmount > 0) && (
                 <>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                     <Text style={{ fontSize: 13, color: "#6B7280" }}>{t("checkout.services")}</Text>
@@ -2456,6 +2554,14 @@ export default function BookCheckoutScreen() {
                     <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
                       <Text style={{ fontSize: 13, color: "#059669" }}>{t("checkout.promo")}</Text>
                       <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(effectivePromoDiscount, currency)}</Text>
+                    </View>
+                  )}
+                  {membershipDiscountAmount > 0 && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 6 }}>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>
+                        {membershipPlanName ? `${membershipPlanName} (${membershipDiscountPercent}%)` : `Member discount (${membershipDiscountPercent}%)`}
+                      </Text>
+                      <Text style={{ fontSize: 13, color: "#059669" }}>-{formatCurrency(membershipDiscountAmount, currency)}</Text>
                     </View>
                   )}
                   {loyaltyDiscountAmount > 0 && (
@@ -3174,7 +3280,9 @@ export default function BookCheckoutScreen() {
 
           {/* ═══ Sticky Bottom CTA ═══ */}
           <View style={{
-            paddingHorizontal: contentPadding, paddingVertical: 12, paddingBottom: 28,
+            paddingHorizontal: contentPadding,
+            paddingTop: 12,
+            paddingBottom: 12 + Math.max(insets.bottom, 8),
             borderTopWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#fff",
           }}>
             {/* Price summary */}

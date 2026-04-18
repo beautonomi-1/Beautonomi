@@ -87,8 +87,11 @@ export default function TabsLayout() {
           alignItems: "center",
         },
         tabBarLabelStyle: {
-          fontSize: 10,
-          fontWeight: "500",
+          // §UI-audit 2026-04: 10px was below the comfortable-legibility
+          // floor for tab labels (HIG recommends ~11–12). Bumped to 11
+          // which still fits the fixed tab height used across platforms.
+          fontSize: 11,
+          fontWeight: "600",
           marginBottom: 4,
           textAlign: "center",
         },

@@ -1,7 +1,8 @@
 /**
- * Permission Enforcement Middleware
+ * Permission Enforcement Helper
  *
- * Checks if user has required permission before allowing action.
+ * Called from API route handlers (not the Next 16 `src/proxy.ts`) to check
+ * that a user has the required permission before allowing the action.
  * Accepts an optional `request` parameter to support Bearer token auth from mobile apps.
  */
 

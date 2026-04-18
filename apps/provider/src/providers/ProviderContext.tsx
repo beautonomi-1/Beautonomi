@@ -34,6 +34,15 @@ interface ProviderProfile {
   currency?: string;
   /** BCP 47 locale for formatting when present. */
   locale?: string;
+  /**
+   * §Release-audit 2026-04: IANA timezone (e.g. `Africa/Johannesburg`)
+   * surfaced by `/api/provider/profile`. Consumed by calendar drag-to-
+   * reschedule to interpret the drop-zone wall clock in provider time
+   * rather than the device's local time. Without it, providers operating
+   * in a different zone than their phone saw the wrong UTC instant
+   * persisted on the booking.
+   */
+  timezone?: string | null;
 }
 
 interface ProviderContextType {

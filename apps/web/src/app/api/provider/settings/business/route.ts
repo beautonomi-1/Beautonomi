@@ -139,7 +139,30 @@ export async function PATCH(request: NextRequest) {
 
     // CamelCase (web / business-details)
     if (body.businessName !== undefined) updates.business_name = body.businessName;
-    if (body.timezone !== undefined) updates.timezone = body.timezone;
+    if (body.timezone !== undefined) {
+      // §Launch-audit 2026-04-18: reject non-IANA timezone strings at
+      // write time so the availability engine can trust the stored
+      // value. `Intl.DateTimeFormat` throws on legacy offset forms like
+      // "GMT+2" / "+0200"; saving those silently broke /api/availability
+      // with a 500 (see normalizeProviderTimezone / combineDateAndTime).
+      const raw = String(body.timezone).trim();
+      if (raw) {
+        try {
+          new Intl.DateTimeFormat("en-US", { timeZone: raw });
+          updates.timezone = raw;
+        } catch {
+          return handleApiError(
+            new Error(
+              `Invalid IANA timezone "${raw}". Expected a value like "Africa/Johannesburg".`,
+            ),
+            "Invalid timezone",
+            400,
+          );
+        }
+      } else {
+        updates.timezone = null;
+      }
+    }
     if (body.timeFormat !== undefined) updates.time_format = body.timeFormat;
     if (body.weekStart !== undefined) updates.week_start = body.weekStart;
     if (body.appointmentColorSource !== undefined) {
