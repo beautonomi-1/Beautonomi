@@ -1,4 +1,4 @@
--- 511_reconciliation_zero_drift_assert.sql
+-- 513_reconciliation_zero_drift_assert.sql
 --
 -- Launch-readiness 100/100 (Wave 1.1 cont.):
 --   Adds a strict zero-drift assertion RPC plus a self-healing variant
